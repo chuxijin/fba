@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created On: 2023-01-01
+@Author: PanMaster团队
+百度网盘客户端实现
+"""
+
 from __future__ import annotations
 import os
 from collections import deque
@@ -7,18 +15,22 @@ from typing import IO, Callable, Dict, List, Optional, Set, Tuple, Union, Any
 import re
 from datetime import datetime
 import time
-import logging # Import standard logging
+import logging  # 导入标准日志模块
 import asyncio
 
 from PIL import Image
 
-from app.client.coulddrive.server import ItemFilter
-from app.schemas.enum import RecursionSpeed
-from app.schemas.coulddrive.file import BaseFileInfo
-# from fastapi import logger # Remove fastapi.logger import
+from backend.app.coulddrive.schema.enum import RecursionSpeed
+from backend.app.coulddrive.schema.file import BaseFileInfo, ListFilesParam, ListShareFilesParam, MkdirParam, RemoveParam, TransferParam, RelationshipParam, RelationshipType, UserInfoParam
+from backend.app.coulddrive.schema.user import (
+    BaseUserInfo,
+    GetUserFriendDetail,
+    GetUserGroupDetail,
+)
 
-from ..drivebase_service import BaseDrive
-from app.schemas.coulddrive.user import BaseUserInfo, UserFriend, UserGroup
+from backend.app.coulddrive.service.baidu.errors import BaiduApiError
+from backend.app.coulddrive.service.filesync_service import ItemFilter
+from backend.app.coulddrive.service.yp_service import BaseDriveClient
 from .schemas import (
     FromTo,
     PcsFile,
@@ -26,7 +38,8 @@ from .schemas import (
     PcsSharedLink,
     PcsSharedPath,
 )
-from .api import BaiduApi, BaiduApiError
+from backend.app.coulddrive.service.baidu.api import BaiduApi
+from backend.common.log import log
 
 SHARED_URL_PREFIX = "https://pan.baidu.com/s/"
 
@@ -34,13 +47,13 @@ SHARED_URL_PREFIX = "https://pan.baidu.com/s/"
 def _unify_shared_url(url: str) -> str:
     """统一输入的分享链接格式"""
 
-    # For Standard url
+    # 标准链接格式
     temp = r"pan\.baidu\.com/s/(.+?)(\?|$)"
     m = re.search(temp, url)
     if m:
         return SHARED_URL_PREFIX + m.group(1)
 
-    # For surl url
+    # surl 链接格式
     temp = r"baidu\.com.+?\?surl=(.+?)(\?|$)"
     m = re.search(temp, url)
     if m:
@@ -49,7 +62,7 @@ def _unify_shared_url(url: str) -> str:
     raise ValueError(f"The shared url is not a valid url. {url}")
 
 
-class BaiduClient(BaseDrive):
+class BaiduClient(BaseDriveClient):
     """百度网盘 PCS API
 
     这是对`BaiduPCS`的封装。它将原始BaiduPCS请求的响应内容解析为一些内部数据结构。
@@ -57,89 +70,128 @@ class BaiduClient(BaseDrive):
 
     def __init__(
         self,
-        bduss: Optional[str] = None,
-        stoken: Optional[str] = None,
-        ptoken: Optional[str] = None,
-        cookies: Dict[str, Optional[str]] = {},
+        cookies: str,
         user_id: Optional[int] = None,
     ):
+        """
+        
+        :param cookies: cookies 字符串，格式如 "BDUSS=xxx; STOKEN=xxx; PTOKEN=xxx"
+        :param user_id: 用户ID
+        """
         super().__init__()
-        self._baidupcs = BaiduApi(
-            bduss, stoken=stoken, ptoken=ptoken, cookies=cookies, user_id=user_id
-        )
-        # self.logger = logger # Remove assignment of fastapi.logger
-        self.logger = logging.getLogger(f"BaiduClient.{self.__class__.__name__}") # Use standard Python logger
-        # Configure logger if needed (e.g., set level, add handler), 
-        # or assume it's configured globally by the application using the client.
-        # For basic output during testing if no global config:
-        if not self.logger.handlers:
-            # If no handlers are configured, add a basic one to see output.
-            # This is often good for library code that might be used outside a pre-configured app.
-            # However, generally, libraries should not configure logging handlers themselves.
-            # For now, let's assume the calling environment (like test script or app) might set it up.
-            # If logs don't appear in tests, uncomment and refine the above handler setup.
-            pass # Let's assume for now the calling environment (like test script or app) might set it up.
-                 # If logs don't appear in tests, uncomment and refine the above handler setup.
+        # 初始化日志记录器
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # 不要先创建空的 BaiduApi 实例，直接在 login 中创建
+        self._baidupcs: BaiduApi = None
+        self._is_authorized = False
 
-        self._is_authorized = bool(bduss)
+        # 自动登录
+        if self.login(cookies, user_id):
+            pass
+        else:
+            raise ValueError("BaiduClient 初始化失败：登录失败")
 
     @property
     def drive_type(self) -> str:
         return "BaiduDrive"
 
-    def login(self, bduss: Optional[str] = None, stoken: Optional[str] = None, ptoken: Optional[str] = None, cookies: Dict[str, Optional[str]] = {}, user_id: Optional[int] = None) -> bool:
+    def login(self, cookies: str, user_id: Optional[int] = None) -> bool:
         """
         登录百度网盘
-        如果提供了参数，则使用新参数重新初始化 BaiduPCS 实例。
-        否则，检查现有实例是否认为已授权。
+        
+        :param cookies: cookies 字符串，格式如 "BDUSS=xxx; STOKEN=xxx; PTOKEN=xxx"
+        :param user_id: 用户ID
+        :return: 是否登录成功
         """
-        if bduss:
+        # 检查是否有有效的认证信息
+        has_cookies = cookies and cookies.strip()
+        
+        if has_cookies:
             try:
-                self._baidupcs = BaiduApi(
-                    bduss, stoken=stoken, ptoken=ptoken, cookies=cookies, user_id=user_id
-                )
+                self._baidupcs = BaiduApi(cookies=cookies, user_id=user_id)
+                
                 if self._baidupcs._bduss:
-                    self._is_authorized = True
-                    return True
+                    # 通过获取用户信息来验证登录并设置用户ID
+                    try:
+                        import asyncio
+                        
+                        async def verify_login():
+                            user_info_response = await self._baidupcs.get_user_info()
+                            if isinstance(user_info_response, dict):
+                                user_info = user_info_response.get("user_info", {})
+                                if isinstance(user_info, dict):
+                                    user_id = int(user_info.get("uk")) if user_info.get("uk") is not None else None
+                                    if user_id:
+                                        self._baidupcs._user_id = user_id
+                                        return True
+                            return False
+                        
+                        # 尝试在当前上下文中运行验证
+                        try:
+                            loop = asyncio.get_running_loop()
+                            # 在异步上下文中，暂时标记为已授权，用户ID稍后获取
+                            self._is_authorized = True
+                            return True
+                        except RuntimeError:
+                            # 在同步上下文中，立即验证登录
+                            login_verified = asyncio.run(verify_login())
+                            self._is_authorized = login_verified
+                            return login_verified
+                            
+                    except Exception as e:
+                        self.logger.debug(f"登录验证失败: {e}")
+                        self._is_authorized = False
+                        return False
+                
                 self._is_authorized = False
                 return False
             except Exception as e:
-                self.logger.error(f"百度网盘登录失败: {e}")
+                self.logger.error(f"BaiduApi 初始化失败: {e}")
                 self._is_authorized = False
                 return False
+        
+        # 如果没有认证信息且_baidupcs为None，返回False
+        if self._baidupcs is None:
+            self._is_authorized = False
+            return False
+            
         return self._is_authorized
 
     @property
     def bduss(self) -> str:
-        return self._baidupcs._bduss
+        return self._baidupcs._bduss if self._baidupcs else ""
 
     @property
     def bdstoken(self) -> str:
-        return self._baidupcs.bdstoken
+        return self._baidupcs.bdstoken if self._baidupcs else ""
 
     @property
     def stoken(self) -> Optional[str]:
-        return self._baidupcs._stoken
+        return self._baidupcs._stoken if self._baidupcs else None
 
     @property
     def ptoken(self) -> Optional[str]:
-        return self._baidupcs._ptoken
+        return self._baidupcs._ptoken if self._baidupcs else None
 
     @property
     def baiduid(self) -> Optional[str]:
-        return self._baidupcs._baiduid
+        return self._baidupcs._baiduid if self._baidupcs else None
 
     @property
     def logid(self) -> Optional[str]:
-        return self._baidupcs._logid
+        return self._baidupcs._logid if self._baidupcs else None
 
     @property
     def user_id(self) -> Optional[int]:
-        return self._baidupcs._user_id
+        """获取用户ID，如果没有则返回None"""
+        if self._baidupcs and self._baidupcs._user_id:
+            return self._baidupcs._user_id
+        return None
 
     @property
-    def cookies(self) -> Dict[str, Optional[str]]:
-        return self._baidupcs.cookies
+    def cookies(self) -> Dict[str, str]:
+        return self._baidupcs.cookies if self._baidupcs else {}
 
     async def quota(self) -> PcsQuota:
         """获取配额信息"""
@@ -147,66 +199,42 @@ class BaiduClient(BaseDrive):
         info = await self._baidupcs.quota()
         return PcsQuota(quota=info["quota"], used=info["used"])
 
-    async def get_user_info(self) -> BaseUserInfo:
-        """获取用户信息，包括配额信息"""
-        try:
-            # 并行获取用户信息和配额信息
-            user_info_task = self._baidupcs.get_user_info()
-            quota_task = self._baidupcs.get_quota()
+    async def get_user_info(self, params: UserInfoParam = None, **kwargs) -> BaseUserInfo:
+        """
+        获取用户信息
+        
+        参数:
+            params (UserInfoParam): 用户信息查询参数（可选）
+            **kwargs: 其他关键字参数
             
-            # 使用 await 等待 gather 完成
-            results = await asyncio.gather(
-                user_info_task, quota_task, 
-                return_exceptions=True
-            )
-            user_info_response, quota_response = results
-  
-            # 检查是否有任何任务抛出异常
-            if isinstance(user_info_response, Exception):
-                raise user_info_response
-            if isinstance(quota_response, Exception):
-                self.logger.warning(f"获取配额信息失败: {quota_response}")
-                quota_response = {}
-
-            # 解析用户信息 - 百度API响应格式固定，用户信息在user_info字段中
-            if not isinstance(user_info_response, dict):
-                raise ValueError("Invalid user info response format")
+        返回:
+            BaseUserInfo: 用户信息
+        """
+        try:
+            user_info_response = await self._baidupcs.get_user_info()
+            user_quota_response = await self._baidupcs.quota()
+            
+            if isinstance(user_info_response, dict) and user_info_response.get('error_code') == 0:
+                # 从 user_info 字段中提取数据
+                user_info = user_info_response.get('user_info', {})
                 
-            user_info = user_info_response.get("user_info", {})
-            if not isinstance(user_info, dict):
-                raise ValueError("Invalid user info data structure")
-
-            # 获取用户ID并更新客户端实例
-            try:
-                user_id = int(user_info.get("uk")) if user_info.get("uk") is not None else None
-                if user_id and not self._baidupcs._user_id:
-                    self._baidupcs._user_id = user_id
-            except (TypeError, ValueError) as e:
-                self.logger.error(f"解析用户ID时出错: {e}")
-                user_id = None
-
-            return BaseUserInfo(
-                user_id=str(user_id) if user_id is not None else None,
-                username=user_info.get("username"),
-                avatar_url=user_info.get("photo"),
-                quota=quota_response.get("total"),
-                used=quota_response.get("used"),
-                is_vip=bool(user_info.get("is_vip") == 1),
-                is_supervip=bool(user_info.get("is_svip") == 1),
-            )
-        except BaiduApiError as e:
-            self.logger.error(f"获取用户信息失败: {e.message}")
-            return BaseUserInfo(
-                username="获取失败", 
-                **{"error": f"Failed to get user info: {e.message}", "errno": e.error_code}
-            )
+                return BaseUserInfo(
+                    user_id=str(user_info.get('uk', 0)),
+                    username=user_info.get('username', ''),
+                    avatar_url=user_info.get('photo', ''), 
+                    quota=user_quota_response.get('quota', 0),
+                    used=user_quota_response.get('used', 0),
+                    is_vip=bool(user_info.get('is_vip', 0)),
+                    is_supervip=bool(user_info.get('is_svip', 0))
+                )
+            else:
+                error_msg = user_info_response.get('error_msg', '未知错误') if isinstance(user_info_response, dict) else str(user_info_response)
+                self.logger.error(f"获取用户信息失败: {error_msg}")
+                return BaseUserInfo(user_id='0', username='未知用户', avatar_url='', is_vip=False, is_supervip=False)
         except Exception as e:
-            self.logger.error(f"获取用户信息时发生未知错误: {str(e)}")
-            return BaseUserInfo(
-                username="获取失败", 
-                **{"error": f"Unknown error while getting user info: {str(e)}"}
-            )
-    
+            self.logger.error(f"获取用户信息时发生错误: {e}")
+            return BaseUserInfo(user_id='0', username='未知用户', avatar_url='', is_vip=False, is_supervip=False)
+
     async def meta(self, *file_paths: str) -> List[PcsFile]:
         """获取`file_paths`的元数据"""
 
@@ -230,38 +258,31 @@ class BaiduClient(BaseDrive):
 
     async def get_disk_list(
         self,
-        file_path: str,
-        file_id: str,
-        recursive: bool = False,
-        desc: bool = False,
-        name: bool = False,
-        time: bool = False,
-        size: bool = False,
-        recursion_speed: RecursionSpeed = RecursionSpeed.NORMAL,
-        item_filter: Optional[ItemFilter] = None, # Added item_filter
-        *args: Any,
+        params: ListFilesParam,
         **kwargs: Any
     ) -> List[BaseFileInfo]:
-        """列出目录内容，并构建 parent_id.
-        
-        Args:
-            file_path (str): 要列出内容的目录路径。
-            file_id (str): 必须是 file_path 对应的目录的 fs_id。用于设置子项的 parent_id。
-                           对于根目录 '/', 通常传递 "" 或特定的根ID（如果知道）。
-            recursive (bool): 是否递归获取所有子项。
-            desc (bool): 按降序排序。
-            name (bool): 按名称排序。
-            time (bool): 按时间排序。
-            size (bool): 按大小排序。
-            recursion_speed (RecursionSpeed): 递归获取时的速度控制（默认 NORMAL）。SLOW 模式会在请求子目录前暂停3秒。
-                                            FAST 模式预留用于数据库缓存（未实现）。
-            item_filter (Optional[ItemFilter]): 过滤器，用于过滤目录项
-            *args: 其他位置参数。
-            **kwargs: 其他关键字参数。
-            
-        Returns:
-            List[BaseFileInfo]: 包含文件/目录信息的列表，已填充 parent_id。
         """
+        获取目录下的文件和目录列表
+        
+        :param params: 文件列表查询参数
+        :param kwargs: 其他关键字参数
+        """
+        # 从 params 中提取参数
+        file_path = params.file_path or "/"
+        file_id = params.file_id or ""
+        recursive = params.recursive
+        desc = params.desc
+        name = params.name
+        time = params.time
+        size = params.size_sort
+        recursion_speed = params.recursion_speed
+        
+        # 确保路径格式正确
+        if not file_path.startswith("/"):
+            file_path = "/" + file_path
+        
+        # 从 kwargs 中获取可选参数
+        item_filter = kwargs.get('item_filter', None)
 
         drive_files_list: List[BaseFileInfo] = []
         initial_parent_id = file_id
@@ -276,17 +297,17 @@ class BaiduClient(BaseDrive):
             return []
 
         items_to_process = deque()
-        # Convert initial items to BaseFileInfo for potential early filtering of initial target folders
+        # 将初始项目转换为 BaseFileInfo 以便进行早期过滤
         for item_dict_initial in initial_items_raw:
-            # Create a preliminary BaseFileInfo for filtering checks, parent_id for these top items is initial_parent_id
-            # We need to be careful here if file_path is a file itself. get_disk_list usually lists a dir.
-            # Assuming for now that if file_path points to a file, initial_items_raw will contain that one file.
+            # 创建用于过滤检查的初步 BaseFileInfo，这些顶级项目的 parent_id 是 initial_parent_id
+            # 如果 file_path 本身指向一个文件，需要小心处理。get_disk_list 通常列出目录。
+            # 目前假设如果 file_path 指向文件，initial_items_raw 将包含该文件。
             temp_df_for_filter = BaseFileInfo(
                 file_id=str(item_dict_initial.get('fs_id', '')),
                 file_path=item_dict_initial.get('path', ''),
                 file_name=item_dict_initial.get('server_filename', ''),
                 is_folder=bool(item_dict_initial.get('isdir', 0)),
-                # Other fields can be dummy or minimal for filtering purposes if not used by filter rules
+                # 其他字段可以是虚拟的或最小的，用于过滤目的（如果过滤规则不使用）
                 file_size=item_dict_initial.get('size'),
                 created_at=str(item_dict_initial.get('server_ctime', '')),
                 updated_at=str(item_dict_initial.get('server_mtime', '')),
@@ -310,15 +331,15 @@ class BaiduClient(BaseDrive):
             current_item_path = item_dict.get('path')
 
             if is_dir and recursive and current_fs_id and current_fs_id not in processed_fs_ids:
-                # Before fetching sub-directory content, check if this directory itself should be filtered out
-                # We need a BaseFileInfo representation of this directory to pass to the filter
+                # 在获取子目录内容之前，检查该目录本身是否应该被过滤掉
+                # 我们需要该目录的 BaseFileInfo 表示以传递给过滤器
                 current_dir_drive_file = BaseFileInfo(
                     file_id=str(current_fs_id),
                     file_path=str(current_item_path),
-                    file_name=PurePosixPath(str(current_item_path)).name, # Approximate name
+                    file_name=PurePosixPath(str(current_item_path)).name,  # 近似名称
                     is_folder=True,
                     parent_id=str(current_parent_id) if current_parent_id is not None else "",
-                    # Minimal other fields, assuming filter primarily uses path/name/is_folder
+                    # 最小的其他字段，假设过滤器主要使用 path/name/is_folder
                     file_size=0, created_at="0", updated_at="0" 
                 )
                 if item_filter and item_filter.should_exclude(current_dir_drive_file):
@@ -346,7 +367,7 @@ class BaiduClient(BaseDrive):
                                     file_size=sub_item_dict.get('size'),
                                     created_at=str(sub_item_dict.get('server_ctime', '')),
                                     updated_at=str(sub_item_dict.get('server_mtime', '')),
-                                    parent_id=str(current_fs_id) # Parent is the current directory being processed
+                                    parent_id=str(current_fs_id)  # 父目录是当前正在处理的目录
                                 )
                                 if item_filter and item_filter.should_exclude(temp_sub_df):
                                     self.logger.debug(f"[Filter] Excluding sub-item: {temp_sub_df.file_path}")
@@ -354,7 +375,7 @@ class BaiduClient(BaseDrive):
                                 items_to_process.append((sub_item_dict, current_fs_id))
                         except Exception as e:
                             self.logger.error(f"Error listing subdirectory '{current_item_path}': {e}")
-                            # pass # Changed from pass to allow flow to continue if a subdir fails
+                            # 允许流程继续，如果子目录失败
 
         explicit_raw_keys = {
             "fs_id", "path", "server_filename", "size", "isdir", 
@@ -393,11 +414,7 @@ class BaiduClient(BaseDrive):
 
     async def mkdir(
         self,
-        file_path: str,
-        parent_id: str = "",
-        file_name: str = "",
-        return_if_exist: bool = True,
-        *args: Any,
+        params: MkdirParam,
         **kwargs: Any,
     ) -> BaseFileInfo:
         """创建目录
@@ -416,6 +433,11 @@ class BaiduClient(BaseDrive):
         Raises:
             BaiduApiError: 创建目录失败时抛出
         """
+        file_path = params.file_path
+        parent_id = params.parent_id
+        file_name = params.file_name
+        return_if_exist = params.return_if_exist
+
         # 规范化路径
         if not file_path.startswith("/"):
             file_path = "/" + file_path
@@ -491,14 +513,12 @@ class BaiduClient(BaseDrive):
 
     async def remove(
         self,
-        file_paths: Union[str, List[str]],
-        file_ids: Optional[Union[str, List[str]]] = None,
-        parent_id: Optional[str] = None,  # 百度网盘不使用此参数，但为保持接口兼容性保留
-        file_name: Optional[str] = None,  # 百度网盘不使用此参数，如果 file_paths 是完整路径则不应使用
-        *args: Any,
+        params: RemoveParam,
         **kwargs: Any,
     ) -> bool:
         """删除文件或目录"""
+        file_paths = params.file_paths
+        file_ids = params.file_ids
         try:
             paths_for_api_call = []
             
@@ -513,22 +533,11 @@ class BaiduClient(BaseDrive):
                 for path in input_paths_list:
                     if not path: continue # 跳过空路径
                     
-                    # 假设 input_paths_list 包含的是完整的目标路径
-                    # file_name 参数在此处的逻辑比较模糊，如果path已经是完整路径，则不应再拼接file_name
-                    # 为了安全起见，当前版本忽略 file_name，依赖 file_paths 是完整的。
                     current_path_to_delete = path
                     if not current_path_to_delete.startswith("/"):
                         current_path_to_delete = "/" + current_path_to_delete
-                    
-                    # 可以在此处添加存在性检查，但底层API也会处理不存在的情况
-                    # if not await self.exists(current_path_to_delete):
-                    #     self.logger.warning(f"要删除的路径不存在: {current_path_to_delete}")
-                    #     continue
                     paths_for_api_call.append(current_path_to_delete)
             
-            # 如果仅提供了 file_ids 而没有 file_paths，当前实现无法处理，
-            # 因为底层的 _baidupcs.remove 需要路径。
-            # 之前尝试通过 self.meta(id) 获取路径的逻辑是错误的。
             elif file_ids and not input_paths_list:
                  self.logger.error(
                      "BaiduClient.remove 不支持单独使用 file_ids 删除，除非实现可靠的ID到路径转换或百度提供基于ID的删除API。"
@@ -831,32 +840,34 @@ class BaiduClient(BaseDrive):
                 break
         return sub_paths
         
-    async def get_relationship_list(self, relationship_type: str) -> Union[List[UserFriend], List[UserGroup], List[Any]]:
+    async def get_relationship_list(self, params: RelationshipParam, **kwargs: Any) -> Union[List[GetUserFriendDetail], List[GetUserGroupDetail], List[Any]]:
         """
         获取所有关注的用户列表或群组列表
-
-        Args:
-            relationship_type (str): "friend" 或 "group"
         
+        参数:
+            params (RelationshipParam): 关系查询参数
+            **kwargs: 其他关键字参数
+            
         返回:
-            Union[List[UserFriend], List[UserGroup]]: 用户/群组列表
+            Union[List[GetUserFriendDetail], List[GetUserGroupDetail]]: 用户/群组列表
         """
+        relationship_type = params.relationship_type
         all_items = []
         start = 0
         limit = 20 # 百度API通常限制为20
 
-        if relationship_type not in ["friend", "group"]:
+        if relationship_type not in [RelationshipType.FRIEND, RelationshipType.GROUP]:
             self.logger.error(f"无效的 relationship_type: {relationship_type}. 必须是 'friend' 或 'group'.")
             return []
         
         while True:
-            response = None # Initialize response
+            response = None  # 初始化响应
             try:
-                if relationship_type == "friend":
+                if relationship_type == RelationshipType.FRIEND:
                     response = await self._baidupcs.get_follow_list(start=start, limit=limit)
-                elif relationship_type == "group":
+                elif relationship_type == RelationshipType.GROUP:
                     response = await self._baidupcs.get_group_list(start=start, limit=limit)
-                else: # Should not happen due to the check above
+                else:  # 由于上面的检查，这种情况不应该发生
                     return []
             except BaiduApiError as e:
                 self.logger.error(f"获取 {relationship_type} 列表时API出错: {e}")
@@ -878,31 +889,31 @@ class BaiduClient(BaseDrive):
                 break
             
             for record in records:
-                if relationship_type == "friend":
+                if relationship_type == RelationshipType.FRIEND:
                     try:
-                        # 映射API返回的好友数据到UserFriend模型
+                        # 映射API返回的好友数据到GetUserFriendDetail模型
                         friend_data = {
                             "uk": int(record.get("uk", 0)),
                             "uname": record.get("uname", ""),
-                            "nick_name": record.get("nick_name", record.get("uname", "")),  # 如果没有昵称就用用户名
+                            "nick_name": record.get("nick_name", ""),
                             "avatar_url": record.get("avatar_url", ""),
-                            "is_friend": record.get("is_friend", 2)  # 默认设为2表示互相关注
+                            "is_friend": record.get("is_friend", 2)
                         }
-                        item = UserFriend(**friend_data)
+                        item = GetUserFriendDetail(**friend_data)
                     except Exception as e:
                         self.logger.error(f"解析好友数据失败: {record}, 错误: {e}")
                         continue
-                elif relationship_type == "group":
+                elif relationship_type == RelationshipType.GROUP:
                     try:
-                        # 映射API返回的群组数据到UserGroup模型
+                        # 映射API返回的群组数据到GetUserGroupDetail模型
                         group_data = {
                             "gid": str(record.get("gid", "")),
                             "gnum": str(record.get("gnum", "")),
                             "name": record.get("name", ""),
-                            "type": str(record.get("type", "")),
-                            "status": str(record.get("status", "1"))  # 默认状态为1（正常）
+                            "type": str(record.get("type", "0")),
+                            "status": str(record.get("status", "1"))
                         }
-                        item = UserGroup(**group_data)
+                        item = GetUserGroupDetail(**group_data)
                     except Exception as e:
                         self.logger.error(f"解析群组数据失败: {record}, 错误: {e}")
                         continue
@@ -911,10 +922,10 @@ class BaiduClient(BaseDrive):
                     return []
                 all_items.append(item)
             
-            if relationship_type == "friend":
+            if relationship_type == RelationshipType.FRIEND:
                 if not response.get("has_more"):
                     break
-            elif relationship_type == "group":
+            elif relationship_type == RelationshipType.GROUP:
                 total_count = response.get("count", 0)
                 current_fetched = start + len(records)
                 if current_fetched >= total_count or not response.get("has_more", True):
@@ -977,7 +988,7 @@ class BaiduClient(BaseDrive):
         
         Args:
             relationship_type (str): "friend" 或 "group"
-            identifier (str): 当 relationship_type 为 "friend" 时, 此为好友的 UK (to_uk);
+            identifier (str): 当 relationship_type 为 "friend" 时, 此为接收者的 UK (to_uk，即当前登录用户);
                               当 relationship_type 为 "group" 时, 此为群组的 ID (gid).
             from_uk (str): 分享者UK
             msg_id (str): 消息ID
@@ -997,10 +1008,27 @@ class BaiduClient(BaseDrive):
         if relationship_type == "friend":
             # 如果 'type' 在 kwargs 中，则使用它，否则默认为 1
             final_type = kwargs.pop('type', 1)
+            
+            # 确保有有效的用户ID
+            current_user_id = self.user_id
+            if current_user_id is None:
+                # 如果没有用户ID，尝试获取
+                user_info_response = await self._baidupcs.get_user_info()
+                if isinstance(user_info_response, dict):
+                    user_info = user_info_response.get("user_info", {})
+                    if isinstance(user_info, dict):
+                        current_user_id = int(user_info.get("uk")) if user_info.get("uk") is not None else None
+                        if current_user_id:
+                            self._baidupcs._user_id = current_user_id
+                            
+            if current_user_id is None:
+                self.logger.error("获取好友分享详情失败: 无法获取当前用户ID，请检查登录状态")
+                return {"errno": -1, "error_msg": "无法获取当前用户ID，请检查登录状态"}
+            
             return await self._baidupcs.get_friend_share_detail(
                 from_uk=from_uk,
                 msg_id=msg_id,
-                to_uk=str(self.user_id),  # 使用当前登录用户的UK
+                to_uk=str(current_user_id),  # 使用获取到的用户ID作为接收者
                 fs_id=fs_id,
                 type=final_type,
                 page=page,
@@ -1027,28 +1055,104 @@ class BaiduClient(BaseDrive):
             )
         else:
             self.logger.error(f"无效的 relationship_type: {relationship_type}. 必须是 'friend' 或 'group'.")
-            return {"errno": -1, "error_msg": f"无效的 relationship_type: {relationship_type}"}        
+            return {"errno": -1, "error_msg": f"无效的 relationship_type: {relationship_type}"}
 
     async def get_share_list(
         self,
-        source_type: str,
-        source_id: str,  # friend_uk (context to_uk) or group_gid
-        file_path: str,  # path within a share, e.g., "/SharedFolderAlpha/SubDir"
-        recursive: bool = False,
-        recursion_speed: RecursionSpeed = RecursionSpeed.NORMAL,
-        item_filter: Optional[ItemFilter] = None, # Added item_filter
-    ) -> List[BaseFileInfo]:
+        params: ListShareFilesParam,
+        **kwargs: Any
+    ) -> List[BaseFileInfo]:  
         """
         获取指定好友或群组分享中特定路径下的文件/目录列表.
          file_path 的第一部分必须匹配某个分享事件的根共享名.
         """
-        self.logger.info(f"get_share_list: type='{source_type}', id='{source_id}', path='{file_path}', recursive={recursive}")
+        source_type = params.source_type
+        source_id = params.source_id
+        file_path = params.file_path
+        recursive = params.recursive
+        recursion_speed = params.recursion_speed
+        
+        # 从 kwargs 中获取可选参数，与 get_disk_list 保持一致
+        item_filter = kwargs.get('item_filter', None)
+        
         drive_files_list: List[BaseFileInfo] = []
 
         normalized_file_path = file_path.strip('/')
         if not normalized_file_path:
-            self.logger.error("file_path cannot be empty or root '/'. It must specify the shared item's name e.g., '/MyShare/subfolder'.")
-            return []
+            # 当 file_path 为根路径 "/" 时，返回所有分享的根项目
+            self.logger.info(f"Requesting root share items list for {source_type} {source_id}")
+            
+            # 1. Get all share events/messages
+            share_events_response = await self.get_relationship_share_list(
+                relationship_type=source_type,
+                identifier=source_id
+            )
+
+            if share_events_response.get("errno", 0) != 0:
+                self.logger.error(f"Failed to get share events for {source_type} {source_id}: {share_events_response}")
+                return []
+
+            share_messages = []
+            records_obj = share_events_response.get("records", {})
+            if source_type == "friend":
+                share_messages = records_obj.get("list", [])
+            elif source_type == "group":
+                share_messages = records_obj.get("msg_list", [])
+            
+            if not share_messages:
+                self.logger.info(f"No share messages found for {source_type} {source_id}.")
+                return []
+
+            # 2. 为每个分享事件创建根项目 BaseFileInfo
+            for share_event in share_messages:
+                msg_id = share_event.get("msg_id")
+                sharer_uk = None
+                share_root_items_list = [] 
+
+                if source_type == "friend":
+                    sharer_uk = share_event.get("from_uk")
+                    share_root_items_list = share_event.get("filelist", {}).get("list", [])
+                elif source_type == "group":
+                    sharer_uk = share_event.get("uk") 
+                    share_root_items_list = share_event.get("file_list", [])  # 对于群组是直接的列表
+                
+                if not msg_id or sharer_uk is None or not share_root_items_list:
+                    self.logger.debug(f"跳过分享事件，缺少必要信息 (msg_id, sharer_uk, 或根项目): {share_event}")
+                    continue
+
+                share_event_root_item = share_root_items_list[0]  # 假设第一个项目是主要的分享根
+                root_item_name = share_event_root_item.get("server_filename")
+                root_item_fs_id = share_event_root_item.get("fs_id")
+
+                if not root_item_name or root_item_fs_id is None:
+                    self.logger.debug(f"跳过分享事件的根项目，缺少名称/fs_id: {share_event_root_item}")
+                    continue
+                
+                # 为根路径创建 BaseFileInfo
+                root_drive_file = BaseFileInfo(
+                    file_id=str(root_item_fs_id),
+                    file_name=root_item_name,
+                    file_path=f"/{root_item_name}",
+                    file_size=share_event_root_item.get("size", 0),
+                    is_folder=bool(share_event_root_item.get("isdir", 0)),
+                    created_at=str(share_event_root_item.get("server_ctime", "")),
+                    updated_at=str(share_event_root_item.get("server_mtime", "")),
+                    parent_id="",  # 根项目没有父ID
+                    file_ext={
+                        "from_uk": str(sharer_uk),
+                        "msg_id": str(msg_id),
+                    }
+                )
+                
+                if item_filter and item_filter.should_exclude(root_drive_file):
+                    self.logger.debug(f"[Filter] Excluding root share item: {root_drive_file.file_path}")
+                    continue
+                
+                drive_files_list.append(root_drive_file)
+            
+            return drive_files_list
+        
+        # 对于非根路径，解析路径组件
         path_components = normalized_file_path.split('/')
 
         # 1. Get all share events/messages
@@ -1062,9 +1166,6 @@ class BaiduClient(BaseDrive):
             return []
 
         share_messages = []
-        # Based on provided JSON:
-        # Friend: response.records.list
-        # Group: response.records.msg_list
         records_obj = share_events_response.get("records", {})
         if source_type == "friend":
             share_messages = records_obj.get("list", [])
@@ -1075,8 +1176,7 @@ class BaiduClient(BaseDrive):
             self.logger.info(f"No share messages found for {source_type} {source_id}.")
             return []
 
-        # 2. Find the target share event and its root item
-        target_share_info = None # Store {'msg_id', 'sharer_uk', 'root_fs_id', 'root_name'}
+        target_share_info = None
 
         for share_event in share_messages:
             msg_id = share_event.get("msg_id")
@@ -1088,22 +1188,19 @@ class BaiduClient(BaseDrive):
                 share_root_items_list = share_event.get("filelist", {}).get("list", [])
             elif source_type == "group":
                 sharer_uk = share_event.get("uk") 
-                share_root_items_list = share_event.get("file_list", []) # Directly a list for groups
+                share_root_items_list = share_event.get("file_list", [])  # 对于群组是直接的列表
             
             if not msg_id or sharer_uk is None or not share_root_items_list:
-                self.logger.debug(f"Skipping share_event due to missing essential info (msg_id, sharer_uk, or root items): {share_event}")
+                self.logger.debug(f"跳过分享事件，缺少必要信息 (msg_id, sharer_uk, 或根项目): {share_event}")
                 continue
 
-            share_event_root_item = share_root_items_list[0] # Assuming first item is the main shared root
+            share_event_root_item = share_root_items_list[0]  # 假设第一个项目是主要的分享根
             root_item_name = share_event_root_item.get("server_filename")
-            # server_filename from group shares might be URL encoded if taken from 'path' field, but API examples show it decoded.
-            # Example group share path: "%2F%E8%AF%BE%E7%A8%8B%E7%9B%AE%E5%BD%95..." -> /课程目录...
-            # server_filename seems to be correctly decoded in the provided JSONs.
             
             root_item_fs_id = share_event_root_item.get("fs_id")
 
             if not root_item_name or root_item_fs_id is None:
-                self.logger.debug(f"Skipping share_event's root item due to missing name/fs_id: {share_event_root_item}")
+                self.logger.debug(f"跳过分享事件的根项目，缺少名称/fs_id: {share_event_root_item}")
                 continue
             
             if path_components[0] == root_item_name:
@@ -1113,8 +1210,8 @@ class BaiduClient(BaseDrive):
                     "root_fs_id": str(root_item_fs_id),
                     "root_name": str(root_item_name) 
                 }
-                self.logger.info(f"Matched share event by root name '{root_item_name}': {target_share_info}")
-                break # Found the target share event
+                self.logger.info(f"通过根名称 '{root_item_name}' 匹配到分享事件: {target_share_info}")
+                break  # 找到目标分享事件
         
         if not target_share_info:
             self.logger.warning(f"No share event found with root item named '{path_components[0]}' for {source_type} {source_id}.")
@@ -1158,39 +1255,39 @@ class BaiduClient(BaseDrive):
                 self.logger.error(f"Path component '{component_name}' not found in directory (fs_id of parent: { (path_components[component_idx-1] if component_idx > 0 else target_share_info['root_name']) }).")
                 return []
         
-        # 4. List target content (current_nav_fs_id is the target fs_id to list)
+        # 4. 列出目标内容 (current_nav_fs_id 是要列出的目标 fs_id)
         queue = deque([(str(current_nav_fs_id), current_constructed_drive_path, str(current_nav_fs_id))])
-        # Queue stores: (fs_id_to_list_its_content, path_base_for_its_content, parent_id_for_items_listed_from_it)
+        # 队列存储: (要列出其内容的fs_id, 其内容的路径基础, 从中列出项目的父ID)
         
         processed_fs_ids_for_recursion = set()
-        is_first_pass_in_queue = True # To identify the initial listing of the target path
+        is_first_pass_in_queue = True  # 用于识别目标路径的初始列表
 
         while queue:
             fs_id_to_process, path_base_for_items, parent_id_for_items = queue.popleft()
 
             if fs_id_to_process in processed_fs_ids_for_recursion and recursive:
                  continue
-            if recursive: # Only add to processed if we are in recursive mode
+            if recursive:  # 仅在递归模式下添加到已处理列表
                 processed_fs_ids_for_recursion.add(fs_id_to_process)
 
-            # Apply recursion speed logic only if recursion is enabled
-            if recursive and not is_first_pass_in_queue: # Speed logic applies to sub-directory processing, not the initial target path
+            # 仅在启用递归时应用递归速度逻辑
+            if recursive and not is_first_pass_in_queue:  # 速度逻辑适用于子目录处理，而不是初始目标路径
                 if recursion_speed == RecursionSpeed.SLOW:
-                    self.logger.debug(f"Slow mode (share): Pausing for 3s before listing fs_id: {fs_id_to_process}")
+                    self.logger.debug(f"慢速模式 (分享): 在列出 fs_id: {fs_id_to_process} 之前暂停 3 秒")
                     time.sleep(3)
                 elif recursion_speed == RecursionSpeed.FAST:
-                    # TODO: Implement fast mode logic
-                    # - Try to get sublist of current_item_path from DB cache
-                    # - If cache hit, add children (item_dict, current_fs_id) to all_processed_data (or return cached BaseFileInfo list directly? Needs design)
-                    # - If cache miss, can either:
-                    #   - Fallback to NORMAL mode behavior (make API request)
-                    #   - Or skip, assuming cache is complete
-                    # - Note handling cache update logic
-                    self.logger.debug(f"Fast mode (share) selected for fs_id: {fs_id_to_process}, but no specific fast-path implemented yet. Proceeding as NORMAL for this level.")
-                    pass # Explicitly do nothing different for FAST for now, beyond logging.
+                    # TODO: 实现快速模式逻辑
+                    # - 尝试从数据库缓存获取当前项目路径的子列表
+                    # - 如果缓存命中，添加子项 (item_dict, current_fs_id) 到 all_processed_data (或直接返回缓存的 BaseFileInfo 列表？需要设计)
+                    # - 如果缓存未命中，可以:
+                    #   - 回退到 NORMAL 模式行为 (进行 API 请求)
+                    #   - 或跳过，假设缓存是完整的
+                    # - 注意处理缓存更新逻辑
+                    self.logger.debug(f"为 fs_id: {fs_id_to_process} 选择了快速模式 (分享)，但尚未实现特定的快速路径。继续作为 NORMAL 处理此级别。")
+                    pass  # 目前对 FAST 不做任何不同的处理，除了日志记录
             
             if is_first_pass_in_queue:
-                is_first_pass_in_queue = False # Mark that the first item from queue has been processed
+                is_first_pass_in_queue = False  # 标记队列中的第一个项目已被处理
 
             self.logger.debug(f"Listing content for fs_id: {fs_id_to_process}, path_base: {path_base_for_items}, items_parent_id: {parent_id_for_items}")
             detail_response = await self.get_relationship_share_detail(
@@ -1207,21 +1304,21 @@ class BaiduClient(BaseDrive):
             
             items_from_api = detail_response.get("records", [])
             
-            # Check if the fs_id_to_process itself was a file.
-            # If fs_id_to_process is a file, items_from_api will contain only that file.
+            # 检查 fs_id_to_process 本身是否是文件
+            # 如果 fs_id_to_process 是文件，items_from_api 将只包含该文件
             is_listing_a_single_target_file = False
             if len(items_from_api) == 1 and str(items_from_api[0].get("fs_id")) == fs_id_to_process and not items_from_api[0].get("isdir"):
                 is_listing_a_single_target_file = True
-                self.logger.debug(f"Target fs_id {fs_id_to_process} for listing is a single file.")
+                self.logger.debug(f"列出的目标 fs_id {fs_id_to_process} 是单个文件。")
 
             for item_dict in items_from_api:
                 item_fs_id_str = str(item_dict.get("fs_id"))
                 item_name = item_dict.get("server_filename", "Unknown")
                 is_folder_item = bool(item_dict.get("isdir"))
                 
-                # Construct BaseFileInfo path:
-                # If listing a single target file, its path is path_base_for_items.
-                # If listing a directory's content, item's path is path_base_for_items / item_name.
+                # 构建 BaseFileInfo 路径:
+                # 如果列出单个目标文件，其路径是 path_base_for_items。
+                # 如果列出目录的内容，项目的路径是 path_base_for_items / item_name。
                 drive_file_item_path_str = str(path_base_for_items if is_listing_a_single_target_file else path_base_for_items / item_name)
 
                 df = BaseFileInfo(
@@ -1230,8 +1327,8 @@ class BaiduClient(BaseDrive):
                     file_path=drive_file_item_path_str,
                     file_size=item_dict.get("size", 0),
                     is_folder=is_folder_item,
-                    created_at=str(item_dict.get("server_ctime")), # API uses server_ctime
-                    updated_at=str(item_dict.get("server_mtime")), # API uses server_mtime
+                    created_at=str(item_dict.get("server_ctime")),  # API 使用 server_ctime
+                    updated_at=str(item_dict.get("server_mtime")),  # API 使用 server_mtime
                     parent_id=str(parent_id_for_items),
                     file_ext={
                         "from_uk": target_share_info["sharer_uk"],
@@ -1244,31 +1341,27 @@ class BaiduClient(BaseDrive):
 
                 if item_filter and item_filter.should_exclude(df):
                     self.logger.debug(f"[Filter] Excluding shared item: {df.file_path}")
-                    if df.is_folder and recursive: # If a folder is excluded, don't add its children to queue
-                        # We need to ensure this df.file_id isn't added to queue later
-                        # The current logic adds to queue based on df.is_folder *after* this check
-                        # So, if it's excluded, it won't be added to queue below. This is fine.
+                    if df.is_folder and recursive:  # 如果文件夹被排除，不要将其子项添加到队列
+                        # 我们需要确保此 df.file_id 以后不会添加到队列
+                        # 当前逻辑在此检查*之后*基于 df.is_folder 添加到队列
+                        # 所以，如果被排除，它不会在下面添加到队列。这很好。
                         pass 
-                    continue # Skip adding to drive_files_list and further processing for queue
+                    continue  # 跳过添加到 drive_files_list 和队列的进一步处理
                 
                 drive_files_list.append(df)
 
                 if recursive and is_folder_item and not is_listing_a_single_target_file:
-                    # Filter already applied to df. If it wasn't excluded, it can be added to queue.
+                    # 过滤器已应用于 df。如果没有被排除，可以添加到队列。
                     queue.append((df.file_id, PurePosixPath(drive_file_item_path_str), df.file_id))
             
-            if is_listing_a_single_target_file: # If the initial target was a file, we've listed it, so stop.
+            if is_listing_a_single_target_file:  # 如果初始目标是文件，我们已经列出了它，所以停止。
                 break
         
         return drive_files_list
         
     async def transfer(
         self,
-        source_type: str, # "link", "group", "friend"
-        source_id: str,   # share_url for "link", group_id for "group", friend_uk for "friend"
-        source_path: str, # ignored for baidu, but kept for interface compatibility
-        target_path: str, # target directory in user's own drive
-        file_ids: Optional[List[Union[int, str]]] = None, # fs_ids to transfer
+        params: TransferParam,
         **kwargs: Any,
     ) -> bool:
         """
@@ -1294,6 +1387,12 @@ class BaiduClient(BaseDrive):
         返回:
             bool: 如果转存操作被API接受并报告成功，则返回 True；否则返回 False。
         """
+        source_type = params.source_type
+        source_id = params.source_id
+        source_path = params.source_path
+        target_path = params.target_path
+        file_ids = params.file_ids
+
         # 确保target_path使用正斜杠
         target_path = target_path.replace("\\", "/")
         
@@ -1302,8 +1401,20 @@ class BaiduClient(BaseDrive):
             f"source_path='{source_path}', target_path='{target_path}', file_ids='{file_ids}'"
         )
 
-        if not self.user_id: # 此检查对于 to_uk 参数仍然是必要的
-            self.logger.error("转存失败: 用户ID (to_uk) 缺失.")
+        # 确保用户ID可用
+        current_user_id = self.user_id
+        if current_user_id is None:
+            # 如果没有用户ID，尝试获取
+            user_info_response = await self._baidupcs.get_user_info()
+            if isinstance(user_info_response, dict):
+                user_info = user_info_response.get("user_info", {})
+                if isinstance(user_info, dict):
+                    current_user_id = int(user_info.get("uk")) if user_info.get("uk") is not None else None
+                    if current_user_id:
+                        self._baidupcs._user_id = current_user_id
+                        
+        if not current_user_id:
+            self.logger.error("转存失败: 无法获取用户ID，请检查登录状态")
             return False
 
         if source_type == "link":
@@ -1340,21 +1451,21 @@ class BaiduClient(BaseDrive):
             from_uk_param = None
 
             if source_type == "friend":
-                from_uk_param = source_id # source_id 是好友的 UK (分享者 UK)
+                from_uk_param = source_id  # source_id 是好友的 UK (分享者 UK)
             elif source_type == "group":
                 # source_id 是群组的 ID (gid)
-                # api.py 中的 `transfer_files` 方法需要 `from_uk` (分享者) 和 `gid` (群组).
-                from_uk_param = kwargs.get("from_uk") # kwargs 中必须提供分享者的 UK
+                # api.py 中的 `transfer_files` 方法需要 `from_uk` (分享者) 和 `gid` (群组)
+                from_uk_param = kwargs.get("from_uk")  # kwargs 中必须提供分享者的 UK
                 if not from_uk_param:
                     self.logger.error("群组分享转存失败: kwargs 中需要 'from_uk' (分享者 UK).")
                     return False
-                api_kwargs["gid"] = source_id # 将 gid 传递给 transfer_files 的 api_kwargs
+                api_kwargs["gid"] = source_id  # 将 gid 传递给 transfer_files 的 api_kwargs
 
 
             try:
                 result = await self._baidupcs.transfer_files(
                     from_uk=str(from_uk_param) if from_uk_param else "",
-                    to_uk=str(self.user_id),
+                    to_uk=str(current_user_id),
                     msg_id=str(msg_id),
                     fs_ids=file_ids,
                     type=transfer_type,
@@ -1375,5 +1486,3 @@ class BaiduClient(BaseDrive):
         else:
             self.logger.error(f"不支持的转存 source_type: {source_type}")
             return False
-        
-    

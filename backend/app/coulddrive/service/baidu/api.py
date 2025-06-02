@@ -13,8 +13,14 @@ from urllib.parse import quote_plus, urlparse
 import requests  # type: ignore
 from typing_extensions import Literal
 
-from ..utils import calu_md5, dump_json, now_timestamp
+# 添加日志模块导入
+import logging
+
+from ..utils_service import calu_md5, dump_json, now_timestamp
 from .errors import BaiduApiError, assert_ok
+
+# 为此模块创建一个 logger 实例
+_api_logger = logging.getLogger(f"baidu_api.{__name__}")
 
 PCS_BAIDU_COM = "https://pcs.baidu.com"
 # PCS_BAIDU_COM = 'http://127.0.0.1:8888'
@@ -85,43 +91,58 @@ class BaiduApi:
 
     def __init__(
         self,
-        bduss: Optional[str] = None,
-        stoken: Optional[str] = None,
-        ptoken: Optional[str] = None,
-        cookies: Dict[str, Optional[str]] = {},
+        cookies: str,
         user_id: Optional[int] = None,
     ):
-        if not bduss and cookies and cookies.get("BDUSS", ""):
-            bduss = cookies["BDUSS"]
-        if not stoken and cookies and cookies.get("STOKEN", ""):
-            stoken = cookies["STOKEN"]
-        if not ptoken and cookies and cookies.get("PTOKEN", ""):
-            ptoken = cookies["PTOKEN"]
-
-        assert bduss, "`bduss`必须设置。或者`BDUSS`在`cookies`中。"
-
-        if not cookies:
-            cookies = {"BDUSS": bduss, "STOKEN": stoken, "PTOKEN": ptoken}
-
-        self._bduss = bduss
-        self._stoken = stoken
-        self._ptoken = ptoken
+        """
+        
+        :param cookies: cookies 字符串，格式如 "BDUSS=xxx; STOKEN=xxx; PTOKEN=xxx"
+        :param user_id: 用户ID
+        """
+        # 解析 cookies 字符串
+        parsed_cookies = self._parse_cookies(cookies)
+        
+        # 验证必需的认证信息
+        self._bduss = parsed_cookies.get("BDUSS")
+        assert self._bduss, "cookies 中必须包含 BDUSS"
+        
+        # 提取其他认证信息
+        self._stoken = parsed_cookies.get("STOKEN")
+        self._ptoken = parsed_cookies.get("PTOKEN")
         self._bdstoken = ""
+        
+        # 处理 BAIDUID 和 logid
+        self._baiduid = parsed_cookies.get("BAIDUID")
         self._logid = None
-        self._baiduid = cookies.get("BAIDUID")
         if self._baiduid:
-            self._logid = standard_b64encode(self._baiduid.encode("ascii")).decode(
-                "utf-8"
-            )
+            self._logid = standard_b64encode(self._baiduid.encode("ascii")).decode("utf-8")
 
-        self._cookies = cookies
+        # 设置 cookies 和 session
+        self._cookies = parsed_cookies
         self._session = requests.Session()
-        self._session.cookies.update(cookies)
+        self._session.cookies.update(parsed_cookies)
         self._user_id = user_id
         self._user_info = None  # 用户信息将在需要时通过异步方法获取
 
+    def _parse_cookies(self, cookies_str: str) -> Dict[str, str]:
+        """将字符串形式的 cookies 转换为字典
+        
+        :param cookies_str: cookies 字符串，格式如 "key1=value1; key2=value2"
+        :return: cookies 字典
+        """
+        if not cookies_str:
+            return {}
+            
+        cookie_dict = {}
+        for cookie in cookies_str.split(';'):
+            cookie = cookie.strip()
+            if '=' in cookie:
+                key, value = cookie.split('=', 1)  # 只分割第一个 '='
+                cookie_dict[key.strip()] = value.strip()
+        return cookie_dict
+
     @property
-    def cookies(self) -> Dict[str, Optional[str]]:
+    def cookies(self) -> Dict[str, str]:
         return self._session.cookies.get_dict()
 
     @staticmethod

@@ -117,6 +117,20 @@ def human_size_to_int(size_str: str) -> int:
     return math.floor(s)
 
 # ==================== 时间格式处理函数 ====================
+def now_timestamp() -> int:
+    """
+    获取当前的Unix时间戳（秒）
+    
+    返回当前系统时间的秒级时间戳
+    
+    返回:
+        int: 当前时间的Unix时间戳（秒）
+    
+    示例:
+        >>> now_timestamp()
+        1617456789
+    """
+    return int(time.time())
 
 def format_time(time_input: Union[int, float, str]) -> str:
     """
@@ -187,41 +201,6 @@ def calu_md5(buf: Union[str, bytes], encoding="utf-8") -> str:
     if isinstance(buf, str):
         buf = buf.encode(encoding)
     return md5(buf).hexdigest()
-
-# ==================== 网盘路径处理函数 ====================
-
-def build_quark_path(file_name: str, parent_path: str = "/") -> str:
-    """
-    构建夸克网盘文件路径
-    
-    基于父目录路径和文件名构建夸克网盘文件的完整路径
-    
-    参数:
-        file_name (str): 文件名
-        parent_path (str, 可选): 父目录路径，默认为根目录"/"
-        
-    返回:
-        str: 构建的完整路径
-        
-    示例:
-        >>> build_quark_path("test.txt", "/docs")
-        '/docs/test.txt'
-        >>> build_quark_path("folder")
-        '/folder'
-    """
-    # 确保父路径以/开头
-    if not parent_path.startswith('/'):
-        parent_path = '/' + parent_path
-        
-    # 确保父路径不以/结尾（除非是根目录）
-    if parent_path.endswith('/') and len(parent_path) > 1:
-        parent_path = parent_path[:-1]
-        
-    # 构建完整路径
-    if parent_path == '/':
-        return f"/{file_name}"
-    else:
-        return f"{parent_path}/{file_name}"
         
 def normalize_path(path: str) -> str:
     """
@@ -253,59 +232,3 @@ def normalize_path(path: str) -> str:
         normalized = normalized[:-1]
         
     return normalized
-
-# ==================== Cookie处理函数 ====================
-
-def parse_cookie_string(cookie_str: str, drive_type: str = None) -> Dict[str, str]:
-    """解析 cookie 字符串为字典
-    
-    根据不同网盘类型解析并提取所需的cookie键值对
-    
-    Args:
-        cookie_str: cookie 字符串，格式如 "key1=value1; key2=value2"
-        drive_type: 网盘类型，如 'baidu', 'aliyun' 等，也可以是DriveType枚举值字符串
-        
-    Returns:
-        Dict[str, str]: cookie 字典，包含网盘认证所需的键值对
-    """
-    if not cookie_str:
-        return {}
-        
-    cookies = {}
-    for item in cookie_str.split(';'):
-        if not item.strip():
-            continue
-        if '=' not in item:
-            continue
-            
-        key, value = item.strip().split('=', 1)
-        key = key.strip().lower()  # 统一转为小写
-        value = value.strip()
-        
-        # 根据不同网盘类型过滤需要的cookie键
-        if drive_type:
-            drive_type = drive_type.upper()  # 统一转为大写以便比较
-            
-            # 百度网盘所需的关键cookie
-            if drive_type in ["BAIDU", "BAIDU_DRIVE"]:
-                if key.upper() in ['BDUSS', 'STOKEN', 'PTOKEN']:
-                    cookies[key] = value
-            
-            # 阿里云盘所需的关键cookie (这里是示例，实际实现时需要根据阿里云盘API调整)
-            elif drive_type in ["ALIYUN", "ALIYUN_DRIVE"]:
-                if key.upper() in ['TOKEN', 'SESSIONID', 'AUTHTOKEN']:
-                    cookies[key] = value
-            
-            # 夸克网盘所需的关键cookie (这里是示例，实际实现时需要根据夸克网盘API调整)
-            elif drive_type in ["QUARK", "QUARK_DRIVE"]:
-                if key.upper() in ['AUTHORIZATION', 'SESSIONKEY']:
-                    cookies[key] = value
-            
-            # 如果是其他未知类型，保存所有cookie
-            else:
-                cookies[key] = value
-        else:
-            # 如果未指定类型，保留所有cookie
-            cookies[key] = value
-            
-    return cookies

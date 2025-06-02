@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from backend.app.admin.model.data_rule import DataRule
-from backend.app.admin.model.data_scope import DataScope
-from backend.app.admin.model.dept import Dept
-from backend.app.admin.model.login_log import LoginLog
-from backend.app.admin.model.menu import Menu
-from backend.app.admin.model.opera_log import OperaLog
-from backend.app.admin.model.role import Role
-from backend.app.admin.model.user import User
-from backend.app.admin.model.user_social import UserSocial
+
+# 为了避免循环导入，这里不进行直接导入
+# 需要使用这些模型时，请直接从对应模块导入
+
+# 导入所有模型以确保它们被注册到 SQLAlchemy 注册表中
+from .user import DriveAccount
+from .filesync import SyncConfig, SyncTask, SyncTaskItem
+
+__all__ = [
+    "DriveAccount",
+    "SyncConfig", 
+    "SyncTask",
+    "SyncTaskItem"
+]

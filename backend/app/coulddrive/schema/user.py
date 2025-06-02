@@ -1,28 +1,24 @@
-from typing import Optional
-from pydantic import BaseModel, Field
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from typing import Union
+from pydantic import ConfigDict, Field
 
-from app.coulddrive.service.utils import human_size
+from backend.app.coulddrive.service.utils_service import human_size
+from backend.common.schema import SchemaBase
 
 
-class BaseUserInfo(BaseModel):
-    """
-    网盘用户信息基类
+class BaseUserInfo(SchemaBase):
+    """用户信息"""
     
-    提供网盘用户信息的基础属性和方法
-    """
+    model_config = ConfigDict(from_attributes=True)
+    
     user_id: str = Field("", description="用户ID")
     username: str = Field("", description="用户名")
-    avatar_url: Optional[str] = Field(None, description="头像URL")
-    quota: Optional[int] = Field(None, description="总空间配额（字节）")
-    used: Optional[int] = Field(None, description="已使用空间（字节）")
-    is_vip: Optional[bool] = Field(None, description="是否是VIP用户")
-    is_supervip: Optional[bool] = Field(None, description="是否是超级会员")
-    # Pydantic V2 建议使用 model_config 来定义额外字段的处理方式
-    # 如果希望允许未定义的字段，可以使用 extra = 'allow'
-    # model_config = {
-    #     "extra": "allow" 
-    # }
-    # 或者，如果希望严格匹配字段，则不需要设置 extra 或设为 'forbid'
+    avatar_url: str | None = Field(None, description="头像URL")
+    quota: int | None = Field(None, description="总空间配额")
+    used: int | None = Field(None, description="已使用空间")
+    is_vip: bool | None = Field(None, description="是否VIP用户")
+    is_supervip: bool | None = Field(None, description="是否超级会员")
 
     @property
     def formatted_quota(self) -> str:
@@ -37,36 +33,67 @@ class BaseUserInfo(BaseModel):
     def __str__(self) -> str:
         """字符串表示"""
         return f"BaseUserInfo(user_id='{self.user_id}', username='{self.username}')"
-    
-class UserFriend(BaseModel):
-    """
-    百度网盘好友信息
-    
-    uk: 用户ID
-    uname: 用户名
-    nick_name: 昵称
-    avatar_url: 头像URL
-    is_friend: 好友关系(0:非好友, 1:单向关注, 2:互相关注)
-    """
-    uk: int
-    uname: str
-    nick_name: str
-    avatar_url: str
-    is_friend: int
 
 
-class UserGroup(BaseModel):
-    """
-    百度网盘群组信息
+class GetUserFriendDetail(SchemaBase):
+    """用户好友详情"""
     
-    gid: 群组ID
-    gnum: 群号
-    name: 群名称
-    type: 群类型
-    status: 群状态(1:正常)
-    """
-    gid: str
-    gnum: str
-    name: str
-    type: str
-    status: str
+    model_config = ConfigDict(from_attributes=True)
+    
+    uk: int = Field(..., description="用户ID")
+    uname: str = Field(..., description="用户名")
+    nick_name: str = Field(..., description="昵称")
+    avatar_url: str = Field(..., description="头像URL")
+    is_friend: int = Field(..., description="好友关系")
+
+
+class GetUserGroupDetail(SchemaBase):
+    """用户群组详情"""
+    
+    model_config = ConfigDict(from_attributes=True)
+    
+    gid: str = Field(..., description="群组ID")
+    gnum: str = Field(..., description="群号")
+    name: str = Field(..., description="群名称")
+    type: str = Field(..., description="群类型")
+    status: str = Field(..., description="群状态")
+
+
+class DriveAccountBase(BaseUserInfo):
+    """网盘账户基础"""
+    
+    type: str = Field(..., description="网盘类型")
+    cookies: str | None = Field(None, description="登录凭证")
+    is_valid: bool = Field(True, description="账号是否有效")
+
+
+class CreateDriveAccountParam(DriveAccountBase):
+    """创建网盘账户参数"""
+    pass
+
+
+class UpdateDriveAccountParam(SchemaBase):
+    """更新网盘账户参数"""
+    
+    username: str | None = Field(None, description="用户名")
+    cookies: str | None = Field(None, description="登录凭证")
+    avatar_url: str | None = Field(None, description="头像URL")
+    quota: int | None = Field(None, description="总空间配额")
+    used: int | None = Field(None, description="已使用空间")
+    is_vip: bool | None = Field(None, description="是否VIP用户")
+    is_supervip: bool | None = Field(None, description="是否超级会员")
+    is_valid: bool | None = Field(None, description="账号是否有效")
+
+
+class GetDriveAccountDetail(DriveAccountBase):
+    """网盘账户详情"""
+    
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: int = Field(..., description="主键ID")
+    created_time: str = Field(..., description="创建时间")
+    updated_time: str = Field(..., description="更新时间")
+
+
+# 关系列表响应类型（好友或群组）
+RelationshipItem = Union[GetUserFriendDetail, GetUserGroupDetail]

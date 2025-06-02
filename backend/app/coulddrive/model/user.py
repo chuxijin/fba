@@ -1,49 +1,44 @@
-"""
-文件名: drive_accounts.py
-描述: 网盘账户表的SQLAlchemy模型
-作者: AI助手
-创建日期: 2024-05-20
-最后修改: 2024-05-20
-版本: 1.0.0
-"""
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from __future__ import annotations
 
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, func
+from typing import TYPE_CHECKING
+
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, id_key
 
+if TYPE_CHECKING:
+    from backend.app.coulddrive.model.filesync import SyncConfig
+
+
 class DriveAccount(Base):
-    """网盘账户模型"""
+    """网盘账户表"""
     
-    __tablename__ = "coulddrive_user"
+    __tablename__ = "yp_user"
     
-    # 基本字段
     id: Mapped[id_key] = mapped_column(init=False)
-    type: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    accountId: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    nickname: Mapped[str | None] = mapped_column(String, nullable=True)
-    cookies: Mapped[str | None] = mapped_column(String, nullable=True)
-    avatarUrl: Mapped[str | None] = mapped_column(String, nullable=True)
+    type: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="网盘类型")
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True, comment="用户ID")
+    created_by: Mapped[int] = mapped_column(sort_order=998, comment='创建者')
     
-    # 配额信息
-    quota: Mapped[int] = mapped_column(Integer, default=0)
-    used: Mapped[int] = mapped_column(Integer, default=0)
-    
-    # VIP状态
-    isVip: Mapped[int] = mapped_column(Integer, default=0)
-    isSupervip: Mapped[int] = mapped_column(Integer, default=0)
-    isSupervip_expired: Mapped[int] = mapped_column(Integer, default=0)
-    
-    # 账号有效性
-    isValid: Mapped[int] = mapped_column(Integer, default=1)
-    
-    # 时间戳
-    createTime: Mapped[datetime] = mapped_column(DateTime, default=func.current_timestamp())
-    updateTime: Mapped[datetime | None] = mapped_column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+    # 可选字段
+    username: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="用户名")
+    cookies: Mapped[str | None] = mapped_column(String(5000), nullable=True, comment="登录凭证")
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="头像URL")
+    quota: Mapped[int] = mapped_column(default=0, comment="总空间配额")
+    used: Mapped[int] = mapped_column(default=0, comment="已使用空间")
+    is_vip: Mapped[bool] = mapped_column(default=False, comment="是否VIP用户")
+    is_supervip: Mapped[bool] = mapped_column(default=False, comment="是否超级会员")
+    is_valid: Mapped[bool] = mapped_column(default=True, comment="账号是否有效")
     
     # 关系
-    sync_configs: Mapped[list['SyncConfig']] = relationship(init=False, back_populates="drive_account", cascade="all, delete-orphan")
+    sync_configs: Mapped[list["SyncConfig"]] = relationship(
+        init=False, 
+        back_populates="drive_account", 
+        cascade="all, delete-orphan"
+    )
     
-    def __repr__(self):
-        return f"<DriveAccount(id={self.id}, type={self.type}, accountId={self.accountId})>" 
+    def __repr__(self) -> str:
+        return f"<DriveAccount(id={self.id}, type={self.type}, user_id={self.user_id})>" 

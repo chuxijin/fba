@@ -4,6 +4,6 @@ from fastapi import APIRouter
 
 from backend.app.coulddrive.api.v1.file.file import router as file_router
 
-router = APIRouter(prefix='/file')
+router = APIRouter(prefix='/couldfile')
 
-router.include_router(file_router, tags=['文件管理'])
+router.include_router(file_router, tags=['云盘文件管理'])

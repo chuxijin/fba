@@ -38,19 +38,19 @@ class AlistNode(Enum):
 class AlistApi:
     """alist网盘API实现"""
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, cookies: Optional[str] = None):
         """
         初始化 AlistApi
 
-        :param token: Authorization token
+        :param cookies: cookies
         """
-        if not token:
-            assert False, "token is required"
+        if not cookies:
+            assert False, "cookies is required"
 
-        self._token = token
+        self._cookies = cookies
         self._session = requests.Session()
         self._headers = ALIST_HEADERS.copy()
-        self._headers["Authorization"] = token
+        self._headers["Authorization"] = cookies
 
     async def _request(
         self,
