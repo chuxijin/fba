@@ -9,3 +9,16 @@ from backend.app.coulddrive.schema.user import (
     GetUserGroupDetail,
     UpdateDriveAccountParam,
 )
+
+from backend.app.coulddrive.schema.rule_template import (
+    TemplateType,
+    RuleTemplateBase,
+    CreateRuleTemplateParam,
+    UpdateRuleTemplateParam,
+    GetRuleTemplateDetail,
+    GetRuleTemplateListParam,
+    RuleTemplateListItem,
+    UseRuleTemplateParam,
+    BatchDeleteRuleTemplateParam,
+    RuleTemplateStatsDetail,
+)

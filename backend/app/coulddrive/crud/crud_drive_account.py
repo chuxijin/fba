@@ -4,6 +4,7 @@ from typing import Sequence
 
 from sqlalchemy import Select, and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.user import DriveAccount
@@ -55,6 +56,21 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
 
         return stmt
 
+    async def get_list_with_pagination(self, db: AsyncSession, type: str | None = None, is_valid: bool | None = None) -> Sequence[DriveAccount]:
+        """
+        获取网盘账户分页列表
+
+        :param db: 数据库会话
+        :param type: 网盘类型
+        :param is_valid: 账号是否有效
+        :return:
+        """
+        stmt = await self.get_list(type, is_valid)
+        # 避免加载关联数据，防止懒加载导致的异步问题
+        stmt = stmt.options(noload(DriveAccount.sync_configs))
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
     async def get_all(self, db: AsyncSession) -> Sequence[DriveAccount]:
         """
         获取所有网盘账户
@@ -74,15 +90,19 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         """
         return await self.select_models(db, type=type, is_valid=True)
 
-    async def create(self, db: AsyncSession, obj: CreateDriveAccountParam) -> None:
+    async def create(self, db: AsyncSession, obj: CreateDriveAccountParam, current_user_id: int | None = None) -> None:
         """
         创建网盘账户
 
         :param db: 数据库会话
         :param obj: 创建网盘账户参数
+        :param current_user_id: 当前用户ID
         :return:
         """
+        if current_user_id and not obj.created_by:
+            obj.created_by = current_user_id
         await self.create_model(db, obj)
+        await db.commit()
 
     async def update(self, db: AsyncSession, pk: int, obj: UpdateDriveAccountParam) -> int:
         """
@@ -93,7 +113,9 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param obj: 更新网盘账户参数
         :return:
         """
-        return await self.update_model(db, pk, obj)
+        result = await self.update_model(db, pk, obj)
+        await db.commit()
+        return result
 
     async def delete(self, db: AsyncSession, pk: list[int]) -> int:
         """
@@ -142,5 +164,55 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :return:
         """
         return await self.update_model(db, pk, {"is_valid": is_valid})
+
+    async def create_or_update(
+        self, 
+        db: AsyncSession, 
+        user_info: 'BaseUserInfo', 
+        drive_type: str, 
+        cookies: str, 
+        current_user_id: int
+    ) -> None:
+        """
+        根据用户信息创建或更新网盘账户
+
+        :param db: 数据库会话
+        :param user_info: 用户信息
+        :param drive_type: 网盘类型
+        :param cookies: 认证令牌
+        :param current_user_id: 当前用户ID
+        :return:
+        """
+        existing_user = await self.get_by_user_id(db, user_id=user_info.user_id, type=drive_type)
+        
+        if existing_user:
+            # 用户已存在，更新信息
+            update_data = UpdateDriveAccountParam(
+                username=user_info.username,
+                avatar_url=user_info.avatar_url,
+                quota=user_info.quota,
+                used=user_info.used,
+                is_vip=user_info.is_vip,
+                is_supervip=user_info.is_supervip,
+                cookies=cookies,
+                is_valid=True
+            )
+            await self.update(db, existing_user.id, update_data)
+        else:
+            # 创建新用户
+            create_data = CreateDriveAccountParam(
+                user_id=user_info.user_id,
+                username=user_info.username,
+                avatar_url=user_info.avatar_url,
+                quota=user_info.quota,
+                used=user_info.used,
+                is_vip=user_info.is_vip,
+                is_supervip=user_info.is_supervip,
+                type=drive_type,
+                cookies=cookies,
+                is_valid=True,
+                created_by=current_user_id
+            )
+            await self.create(db, create_data, current_user_id=current_user_id)
 
 drive_account_dao: CRUDDriveAccount = CRUDDriveAccount(DriveAccount) 

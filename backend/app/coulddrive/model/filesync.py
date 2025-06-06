@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Integer, String, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from backend.common.model import Base, id_key
+from backend.common.model import Base, UserMixin, id_key
 
 if TYPE_CHECKING:
     from backend.app.coulddrive.model.user import DriveAccount
 
-class SyncConfig(Base):
+class SyncConfig(Base, UserMixin):
     """文件同步配置表"""
     
     __tablename__ = "filesync_config"
@@ -53,7 +53,7 @@ class SyncConfig(Base):
     def __repr__(self) -> str:
         return f"<SyncConfig(id={self.id}, type={self.type})>"
 
-class SyncTask(Base):
+class SyncTask(Base, UserMixin):
     """文件同步任务表"""
     
     __tablename__ = "filesync_task"

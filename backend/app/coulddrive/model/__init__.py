@@ -7,10 +7,12 @@
 # 导入所有模型以确保它们被注册到 SQLAlchemy 注册表中
 from .user import DriveAccount
 from .filesync import SyncConfig, SyncTask, SyncTaskItem
+from .rule_template import RuleTemplate
 
 __all__ = [
     "DriveAccount",
     "SyncConfig", 
     "SyncTask",
-    "SyncTaskItem"
+    "SyncTaskItem",
+    "RuleTemplate"
 ]

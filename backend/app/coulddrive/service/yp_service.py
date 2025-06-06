@@ -394,7 +394,7 @@ class BaseDrive:
         """创建夸克网盘客户端"""
         try:
             from .quark.client import QuarkClient
-            return QuarkClient(cookie=x_token)
+            return QuarkClient(cookies=x_token)
         except Exception as e:
             from backend.common.log import log
             log.error(f"创建夸克网盘客户端失败: {e}", exc_info=True)

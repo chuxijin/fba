@@ -5,6 +5,7 @@ import inspect
 ERRORS = {
     0: 0,
     -1: "由于您分享了违反相关法律法规的文件，分享功能已被禁用，之前分享出去的文件不受影响。",
+    41020: "转存文件token校验异常",
 }
 
 UNKNOWN_ERROR = "未知错误"
@@ -37,7 +38,8 @@ def assert_ok(func):
         if code is None:
             code = 0  # 默认值
 
-        if code != 0:  # 判断 code 是否为 0
+        # 支持夸克网盘的 "OK" 状态码
+        if code != 0 and code != "OK":  # 判断 code 是否为 0 或 "OK"
             err = QuarkApiError(f"Error code: {code}, message: {info.get('message', 'Unknown error')}")
             raise err
         return info
@@ -49,7 +51,8 @@ def assert_ok(func):
         if code is None:
             code = 0  # 默认值
 
-        if code != 0:  # 判断 code 是否为 0
+        # 支持夸克网盘的 "OK" 状态码
+        if code != 0 and code != "OK":  # 判断 code 是否为 0 或 "OK"
             err = QuarkApiError(f"Error code: {code}, message: {info.get('message', 'Unknown error')}")
             raise err
         return info

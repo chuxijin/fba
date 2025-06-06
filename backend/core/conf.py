@@ -219,6 +219,7 @@ class Settings(BaseSettings):
     CELERY_TASK_PACKAGES: list[str] = [
         'app.task.celery_task',
         'app.task.celery_task.db_log',
+        'app.task.celery_task.filesync',
     ]
     CELERY_TASK_MAX_RETRIES: int = 5
 

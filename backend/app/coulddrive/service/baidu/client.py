@@ -855,12 +855,15 @@ class BaiduClient(BaseDriveClient):
         all_items = []
         start = 0
         limit = 20 # 百度API通常限制为20
+        max_iterations = 100  # 防止无限循环的最大迭代次数
+        iteration_count = 0
 
         if relationship_type not in [RelationshipType.FRIEND, RelationshipType.GROUP]:
             self.logger.error(f"无效的 relationship_type: {relationship_type}. 必须是 'friend' 或 'group'.")
             return []
         
-        while True:
+        while iteration_count < max_iterations:
+            iteration_count += 1
             response = None  # 初始化响应
             try:
                 if relationship_type == RelationshipType.FRIEND:
@@ -886,7 +889,12 @@ class BaiduClient(BaseDriveClient):
             
             records = response.get("records", [])
             if not records:
+                self.logger.debug(f"第 {iteration_count} 次迭代未获取到记录，结束循环")
                 break
+            
+            # 记录本次获取的数量
+            records_count = len(records)
+            self.logger.debug(f"第 {iteration_count} 次迭代获取到 {records_count} 条记录")
             
             for record in records:
                 if relationship_type == RelationshipType.FRIEND:
@@ -922,17 +930,26 @@ class BaiduClient(BaseDriveClient):
                     return []
                 all_items.append(item)
             
+            # 检查是否还有更多数据
+            has_more = False
             if relationship_type == RelationshipType.FRIEND:
-                if not response.get("has_more"):
-                    break
+                has_more = response.get("has_more", False)
             elif relationship_type == RelationshipType.GROUP:
                 total_count = response.get("count", 0)
-                current_fetched = start + len(records)
-                if current_fetched >= total_count or not response.get("has_more", True):
-                    break
+                current_fetched = start + records_count
+                has_more = current_fetched < total_count and response.get("has_more", True)
+            
+            # 如果没有更多数据或者本次获取的记录数少于限制数，则结束循环
+            if not has_more or records_count < limit:
+                self.logger.debug(f"结束循环: has_more={has_more}, records_count={records_count}, limit={limit}")
+                break
             
             start += limit
         
+        if iteration_count >= max_iterations:
+            self.logger.warning(f"达到最大迭代次数 {max_iterations}，强制结束循环")
+        
+        self.logger.info(f"获取 {relationship_type} 列表完成，共 {len(all_items)} 项，迭代 {iteration_count} 次")
         return all_items
 
     async def get_relationship_share_list(
@@ -1210,7 +1227,7 @@ class BaiduClient(BaseDriveClient):
                     "root_fs_id": str(root_item_fs_id),
                     "root_name": str(root_item_name) 
                 }
-                self.logger.info(f"通过根名称 '{root_item_name}' 匹配到分享事件: {target_share_info}")
+                # self.logger.info(f"通过根名称 '{root_item_name}' 匹配到分享事件: {target_share_info}")
                 break  # 找到目标分享事件
         
         if not target_share_info:
@@ -1393,6 +1410,12 @@ class BaiduClient(BaseDriveClient):
         target_path = params.target_path
         file_ids = params.file_ids
 
+        # 合并 params.ext 和 kwargs，params.ext 中的参数优先级更高
+        combined_kwargs = {}
+        combined_kwargs.update(kwargs)
+        if params.ext:
+            combined_kwargs.update(params.ext)
+
         # 确保target_path使用正斜杠
         target_path = target_path.replace("\\", "/")
         
@@ -1430,9 +1453,9 @@ class BaiduClient(BaseDriveClient):
                 self.logger.error(f"转存失败: source_type '{source_type}' 需要 'file_ids'.")
                 return False
             
-            msg_id = kwargs.get("msg_id")
+            msg_id = combined_kwargs.get("msg_id")
             if not msg_id:
-                self.logger.error(f"转存失败: source_type '{source_type}' 的 kwargs 中需要 'msg_id'.")
+                self.logger.error(f"转存失败: source_type '{source_type}' 的参数中需要 'msg_id'.")
                 return False
 
             transfer_type = 1 if source_type == "friend" else 2
@@ -1440,11 +1463,11 @@ class BaiduClient(BaseDriveClient):
             # 构建API参数
             api_kwargs = {
                 "path": target_path,
-                "ondup": kwargs.get("ondup", "newcopy"),
+                "ondup": combined_kwargs.get("ondup", "newcopy"),
             }
             
             # 处理异步参数 - 简化逻辑
-            async_value = kwargs.get("async_", kwargs.get("async", 1))
+            async_value = combined_kwargs.get("async_", combined_kwargs.get("async", 1))
             api_kwargs["async_"] = int(async_value) if async_value is not None else 1
 
 
@@ -1455,9 +1478,9 @@ class BaiduClient(BaseDriveClient):
             elif source_type == "group":
                 # source_id 是群组的 ID (gid)
                 # api.py 中的 `transfer_files` 方法需要 `from_uk` (分享者) 和 `gid` (群组)
-                from_uk_param = kwargs.get("from_uk")  # kwargs 中必须提供分享者的 UK
+                from_uk_param = combined_kwargs.get("from_uk")  # 参数中必须提供分享者的 UK
                 if not from_uk_param:
-                    self.logger.error("群组分享转存失败: kwargs 中需要 'from_uk' (分享者 UK).")
+                    self.logger.error("群组分享转存失败: 参数中需要 'from_uk' (分享者 UK).")
                     return False
                 api_kwargs["gid"] = source_id  # 将 gid 传递给 transfer_files 的 api_kwargs
 

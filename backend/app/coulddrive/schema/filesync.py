@@ -19,7 +19,7 @@ class CreateSyncConfigParam(SchemaBase):
     src_meta: str | None = Field(None, description="源路径元数据")
     dst_path: str = Field(..., description="目标路径")
     dst_meta: str | None = Field(None, description="目标路径元数据")
-    account_id: int = Field(..., description="关联账号ID")
+    user_id: int = Field(..., description="关联账号ID")
     cron: str | None = Field(None, description="定时任务表达式")
     speed: int = Field(0, description="同步速度")
     method: SyncMethod = Field(SyncMethod.INCREMENTAL, description="同步方法")
@@ -48,7 +48,7 @@ class UpdateSyncConfigParam(SchemaBase):
     src_meta: str | None = Field(None, description="源路径元数据")
     dst_path: str | None = Field(None, description="目标路径")
     dst_meta: str | None = Field(None, description="目标路径元数据")
-    account_id: int | None = Field(None, description="关联账号ID")
+    user_id: int | None = Field(None, description="关联账号ID")
     cron: str | None = Field(None, description="定时任务表达式")
     speed: int | None = Field(None, description="同步速度")
     method: SyncMethod | None = Field(None, description="同步方法")
@@ -184,7 +184,7 @@ class GetSyncConfigDetail(SchemaBase):
     src_meta: str | None = Field(None, description="源路径元数据")
     dst_path: str = Field(..., description="目标路径")
     dst_meta: str | None = Field(None, description="目标路径元数据")
-    account_id: int = Field(..., description="关联账号ID")
+    user_id: int = Field(..., description="关联账号ID")
     cron: str | None = Field(None, description="定时任务表达式")
     speed: int = Field(..., description="同步速度")
     method: SyncMethod = Field(..., description="同步方法")
@@ -193,9 +193,52 @@ class GetSyncConfigDetail(SchemaBase):
     rename: str | None = Field(None, description="重命名规则")
     last_sync: datetime | None = Field(None, description="最后同步时间")
     created_time: datetime = Field(..., description="创建时间")
-    updated_time: datetime = Field(..., description="更新时间")
+    updated_time: datetime | None = Field(None, description="更新时间")
     created_by: int = Field(..., description="创建人")
-    updated_by: int = Field(..., description="更新人")
+    
+    @field_validator('type', mode='before')
+    @classmethod
+    def validate_type(cls, v):
+        """将数据库中的字符串值转换为枚举"""
+        if isinstance(v, str):
+            # 优先通过枚举值匹配（数据库中存储的是枚举值）
+            for drive_type in DriveType:
+                if drive_type.value == v:
+                    return drive_type
+            
+            # 兼容旧格式的名称匹配
+            legacy_mapping = {
+                "BAIDU_DRIVE": DriveType.BAIDU_DRIVE,
+                "QUARK_DRIVE": DriveType.QUARK_DRIVE,
+            }
+            if v in legacy_mapping:
+                return legacy_mapping[v]
+            
+            # 如果都找不到，直接抛出验证错误
+            raise ValueError(f"无效的网盘类型: {v}，支持的类型: {[dt.value for dt in DriveType]}")
+        return v
+    
+    @field_validator('method', mode='before')
+    @classmethod
+    def validate_method(cls, v):
+        """将数据库中的字符串值转换为枚举"""
+        if isinstance(v, str):
+            # 处理数据库中可能存在的不同格式
+            if v == "1":
+                return SyncMethod.INCREMENTAL
+            elif v == "copy":
+                return SyncMethod.INCREMENTAL
+            elif v == "incremental":
+                return SyncMethod.INCREMENTAL
+            elif v == "full":
+                return SyncMethod.FULL
+            elif v == "overwrite":
+                return SyncMethod.OVERWRITE
+            # 尝试直接匹配枚举值
+            for sync_method in SyncMethod:
+                if sync_method.value == v:
+                    return sync_method
+        return v
 
 
 class GetSyncTaskDetail(SchemaBase):
@@ -249,7 +292,7 @@ class GetSyncConfigWithRelationDetail(SchemaBase):
     src_meta: str | None = Field(None, description="源路径元数据")
     dst_path: str = Field(..., description="目标路径")
     dst_meta: str | None = Field(None, description="目标路径元数据")
-    account_id: int = Field(..., description="关联账号ID")
+    user_id: int = Field(..., description="关联账号ID")
     cron: str | None = Field(None, description="定时任务表达式")
     speed: int = Field(..., description="同步速度")
     method: SyncMethod = Field(..., description="同步方法")
@@ -312,3 +355,15 @@ class SyncProgressInfo(SchemaBase):
     speed: str | None = Field(None, description="传输速度")
     eta: str | None = Field(None, description="预计剩余时间")
     last_update: datetime = Field(..., description="最后更新时间")
+
+
+class GetSyncConfigListParam(SchemaBase):
+    """获取同步配置列表参数"""
+    
+    enable: bool | None = Field(None, description="是否启用")
+    type: DriveType | None = Field(None, description="网盘类型")
+    remark: str | None = Field(None, description="备注关键词")
+    created_by: int | None = Field(None, description="创建人ID")
+
+
+

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String
+from sqlalchemy import String, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, id_key
@@ -20,15 +20,15 @@ class DriveAccount(Base):
     
     id: Mapped[id_key] = mapped_column(init=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="网盘类型")
-    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True, comment="用户ID")
+    user_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True, comment="用户ID")
     created_by: Mapped[int] = mapped_column(sort_order=998, comment='创建者')
     
     # 可选字段
     username: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="用户名")
     cookies: Mapped[str | None] = mapped_column(String(5000), nullable=True, comment="登录凭证")
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="头像URL")
-    quota: Mapped[int] = mapped_column(default=0, comment="总空间配额")
-    used: Mapped[int] = mapped_column(default=0, comment="已使用空间")
+    quota: Mapped[int] = mapped_column(BigInteger, default=0, comment="总空间配额")
+    used: Mapped[int] = mapped_column(BigInteger, default=0, comment="已使用空间")
     is_vip: Mapped[bool] = mapped_column(default=False, comment="是否VIP用户")
     is_supervip: Mapped[bool] = mapped_column(default=False, comment="是否超级会员")
     is_valid: Mapped[bool] = mapped_column(default=True, comment="账号是否有效")

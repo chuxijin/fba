@@ -81,8 +81,8 @@ class ShareSourceDefinition(SchemaBase):
     @classmethod
     def check_share_source_type(cls, v: str) -> str:
         """验证分享来源类型"""
-        if v not in ['friend', 'group']:
-            raise ValueError("分享来源类型必须是 'friend' 或 'group'")
+        if v not in ['friend', 'group', 'link']:
+            raise ValueError("分享来源类型必须是 'friend' 或 'group' 或 'link'")
         return v
 
 
@@ -126,7 +126,7 @@ class GetCompareDetail(SchemaBase):
     target_list_time: float = Field(..., description="目标列表耗时")
     source_list_num: int = Field(..., description="源列表文件数")
     target_list_num: int = Field(..., description="目标列表文件数")
-    to_add: list[BaseFileInfo] = Field(..., description="需要添加的文件")
+    to_add: list[dict[str, Any]] = Field(..., description="需要添加的文件，包含source_item、target_full_path、target_parent_path等信息")
     to_update_in_target: list[dict[str, BaseFileInfo]] = Field(..., description="需要更新的文件")
     to_delete_from_target: list[BaseFileInfo] = Field(..., description="需要删除的文件")
     to_rename_in_target: list[dict[str, Any]] = Field(..., description="需要重命名的文件")
@@ -189,6 +189,7 @@ class TransferParam(SchemaBase):
     source_id: str = Field(..., description="来源ID")
     source_path: str = Field(..., description="源路径")
     target_path: str = Field(..., description="目标路径")
+    target_id: str | None = Field(None, description="目标目录ID（夸克网盘专用）")
     file_ids: list[int | str] | None = Field(None, description="文件ID列表")
     ext: dict[str, Any] | None = Field(default_factory=dict, description="扩展参数")
 

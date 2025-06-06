@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from datetime import datetime
 from typing import Union
 from pydantic import ConfigDict, Field
 
@@ -69,7 +70,7 @@ class DriveAccountBase(BaseUserInfo):
 
 class CreateDriveAccountParam(DriveAccountBase):
     """创建网盘账户参数"""
-    pass
+    created_by: int | None = Field(None, description="创建者ID")
 
 
 class UpdateDriveAccountParam(SchemaBase):
@@ -91,8 +92,45 @@ class GetDriveAccountDetail(DriveAccountBase):
     model_config = ConfigDict(from_attributes=True)
     
     id: int = Field(..., description="主键ID")
-    created_time: str = Field(..., description="创建时间")
-    updated_time: str = Field(..., description="更新时间")
+    created_time: datetime = Field(..., description="创建时间")
+    updated_time: datetime = Field(..., description="更新时间")
+
+
+class GetUserListParam(SchemaBase):
+    """获取用户列表参数"""
+    
+    type: str | None = Field(None, description="网盘类型")
+    is_valid: bool | None = Field(None, description="账号是否有效")
+
+
+class CoulddriveDriveAccountDetail(SchemaBase):
+    """云盘账户详情（用于列表显示）"""
+    
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: int = Field(..., description="主键ID")
+    user_id: str = Field(..., description="用户ID")
+    username: str | None = Field(None, description="用户名")
+    type: str = Field(..., description="网盘类型")
+    avatar_url: str | None = Field(None, description="头像URL")
+    quota: int | None = Field(None, description="总空间配额")
+    used: int | None = Field(None, description="已使用空间")
+    is_vip: bool | None = Field(None, description="是否VIP用户")
+    is_supervip: bool | None = Field(None, description="是否超级会员")
+    cookies: str | None = Field(None, description="登录凭证")
+    is_valid: bool = Field(True, description="账号是否有效")
+    created_time: datetime | None = Field(None, description="创建时间")
+    updated_time: datetime | None = Field(None, description="更新时间")
+
+    @property
+    def formatted_quota(self) -> str:
+        """格式化的总空间配额"""
+        return human_size(self.quota) if self.quota is not None else "未知"
+    
+    @property
+    def formatted_used(self) -> str:
+        """格式化的已使用空间"""
+        return human_size(self.used) if self.used is not None else "未知"
 
 
 # 关系列表响应类型（好友或群组）
