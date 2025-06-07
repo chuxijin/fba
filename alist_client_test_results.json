@@ -1,0 +1,73 @@
+{
+  "total_tests": 4,
+  "successful_tests": 4,
+  "failed_tests": 0,
+  "success_rate": 100.0,
+  "detailed_results": {
+    "quota": {
+      "success": true,
+      "data": {
+        "quota": 0,
+        "used": 0
+      },
+      "message": "配额信息获取成功"
+    },
+    "user_info": {
+      "success": true,
+      "data": {
+        "user_id": "1",
+        "username": "admin",
+        "is_vip": true
+      },
+      "message": "用户信息获取成功"
+    },
+    "list_files": {
+      "success": true,
+      "data": {
+        "file_count": 6,
+        "files": [
+          {
+            "name": "主盘",
+            "size": 0,
+            "is_folder": true,
+            "path": "/主盘"
+          },
+          {
+            "name": "副盘",
+            "size": 0,
+            "is_folder": true,
+            "path": "/副盘"
+          },
+          {
+            "name": "教资",
+            "size": 0,
+            "is_folder": true,
+            "path": "/教资"
+          },
+          {
+            "name": "有岸上",
+            "size": 0,
+            "is_folder": true,
+            "path": "/有岸上"
+          },
+          {
+            "name": "金丝猴",
+            "size": 0,
+            "is_folder": true,
+            "path": "/金丝猴"
+          }
+        ]
+      },
+      "message": "文件列表获取成功"
+    },
+    "file_exists": {
+      "success": true,
+      "data": {
+        "exists": false,
+        "is_file": false,
+        "is_dir": false
+      },
+      "message": "文件存在性检查完成"
+    }
+  }
+}
