@@ -67,7 +67,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         """
         stmt = await self.get_list(type, is_valid)
         # 避免加载关联数据，防止懒加载导致的异步问题
-        stmt = stmt.options(noload(DriveAccount.sync_configs))
+        stmt = stmt.options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches))
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -78,7 +78,9 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param db: 数据库会话
         :return:
         """
-        return await self.select_models(db)
+        stmt = select(self.model).options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches))
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
     async def get_all_by_type(self, db: AsyncSession, type: str) -> Sequence[DriveAccount]:
         """
@@ -88,7 +90,12 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param type: 网盘类型
         :return:
         """
-        return await self.select_models(db, type=type, is_valid=True)
+        stmt = select(self.model).where(
+            self.model.type == type, 
+            self.model.is_valid == True
+        ).options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches))
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
     async def create(self, db: AsyncSession, obj: CreateDriveAccountParam, current_user_id: int | None = None) -> None:
         """
@@ -214,5 +221,16 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
                 created_by=current_user_id
             )
             await self.create(db, create_data, current_user_id=current_user_id)
+
+    async def get_id_by_cookies(self, db: AsyncSession, cookies: str) -> int | None:
+        """
+        通过cookies获取网盘账户ID
+        
+        :param db: 数据库会话
+        :param cookies: 认证令牌
+        :return: 网盘账户ID，如果未找到则返回None
+        """
+        account = await self.select_model_by_column(db, cookies=cookies, is_valid=True)
+        return account.id if account else None
 
 drive_account_dao: CRUDDriveAccount = CRUDDriveAccount(DriveAccount) 

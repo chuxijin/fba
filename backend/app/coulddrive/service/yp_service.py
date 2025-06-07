@@ -373,6 +373,8 @@ class BaseDrive:
                 return self._create_baidu_client(x_token)
             elif drive_type == DriveType.QUARK_DRIVE:
                 return self._create_quark_client(x_token)
+            elif drive_type == DriveType.ALIST_DRIVE:
+                return self._create_alist_client(x_token)
             else:
                 return None
         except Exception as e:
@@ -398,6 +400,16 @@ class BaseDrive:
         except Exception as e:
             from backend.common.log import log
             log.error(f"创建夸克网盘客户端失败: {e}", exc_info=True)
+            return None
+
+    def _create_alist_client(self, x_token: str) -> Optional[BaseDriveClient]:
+        """创建 Alist 网盘客户端"""
+        try:
+            from .alist.client import AlistClient
+            return AlistClient(cookies=x_token)
+        except Exception as e:
+            from backend.common.log import log
+            log.error(f"创建 Alist 网盘客户端失败: {e}", exc_info=True)
             return None
     
     async def call_method(self, x_token: str, drive_type: Union[str, DriveType], method_name: str, params: Any, **kwargs) -> Any:

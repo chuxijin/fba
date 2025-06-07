@@ -37,7 +37,7 @@ async def get_sync_config_list(
     """
     select_stmt = sync_config_dao.get_list_select(
         enable=params.enable,
-        type=params.type.value if params.type else None,
+        type=params.type.value if isinstance(params.type, DriveType) else params.type,
         remark=params.remark,
         created_by=params.created_by,
     )

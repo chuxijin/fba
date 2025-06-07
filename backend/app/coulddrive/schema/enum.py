@@ -5,6 +5,7 @@ class DriveType(Enum):
     BAIDU = "BaiduDrive"  # 别名
     BAIDU_DRIVE = "BaiduDrive"
     QUARK_DRIVE = "QuarkDrive"  # 新增夸克网盘
+    ALIST_DRIVE = "AlistDrive"  # 新增Alist网盘
     # 在这里可以添加其他网盘类型，例如：
     # ALIYUN_DRIVE = "AliyunDrive"
     # LOCAL_STORAGE = "LocalStorage"
@@ -13,7 +14,7 @@ class RecursionSpeed(Enum):
     """递归获取列表时的速度控制"""
     NORMAL = "normal" # 正常速度，无暂停
     SLOW = "slow"     # 慢速，在每次请求子目录前暂停
-    FAST = "fast"     # 快速，尝试使用数据库缓存（未实现）
+    FAST = "fast"     # 快速，优先使用数据库缓存，提升响应速度
 
 class MatchTarget(Enum):
     NAME = "name"  # Match against BaseFileInfo.file_name

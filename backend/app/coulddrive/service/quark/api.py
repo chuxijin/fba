@@ -1,6 +1,6 @@
 #api.py
-from typing import List, Optional, Dict, Any, Union
 from enum import Enum
+from typing import Any, Dict, List, Optional, Union
 
 import requests
 

@@ -8,11 +8,13 @@
 from .user import DriveAccount
 from .filesync import SyncConfig, SyncTask, SyncTaskItem
 from .rule_template import RuleTemplate
+from .file_cache import FileCache
 
 __all__ = [
     "DriveAccount",
     "SyncConfig", 
     "SyncTask",
     "SyncTaskItem",
-    "RuleTemplate"
+    "RuleTemplate",
+    "FileCache"
 ]

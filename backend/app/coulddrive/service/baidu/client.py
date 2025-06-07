@@ -283,6 +283,34 @@ class BaiduClient(BaseDriveClient):
         
         # 从 kwargs 中获取可选参数
         item_filter = kwargs.get('item_filter', None)
+        drive_account_id = kwargs.get('drive_account_id', None)
+        db = kwargs.get('db', None)
+
+        # 快速模式：优先从缓存获取
+        if recursion_speed == RecursionSpeed.FAST and drive_account_id and db:
+            try:
+                from backend.app.coulddrive.service.file_cache_service import file_cache_service
+                
+                # 检查缓存新鲜度
+                cache_fresh = await file_cache_service.check_cache_freshness(
+                    db, drive_account_id=drive_account_id, parent_id=file_id or file_path
+                )
+                
+                if cache_fresh:
+                    self.logger.info(f"快速模式：从缓存获取文件列表 {file_path}")
+                    cached_files = await file_cache_service.get_cached_children_as_file_info(
+                        db, parent_id=file_id or file_path, drive_account_id=drive_account_id
+                    )
+                    
+                    # 应用过滤器
+                    if item_filter:
+                        cached_files = [item for item in cached_files if not item_filter.should_exclude(item)]
+                    
+                    return cached_files
+                else:
+                    self.logger.info(f"快速模式：缓存过期，回退到API获取 {file_path}")
+            except Exception as e:
+                self.logger.warning(f"快速模式缓存获取失败，回退到API获取: {e}")
 
         drive_files_list: List[BaseFileInfo] = []
         initial_parent_id = file_id
@@ -348,7 +376,40 @@ class BaiduClient(BaseDriveClient):
                     if current_item_path:
                         processed_fs_ids.add(current_fs_id)
                         if recursion_speed == RecursionSpeed.FAST:
-                            self.logger.debug(f"Fast mode (disk): Skipping recursion for sub-directory: {current_item_path}")
+                            # 快速模式：尝试从缓存获取子目录内容
+                            if drive_account_id and db:
+                                try:
+                                    from backend.app.coulddrive.service.file_cache_service import file_cache_service
+                                    
+                                    cached_children = await file_cache_service.get_cached_children_as_file_info(
+                                        db, parent_id=str(current_fs_id), drive_account_id=drive_account_id
+                                    )
+                                    
+                                    if cached_children:
+                                        self.logger.debug(f"快速模式：从缓存获取子目录 {current_item_path}")
+                                        # 将缓存的子项添加到处理队列
+                                        for cached_child in cached_children:
+                                            child_dict = {
+                                                'fs_id': int(cached_child.file_id) if cached_child.file_id.isdigit() else cached_child.file_id,
+                                                'path': cached_child.file_path,
+                                                'server_filename': cached_child.file_name,
+                                                'size': cached_child.file_size,
+                                                'isdir': 1 if cached_child.is_folder else 0,
+                                                'server_ctime': cached_child.created_at,
+                                                'server_mtime': cached_child.updated_at
+                                            }
+                                            
+                                            # 应用过滤器
+                                            if not (item_filter and item_filter.should_exclude(cached_child)):
+                                                items_to_process.append((child_dict, current_fs_id))
+                                        continue
+                                    else:
+                                        self.logger.debug(f"快速模式：缓存中无子目录数据，回退到API获取 {current_item_path}")
+                                except Exception as e:
+                                    self.logger.warning(f"快速模式缓存获取失败，回退到API: {e}")
+                            else:
+                                self.logger.debug(f"快速模式：缺少必要参数，跳过子目录递归 {current_item_path}")
+                                continue
                         elif recursion_speed == RecursionSpeed.SLOW:
                             self.logger.debug(f"Slow mode (disk): Pausing for 3s before listing {current_item_path}...")
                             time.sleep(3)
@@ -399,6 +460,23 @@ class BaiduClient(BaseDriveClient):
                 #file_ext=file_ext_val,
             )
             drive_files_list.append(file_instance)
+        
+        # 智能缓存写入：在获取文件列表后自动写入缓存
+        if drive_account_id and db and drive_files_list:
+            try:
+                from backend.app.coulddrive.service.file_cache_service import file_cache_service
+                
+                cache_version = datetime.now().strftime("%Y%m%d_%H%M%S")
+                await file_cache_service.smart_cache_write(
+                    db, 
+                    drive_account_id=drive_account_id,
+                    files=drive_files_list,
+                    cache_version=cache_version
+                )
+                self.logger.info(f"自动缓存写入完成: {len(drive_files_list)} 个文件")
+            except Exception as e:
+                self.logger.warning(f"自动缓存写入失败: {e}")
+        
         return drive_files_list
 
     def search(
@@ -1293,15 +1371,40 @@ class BaiduClient(BaseDriveClient):
                     self.logger.debug(f"慢速模式 (分享): 在列出 fs_id: {fs_id_to_process} 之前暂停 3 秒")
                     time.sleep(3)
                 elif recursion_speed == RecursionSpeed.FAST:
-                    # TODO: 实现快速模式逻辑
-                    # - 尝试从数据库缓存获取当前项目路径的子列表
-                    # - 如果缓存命中，添加子项 (item_dict, current_fs_id) 到 all_processed_data (或直接返回缓存的 BaseFileInfo 列表？需要设计)
-                    # - 如果缓存未命中，可以:
-                    #   - 回退到 NORMAL 模式行为 (进行 API 请求)
-                    #   - 或跳过，假设缓存是完整的
-                    # - 注意处理缓存更新逻辑
-                    self.logger.debug(f"为 fs_id: {fs_id_to_process} 选择了快速模式 (分享)，但尚未实现特定的快速路径。继续作为 NORMAL 处理此级别。")
-                    pass  # 目前对 FAST 不做任何不同的处理，除了日志记录
+                    # 快速模式：尝试从缓存获取子目录内容
+                    if kwargs.get('drive_account_id') and kwargs.get('db'):
+                        try:
+                            from backend.app.coulddrive.service.file_cache_service import file_cache_service
+                            
+                            # 为分享文件构建特殊的缓存键，包含分享信息
+                            share_cache_key = f"share_{source_type}_{source_id}_{fs_id_to_process}"
+                            
+                            cached_children = await file_cache_service.get_cached_children_as_file_info(
+                                kwargs['db'], 
+                                parent_id=share_cache_key, 
+                                drive_account_id=kwargs['drive_account_id']
+                            )
+                            
+                            if cached_children:
+                                self.logger.debug(f"快速模式：从缓存获取分享子目录 fs_id: {fs_id_to_process}")
+                                # 将缓存的子项添加到结果列表
+                                for cached_child in cached_children:
+                                    # 应用过滤器
+                                    if not (item_filter and item_filter.should_exclude(cached_child)):
+                                        drive_files_list.append(cached_child)
+                                        
+                                        # 如果是文件夹且启用递归，添加到队列
+                                        if cached_child.is_folder and recursive:
+                                            child_cache_key = f"share_{source_type}_{source_id}_{cached_child.file_id}"
+                                            queue.append((cached_child.file_id, PurePosixPath(cached_child.file_path), cached_child.file_id))
+                                continue
+                            else:
+                                self.logger.debug(f"快速模式：缓存中无分享子目录数据，回退到API获取 fs_id: {fs_id_to_process}")
+                        except Exception as e:
+                            self.logger.warning(f"快速模式缓存获取失败，回退到API: {e}")
+                    else:
+                        self.logger.debug(f"快速模式：缺少必要参数，跳过分享子目录递归 fs_id: {fs_id_to_process}")
+                        continue
             
             if is_first_pass_in_queue:
                 is_first_pass_in_queue = False  # 标记队列中的第一个项目已被处理
@@ -1373,6 +1476,23 @@ class BaiduClient(BaseDriveClient):
             
             if is_listing_a_single_target_file:  # 如果初始目标是文件，我们已经列出了它，所以停止。
                 break
+        
+        # 自动写入缓存（分享文件）
+        if drive_files_list and kwargs.get('drive_account_id') and kwargs.get('db'):
+            try:
+                from backend.app.coulddrive.service.file_cache_service import file_cache_service
+                
+                # 为分享文件构建特殊的缓存键
+                share_cache_key = f"share_{source_type}_{source_id}"
+                
+                await file_cache_service.smart_cache_write(
+                    kwargs['db'],
+                    drive_account_id=kwargs['drive_account_id'],
+                    files=drive_files_list
+                )
+                self.logger.debug(f"分享文件列表缓存写入成功，共 {len(drive_files_list)} 个文件")
+            except Exception as e:
+                self.logger.warning(f"分享文件列表缓存写入失败: {e}")
         
         return drive_files_list
         

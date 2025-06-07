@@ -11,6 +11,7 @@ from backend.common.model import Base, id_key
 
 if TYPE_CHECKING:
     from backend.app.coulddrive.model.filesync import SyncConfig
+    from backend.app.coulddrive.model.file_cache import FileCache
 
 
 class DriveAccount(Base):
@@ -37,6 +38,11 @@ class DriveAccount(Base):
     sync_configs: Mapped[list["SyncConfig"]] = relationship(
         init=False, 
         back_populates="drive_account", 
+        cascade="all, delete-orphan"
+    )
+    file_caches: Mapped[list["FileCache"]] = relationship(
+        init=False,
+        back_populates="drive_account",
         cascade="all, delete-orphan"
     )
     

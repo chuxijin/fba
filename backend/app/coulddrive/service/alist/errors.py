@@ -1,6 +1,6 @@
 from functools import wraps
-from typing import Any, Optional
 import inspect
+from typing import Any, Optional
 
 ERRORS = {
     200: "success",
