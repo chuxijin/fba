@@ -406,12 +406,24 @@ class FileSyncService:
                     "error": f"任务已过期，当前时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')}, 结束时间: {sync_config_detail.end_time.strftime('%Y-%m-%d %H:%M:%S')}"
                 }
         
+        # 在开始执行同步任务前立即更新last_sync，防止重复执行
+        execution_start_time = datetime.now()
+        update_param = UpdateSyncConfigParam(last_sync=execution_start_time)
+        
+        try:
+            await sync_config_dao.update(db, db_obj=sync_config, obj_in=update_param)
+            # 立即刷新数据库会话，确保last_sync更新被持久化
+            await db.refresh(sync_config)
+            logger.info(f"配置 {sync_config.id} 开始执行同步任务，last_sync已更新为: {execution_start_time}")
+        except Exception as update_error:
+            logger.error(f"配置 {sync_config.id} 更新last_sync时发生错误: {str(update_error)}")
+            return {
+                "success": False,
+                "error": f"更新last_sync失败: {str(update_error)}"
+            }
+        
         # 执行同步任务
         sync_result = await self.perform_sync(sync_config_detail, db)
-
-        if sync_result.get("success"):
-            update_param = UpdateSyncConfigParam(last_sync=datetime.now())
-            await sync_config_dao.update(db, db_obj=sync_config, obj_in=update_param)
             
         return sync_result
 

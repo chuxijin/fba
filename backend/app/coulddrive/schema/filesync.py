@@ -55,6 +55,7 @@ class UpdateSyncConfigParam(SchemaBase):
     end_time: datetime | None = Field(None, description="结束时间")
     exclude_template_id: int | None = Field(None, description="排除规则模板ID")
     rename_template_id: int | None = Field(None, description="重命名规则模板ID")
+    last_sync: datetime | None = Field(None, description="最后同步时间")
     updated_by: int | None = Field(None, description="更新人ID")
 
 

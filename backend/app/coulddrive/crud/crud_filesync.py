@@ -65,6 +65,40 @@ class CRUDSyncConfig(CRUDPlus[SyncConfig]):
         """获取所有启用的同步配置"""
         return await self.get_list(db, enable=True)
 
+    async def get_list(self, db: AsyncSession, **filters) -> list[SyncConfig]:
+        """
+        获取同步配置列表
+        
+        :param db: 数据库会话
+        :param filters: 过滤条件
+        :return: 同步配置列表
+        """
+        from sqlalchemy import select, desc
+        from sqlalchemy.orm import noload
+        
+        stmt = (
+            select(SyncConfig)
+            .options(
+                noload(SyncConfig.drive_account),
+                noload(SyncConfig.sync_tasks),
+                noload(SyncConfig.exclude_template),
+                noload(SyncConfig.rename_template)
+            )
+            .order_by(desc(SyncConfig.created_time))
+        )
+        
+        # 应用过滤条件
+        filter_conditions = []
+        for key, value in filters.items():
+            if hasattr(SyncConfig, key) and value is not None:
+                filter_conditions.append(getattr(SyncConfig, key) == value)
+        
+        if filter_conditions:
+            stmt = stmt.where(and_(*filter_conditions))
+        
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
     async def get_with_validation(self, db: AsyncSession, config_id: int) -> tuple[Optional[SyncConfig], str]:
         """
         获取配置并进行业务验证

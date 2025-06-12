@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # FastAPI
     FASTAPI_API_V1_PATH: str = '/api/v1'
     FASTAPI_TITLE: str = 'FastAPI'
-    FASTAPI_VERSION: str = '0.0.1'
+    FASTAPI_VERSION: str = '1.5.0'
     FASTAPI_DESCRIPTION: str = 'FastAPI Best Architecture'
     FASTAPI_DOCS_URL: str = '/docs'
     FASTAPI_REDOC_URL: str = '/redoc'
@@ -225,10 +225,6 @@ class Settings(BaseSettings):
 
     # 定时任务配置
     CELERY_SCHEDULE: dict[str, dict[str, Any]] = {
-        'exec-every-10-seconds': {
-            'task': 'task_demo_async',
-            'schedule': 10,
-        },
         'exec-every-sunday': {
             'task': 'delete_db_opera_log',
             'schedule': crontab('0', '0', day_of_week='6'),
@@ -236,6 +232,10 @@ class Settings(BaseSettings):
         'exec-every-15-of-month': {
             'task': 'delete_db_login_log',
             'schedule': crontab('0', '0', day_of_month='15'),
+        },
+        'check-filesync-cron-tasks': {
+            'task': 'check_and_execute_filesync_cron_tasks',
+            'schedule': crontab(minute='*'),  # 每分钟检查一次
         },
     }
 
