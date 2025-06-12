@@ -9,6 +9,7 @@ from .user import DriveAccount
 from .filesync import SyncConfig, SyncTask, SyncTaskItem
 from .rule_template import RuleTemplate
 from .file_cache import FileCache
+from .resource import Resource, ResourceViewHistory
 
 __all__ = [
     "DriveAccount",
@@ -16,5 +17,7 @@ __all__ = [
     "SyncTask",
     "SyncTaskItem",
     "RuleTemplate",
-    "FileCache"
+    "FileCache",
+    "Resource",
+    "ResourceViewHistory"
 ]

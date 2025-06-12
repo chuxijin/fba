@@ -22,3 +22,13 @@ from backend.app.coulddrive.schema.rule_template import (
     BatchDeleteRuleTemplateParam,
     RuleTemplateStatsDetail,
 )
+
+from backend.app.coulddrive.schema.resource import (
+    ResourceBase,
+    CreateResourceParam,
+    UpdateResourceParam,
+    GetResourceDetail,
+    GetResourceListParam,
+    ResourceListItem,
+    ResourceStatistics,
+)

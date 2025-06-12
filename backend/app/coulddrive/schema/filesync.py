@@ -24,8 +24,8 @@ class CreateSyncConfigParam(SchemaBase):
     speed: int = Field(0, description="同步速度")
     method: SyncMethod = Field(SyncMethod.INCREMENTAL, description="同步方法")
     end_time: datetime | None = Field(None, description="结束时间")
-    exclude: str | None = Field(None, description="排除规则")
-    rename: str | None = Field(None, description="重命名规则")
+    exclude_template_id: int | None = Field(None, description="排除规则模板ID")
+    rename_template_id: int | None = Field(None, description="重命名规则模板ID")
 
     @field_validator('src_path', 'dst_path')
     @classmethod
@@ -53,8 +53,9 @@ class UpdateSyncConfigParam(SchemaBase):
     speed: int | None = Field(None, description="同步速度")
     method: SyncMethod | None = Field(None, description="同步方法")
     end_time: datetime | None = Field(None, description="结束时间")
-    exclude: str | None = Field(None, description="排除规则")
-    rename: str | None = Field(None, description="重命名规则")
+    exclude_template_id: int | None = Field(None, description="排除规则模板ID")
+    rename_template_id: int | None = Field(None, description="重命名规则模板ID")
+    updated_by: int | None = Field(None, description="更新人ID")
 
 
 class CreateSyncTaskParam(SchemaBase):
@@ -113,7 +114,7 @@ class CreateSyncTaskItemParam(SchemaBase):
     @classmethod
     def validate_type(cls, v: str) -> str:
         """验证操作类型"""
-        allowed_types = ['delete', 'rename', 'copy', 'move', 'create']
+        allowed_types = ['delete', 'rename', 'copy', 'move', 'create', 'add']
         if v not in allowed_types:
             raise ValueError(f"操作类型必须是 {allowed_types} 之一")
         return v
@@ -144,7 +145,7 @@ class UpdateSyncTaskItemParam(SchemaBase):
     def validate_type(cls, v: str | None) -> str | None:
         """验证操作类型"""
         if v is not None:
-            allowed_types = ['delete', 'rename', 'copy', 'move', 'create']
+            allowed_types = ['delete', 'rename', 'copy', 'move', 'create', 'add']
             if v not in allowed_types:
                 raise ValueError(f"操作类型必须是 {allowed_types} 之一")
         return v
@@ -189,12 +190,13 @@ class GetSyncConfigDetail(SchemaBase):
     speed: int = Field(..., description="同步速度")
     method: SyncMethod = Field(..., description="同步方法")
     end_time: datetime | None = Field(None, description="结束时间")
-    exclude: str | None = Field(None, description="排除规则")
-    rename: str | None = Field(None, description="重命名规则")
+    exclude_template_id: int | None = Field(None, description="排除规则模板ID")
+    rename_template_id: int | None = Field(None, description="重命名规则模板ID")
     last_sync: datetime | None = Field(None, description="最后同步时间")
     created_time: datetime = Field(..., description="创建时间")
     updated_time: datetime | None = Field(None, description="更新时间")
     created_by: int = Field(..., description="创建人")
+    updated_by: int | None = Field(None, description="更新人")
     
     @field_validator('type', mode='before')
     @classmethod
@@ -254,9 +256,9 @@ class GetSyncTaskDetail(SchemaBase):
     task_num: str | None = Field(None, description="任务统计信息")
     dura_time: int = Field(..., description="持续时间")
     created_time: datetime = Field(..., description="创建时间")
-    updated_time: datetime = Field(..., description="更新时间")
+    updated_time: datetime | None = Field(None, description="更新时间")
     created_by: int = Field(..., description="创建人")
-    updated_by: int = Field(..., description="更新人")
+    updated_by: int | None = Field(None, description="更新人")
 
 
 class GetSyncTaskItemDetail(SchemaBase):
@@ -274,9 +276,7 @@ class GetSyncTaskItemDetail(SchemaBase):
     status: str = Field(..., description="状态")
     err_msg: str | None = Field(None, description="错误信息")
     created_time: datetime = Field(..., description="创建时间")
-    updated_time: datetime = Field(..., description="更新时间")
-    created_by: int = Field(..., description="创建人")
-    updated_by: int = Field(..., description="更新人")
+    updated_time: datetime | None = Field(None, description="更新时间")
 
 
 class GetSyncConfigWithRelationDetail(SchemaBase):
@@ -297,13 +297,13 @@ class GetSyncConfigWithRelationDetail(SchemaBase):
     speed: int = Field(..., description="同步速度")
     method: SyncMethod = Field(..., description="同步方法")
     end_time: datetime | None = Field(None, description="结束时间")
-    exclude: str | None = Field(None, description="排除规则")
-    rename: str | None = Field(None, description="重命名规则")
+    exclude_template_id: int | None = Field(None, description="排除规则模板ID")
+    rename_template_id: int | None = Field(None, description="重命名规则模板ID")
     last_sync: datetime | None = Field(None, description="最后同步时间")
     created_time: datetime = Field(..., description="创建时间")
-    updated_time: datetime = Field(..., description="更新时间")
+    updated_time: datetime | None = Field(None, description="更新时间")
     created_by: int = Field(..., description="创建人")
-    updated_by: int = Field(..., description="更新人")
+    updated_by: int | None = Field(None, description="更新人")
     sync_tasks: list[GetSyncTaskDetail] = Field(default_factory=list, description="同步任务列表")
 
 
@@ -320,9 +320,9 @@ class GetSyncTaskWithRelationDetail(SchemaBase):
     task_num: str | None = Field(None, description="任务统计信息")
     dura_time: int = Field(..., description="持续时间")
     created_time: datetime = Field(..., description="创建时间")
-    updated_time: datetime = Field(..., description="更新时间")
+    updated_time: datetime | None = Field(None, description="更新时间")
     created_by: int = Field(..., description="创建人")
-    updated_by: int = Field(..., description="更新人")
+    updated_by: int | None = Field(None, description="更新人")
     task_items: list[GetSyncTaskItemDetail] = Field(default_factory=list, description="任务项列表")
 
 

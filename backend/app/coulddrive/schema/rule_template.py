@@ -117,6 +117,7 @@ class RuleTemplateListItem(SchemaBase):
     template_name: str = Field(..., description="模板名称")
     template_type: TemplateType = Field(..., description="模板类型")
     description: str | None = Field(None, description="模板描述")
+    rule_config: dict[str, Any] = Field(..., description="规则配置")
     category: str | None = Field(None, description="分类")
     tags: list[str] | None = Field(None, description="标签")
     is_active: bool = Field(..., description="是否启用")

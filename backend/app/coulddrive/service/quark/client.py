@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, IO, List, Optional, Set, Tuple, Union
 from backend.app.coulddrive.schema.enum import RecursionSpeed
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
+    BaseShareInfo,
     ListFilesParam,
     ListShareFilesParam,
     MkdirParam,
@@ -50,7 +51,6 @@ from .schemas import (
     QuarkSaveTask,
     QuarkShare,
     QuarkShareDetail,
-    QuarkShareToken,
     QuarkTask,
 )
 
@@ -70,10 +70,14 @@ def _unify_shared_url(url: str) -> str:
 
 
 def _extract_pwd_id_from_url(url: str) -> str:
-    """从分享链接中提取pwd_id"""
+    """从分享链接中提取pwd_id，或者直接返回pwd_id"""
     
-    # 标准链接格式: https://pan.quark.cn/s/xxxxx
-    temp = r"pan\.quark\.cn/s/(.+?)(\?|$)"
+    # 如果输入看起来已经是pwd_id（不包含域名），直接返回
+    if not ("pan.quark.cn" in url or "http" in url):
+        return url.strip()
+    
+    # 标准链接格式: https://pan.quark.cn/s/xxxxx 或 https://pan.quark.cn/s/xxxxx#/list/share
+    temp = r"pan\.quark\.cn/s/(.+?)(\?|#|$)"
     m = re.search(temp, url)
     if m:
         return m.group(1)
@@ -286,11 +290,7 @@ class QuarkClient(BaseDriveClient):
             pass
         return False
 
-    async def get_disk_list(
-        self,
-        params: ListFilesParam,
-        **kwargs: Any
-    ) -> List[BaseFileInfo]:
+    async def get_disk_list(self, params: ListFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
         """
         获取目录下的文件和目录列表
         
@@ -439,17 +439,14 @@ class QuarkClient(BaseDriveClient):
                                 try:
                                     from backend.app.coulddrive.service.file_cache_service import file_cache_service
                                     
-                                    # 为分享文件构建特殊的缓存键，包含分享信息
-                                    share_cache_key = f"share_{source_type}_{source_id}_{current_fid}"
-                                    
                                     cached_children = await file_cache_service.get_cached_children_as_file_info(
                                         db, 
-                                        parent_id=share_cache_key, 
+                                        parent_id=current_fid, 
                                         drive_account_id=drive_account_id
                                     )
                                     
                                     if cached_children:
-                                        self.logger.debug(f"快速模式：从缓存获取分享子目录 {current_item_name}")
+                                        self.logger.debug(f"快速模式：从缓存获取子目录 {current_item_name}")
                                         # 将缓存的子项添加到结果列表
                                         for cached_child in cached_children:
                                             # 应用过滤器
@@ -461,11 +458,11 @@ class QuarkClient(BaseDriveClient):
                                                     queue.append((cached_child.file_id, cached_child.file_path, cached_child.file_id))
                                         continue
                                     else:
-                                        self.logger.debug(f"快速模式：缓存中无分享子目录数据，回退到API获取 {current_item_name}")
+                                        self.logger.debug(f"快速模式：缓存中无子目录数据，回退到API获取 {current_item_name}")
                                 except Exception as e:
                                     self.logger.warning(f"快速模式缓存获取失败，回退到API: {e}")
                             else:
-                                self.logger.debug(f"快速模式：缺少必要参数，跳过分享子目录递归 {current_item_name}")
+                                self.logger.debug(f"快速模式：缺少必要参数，跳过子目录递归 {current_item_name}")
                                 continue
                         elif recursion_speed == RecursionSpeed.SLOW:
                             self.logger.debug(f"Slow mode (disk): Pausing for 3s before listing {current_item_name}...")
@@ -516,11 +513,7 @@ class QuarkClient(BaseDriveClient):
 
         return drive_files_list
 
-    async def mkdir(
-        self,
-        params: MkdirParam,
-        **kwargs: Any,
-    ) -> BaseFileInfo:
+    async def mkdir(self, params: MkdirParam, **kwargs: Any) -> BaseFileInfo:
         """
         创建目录
         
@@ -538,33 +531,30 @@ class QuarkClient(BaseDriveClient):
                 file_name=folder_name
             )
             
-            if result.get("code") == 0:
-                # 创建成功，返回文件夹信息
-                data = result.get("data", {})
-                
-                # 构建完整路径
-                file_path = params.file_path or "/"
-                if file_path == '/':
-                    full_path = f"/{folder_name}"
-                else:
-                    full_path = f"{file_path}/{folder_name}"
-                
-                # 直接使用原始时间戳
-                mkdir_created_at_str = str(data.get('created_at', ''))
-                mkdir_updated_at_str = str(data.get('updated_at', ''))
-                
-                return BaseFileInfo(
-                    file_id=str(data.get('fid', '')),
-                    file_path=full_path,
-                    file_name=folder_name,
-                    file_size=0,
-                    is_folder=True,
-                    created_at=mkdir_created_at_str,
-                    updated_at=mkdir_updated_at_str,
-                    parent_id=parent_id,
-                )
+            # API 调用成功，直接处理返回数据
+            data = result.get("data", {})
+            
+            # 构建完整路径
+            file_path = params.file_path or "/"
+            if file_path == '/':
+                full_path = f"/{folder_name}"
             else:
-                raise QuarkApiError(f"创建文件夹失败: {result.get('message', '未知错误')}")
+                full_path = f"{file_path}/{folder_name}"
+            
+            # 直接使用原始时间戳
+            mkdir_created_at_str = str(data.get('created_at', ''))
+            mkdir_updated_at_str = str(data.get('updated_at', ''))
+            
+            return BaseFileInfo(
+                file_id=str(data.get('fid', '')),
+                file_path=full_path,
+                file_name=folder_name,
+                file_size=0,
+                is_folder=True,
+                created_at=mkdir_created_at_str,
+                updated_at=mkdir_updated_at_str,
+                parent_id=parent_id,
+            )
                 
         except Exception as e:
             self.logger.error(f"创建文件夹时发生错误: {e}")
@@ -573,8 +563,8 @@ class QuarkClient(BaseDriveClient):
     async def rename(self, file_id: str, new_name: str) -> bool:
         """重命名文件或文件夹"""
         try:
-            result = await self._quarkapi.rename_file(fid=file_id, file_name=new_name)
-            return result.get("code") == 0
+            await self._quarkapi.rename_file(fid=file_id, file_name=new_name)
+            return True
         except Exception as e:
             self.logger.error(f"重命名文件时发生错误: {e}")
             return False
@@ -582,11 +572,11 @@ class QuarkClient(BaseDriveClient):
     async def move(self, file_ids: List[str], target_folder_id: str) -> bool:
         """移动文件或文件夹"""
         try:
-            result = await self._quarkapi.move_files(
+            await self._quarkapi.move_files(
                 file_ids=file_ids,
                 to_pdir_fid=target_folder_id
             )
-            return result.get("code") == 0
+            return True
         except Exception as e:
             self.logger.error(f"移动文件时发生错误: {e}")
             return False
@@ -594,20 +584,16 @@ class QuarkClient(BaseDriveClient):
     async def copy(self, file_ids: List[str], target_folder_id: str) -> bool:
         """复制文件或文件夹"""
         try:
-            result = await self._quarkapi.copy_files(
+            await self._quarkapi.copy_files(
                 file_ids=file_ids,
                 to_pdir_fid=target_folder_id
             )
-            return result.get("code") == 0
+            return True
         except Exception as e:
             self.logger.error(f"复制文件时发生错误: {e}")
             return False
 
-    async def remove(
-        self,
-        params: RemoveParam,
-        **kwargs: Any,
-    ) -> bool:
+    async def remove(self, params: RemoveParam, **kwargs: Any) -> bool:
         """
         删除文件或文件夹
         
@@ -623,8 +609,8 @@ class QuarkClient(BaseDriveClient):
             if not file_ids:
                 return False
                 
-            result = await self._quarkapi.delete_files(file_ids=file_ids)
-            return result.get("code") == 0
+            await self._quarkapi.delete_files(file_ids=file_ids)
+            return True
         except Exception as e:
             self.logger.error(f"删除文件时发生错误: {e}")
             return False
@@ -638,20 +624,13 @@ class QuarkClient(BaseDriveClient):
                 **kwargs
             )
             
-            if result.get("code") == 0:
-                data = result.get("data", {})
-                return QuarkShare.from_(data)
-            else:
-                raise QuarkApiError(f"创建分享失败: {result.get('message', '未知错误')}")
+            data = result.get("data", {})
+            return QuarkShare.from_(data)
         except Exception as e:
             self.logger.error(f"创建分享时发生错误: {e}")
             raise
 
-    async def get_share_list(
-        self,
-        params: ListShareFilesParam,
-        **kwargs: Any
-    ) -> List[BaseFileInfo]:
+    async def get_share_list(self, params: ListShareFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
         """
         获取指定分享中特定路径下的文件/目录列表
         
@@ -682,20 +661,21 @@ class QuarkClient(BaseDriveClient):
         try:
             pwd_id, password = _parse_share_url_and_password(source_id)
             
-            # 获取分享token
-            share_token = await self.get_share_token(pwd_id=pwd_id, passcode=password)
-            stoken = share_token.stoken
+            # 先获取share_token，直接调用API层
+            token_result = await self._quarkapi.get_share_token(pwd_id=pwd_id)
+            stoken = token_result.get("data", {}).get("stoken", "")
             
-            # 获取分享详情（根目录）
-            share_detail = await self.get_share_detail(pwd_id=pwd_id, stoken=stoken)
+            result = await self._quarkapi.get_share_detail(pwd_id=pwd_id, stoken=stoken)
             
-            if not share_detail.list:
+            # 获取文件列表
+            file_list = result.get("data", {}).get("list", [])
+            if not file_list:
                 self.logger.warning(f"分享链接中没有文件: {source_id}")
                 return []
             
             # 处理路径导航
             normalized_file_path = file_path.strip('/')
-            current_items = share_detail.list
+            current_items = file_list
             current_pdir_fid = "0"
             current_path = ""
             
@@ -730,22 +710,22 @@ class QuarkClient(BaseDriveClient):
                     
                     # 如果是目录且不是最后一个组件，需要获取子目录内容
                     if found_item.get("dir") and component != path_components[-1]:
-                        sub_detail = await self.get_share_detail(
+                        sub_detail = await self._quarkapi.get_share_detail(
                             pwd_id=pwd_id, 
                             stoken=stoken, 
                             pdir_fid=current_pdir_fid
                         )
-                        current_items = sub_detail.list or []
+                        current_items = sub_detail.get("data", {}).get("list", [])
                     elif component == path_components[-1]:
                         # 到达目标路径
                         if found_item.get("dir"):
                             # 目标是目录，获取其内容
-                            target_detail = await self.get_share_detail(
+                            target_detail = await self._quarkapi.get_share_detail(
                                 pwd_id=pwd_id, 
                                 stoken=stoken, 
                                 pdir_fid=current_pdir_fid
                             )
-                            current_items = target_detail.list or []
+                            current_items = target_detail.get("data", {}).get("list", [])
                         else:
                             # 目标是文件，返回该文件
                             current_items = [found_item]
@@ -841,13 +821,14 @@ class QuarkClient(BaseDriveClient):
                     if recursive and is_dir and item_fid not in processed_fids:
                         processed_fids.add(item_fid)
                         try:
-                            sub_detail = await self.get_share_detail(
+                            sub_detail = await self._quarkapi.get_share_detail(
                                 pwd_id=pwd_id,
                                 stoken=stoken,
                                 pdir_fid=item_fid
                             )
-                            if sub_detail.list:
-                                queue.append((sub_detail.list, full_path, item_fid))
+                            sub_list = sub_detail.get("data", {}).get("list", [])
+                            if sub_list:
+                                queue.append((sub_list, full_path, item_fid))
                         except Exception as e:
                             self.logger.error(f"获取子目录内容失败 {full_path}: {e}")
             
@@ -877,53 +858,106 @@ class QuarkClient(BaseDriveClient):
     async def cancel_shares(self, share_ids: List[str]) -> bool:
         """取消分享"""
         try:
-            result = await self._quarkapi.cancel_shared(share_ids=share_ids)
-            return result.get("code") == 0
+            await self._quarkapi.cancel_shared(share_ids=share_ids)
+            return True
         except Exception as e:
             self.logger.error(f"取消分享时发生错误: {e}")
             return False
 
-    async def get_share_token(self, pwd_id: str, passcode: str = "", **kwargs) -> QuarkShareToken:
-        """获取分享token"""
-        try:
-            result = await self._quarkapi.get_share_token(
-                pwd_id=pwd_id,
-                passcode=passcode,
-                **kwargs
+    async def get_share_info(self, params: ListShareInfoParam, **kwargs: Any) -> Union[List[BaseShareInfo], Dict[str, Any]]:
+        """
+        获取分享详情列表
+        
+        :param params: 分享文件列表查询参数
+        :param kwargs: 其他关键字参数，包括分页参数
+        :return: 分享详情列表或包含分页信息的字典
+        """
+        if params.source_type == "link":
+            # 外部分享链接信息获取
+            pwd_id = _extract_pwd_id_from_url(params.source_id)
+            
+            # 先获取share_token，直接调用API层
+            token_result = await self._quarkapi.get_share_token(pwd_id=pwd_id)
+            stoken = token_result.get("data", {}).get("stoken", "")
+            
+            if not stoken:
+                self.logger.error(f"获取stoken失败，无法继续")
+                return []
+            
+            result = await self._quarkapi.get_share_detail(pwd_id=pwd_id, stoken=stoken)
+            
+            # 从API返回的data字段中获取分享信息
+            share_data = result.get("data", {})
+            
+            # 分享信息在share字段中
+            share_info_data = share_data.get("share", {})
+            
+            # 解析为BaseShareInfo对象
+            share_info = BaseShareInfo(
+                title=share_info_data.get("title", ""),
+                share_id=share_info_data.get("share_id", ""),
+                pwd_id=share_info_data.get("pwd_id", ""),
+                url=share_info_data.get("share_url", ""),
+                expired_type=share_info_data.get("expired_type", 0),
+                view_count=share_info_data.get("click_pv", 0),
+                expired_at=datetime.fromtimestamp(share_info_data.get("expired_at", 0) / 1000) if share_info_data.get("expired_at") else None,
+                expired_left=share_info_data.get("expired_left", 0),
+                audit_status=share_info_data.get("audit_status", 0),
+                status=share_info_data.get("status", 0),
+                file_id=share_info_data.get("first_fid", 0),
+                file_only_num=str(share_info_data.get("file_num", 0)),
+                file_size=share_info_data.get("size", 0),  # size在外层
+                path_info=share_info_data.get("path_info", "")  # path_info在外层
             )
             
-            if result.get("code") == 0:
-                data = result.get("data", {})
-                return QuarkShareToken.from_(data)
-            else:
-                raise QuarkApiError(f"获取分享token失败: {result.get('message', '未知错误')}")
-        except Exception as e:
-            self.logger.error(f"获取分享token时发生错误: {e}")
-            raise
-
-    async def get_share_detail(self, pwd_id: str, stoken: str, **kwargs) -> QuarkShareDetail:
-        """获取分享详情"""
-        try:
-            result = await self._quarkapi.get_share_detail(
-                pwd_id=pwd_id,
-                stoken=stoken,
-                **kwargs
+            return [share_info]
+            
+        elif params.source_type == "local":
+            # 本地分享列表获取，支持分页
+            page = params.page
+            size = params.size
+            order_field = params.order_field
+            order_type = params.order_type
+            
+            result = await self._quarkapi.get_share_page(
+                page=page,
+                size=size,
+                order_field=order_field,
+                order_type=order_type
             )
             
-            if result.get("code") == 0:
-                data = result.get("data", {})
-                return QuarkShareDetail.from_(data)
-            else:
-                raise QuarkApiError(f"获取分享详情失败: {result.get('message', '未知错误')}")
-        except Exception as e:
-            self.logger.error(f"获取分享详情时发生错误: {e}")
-            raise
+            # 解析分享列表
+            share_list = result.get("data", {}).get("list", [])
+            metadata = result.get("data", {}).get("metadata", {})
+            
+            share_info_list = []
+            for item in share_list:
+                share_info = BaseShareInfo(
+                    title=item.get("title", ""),
+                    share_id=item.get("share_id", ""),
+                    pwd_id=item.get("pwd_id", ""),
+                    url=item.get("share_url", ""),
+                    expired_type=item.get("expired_type", 0),
+                    view_count=item.get("click_pv", 0),
+                    expired_at=datetime.fromtimestamp(item.get("expired_at", 0) / 1000) if item.get("expired_at") else None,
+                    expired_left=item.get("expired_left", 0),
+                    audit_status=item.get("audit_status", 0),
+                    status=item.get("status", 0),
+                    file_only_num=str(item.get("file_num", 0)),
+                    file_size=item.get("size", 0),
+                    path_info=item.get("path_info", "")
+                )
+                share_info_list.append(share_info)
+            
+            # 返回包含分页信息的字典结构
+            return {
+                "list": share_info_list,
+                "metadata": metadata
+            }
+        
+        return []
 
-    async def transfer(
-        self,
-        params: TransferParam,
-        **kwargs: Any,
-    ) -> bool:
+    async def transfer(self, params: TransferParam, **kwargs: Any) -> bool:
         """
         从各种来源传输文件到自己的网盘
         
@@ -1039,51 +1073,47 @@ class QuarkClient(BaseDriveClient):
                     exclude_fids=combined_kwargs.get("exclude_fids", [])
                 )
                 
-                if result.get("code") == 0:
-                    data = result.get("data", {})
-                    task_id = data.get("task_id")
+                data = result.get("data", {})
+                task_id = data.get("task_id")
+                
+                if task_id:
+                    # 查询任务状态
+                    self.logger.info(f"转存任务已创建，任务ID: {task_id}")
                     
-                    if task_id:
-                        # 查询任务状态
-                        self.logger.info(f"转存任务已创建，任务ID: {task_id}")
+                    # 等待任务完成（可选）
+                    if combined_kwargs.get("wait_for_completion", False):
+                        max_retries = combined_kwargs.get("max_retries", 10)
+                        retry_interval = combined_kwargs.get("retry_interval", 2)
                         
-                        # 等待任务完成（可选）
-                        if combined_kwargs.get("wait_for_completion", False):
-                            max_retries = combined_kwargs.get("max_retries", 10)
-                            retry_interval = combined_kwargs.get("retry_interval", 2)
-                            
-                            for i in range(max_retries):
-                                try:
-                                    task_result = await self.query_task(task_id)
-                                    task_status = task_result.status
-                                    
-                                    if task_status == 2:  # 任务完成
-                                        self.logger.info(f"转存任务完成: {task_id}")
-                                        return True
-                                    elif task_status == 3:  # 任务失败
-                                        self.logger.error(f"转存任务失败: {task_id}")
-                                        return False
-                                    else:
-                                        # 任务进行中，继续等待
-                                        self.logger.debug(f"转存任务进行中: {task_id}, 状态: {task_status}")
-                                        if i < max_retries - 1:
-                                            await asyncio.sleep(retry_interval)
-                                except Exception as e:
-                                    self.logger.warning(f"查询任务状态失败: {e}")
+                        for i in range(max_retries):
+                            try:
+                                task_result = await self.query_task(task_id)
+                                task_status = task_result.status
+                                
+                                if task_status == 2:  # 任务完成
+                                    self.logger.info(f"转存任务完成: {task_id}")
+                                    return True
+                                elif task_status == 3:  # 任务失败
+                                    self.logger.error(f"转存任务失败: {task_id}")
+                                    return False
+                                else:
+                                    # 任务进行中，继续等待
+                                    self.logger.debug(f"转存任务进行中: {task_id}, 状态: {task_status}")
                                     if i < max_retries - 1:
                                         await asyncio.sleep(retry_interval)
-                            
-                            self.logger.warning(f"转存任务超时: {task_id}")
-                            return False
-                        else:
-                            # 不等待任务完成，直接返回成功
-                            return True
+                            except Exception as e:
+                                self.logger.warning(f"查询任务状态失败: {e}")
+                                if i < max_retries - 1:
+                                    await asyncio.sleep(retry_interval)
+                        
+                        self.logger.warning(f"转存任务超时: {task_id}")
+                        return False
                     else:
-                        self.logger.warning("转存API返回成功但没有task_id")
+                        # 不等待任务完成，直接返回成功
                         return True
                 else:
-                    self.logger.error(f"转存失败: {result.get('message', '未知错误')}")
-                    return False
+                    self.logger.warning("转存API返回成功但没有task_id")
+                    return True
                     
             except Exception as e:
                 self.logger.error(f"链接分享转存时发生错误: {e}")
@@ -1102,11 +1132,10 @@ class QuarkClient(BaseDriveClient):
         try:
             result = await self._quarkapi.query_task(task_id=task_id, **kwargs)
             
-            if result.get("code") == 0:
-                data = result.get("data", {})
-                return QuarkTask.from_(data)
-            else:
-                raise QuarkApiError(f"查询任务失败: {result.get('message', '未知错误')}")
+            data = result.get("data", {})
+            return QuarkTask.from_(data)
         except Exception as e:
             self.logger.error(f"查询任务时发生错误: {e}")
-            raise 
+            raise
+
+ 

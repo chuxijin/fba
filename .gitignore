@@ -7,5 +7,5 @@ venv/
 .python-version
 .ruff_cache/
 .pytest_cache/
-dist/
-node_modules/
+frontend/apps/dist/
+frontend/apps/node_modules/

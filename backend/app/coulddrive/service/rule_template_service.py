@@ -93,6 +93,25 @@ class RuleTemplateService:
             raise NotFoundError(msg="更新失败，规则模板不存在")
 
     @staticmethod
+    async def delete_rule_template(db: AsyncSession, template_id: int) -> None:
+        """
+        删除规则模板
+
+        :param db: 数据库会话
+        :param template_id: 模板ID
+        :return:
+        """
+        rule_template = await RuleTemplateService.get_rule_template(db, template_id)
+        
+        # 检查是否为系统模板
+        if rule_template.is_system:
+            raise ForbiddenError(msg="系统模板不允许删除")
+        
+        count = await rule_template_dao.delete(db, [template_id])
+        if count == 0:
+            raise NotFoundError(msg="删除失败，规则模板不存在")
+
+    @staticmethod
     async def delete_rule_templates(db: AsyncSession, template_ids: list[int]) -> None:
         """
         批量删除规则模板

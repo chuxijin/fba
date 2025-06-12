@@ -398,7 +398,7 @@ class FileCacheService:
         *,
         drive_account_id: int,
         parent_id: str,
-        max_age_hours: int = 24
+        max_age_hours: int = 23
     ) -> bool:
         """
         检查缓存新鲜度

@@ -135,12 +135,19 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         :param created_by: 创建者ID
         :return:
         """
-        # 添加创建者信息
+        # 获取模型数据，只包含可以在__init__中传递的字段
         create_data = obj.model_dump()
         create_data['created_by'] = created_by
-        create_data['updated_by'] = created_by
         
-        await self.create_model(db, create_data)
+        # 创建模型实例（不包含init=False的字段）
+        new_template = self.model(**create_data)
+        
+        # 设置init=False的字段
+        new_template.updated_by = created_by
+        
+        db.add(new_template)
+        await db.commit()
+        await db.refresh(new_template)
 
     async def update(self, db: AsyncSession, pk: int, obj: UpdateRuleTemplateParam, updated_by: int) -> int:
         """
@@ -152,11 +159,12 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         :param updated_by: 更新者ID
         :return:
         """
-        # 添加更新者信息
         update_data = obj.model_dump(exclude_unset=True)
         update_data['updated_by'] = updated_by
         
-        return await self.update_model(db, pk, update_data)
+        result = await self.update_model(db, pk, update_data)
+        await db.commit()
+        return result
 
     async def delete(self, db: AsyncSession, pk: list[int]) -> int:
         """
@@ -166,7 +174,14 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         :param pk: 规则模板 ID 列表
         :return:
         """
-        return await self.delete_model_by_column(db, allow_multiple=True, id__in=pk)
+        # 物理删除
+        from sqlalchemy import delete
+        
+        stmt = delete(self.model).where(self.model.id.in_(pk))
+        result = await db.execute(stmt)
+        await db.commit()
+        
+        return result.rowcount
 
     async def update_usage(self, db: AsyncSession, pk: int) -> int:
         """
@@ -176,10 +191,12 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         :param pk: 规则模板 ID
         :return:
         """
-        return await self.update_model(db, pk, {
+        result = await self.update_model(db, pk, {
             "usage_count": self.model.usage_count + 1,
             "last_used_at": datetime.now()
         })
+        await db.commit()
+        return result
 
     async def toggle_active(self, db: AsyncSession, pk: int, is_active: bool) -> int:
         """
@@ -190,7 +207,9 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         :param is_active: 是否启用
         :return:
         """
-        return await self.update_model(db, pk, {"is_active": is_active})
+        result = await self.update_model(db, pk, {"is_active": is_active})
+        await db.commit()
+        return result
 
     async def get_stats(self, db: AsyncSession) -> dict[str, any]:
         """

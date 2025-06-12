@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Annotated
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, Header, Request
 
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo, 
+    BaseShareInfo,
     ListFilesParam, 
     ListShareFilesParam,
+    ListShareInfoParam,
     MkdirParam,
     RemoveParam,
     TransferParam
@@ -21,13 +23,7 @@ from backend.database.db import CurrentSession
 router = APIRouter()
 
 
-@router.get(
-    '/list',
-    summary='获取文件列表',
-    description='获取网盘文件列表，支持缓存加速',
-    response_model=ResponseSchemaModel[PageData[BaseFileInfo]],
-    dependencies=[DependsJwtAuth, DependsPagination]
-)
+@router.get('/list', summary='获取文件列表', description='获取网盘文件列表，支持缓存加速', response_model=ResponseSchemaModel[PageData[BaseFileInfo]], dependencies=[DependsJwtAuth, DependsPagination])
 async def get_file_list(
     db: CurrentSession,
     request: Request,
@@ -143,3 +139,39 @@ async def transfer_files(
     drive_manager = get_drive_manager()
     result = await drive_manager.transfer_files(x_token, params)
     return response_base.success(data=result)
+
+
+@router.get(
+    '/shareinfo',
+    summary='获取分享详情信息',
+    description='获取分享详情信息，支持外部分享链接信息获取和本地分享列表获取',
+    response_model=ResponseSchemaModel[List[BaseShareInfo]],
+    dependencies=[DependsJwtAuth]
+)
+async def get_share_info(
+    db: CurrentSession,
+    request: Request,
+    x_token: Annotated[str, Header(description="认证令牌")],
+    params: Annotated[ListShareInfoParam, Depends()]
+) -> ResponseSchemaModel[List[BaseShareInfo]]:
+    """
+    获取分享详情信息
+    
+    :param db: 数据库会话
+    :param request: 请求对象
+    :param x_token: 认证令牌
+    :param params: 分享详情查询参数
+    :return: 分享详情信息列表
+    """
+    drive_manager = get_drive_manager()
+    
+    # 调用drive_manager获取分享信息
+    share_info_result = await drive_manager.get_share_info(x_token, params)
+    
+    # 如果返回的是包含分页信息的字典，提取列表部分
+    if isinstance(share_info_result, dict) and 'list' in share_info_result:
+        share_info_list = share_info_result['list']
+    else:
+        share_info_list = share_info_result
+    
+    return response_base.success(data=share_info_list)

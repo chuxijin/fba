@@ -10,6 +10,7 @@ from backend.common.model import Base, UserMixin, id_key
 
 if TYPE_CHECKING:
     from backend.app.coulddrive.model.user import DriveAccount
+    from backend.app.coulddrive.model.rule_template import RuleTemplate
 
 class SyncConfig(Base, UserMixin):
     """文件同步配置表"""
@@ -33,8 +34,8 @@ class SyncConfig(Base, UserMixin):
     dst_meta: Mapped[str | None] = mapped_column(Text, nullable=True, comment="目标路径元数据", init=False)
     cron: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="定时任务表达式", init=False)
     end_time: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True, comment="结束时间", init=False)
-    exclude: Mapped[str | None] = mapped_column(Text, nullable=True, comment="排除规则", init=False)
-    rename: Mapped[str | None] = mapped_column(Text, nullable=True, comment="重命名规则", init=False)
+    exclude_template_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("rule_template.id", ondelete="SET NULL"), nullable=True, comment="排除规则模板ID", init=False)
+    rename_template_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("rule_template.id", ondelete="SET NULL"), nullable=True, comment="重命名规则模板ID", init=False)
     last_sync: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True, comment="最后同步时间", init=False)
     
     # 关系
@@ -47,6 +48,16 @@ class SyncConfig(Base, UserMixin):
         "SyncTask", 
         back_populates="sync_config", 
         cascade="all, delete-orphan",
+        init=False
+    )
+    exclude_template: Mapped["RuleTemplate"] = relationship(
+        "RuleTemplate",
+        foreign_keys=[exclude_template_id],
+        init=False
+    )
+    rename_template: Mapped["RuleTemplate"] = relationship(
+        "RuleTemplate", 
+        foreign_keys=[rename_template_id],
         init=False
     )
     

@@ -29,9 +29,22 @@ from backend.app.coulddrive.schema.file import (
     RemoveParam,
     MkdirParam,
 )
-from backend.app.coulddrive.schema.filesync import GetSyncConfigDetail
+from backend.app.coulddrive.schema.filesync import (
+    GetSyncConfigDetail, 
+    UpdateSyncConfigParam, 
+    CreateSyncTaskParam, 
+    UpdateSyncTaskParam, 
+    CreateSyncTaskItemParam,
+    GetSyncTaskDetail,
+    GetSyncTaskWithRelationDetail,
+    GetSyncTaskItemDetail
+)
 from backend.app.coulddrive.schema.user import GetDriveAccountDetail
 from backend.app.coulddrive.service.yp_service import get_drive_manager
+from backend.app.coulddrive.crud.crud_filesync import sync_task_dao, sync_task_item_dao, sync_config_dao
+from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
+from backend.app.coulddrive.crud.crud_rule_template import rule_template_dao
+from backend.database.db import async_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -83,11 +96,12 @@ class FileSyncService:
             # 默认使用正常速度
             return RecursionSpeed.NORMAL
 
-    async def perform_sync(self, sync_config: GetSyncConfigDetail) -> Dict[str, Any]:
+    async def perform_sync(self, sync_config: GetSyncConfigDetail, db: AsyncSession = None) -> Dict[str, Any]:
         """执行同步任务
         
         Args:
             sync_config: 同步配置
+            db: 数据库会话
             
         Returns:
             Dict[str, Any]: 同步结果
@@ -95,33 +109,36 @@ class FileSyncService:
         start_time = time.time()
         logger.info(f"开始执行同步任务: {sync_config.id} - {sync_config.remark or '未命名任务'}")
         
+        # 创建同步任务记录
+        sync_task = None
+        if db:
+            task_param = CreateSyncTaskParam(
+                config_id=sync_config.id,
+                status="running",
+                start_time=datetime.now()
+            )
+            sync_task = await sync_task_dao.create(db, obj_in=task_param, current_user_id=getattr(sync_config, 'created_by', 1))
+            await db.commit()
+        
         account_schema: Optional[GetDriveAccountDetail] = None
-        try:
-            from backend.database.db import async_db_session
-            from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
+        
+        logger.info(f"尝试根据user_id={sync_config.user_id}从数据库获取账号")
+        if db:
+            account_schema = await drive_account_dao.get(db, sync_config.user_id)
+        else:
+            async with async_db_session() as temp_db:
+                account_schema = await drive_account_dao.get(temp_db, sync_config.user_id)
             
-            logger.info(f"尝试根据user_id={sync_config.user_id}从数据库获取账号")
-            async with async_db_session() as db:
-                account_schema = await drive_account_dao.get(db, sync_config.user_id)
-                
-                if not account_schema:
-                    error_msg = f"未找到ID为{sync_config.user_id}的账号，无法执行同步任务"
-                    logger.error(error_msg)
-                    return {
-                        "success": False,
-                        "error": error_msg,
-                        "elapsed_time": time.time() - start_time
-                    }
-                
-                logger.info(f"成功获取到账号: {account_schema.username or account_schema.user_id} (ID: {account_schema.id})")
-        except Exception as e:
-            error_msg = f"获取账号时发生错误: {str(e)}"
-            logger.error(error_msg, exc_info=True)
+        if not account_schema:
+            error_msg = f"未找到ID为{sync_config.user_id}的账号，无法执行同步任务"
+            logger.error(error_msg)
             return {
                 "success": False,
                 "error": error_msg,
                 "elapsed_time": time.time() - start_time
             }
+        
+        logger.info(f"成功获取到账号: {account_schema.username or account_schema.user_id} (ID: {account_schema.id})")
         
         # 验证账号和配置关系
         if sync_config.user_id != account_schema.id:
@@ -173,22 +190,14 @@ class FileSyncService:
                 except json.JSONDecodeError:
                     logger.warning(f"解析目标元数据失败: {sync_config.dst_meta}")
             
-            # 解析排除和重命名规则
-            exclude_rules = None
-            if sync_config.exclude_rules:
-                try:
-                    exclude_rules = json.loads(sync_config.exclude_rules)
-                except json.JSONDecodeError:
-                    logger.warning(f"解析排除规则失败: {sync_config.exclude_rules}")
+            # 解析规则模板
+            exclude_rules, rename_rules = await self._parse_rule_templates(
+                exclude_template_id=sync_config.exclude_template_id,
+                rename_template_id=sync_config.rename_template_id,
+                db=db
+            )
             
-            rename_rules = None
-            if sync_config.rename_rules:
-                try:
-                    rename_rules = json.loads(sync_config.rename_rules)
-                except json.JSONDecodeError:
-                    logger.warning(f"解析重命名规则失败: {sync_config.rename_rules}")
-            
-            # 解析同步参数
+            # 解析同步方式和递归速度
             sync_method = self._parse_sync_method(sync_config.method.value if hasattr(sync_config.method, 'value') else str(sync_config.method))
             recursion_speed = self._parse_recursion_speed(sync_config.speed)
             
@@ -252,24 +261,72 @@ class FileSyncService:
             
             elapsed_time = time.time() - start_time
             
+            # 更新同步任务状态为成功
+            if sync_task and db:
+                task_update = UpdateSyncTaskParam(
+                    status="completed",
+                    dura_time=int(elapsed_time),
+                    task_num=f"添加:{stats['added_success']}/{stats['to_add_total']}, 删除:{stats['deleted_success']}/{stats['to_delete_total']}"
+                )
+                await sync_task_dao.update(db, db_obj=sync_task, obj_in=task_update)
+                
+                # 创建任务项记录
+                for result_type, results in operation_results.items():
+                    for status, items in results.items():
+                        for item_desc in items:
+                            # 解析操作描述
+                            parts = item_desc.split(": ")
+                            if len(parts) >= 2:
+                                operation_info = parts[1]
+                                if " -> " in operation_info:
+                                    src_path, dst_path = operation_info.split(" -> ", 1)
+                                else:
+                                    src_path = operation_info
+                                    dst_path = operation_info
+                                
+                                file_name = src_path.split("/")[-1] if "/" in src_path else src_path
+                                
+                                item_param = CreateSyncTaskItemParam(
+                                    task_id=sync_task.id,
+                                    type=result_type,
+                                    src_path=src_path,
+                                    dst_path=dst_path,
+                                    file_name=file_name,
+                                    status="completed" if "SUCCESS" in item_desc else "failed",
+                                    err_msg=item_desc if "ERROR" in item_desc or "FAIL" in item_desc else None
+                                )
+                                await sync_task_item_dao.create(db, obj_in=item_param)
+                
+                await db.commit()
+            
             return {
                 "success": True,
                 "stats": stats,
                 "details": operation_results,
-                "elapsed_time": elapsed_time
+                "elapsed_time": elapsed_time,
+                "task_id": sync_task.id if sync_task else None
             }
             
         except Exception as e:
+            # 更新同步任务状态为失败
+            if sync_task and db:
+                task_update = UpdateSyncTaskParam(
+                    status="failed",
+                    dura_time=int(time.time() - start_time),
+                    err_msg=str(e)
+                )
+                await sync_task_dao.update(db, db_obj=sync_task, obj_in=task_update)
+                await db.commit()
+            
             return {
                 "success": False,
                 "error": f"同步任务执行失败: {str(e)}",
-                "elapsed_time": time.time() - start_time
+                "elapsed_time": time.time() - start_time,
+                "task_id": sync_task.id if sync_task else None
             }
 
     async def execute_sync_by_config_id(self, config_id: int, db: AsyncSession) -> Dict[str, Any]:
         """根据配置ID执行同步任务"""
-        from backend.app.coulddrive.crud.crud_filesync import sync_config_dao
-        
         # 使用 CRUD 层的验证方法
         sync_config, error_msg = await sync_config_dao.get_with_validation(db, config_id)
         if not sync_config:
@@ -306,8 +363,8 @@ class FileSyncService:
                 'speed': sync_config.speed,
                 'method': sync_config.method,  # 让 field_validator 处理类型转换
                 'end_time': sync_config.end_time,
-                'exclude': sync_config.exclude,
-                'rename': sync_config.rename,
+                'exclude_template_id': sync_config.exclude_template_id,
+                'rename_template_id': sync_config.rename_template_id,
                 'last_sync': sync_config.last_sync,
                 'created_time': sync_config.created_time,
                 'updated_time': sync_config.updated_time or sync_config.created_time,
@@ -331,8 +388,8 @@ class FileSyncService:
                 speed=sync_config.speed,
                 method=SyncMethod(sync_config.method) if hasattr(SyncMethod, sync_config.method.upper()) else SyncMethod.INCREMENTAL,
                 end_time=sync_config.end_time,
-                exclude=sync_config.exclude,
-                rename=sync_config.rename,
+                exclude_template_id=sync_config.exclude_template_id,
+                rename_template_id=sync_config.rename_template_id,
                 last_sync=sync_config.last_sync,
                 created_time=sync_config.created_time,
                 updated_time=sync_config.updated_time or sync_config.created_time,
@@ -342,7 +399,6 @@ class FileSyncService:
         
         # 检查任务是否过期
         if sync_config_detail.end_time:
-            from datetime import datetime
             current_time = datetime.now()
             if current_time > sync_config_detail.end_time:
                 return {
@@ -351,12 +407,184 @@ class FileSyncService:
                 }
         
         # 执行同步任务
-        return await self.perform_sync(sync_config_detail)
+        sync_result = await self.perform_sync(sync_config_detail, db)
+
+        if sync_result.get("success"):
+            update_param = UpdateSyncConfigParam(last_sync=datetime.now())
+            await sync_config_dao.update(db, db_obj=sync_config, obj_in=update_param)
+            
+        return sync_result
+
+    async def _parse_rule_templates(
+        self, 
+        exclude_template_id: Optional[int], 
+        rename_template_id: Optional[int],
+        db: AsyncSession
+    ) -> Tuple[Optional[List[ExclusionRuleDefinition]], Optional[List[RenameRuleDefinition]]]:
+        """
+        解析规则模板ID为具体的规则定义
+        
+        :param exclude_template_id: 排除规则模板ID
+        :param rename_template_id: 重命名规则模板ID
+        :param db: 数据库会话
+        :return: (排除规则列表, 重命名规则列表)
+        """
+        from fastapi.concurrency import run_in_threadpool
+        
+        exclude_rules = None
+        rename_rules = None
+        
+        # 解析排除规则模板
+        if exclude_template_id:
+            try:
+                exclude_template = await rule_template_dao.get(db, exclude_template_id)
+                if exclude_template:
+                    # 使用 run_in_threadpool 处理可能的阻塞属性访问
+                    is_active = await run_in_threadpool(lambda: exclude_template.is_active)
+                    rule_config = await run_in_threadpool(lambda: exclude_template.rule_config)
+                    
+                    if is_active and isinstance(rule_config, dict) and 'rules' in rule_config:
+                        exclude_rules = []
+                        for rule_data in rule_config['rules']:
+                            exclude_rule = ExclusionRuleDefinition(**rule_data)
+                            exclude_rules.append(exclude_rule)
+                    else:
+                        if not is_active:
+                            logger.warning(f"排除规则模板 {exclude_template_id} 已禁用")
+                        else:
+                            logger.warning(f"排除规则模板 {exclude_template_id} 配置格式不正确")
+                else:
+                    logger.warning(f"排除规则模板 {exclude_template_id} 不存在")
+            except Exception as e:
+                logger.error(f"解析排除规则模板 {exclude_template_id} 失败: {e}")
+        
+        # 解析重命名规则模板
+        if rename_template_id:
+            try:
+                rename_template = await rule_template_dao.get(db, rename_template_id)
+                if rename_template:
+                    # 使用 run_in_threadpool 处理可能的阻塞属性访问
+                    is_active = await run_in_threadpool(lambda: rename_template.is_active)
+                    rule_config = await run_in_threadpool(lambda: rename_template.rule_config)
+                    
+                    if is_active and isinstance(rule_config, dict) and 'rules' in rule_config:
+                        rename_rules = []
+                        for rule_data in rule_config['rules']:
+                            rename_rule = RenameRuleDefinition(**rule_data)
+                            rename_rules.append(rename_rule)
+                    else:
+                        if not is_active:
+                            logger.warning(f"重命名规则模板 {rename_template_id} 已禁用")
+                        else:
+                            logger.warning(f"重命名规则模板 {rename_template_id} 配置格式不正确")
+                else:
+                    logger.warning(f"重命名规则模板 {rename_template_id} 不存在")
+            except Exception as e:
+                logger.error(f"解析重命名规则模板 {rename_template_id} 失败: {e}")
+        
+        return exclude_rules, rename_rules
+
+    async def get_sync_tasks_by_config_id(
+        self, 
+        config_id: int, 
+        status: str | None = None, 
+        db: AsyncSession = None
+    ) -> list[GetSyncTaskDetail]:
+        """
+        根据配置ID获取同步任务列表
+        
+        :param config_id: 配置ID
+        :param status: 任务状态筛选
+        :param db: 数据库会话
+        :return: 同步任务详情列表
+        """
+        tasks = await sync_task_dao.get_tasks_by_config_id(
+            db, 
+            config_id=config_id, 
+            status=status
+        )
+        
+        return [GetSyncTaskDetail.model_validate(task) for task in tasks]
+
+    async def get_sync_task_detail(self, task_id: int, db: AsyncSession) -> GetSyncTaskWithRelationDetail | None:
+        """
+        获取同步任务详情（包含任务项）
+        
+        :param task_id: 任务ID
+        :param db: 数据库会话
+        :return: 同步任务详情
+        """
+        task = await sync_task_dao.get_task_with_items(db, task_id=task_id)
+        
+        if not task:
+            return None
+        
+        # 获取任务统计信息
+        stats = await sync_task_item_dao.get_task_statistics(db, task_id=task_id)
+        
+        # 转换任务项
+        task_items = [GetSyncTaskItemDetail.model_validate(item) for item in task.task_items]
+        
+        # 创建任务详情
+        task_detail = GetSyncTaskWithRelationDetail(
+            id=task.id,
+            config_id=task.config_id,
+            status=task.status,
+            err_msg=task.err_msg,
+            start_time=task.start_time,
+            task_num=task.task_num,
+            dura_time=task.dura_time,
+            created_time=task.created_time,
+            updated_time=task.updated_time or task.created_time,
+            created_by=getattr(task, 'created_by', 1),
+            updated_by=getattr(task, 'updated_by', 1),
+            task_items=task_items
+        )
+        
+        # 添加统计信息到task_num字段
+        if not task_detail.task_num:
+            task_detail.task_num = json.dumps(stats, ensure_ascii=False)
+        
+        return task_detail
+
+    async def get_sync_task_items(
+        self, 
+        task_id: int, 
+        status: str | None = None,
+        operation_type: str | None = None,
+        db: AsyncSession = None
+    ) -> list[GetSyncTaskItemDetail]:
+        """
+        根据任务ID获取同步任务项列表
+        
+        :param task_id: 任务ID
+        :param status: 任务项状态筛选
+        :param operation_type: 操作类型筛选
+        :param db: 数据库会话
+        :return: 同步任务项详情列表
+        """
+        task_items = await sync_task_item_dao.get_items_by_task_id(
+            db,
+            task_id=task_id,
+            status=status,
+            operation_type=operation_type
+        )
+        
+        return [GetSyncTaskItemDetail.model_validate(item) for item in task_items]
+
+    async def get_task_statistics(self, task_id: int, db: AsyncSession) -> dict[str, int]:
+        """
+        获取任务统计信息
+        
+        :param task_id: 任务ID
+        :param db: 数据库会话
+        :return: 统计信息
+        """
+        return await sync_task_item_dao.get_task_statistics(db, task_id=task_id)
+
 
 # 创建服务单例
 file_sync_service = FileSyncService()
-
-# 以下是文件比较和同步相关的类和函数
 
 class ExclusionRule:
     def __init__(self,
@@ -412,21 +640,23 @@ class ExclusionRule:
         # 2. Get value to match based on target
         value_to_match = self._get_value_to_match(item)
         if value_to_match is None and self.target == MatchTarget.EXTENSION: # e.g. folder when matching extension
-             return False # Cannot match if target value is not applicable
+            return False # Cannot match if target value is not applicable
         if value_to_match is None: # Should ideally not happen for NAME/PATH if item is valid
             return False
 
         # 3. Perform match based on mode
+        match_result = False
         if self.mode == MatchMode.EXACT:
-            return value_to_match == self.pattern_str
+            match_result = value_to_match == self.pattern_str
         elif self.mode == MatchMode.CONTAINS:
-            return self.pattern_str in value_to_match
+            match_result = self.pattern_str in value_to_match
         elif self.mode == MatchMode.REGEX or self.mode == MatchMode.WILDCARD:
             if self._compiled_regex:
-                return bool(self._compiled_regex.search(value_to_match))
-            return False # Should not happen if constructor worked for these modes
-
-        return False
+                match_result = bool(self._compiled_regex.search(value_to_match))
+            else:
+                match_result = False # Should not happen if constructor worked for these modes
+        
+        return match_result
 
 class ItemFilter:
     def __init__(self, exclusion_rules: Optional[List[ExclusionRule]] = None):
@@ -543,147 +773,171 @@ def compare_drive_lists(
             return full_path[len(base_path):]
         return full_path
 
-    def calculate_target_path_and_parent(source_item: BaseFileInfo) -> Tuple[str, str]:
+    def calculate_target_path(source_item: BaseFileInfo) -> str:
         """
-        计算目标完整路径和目标父目录路径
+        计算源文件在目标位置的完整路径（简化版，只计算路径不计算file_id）
         
         :param source_item: 源文件信息
-        :return: (目标完整路径, 目标父目录路径)
+        :return: 目标完整路径
         """
-        # 获取源文件的相对路径
+        # 使用 get_relative_path 函数获取相对路径
         relative_path = get_relative_path(source_item.file_path, source_base_path)
         
-        # 计算目标完整路径
-        target_full_path = f"{target_base_path}/{relative_path}".replace("//", "/")
+        # 构建目标完整路径 - 使用POSIX路径拼接
+        if relative_path:
+            target_full_path = f"{target_base_path}/{relative_path}".replace("//", "/")
+        else:
+            target_full_path = target_base_path
         
-        # 计算目标父目录路径
-        target_parent_path = "/".join(target_full_path.split("/")[:-1]) or "/"
-        
-        return target_full_path, target_parent_path
+        return target_full_path
 
     # 规范化基础路径
     source_base_path = source_base_path.rstrip('/')
     target_base_path = target_base_path.rstrip('/')
 
-    # 构建目标路径到file_id的映射，用于快速查找
-    target_path_to_file_id = {item.file_path: item.file_id for item in target_list if item.file_path and item.file_id}
-    
-    # 初始化结果列表
-    to_add = []
-    to_delete_from_target = []
-    to_update = []
-    to_rename = []
-    
-    # 处理源文件列表，找出需要添加或更新的文件
-    for src_item in source_list:
-        # 应用重命名规则
-        if rename_rules:
-            for rule in rename_rules:
-                new_path = rule.generate_new_path(src_item)
-                if new_path:
-                    # 创建新的文件信息对象，使用重命名后的路径
-                    src_item = BaseFileInfo(
-                        file_id=src_item.file_id,
-                        file_name=os.path.basename(new_path),
-                        file_path=new_path,
-                        file_size=src_item.file_size,
-                        is_folder=src_item.is_folder,
-                        created_time=src_item.created_time,
-                        updated_time=src_item.updated_time
-                    )
-                    break
-        
-        # 计算目标路径和父目录路径
-        target_full_path, target_parent_path = calculate_target_path_and_parent(src_item)
-        
-        # 查找目标父目录的file_id
-        target_parent_file_id = target_path_to_file_id.get(target_parent_path)
-        
-        if not target_parent_file_id:
-            # 向上查找已存在的目录
-            search_steps = []
-            current_path = target_parent_path
-            while current_path and current_path != "/" and current_path != target_base_path:
-                search_steps.append(current_path)
-                if current_path in target_path_to_file_id:
-                    target_parent_file_id = target_path_to_file_id[current_path]
-                    break
-                # 向上一级目录
-                current_path = "/".join(current_path.split("/")[:-1]) or "/"
-            
-            # 如果还是找不到，使用根目录
-            if not target_parent_file_id and target_base_path in target_path_to_file_id:
-                target_parent_file_id = target_path_to_file_id[target_base_path]
-        
-        if not target_parent_file_id:
-            logger.warning(f"❌ 无法找到目标父目录的file_id: {target_parent_path}，将在传输时报错")
-            continue
+    results: Dict[str, List[Any]] = {
+        "to_add": [],
+        "to_update_in_target": [],
+        "to_delete_from_target": [],
+        "to_rename_in_target": []
+    }
 
-        # 构建增强的添加项信息
-        add_item = {
-            "source_item": src_item,
-            "target_full_path": target_full_path,
-            "target_parent_path": target_parent_path,
-            "target_parent_file_id": target_parent_file_id
-        }
-        to_add.append(add_item)
+    # 创建相对路径映射
+    source_map_by_rel_path: Dict[str, BaseFileInfo] = {
+        get_relative_path(item.file_path, source_base_path): item 
+        for item in source_list
+    }
+    target_map_by_rel_path: Dict[str, BaseFileInfo] = {
+        get_relative_path(item.file_path, target_base_path): item 
+        for item in target_list
+    }
+
+    accounted_source_paths: Set[str] = set()
+    accounted_target_paths: Set[str] = set()
+
+    # 1. First Pass: Exact path matches (for updates)
+    for src_rel_path, src_item in source_map_by_rel_path.items():
+        if src_rel_path in target_map_by_rel_path:
+            target_item = target_map_by_rel_path[src_rel_path]
+            
+            is_different = False
+            if src_item.is_folder != target_item.is_folder:
+                is_different = True
+            elif not src_item.is_folder: # If they are both files, compare size
+                if src_item.file_size != target_item.file_size:
+                    is_different = True
+
+            if is_different:
+                results["to_update_in_target"].append({"source": src_item, "target": target_item})
+            
+            accounted_source_paths.add(src_rel_path)
+            accounted_target_paths.add(src_rel_path)
+
+    # 2. Second Pass: Rename detection (using remaining unaccounted items)
+    if rename_rules:
+        unaccounted_src_items = [(p, i) for p, i in source_map_by_rel_path.items() if p not in accounted_source_paths]
+        unaccounted_tgt_items = [(p, i) for p, i in target_map_by_rel_path.items() if p not in accounted_target_paths]
+        
+
+        for src_rel_path, src_item in unaccounted_src_items:
+            if src_rel_path in accounted_source_paths:
+                continue
+            
+            found_rename_for_current_source = False
+            for target_rel_path, target_item in unaccounted_tgt_items:
+                if target_rel_path in accounted_target_paths:
+                    continue
+
+                # Basic compatibility check (type and size for files)
+                if src_item.is_folder == target_item.is_folder and \
+                   (src_item.is_folder or src_item.file_size == target_item.file_size):
+                    
+                    for rule in rename_rules:
+                        suggested_new_path = rule.generate_new_path(target_item)
+                        if suggested_new_path and suggested_new_path == src_item.file_path:
+                            results["to_rename_in_target"].append({
+                                'target_item': target_item,
+                                'suggested_new_path': src_item.file_path,
+                                'source_item': src_item,
+                                'applied_rule_pattern': rule.match_regex_str
+                            })
+                            accounted_source_paths.add(src_rel_path)
+                            accounted_target_paths.add(target_rel_path)
+                            found_rename_for_current_source = True
+                            break
+                
+                if found_rename_for_current_source:
+                    break
+
+    # 3. Third Pass: Remaining items are true adds/deletes
+    for src_rel_path, src_item in source_map_by_rel_path.items():
+        if src_rel_path not in accounted_source_paths:
+            # 简化的添加项信息，只包含源文件和目标路径
+            target_full_path = calculate_target_path(src_item)
+            
+            add_item = {
+                "source_item": src_item,
+                "target_path": target_full_path
+            }
+            results["to_add"].append(add_item)
 
     # 根据同步模式处理删除操作
     if mode == SyncMethod.FULL.value:
         # 完全同步：删除目标中多余的文件（源中不存在的文件）
-        for target_rel_path, target_item in target_path_to_file_id.items():
-            if target_rel_path not in target_path_to_file_id:
-                to_delete_from_target.append(target_item)
+        for target_rel_path, target_item in target_map_by_rel_path.items():
+            if target_rel_path not in accounted_target_paths:
+                results["to_delete_from_target"].append(target_item)
     elif mode == SyncMethod.OVERWRITE.value:
         # 覆盖同步：删除目标目录里的所有文件，然后保存源目录里的所有文件
         # 1. 将所有目标文件标记为删除
-        for target_rel_path, target_item in target_path_to_file_id.items():
-            to_delete_from_target.append(target_item)
+        for target_rel_path, target_item in target_map_by_rel_path.items():
+            results["to_delete_from_target"].append(target_item)
         
         # 2. 将所有源文件标记为添加（清空之前的添加列表，重新添加所有源文件）
-        to_add = []  # 清空之前的添加列表
-        to_update = []  # 清空更新列表，覆盖模式不需要更新
-        to_rename = []  # 清空重命名列表，覆盖模式不需要重命名
+        results["to_add"] = []  # 清空之前的添加列表
+        results["to_update_in_target"] = []  # 清空更新列表，覆盖模式不需要更新
+        results["to_rename_in_target"] = []  # 清空重命名列表，覆盖模式不需要重命名
         
-        for src_item in source_list:
+        for src_rel_path, src_item in source_map_by_rel_path.items():
             # 计算目标路径信息
-            target_full_path, target_parent_path = calculate_target_path_and_parent(src_item)
-            
-            # 在覆盖模式下，目标父目录的file_id需要重新计算（因为目标目录会被清空）
-            target_parent_file_id = target_path_to_file_id.get(target_base_path)  # 使用根目录的file_id
+            target_full_path = calculate_target_path(src_item)
             
             # 构建添加项信息
             add_item = {
                 "source_item": src_item,
-                "target_full_path": target_full_path,
-                "target_parent_path": target_parent_path,
-                "target_parent_file_id": target_parent_file_id
+                "target_path": target_full_path
             }
-            to_add.append(add_item)
+            results["to_add"].append(add_item)
     
-    return {
-        "to_add": to_add,
-        "to_update_in_target": to_update,
-        "to_delete_from_target": to_delete_from_target,
-        "to_rename_in_target": to_rename
-    }
+    return results
 
 def _parse_exclusion_rules(rules_def: Optional[List[ExclusionRuleDefinition]]) -> Optional[ItemFilter]:
     if not rules_def:
         return None
+    
     item_filter = ItemFilter()
+    
     for i, rule_data in enumerate(rules_def):
         try:
-            item_filter.add_rule(ExclusionRule(
+            # 确保枚举类型正确转换
+            target_enum = rule_data.target if isinstance(rule_data.target, MatchTarget) else MatchTarget(rule_data.target)
+            item_type_enum = rule_data.item_type if isinstance(rule_data.item_type, ItemType) else ItemType(rule_data.item_type)
+            mode_enum = rule_data.mode if isinstance(rule_data.mode, MatchMode) else MatchMode(rule_data.mode)
+            
+            exclusion_rule = ExclusionRule(
                 pattern=rule_data.pattern,
-                target=rule_data.target,
-                item_type=rule_data.item_type,
-                mode=rule_data.mode,
+                target=target_enum,
+                item_type=item_type_enum,
+                mode=mode_enum,
                 case_sensitive=rule_data.case_sensitive
-            ))
+            )
+            item_filter.add_rule(exclusion_rule)
+            
         except ValueError as e:
             # 抛出一个特定的错误，可以被 API 层捕获
+            logger.error(f"[ExclusionRules] 规则 #{i+1} 解析失败: {e}")
             raise ValueError(f"排除规则 #{i+1} ('{rule_data.pattern}') 格式错误: {e}")
+    
     return item_filter
 
 def _parse_rename_rules(rules_def: Optional[List[RenameRuleDefinition]]) -> Optional[List[RenameRule]]:
@@ -703,64 +957,86 @@ def _parse_rename_rules(rules_def: Optional[List[RenameRuleDefinition]]) -> Opti
             raise ValueError(f"重命名规则 #{i+1} ('{rule_data.match_regex}') 格式错误: {e}")
     return parsed_rules
 
-async def _create_missing_target_directories(
+async def _create_directories_intelligently(
     drive_manager: Any,
     x_token: str,
     to_add: List[Dict[str, Any]],
     target_definition: DiskTargetDefinition,
     drive_type_str: str,
-    target_path_to_file_id: Optional[Dict[str, str]] = None
-) -> None:
+    existing_path_mapping: Dict[str, str]
+) -> Dict[str, str]:
     """
-    在比较阶段创建缺失的目标目录
+    智能分析并创建所需目录，返回完整的路径映射
     
     :param drive_manager: 网盘管理器实例
     :param x_token: 认证令牌
     :param to_add: 待添加项目列表
     :param target_definition: 目标定义
     :param drive_type_str: 网盘类型字符串
-    :param target_path_to_file_id: 目标路径到file_id的映射，用于查找已存在的目录
+    :param existing_path_mapping: 现有的路径到file_id映射
+    :return: 完整的路径到file_id映射（包含新创建的目录）
     """
-    # 收集所有需要创建的目录路径（检查目标父目录是否真实存在）
-    missing_dirs = set()
+    # 复制现有映射，避免修改原始数据
+    complete_path_mapping = existing_path_mapping.copy()
+    
+    # 1. 收集所有需要的目录路径
+    required_dirs = set()
     for add_item in to_add:
-        target_parent_path = add_item.get("target_parent_path")
-        target_parent_file_id = add_item.get("target_parent_file_id")
-        
-        if target_parent_path and target_parent_path != "/" and target_parent_path != target_definition.file_path:
-            # 检查目标父目录是否真实存在于目标路径映射中
-            if not target_path_to_file_id or target_parent_path not in target_path_to_file_id:
-                missing_dirs.add(target_parent_path)
+        target_path = add_item.get("target_path", "")
+        if target_path:
+            # 对于文件，需要其父目录；对于文件夹，需要其本身的父目录
+            source_item = add_item.get("source_item")
+            if source_item and not source_item.is_folder:
+                # 文件：需要其父目录
+                parent_dir = os.path.dirname(target_path).replace("\\", "/")
+                if parent_dir and parent_dir != "/" and parent_dir != target_definition.file_path:
+                    required_dirs.add(parent_dir)
+            else:
+                # 文件夹：需要其父目录（文件夹本身会在转存时创建）
+                parent_dir = os.path.dirname(target_path).replace("\\", "/")
+                if parent_dir and parent_dir != "/" and parent_dir != target_definition.file_path:
+                    required_dirs.add(parent_dir)
+    
+    # 2. 过滤掉已存在的目录
+    missing_dirs = [d for d in required_dirs if d not in complete_path_mapping]
     
     if not missing_dirs:
-        return
+        logger.info("所有需要的目录都已存在，无需创建新目录")
+        return complete_path_mapping
     
-    logger.info(f"🔍 [目录创建] 发现 {len(missing_dirs)} 个缺失目录需要创建")
-    
-    # 按路径深度排序，确保先创建父目录
+    # 3. 按深度排序，确保先创建父目录
     sorted_dirs = sorted(missing_dirs, key=lambda x: x.count('/'))
     
-    # 记录已创建的目录映射
-    created_dir_to_file_id = {}
+    logger.info(f"需要创建 {len(sorted_dirs)} 个目录: {sorted_dirs}")
     
+    # 4. 逐个创建目录并更新映射
+    created_count = 0
     for dir_path in sorted_dirs:
         try:
-            # 确保路径格式一致
+            # 确保路径格式正确
             normalized_dir_path = dir_path.replace("\\", "/")
             
-            # 获取父目录路径和目录名称
-            parent_dir_path = "/".join(normalized_dir_path.split("/")[:-1]) or "/"
-            dir_name = normalized_dir_path.split("/")[-1]
+            # 计算父目录路径和目录名
+            path_parts = normalized_dir_path.strip("/").split("/")
+            if len(path_parts) <= 1:
+                logger.warning(f"跳过根目录或无效路径: {normalized_dir_path}")
+                continue
+                
+            parent_path_parts = path_parts[:-1]
+            parent_path = "/" + "/".join(parent_path_parts) if parent_path_parts else "/"
+            dir_name = path_parts[-1]
             
             # 查找父目录的file_id
             parent_file_id = None
-            if target_path_to_file_id and parent_dir_path in target_path_to_file_id:
-                parent_file_id = target_path_to_file_id[parent_dir_path]
-            elif parent_dir_path in created_dir_to_file_id:
-                parent_file_id = created_dir_to_file_id[parent_dir_path]
             
-            if not parent_file_id:
-                logger.warning(f"❌ [目录创建] 无法找到父目录file_id: {parent_dir_path}")
+            if parent_path == target_definition.file_path:
+                # 父目录是根目录
+                parent_file_id = target_definition.file_id
+            elif parent_path in complete_path_mapping:
+                # 父目录在映射中（可能是已存在的或刚创建的）
+                parent_file_id = complete_path_mapping[parent_path]
+            else:
+                logger.warning(f"无法找到父目录 {parent_path} 的file_id，跳过创建 {normalized_dir_path}")
                 continue
             
             # 构建 MkdirParam
@@ -774,40 +1050,62 @@ async def _create_missing_target_directories(
             # 创建目录
             new_dir_info = await drive_manager.create_mkdir(x_token, mkdir_params)
             if new_dir_info and hasattr(new_dir_info, 'file_id'):
-                created_dir_to_file_id[normalized_dir_path] = new_dir_info.file_id
-                logger.info(f"✅ [目录创建] 创建目录成功: {normalized_dir_path} (file_id: {new_dir_info.file_id})")
+                complete_path_mapping[normalized_dir_path] = new_dir_info.file_id
+                created_count += 1
+                logger.info(f"创建目录成功: {normalized_dir_path} (file_id: {new_dir_info.file_id})")
             else:
-                logger.warning(f"❌ [目录创建] 创建目录失败: {normalized_dir_path}")
+                logger.warning(f"创建目录失败: {normalized_dir_path}")
                 
         except Exception as e:
-            logger.error(f"❌ [目录创建] 创建目录时发生错误: {e}")
+            logger.error(f"创建目录 {dir_path} 时发生错误: {e}")
+            continue
     
-    # 更新to_add中的target_parent_file_id
-    updated_count = 0
+    logger.info(f"智能目录创建完成，成功创建 {created_count}/{len(sorted_dirs)} 个目录")
+    return complete_path_mapping
+
+async def _create_missing_target_directories(
+    drive_manager: Any,
+    x_token: str,
+    to_add: List[Dict[str, Any]],
+    target_definition: DiskTargetDefinition,
+    drive_type_str: str,
+    target_path_to_file_id: Optional[Dict[str, str]] = None
+) -> None:
+    """
+    在比较阶段创建缺失的目标目录（保留向后兼容，但内部使用新的智能创建逻辑）
+    
+    :param drive_manager: 网盘管理器实例
+    :param x_token: 认证令牌
+    :param to_add: 待添加项目列表
+    :param target_definition: 目标定义
+    :param drive_type_str: 网盘类型字符串
+    :param target_path_to_file_id: 目标路径到file_id的映射，用于查找已存在的目录
+    """
+    logger.warning("使用了已废弃的 _create_missing_target_directories 函数，建议使用 _create_directories_intelligently")
+    
+    # 使用新的智能创建逻辑
+    existing_mapping = target_path_to_file_id or {}
+    updated_mapping = await _create_directories_intelligently(
+        drive_manager=drive_manager,
+        x_token=x_token,
+        to_add=to_add,
+        target_definition=target_definition,
+        drive_type_str=drive_type_str,
+        existing_path_mapping=existing_mapping
+    )
+    
+    # 更新to_add中的信息（为了向后兼容）
     for add_item in to_add:
-        try:
-            target_parent_path = add_item.get("target_parent_path")
-            if target_parent_path:
-                # 确保路径格式一致
-                normalized_target_parent_path = target_parent_path.replace("\\", "/")
-                if normalized_target_parent_path in created_dir_to_file_id:
-                    # 更新为新创建的目录ID
-                    old_file_id = add_item.get("target_parent_file_id")
-                    new_file_id = created_dir_to_file_id[normalized_target_parent_path]
-                    add_item["target_parent_file_id"] = new_file_id
-                    updated_count += 1
-                elif target_path_to_file_id and normalized_target_parent_path in target_path_to_file_id:
-                    # 使用已存在目录的ID
-                    existing_file_id = target_path_to_file_id[normalized_target_parent_path]
-                    if add_item.get("target_parent_file_id") != existing_file_id:
-                        old_file_id = add_item.get("target_parent_file_id")
-                        add_item["target_parent_file_id"] = existing_file_id
-                        updated_count += 1
-        except Exception as e:
-            logger.error(f"❌ [目录创建] 更新文件父目录ID时发生错误: {e}")
-    
-    if updated_count > 0:
-        logger.info(f"✅ [目录创建] 成功更新了 {updated_count} 个文件的父目录file_id")
+        target_path = add_item.get("target_path", "")
+        if target_path:
+            source_item = add_item.get("source_item")
+            if source_item and not source_item.is_folder:
+                parent_path = os.path.dirname(target_path).replace("\\", "/")
+                if parent_path in updated_mapping:
+                    # 添加兼容字段
+                    add_item["target_parent_path"] = parent_path
+                    add_item["target_parent_file_id"] = updated_mapping[parent_path]
+                    add_item["target_full_path"] = target_path
 
 async def _get_list_for_compare_op(
     drive_manager: Any,
@@ -849,8 +1147,8 @@ async def _get_list_for_compare_op(
             recursion_speed=top_level_recursion_speed
         )
         
-        # 使用统一的调用方式
-        result_list = await drive_manager.get_share_list(x_token, params)
+        # 使用统一的调用方式，传递 item_filter
+        result_list = await drive_manager.get_share_list(x_token, params, item_filter=item_filter_instance)
     else:
         target_def = definition
         
@@ -863,12 +1161,16 @@ async def _get_list_for_compare_op(
             recursion_speed=top_level_recursion_speed
         )
         
-        # 使用统一的调用方式
-        result_list = await drive_manager.get_disk_list(x_token, params)
+        # 使用统一的调用方式，传递 item_filter
+        result_list = await drive_manager.get_disk_list(x_token, params, item_filter=item_filter_instance)
     
-    # 应用过滤器
+    # 应用过滤器（双重保险，虽然客户端已经应用了过滤器）
     if item_filter_instance:
+        original_count = len(result_list)
         result_list = [item for item in result_list if not item_filter_instance.should_exclude(item)]
+        filtered_count = original_count - len(result_list)
+        if filtered_count > 0:
+            logger.info(f"[ItemFilter] 在服务层额外过滤了 {filtered_count} 个项目")
     
     elapsed_time = time.time() - start_time
     return result_list, elapsed_time
@@ -942,13 +1244,9 @@ async def perform_comparison_logic(
             # 覆盖模式：直接将源文件转存到目标目录，使用原文件名
             target_full_path = target_definition.file_path + "/" + src_item.file_name
             
-            target_parent_file_id = target_definition.file_id
-            
             add_item = {
                 "source_item": src_item,
-                "target_full_path": target_full_path,
-                "target_parent_path": target_definition.file_path,
-                "target_parent_file_id": target_parent_file_id
+                "target_path": target_full_path
             }
             comparison_result["to_add"].append(add_item)
         
@@ -997,7 +1295,7 @@ async def perform_comparison_logic(
         if target_item.file_path and target_item.file_id:
             target_path_to_file_id[target_item.file_path] = target_item.file_id
 
-    # compare_drive_lists 返回基础的比较结果字典
+    # compare_drive_lists 返回基础的比较结果字典（简化版）
     comparison_result = compare_drive_lists(
         source_list=source_list,
         target_list=target_list,
@@ -1007,15 +1305,28 @@ async def perform_comparison_logic(
         target_base_path=target_definition.file_path
     )
     
-    # 在比较阶段创建缺失的目标目录
-    await _create_missing_target_directories(
+    # 使用新的智能目录创建逻辑
+    complete_path_mapping = await _create_directories_intelligently(
         drive_manager=drive_manager,
         x_token=x_token,
         to_add=comparison_result.get('to_add', []),
         target_definition=target_definition,
         drive_type_str=drive_type_str,
-        target_path_to_file_id=target_path_to_file_id
+        existing_path_mapping=target_path_to_file_id
     )
+    
+    # 为了保持向后兼容，更新 to_add 中的信息
+    for add_item in comparison_result.get('to_add', []):
+        target_path = add_item.get("target_path", "")
+        if target_path:
+            source_item = add_item.get("source_item")
+            if source_item and not source_item.is_folder:
+                parent_path = os.path.dirname(target_path).replace("\\", "/")
+                if parent_path in complete_path_mapping:
+                    # 添加兼容字段
+                    add_item["target_parent_path"] = parent_path
+                    add_item["target_parent_file_id"] = complete_path_mapping[parent_path]
+                    add_item["target_full_path"] = target_path
     
     # 构建完整的 GetCompareDetail 对象所需的数据
     compare_detail_data = {
@@ -1047,6 +1358,7 @@ async def apply_comparison_operations(
     :param x_token: 认证令牌
     :param comparison_result: 比较结果，包含to_add、to_delete_from_target等操作列表
     :param drive_type_str: 网盘类型字符串
+    :param sync_mode: 同步模式
     :return: 各类操作的结果，格式为:
         {
             "add": {"succeeded": [...], "failed": [...]},
@@ -1058,28 +1370,76 @@ async def apply_comparison_operations(
         "delete": {"succeeded": [], "failed": []}
     }
 
-    # 处理添加操作
-    if comparison_result.to_add:
-        add_results = await _process_add_operations(
-            drive_manager=drive_manager,
-            x_token=x_token,
-            to_add=comparison_result.to_add,
-            source_definition=comparison_result.source_definition,
-            target_definition=comparison_result.target_definition,
-            drive_type_str=drive_type_str,
-            sync_mode=sync_mode
-        )
-        operation_results["add"] = add_results
+    # 根据同步模式确定执行顺序
+    if sync_mode == SyncMethod.OVERWRITE.value:
+        # 覆盖模式：必须先删除，再添加，确保顺序执行
+        # logger.info("覆盖模式：开始执行删除操作...")
+        
+        # 1. 先处理删除操作
+        if comparison_result.to_delete_from_target:
+            delete_results = await _process_delete_operations(
+                drive_manager=drive_manager,
+                x_token=x_token,
+                to_delete=comparison_result.to_delete_from_target,
+                drive_type_str=drive_type_str
+            )
+            operation_results["delete"] = delete_results
+            
+            # 检查删除操作是否成功
+            delete_failed_count = len(delete_results.get("failed", []))
+            delete_success_count = len(delete_results.get("succeeded", []))
+            
+            # logger.info(f"删除操作完成：成功 {delete_success_count} 个，失败 {delete_failed_count} 个")
+            
+            # 如果删除操作有失败，记录警告但继续执行添加操作
+            if delete_failed_count > 0:
+                logger.warning(f"覆盖模式：有 {delete_failed_count} 个文件删除失败，可能影响后续转存操作")
+        
+        # logger.info("覆盖模式：开始执行添加操作...")
+        
+        # 2. 再处理添加操作
+        if comparison_result.to_add:
+            add_results = await _process_add_operations(
+                drive_manager=drive_manager,
+                x_token=x_token,
+                to_add=comparison_result.to_add,
+                source_definition=comparison_result.source_definition,
+                target_definition=comparison_result.target_definition,
+                drive_type_str=drive_type_str,
+                sync_mode=sync_mode
+            )
+            operation_results["add"] = add_results
+            
+            add_failed_count = len(add_results.get("failed", []))
+            add_success_count = len(add_results.get("succeeded", []))
+            # logger.info(f"添加操作完成：成功 {add_success_count} 个，失败 {add_failed_count} 个")
+    
+    else:
+        # 增量同步和完全同步：可以并发执行，先添加后删除（保持原有逻辑）
+        # logger.info(f"{sync_mode}模式：并发执行添加和删除操作...")
+        
+        # 处理添加操作
+        if comparison_result.to_add:
+            add_results = await _process_add_operations(
+                drive_manager=drive_manager,
+                x_token=x_token,
+                to_add=comparison_result.to_add,
+                source_definition=comparison_result.source_definition,
+                target_definition=comparison_result.target_definition,
+                drive_type_str=drive_type_str,
+                sync_mode=sync_mode
+            )
+            operation_results["add"] = add_results
 
-    # 处理删除操作
-    if comparison_result.to_delete_from_target:
-        delete_results = await _process_delete_operations(
-            drive_manager=drive_manager,
-            x_token=x_token,
-            to_delete=comparison_result.to_delete_from_target,
-            drive_type_str=drive_type_str
-        )
-        operation_results["delete"] = delete_results
+        # 处理删除操作
+        if comparison_result.to_delete_from_target:
+            delete_results = await _process_delete_operations(
+                drive_manager=drive_manager,
+                x_token=x_token,
+                to_delete=comparison_result.to_delete_from_target,
+                drive_type_str=drive_type_str
+            )
+            operation_results["delete"] = delete_results
 
     return operation_results
 
@@ -1094,11 +1454,11 @@ async def _process_add_operations(
     ext_transfer_params: Optional[Dict[str, Any]] = None
 ) -> Dict[str, List[str]]:
     """
-    处理添加操作，包括创建目录和传输文件
+    处理添加操作，包括创建目录和传输文件（优化版）
     
     :param drive_manager: 网盘管理器实例
     :param x_token: 认证令牌
-    :param to_add: 要添加的文件/目录列表，每个元素包含source_item、target_full_path、target_parent_path等信息
+    :param to_add: 要添加的文件/目录列表，每个元素包含source_item、target_path等信息
     :param source_definition: 源定义
     :param target_definition: 目标定义
     :param drive_type_str: 网盘类型字符串
@@ -1107,27 +1467,6 @@ async def _process_add_operations(
     """
     operation_results = {'succeeded': [], 'failed': []}
 
-    # 🔧 在处理文件转存之前，先创建缺失的目录
-    # 从 to_add 列表中构建已知的目标路径映射
-    existing_target_path_to_file_id = {}
-    for add_item in to_add:
-        if add_item.get("target_parent_file_id") and add_item.get("target_parent_path"):
-            existing_target_path_to_file_id[add_item["target_parent_path"]] = add_item["target_parent_file_id"]
-    
-    try:
-        await _create_missing_target_directories(
-            drive_manager=drive_manager,
-            x_token=x_token,
-            to_add=to_add,
-            target_definition=target_definition,
-            drive_type_str=drive_type_str,
-            target_path_to_file_id=existing_target_path_to_file_id
-        )
-        logger.info(f"✅ 缺失目录创建完成，开始处理文件转存")
-    except Exception as e:
-        logger.error(f"❌ 创建缺失目录时发生错误: {e}")
-        # 即使创建目录失败，也继续处理文件转存
-
     # 提取source_item进行排序
     sorted_to_add = sorted(to_add, key=lambda add_item: add_item["source_item"].file_path)
 
@@ -1135,10 +1474,27 @@ async def _process_add_operations(
     files_to_transfer_by_target_parent: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for add_item in sorted_to_add:
         source_item = add_item["source_item"]
+        target_path = add_item.get("target_path", "")
+        
         # 覆盖模式处理所有类型的文件，其他模式只处理非文件夹
         if sync_mode == SyncMethod.OVERWRITE.value or not source_item.is_folder:
-            target_parent_path = add_item["target_parent_path"]
-            files_to_transfer_by_target_parent[target_parent_path].append(add_item)
+            # 计算父目录路径
+            if source_item.is_folder:
+                # 文件夹：父目录是其上级目录
+                parent_path = os.path.dirname(target_path).replace("\\", "/")
+            else:
+                # 文件：父目录是其所在目录
+                parent_path = os.path.dirname(target_path).replace("\\", "/")
+            
+            # 确保父目录路径不为空
+            if not parent_path or parent_path == ".":
+                parent_path = target_definition.file_path
+            
+            # 添加计算出的父目录信息到add_item中（兼容旧逻辑）
+            add_item["target_parent_path"] = parent_path
+            add_item["target_full_path"] = target_path
+            
+            files_to_transfer_by_target_parent[parent_path].append(add_item)
     
     for target_parent_dir, add_items_in_group in files_to_transfer_by_target_parent.items():
         if not add_items_in_group:
@@ -1189,10 +1545,10 @@ async def _process_add_operations(
                     # 将source_definition.ext_params中的所有参数合并到current_transfer_ext_params
                     current_transfer_ext_params.update(source_definition.ext_params)
             
-            # 获取目标目录的file_id（从比较结果中获取）
+            # 获取目标目录的file_id
             target_dir_file_id = None
             
-            # 1. 优先使用比较结果中的file_id
+            # 1. 优先使用比较结果中的file_id（兼容字段）
             if add_items_in_group:
                 target_dir_file_id = add_items_in_group[0].get("target_parent_file_id")
             
@@ -1204,7 +1560,7 @@ async def _process_add_operations(
                 error_msg = f"无法获取目标目录的file_id: {normalized_target_parent_dir}"
                 for add_item in add_items_in_group:
                     source_item = add_item["source_item"]
-                    target_path = add_item["target_full_path"]
+                    target_path = add_item.get("target_path", add_item.get("target_full_path", ""))
                     operation_results['failed'].append(f"TRANSFER_ERROR: {source_item.file_path} -> {target_path} - {error_msg}")
                 continue
             
@@ -1229,25 +1585,25 @@ async def _process_add_operations(
                     # 转存成功，记录所有文件为成功
                     for add_item in add_items_in_group:
                         source_item = add_item["source_item"]
-                        target_path = add_item["target_full_path"]
+                        target_path = add_item.get("target_path", add_item.get("target_full_path", ""))
                         operation_results['succeeded'].append(f"TRANSFER_SUCCESS: {source_item.file_path} -> {target_path}")
                 else:
                     # 转存失败，记录所有文件为失败
                     for add_item in add_items_in_group:
                         source_item = add_item["source_item"]
-                        target_path = add_item["target_full_path"]
+                        target_path = add_item.get("target_path", add_item.get("target_full_path", ""))
                         operation_results['failed'].append(f"TRANSFER_FAIL: {source_item.file_path} -> {target_path}")
             except Exception as ex_transfer:
                 # 记录所有文件传输失败
                 for add_item in add_items_in_group:
                     source_item = add_item["source_item"]
-                    target_path = add_item["target_full_path"]
+                    target_path = add_item.get("target_path", add_item.get("target_full_path", ""))
                     operation_results['failed'].append(f"TRANSFER_ERROR: {source_item.file_path} -> {target_path} - {str(ex_transfer)}")
         except Exception as ex_group:
             # 整组处理出错
             for add_item in add_items_in_group:
                 source_item = add_item["source_item"]
-                target_path = add_item["target_full_path"]
+                target_path = add_item.get("target_path", add_item.get("target_full_path", ""))
                 operation_results['failed'].append(f"TRANSFER_GROUP_ERROR: {source_item.file_path} -> {target_path} - {str(ex_group)}")
     
     return operation_results

@@ -25,15 +25,16 @@ from backend.database.db import CurrentSession
 router = APIRouter()
 
 
-@router.get("/list", summary="获取规则模板列表", dependencies=[DependsJwtAuth, DependsPagination])
+@router.get("/list", summary="获取规则模板列表", dependencies=[DependsJwtAuth])
 async def get_rule_template_list(
     db: CurrentSession,
-    page_params: Annotated[_CustomPageParams, DependsPagination],
     template_type: Annotated[TemplateType | None, Query(description="模板类型")] = None,
     category: Annotated[str | None, Query(description="分类")] = None,
     is_active: Annotated[bool | None, Query(description="是否启用")] = None,
     is_system: Annotated[bool | None, Query(description="是否系统内置模板")] = None,
     keyword: Annotated[str | None, Query(description="关键词搜索")] = None,
+    page: Annotated[int, Query(description="页码", ge=1)] = 1,
+    size: Annotated[int, Query(description="每页数量", ge=1, le=100)] = 10,
 ) -> ResponseModel:
     """获取规则模板列表"""
     params = GetRuleTemplateListParam(
@@ -49,8 +50,20 @@ async def get_rule_template_list(
     # 转换为列表项格式
     template_list = [RuleTemplateListItem.model_validate(template) for template in rule_templates]
     
-    # 这里需要使用正确的分页函数，但先简化返回
-    return response_base.success(data=template_list)
+    # 手动分页
+    total = len(template_list)
+    start = (page - 1) * size
+    end = start + size
+    items = template_list[start:end]
+    
+    # 返回分页数据
+    return response_base.success(data={
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "total_pages": (total + size - 1) // size,
+    })
 
 
 @router.get("/{template_id}", summary="获取规则模板详情", dependencies=[DependsJwtAuth])
@@ -87,6 +100,16 @@ async def update_rule_template(
     return response_base.success()
 
 
+@router.delete("/{template_id}", summary="删除规则模板", dependencies=[DependsJwtAuth])
+async def delete_rule_template(
+    db: CurrentSession,
+    template_id: Annotated[int, Path(description="模板ID")]
+) -> ResponseModel:
+    """删除规则模板"""
+    await rule_template_service.delete_rule_template(db, template_id)
+    return response_base.success()
+
+
 @router.delete("/", summary="批量删除规则模板", dependencies=[DependsJwtAuth])
 async def delete_rule_templates(
     db: CurrentSession,
@@ -108,7 +131,7 @@ async def use_rule_template(
     return response_base.success(data=template_detail)
 
 
-@router.patch("/{template_id}/toggle", summary="切换规则模板启用状态", dependencies=[DependsJwtAuth])
+@router.put("/{template_id}/toggle", summary="切换规则模板启用状态", dependencies=[DependsJwtAuth])
 async def toggle_rule_template_active(
     db: CurrentSession,
     template_id: Annotated[int, Path(description="模板ID")],

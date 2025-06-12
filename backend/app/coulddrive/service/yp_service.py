@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timedelta
 
 from backend.app.coulddrive.schema.enum import RecursionSpeed, DriveType
-from backend.app.coulddrive.schema.file import BaseFileInfo, MkdirParam, ListFilesParam, ListShareFilesParam, RemoveParam, TransferParam, RelationshipParam, UserInfoParam
+from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, MkdirParam, ListFilesParam, ListShareFilesParam, ListShareInfoParam, RemoveParam, TransferParam, RelationshipParam, UserInfoParam
 from backend.app.coulddrive.schema.user import BaseUserInfo, RelationshipItem
 
 
@@ -229,6 +229,15 @@ class BaseDriveClient:
     ) -> List[BaseFileInfo]:
         """
         获取分享来源的文件列表
+        
+        :param params: 分享文件列表查询参数
+        :param kwargs: 其他关键字参数
+        """
+        return []
+    
+    async def get_share_info(self, params: ListShareInfoParam, **kwargs: Any) -> List[BaseShareInfo]:
+        """
+        获取分享详情列表
         
         :param params: 分享文件列表查询参数
         :param kwargs: 其他关键字参数
@@ -463,6 +472,10 @@ class BaseDrive:
     async def get_share_list(self, x_token: str, params: 'ListShareFilesParam', **kwargs) -> List[BaseFileInfo]:
         """获取分享文件列表"""
         return await self.call_method(x_token, params.drive_type, "get_share_list", params, **kwargs)
+    
+    async def get_share_info(self, x_token: str, params: 'ListShareFilesParam', **kwargs) -> List[BaseShareInfo]:
+        """获取分享详情列表"""
+        return await self.call_method(x_token, params.drive_type, "get_share_info", params, **kwargs)
     
     async def create_mkdir(self, x_token: str, params: 'MkdirParam', **kwargs) -> BaseFileInfo:
         """创建文件夹"""

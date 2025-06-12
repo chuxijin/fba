@@ -67,7 +67,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         """
         stmt = await self.get_list(type, is_valid)
         # 避免加载关联数据，防止懒加载导致的异步问题
-        stmt = stmt.options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches))
+        stmt = stmt.options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches), noload(DriveAccount.resources))
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -78,7 +78,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param db: 数据库会话
         :return:
         """
-        stmt = select(self.model).options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches))
+        stmt = select(self.model).options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches), noload(DriveAccount.resources))
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -93,7 +93,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         stmt = select(self.model).where(
             self.model.type == type, 
             self.model.is_valid == True
-        ).options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches))
+        ).options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches), noload(DriveAccount.resources))
         result = await db.execute(stmt)
         return result.scalars().all()
 

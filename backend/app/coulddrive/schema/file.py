@@ -44,10 +44,20 @@ class BaseFileInfo(SchemaBase):
 class BaseShareInfo(SchemaBase):
     """分享信息"""
     
-    share_id: str = Field("", description="分享ID")
     title: str = Field("", description="分享标题")
-    share_url: str = Field("", description="分享链接")
-    created_at: datetime | None = Field(None, description="创建时间")
+    share_id: str = Field("", description="分享ID")
+    pwd_id: str = Field("", description="密码ID")
+    url: str = Field("", description="分享链接")
+    expired_type: int = Field(0, description="过期类型(0永久 1定时)")
+    view_count: int = Field(0, description="浏览量")
+    expired_at: datetime | None = Field(None, description="过期时间")
+    expired_left: int | None = Field(None, description="剩余过期时间")
+    audit_status: int = Field(0, description="审核状态(0待审核 1通过 2拒绝)")
+    status: int = Field(1, description="状态(0停用 1正常)")
+    file_id: str | None = Field(None, description="文件ID")
+    file_only_num: str | None = Field(None, description="文件唯一编号")
+    file_size: int | None = Field(None, description="文件大小")
+    path_info: str | None = Field(None, description="路径信息")
 
 
 class ExclusionRuleDefinition(SchemaBase):
@@ -160,6 +170,37 @@ class ListShareFilesParam(SchemaBase):
     recursion_speed: RecursionSpeed = Field(RecursionSpeed.NORMAL, description="递归速度")
     exclude_rules: str | None = Field(None, description="排除规则JSON")
 
+class ListShareInfoParam(SchemaBase):
+    """分享详情列表参数"""
+
+    drive_type: DriveType = Field(..., description="网盘类型")
+    source_type: str = Field(..., description="分享来源类型")
+    source_id: str = Field("", description="分享来源ID，local类型时可为空")
+    page: int = Field(1, description="页码，默认为1")
+    size: int = Field(50, description="每页数量，默认为50")
+    order_field: str = Field("created_at", description="排序字段，默认为created_at")
+    order_type: str = Field("desc", description="排序类型，默认为desc")
+
+    @field_validator('source_type')
+    @classmethod
+    def validate_source_type(cls, v: str) -> str:
+        """验证分享来源类型"""
+        if v not in ['link', 'local']:
+            raise ValueError("分享来源类型必须是 'link' 或 'local'")
+        return v
+    
+    @field_validator('source_id')
+    @classmethod
+    def validate_source_id(cls, v: str, info) -> str:
+        """验证分享来源ID"""
+        # 获取source_type的值
+        source_type = info.data.get('source_type') if info.data else None
+        
+        # 如果是link类型，source_id不能为空
+        if source_type == 'link' and not v:
+            raise ValueError("当source_type为'link'时，source_id不能为空")
+        
+        return v
 
 class MkdirParam(SchemaBase):
     """创建文件夹参数"""

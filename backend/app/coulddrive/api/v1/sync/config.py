@@ -76,6 +76,7 @@ async def create_sync_config(
     dependencies=[DependsJwtAuth]
 )
 async def update_sync_config(
+    request: Request,
     config_id: int,
     db: CurrentSession,
     obj: UpdateSyncConfigParam,
@@ -83,6 +84,7 @@ async def update_sync_config(
     """
     更新同步配置
     
+    :param request: 请求对象
     :param config_id: 配置ID
     :param db: 数据库会话
     :param obj: 更新参数
@@ -91,6 +93,9 @@ async def update_sync_config(
     db_obj = await sync_config_dao.select_model(db, config_id)
     if not db_obj:
         return response_base.fail(message=f"同步配置 {config_id} 不存在")
+    
+    # 设置更新者ID
+    obj.updated_by = request.user.id
     
     updated_config = await sync_config_dao.update(db, db_obj=db_obj, obj_in=obj)
     return response_base.success(data=updated_config)
