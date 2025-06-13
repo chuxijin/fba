@@ -193,6 +193,21 @@ class ResourceService:
                 
                 # 重新获取更新后的资源
                 updated_resource = await resource_dao.get(db, existing_resource.id)
+                
+                # 如果浏览量有变化且有pwd_id，记录浏览量历史
+                if (updated_resource.pwd_id and 
+                    'view_count' in update_data and 
+                    update_data['view_count'] != existing_resource.view_count):
+                    try:
+                        history_param = CreateResourceViewHistoryParam(
+                            pwd_id=updated_resource.pwd_id,
+                            view_count=updated_resource.view_count
+                        )
+                        await resource_view_history_dao.create(db, history_param)
+                    except Exception as e:
+                        # 记录浏览量历史失败不影响资源创建
+                        pass
+                
                 return GetResourceDetail.model_validate(updated_resource)
 
         # 检查分享ID是否已存在，如果存在则更新现有记录
@@ -219,6 +234,21 @@ class ResourceService:
                 
                 # 重新获取更新后的资源
                 updated_resource = await resource_dao.get(db, existing_resource.id)
+                
+                # 如果浏览量有变化且有pwd_id，记录浏览量历史
+                if (updated_resource.pwd_id and 
+                    'view_count' in update_data and 
+                    update_data['view_count'] != existing_resource.view_count):
+                    try:
+                        history_param = CreateResourceViewHistoryParam(
+                            pwd_id=updated_resource.pwd_id,
+                            view_count=updated_resource.view_count
+                        )
+                        await resource_view_history_dao.create(db, history_param)
+                    except Exception as e:
+                        # 记录浏览量历史失败不影响资源创建
+                        pass
+                
                 return GetResourceDetail.model_validate(updated_resource)
 
         # 创建新的资源记录
@@ -226,6 +256,18 @@ class ResourceService:
         db.add(resource)
         await db.commit()
         await db.refresh(resource)
+        
+        # 记录初始浏览量历史（如果有pwd_id）
+        if resource.pwd_id:
+            try:
+                history_param = CreateResourceViewHistoryParam(
+                    pwd_id=resource.pwd_id,
+                    view_count=resource.view_count or 0
+                )
+                await resource_view_history_dao.create(db, history_param)
+            except Exception as e:
+                # 记录浏览量历史失败不影响资源创建
+                pass
         
         return GetResourceDetail.model_validate(resource)
 
@@ -304,6 +346,20 @@ class ResourceService:
         updated_resource = await resource_dao.get(db, resource_id)
         if not updated_resource:
             raise NotFoundError(msg="更新后获取资源失败")
+        
+        # 如果浏览量有变化且有pwd_id，记录浏览量历史
+        if (updated_resource.pwd_id and 
+            'view_count' in update_data and 
+            update_data['view_count'] != resource.view_count):
+            try:
+                history_param = CreateResourceViewHistoryParam(
+                    pwd_id=updated_resource.pwd_id,
+                    view_count=updated_resource.view_count
+                )
+                await resource_view_history_dao.create(db, history_param)
+            except Exception as e:
+                # 记录浏览量历史失败不影响资源更新
+                pass
             
         return GetResourceDetail.model_validate(updated_resource)
 
@@ -364,6 +420,18 @@ class ResourceService:
         if update_fields:
             update_param = UpdateResourceParam(**update_fields)
             await resource_dao.update(db, resource_id, update_param, updated_by)
+            
+            # 如果浏览量有变化且有pwd_id，记录浏览量历史
+            if 'view_count' in update_fields and resource.pwd_id:
+                try:
+                    history_param = CreateResourceViewHistoryParam(
+                        pwd_id=resource.pwd_id,
+                        view_count=update_fields['view_count']
+                    )
+                    await resource_view_history_dao.create(db, history_param)
+                except Exception as e:
+                    # 记录浏览量历史失败不影响分享信息刷新
+                    pass
         
         # 返回更新后的资源详情
         return await ResourceService.get_resource_detail(db, resource_id)

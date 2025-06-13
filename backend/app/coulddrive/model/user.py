@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import String, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.common.model import Base, id_key
+from backend.common.model import Base, UserMixin, id_key
 
 if TYPE_CHECKING:
     from backend.app.coulddrive.model.filesync import SyncConfig
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from backend.app.coulddrive.model.resource import Resource
 
 
-class DriveAccount(Base):
+class DriveAccount(Base, UserMixin):
     """网盘账户表"""
     
     __tablename__ = "yp_user"
@@ -23,7 +23,6 @@ class DriveAccount(Base):
     id: Mapped[id_key] = mapped_column(init=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="网盘类型")
     user_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True, comment="用户ID")
-    created_by: Mapped[int] = mapped_column(sort_order=998, comment='创建者')
     
     # 可选字段
     username: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="用户名")

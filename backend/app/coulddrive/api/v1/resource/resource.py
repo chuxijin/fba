@@ -156,7 +156,7 @@ async def get_resource_view_trend(
 async def create_resource(
     request: Request,
     db: CurrentSession,
-    params: Annotated[CreateResourceParam, Depends()]
+    params: CreateResourceParam
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     创建资源
@@ -279,7 +279,7 @@ async def create_resource_view_history(
     request: Request,
     db: CurrentSession,
     resource_id: Annotated[int, Path(description='资源ID')],
-    params: Annotated[CreateResourceViewHistoryParam, Depends()]
+    params: CreateResourceViewHistoryParam
 ) -> ResponseSchemaModel[GetResourceViewHistoryDetail]:
     """
     记录资源浏览量
@@ -328,7 +328,7 @@ async def update_resource_view_count(
     request: Request,
     db: CurrentSession,
     resource_id: Annotated[int, Path(description='资源ID')],
-    params: Annotated[UpdateResourceViewCountParam, Depends()]
+    params: UpdateResourceViewCountParam
 ) -> ResponseModel:
     """
     更新资源浏览量

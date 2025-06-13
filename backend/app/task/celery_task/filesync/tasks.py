@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name='check_and_execute_filesync_cron_tasks')
-def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
+async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
     """
     检查并执行文件同步定时任务
     
@@ -24,10 +24,8 @@ def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
     
     :return: 执行结果统计
     """
-    import asyncio
-    
     try:
-        result = asyncio.run(_check_and_execute_filesync_cron_tasks())
+        result = await _check_and_execute_filesync_cron_tasks()
         logger.info(f"定时任务检查完成: 检查 {result['checked_configs']} 个配置，"
                    f"执行 {result['executed_tasks']} 个，"
                    f"失败 {result['failed_tasks']} 个，"
@@ -154,17 +152,15 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
 
 
 @celery_app.task(name='execute_filesync_task_by_config_id')
-def execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
+async def execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
     """
     根据配置ID执行单个文件同步任务
     
     :param config_id: 同步配置ID
     :return: 执行结果
     """
-    import asyncio
-    
     try:
-        return asyncio.run(_execute_filesync_task_by_config_id(config_id))
+        return await _execute_filesync_task_by_config_id(config_id)
     except Exception as e:
         logger.error(f"执行配置 {config_id} 同步任务失败: {str(e)}")
         return {
@@ -203,16 +199,14 @@ async def _execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
 
 
 @celery_app.task(name='get_filesync_configs_with_cron')
-def get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
+async def get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
     """
     获取所有设置了cron表达式的同步配置
     
     :return: 配置列表
     """
-    import asyncio
-    
     try:
-        return asyncio.run(_get_filesync_configs_with_cron())
+        return await _get_filesync_configs_with_cron()
     except Exception as e:
         logger.error(f"获取cron配置列表失败: {str(e)}")
         return []
