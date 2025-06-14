@@ -26,10 +26,10 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
     """
     try:
         result = await _check_and_execute_filesync_cron_tasks()
-        logger.info(f"定时任务检查完成: 检查 {result['checked_configs']} 个配置，"
-                   f"执行 {result['executed_tasks']} 个，"
-                   f"失败 {result['failed_tasks']} 个，"
-                   f"跳过 {result['skipped_tasks']} 个")
+        # logger.info(f"定时任务检查完成: 检查 {result['checked_configs']} 个配置，"
+        #            f"执行 {result['executed_tasks']} 个，"
+        #            f"失败 {result['failed_tasks']} 个，"
+        #            f"跳过 {result['skipped_tasks']} 个")
         return result
             
     except Exception as e:
@@ -110,7 +110,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                         })
                         continue
                     
-                    logger.info(f"执行配置 {config.id} ({config.remark}) 的同步任务")
+                    # logger.info(f"执行配置 {config.id} ({config.remark}) 的同步任务")
                     
                     # 执行同步任务
                     sync_result = await file_sync_service.execute_sync_by_config_id(config.id, db)
@@ -124,7 +124,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                             "stats": sync_result.get("stats"),
                             "elapsed_time": sync_result.get("elapsed_time")
                         })
-                        logger.info(f"配置 {config.id} 同步任务执行成功")
+                        logger.info(f"配置 {config.remark} 执行成功")
                     else:
                         result["failed_tasks"] += 1
                         result["execution_details"].append({
@@ -182,7 +182,7 @@ async def _execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
             result = await file_sync_service.execute_sync_by_config_id(config_id, db)
             
             if result.get("success"):
-                logger.info(f"配置 {config_id} 同步任务执行成功")
+                pass
             else:
                 logger.error(f"配置 {config_id} 同步任务执行失败: {result.get('error')}")
             

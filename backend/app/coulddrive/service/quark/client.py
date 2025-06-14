@@ -319,7 +319,7 @@ class QuarkClient(BaseDriveClient):
                 )
                 
                 if cache_fresh:
-                    self.logger.info(f"快速模式：从缓存获取文件列表 {file_path}")
+                    # self.logger.info(f"快速模式：从缓存获取文件列表 {file_path}")
                     cached_files = await file_cache_service.get_cached_children_as_file_info(
                         db, parent_id=file_id or file_path, drive_account_id=drive_account_id
                     )
@@ -330,7 +330,8 @@ class QuarkClient(BaseDriveClient):
                     
                     return cached_files
                 else:
-                    self.logger.info(f"快速模式：缓存过期，回退到API获取 {file_path}")
+                    # self.logger.info(f"快速模式：缓存过期，回退到API获取 {file_path}")
+                    pass
             except Exception as e:
                 self.logger.warning(f"快速模式缓存获取失败，回退到API获取: {e}")
 
@@ -507,7 +508,7 @@ class QuarkClient(BaseDriveClient):
                     files=drive_files_list,
                     cache_version=cache_version
                 )
-                self.logger.info(f"自动缓存写入完成: {len(drive_files_list)} 个文件")
+                # self.logger.info(f"自动缓存写入完成: {len(drive_files_list)} 个文件")
             except Exception as e:
                 self.logger.warning(f"自动缓存写入失败: {e}")
 
@@ -981,10 +982,10 @@ class QuarkClient(BaseDriveClient):
         # 确保target_path使用正斜杠
         target_path = target_path.replace("\\", "/")
         
-        self.logger.info(
-            f"夸克网盘转存请求: source_type='{source_type}', source_id='{source_id}', "
-            f"source_path='{source_path}', target_path='{target_path}', target_id='{target_id}', file_ids='{file_ids}'"
-        )
+        # self.logger.info(
+        #     f"夸克网盘转存请求: source_type='{source_type}', source_id='{source_id}', "
+        #     f"source_path='{source_path}', target_path='{target_path}', target_id='{target_id}', file_ids='{file_ids}'"
+        # )
 
         if source_type == "link":
             # 处理分享链接转存
@@ -998,7 +999,7 @@ class QuarkClient(BaseDriveClient):
                     self.logger.error("转存失败: 未提供stoken，无法进行转存")
                     return False
                 
-                self.logger.info(f"使用已有的stoken: {stoken[:20]}...")
+                # self.logger.info(f"使用已有的stoken: {stoken[:20]}...")
                 
                 # 获取目标目录的file_id
                 to_pdir_fid = target_id or combined_kwargs.get("to_pdir_fid")
@@ -1056,8 +1057,8 @@ class QuarkClient(BaseDriveClient):
                     self.logger.error("转存失败: 未提供share_fid_token信息，无法进行分享文件转存")
                     return False
                 
-                self.logger.info(f"转存参数: to_pdir_fid={to_pdir_fid}, pdir_fid={pdir_fid}")
-                self.logger.info(f"share_fid_tokens: {share_fid_tokens}")
+                # self.logger.info(f"转存参数: to_pdir_fid={to_pdir_fid}, pdir_fid={pdir_fid}")
+                # self.logger.info(f"share_fid_tokens: {share_fid_tokens}")
                 
                 # 调用API保存分享文件
                 result = await self._quarkapi.save_shared_files(
@@ -1078,7 +1079,7 @@ class QuarkClient(BaseDriveClient):
                 
                 if task_id:
                     # 查询任务状态
-                    self.logger.info(f"转存任务已创建，任务ID: {task_id}")
+                    # self.logger.info(f"转存任务已创建，任务ID: {task_id}")
                     
                     # 等待任务完成（可选）
                     if combined_kwargs.get("wait_for_completion", False):
@@ -1091,7 +1092,7 @@ class QuarkClient(BaseDriveClient):
                                 task_status = task_result.status
                                 
                                 if task_status == 2:  # 任务完成
-                                    self.logger.info(f"转存任务完成: {task_id}")
+                                    # self.logger.info(f"转存任务完成: {task_id}")
                                     return True
                                 elif task_status == 3:  # 任务失败
                                     self.logger.error(f"转存任务失败: {task_id}")

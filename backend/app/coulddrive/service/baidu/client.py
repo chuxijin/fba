@@ -293,7 +293,7 @@ class BaiduClient(BaseDriveClient):
                 )
                 
                 if cache_fresh:
-                    self.logger.info(f"快速模式：从缓存获取文件列表 {file_path}")
+                    # self.logger.info(f"快速模式：从缓存获取文件列表 {file_path}")
                     cached_files = await file_cache_service.get_cached_children_as_file_info(
                         db, parent_id=file_id or file_path, drive_account_id=drive_account_id
                     )
@@ -304,7 +304,8 @@ class BaiduClient(BaseDriveClient):
                     
                     return cached_files
                 else:
-                    self.logger.info(f"快速模式：缓存过期，回退到API获取 {file_path}")
+                    # self.logger.info(f"快速模式：缓存过期，回退到API获取 {file_path}")
+                    pass
             except Exception as e:
                 self.logger.warning(f"快速模式缓存获取失败，回退到API获取: {e}")
 
@@ -338,7 +339,7 @@ class BaiduClient(BaseDriveClient):
                 parent_id=str(initial_parent_id) if initial_parent_id is not None else ""
             )
             if item_filter and item_filter.should_exclude(temp_df_for_filter):
-                self.logger.info(f"[Filter] 排除初始磁盘文件: {temp_df_for_filter.file_path}")
+                # self.logger.info(f"[Filter] 排除初始磁盘文件: {temp_df_for_filter.file_path}")
                 continue
             items_to_process.append((item_dict_initial, initial_parent_id))
         
@@ -462,7 +463,7 @@ class BaiduClient(BaseDriveClient):
                     files=drive_files_list,
                     cache_version=cache_version
                 )
-                self.logger.info(f"自动缓存写入完成: {len(drive_files_list)} 个文件")
+                # self.logger.info(f"自动缓存写入完成: {len(drive_files_list)} 个文件")
             except Exception as e:
                 self.logger.warning(f"自动缓存写入失败: {e}")
         
@@ -612,7 +613,7 @@ class BaiduClient(BaseDriveClient):
                 return False # 或者 True，因为没有操作也算成功？
 
             if not paths_for_api_call:
-                self.logger.info("处理输入后，没有可供删除的有效路径。")
+                # self.logger.info("处理输入后，没有可供删除的有效路径。")
                 # 如果初始输入非空但最终没有可操作路径（例如，所有路径都不存在并被跳过），
                 # 返回True表示操作完成且无错误，或False表示未达到预期删除效果。
                 # 此处返回True表示"尝试删除，但没有符合条件的目标"。
@@ -620,7 +621,7 @@ class BaiduClient(BaseDriveClient):
 
             # 使用收集到的所有有效路径，一次性调用底层API
             await self._baidupcs.remove(*paths_for_api_call) 
-            self.logger.info(f"已成功请求删除以下路径: {paths_for_api_call}")
+            # self.logger.info(f"已成功请求删除以下路径: {paths_for_api_call}")
             if file_ids: # 如果也提供了ID，可以一起记录，方便追踪
                  self.logger.debug(f"对应的 file_ids (如果提供): {file_ids}")
 
@@ -806,7 +807,7 @@ class BaiduClient(BaseDriveClient):
         
         shared_paths_list = self.shared_paths(shared_url)
         if not shared_paths_list:
-            self.logger.info("共享链接中没有文件或访问失败后未能正确设置会话。")
+            # self.logger.info("共享链接中没有文件或访问失败后未能正确设置会话。")
             return
 
         shared_paths_deque = deque(shared_paths_list)
@@ -840,7 +841,7 @@ class BaiduClient(BaseDriveClient):
                 await self.transfer_shared_paths(
                     rd, [shared_path.fs_id], uk, share_id_val, bdstoken_val, shared_url
                 )
-                self.logger.info(f"save: {shared_path.path} to {rd}")
+                # self.logger.info(f"save: {shared_path.path} to {rd}")
                 continue
             except BaiduApiError as err:
                 if err.error_code == 12:
@@ -1012,7 +1013,7 @@ class BaiduClient(BaseDriveClient):
         if iteration_count >= max_iterations:
             self.logger.warning(f"达到最大迭代次数 {max_iterations}，强制结束循环")
         
-        self.logger.info(f"获取 {relationship_type} 列表完成，共 {len(all_items)} 项，迭代 {iteration_count} 次")
+        # self.logger.info(f"获取 {relationship_type} 列表完成，共 {len(all_items)} 项，迭代 {iteration_count} 次")
         return all_items
 
     async def get_relationship_share_list(self,relationship_type: str,identifier: str,type: int = 2,**kwargs) -> Dict:
@@ -1143,7 +1144,7 @@ class BaiduClient(BaseDriveClient):
         normalized_file_path = file_path.strip('/')
         if not normalized_file_path:
             # 当 file_path 为根路径 "/" 时，返回所有分享的根项目
-            self.logger.info(f"Requesting root share items list for {source_type} {source_id}")
+            # self.logger.info(f"Requesting root share items list for {source_type} {source_id}")
             
             # 1. Get all share events/messages
             share_events_response = await self.get_relationship_share_list(
@@ -1163,7 +1164,7 @@ class BaiduClient(BaseDriveClient):
                 share_messages = records_obj.get("msg_list", [])
             
             if not share_messages:
-                self.logger.info(f"No share messages found for {source_type} {source_id}.")
+                # self.logger.info(f"No share messages found for {source_type} {source_id}.")
                 return []
 
             # 2. 为每个分享事件创建根项目 BaseFileInfo
@@ -1235,7 +1236,7 @@ class BaiduClient(BaseDriveClient):
             share_messages = records_obj.get("msg_list", [])
         
         if not share_messages:
-            self.logger.info(f"No share messages found for {source_type} {source_id}.")
+            # self.logger.info(f"No share messages found for {source_type} {source_id}.")
             return []
 
         target_share_info = None
@@ -1501,10 +1502,10 @@ class BaiduClient(BaseDriveClient):
         # 确保target_path使用正斜杠
         target_path = target_path.replace("\\", "/")
         
-        self.logger.info(
-            f"转存请求: source_type='{source_type}', source_id='{source_id}', "
-            f"source_path='{source_path}', target_path='{target_path}', file_ids='{file_ids}'"
-        )
+        # self.logger.info(
+        #     f"转存请求: source_type='{source_type}', source_id='{source_id}', "
+        #     f"source_path='{source_path}', target_path='{target_path}', file_ids='{file_ids}'"
+        # )
 
         # 确保用户ID可用
         current_user_id = self.user_id
@@ -1577,7 +1578,7 @@ class BaiduClient(BaseDriveClient):
                     **api_kwargs
                 )
                 if result.get("errno") == 0:
-                    self.logger.info(f"source_type '{source_type}' 转存成功. API 响应: {result}")
+                    # self.logger.info(f"source_type '{source_type}' 转存成功. API 响应: {result}")
                     return True
                 else:
                     self.logger.error(f"source_type '{source_type}' 转存失败. API 响应: {result}")

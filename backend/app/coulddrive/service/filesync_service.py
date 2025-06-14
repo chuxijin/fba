@@ -107,7 +107,7 @@ class FileSyncService:
             Dict[str, Any]: 同步结果
         """
         start_time = time.time()
-        logger.info(f"开始执行同步任务: {sync_config.id} - {sync_config.remark or '未命名任务'}")
+        # logger.info(f"开始执行同步任务: {sync_config.id} - {sync_config.remark or '未命名任务'}")
         
         # 创建同步任务记录
         sync_task = None
@@ -122,7 +122,7 @@ class FileSyncService:
         
         account_schema: Optional[GetDriveAccountDetail] = None
         
-        logger.info(f"尝试根据user_id={sync_config.user_id}从数据库获取账号")
+                    # logger.info(f"尝试根据user_id={sync_config.user_id}从数据库获取账号")
         if db:
             account_schema = await drive_account_dao.get(db, sync_config.user_id)
         else:
@@ -138,7 +138,7 @@ class FileSyncService:
                 "elapsed_time": time.time() - start_time
             }
         
-        logger.info(f"成功获取到账号: {account_schema.username or account_schema.user_id} (ID: {account_schema.id})")
+                    # logger.info(f"成功获取到账号: {account_schema.username or account_schema.user_id} (ID: {account_schema.id})")
         
         # 验证账号和配置关系
         if sync_config.user_id != account_schema.id:
@@ -414,7 +414,7 @@ class FileSyncService:
             await sync_config_dao.update(db, db_obj=sync_config, obj_in=update_param)
             # 立即刷新数据库会话，确保last_sync更新被持久化
             await db.refresh(sync_config)
-            logger.info(f"配置 {sync_config.id} 开始执行同步任务，last_sync已更新为: {execution_start_time}")
+            # logger.info(f"配置 {sync_config.id} 开始执行同步任务，last_sync已更新为: {execution_start_time}")
         except Exception as update_error:
             logger.error(f"配置 {sync_config.id} 更新last_sync时发生错误: {str(update_error)}")
             return {
@@ -1013,13 +1013,13 @@ async def _create_directories_intelligently(
     missing_dirs = [d for d in required_dirs if d not in complete_path_mapping]
     
     if not missing_dirs:
-        logger.info("所有需要的目录都已存在，无需创建新目录")
+        # logger.info("所有需要的目录都已存在，无需创建新目录")
         return complete_path_mapping
     
     # 3. 按深度排序，确保先创建父目录
     sorted_dirs = sorted(missing_dirs, key=lambda x: x.count('/'))
     
-    logger.info(f"需要创建 {len(sorted_dirs)} 个目录: {sorted_dirs}")
+    # logger.info(f"需要创建 {len(sorted_dirs)} 个目录: {sorted_dirs}")
     
     # 4. 逐个创建目录并更新映射
     created_count = 0
@@ -1064,7 +1064,7 @@ async def _create_directories_intelligently(
             if new_dir_info and hasattr(new_dir_info, 'file_id'):
                 complete_path_mapping[normalized_dir_path] = new_dir_info.file_id
                 created_count += 1
-                logger.info(f"创建目录成功: {normalized_dir_path} (file_id: {new_dir_info.file_id})")
+                # logger.info(f"创建目录成功: {normalized_dir_path} (file_id: {new_dir_info.file_id})")
             else:
                 logger.warning(f"创建目录失败: {normalized_dir_path}")
                 
@@ -1072,7 +1072,7 @@ async def _create_directories_intelligently(
             logger.error(f"创建目录 {dir_path} 时发生错误: {e}")
             continue
     
-    logger.info(f"智能目录创建完成，成功创建 {created_count}/{len(sorted_dirs)} 个目录")
+    # logger.info(f"智能目录创建完成，成功创建 {created_count}/{len(sorted_dirs)} 个目录")
     return complete_path_mapping
 
 async def _create_missing_target_directories(
@@ -1182,7 +1182,8 @@ async def _get_list_for_compare_op(
         result_list = [item for item in result_list if not item_filter_instance.should_exclude(item)]
         filtered_count = original_count - len(result_list)
         if filtered_count > 0:
-            logger.info(f"[ItemFilter] 在服务层额外过滤了 {filtered_count} 个项目")
+            # logger.info(f"[ItemFilter] 在服务层额外过滤了 {filtered_count} 个项目")
+            pass
     
     elapsed_time = time.time() - start_time
     return result_list, elapsed_time

@@ -204,18 +204,7 @@ class BaiduApi:
         #     assert headers
         #     headers["Content-Type"] = data.content_type
 
-        # 网络请求调试信息
-        from backend.common.log import log
-        log.info(f"🌐 [网络请求] {method.value} {url}")
-        if params:
-            log.info(f"🌐 [请求参数] {params}")
-        if data and not files:  # 不打印文件上传的data
-            if isinstance(data, str) and len(data) > 500:
-                log.info(f"🌐 [请求数据] {data[:500]}... (截断)")
-            else:
-                log.info(f"🌐 [请求数据] {data}")
-        if files:
-            log.info(f"🌐 [上传文件] {list(files.keys())}")
+
 
         try:
             resp = self._session.request(
@@ -228,27 +217,8 @@ class BaiduApi:
                 **kwargs,
             )
             
-            # 网络响应调试信息
-            log.info(f"🌐 [响应状态] {resp.status_code}")
-            try:
-                resp_json = resp.json()
-                if isinstance(resp_json, dict):
-                    # 只显示关键字段，避免日志过长
-                    key_fields = ["errno", "error_code", "error_msg", "message", "list", "info"]
-                    summary = {k: v for k, v in resp_json.items() if k in key_fields}
-                    if "list" in summary and isinstance(summary["list"], list):
-                        summary["list"] = f"列表包含 {len(summary['list'])} 个项目"
-                    log.info(f"🌐 [响应摘要] {summary}")
-                else:
-                    log.info(f"🌐 [响应内容] {resp_json}")
-            except:
-                # 如果不是JSON响应，显示文本内容的前200字符
-                text_content = resp.text[:200]
-                log.info(f"🌐 [响应文本] {text_content}{'...' if len(resp.text) > 200 else ''}")
-            
             return resp
         except Exception as err:
-            log.error(f"🌐 [请求失败] {method.value} {url} - {err}")
             raise BaiduApiError("BaiduApi._request", cause=err)
 
     async def _request_get(
