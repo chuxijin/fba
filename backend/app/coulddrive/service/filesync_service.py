@@ -1427,10 +1427,33 @@ async def apply_comparison_operations(
             add_success_count = len(add_results.get("succeeded", []))
             # logger.info(f"添加操作完成：成功 {add_success_count} 个，失败 {add_failed_count} 个")
     
+    elif sync_mode == SyncMethod.FULL.value:
+        # 完全同步：必须先完成所有删除操作，再进行转存操作
+        # 1. 先处理删除操作（串行）
+        if comparison_result.to_delete_from_target:
+            delete_results = await _process_delete_operations(
+                drive_manager=drive_manager,
+                x_token=x_token,
+                to_delete=comparison_result.to_delete_from_target,
+                drive_type_str=drive_type_str
+            )
+            operation_results["delete"] = delete_results
+
+        # 2. 再处理添加操作（串行）
+        if comparison_result.to_add:
+            add_results = await _process_add_operations(
+                drive_manager=drive_manager,
+                x_token=x_token,
+                to_add=comparison_result.to_add,
+                source_definition=comparison_result.source_definition,
+                target_definition=comparison_result.target_definition,
+                drive_type_str=drive_type_str,
+                sync_mode=sync_mode
+            )
+            operation_results["add"] = add_results
+    
     else:
-        # 增量同步和完全同步：可以并发执行，先添加后删除（保持原有逻辑）
-        # logger.info(f"{sync_mode}模式：并发执行添加和删除操作...")
-        
+        # 增量同步：只处理添加操作（串行）
         # 处理添加操作
         if comparison_result.to_add:
             add_results = await _process_add_operations(
@@ -1509,6 +1532,7 @@ async def _process_add_operations(
             
             files_to_transfer_by_target_parent[parent_path].append(add_item)
     
+    # 串行处理每个目标父目录的转存操作
     for target_parent_dir, add_items_in_group in files_to_transfer_by_target_parent.items():
         if not add_items_in_group:
             continue
@@ -1591,7 +1615,7 @@ async def _process_add_operations(
                     ext=current_transfer_ext_params
                 )
                 
-                # 使用统一架构的transfer方法
+                # 使用统一架构的transfer方法（串行执行，等待完成）
                 transfer_success = await drive_manager.transfer_files(x_token, transfer_params)
                 
                 if transfer_success:
@@ -1618,6 +1642,10 @@ async def _process_add_operations(
                 source_item = add_item["source_item"]
                 target_path = add_item.get("target_path", add_item.get("target_full_path", ""))
                 operation_results['failed'].append(f"TRANSFER_GROUP_ERROR: {source_item.file_path} -> {target_path} - {str(ex_group)}")
+        
+        # 转存请求之间暂停2秒
+        import asyncio
+        await asyncio.sleep(2)
     
     return operation_results
 
@@ -1638,37 +1666,48 @@ async def _process_delete_operations(
     """
     operation_results = {'succeeded': [], 'failed': []}
     
-    # 收集所有要删除的文件路径和ID
-    file_paths = []
-    file_ids = []
-    
+    # 按文件夹分组进行串行删除
+    files_by_parent = defaultdict(list)
     for item in to_delete:
-        if item.file_path:
-            # 确保路径是以/开头的绝对路径
-            path = item.file_path
-            if not path.startswith("/"):
-                path = "/" + path
-            file_paths.append(path)
-        if item.file_id:
-            file_ids.append(item.file_id)
+        parent_path = os.path.dirname(item.file_path).replace("\\", "/")
+        files_by_parent[parent_path].append(item)
     
-    # 构建 RemoveParam
-    try:
-        remove_params = RemoveParam(
-            drive_type=drive_type_str,
-            file_paths=file_paths,
-            file_ids=file_ids
-        )
+    # 串行处理每个文件夹的删除操作
+    for parent_path, items_in_folder in files_by_parent.items():
+        file_paths = []
+        file_ids = []
         
-        result = await drive_manager.remove_files(x_token, remove_params)
-        if result:
-            for item in to_delete:
-                operation_results['succeeded'].append(f"DELETE_SUCCESS: {item.file_path} (ID: {item.file_id})")
-        else:
-            for item in to_delete:
-                operation_results['failed'].append(f"DELETE_FAILED: {item.file_path} (ID: {item.file_id})")
-    except Exception as e:
-        for item in to_delete:
-            operation_results['failed'].append(f"DELETE_ERROR: {item.file_path} (ID: {item.file_id}) - {str(e)}")
+        for item in items_in_folder:
+            if item.file_path:
+                # 确保路径是以/开头的绝对路径
+                path = item.file_path
+                if not path.startswith("/"):
+                    path = "/" + path
+                file_paths.append(path)
+            if item.file_id:
+                file_ids.append(item.file_id)
+        
+        # 构建 RemoveParam
+        try:
+            remove_params = RemoveParam(
+                drive_type=drive_type_str,
+                file_paths=file_paths,
+                file_ids=file_ids
+            )
+            
+            result = await drive_manager.remove_files(x_token, remove_params)
+            if result:
+                for item in items_in_folder:
+                    operation_results['succeeded'].append(f"DELETE_SUCCESS: {item.file_path} (ID: {item.file_id})")
+            else:
+                for item in items_in_folder:
+                    operation_results['failed'].append(f"DELETE_FAILED: {item.file_path} (ID: {item.file_id})")
+        except Exception as e:
+            for item in items_in_folder:
+                operation_results['failed'].append(f"DELETE_ERROR: {item.file_path} (ID: {item.file_id}) - {str(e)}")
+        
+        # 删除请求之间暂停1秒
+        import asyncio
+        await asyncio.sleep(1)
     
     return operation_results 
