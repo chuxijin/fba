@@ -255,8 +255,8 @@ class AlistClient(BaseDriveClient):
             # 获取文件列表
             result = await self._alistapi.list(
                 file_path=params.file_path,
-                page=1,  # 默认第一页
-                num=0,  # 默认100个文件
+                page=1,
+                num=0,
                 refresh=False
             )
             

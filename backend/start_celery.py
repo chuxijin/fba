@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
-Celery服务启动脚本 - Python版本
-适用于跨平台运行，特别是Windows环境
+Celery 服务管理器
+启动和管理 Celery Worker、Beat 和 Flower 服务
 """
+
 import os
 import sys
-import signal
-import subprocess
 import time
+import signal
 import atexit
+import subprocess
 from pathlib import Path
+
+# 设置控制台编码为UTF-8（Windows兼容性）
+if os.name == 'nt':
+    try:
+        # 尝试设置控制台编码
+        os.system('chcp 65001 >nul 2>&1')
+    except:
+        pass
 
 
 class CeleryManager:
@@ -29,7 +39,7 @@ class CeleryManager:
         :return: 进程对象或None
         """
         try:
-            print(f"🚀 启动 {name}...")
+            print(f"[启动] {name}...")
             print(f"   命令: {' '.join(cmd)}")
             
             # Windows下创建新的进程组
@@ -48,37 +58,37 @@ class CeleryManager:
                 'cmd': cmd
             })
             
-            print(f"✅ {name} 已启动 (PID: {process.pid})")
+            print(f"[成功] {name} 已启动 (PID: {process.pid})")
             return process
             
         except Exception as e:
-            print(f"❌ 启动 {name} 失败: {e}")
+            print(f"[错误] 启动 {name} 失败: {e}")
             return None
     
     def check_python_environment(self) -> bool:
         """检查Python环境"""
         try:
             import celery
-            print(f"✅ Python环境检查通过")
+            print(f"[检查] Python环境检查通过")
             print(f"   Python版本: {sys.version.split()[0]}")
             print(f"   Celery版本: {celery.__version__}")
             return True
         except ImportError as e:
-            print(f"❌ 环境检查失败: {e}")
+            print(f"[错误] 环境检查失败: {e}")
             print("   请安装依赖: pip install celery[gevent] flower")
             return False
     
     def start_all_services(self):
         """启动所有Celery服务"""
         print("=" * 50)
-        print("    🎯 Celery Services Manager")
+        print("    Celery Services Manager")
         print("=" * 50)
         
         # 检查环境
         if not self.check_python_environment():
             return False
         
-        print("\n📋 开始启动服务...")
+        print("\n[信息] 开始启动服务...")
         
         # 启动Worker
         worker_cmd = [
@@ -113,10 +123,10 @@ class CeleryManager:
         time.sleep(2)
         
         # 启动Flower
-        print("\n🌸 启动 Celery Flower...")
+        print("\n[启动] Celery Flower...")
         print("   监控界面: http://localhost:8555")
         print("   用户名: admin, 密码: 123456")
-        print("\n⏸️  按 Ctrl+C 停止所有服务\n")
+        print("\n[提示] 按 Ctrl+C 停止所有服务\n")
         
         flower_cmd = [
             sys.executable, '-m', 'celery',
@@ -130,9 +140,9 @@ class CeleryManager:
             # Flower在前台运行
             subprocess.run(flower_cmd, cwd=self.base_dir, check=True)
         except KeyboardInterrupt:
-            print("\n🛑 接收到停止信号...")
+            print("\n[停止] 接收到停止信号...")
         except subprocess.CalledProcessError as e:
-            print(f"\n❌ Flower运行出错: {e}")
+            print(f"\n[错误] Flower运行出错: {e}")
         
         return True
     
@@ -141,7 +151,7 @@ class CeleryManager:
         if not self.processes:
             return
         
-        print("\n🛑 正在停止所有Celery服务...")
+        print("\n[停止] 正在停止所有Celery服务...")
         
         for service in self.processes:
             try:
@@ -163,7 +173,7 @@ class CeleryManager:
                     # 等待进程结束
                     try:
                         process.wait(timeout=5)
-                        print(f"   ✅ {name} 已停止")
+                        print(f"   [成功] {name} 已停止")
                     except subprocess.TimeoutExpired:
                         # 强制杀死进程
                         if os.name == 'nt':
@@ -172,15 +182,15 @@ class CeleryManager:
                             ], capture_output=True)
                         else:
                             process.kill()
-                        print(f"   🔥 {name} 已强制停止")
+                        print(f"   [强制] {name} 已强制停止")
                 else:
-                    print(f"   ⚪ {name} 已经停止")
+                    print(f"   [跳过] {name} 已经停止")
                     
             except Exception as e:
-                print(f"   ❌ 停止 {service['name']} 时出错: {e}")
+                print(f"   [错误] 停止 {service['name']} 时出错: {e}")
         
         self.processes.clear()
-        print("🎉 所有服务已停止")
+        print("[完成] 所有服务已停止")
 
 
 def main():
@@ -206,9 +216,9 @@ def main():
         if not success:
             sys.exit(1)
     except KeyboardInterrupt:
-        print("\n🛑 用户中断程序")
+        print("\n[停止] 用户中断程序")
     except Exception as e:
-        print(f"\n💥 程序异常: {e}")
+        print(f"\n[异常] 程序异常: {e}")
         sys.exit(1)
     finally:
         manager.stop_all_services()

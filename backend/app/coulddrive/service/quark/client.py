@@ -343,13 +343,48 @@ class QuarkClient(BaseDriveClient):
         # 确定初始的 pdir_fid
         initial_pdir_fid = file_id if file_id else "0"  # 根目录使用 "0"
         
+        async def fetch_all_quark_pages_from_api(pdir_fid: str, sort_str: str) -> List[Dict]:
+            """
+            自动翻页获取夸克网盘指定目录下的所有文件/目录
+            
+            :param pdir_fid: 父目录ID
+            :param sort_str: 排序字符串
+            :return: 所有页面的文件列表
+            """
+            page = 1
+            page_size = 50
+            all_items = []
+            
+            while True:
+                try:
+                    info = await self._quarkapi.list_files(
+                        pdir_fid=pdir_fid,
+                        page=page,
+                        size=page_size,
+                        sort=sort_str
+                    )
+                    
+                    current_items = info.get("data", {}).get("list", [])
+                    all_items.extend(current_items)
+                    
+                    # 检查是否还有更多数据
+                    metadata = info.get("metadata", {})
+                    current_count = metadata.get("_count", 0)
+                    
+                    # 如果本页返回数量小于page_size，说明已经是最后一页
+                    if current_count < page_size:
+                        break
+                    
+                    page += 1
+                except Exception as e:
+                    self.logger.error(f"获取第{page}页数据失败 pdir_fid: {pdir_fid}: {e}")
+                    break
+            
+            return all_items
+        
         try:
             # 获取初始目录内容
-            info = await self._quarkapi.list_files(
-                pdir_fid=initial_pdir_fid,
-                sort=sort_str
-            )
-            initial_items_raw = info.get("data", {}).get("list", [])
+            initial_items_raw = await fetch_all_quark_pages_from_api(initial_pdir_fid, sort_str)
         except Exception as e:
             self.logger.error(f"Error listing path '{file_path}' with fid '{initial_pdir_fid}': {e}")
             return []
@@ -470,11 +505,7 @@ class QuarkClient(BaseDriveClient):
                             time.sleep(3)
                     
                         try:
-                            sub_info = await self._quarkapi.list_files(
-                                pdir_fid=current_fid,
-                                sort=sort_str
-                            )
-                            sub_list = sub_info.get("data", {}).get("list", [])
+                            sub_list = await fetch_all_quark_pages_from_api(current_fid, sort_str)
                             for sub_item_dict in sub_list:
                                 temp_sub_df = BaseFileInfo(
                                     file_id=sub_item_dict.get('fid', ''),
@@ -649,6 +680,54 @@ class QuarkClient(BaseDriveClient):
         
         drive_files_list: List[BaseFileInfo] = []
 
+        async def fetch_all_quark_share_pages_from_api(
+            pwd_id: str, 
+            stoken: str, 
+            pdir_fid: str = "0",
+            sort: str = "file_type:asc,file_name:asc"
+        ) -> List[Dict]:
+            """
+            自动翻页获取夸克网盘分享文件列表的所有页面数据
+            
+            :param pwd_id: 分享密码ID
+            :param stoken: 分享token
+            :param pdir_fid: 父目录ID
+            :param sort: 排序字符串
+            :return: 所有页面的文件列表
+            """
+            page = 1
+            page_size = 50
+            all_items = []
+            
+            while True:
+                try:
+                    detail_response = await self._quarkapi.get_share_detail(
+                        pwd_id=pwd_id,
+                        stoken=stoken,
+                        pdir_fid=pdir_fid,
+                        page=page,
+                        size=page_size,
+                        sort=sort
+                    )
+                    
+                    current_items = detail_response.get("data", {}).get("list", [])
+                    all_items.extend(current_items)
+                    
+                    # 检查是否还有更多数据
+                    metadata = detail_response.get("data", {}).get("metadata", {})
+                    current_count = metadata.get("_count", 0)
+                    
+                    # 如果本页返回数量小于page_size，说明已经是最后一页
+                    if current_count < page_size:
+                        break
+                    
+                    page += 1
+                except Exception as e:
+                    self.logger.error(f"获取第{page}页分享数据失败 pdir_fid: {pdir_fid}: {e}")
+                    break
+            
+            return all_items
+
         # TODO: friend 和 group 类型暂未实现，当前只支持 link 类型
         if source_type in ["friend", "group"]:
             self.logger.warning(f"夸克网盘暂不支持 {source_type} 类型的分享列表获取")
@@ -666,10 +745,8 @@ class QuarkClient(BaseDriveClient):
             token_result = await self._quarkapi.get_share_token(pwd_id=pwd_id)
             stoken = token_result.get("data", {}).get("stoken", "")
             
-            result = await self._quarkapi.get_share_detail(pwd_id=pwd_id, stoken=stoken)
-            
             # 获取文件列表
-            file_list = result.get("data", {}).get("list", [])
+            file_list = await fetch_all_quark_share_pages_from_api(pwd_id=pwd_id, stoken=stoken)
             if not file_list:
                 self.logger.warning(f"分享链接中没有文件: {source_id}")
                 return []
@@ -711,22 +788,20 @@ class QuarkClient(BaseDriveClient):
                     
                     # 如果是目录且不是最后一个组件，需要获取子目录内容
                     if found_item.get("dir") and component != path_components[-1]:
-                        sub_detail = await self._quarkapi.get_share_detail(
+                        current_items = await fetch_all_quark_share_pages_from_api(
                             pwd_id=pwd_id, 
                             stoken=stoken, 
                             pdir_fid=current_pdir_fid
                         )
-                        current_items = sub_detail.get("data", {}).get("list", [])
                     elif component == path_components[-1]:
                         # 到达目标路径
                         if found_item.get("dir"):
                             # 目标是目录，获取其内容
-                            target_detail = await self._quarkapi.get_share_detail(
+                            current_items = await fetch_all_quark_share_pages_from_api(
                                 pwd_id=pwd_id, 
                                 stoken=stoken, 
                                 pdir_fid=current_pdir_fid
                             )
-                            current_items = target_detail.get("data", {}).get("list", [])
                         else:
                             # 目标是文件，返回该文件
                             current_items = [found_item]
@@ -822,12 +897,11 @@ class QuarkClient(BaseDriveClient):
                     if recursive and is_dir and item_fid not in processed_fids:
                         processed_fids.add(item_fid)
                         try:
-                            sub_detail = await self._quarkapi.get_share_detail(
+                            sub_list = await fetch_all_quark_share_pages_from_api(
                                 pwd_id=pwd_id,
                                 stoken=stoken,
                                 pdir_fid=item_fid
                             )
-                            sub_list = sub_detail.get("data", {}).get("list", [])
                             if sub_list:
                                 queue.append((sub_list, full_path, item_fid))
                         except Exception as e:

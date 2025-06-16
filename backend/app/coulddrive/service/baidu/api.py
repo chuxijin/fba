@@ -302,6 +302,53 @@ class BaiduApi:
         return resp.json()
 
     @assert_ok
+    async def list_with_pagination(
+        self,
+        file_path: str,
+        page: int = 1,
+        num: int = 100,
+        desc: bool = False,
+        name: bool = False,
+        time: bool = False,
+        size: bool = False,
+    ):
+        """
+        使用pan.baidu.com的API获取文件列表，支持分页
+        
+        :param file_path: 文件路径
+        :param page: 页码，从1开始
+        :param num: 每页数量
+        :param desc: 是否降序
+        :param name: 是否按名称排序
+        :param time: 是否按时间排序
+        :param size: 是否按大小排序
+        """
+        url = "https://pan.baidu.com/api/list"
+        
+        # 确定排序字段
+        order = "name"
+        if name:
+            order = "name"
+        elif time:
+            order = "time"
+        elif size:
+            order = "size"
+        
+        params = {
+            "clienttype": "0",
+            "app_id": "250528",
+            "web": "1",
+            "order": order,
+            "desc": "1" if desc else "0",
+            "dir": str(file_path),
+            "num": str(num),
+            "page": str(page),
+        }
+        
+        resp = await self._request(Method.Get, url, params=params)
+        return resp.json()
+
+    @assert_ok
     async def search(self, keyword: str, file_path: str, recursive: bool = False):
         url = PcsNode.File.url()
         params = {

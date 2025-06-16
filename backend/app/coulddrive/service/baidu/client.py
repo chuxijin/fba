@@ -312,13 +312,46 @@ class BaiduClient(BaseDriveClient):
         drive_files_list: List[BaseFileInfo] = []
         initial_parent_id = file_id
 
+        async def fetch_all_pages_from_api(target_file_path: str, **api_params) -> List[Dict]:
+            """
+            自动翻页获取指定路径下的所有文件/目录
+            
+            :param target_file_path: 目标路径
+            :param api_params: API参数（如desc、name、time、size）
+            :return: 所有页面的文件列表
+            """
+            page = 1
+            page_size = 100
+            all_items = []
+            
+            while True:
+                try:
+                    info = await self._baidupcs.list_with_pagination(
+                        target_file_path, 
+                        page=page, 
+                        num=page_size,
+                        **api_params
+                    )
+                    current_items = info.get("list", [])
+                    all_items.extend(current_items)
+                    
+                    # 如果本页返回数量小于page_size，说明已经是最后一页
+                    if len(current_items) < page_size:
+                        break
+                    
+                    page += 1
+                except Exception as e:
+                    self.logger.error(f"获取第{page}页数据失败 '{target_file_path}': {e}")
+                    break
+            
+            return all_items
+
         try:
-            info = await self._baidupcs.list(
+            initial_items_raw = await fetch_all_pages_from_api(
                 file_path, desc=desc, name=name, time=time, size=size
             )
-            initial_items_raw = info.get("list", [])
         except Exception as e:
-            self.logger.error(f"Error listing path '{file_path}': {e}") # Added more context to log
+            self.logger.error(f"Error listing path '{file_path}': {e}")
             return []
 
         items_to_process = deque()
@@ -415,10 +448,9 @@ class BaiduClient(BaseDriveClient):
                         time.sleep(3)
                 
                     try:
-                        sub_info = await self._baidupcs.list(
+                        sub_list = await fetch_all_pages_from_api(
                             current_item_path, desc=desc, name=name, time=time, size=size
                         )
-                        sub_list = sub_info.get("list", [])
                         # 将子项目添加到处理队列（让主循环统一处理排除规则）
                         for sub_item_dict in sub_list:
                             items_to_process.append((sub_item_dict, current_fs_id))
@@ -469,9 +501,7 @@ class BaiduClient(BaseDriveClient):
         
         return drive_files_list
 
-    def search(
-        self, keyword: str, file_path: str, recursive: bool = False
-    ) -> List[PcsFile]:
+    def search(self, keyword: str, file_path: str, recursive: bool = False) -> List[PcsFile]:
         """在`file_path`中搜索`keyword`"""
 
         info = self._baidupcs.search(keyword, file_path, recursive=recursive)
@@ -575,11 +605,7 @@ class BaiduClient(BaseDriveClient):
             raise BaiduApiError("File operator [copy] fails")
         return [FromTo(from_=v["from"], to_=v["to"]) for v in r]
 
-    async def remove(
-        self,
-        params: RemoveParam,
-        **kwargs: Any,
-    ) -> bool:
+    async def remove(self, params: RemoveParam, **kwargs: Any) -> bool:
         """删除文件或目录"""
         file_paths = params.file_paths
         file_ids = params.file_ids
@@ -681,13 +707,7 @@ class BaiduClient(BaseDriveClient):
 
         self._baidupcs.cancel_shared(*share_ids)
 
-    def access_shared(
-        self,
-        shared_url: str,
-        password: str,
-        vcode_str: Optional[str] = None,
-        vcode: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    def access_shared(self, shared_url: str, password: str, vcode_str: Optional[str] = None, vcode: Optional[str] = None) -> Dict[str, Any]:
         """验证需要`password`的`shared_url`
         如果需要验证码，将返回包含验证码信息的字典。
         否则，返回成功或失败的信息。
@@ -1288,19 +1308,13 @@ class BaiduClient(BaseDriveClient):
             component_name = path_components[component_idx]
             self.logger.debug(f"Navigating: current_fs_id={current_nav_fs_id}, seeking component='{component_name}'")
 
-            detail_response = await self.get_relationship_share_detail(
+            items_in_current_dir = await fetch_all_share_pages_from_api(
                 relationship_type=source_type,
                 identifier=source_id, 
                 from_uk=target_share_info["sharer_uk"],
                 msg_id=target_share_info["msg_id"],
                 fs_id=current_nav_fs_id
             )
-
-            if detail_response.get("errno") != 0:
-                self.logger.error(f"Navigation failed at component '{component_name}' (under fs_id: {current_nav_fs_id}). Response: {detail_response}")
-                return []
-
-            items_in_current_dir = detail_response.get("records", [])
             found_next_component = False
             for item_dict in items_in_current_dir:
                 item_name_api = item_dict.get("server_filename")
@@ -1324,6 +1338,58 @@ class BaiduClient(BaseDriveClient):
         
         processed_fs_ids_for_recursion = set()
         is_first_pass_in_queue = True  # 用于识别目标路径的初始列表
+
+        async def fetch_all_share_pages_from_api(
+            relationship_type: str,
+            identifier: str, 
+            from_uk: str,
+            msg_id: str,
+            fs_id: str
+        ) -> List[Dict]:
+            """
+            自动翻页获取分享文件列表的所有页面数据
+            
+            :param relationship_type: 关系类型 (friend/group)
+            :param identifier: 标识符
+            :param from_uk: 分享者UK
+            :param msg_id: 消息ID
+            :param fs_id: 文件系统ID
+            :return: 所有页面的文件列表
+            """
+            page = 1
+            page_size = 50
+            all_items = []
+            
+            while True:
+                try:
+                    detail_response = await self.get_relationship_share_detail(
+                        relationship_type=relationship_type,
+                        identifier=identifier, 
+                        from_uk=from_uk,
+                        msg_id=msg_id,
+                        fs_id=fs_id,
+                        page=page,
+                        num=page_size
+                    )
+                    
+                    if detail_response.get("errno") != 0:
+                        self.logger.warning(f"获取第{page}页分享数据失败 fs_id: {fs_id}: {detail_response}")
+                        break
+                    
+                    current_items = detail_response.get("records", [])
+                    all_items.extend(current_items)
+                    
+                    # 检查是否还有更多数据
+                    has_more = detail_response.get("has_more", 0)
+                    if has_more == 0:  # 没有更多数据
+                        break
+                    
+                    page += 1
+                except Exception as e:
+                    self.logger.error(f"获取第{page}页分享数据失败 fs_id: {fs_id}: {e}")
+                    break
+            
+            return all_items
 
         while queue:
             fs_id_to_process, path_base_for_items, parent_id_for_items = queue.popleft()
@@ -1378,19 +1444,13 @@ class BaiduClient(BaseDriveClient):
                 is_first_pass_in_queue = False  # 标记队列中的第一个项目已被处理
 
             self.logger.debug(f"Listing content for fs_id: {fs_id_to_process}, path_base: {path_base_for_items}, items_parent_id: {parent_id_for_items}")
-            detail_response = await self.get_relationship_share_detail(
+            items_from_api = await fetch_all_share_pages_from_api(
                 relationship_type=source_type,
                 identifier=source_id, 
                 from_uk=target_share_info["sharer_uk"],
                 msg_id=target_share_info["msg_id"],
                 fs_id=fs_id_to_process
             )
-
-            if detail_response.get("errno") != 0:
-                self.logger.warning(f"Failed to get details for fs_id {fs_id_to_process} during final listing: {detail_response}")
-                continue
-            
-            items_from_api = detail_response.get("records", [])
             
             # 检查 fs_id_to_process 本身是否是文件
             # 如果 fs_id_to_process 是文件，items_from_api 将只包含该文件
