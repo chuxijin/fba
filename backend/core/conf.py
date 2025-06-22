@@ -235,7 +235,7 @@ class Settings(BaseSettings):
         },
         'check-filesync-cron-tasks': {
             'task': 'check_and_execute_filesync_cron_tasks',
-            'schedule': crontab(minute='*'),  # 每分钟检查一次
+            'schedule': crontab(minute='*/5'),  # 每5分钟检查一次
         },
     }
 
