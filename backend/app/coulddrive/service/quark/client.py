@@ -24,6 +24,7 @@ from backend.app.coulddrive.schema.file import (
     BaseShareInfo,
     ListFilesParam,
     ListShareFilesParam,
+    ListShareInfoParam,
     MkdirParam,
     RelationshipParam,
     RelationshipType,
@@ -826,7 +827,7 @@ class QuarkClient(BaseDriveClient):
                                 from backend.app.coulddrive.service.file_cache_service import file_cache_service
                                 
                                 # 为分享文件构建特殊的缓存键，包含分享信息
-                                share_cache_key = f"share_{source_type}_{source_id}_{item_fid}"
+                                share_cache_key = f"share_{source_type}_{source_id}_{parent_fid}"
                                 
                                 cached_children = await file_cache_service.get_cached_children_as_file_info(
                                     kwargs['db'], 
@@ -835,7 +836,7 @@ class QuarkClient(BaseDriveClient):
                                 )
                                 
                                 if cached_children:
-                                    self.logger.debug(f"快速模式：从缓存获取分享子目录 {item_name}")
+                                    self.logger.debug(f"快速模式：从缓存获取分享子目录 {path_base}")
                                     # 将缓存的子项添加到结果列表
                                     for cached_child in cached_children:
                                         # 应用过滤器
@@ -847,11 +848,11 @@ class QuarkClient(BaseDriveClient):
                                                 queue.append((cached_child.file_id, cached_child.file_path, cached_child.file_id))
                                     continue
                                 else:
-                                    self.logger.debug(f"快速模式：缓存中无分享子目录数据，回退到API获取 {item_name}")
+                                    self.logger.debug(f"快速模式：缓存中无分享子目录数据，回退到API获取 {path_base}")
                             except Exception as e:
                                 self.logger.warning(f"快速模式缓存获取失败，回退到API: {e}")
                         else:
-                            self.logger.debug(f"快速模式：缺少必要参数，跳过分享子目录递归 {item_name}")
+                            self.logger.debug(f"快速模式：缺少必要参数，跳过分享子目录递归 {path_base}")
                             continue
                     # NORMAL 模式无需特殊处理，直接继续
                 

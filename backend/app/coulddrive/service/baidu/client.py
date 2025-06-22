@@ -1300,45 +1300,7 @@ class BaiduClient(BaseDriveClient):
             self.logger.warning(f"No share event found with root item named '{path_components[0]}' for {source_type} {source_id}.")
             return []
 
-        # 3. Navigate the path within the selected share
-        current_nav_fs_id = target_share_info["root_fs_id"]
-        current_constructed_drive_path = PurePosixPath("/") / target_share_info["root_name"]
-
-        for component_idx in range(1, len(path_components)):
-            component_name = path_components[component_idx]
-            self.logger.debug(f"Navigating: current_fs_id={current_nav_fs_id}, seeking component='{component_name}'")
-
-            items_in_current_dir = await fetch_all_share_pages_from_api(
-                relationship_type=source_type,
-                identifier=source_id, 
-                from_uk=target_share_info["sharer_uk"],
-                msg_id=target_share_info["msg_id"],
-                fs_id=current_nav_fs_id
-            )
-            found_next_component = False
-            for item_dict in items_in_current_dir:
-                item_name_api = item_dict.get("server_filename")
-                if item_name_api == component_name:
-                    if not item_dict.get("isdir") and component_idx < len(path_components) - 1:
-                        self.logger.error(f"Path component '{component_name}' is a file, but further path components exist in query.")
-                        return []
-                    current_nav_fs_id = str(item_dict.get("fs_id"))
-                    current_constructed_drive_path = current_constructed_drive_path / component_name
-                    found_next_component = True
-                    self.logger.debug(f"Found path component '{component_name}', new current_nav_fs_id={current_nav_fs_id}, new_path_base={current_constructed_drive_path}")
-                    break
-            
-            if not found_next_component:
-                self.logger.error(f"Path component '{component_name}' not found in directory (fs_id of parent: { (path_components[component_idx-1] if component_idx > 0 else target_share_info['root_name']) }).")
-                return []
-        
-        # 4. 列出目标内容 (current_nav_fs_id 是要列出的目标 fs_id)
-        queue = deque([(str(current_nav_fs_id), current_constructed_drive_path, str(current_nav_fs_id))])
-        # 队列存储: (要列出其内容的fs_id, 其内容的路径基础, 从中列出项目的父ID)
-        
-        processed_fs_ids_for_recursion = set()
-        is_first_pass_in_queue = True  # 用于识别目标路径的初始列表
-
+        # 定义分享文件分页获取函数
         async def fetch_all_share_pages_from_api(
             relationship_type: str,
             identifier: str, 
@@ -1390,6 +1352,45 @@ class BaiduClient(BaseDriveClient):
                     break
             
             return all_items
+
+        # 3. Navigate the path within the selected share
+        current_nav_fs_id = target_share_info["root_fs_id"]
+        current_constructed_drive_path = PurePosixPath("/") / target_share_info["root_name"]
+
+        for component_idx in range(1, len(path_components)):
+            component_name = path_components[component_idx]
+            self.logger.debug(f"Navigating: current_fs_id={current_nav_fs_id}, seeking component='{component_name}'")
+
+            items_in_current_dir = await fetch_all_share_pages_from_api(
+                relationship_type=source_type,
+                identifier=source_id, 
+                from_uk=target_share_info["sharer_uk"],
+                msg_id=target_share_info["msg_id"],
+                fs_id=current_nav_fs_id
+            )
+            found_next_component = False
+            for item_dict in items_in_current_dir:
+                item_name_api = item_dict.get("server_filename")
+                if item_name_api == component_name:
+                    if not item_dict.get("isdir") and component_idx < len(path_components) - 1:
+                        self.logger.error(f"Path component '{component_name}' is a file, but further path components exist in query.")
+                        return []
+                    current_nav_fs_id = str(item_dict.get("fs_id"))
+                    current_constructed_drive_path = current_constructed_drive_path / component_name
+                    found_next_component = True
+                    self.logger.debug(f"Found path component '{component_name}', new current_nav_fs_id={current_nav_fs_id}, new_path_base={current_constructed_drive_path}")
+                    break
+            
+            if not found_next_component:
+                self.logger.error(f"Path component '{component_name}' not found in directory (fs_id of parent: { (path_components[component_idx-1] if component_idx > 0 else target_share_info['root_name']) }).")
+                return []
+        
+        # 4. 列出目标内容 (current_nav_fs_id 是要列出的目标 fs_id)
+        queue = deque([(str(current_nav_fs_id), current_constructed_drive_path, str(current_nav_fs_id))])
+        # 队列存储: (要列出其内容的fs_id, 其内容的路径基础, 从中列出项目的父ID)
+        
+        processed_fs_ids_for_recursion = set()
+        is_first_pass_in_queue = True  # 用于识别目标路径的初始列表
 
         while queue:
             fs_id_to_process, path_base_for_items, parent_id_for_items = queue.popleft()
