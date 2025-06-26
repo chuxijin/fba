@@ -46,7 +46,9 @@ class JwtAuthMiddleware(AuthenticationBackend):
         :param exc: 认证错误对象
         :return:
         """
-        return MsgSpecJSONResponse(content={'code': exc.code, 'msg': exc.msg, 'data': None}, status_code=exc.code)
+        # 确保状态码是整数，如果是字符串则使用默认值 500
+        status_code = exc.code if isinstance(exc.code, int) else 500
+        return MsgSpecJSONResponse(content={'code': exc.code, 'msg': exc.msg, 'data': None}, status_code=status_code)
 
     async def authenticate(self, request: Request) -> tuple[AuthCredentials, GetUserInfoWithRelationDetail] | None:
         """
@@ -69,7 +71,8 @@ class JwtAuthMiddleware(AuthenticationBackend):
         try:
             user = await jwt_authentication(token)
         except TokenError as exc:
-            raise _AuthenticationError(code=exc.code, msg=exc.detail, headers=exc.headers)
+            # TokenError继承自HTTPException，错误信息存储在detail属性中
+            raise _AuthenticationError(code=exc.status_code, msg=exc.detail, headers=getattr(exc, 'headers', None))
         except Exception as e:
             log.exception(f'JWT 授权异常：{e}')
             raise _AuthenticationError(code=getattr(e, 'code', 500), msg=getattr(e, 'msg', 'Internal Server Error'))

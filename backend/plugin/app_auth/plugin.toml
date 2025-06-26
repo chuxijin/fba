@@ -1,0 +1,8 @@
+[plugin]
+summary = '应用授权管理'
+version = '1.0.0'
+description = '提供应用授权管理功能，支持手动授权、套餐购买、卡密兑换等多种授权方式'
+author = 'your-name'
+
+[app]
+router = ['v1']
