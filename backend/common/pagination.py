@@ -124,5 +124,28 @@ async def paging_data(db: AsyncSession, select: Select) -> dict[str, Any]:
     return page_data
 
 
+def paging_list_data(items: list, params: _CustomPageParams) -> dict[str, Any]:
+    """
+    基于 Python 列表创建分页数据
+
+    :param items: 数据列表
+    :param params: 分页参数
+    :return:
+    """
+    total = len(items)
+    start_index = (params.page - 1) * params.size
+    end_index = start_index + params.size
+    paginated_items = items[start_index:end_index]
+    
+    # 创建分页数据
+    page_data = _CustomPage.create(
+        items=paginated_items,
+        params=params,
+        total=total
+    )
+    
+    return page_data.model_dump()
+
+
 # 分页依赖注入
 DependsPagination = Depends(pagination_ctx(_CustomPage))
