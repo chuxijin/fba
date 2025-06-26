@@ -78,8 +78,9 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                         })
                         continue
                     
-                    # 检查任务是否过期
-                    if config.end_time and current_time > config.end_time:
+                    # 检查任务是否过期 
+                    end_time = datetime.fromisoformat(str(config.end_time)) if config.end_time else None
+                    if end_time and current_time > end_time:
                         result["skipped_tasks"] += 1
                         result["execution_details"].append({
                             "config_id": config.id,
@@ -229,8 +230,8 @@ async def _get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
                         "id": config.id,
                         "remark": config.remark,
                         "cron": config.cron,
-                        "last_sync": config.last_sync.isoformat() if config.last_sync else None,
-                        "end_time": config.end_time.isoformat() if config.end_time else None,
+                        "last_sync": str(config.last_sync) if config.last_sync else None,
+                        "end_time": str(config.end_time) if config.end_time else None,
                         "src_path": config.src_path,
                         "dst_path": config.dst_path,
                         "type": config.type,
@@ -271,7 +272,7 @@ def _is_valid_cron_expression(cron_expr: str) -> bool:
         return False
 
 
-def _should_execute_now(cron_expr: str, last_sync: datetime | None, current_time: datetime) -> bool:
+def _should_execute_now(cron_expr: str, last_sync: Any | None, current_time: datetime) -> bool:
     """
     判断是否应该在当前时间执行任务
     
@@ -285,20 +286,16 @@ def _should_execute_now(cron_expr: str, last_sync: datetime | None, current_time
         if last_sync is None:
             return True
         
-        # 根据cron表达式计算下次执行时间
-        cron = croniter(cron_expr, last_sync)
-        next_execution_time = cron.get_next(datetime)
+        # 基于当前时间创建 croniter，检查当前时间是否符合 cron 表达式
+        cron = croniter(cron_expr, current_time)
         
-        # 检查是否到了执行时间
-        if current_time >= next_execution_time:
-            # 检查延迟是否在合理范围内（1小时）
-            delay_seconds = (current_time - next_execution_time).total_seconds()
-            if delay_seconds <= 3600:
-                return True
-            else:
-                # 延迟过久，跳过本次执行
-                logger.warning(f"执行时间延迟过久({delay_seconds:.1f}秒)，跳过本次执行")
-                return False
+        # 获取当前时间之前的最近一次执行时间
+        prev_execution_time = cron.get_prev(datetime)
+        
+        # 如果上次同步时间早于最近一次应该执行的时间，说明需要执行
+        last_sync_dt = datetime.fromisoformat(str(last_sync)) if last_sync else None
+        if last_sync_dt and last_sync_dt < prev_execution_time:
+            return True
         
         return False
     
