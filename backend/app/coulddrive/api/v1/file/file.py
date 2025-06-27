@@ -12,6 +12,7 @@ from backend.app.coulddrive.schema.file import (
     ListShareInfoParam,
     MkdirParam,
     RemoveParam,
+    ShareParam,
     TransferParam
 )
 from backend.app.coulddrive.service.yp_service import get_drive_manager
@@ -175,3 +176,26 @@ async def get_share_info(
         share_info_list = share_info_result
     
     return response_base.success(data=share_info_list)
+
+
+@router.post(
+    '/share',
+    summary='创建分享链接',
+    description='创建文件或文件夹的分享链接',
+    response_model=ResponseSchemaModel[BaseShareInfo],
+    dependencies=[DependsJwtAuth]
+)
+async def create_share(
+    x_token: Annotated[str, Header(description="认证令牌")],
+    params: ShareParam
+) -> ResponseSchemaModel[BaseShareInfo]:
+    """
+    创建分享链接
+    
+    :param x_token: 认证令牌
+    :param params: 分享参数
+    :return: 分享信息
+    """
+    drive_manager = get_drive_manager()
+    share_info = await drive_manager.create_share(x_token, params)
+    return response_base.success(data=share_info)

@@ -26,6 +26,7 @@ from backend.app.coulddrive.schema.file import (
     ListShareFilesParam,
     ListShareInfoParam,
     MkdirParam,
+    ShareParam,
     RelationshipParam,
     RelationshipType,
     RemoveParam,
@@ -648,17 +649,93 @@ class QuarkClient(BaseDriveClient):
             self.logger.error(f"删除文件时发生错误: {e}")
             return False
 
-    async def create_share(self, file_ids: List[str], title: str, **kwargs) -> QuarkShare:
-        """创建分享"""
+    async def create_share(self, params: ShareParam, **kwargs: Any) -> BaseShareInfo:
+        """创建分享链接"""
+        file_name = params.file_name
+        file_ids = params.file_ids
+        expired_type = params.expired_type
+        
+        # 夸克网盘过期类型转换：统一天数 -> 夸克枚举值
+        # 0(永久) -> 1, 1(1天) -> 1, 7(7天) -> 2, 30(30天) -> 3, 365(365天) -> 4
+        quark_expired_type_map = {
+            0: 1,    # 永久
+            1: 1,    # 1天 (夸克最小是永久，所以1天也映射为永久)
+            7: 2,    # 7天
+            30: 3,   # 30天
+            365: 4   # 365天
+        }
+        
+        quark_expired_type = quark_expired_type_map.get(expired_type, 1)  # 默认永久
+        
         try:
+            # 将字符串ID转换为字符串列表
+            fid_list = [str(fid) for fid in file_ids]
+            
+            # 第1步：创建分享任务
             result = await self._quarkapi.create_share(
-                fid_list=file_ids,
-                title=title,
+                fid_list=fid_list,
+                title=file_name,
+                expired_type=quark_expired_type,
+                url_type=1,  # 添加url_type参数
                 **kwargs
             )
             
             data = result.get("data", {})
-            return QuarkShare.from_(data)
+            task_id = data.get("task_id")
+            
+            if not task_id:
+                raise QuarkApiError("创建分享任务失败：未获取到task_id")
+            
+            # 第2步：轮询任务状态，等待分享创建完成
+            max_retries = 10
+            retry_count = 0
+            share_id = None
+            
+            while retry_count < max_retries:
+                task_result = await self._quarkapi.query_task(task_id=task_id, retry_index=retry_count)
+                task_data = task_result.get("data", {})
+                
+                if task_data.get("status") == 2:  # 任务完成
+                    share_id = task_data.get("share_id")
+                    break
+                elif task_data.get("status") == 3:  # 任务失败
+                    raise QuarkApiError(f"分享任务失败：{task_data}")
+                
+                # 等待1秒后重试
+                await asyncio.sleep(1)
+                retry_count += 1
+            
+            if not share_id:
+                raise QuarkApiError("分享任务超时：未能在预期时间内完成")
+            
+            # 第3步：获取分享详情
+            password_result = await self._quarkapi.get_share_password(share_id=share_id)
+            share_data = password_result.get("data", {})
+            
+            # 转换为统一的BaseShareInfo格式
+            from datetime import datetime
+            
+            # 使用API返回的过期时间
+            expired_at = None
+            if share_data.get("expired_at"):
+                expired_at = datetime.fromtimestamp(share_data.get("expired_at") / 1000)  # 毫秒转秒
+            
+            return BaseShareInfo(
+                title=share_data.get("title", file_name),
+                share_id=str(share_id),
+                pwd_id=str(share_data.get("pwd_id", "")),
+                url=share_data.get("share_url", ""),
+                expired_type=expired_type,  # 保持原始的统一天数格式
+                view_count=0,
+                expired_at=expired_at,
+                expired_left=None,
+                audit_status=1,  # 假设通过审核
+                status=1,
+                file_id=str(file_ids[0]) if file_ids else None,
+                file_only_num=str(share_data.get("file_num", 0)),  # 转换为字符串
+                file_size=share_data.get("size"),
+                path_info=str(share_data.get("path_info", "")) if share_data.get("path_info") else None
+            )
         except Exception as e:
             self.logger.error(f"创建分享时发生错误: {e}")
             raise
@@ -1020,6 +1097,7 @@ class QuarkClient(BaseDriveClient):
                     audit_status=item.get("audit_status", 0),
                     status=item.get("status", 0),
                     file_only_num=str(item.get("file_num", 0)),
+                    file_id=item.get("first_fid", 0),
                     file_size=item.get("size", 0),
                     path_info=item.get("path_info", "")
                 )

@@ -4,11 +4,8 @@ class DriveType(Enum):
     """支持的网盘类型枚举"""
     BAIDU = "BaiduDrive"  # 别名
     BAIDU_DRIVE = "BaiduDrive"
-    QUARK_DRIVE = "QuarkDrive"  # 新增夸克网盘
-    ALIST_DRIVE = "AlistDrive"  # 新增Alist网盘
-    # 在这里可以添加其他网盘类型，例如：
-    # ALIYUN_DRIVE = "AliyunDrive"
-    # LOCAL_STORAGE = "LocalStorage"
+    QUARK_DRIVE = "QuarkDrive" 
+    ALIST_DRIVE = "AlistDrive"
 
 class RecursionSpeed(Enum):
     """递归获取列表时的速度控制"""

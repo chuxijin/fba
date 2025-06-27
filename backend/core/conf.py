@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     TOKEN_REFRESH_REDIS_PREFIX: str = 'fba:refresh_token'
     TOKEN_REQUEST_PATH_EXCLUDE: list[str] = [  # JWT / RBAC 路由白名单
         f'{FASTAPI_API_V1_PATH}/auth/login',
+        f'{FASTAPI_API_V1_PATH}/auth/logout',
     ]
 
     # JWT
@@ -241,9 +242,6 @@ class Settings(BaseSettings):
 
     # Plugin Code Generator
     CODE_GENERATOR_DOWNLOAD_ZIP_FILENAME: str = 'fba_generator'
-
-    # Plugin Config
-    CONFIG_BUILT_IN_TYPES: list[str] = ['website', 'protocol', 'policy']
 
     @model_validator(mode='before')
     @classmethod

@@ -21,7 +21,7 @@ import asyncio
 from PIL import Image
 
 from backend.app.coulddrive.schema.enum import RecursionSpeed
-from backend.app.coulddrive.schema.file import BaseFileInfo, ListFilesParam, ListShareFilesParam, MkdirParam, RemoveParam, TransferParam, RelationshipParam, RelationshipType, UserInfoParam
+from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, ListFilesParam, ListShareFilesParam, ListShareInfoParam, MkdirParam, RemoveParam, ShareParam, TransferParam, RelationshipParam, RelationshipType, UserInfoParam
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
     GetUserFriendDetail,
@@ -60,6 +60,28 @@ def _unify_shared_url(url: str) -> str:
         return SHARED_URL_PREFIX + "1" + m.group(1)
 
     raise ValueError(f"The shared url is not a valid url. {url}")
+
+
+def _extract_shorturl_from_url(url: str) -> str:
+    """从分享链接中提取短链接ID"""
+    
+    # 标准链接格式：https://pan.baidu.com/s/1xxxxx
+    temp = r"pan\.baidu\.com/s/1?(.+?)(\?|$)"
+    m = re.search(temp, url)
+    if m:
+        return m.group(1)
+
+    # surl 链接格式
+    temp = r"baidu\.com.+?\?surl=(.+?)(\?|&|$)"
+    m = re.search(temp, url)
+    if m:
+        return m.group(1)
+    
+    # 如果输入的就是短链接ID，直接返回
+    if not ("http" in url or "baidu" in url):
+        return url
+
+    raise ValueError(f"无法从分享链接中提取短链接ID: {url}")
 
 
 class BaiduClient(BaseDriveClient):
@@ -664,19 +686,58 @@ class BaiduClient(BaseDriveClient):
             # 将未知错误包装成 BaiduApiError 再抛出
             raise BaiduApiError(f"删除文件/目录失败 (未知错误): {str(e_generic)}")
 
-    def share(self, *file_paths: str, password: str, period: int = 0) -> PcsSharedLink:
-        """将`file_paths`公开分享，可选择使用密码
-
-        要使用此API，`cookies`中必须包含`STOKEN`
-
-        period (int): 过期天数。`0`表示永不过期
+    async def create_share(self, params: ShareParam, **kwargs: Any) -> BaseShareInfo:
         """
+        创建分享链接
+        
+        :param params: 分享参数
+        :param kwargs: 其他关键字参数
+        :return: 分享信息
+        """
+        file_name = params.file_name
+        file_ids = params.file_ids
+        expired_type = params.expired_type
+        password = params.password
 
-        info = self._baidupcs.share(*file_paths, password=password, period=period)
-        link = PcsSharedLink.from_(info)._replace(
-            paths=list(file_paths), password=password
-        )
-        return link
+        try:
+            # 调用改进后的share方法
+            info = await self._baidupcs.share(
+                file_ids=file_ids,
+                password=password or "",
+                period=expired_type
+            )
+            
+            # 直接解析返回结果，不需要判断errno（装饰器已处理）
+            from datetime import datetime
+            
+            # 直接使用API返回的过期时间
+            expired_at = None
+            if info.get("expiretime"):
+                expired_at = datetime.fromtimestamp(info.get("expiretime"))
+            
+            return BaseShareInfo(
+                title=file_name,
+                share_id=str(info.get("shareid", "")),
+                pwd_id="",  # 百度网盘不提供pwd_id
+                url=info.get("link", ""),
+                expired_type=expired_type,
+                view_count=0,
+                expired_at=expired_at,
+                expired_left=None,
+                audit_status=1,  # 假设通过审核
+                status=1,
+                file_id=str(file_ids[0]) if file_ids else None,
+                file_only_num=None,
+                file_size=None,
+                path_info=None
+            )
+                
+        except BaiduApiError as e:
+            self.logger.error(f"创建分享时发生百度API错误: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"创建分享时发生未知错误: {e}")
+            raise BaiduApiError(f"创建分享失败: {str(e)}")
 
     def list_shared(self, page: int = 1) -> List[PcsSharedLink]:
         """列出某页的分享链接
@@ -684,7 +745,7 @@ class BaiduClient(BaseDriveClient):
         要使用此API，`cookies`中必须包含`STOKEN`
         """
 
-        info = self._baidupcs.list_shared(page)
+        info = self._baidupcs.get_share_page(page)
         return [PcsSharedLink.from_(v) for v in info["list"]]
 
     def shared_password(self, share_id: int) -> Optional[str]:
@@ -897,9 +958,7 @@ class BaiduClient(BaseDriveClient):
                     _remote_dirs[sp] = sub_remote_dir
                 shared_paths_deque.extendleft(sub_paths[::-1])
 
-    async def remote_path_exists(
-        self, name: str, rd: str, _cache: Dict[str, Set[str]] = {}
-    ) -> bool:
+    async def remote_path_exists(self, name: str, rd: str, _cache: Dict[str, Set[str]] = {}) -> bool:
         """检查远程路径是否存在"""
         
         names = _cache.get(rd)
@@ -1523,6 +1582,158 @@ class BaiduClient(BaseDriveClient):
                 self.logger.warning(f"分享文件列表缓存写入失败: {e}")
         
         return drive_files_list
+
+    async def get_share_info(self, params: ListShareInfoParam, **kwargs: Any) -> Union[List[BaseShareInfo], Dict[str, Any]]:
+        """
+        获取分享信息详情
+        
+        :param params: 分享信息查询参数
+        :param kwargs: 其他关键字参数
+        :return: 分享信息列表或错误信息
+        """
+        source_type = params.source_type
+        source_id = params.source_id
+        page = params.page
+        size = params.size
+        order_field = params.order_field
+        order_type = params.order_type
+
+        try:
+            if source_type == "link":
+                # 对于分享链接，source_id 就是分享链接
+                shorturl = _extract_shorturl_from_url(source_id)
+                
+                # 调用API获取分享详情
+                info = await self._baidupcs.get_share_detail(
+                    shorturl=shorturl,
+                    page=page,
+                    num=size,
+                    order=order_field if order_field == "time" else "time",
+                    desc=1 if order_type == "desc" else 0,
+                    **kwargs
+                )
+                
+                share_info_list = []
+                
+                if info.get("errno") == 0:
+                    # 获取分享的基本信息
+                    share_id = str(info.get("share_id", ""))
+                    uk = str(info.get("uk", ""))
+                    title = info.get("title", "")
+                    expired_type = info.get("expired_type", 0)
+                    
+                    # 处理分享中的文件列表
+                    file_list = info.get("list", [])
+                    
+                    if file_list:
+                        # 如果有文件列表，为每个文件创建一个 BaseShareInfo
+                        for file_item in file_list:
+                            from datetime import datetime
+                            
+                            # 计算过期时间
+                            expired_at = None
+                            if expired_type > 0:
+                                # 根据 expired_type 计算过期时间（这里简化处理）
+                                # 实际应该根据分享创建时间加上过期天数
+                                try:
+                                    # 使用服务器时间作为基准
+                                    server_time = info.get("server_time")
+                                    if server_time:
+                                        expired_at = datetime.fromtimestamp(server_time + expired_type * 24 * 3600)
+                                except:
+                                    expired_at = None
+                            
+                            share_info = BaseShareInfo(
+                                title=title or file_item.get("server_filename", ""),
+                                share_id=share_id,
+                                pwd_id="",  # 百度网盘通过分享链接获取，没有pwd_id概念
+                                url=source_id,  # 原始分享链接
+                                expired_type=expired_type,
+                                view_count=0,  # API没有返回浏览量信息
+                                expired_at=expired_at,
+                                expired_left=None,
+                                audit_status=1,  # 假设通过审核
+                                status=1,  # 假设正常状态
+                                file_id=str(file_item.get("fs_id", "")),
+                                file_only_num=None,
+                                file_size=int(file_item.get("size", 0)) if file_item.get("size") else None,
+                                path_info=file_item.get("path", "")
+                            )
+                            share_info_list.append(share_info)
+                    else:
+                        # 如果没有文件列表，创建一个基本的分享信息
+                        share_info = BaseShareInfo(
+                            title=title,
+                            share_id=share_id,
+                            pwd_id="",
+                            url=source_id,
+                            expired_type=expired_type,
+                            view_count=0,
+                            expired_at=None,
+                            expired_left=None,
+                            audit_status=1,
+                            status=1,
+                            file_id=None,
+                            file_only_num=None,
+                            file_size=None,
+                            path_info=None
+                        )
+                        share_info_list.append(share_info)
+                
+                return share_info_list
+                
+            elif source_type == "local":
+                # 对于本地分享（用户自己创建的分享），使用 get_share_page API
+                info = await self._baidupcs.get_share_page(page=page)
+                
+                share_info_list = []
+                
+                if info.get("errno") == 0:
+                    records = info.get("list", [])
+                    
+                    for record in records:
+                        from datetime import datetime
+                        
+                        # 处理过期时间
+                        expired_at = None
+                        expiredtype = record.get("expiredtype", 0)
+                        if expiredtype > 0:
+                            try:
+                                expired_timestamp = record.get("expiredtime")
+                                if expired_timestamp:
+                                    expired_at = datetime.fromtimestamp(expired_timestamp)
+                            except:
+                                expired_at = None
+                        
+                        share_info = BaseShareInfo(
+                            title=record.get("title", ""),
+                            share_id=str(record.get("shareid", "")),
+                            pwd_id="",
+                            url=record.get("shortlink", ""),
+                            expired_type=expiredtype,
+                            view_count=int(record.get("view_cnt", 0)),
+                            expired_at=expired_at,
+                            expired_left=None,
+                            audit_status=1,  # 假设通过审核
+                            status=1 if record.get("status") == 1 else 0,
+                            file_id=None,
+                            file_only_num=None,
+                            file_size=None,
+                            path_info=None
+                        )
+                        share_info_list.append(share_info)
+                
+                return share_info_list
+                
+            else:
+                return {"errno": -1, "error_msg": f"不支持的分享来源类型: {source_type}"}
+                
+        except BaiduApiError as e:
+            self.logger.error(f"获取分享信息时发生百度API错误: {e}")
+            return {"errno": -1, "error_msg": f"API错误: {str(e)}"}
+        except Exception as e:
+            self.logger.error(f"获取分享信息时发生未知错误: {e}")
+            return {"errno": -1, "error_msg": f"未知错误: {str(e)}"}
         
     async def transfer(self,params: TransferParam, **kwargs: Any) -> bool:
         """
