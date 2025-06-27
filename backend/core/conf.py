@@ -238,6 +238,10 @@ class Settings(BaseSettings):
             'task': 'check_and_execute_filesync_cron_tasks',
             'schedule': crontab(minute='*/5'),  # 每5分钟检查一次
         },
+        'check-expiring-resources': {
+            'task': 'check_and_refresh_expiring_resources',
+            'schedule': crontab(hour='23', minute='0'),  # 每晚11点检查一次
+        },
     }
 
     # Plugin Code Generator

@@ -1029,7 +1029,7 @@ class QuarkClient(BaseDriveClient):
             # 外部分享链接信息获取
             pwd_id = _extract_pwd_id_from_url(params.source_id)
             
-            # 先获取share_token，直接调用API层
+            # 先获取share_token，@assert_ok装饰器已处理错误检查
             token_result = await self._quarkapi.get_share_token(pwd_id=pwd_id)
             stoken = token_result.get("data", {}).get("stoken", "")
             
@@ -1037,12 +1037,11 @@ class QuarkClient(BaseDriveClient):
                 self.logger.error(f"获取stoken失败，无法继续")
                 return []
             
+            # @assert_ok装饰器已处理错误检查，直接处理数据
             result = await self._quarkapi.get_share_detail(pwd_id=pwd_id, stoken=stoken)
             
             # 从API返回的data字段中获取分享信息
             share_data = result.get("data", {})
-            
-            # 分享信息在share字段中
             share_info_data = share_data.get("share", {})
             
             # 解析为BaseShareInfo对象
@@ -1059,8 +1058,8 @@ class QuarkClient(BaseDriveClient):
                 status=share_info_data.get("status", 0),
                 file_id=share_info_data.get("first_fid", 0),
                 file_only_num=str(share_info_data.get("file_num", 0)),
-                file_size=share_info_data.get("size", 0),  # size在外层
-                path_info=share_info_data.get("path_info", "")  # path_info在外层
+                file_size=share_info_data.get("size", 0),
+                path_info=share_info_data.get("path_info", "")
             )
             
             return [share_info]
@@ -1072,6 +1071,7 @@ class QuarkClient(BaseDriveClient):
             order_field = params.order_field
             order_type = params.order_type
             
+            # @assert_ok装饰器已处理错误检查
             result = await self._quarkapi.get_share_page(
                 page=page,
                 size=size,
@@ -1079,7 +1079,7 @@ class QuarkClient(BaseDriveClient):
                 order_type=order_type
             )
             
-            # 解析分享列表
+            # 解析分享列表（一定会有数据结构）
             share_list = result.get("data", {}).get("list", [])
             metadata = result.get("data", {}).get("metadata", {})
             
