@@ -87,7 +87,7 @@ async def get_subjects_by_domain(
 @router.get(
     '',
     summary='获取资源列表',
-    dependencies=[DependsJwtAuth, DependsPagination]
+    dependencies=[DependsPagination]
 )
 async def get_resource_list(
     request: Request,

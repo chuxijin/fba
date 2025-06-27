@@ -21,11 +21,11 @@ class FileCache(Base):
     id: Mapped[id_key] = mapped_column(init=False)
     file_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True, comment="文件唯一ID")
     file_name: Mapped[str] = mapped_column(String(500), nullable=False, comment="文件名称")
-    file_path: Mapped[str] = mapped_column(String(1000), nullable=False, index=True, comment="文件路径")
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False, index=True, comment="文件路径")
     
     # 关联网盘账户
     drive_account_id: Mapped[int] = mapped_column(
-        ForeignKey("yp_user.id", ondelete="CASCADE"), 
+        ForeignKey("yp_user.id", ondelete="CASCADE", use_alter=True), 
         nullable=False, 
         index=True, 
         comment="关联网盘账户ID"
@@ -58,10 +58,11 @@ class FileCache(Base):
         init=False
     )
     
-    # 索引
+    # 索引 - 优化索引策略避免 MySQL 键长度限制
     __table_args__ = (
         Index('idx_drive_file', 'drive_account_id', 'file_id'),
-        Index('idx_drive_path', 'drive_account_id', 'file_path'),
+        # 使用前缀索引来避免键长度超限，file_path 只索引前 191 个字符
+        Index('idx_drive_path', 'drive_account_id', 'file_path', mysql_length={'file_path': 191}),
         Index('idx_drive_parent', 'drive_account_id', 'parent_id'),
         {'comment': '文件缓存表'}
     )
