@@ -92,7 +92,7 @@ async def get_user_list(
     response_model=ResponseSchemaModel[BaseUserInfo],
     dependencies=[DependsJwtAuth]
 )
-async def create_user(
+async def create_yp_user(
     request: Request,
     db: CurrentSession,
     x_token: Annotated[str, Header(description="认证令牌")],
