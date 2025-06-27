@@ -21,7 +21,7 @@ class SyncConfig(Base, UserMixin):
     type: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="同步类型")
     src_path: Mapped[str] = mapped_column(String(1000), nullable=False, comment="源路径")
     dst_path: Mapped[str] = mapped_column(String(1000), nullable=False, comment="目标路径")
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("yp_user.id", ondelete="CASCADE"), nullable=False, index=True, comment="关联账号ID")
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("yp_user.id", ondelete="CASCADE", use_alter=True), nullable=False, index=True, comment="关联账号ID")
     
     # 有默认值的字段
     enable: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否启用", init=False)
@@ -34,8 +34,8 @@ class SyncConfig(Base, UserMixin):
     dst_meta: Mapped[str | None] = mapped_column(Text, nullable=True, comment="目标路径元数据", init=False)
     cron: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="定时任务表达式", init=False)
     end_time: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True, comment="结束时间", init=False)
-    exclude_template_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("rule_template.id", ondelete="SET NULL"), nullable=True, comment="排除规则模板ID", init=False)
-    rename_template_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("rule_template.id", ondelete="SET NULL"), nullable=True, comment="重命名规则模板ID", init=False)
+    exclude_template_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("rule_template.id", ondelete="SET NULL", use_alter=True), nullable=True, comment="排除规则模板ID", init=False)
+    rename_template_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("rule_template.id", ondelete="SET NULL", use_alter=True), nullable=True, comment="重命名规则模板ID", init=False)
     last_sync: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True, comment="最后同步时间", init=False)
     
     # 关系
@@ -70,7 +70,7 @@ class SyncTask(Base, UserMixin):
     __tablename__ = "filesync_task"
     
     id: Mapped[id_key] = mapped_column(init=False)
-    config_id: Mapped[int] = mapped_column(Integer, ForeignKey("filesync_config.id", ondelete="CASCADE"), nullable=False, index=True, comment="配置ID")
+    config_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("filesync_config.id", ondelete="CASCADE"), nullable=False, index=True, comment="配置ID")
     
     # 有默认值的字段
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True, comment="任务状态", init=False)
@@ -103,7 +103,7 @@ class SyncTaskItem(Base):
     __tablename__ = "filesync_task_item"
     
     id: Mapped[id_key] = mapped_column(init=False)
-    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("filesync_task.id", ondelete="CASCADE"), nullable=False, index=True, comment="任务ID")
+    task_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("filesync_task.id", ondelete="CASCADE"), nullable=False, index=True, comment="任务ID")
     type: Mapped[str] = mapped_column(String(20), nullable=False, comment="操作类型")
     src_path: Mapped[str] = mapped_column(String(1000), nullable=False, comment="源文件路径")
     dst_path: Mapped[str] = mapped_column(String(1000), nullable=False, comment="目标文件路径")

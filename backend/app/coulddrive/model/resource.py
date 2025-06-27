@@ -32,7 +32,7 @@ class Resource(Base, UserMixin):
     url_type: Mapped[str] = mapped_column(String(50), comment='链接类型')
     url: Mapped[str] = mapped_column(String(500), comment='链接')
     user_id: Mapped[int] = mapped_column(
-        ForeignKey('yp_user.id', ondelete='CASCADE'), comment='所属用户ID'
+        ForeignKey('yp_user.id', ondelete='CASCADE', use_alter=True), comment='所属用户ID'
     )
     
     # 可选字段（有默认值）
