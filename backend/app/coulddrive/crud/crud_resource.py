@@ -194,6 +194,42 @@ class CRUDResource(CRUDPlus[Resource]):
         await db.commit()
         return result
 
+    async def get_expiring_resources(
+        self, 
+        db: AsyncSession, 
+        current_time: datetime,
+        expiring_threshold: datetime
+    ) -> list[Resource]:
+        """
+        获取即将过期的资源列表
+
+        :param db: 数据库会话
+        :param current_time: 当前时间
+        :param expiring_threshold: 过期时间阈值
+        :return: 即将过期的资源列表
+        """
+        stmt = (
+            select(self.model)
+            .where(
+                and_(
+                    # 资源未删除且状态正常
+                    self.model.is_deleted == False,
+                    self.model.status == 1,
+                    # 有过期时间设置
+                    self.model.expired_at.is_not(None),
+                    # 过期时间在当前时间和阈值时间之间
+                    self.model.expired_at > current_time,
+                    self.model.expired_at <= expiring_threshold,
+                    # 非永久分享
+                    self.model.expired_type > 0
+                )
+            )
+            .order_by(self.model.expired_at.asc())
+        )
+        
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     async def update_view_count(self, db: AsyncSession, pwd_id: str, increment: int = 1) -> int:
         """
         更新资源浏览量

@@ -1603,7 +1603,7 @@ class BaiduClient(BaseDriveClient):
                 # 对于分享链接，source_id 就是分享链接
                 shorturl = _extract_shorturl_from_url(source_id)
                 
-                # 调用API获取分享详情
+                # 调用API获取分享详情（@assert_ok装饰器已处理errno检查）
                 info = await self._baidupcs.get_share_detail(
                     shorturl=shorturl,
                     page=page,
@@ -1613,72 +1613,44 @@ class BaiduClient(BaseDriveClient):
                     **kwargs
                 )
                 
+                # 获取分享的基本信息
+                share_id = str(info.get("share_id", ""))
+                uk = str(info.get("uk", ""))
+                title = info.get("title", "")
+                expired_type = info.get("expired_type", 0)
+                
+                # 处理分享中的文件列表（一定会有文件列表）
+                file_list = info.get("list", [])
                 share_info_list = []
                 
-                if info.get("errno") == 0:
-                    # 获取分享的基本信息
-                    share_id = str(info.get("share_id", ""))
-                    uk = str(info.get("uk", ""))
-                    title = info.get("title", "")
-                    expired_type = info.get("expired_type", 0)
+                for file_item in file_list:
+                    from datetime import datetime
                     
-                    # 处理分享中的文件列表
-                    file_list = info.get("list", [])
+                    # 计算过期时间
+                    expired_at = None
+                    if expired_type > 0:
+                        # 使用服务器时间作为基准
+                        server_time = info.get("server_time")
+                        if server_time:
+                            expired_at = datetime.fromtimestamp(server_time + expired_type * 24 * 3600)
                     
-                    if file_list:
-                        # 如果有文件列表，为每个文件创建一个 BaseShareInfo
-                        for file_item in file_list:
-                            from datetime import datetime
-                            
-                            # 计算过期时间
-                            expired_at = None
-                            if expired_type > 0:
-                                # 根据 expired_type 计算过期时间（这里简化处理）
-                                # 实际应该根据分享创建时间加上过期天数
-                                try:
-                                    # 使用服务器时间作为基准
-                                    server_time = info.get("server_time")
-                                    if server_time:
-                                        expired_at = datetime.fromtimestamp(server_time + expired_type * 24 * 3600)
-                                except:
-                                    expired_at = None
-                            
-                            share_info = BaseShareInfo(
-                                title=title or file_item.get("server_filename", ""),
-                                share_id=share_id,
-                                pwd_id="",  # 百度网盘通过分享链接获取，没有pwd_id概念
-                                url=source_id,  # 原始分享链接
-                                expired_type=expired_type,
-                                view_count=0,  # API没有返回浏览量信息
-                                expired_at=expired_at,
-                                expired_left=None,
-                                audit_status=1,  # 假设通过审核
-                                status=1,  # 假设正常状态
-                                file_id=str(file_item.get("fs_id", "")),
-                                file_only_num=None,
-                                file_size=int(file_item.get("size", 0)) if file_item.get("size") else None,
-                                path_info=file_item.get("path", "")
-                            )
-                            share_info_list.append(share_info)
-                    else:
-                        # 如果没有文件列表，创建一个基本的分享信息
-                        share_info = BaseShareInfo(
-                            title=title,
-                            share_id=share_id,
-                            pwd_id="",
-                            url=source_id,
-                            expired_type=expired_type,
-                            view_count=0,
-                            expired_at=None,
-                            expired_left=None,
-                            audit_status=1,
-                            status=1,
-                            file_id=None,
-                            file_only_num=None,
-                            file_size=None,
-                            path_info=None
-                        )
-                        share_info_list.append(share_info)
+                    share_info = BaseShareInfo(
+                        title=title or file_item.get("server_filename", ""),
+                        share_id=share_id,
+                        pwd_id="",  # 百度网盘通过分享链接获取，没有pwd_id概念
+                        url=source_id,  # 原始分享链接
+                        expired_type=expired_type,
+                        view_count=0,  # API没有返回浏览量信息
+                        expired_at=expired_at,
+                        expired_left=None,
+                        audit_status=1,  # 假设通过审核
+                        status=1,  # 假设正常状态
+                        file_id=str(file_item.get("fs_id", "")),
+                        file_only_num=None,
+                        file_size=int(file_item.get("size", 0)) if file_item.get("size") else None,
+                        path_info=file_item.get("path", "")
+                    )
+                    share_info_list.append(share_info)
                 
                 return share_info_list
                 
@@ -1686,42 +1658,42 @@ class BaiduClient(BaseDriveClient):
                 # 对于本地分享（用户自己创建的分享），使用 get_share_page API
                 info = await self._baidupcs.get_share_page(page=page)
                 
+                # @assert_ok装饰器已处理errno检查，直接处理数据
+                records = info.get("list", [])
                 share_info_list = []
                 
-                if info.get("errno") == 0:
-                    records = info.get("list", [])
+                for record in records:
+                    from datetime import datetime
                     
-                    for record in records:
-                        from datetime import datetime
-                        
-                        # 处理过期时间
-                        expired_at = None
-                        expiredtype = record.get("expiredtype", 0)
-                        if expiredtype > 0:
-                            try:
-                                expired_timestamp = record.get("expiredtime")
-                                if expired_timestamp:
-                                    expired_at = datetime.fromtimestamp(expired_timestamp)
-                            except:
-                                expired_at = None
-                        
-                        share_info = BaseShareInfo(
-                            title=record.get("title", ""),
-                            share_id=str(record.get("shareid", "")),
-                            pwd_id="",
-                            url=record.get("shortlink", ""),
-                            expired_type=expiredtype,
-                            view_count=int(record.get("view_cnt", 0)),
-                            expired_at=expired_at,
-                            expired_left=None,
-                            audit_status=1,  # 假设通过审核
-                            status=1 if record.get("status") == 1 else 0,
-                            file_id=None,
-                            file_only_num=None,
-                            file_size=None,
-                            path_info=None
-                        )
-                        share_info_list.append(share_info)
+                    # 处理过期时间
+                    expired_at = None
+                    expiredtype = record.get("expiredtype", 0)
+                    if expiredtype > 0:
+                        expired_timestamp = record.get("expiredtime")
+                        if expired_timestamp:
+                            expired_at = datetime.fromtimestamp(expired_timestamp)
+                    
+                    # 获取文件ID（从fsIds数组中取第一个）
+                    fs_ids = record.get("fsIds", [])
+                    file_id = str(fs_ids[0]) if fs_ids else None
+                    
+                    share_info = BaseShareInfo(
+                        title=record.get("title", ""),
+                        share_id=str(record.get("shareid", "")),
+                        pwd_id=record.get("shorturl", ""),  # 使用shorturl作为pwd_id
+                        url=record.get("shortlink", ""),
+                        expired_type=expiredtype,
+                        view_count=int(record.get("vCnt", 0)),  # 使用vCnt字段
+                        expired_at=expired_at,
+                        expired_left=None,
+                        audit_status=1,  # 假设通过审核
+                        status=1 if record.get("status") == 1 else 0,
+                        file_id=file_id,
+                        file_only_num=str(len(fs_ids)) if fs_ids else None,
+                        file_size=None,
+                        path_info=record.get("typicalPath", "")
+                    )
+                    share_info_list.append(share_info)
                 
                 return share_info_list
                 
