@@ -272,6 +272,38 @@ class UserInfoParam(SchemaBase):
     drive_type: DriveType = Field(..., description="网盘类型")
 
 
+class ShareParam(SchemaBase):
+    """创建分享参数"""
+    
+    drive_type: DriveType = Field(..., description="网盘类型")
+    file_name: str = Field(..., description="分享标题/文件名称")
+    file_ids: list[int | str] = Field(..., description="文件ID列表")
+    expired_type: int = Field(0, description="过期类型(0永久 1天 7天 30天 365天)")
+    password: str | None = Field(None, description="分享密码，4位字符")
+
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v: str | None) -> str | None:
+        """验证分享密码"""
+        if v is not None and len(v) != 4:
+            raise ValueError("分享密码必须是4位字符")
+        return v
+
+    @field_validator('expired_type')
+    @classmethod
+    def validate_expired_type(cls, v: int) -> int:
+        """验证过期类型
+        
+        统一使用天数格式：0(永久), 1(1天), 7(7天), 30(30天), 365(365天)
+        各网盘客户端会在内部进行相应的转换：
+        - 百度网盘：直接使用天数
+        - 夸克网盘：转换为枚举值 0->1, 1->1, 7->2, 30->3, 365->4
+        """
+        if v not in [0, 1, 7, 30, 365]:
+            raise ValueError("过期类型必须是 0(永久), 1(1天), 7(7天), 30(30天), 365(365天) 之一")
+        return v
+
+
 def get_filepath(
     filedir: str | None = None,
     filename: str | None = None,

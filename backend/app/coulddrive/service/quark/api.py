@@ -182,10 +182,7 @@ class QuarkApi:
         return resp.json()
 
     @assert_ok
-    async def list_files(
-        self,
-        pdir_fid: str = "0",
-        page: int = 1,
+    async def list_files(self, pdir_fid: str = "0", page: int = 1,
         size: int = 50,
         sort: str = "file_type:asc,file_name:asc",
         **kwargs

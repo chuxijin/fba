@@ -67,7 +67,7 @@ class PanNode(Enum):
     """使用pan.baidu.com的网盘节点"""
 
     TransferShared = "share/transfer"
-    Share = "share/set"
+    Share = "share/pset"
     SharedPathList = "share/list"
     SharedRecord = "share/record"
     SharedCancel = "share/cancel"
@@ -378,7 +378,7 @@ class BaiduApi:
         return resp.json()
 
     @assert_ok
-    def move(self, *file_paths: str):
+    async def move(self, *file_paths: str):
         """
         将源文件移动到目标文件夹
 
@@ -393,11 +393,11 @@ class BaiduApi:
 
         sources, dest = file_paths[:-1], file_paths[-1]
 
-        if self.is_file(dest):
+        if await self.is_file(dest):
             raise BaiduApiError("远程`dest`是一个文件。它必须是一个目录。")
 
-        if not self.is_dir(dest):
-            self.makedir(dest)
+        if not await self.is_dir(dest):
+            await self.makedir(dest)
 
         _sources = (Path(s) for s in sources)
         _dest = Path(dest)
@@ -417,7 +417,7 @@ class BaiduApi:
         return self.file_operate("move", param)
 
     @assert_ok
-    def copy(self, *file_paths: str):
+    async def copy(self, *file_paths: str):
         """
         将源文件复制到目标文件夹
 
@@ -432,11 +432,11 @@ class BaiduApi:
 
         sources, dest = file_paths[:-1], file_paths[-1]
 
-        if self.is_file(dest):
+        if await self.is_file(dest):
             raise BaiduApiError("远程`dest`是一个文件。它必须是一个目录。")
 
-        if not self.is_dir(dest):
-            self.makedir(dest)
+        if not await self.is_dir(dest):
+            await self.makedir(dest)
 
         _sources = (Path(s) for s in sources)
         _dest = Path(dest)
@@ -454,7 +454,7 @@ class BaiduApi:
         return await self.file_operate("delete", param)
 
     @assert_ok
-    async def share(self, *file_paths: str, password: str, period: int = 0):
+    async def share(self, file_ids: List[int], password: str, period: int = 0):
         """将`file_paths`公开分享
 
         period (int): 过期天数。`0`表示永不过期
@@ -462,9 +462,6 @@ class BaiduApi:
 
         assert self._stoken, "`STOKEN`不在`cookies`中"
         assert len(password) == 4, "`password`必须设置"
-
-        meta = await self.meta(*file_paths)
-        fs_ids = [i["fs_id"] for i in meta["list"]]
 
         url = PanNode.Share.url()
         params = {
@@ -474,11 +471,16 @@ class BaiduApi:
             "bdstoken": await self.bdstoken,
         }
         data = {
-            "fid_list": dump_json(fs_ids),
+            "fid_list": dump_json(file_ids),
             "schannel": "0",
             "channel_list": "[]",
             "period": str(int(period)),
+            "is_knowledge": "0",
+            "public": "0",
+            "eflag_disable": "true",
+            "linkOrQrcode": "link",
         }
+        
         if password:
             data["pwd"] = password
             data["schannel"] = "4"
@@ -487,11 +489,19 @@ class BaiduApi:
         return resp.json()
 
     @assert_ok
-    async def list_shared(self, page: int = 1):
-        """
-        list.0.channel:
-            - 0, no password
-            - 4, with password
+    async def get_share_page(self, page: int = 1):
+        """获取用户自己创建的分享列表
+        
+        Args:
+            page: 页码，默认为1
+            
+        Returns:
+            Dict: 返回分享列表信息
+            
+        Note:
+            list.0.channel:
+                - 0, no password
+                - 4, with password
         """
 
         url = PanNode.SharedRecord.url()
@@ -633,6 +643,77 @@ class BaiduApi:
             "bdstoken": "null",
             "showempty": "0",
         }
+        resp = await self._request(Method.Get, url, params=params)
+        return resp.json()
+
+    @assert_ok
+    async def get_share_detail(
+        self, 
+        shorturl: str, 
+        page: int = 1, 
+        num: int = 20,
+        order: str = "time",
+        desc: int = 1,
+        root: int = 1,
+        view_mode: int = 1,
+        **kwargs
+    ):
+        """根据短链接获取分享详情
+        
+        Args:
+            shorturl: 分享短链接ID（如：yyr_dZib2-aN76PXRlZF1g）
+            page: 页码，默认为1
+            num: 每页数量，默认为20
+            order: 排序方式，默认为time
+            desc: 是否降序，1为降序，0为升序，默认为1
+            root: 根目录标识，默认为1
+            view_mode: 查看模式，默认为1
+            **kwargs: 其他可选参数
+                - web: 默认为5
+                - app_id: 默认为250528
+                - showempty: 是否显示空文件夹，默认为0
+                - channel: 渠道，默认为chunlei
+                - clienttype: 客户端类型，默认为0
+                - bdstoken: 如果需要的话
+                - logid: 日志ID
+                - dp-logid: 数据平台日志ID
+        
+        Returns:
+            Dict: 返回分享详情信息
+        """
+        url = PanNode.SharedPathList.url()
+        params = {
+            "web": str(kwargs.pop("web", 5)),
+            "app_id": str(kwargs.pop("app_id", 250528)),
+            "desc": str(desc),
+            "showempty": str(kwargs.pop("showempty", 0)),
+            "page": str(page),
+            "num": str(num),
+            "order": order,
+            "shorturl": shorturl,
+            "root": str(root),
+            "view_mode": str(view_mode),
+            "channel": kwargs.pop("channel", "chunlei"),
+            "clienttype": str(kwargs.pop("clienttype", 0)),
+        }
+        
+        # 如果提供了bdstoken，添加到参数中
+        bdstoken = kwargs.pop("bdstoken", None)
+        if bdstoken:
+            params["bdstoken"] = str(bdstoken)
+        elif await self.bdstoken:
+            params["bdstoken"] = await self.bdstoken
+            
+        # 如果提供了logid，添加到参数中
+        logid = kwargs.pop("logid", None)
+        if logid:
+            params["logid"] = str(logid)
+            
+        # 如果提供了dp-logid，添加到参数中
+        dp_logid = kwargs.pop("dp_logid", None)
+        if dp_logid:
+            params["dp-logid"] = str(dp_logid)
+        
         resp = await self._request(Method.Get, url, params=params)
         return resp.json()
 

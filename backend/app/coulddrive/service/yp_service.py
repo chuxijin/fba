@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timedelta
 
 from backend.app.coulddrive.schema.enum import RecursionSpeed, DriveType
-from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, MkdirParam, ListFilesParam, ListShareFilesParam, ListShareInfoParam, RemoveParam, TransferParam, RelationshipParam, UserInfoParam
+from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, MkdirParam, ListFilesParam, ListShareFilesParam, ListShareInfoParam, RemoveParam, ShareParam, TransferParam, RelationshipParam, UserInfoParam
 from backend.app.coulddrive.schema.user import BaseUserInfo, RelationshipItem
 
 
@@ -118,7 +118,11 @@ class BaseDriveClient:
             file_id="",
             file_name=file_name,
             file_path=file_path,
-            is_folder=True
+            file_size=0,
+            is_folder=True,
+            parent_id="",
+            created_at="",
+            updated_at=""
         )
 
     async def exist(self, fid: str, *args: Any, **kwargs: Any) -> bool:
@@ -252,9 +256,9 @@ class BaseDriveClient:
         """重命名文件或目录"""
         return False
         
-    async def share(self, *fids: str, password: str = None, expire_days: int = 0, description: str = "") -> Any:
-        """分享文件或目录"""
-        return None
+    async def create_share(self, params: 'ShareParam', **kwargs: Any) -> BaseShareInfo:
+        """创建分享链接"""
+        return []
 
     async def transfer(self, params: TransferParam, **kwargs: Any) -> bool:
         """从各种来源传输文件到自己的网盘"""
@@ -492,6 +496,10 @@ class BaseDrive:
     async def get_relationship_list(self, x_token: str, params: 'RelationshipParam', **kwargs) -> List[RelationshipItem]:
         """获取关系列表（好友或群组）"""
         return await self.call_method(x_token, params.drive_type, "get_relationship_list", params, **kwargs)
+
+    async def create_share(self, x_token: str, params: 'ShareParam', **kwargs) -> BaseShareInfo:
+        """创建分享链接"""
+        return await self.call_method(x_token, params.drive_type, "create_share", params, **kwargs)
     
     def get_client_status(self) -> Dict[str, Dict[str, Any]]:
         """
