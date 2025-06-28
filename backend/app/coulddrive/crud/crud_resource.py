@@ -175,7 +175,9 @@ class CRUDResource(CRUDPlus[Resource]):
         :param pk: 资源 ID 列表
         :return:
         """
-        return await self.delete_model_by_column(db, allow_multiple=True, id__in=pk)
+        result = await self.delete_model_by_column(db, allow_multiple=True, id__in=pk)
+        await db.commit()
+        return result
 
     async def soft_delete(self, db: AsyncSession, pk: list[int]) -> int:
         """
