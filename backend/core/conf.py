@@ -109,6 +109,7 @@ class Settings(BaseSettings):
         'http://127.0.0.1:8000',
         'http://localhost:5173',
         'http://127.0.0.1:5500',
+        'https://admin.yzxj.vip',
     ]
     CORS_EXPOSE_HEADERS: list[str] = [
         'X-Request-ID',
