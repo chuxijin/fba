@@ -285,7 +285,7 @@ class ShareParam(SchemaBase):
     @classmethod
     def validate_password(cls, v: str | None) -> str | None:
         """验证分享密码"""
-        if v is not None and len(v) != 4:
+        if v is not None and v != "" and len(v) != 4:
             raise ValueError("分享密码必须是4位字符")
         return v
 

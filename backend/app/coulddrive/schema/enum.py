@@ -39,6 +39,7 @@ class ResourceType(Enum):
     """资源类型枚举"""
     COURSE = "课程"
     EBOOK = "电子书"
+    NOTE = "笔记"
     SOFTWARE = "软件"
     EXAM_PAPER = "真题"
 

@@ -659,10 +659,9 @@ class QuarkClient(BaseDriveClient):
         # 0(永久) -> 1, 1(1天) -> 1, 7(7天) -> 2, 30(30天) -> 3, 365(365天) -> 4
         quark_expired_type_map = {
             0: 1,    # 永久
-            1: 1,    # 1天 (夸克最小是永久，所以1天也映射为永久)
-            7: 2,    # 7天
-            30: 3,   # 30天
-            365: 4   # 365天
+            1: 2,    # 1天
+            7: 3,    # 7天
+            30: 4,   # 30天
         }
         
         quark_expired_type = quark_expired_type_map.get(expired_type, 1)  # 默认永久

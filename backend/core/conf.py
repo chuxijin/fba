@@ -110,6 +110,8 @@ class Settings(BaseSettings):
         'http://localhost:5173',
         'http://127.0.0.1:5500',
         'https://admin.yzxj.vip',
+        'https://blog.yzxj.vip',
+        'https://static.yzxj.vip',
     ]
     CORS_EXPOSE_HEADERS: list[str] = [
         'X-Request-ID',
@@ -223,6 +225,7 @@ class Settings(BaseSettings):
         'app.task.celery_task',
         'app.task.celery_task.db_log',
         'app.task.celery_task.filesync',
+        'app.task.celery_task.resource',
     ]
     CELERY_TASK_MAX_RETRIES: int = 5
 
@@ -242,7 +245,8 @@ class Settings(BaseSettings):
         },
         'check-expiring-resources': {
             'task': 'check_and_refresh_expiring_resources',
-            'schedule': crontab(hour='23', minute='0'),  # 每晚11点检查一次
+            'schedule': crontab(minute='*/5'),  # 每1分钟检查一次
+            #'schedule': crontab(hour='23', minute='0'),  # 每晚11点检查一次
         },
     }
 
