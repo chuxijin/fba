@@ -651,7 +651,7 @@ class BaiduApi:
         self, 
         shorturl: str, 
         page: int = 1, 
-        num: int = 20,
+        num: int = 50,
         order: str = "time",
         desc: int = 1,
         root: int = 1,
