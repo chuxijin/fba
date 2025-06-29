@@ -725,6 +725,7 @@ class QuarkClient(BaseDriveClient):
                 share_id=str(share_id),
                 pwd_id=str(share_data.get("pwd_id", "")),
                 url=share_data.get("share_url", ""),
+                password=str(share_data.get("passcode", "")),
                 expired_type=expired_type,  # 保持原始的统一天数格式
                 view_count=0,
                 expired_at=expired_at,
@@ -1058,6 +1059,7 @@ class QuarkClient(BaseDriveClient):
                 share_id=share_info_data.get("share_id", ""),
                 pwd_id=share_info_data.get("pwd_id", ""),
                 url=share_info_data.get("share_url", ""),
+                password=str(share_info_data.get("passcode", "")),
                 expired_type=share_info_data.get("expired_type", 0),
                 view_count=share_info_data.get("click_pv", 0),
                 expired_at=datetime.fromtimestamp(share_info_data.get("expired_at", 0) / 1000) if share_info_data.get("expired_at") else None,
@@ -1098,6 +1100,7 @@ class QuarkClient(BaseDriveClient):
                     share_id=item.get("share_id", ""),
                     pwd_id=item.get("pwd_id", ""),
                     url=item.get("share_url", ""),
+                    password=str(item.get("passcode", "")),
                     expired_type=item.get("expired_type", 0),
                     view_count=item.get("click_pv", 0),
                     expired_at=datetime.fromtimestamp(item.get("expired_at", 0) / 1000) if item.get("expired_at") else None,

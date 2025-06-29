@@ -48,6 +48,7 @@ class BaseShareInfo(SchemaBase):
     share_id: str = Field("", description="分享ID")
     pwd_id: str = Field("", description="密码ID")
     url: str = Field("", description="分享链接")
+    password: str = Field("", description="提取码")
     expired_type: int = Field(0, description="过期类型(0永久 1定时)")
     view_count: int = Field(0, description="浏览量")
     expired_at: datetime | None = Field(None, description="过期时间")

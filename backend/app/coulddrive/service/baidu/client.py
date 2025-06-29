@@ -720,6 +720,7 @@ class BaiduClient(BaseDriveClient):
                 share_id=str(info.get("shareid", "")),
                 pwd_id="",  # 百度网盘不提供pwd_id
                 url=info.get("link", ""),
+                password=info.get("passwd", ""),
                 expired_type=expired_type,
                 view_count=0,
                 expired_at=expired_at,
@@ -1633,6 +1634,7 @@ class BaiduClient(BaseDriveClient):
                         share_id=share_id,
                         pwd_id="",  # 百度网盘通过分享链接获取，没有pwd_id概念
                         url=source_id,  # 原始分享链接
+                        password=file_item.get("passwd", ""),
                         expired_type=expired_type,
                         view_count=0,  # API没有返回浏览量信息
                         expired_at=expired_at,
@@ -1676,6 +1678,7 @@ class BaiduClient(BaseDriveClient):
                         share_id=str(record.get("shareid", "")),
                         pwd_id=record.get("shorturl", ""),  # 使用shorturl作为pwd_id
                         url=record.get("shortlink", ""),
+                        password=record.get("passwd", ""),
                         expired_type=expiredtype,
                         view_count=int(record.get("vCnt", 0)),  # 使用vCnt字段
                         expired_at=expired_at,
