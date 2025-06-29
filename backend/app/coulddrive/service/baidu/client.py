@@ -21,7 +21,7 @@ import asyncio
 from PIL import Image
 
 from backend.app.coulddrive.schema.enum import RecursionSpeed
-from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, ListFilesParam, ListShareFilesParam, ListShareInfoParam, MkdirParam, RemoveParam, ShareParam, TransferParam, RelationshipParam, RelationshipType, UserInfoParam
+from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, ListFilesParam, ListShareFilesParam, ListShareInfoParam, MkdirParam, RemoveParam, ShareParam, TransferParam, RelationshipParam, RelationshipType, UserInfoParam, CancelShareParam
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
     GetUserFriendDetail,
@@ -760,13 +760,7 @@ class BaiduClient(BaseDriveClient):
             return None
         return p
 
-    def cancel_shared(self, *share_ids: int):
-        """取消具有`share_ids`的分享链接
 
-        要使用此API，`cookies`中必须包含`STOKEN`
-        """
-
-        self._baidupcs.cancel_shared(*share_ids)
 
     def access_shared(self, shared_url: str, password: str, vcode_str: Optional[str] = None, vcode: Optional[str] = None) -> Dict[str, Any]:
         """验证需要`password`的`shared_url`
@@ -1835,4 +1829,21 @@ class BaiduClient(BaseDriveClient):
                 return False
         else:
             self.logger.error(f"不支持的转存 source_type: {source_type}")
+            return False
+
+    async def cancel_share(self, params: CancelShareParam, **kwargs: Any) -> bool:
+        """
+        取消分享链接
+        
+        :param params: 取消分享参数
+        :param kwargs: 其他关键字参数
+        :return: 是否成功取消
+        """
+        try:
+            # 将字符串ID转换为整数
+            share_ids = [int(sid) for sid in params.shareid_list]
+            await self._baidupcs.cancel_shared(*share_ids)
+            return True
+        except Exception as e:
+            self.logger.error(f"取消分享时发生错误: {e}")
             return False

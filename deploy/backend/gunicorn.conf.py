@@ -1,9 +1,9 @@
 # fmt: off
 # 监听内网端口
-bind = '0.0.0.0:8001'
+bind = '0.0.0.0:8000'
 
 # 工作目录
-chdir = '/fba/backend/'
+chdir = '/www/wwwroot/WeBot/backend/'
 
 # 并行工作进程数
 workers = 1

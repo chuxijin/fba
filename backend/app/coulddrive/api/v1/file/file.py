@@ -13,7 +13,8 @@ from backend.app.coulddrive.schema.file import (
     MkdirParam,
     RemoveParam,
     ShareParam,
-    TransferParam
+    TransferParam,
+    CancelShareParam
 )
 from backend.app.coulddrive.service.yp_service import get_drive_manager
 from backend.common.pagination import DependsPagination, PageData, paging_list_data, _CustomPageParams
@@ -199,3 +200,26 @@ async def create_share(
     drive_manager = get_drive_manager()
     share_info = await drive_manager.create_share(x_token, params)
     return response_base.success(data=share_info)
+
+
+@router.delete(
+    '/share/cancel',
+    summary='取消分享链接',
+    description='取消已创建的分享链接',
+    response_model=ResponseSchemaModel[bool],
+    dependencies=[DependsJwtAuth]
+)
+async def cancel_share(
+    x_token: Annotated[str, Header(description="认证令牌")],
+    params: CancelShareParam
+) -> ResponseSchemaModel[bool]:
+    """
+    取消分享链接
+    
+    :param x_token: 认证令牌
+    :param params: 取消分享参数
+    :return: 是否成功取消
+    """
+    drive_manager = get_drive_manager()
+    result = await drive_manager.cancel_share(x_token, params)
+    return response_base.success(data=result)

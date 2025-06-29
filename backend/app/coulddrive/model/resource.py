@@ -79,7 +79,7 @@ class ResourceViewHistory(Base):
 
     __tablename__ = 'resource_view_history'
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment='主键ID')
+    id: Mapped[id_key] = mapped_column(init=False)
     pwd_id: Mapped[str] = mapped_column(String(100), index=True, comment='资源唯一ID')
     view_count: Mapped[int] = mapped_column(Integer, default=0, comment='当时的浏览量')
     record_time: Mapped[datetime] = mapped_column(

@@ -304,6 +304,21 @@ class ShareParam(SchemaBase):
         return v
 
 
+class CancelShareParam(SchemaBase):
+    """取消分享参数"""
+    
+    drive_type: DriveType = Field(..., description="网盘类型")
+    shareid_list: list[int | str] = Field(..., description="分享ID列表")
+
+    @field_validator('shareid_list')
+    @classmethod
+    def validate_shareid_list(cls, v: list[int | str]) -> list[int | str]:
+        """验证分享ID列表"""
+        if not v:
+            raise ValueError("分享ID列表不能为空")
+        return v
+
+
 def get_filepath(
     filedir: str | None = None,
     filename: str | None = None,
