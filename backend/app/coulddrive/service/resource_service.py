@@ -151,7 +151,16 @@ class ResourceService:
         # 如果获取到分享信息，添加分享相关字段
         if share_info:
             share_data = share_info.model_dump()
+            # 将password字段映射到extract_code字段
+            if 'password' in share_data:
+                share_data['extract_code'] = share_data.pop('password')
+            
+            # 保存用户输入的extract_code，避免被API返回的数据覆盖
+            user_extract_code = resource_data.get('extract_code')
             resource_data.update(share_data)
+            # 如果用户输入了extract_code，使用用户输入的值
+            if user_extract_code:
+                resource_data['extract_code'] = user_extract_code
         else:
             # 使用默认值
             resource_data.update({
@@ -324,11 +333,14 @@ class ResourceService:
                     if share_info_list:
                         share_info = share_info_list[0]
                         share_data = share_info.model_dump()
+                        # 将password字段映射到extract_code字段
+                        if 'password' in share_data:
+                            share_data['extract_code'] = share_data.pop('password')
                         # 只更新分享相关的字段，不覆盖用户手动输入的字段
                         share_fields = {
                             "title", "share_id", "pwd_id", "expired_type", "view_count",
                             "expired_at", "expired_left", "audit_status", "status",
-                            "file_only_num", "file_size", "path_info"
+                            "file_only_num", "file_size", "path_info", "extract_code"
                         }
                         for field in share_fields:
                             if field in share_data:
@@ -407,7 +419,11 @@ class ResourceService:
         # 检查哪些字段需要更新
         update_fields = {}
         share_data = share_info.model_dump()
+        # 将password字段映射到extract_code字段
+        if 'password' in share_data:
+            share_data['extract_code'] = share_data.pop('password')
         
+        # 刷新分享信息时，不更新用户手动输入的extract_code字段
         for field in ['view_count', 'expired_left', 'file_size', 'expired_at', 'path_info', 'expired_type', 'file_only_num']:
             if hasattr(resource, field):
                 old_value = getattr(resource, field)
