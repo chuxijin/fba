@@ -39,6 +39,6 @@ capture_output = True
 loglevel = 'debug'
 
 # python程序
-pythonpath = '/usr/local/lib/python3.10/site-packages'
+pythonpath = '/www/wwwroot/WeBot/venv/lib/python3.12/site-packages'
 
 # 启动 gunicorn -c gunicorn.conf.py main:app
