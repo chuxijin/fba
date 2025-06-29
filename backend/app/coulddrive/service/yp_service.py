@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timedelta
 
 from backend.app.coulddrive.schema.enum import RecursionSpeed, DriveType
-from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, MkdirParam, ListFilesParam, ListShareFilesParam, ListShareInfoParam, RemoveParam, ShareParam, TransferParam, RelationshipParam, UserInfoParam
+from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, MkdirParam, ListFilesParam, ListShareFilesParam, ListShareInfoParam, RemoveParam, ShareParam, TransferParam, RelationshipParam, UserInfoParam, CancelShareParam
 from backend.app.coulddrive.schema.user import BaseUserInfo, RelationshipItem
 
 
@@ -258,7 +258,26 @@ class BaseDriveClient:
         
     async def create_share(self, params: 'ShareParam', **kwargs: Any) -> BaseShareInfo:
         """创建分享链接"""
-        return []
+        return BaseShareInfo(
+            title="",
+            share_id="",
+            pwd_id="",
+            url="",
+            expired_type=0,
+            view_count=0,
+            expired_at=None,
+            expired_left=None,
+            audit_status=0,
+            status=1,
+            file_id=None,
+            file_only_num=None,
+            file_size=None,
+            path_info=None
+        )
+
+    async def cancel_share(self, params: 'CancelShareParam', **kwargs: Any) -> bool:
+        """取消分享链接"""
+        return False
 
     async def transfer(self, params: TransferParam, **kwargs: Any) -> bool:
         """从各种来源传输文件到自己的网盘"""
@@ -477,7 +496,7 @@ class BaseDrive:
         """获取分享文件列表"""
         return await self.call_method(x_token, params.drive_type, "get_share_list", params, **kwargs)
     
-    async def get_share_info(self, x_token: str, params: 'ListShareFilesParam', **kwargs) -> List[BaseShareInfo]:
+    async def get_share_info(self, x_token: str, params: 'ListShareInfoParam', **kwargs) -> List[BaseShareInfo]:
         """获取分享详情列表"""
         return await self.call_method(x_token, params.drive_type, "get_share_info", params, **kwargs)
     
@@ -500,6 +519,10 @@ class BaseDrive:
     async def create_share(self, x_token: str, params: 'ShareParam', **kwargs) -> BaseShareInfo:
         """创建分享链接"""
         return await self.call_method(x_token, params.drive_type, "create_share", params, **kwargs)
+    
+    async def cancel_share(self, x_token: str, params: 'CancelShareParam', **kwargs) -> bool:
+        """取消分享链接"""
+        return await self.call_method(x_token, params.drive_type, "cancel_share", params, **kwargs)
     
     def get_client_status(self) -> Dict[str, Dict[str, Any]]:
         """

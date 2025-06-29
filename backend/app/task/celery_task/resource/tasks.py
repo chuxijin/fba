@@ -133,7 +133,9 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                     )
                     
                     # 更新资源信息
-                    from backend.app.coulddrive.schema.resource import UpdateResourceParam
+                    from backend.app.coulddrive.schema.resource import UpdateResourceParam, CreateResourceViewHistoryParam
+                    from backend.app.coulddrive.crud.crud_resource import resource_view_history_dao
+                    
                     update_params = UpdateResourceParam(
                         url=new_share_info.url,
                         share_id=new_share_info.share_id,
@@ -141,11 +143,25 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         expired_at=new_share_info.expired_at,
                         expired_left=new_share_info.expired_left,
                         expired_type=new_share_info.expired_type,
-                        extract_code=resource.extract_code or ""  # 如果没有提取码，留空
+                        extract_code=resource.extract_code or "",  # 如果没有提取码，留空
+                        view_count=0  # 新录入的浏览量设为0
                     )
                     
                     # 更新数据库
                     await resource_dao.update(db, resource.id, update_params)
+                    
+                    # 记录初始浏览量历史
+                    if new_share_info.pwd_id:
+                        try:
+                            history_param = CreateResourceViewHistoryParam(
+                                pwd_id=new_share_info.pwd_id,
+                                view_count=0
+                            )
+                            await resource_view_history_dao.create(db, history_param)
+                        except Exception as e:
+                            # 记录浏览量历史失败不影响资源刷新
+                            logger.error(f"记录浏览量历史失败: {str(e)}")
+                            pass
                     
                     result["refreshed_resources"] += 1
                     result["refresh_details"].append({
@@ -259,7 +275,9 @@ async def _refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
             )
             
             # 更新资源信息
-            from backend.app.coulddrive.schema.resource import UpdateResourceParam
+            from backend.app.coulddrive.schema.resource import UpdateResourceParam, CreateResourceViewHistoryParam
+            from backend.app.coulddrive.crud.crud_resource import resource_view_history_dao
+            
             update_params = UpdateResourceParam(
                 url=new_share_info.url,
                 share_id=new_share_info.share_id,
@@ -267,11 +285,25 @@ async def _refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
                 expired_at=new_share_info.expired_at,
                 expired_left=new_share_info.expired_left,
                 expired_type=new_share_info.expired_type,
-                extract_code=resource.extract_code or ""
+                extract_code=resource.extract_code or "",
+                view_count=0  # 新录入的浏览量设为0
             )
             
             # 更新数据库
             await resource_dao.update(db, resource_id, update_params)
+            
+            # 记录初始浏览量历史
+            if new_share_info.pwd_id:
+                try:
+                    history_param = CreateResourceViewHistoryParam(
+                        pwd_id=new_share_info.pwd_id,
+                        view_count=0
+                    )
+                    await resource_view_history_dao.create(db, history_param)
+                except Exception as e:
+                    # 记录浏览量历史失败不影响资源刷新
+                    logger.error(f"记录浏览量历史失败: {str(e)}")
+                    pass
             
             logger.info(f"{resource.title or resource.main_name} 刷新成功")
             

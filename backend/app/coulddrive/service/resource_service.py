@@ -420,21 +420,28 @@ class ResourceService:
         if update_fields:
             update_param = UpdateResourceParam(**update_fields)
             await resource_dao.update(db, resource_id, update_param, updated_by)
-            
-            # 如果浏览量有变化且有pwd_id，记录浏览量历史
-            if 'view_count' in update_fields and resource.pwd_id:
-                try:
-                    history_param = CreateResourceViewHistoryParam(
-                        pwd_id=resource.pwd_id,
-                        view_count=update_fields['view_count']
-                    )
-                    await resource_view_history_dao.create(db, history_param)
-                except Exception as e:
-                    # 记录浏览量历史失败不影响分享信息刷新
-                    pass
+        
+        # 获取最新的资源信息（用于记录浏览量历史）
+        updated_resource = await resource_dao.get(db, resource_id)
+        if not updated_resource:
+            raise NotFoundError(msg="获取更新后的资源失败")
+        
+        # 如果浏览量有变化且有pwd_id，记录浏览量历史
+        if (updated_resource.pwd_id and 
+            'view_count' in update_fields and 
+            update_fields['view_count'] != resource.view_count):
+            try:
+                history_param = CreateResourceViewHistoryParam(
+                    pwd_id=updated_resource.pwd_id,
+                    view_count=updated_resource.view_count or 0
+                )
+                await resource_view_history_dao.create(db, history_param)
+            except Exception as e:
+                # 记录浏览量历史失败不影响分享信息刷新
+                pass
         
         # 返回更新后的资源详情
-        return await ResourceService.get_resource_detail(db, resource_id)
+        return GetResourceDetail.model_validate(updated_resource)
 
     @staticmethod
     async def delete_resource(db: AsyncSession, resource_id: int, deleted_by: int) -> None:

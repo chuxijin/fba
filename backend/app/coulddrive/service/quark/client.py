@@ -32,6 +32,7 @@ from backend.app.coulddrive.schema.file import (
     RemoveParam,
     TransferParam,
     UserInfoParam,
+    CancelShareParam,
 )
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
@@ -1007,9 +1008,17 @@ class QuarkClient(BaseDriveClient):
             self.logger.error(f"处理分享链接时发生错误: {e}")
             return []
 
-    async def cancel_shares(self, share_ids: List[str]) -> bool:
-        """取消分享"""
+    async def cancel_share(self, params: CancelShareParam, **kwargs: Any) -> bool:
+        """
+        取消分享链接
+        
+        :param params: 取消分享参数
+        :param kwargs: 其他关键字参数
+        :return: 是否成功取消
+        """
         try:
+            # 将ID转换为字符串列表
+            share_ids = [str(sid) for sid in params.shareid_list]
             await self._quarkapi.cancel_shared(share_ids=share_ids)
             return True
         except Exception as e:
