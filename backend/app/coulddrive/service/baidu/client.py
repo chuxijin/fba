@@ -21,7 +21,21 @@ import asyncio
 from PIL import Image
 
 from backend.app.coulddrive.schema.enum import RecursionSpeed
-from backend.app.coulddrive.schema.file import BaseFileInfo, BaseShareInfo, ListFilesParam, ListShareFilesParam, ListShareInfoParam, MkdirParam, RemoveParam, ShareParam, TransferParam, RelationshipParam, RelationshipType, UserInfoParam, CancelShareParam
+from backend.app.coulddrive.schema.file import (
+    BaseFileInfo,
+    BaseShareInfo,
+    CancelShareParam,
+    ListFilesParam,
+    ListShareFilesParam,
+    ListShareInfoParam,
+    MkdirParam,
+    RelationshipParam,
+    RelationshipType,
+    RemoveParam,
+    ShareParam,
+    TransferParam,
+    UserInfoParam,
+)
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
     GetUserFriendDetail,
