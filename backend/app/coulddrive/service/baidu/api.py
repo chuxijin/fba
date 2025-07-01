@@ -489,11 +489,12 @@ class BaiduApi:
         return resp.json()
 
     @assert_ok
-    async def get_share_page(self, page: int = 1):
+    async def get_share_page(self, page: int = 1, size: int = 100):
         """获取用户自己创建的分享列表
         
         Args:
             page: 页码，默认为1
+            size: 每页数量，默认为20
             
         Returns:
             Dict: 返回分享列表信息
@@ -507,8 +508,13 @@ class BaiduApi:
         url = PanNode.SharedRecord.url()
         params = {
             "page": str(page),
+            "num": str(size),
             "desc": "1",
             "order": "time",
+            "web": "1",
+            "clienttype": "0",
+            "channel": "chunlei",
+            "is_batch": "1",
         }
         resp = await self._request(Method.Get, url, params=params)
         return resp.json()

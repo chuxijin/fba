@@ -24,7 +24,6 @@ from backend.app.coulddrive.schema.enum import RecursionSpeed
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     BaseShareInfo,
-    CancelShareParam,
     ListFilesParam,
     ListShareFilesParam,
     ListShareInfoParam,
@@ -294,7 +293,7 @@ class BaiduClient(BaseDriveClient):
 
     async def get_disk_list(self, params: ListFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
         """
-        获取目录下的文件和目录列表
+        获取目录下的文件和目录列表（单层，不递归）
         
         :param params: 文件列表查询参数
         :param kwargs: 其他关键字参数
@@ -302,55 +301,25 @@ class BaiduClient(BaseDriveClient):
         # 从 params 中提取参数
         file_path = params.file_path or "/"
         file_id = params.file_id or ""
-        recursive = params.recursive
         desc = params.desc
         name = params.name
         time = params.time
         size = params.size_sort
-        recursion_speed = params.recursion_speed
         
         # 确保路径格式正确
         if not file_path.startswith("/"):
             file_path = "/" + file_path
         
         # 从 kwargs 中获取可选参数
-        item_filter = kwargs.get('item_filter', None)
         drive_account_id = kwargs.get('drive_account_id', None)
         db = kwargs.get('db', None)
-
-        # 快速模式：优先从缓存获取
-        if recursion_speed == RecursionSpeed.FAST and drive_account_id and db:
-            try:
-                from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                
-                # 检查缓存新鲜度
-                cache_fresh = await file_cache_service.check_cache_freshness(
-                    db, drive_account_id=drive_account_id, parent_id=file_id or file_path
-                )
-                
-                if cache_fresh:
-                    # self.logger.info(f"快速模式：从缓存获取文件列表 {file_path}")
-                    cached_files = await file_cache_service.get_cached_children_as_file_info(
-                        db, parent_id=file_id or file_path, drive_account_id=drive_account_id
-                    )
-                    
-                    # 应用过滤器
-                    if item_filter:
-                        cached_files = [item for item in cached_files if not item_filter.should_exclude(item)]
-                    
-                    return cached_files
-                else:
-                    # self.logger.info(f"快速模式：缓存过期，回退到API获取 {file_path}")
-                    pass
-            except Exception as e:
-                self.logger.warning(f"快速模式缓存获取失败，回退到API获取: {e}")
 
         drive_files_list: List[BaseFileInfo] = []
         initial_parent_id = file_id
 
         async def fetch_all_pages_from_api(target_file_path: str, **api_params) -> List[Dict]:
             """
-            自动翻页获取指定路径下的所有文件/目录
+            自动翻页获取指定路径下的所有文件/目录（单层）
             
             :param target_file_path: 目标路径
             :param api_params: API参数（如desc、name、time、size）
@@ -383,127 +352,15 @@ class BaiduClient(BaseDriveClient):
             return all_items
 
         try:
-            initial_items_raw = await fetch_all_pages_from_api(
+            items_raw = await fetch_all_pages_from_api(
                 file_path, desc=desc, name=name, time=time, size=size
             )
         except Exception as e:
             self.logger.error(f"Error listing path '{file_path}': {e}")
             return []
 
-        items_to_process = deque()
-        # 将初始项目转换为 BaseFileInfo 以便进行早期过滤
-        for item_dict_initial in initial_items_raw:
-            # 创建用于过滤检查的初步 BaseFileInfo，这些顶级项目的 parent_id 是 initial_parent_id
-            # 如果 file_path 本身指向一个文件，需要小心处理。get_disk_list 通常列出目录。
-            # 目前假设如果 file_path 指向文件，initial_items_raw 将包含该文件。
-            temp_df_for_filter = BaseFileInfo(
-                file_id=str(item_dict_initial.get('fs_id', '')),
-                file_path=item_dict_initial.get('path', ''),
-                file_name=item_dict_initial.get('server_filename', ''),
-                is_folder=bool(item_dict_initial.get('isdir', 0)),
-                # 其他字段可以是虚拟的或最小的，用于过滤目的（如果过滤规则不使用）
-                file_size=item_dict_initial.get('size'),
-                created_at=str(item_dict_initial.get('server_ctime', '')),
-                updated_at=str(item_dict_initial.get('server_mtime', '')),
-                parent_id=str(initial_parent_id) if initial_parent_id is not None else ""
-            )
-            if item_filter and item_filter.should_exclude(temp_df_for_filter):
-                # self.logger.info(f"[Filter] 排除初始磁盘文件: {temp_df_for_filter.file_path}")
-                continue
-            items_to_process.append((item_dict_initial, initial_parent_id))
-        
-        # items_to_process = deque([(item_dict, initial_parent_id) for item_dict in initial_items_raw])
-        all_processed_data = []
-        processed_fs_ids = set()
-
-        # 处理队列中的每个项目
-        while items_to_process:
-            item_dict, current_parent_id = items_to_process.popleft()
-            
-            # 在处理任何逻辑之前，先检查该项目是否应该被排除
-            temp_file_info = BaseFileInfo(
-                file_id=str(item_dict.get('fs_id', '')),
-                file_path=item_dict.get('path', ''),
-                file_name=item_dict.get('server_filename', ''),
-                is_folder=bool(item_dict.get('isdir', 0)),
-                file_size=item_dict.get('size'),
-                created_at=str(item_dict.get('server_ctime', '')),
-                updated_at=str(item_dict.get('server_mtime', '')),
-                parent_id=str(current_parent_id) if current_parent_id is not None else ""
-            )
-            
-            # 如果该项目被排除规则匹配，直接跳过，不添加到结果中，也不递归进入
-            if item_filter and item_filter.should_exclude(temp_file_info):
-                continue
-            
-            # 项目没有被排除，添加到结果数据中
-            all_processed_data.append((item_dict, current_parent_id))
-
-            current_fs_id = item_dict.get('fs_id')
-            is_dir = bool(item_dict.get('isdir'))
-            current_item_path = item_dict.get('path')
-
-            # 如果是目录且需要递归，则获取子目录内容
-            if is_dir and recursive and current_fs_id and current_fs_id not in processed_fs_ids:
-                if current_item_path:
-                    processed_fs_ids.add(current_fs_id)
-                    if recursion_speed == RecursionSpeed.FAST:
-                        # 快速模式：尝试从缓存获取子目录内容
-                        if drive_account_id and db:
-                            try:
-                                from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                                
-                                cached_children = await file_cache_service.get_cached_children_as_file_info(
-                                    db, parent_id=str(current_fs_id), drive_account_id=drive_account_id
-                                )
-                                
-                                if cached_children:
-                                    self.logger.debug(f"快速模式：从缓存获取子目录 {current_item_path}")
-                                    # 将缓存的子项添加到处理队列（注意：这里不再预先应用过滤器，让主循环处理）
-                                    for cached_child in cached_children:
-                                        child_dict = {
-                                            'fs_id': int(cached_child.file_id) if cached_child.file_id.isdigit() else cached_child.file_id,
-                                            'path': cached_child.file_path,
-                                            'server_filename': cached_child.file_name,
-                                            'size': cached_child.file_size,
-                                            'isdir': 1 if cached_child.is_folder else 0,
-                                            'server_ctime': cached_child.created_at,
-                                            'server_mtime': cached_child.updated_at
-                                        }
-                                        items_to_process.append((child_dict, current_fs_id))
-                                    continue
-                                else:
-                                    self.logger.debug(f"快速模式：缓存中无子目录数据，回退到API获取 {current_item_path}")
-                            except Exception as e:
-                                self.logger.warning(f"快速模式缓存获取失败，回退到API: {e}")
-                        else:
-                            self.logger.debug(f"快速模式：缺少必要参数，跳过子目录递归 {current_item_path}")
-                            continue
-                    elif recursion_speed == RecursionSpeed.SLOW:
-                        self.logger.debug(f"Slow mode (disk): Pausing for 3s before listing {current_item_path}...")
-                        time.sleep(3)
-                
-                    try:
-                        sub_list = await fetch_all_pages_from_api(
-                            current_item_path, desc=desc, name=name, time=time, size=size
-                        )
-                        # 将子项目添加到处理队列（让主循环统一处理排除规则）
-                        for sub_item_dict in sub_list:
-                            items_to_process.append((sub_item_dict, current_fs_id))
-                    except Exception as e:
-                        self.logger.error(f"Error listing subdirectory '{current_item_path}': {e}")
-                        # 允许流程继续，如果子目录失败
-
-        explicit_raw_keys = {
-            "fs_id", "path", "server_filename", "size", "isdir", 
-            "server_ctime", "server_mtime"
-        }
-        
-        for item_dict, parent_id_for_item in all_processed_data:
-            file_ext_val = {
-                k: v for k, v in item_dict.items() if k not in explicit_raw_keys
-            }
-
+        # 将API返回的数据转换为BaseFileInfo
+        for item_dict in items_raw:
             file_instance = BaseFileInfo(
                 file_id=str(item_dict.get('fs_id', '')),
                 file_path=item_dict.get('path', ''),
@@ -512,28 +369,9 @@ class BaiduClient(BaseDriveClient):
                 is_folder=bool(item_dict.get('isdir', 0)),
                 created_at=str(item_dict.get('server_ctime', '')), 
                 updated_at=str(item_dict.get('server_mtime', '')), 
-                parent_id=str(parent_id_for_item) if parent_id_for_item is not None else "",
-                #file_ext=file_ext_val,
+                parent_id=str(initial_parent_id) if initial_parent_id is not None else "",
             )
-            
-            # 不再需要重复的过滤器检查，因为在主循环中已经处理了
             drive_files_list.append(file_instance)
-        
-        # 智能缓存写入：在获取文件列表后自动写入缓存
-        if drive_account_id and db and drive_files_list:
-            try:
-                from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                
-                cache_version = datetime.now().strftime("%Y%m%d_%H%M%S")
-                await file_cache_service.smart_cache_write(
-                    db, 
-                    drive_account_id=drive_account_id,
-                    files=drive_files_list,
-                    cache_version=cache_version
-                )
-                # self.logger.info(f"自动缓存写入完成: {len(drive_files_list)} 个文件")
-            except Exception as e:
-                self.logger.warning(f"自动缓存写入失败: {e}")
         
         return drive_files_list
 
@@ -754,13 +592,13 @@ class BaiduClient(BaseDriveClient):
             self.logger.error(f"创建分享时发生未知错误: {e}")
             raise BaiduApiError(f"创建分享失败: {str(e)}")
 
-    def list_shared(self, page: int = 1) -> List[PcsSharedLink]:
+    async def list_shared(self, page: int = 1, size: int = 20) -> List[PcsSharedLink]:
         """列出某页的分享链接
 
         要使用此API，`cookies`中必须包含`STOKEN`
         """
 
-        info = self._baidupcs.get_share_page(page)
+        info = await self._baidupcs.get_share_page(page, size)
         return [PcsSharedLink.from_(v) for v in info["list"]]
 
     def shared_password(self, share_id: int) -> Optional[str]:
@@ -1212,28 +1050,21 @@ class BaiduClient(BaseDriveClient):
 
     async def get_share_list(self, params: ListShareFilesParam, **kwargs: Any) -> List[BaseFileInfo]:  
         """
-        获取分享文件列表
+        获取分享文件列表（单层，不递归）
         
         :param params: 分享文件列表参数
-        :param kwargs: 其他参数，包括 item_filter
+        :param kwargs: 其他参数
         :return: 文件信息列表
         """
         source_type = params.source_type
         source_id = params.source_id
         file_path = params.file_path
-        recursive = params.recursive
-        recursion_speed = params.recursion_speed
-        
-        # 获取过滤器参数
-        item_filter = kwargs.get('item_filter', None)
         
         drive_files_list: List[BaseFileInfo] = []
 
         normalized_file_path = file_path.strip('/')
         if not normalized_file_path:
             # 当 file_path 为根路径 "/" 时，返回所有分享的根项目
-            # self.logger.info(f"Requesting root share items list for {source_type} {source_id}")
-            
             # 1. Get all share events/messages
             share_events_response = await self.get_relationship_share_list(
                 relationship_type=source_type,
@@ -1252,7 +1083,6 @@ class BaiduClient(BaseDriveClient):
                 share_messages = records_obj.get("msg_list", [])
             
             if not share_messages:
-                # self.logger.info(f"No share messages found for {source_type} {source_id}.")
                 return []
 
             # 2. 为每个分享事件创建根项目 BaseFileInfo
@@ -1296,9 +1126,6 @@ class BaiduClient(BaseDriveClient):
                     }
                 )
                 
-                if item_filter and item_filter.should_exclude(root_drive_file):
-                    continue
-                
                 drive_files_list.append(root_drive_file)
             
             return drive_files_list
@@ -1324,7 +1151,6 @@ class BaiduClient(BaseDriveClient):
             share_messages = records_obj.get("msg_list", [])
         
         if not share_messages:
-            # self.logger.info(f"No share messages found for {source_type} {source_id}.")
             return []
 
         target_share_info = None
@@ -1347,7 +1173,6 @@ class BaiduClient(BaseDriveClient):
 
             share_event_root_item = share_root_items_list[0]  # 假设第一个项目是主要的分享根
             root_item_name = share_event_root_item.get("server_filename")
-            
             root_item_fs_id = share_event_root_item.get("fs_id")
 
             if not root_item_name or root_item_fs_id is None:
@@ -1361,7 +1186,6 @@ class BaiduClient(BaseDriveClient):
                     "root_fs_id": str(root_item_fs_id),
                     "root_name": str(root_item_name) 
                 }
-                # self.logger.info(f"通过根名称 '{root_item_name}' 匹配到分享事件: {target_share_info}")
                 break  # 找到目标分享事件
         
         if not target_share_info:
@@ -1377,7 +1201,7 @@ class BaiduClient(BaseDriveClient):
             fs_id: str
         ) -> List[Dict]:
             """
-            自动翻页获取分享文件列表的所有页面数据
+            自动翻页获取分享文件列表的所有页面数据（单层）
             
             :param relationship_type: 关系类型 (friend/group)
             :param identifier: 标识符
@@ -1421,9 +1245,9 @@ class BaiduClient(BaseDriveClient):
             
             return all_items
 
-        # 3. Navigate the path within the selected share
+        # 3. Navigate to the target path
         current_nav_fs_id = target_share_info["root_fs_id"]
-        current_constructed_drive_path = PurePosixPath("/") / target_share_info["root_name"]
+        current_constructed_drive_path = f"/{target_share_info['root_name']}"
 
         for component_idx in range(1, len(path_components)):
             component_name = path_components[component_idx]
@@ -1444,7 +1268,7 @@ class BaiduClient(BaseDriveClient):
                         self.logger.error(f"Path component '{component_name}' is a file, but further path components exist in query.")
                         return []
                     current_nav_fs_id = str(item_dict.get("fs_id"))
-                    current_constructed_drive_path = current_constructed_drive_path / component_name
+                    current_constructed_drive_path = current_constructed_drive_path + "/" + component_name
                     found_next_component = True
                     self.logger.debug(f"Found path component '{component_name}', new current_nav_fs_id={current_nav_fs_id}, new_path_base={current_constructed_drive_path}")
                     break
@@ -1453,142 +1277,45 @@ class BaiduClient(BaseDriveClient):
                 self.logger.error(f"Path component '{component_name}' not found in directory (fs_id of parent: { (path_components[component_idx-1] if component_idx > 0 else target_share_info['root_name']) }).")
                 return []
         
-        # 4. 列出目标内容 (current_nav_fs_id 是要列出的目标 fs_id)
-        queue = deque([(str(current_nav_fs_id), current_constructed_drive_path, str(current_nav_fs_id))])
-        # 队列存储: (要列出其内容的fs_id, 其内容的路径基础, 从中列出项目的父ID)
+        # 4. 获取目标路径的内容（单层）
+        items_from_api = await fetch_all_share_pages_from_api(
+            relationship_type=source_type,
+            identifier=source_id, 
+            from_uk=target_share_info["sharer_uk"],
+            msg_id=target_share_info["msg_id"],
+            fs_id=current_nav_fs_id
+        )
         
-        processed_fs_ids_for_recursion = set()
-        is_first_pass_in_queue = True  # 用于识别目标路径的初始列表
+        # 检查是否是单个文件
+        is_listing_a_single_target_file = False
+        if len(items_from_api) == 1 and str(items_from_api[0].get("fs_id")) == current_nav_fs_id and not items_from_api[0].get("isdir"):
+            is_listing_a_single_target_file = True
+            self.logger.debug(f"列出的目标 fs_id {current_nav_fs_id} 是单个文件。")
 
-        while queue:
-            fs_id_to_process, path_base_for_items, parent_id_for_items = queue.popleft()
-
-            if fs_id_to_process in processed_fs_ids_for_recursion and recursive:
-                 continue
-            if recursive:  # 仅在递归模式下添加到已处理列表
-                processed_fs_ids_for_recursion.add(fs_id_to_process)
-
-            # 仅在启用递归时应用递归速度逻辑
-            if recursive and not is_first_pass_in_queue:  # 速度逻辑适用于子目录处理，而不是初始目标路径
-                if recursion_speed == RecursionSpeed.SLOW:
-                    self.logger.debug(f"慢速模式 (分享): 在列出 fs_id: {fs_id_to_process} 之前暂停 3 秒")
-                    time.sleep(3)
-                elif recursion_speed == RecursionSpeed.FAST:
-                    # 快速模式：尝试从缓存获取子目录内容
-                    if kwargs.get('drive_account_id') and kwargs.get('db'):
-                        try:
-                            from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                            
-                            # 为分享文件构建特殊的缓存键，包含分享信息
-                            share_cache_key = f"share_{source_type}_{source_id}_{fs_id_to_process}"
-                            
-                            cached_children = await file_cache_service.get_cached_children_as_file_info(
-                                kwargs['db'], 
-                                parent_id=share_cache_key, 
-                                drive_account_id=kwargs['drive_account_id']
-                            )
-                            
-                            if cached_children:
-                                self.logger.debug(f"快速模式：从缓存获取分享子目录 fs_id: {fs_id_to_process}")
-                                # 将缓存的子项添加到结果列表
-                                for cached_child in cached_children:
-                                    # 应用过滤器
-                                    if not (item_filter and item_filter.should_exclude(cached_child)):
-                                        drive_files_list.append(cached_child)
-                                        
-                                        # 如果是文件夹且启用递归，添加到队列
-                                        if cached_child.is_folder and recursive:
-                                            child_cache_key = f"share_{source_type}_{source_id}_{cached_child.file_id}"
-                                            queue.append((cached_child.file_id, PurePosixPath(cached_child.file_path), cached_child.file_id))
-                                continue
-                            else:
-                                self.logger.debug(f"快速模式：缓存中无分享子目录数据，回退到API获取 fs_id: {fs_id_to_process}")
-                        except Exception as e:
-                            self.logger.warning(f"快速模式缓存获取失败，回退到API: {e}")
-                    else:
-                        self.logger.debug(f"快速模式：缺少必要参数，跳过分享子目录递归 fs_id: {fs_id_to_process}")
-                        continue
+        for item_dict in items_from_api:
+            item_fs_id_str = str(item_dict.get("fs_id"))
+            item_name = item_dict.get("server_filename", "Unknown")
+            is_folder_item = bool(item_dict.get("isdir"))
             
-            if is_first_pass_in_queue:
-                is_first_pass_in_queue = False  # 标记队列中的第一个项目已被处理
+            # 构建 BaseFileInfo 路径
+            drive_file_item_path_str = current_constructed_drive_path if is_listing_a_single_target_file else f"{current_constructed_drive_path}/{item_name}"
 
-            self.logger.debug(f"Listing content for fs_id: {fs_id_to_process}, path_base: {path_base_for_items}, items_parent_id: {parent_id_for_items}")
-            items_from_api = await fetch_all_share_pages_from_api(
-                relationship_type=source_type,
-                identifier=source_id, 
-                from_uk=target_share_info["sharer_uk"],
-                msg_id=target_share_info["msg_id"],
-                fs_id=fs_id_to_process
+            df = BaseFileInfo(
+                file_id=item_fs_id_str,
+                file_name=item_name,
+                file_path=drive_file_item_path_str,
+                file_size=item_dict.get("size", 0),
+                is_folder=is_folder_item,
+                created_at=str(item_dict.get("server_ctime")),
+                updated_at=str(item_dict.get("server_mtime")),
+                parent_id=str(current_nav_fs_id),
+                file_ext={
+                    "from_uk": target_share_info["sharer_uk"],
+                    "msg_id": target_share_info["msg_id"],
+                }
             )
-            
-            # 检查 fs_id_to_process 本身是否是文件
-            # 如果 fs_id_to_process 是文件，items_from_api 将只包含该文件
-            is_listing_a_single_target_file = False
-            if len(items_from_api) == 1 and str(items_from_api[0].get("fs_id")) == fs_id_to_process and not items_from_api[0].get("isdir"):
-                is_listing_a_single_target_file = True
-                self.logger.debug(f"列出的目标 fs_id {fs_id_to_process} 是单个文件。")
 
-            for item_dict in items_from_api:
-                item_fs_id_str = str(item_dict.get("fs_id"))
-                item_name = item_dict.get("server_filename", "Unknown")
-                is_folder_item = bool(item_dict.get("isdir"))
-                
-                # 构建 BaseFileInfo 路径:
-                # 如果列出单个目标文件，其路径是 path_base_for_items。
-                # 如果列出目录的内容，项目的路径是 path_base_for_items / item_name。
-                drive_file_item_path_str = str(path_base_for_items if is_listing_a_single_target_file else path_base_for_items / item_name)
-
-                df = BaseFileInfo(
-                    file_id=item_fs_id_str,
-                    file_name=item_name,
-                    file_path=drive_file_item_path_str,
-                    file_size=item_dict.get("size", 0),
-                    is_folder=is_folder_item,
-                    created_at=str(item_dict.get("server_ctime")),  # API 使用 server_ctime
-                    updated_at=str(item_dict.get("server_mtime")),  # API 使用 server_mtime
-                    parent_id=str(parent_id_for_items),
-                    file_ext={
-                        "from_uk": target_share_info["sharer_uk"],
-                        "msg_id": target_share_info["msg_id"],
-                        # 如果需要，也可以保留原始API项目的部分或全部信息
-                        # "baidu_api_item": dict(item_dict),
-                        #"sharer_original_path": item_dict.get("path")
-                    }
-                )
-
-                if item_filter and item_filter.should_exclude(df):
-                    if df.is_folder and recursive:  # 如果文件夹被排除，不要将其子项添加到队列
-                        # 我们需要确保此 df.file_id 以后不会添加到队列
-                        # 当前逻辑在此检查*之后*基于 df.is_folder 添加到队列
-                        # 所以，如果被排除，它不会在下面添加到队列。这很好。
-                        pass 
-                    continue  # 跳过添加到 drive_files_list 和队列的进一步处理
-                
-                drive_files_list.append(df)
-
-                if recursive and is_folder_item and not is_listing_a_single_target_file:
-                    # 过滤器已应用于 df。如果没有被排除，可以添加到队列。
-                    queue.append((df.file_id, PurePosixPath(drive_file_item_path_str), df.file_id))
-            
-            if is_listing_a_single_target_file:  # 如果初始目标是文件，我们已经列出了它，所以停止。
-                break
-        
-        # 自动写入缓存（分享文件）
-        if drive_files_list and kwargs.get('drive_account_id') and kwargs.get('db'):
-            try:
-                from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                
-                # 为分享文件构建特殊的缓存键
-                share_cache_key = f"share_{source_type}_{source_id}"
-                
-                await file_cache_service.smart_cache_write(
-                    kwargs['db'],
-                    drive_account_id=kwargs['drive_account_id'],
-                    files=drive_files_list
-                )
-                self.logger.debug(f"分享文件列表缓存写入成功，共 {len(drive_files_list)} 个文件")
-            except Exception as e:
-                self.logger.warning(f"分享文件列表缓存写入失败: {e}")
+            drive_files_list.append(df)
         
         return drive_files_list
 
@@ -1666,47 +1393,11 @@ class BaiduClient(BaseDriveClient):
                 
             elif source_type == "local":
                 # 对于本地分享（用户自己创建的分享），使用 get_share_page API
-                info = await self._baidupcs.get_share_page(page=page)
+                info = await self._baidupcs.get_share_page(page=page, size=size)
                 
-                # @assert_ok装饰器已处理errno检查，直接处理数据
-                records = info.get("list", [])
-                share_info_list = []
-                
-                for record in records:
-                    from datetime import datetime
-                    
-                    # 处理过期时间
-                    expired_at = None
-                    expiredtype = record.get("expiredtype", 0)
-                    if expiredtype > 0:
-                        expired_timestamp = record.get("expiredtime")
-                        if expired_timestamp:
-                            expired_at = datetime.fromtimestamp(expired_timestamp)
-                    
-                    # 获取文件ID（从fsIds数组中取第一个）
-                    fs_ids = record.get("fsIds", [])
-                    file_id = str(fs_ids[0]) if fs_ids else None
-                    
-                    share_info = BaseShareInfo(
-                        title=record.get("title", ""),
-                        share_id=str(record.get("shareid", "")),
-                        pwd_id=record.get("shorturl", ""),  # 使用shorturl作为pwd_id
-                        url=record.get("shortlink", ""),
-                        password=record.get("passwd", ""),
-                        expired_type=expiredtype,
-                        view_count=int(record.get("vCnt", 0)),  # 使用vCnt字段
-                        expired_at=expired_at,
-                        expired_left=None,
-                        audit_status=1,  # 假设通过审核
-                        status=1 if record.get("status") == 1 else 0,
-                        file_id=file_id,
-                        file_only_num=str(len(fs_ids)) if fs_ids else None,
-                        file_size=None,
-                        path_info=record.get("typicalPath", "")
-                    )
-                    share_info_list.append(share_info)
-                
-                return share_info_list
+                # 直接返回原始API数据用于调试
+                self.logger.info(f"调试：返回原始API数据")
+                return info
                 
             else:
                 return {"errno": -1, "error_msg": f"不支持的分享来源类型: {source_type}"}
@@ -1848,7 +1539,7 @@ class BaiduClient(BaseDriveClient):
             self.logger.error(f"不支持的转存 source_type: {source_type}")
             return False
 
-    async def cancel_share(self, params: CancelShareParam, **kwargs: Any) -> bool:
+    async def cancel_share(self, params: 'CancelShareParam', **kwargs: Any) -> bool:
         """
         取消分享链接
         
@@ -1856,6 +1547,8 @@ class BaiduClient(BaseDriveClient):
         :param kwargs: 其他关键字参数
         :return: 是否成功取消
         """
+        from backend.app.coulddrive.schema.file import CancelShareParam
+        
         try:
             # 将字符串ID转换为整数
             share_ids = [int(sid) for sid in params.shareid_list]

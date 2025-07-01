@@ -6,7 +6,9 @@ from fastapi import APIRouter, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.coulddrive.service.filesync_service import file_sync_service
+from backend.app.coulddrive.service.synctask_service import sync_task_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.response.response_code import CustomResponseCode, CustomResponse
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
 from backend.common.pagination import DependsPagination, PageData, paging_data, _CustomPageParams
@@ -56,13 +58,13 @@ async def get_sync_tasks(
     
     :param config_id: 同步配置ID
     :param db: 数据库会话
-    :param paging: 分页参数
+    :param page_params: 分页参数
     :param status: 任务状态筛选
     :return: 同步任务列表
     """
     try:
         # 获取任务列表
-        tasks = await file_sync_service.get_sync_tasks_by_config_id(
+        tasks = await sync_task_service.get_sync_tasks_by_config_id(
             config_id=config_id,
             status=status,
             db=db
@@ -98,7 +100,7 @@ async def get_sync_task_detail(
     :return: 同步任务详情
     """
     try:
-        task_detail = await file_sync_service.get_sync_task_detail(task_id, db)
+        task_detail = await sync_task_service.get_sync_task_detail(task_id, db)
         
         if not task_detail:
             return response_base.fail(res=ResponseModel(code=404, msg=f"同步任务 {task_id} 不存在"))
@@ -127,14 +129,14 @@ async def get_sync_task_items(
     
     :param task_id: 同步任务ID
     :param db: 数据库会话
-    :param paging: 分页参数
+    :param page_params: 分页参数
     :param status: 任务项状态筛选
     :param operation_type: 操作类型筛选
     :return: 同步任务项列表
     """
     try:
         # 获取任务项列表
-        task_items = await file_sync_service.get_sync_task_items(
+        task_items = await sync_task_service.get_sync_task_items(
             task_id=task_id,
             status=status,
             operation_type=operation_type,
