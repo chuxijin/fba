@@ -113,11 +113,18 @@ class FileSyncService:
         if exclude_template_id:
             try:
                 exclude_template = await rule_template_dao.get(db, exclude_template_id)
-                if exclude_template and exclude_template.rules:
-                    rules_data = json.loads(exclude_template.rules)
-                    exclude_rules = [
-                        ExclusionRuleDefinition(**rule) for rule in rules_data.get('exclusion_rules', [])
-                    ]
+                if exclude_template and exclude_template.rule_config:
+                    rules_data = exclude_template.rule_config
+                    # 如果rule_config是字符串，需要解析JSON
+                    if isinstance(rules_data, str):
+                        rules_data = json.loads(rules_data)
+                    
+                    # 根据实际数据格式解析规则
+                    rules_list = rules_data.get('rules', [])
+                    if rules_list:
+                        exclude_rules = [
+                            ExclusionRuleDefinition(**rule) for rule in rules_list
+                        ]
             except Exception as e:
                 logger.error(f"解析排除规则模板失败: {e}")
         
@@ -125,11 +132,18 @@ class FileSyncService:
         if rename_template_id:
             try:
                 rename_template = await rule_template_dao.get(db, rename_template_id)
-                if rename_template and rename_template.rules:
-                    rules_data = json.loads(rename_template.rules)
-                    rename_rules = [
-                        RenameRuleDefinition(**rule) for rule in rules_data.get('rename_rules', [])
-                    ]
+                if rename_template and rename_template.rule_config:
+                    rules_data = rename_template.rule_config
+                    # 如果rule_config是字符串，需要解析JSON
+                    if isinstance(rules_data, str):
+                        rules_data = json.loads(rules_data)
+                    
+                    # 根据实际数据格式解析规则
+                    rules_list = rules_data.get('rules', [])
+                    if rules_list:
+                        rename_rules = [
+                            RenameRuleDefinition(**rule) for rule in rules_list
+                        ]
             except Exception as e:
                 logger.error(f"解析重命名规则模板失败: {e}")
         
