@@ -749,8 +749,11 @@ class QuarkClient(BaseDriveClient):
                         "stoken": stoken,
                         "share_url": source_id,
                         "share_fid_token": item.get("share_fid_token", ""),
+                        "pdir_fid": current_pdir_fid,  # 添加父目录ID，供转存时使用
                     }
                 )
+                
+                # self.logger.info(f"获取到分享文件: {item_name}, parent_id: {current_pdir_fid}, file_id: {item_fid}")
                 
                 drive_files_list.append(drive_file)
             
@@ -930,6 +933,7 @@ class QuarkClient(BaseDriveClient):
                 pdir_fid = None
                 if file_ids and combined_kwargs.get("share_parent_fid"):
                     pdir_fid = combined_kwargs.get("share_parent_fid")
+                    self.logger.info(f"使用 share_parent_fid: {pdir_fid}")
                 elif combined_kwargs.get("pdir_fid"):
                     pdir_fid = combined_kwargs.get("pdir_fid")
                 
@@ -974,8 +978,8 @@ class QuarkClient(BaseDriveClient):
                     self.logger.error("转存失败: 未提供share_fid_token信息，无法进行分享文件转存")
                     return False
                 
-                # self.logger.info(f"转存参数: to_pdir_fid={to_pdir_fid}, pdir_fid={pdir_fid}")
-                # self.logger.info(f"share_fid_tokens: {share_fid_tokens}")
+                #self.logger.info(f"转存参数: to_pdir_fid={to_pdir_fid}, pdir_fid={pdir_fid}")
+                #self.logger.info(f"share_fid_tokens: {share_fid_tokens}")
                 
                 # 调用API保存分享文件
                 result = await self._quarkapi.save_shared_files(
@@ -991,6 +995,7 @@ class QuarkClient(BaseDriveClient):
                     exclude_fids=combined_kwargs.get("exclude_fids", [])
                 )
                 
+                # self.logger.info(f"夸克API返回结果: {result}")
                 data = result.get("data", {})
                 task_id = data.get("task_id")
                 

@@ -404,26 +404,50 @@ class LayeredSyncService:
             "start_time": datetime.fromtimestamp(start_time).isoformat(),
         }
         
+        # 打印开始同步的详细信息
+        #self.logger.info(f"🚀 开始分层同步 - 方式: {sync_method}, 源: {source_definition.file_path}, 目标: {target_definition.file_path}")
+        
         try:
-            # 开始分层同步
-            await self._sync_with_have(
-                x_token=x_token,
-                drive_type=drive_type,
-                source_definition=source_definition,
-                target_definition=target_definition,
-                source_path=source_definition.file_path,
-                target_path=target_definition.file_path,
-                target_id=target_definition.file_id,
-                sync_method=sync_method,
-                recursion_speed=recursion_speed,
-                item_filter=item_filter,
-                current_depth=0,
-                max_depth=max_depth,
-                stats=stats,
-                task_id=task_id,
-                db=db,
-                **kwargs
-            )
+            # 根据同步方式选择不同的处理逻辑
+            if sync_method == "overwrite":
+                # 覆盖同步：先删除目标目录所有文件，再转存源目录所有文件
+                await self._handle_overwrite_sync(
+                    x_token=x_token,
+                    drive_type=drive_type,
+                    source_definition=source_definition,
+                    target_definition=target_definition,
+                    source_path=source_definition.file_path,
+                    target_path=target_definition.file_path,
+                    target_id=target_definition.file_id,
+                    recursion_speed=recursion_speed,
+                    item_filter=item_filter,
+                    current_depth=0,
+                    max_depth=max_depth,
+                    stats=stats,
+                    task_id=task_id,
+                    db=db,
+                    **kwargs
+                )
+            else:
+                # 增量同步和完全同步：使用普通的递归同步逻辑
+                await self._sync_with_have(
+                    x_token=x_token,
+                    drive_type=drive_type,
+                    source_definition=source_definition,
+                    target_definition=target_definition,
+                    source_path=source_definition.file_path,
+                    target_path=target_definition.file_path,
+                    target_id=target_definition.file_id,
+                    sync_method=sync_method,
+                    recursion_speed=recursion_speed,
+                    item_filter=item_filter,
+                    current_depth=0,
+                    max_depth=max_depth,
+                    stats=stats,
+                    task_id=task_id,
+                    db=db,
+                    **kwargs
+                )
             
         except Exception as e:
             self.logger.error(f"分层同步过程中发生错误: {e}")
@@ -437,7 +461,7 @@ class LayeredSyncService:
         # 判断同步是否成功（没有错误即为成功）
         success = len(stats["errors"]) == 0
         
-        self.logger.info(f"分层同步完成，耗时 {elapsed_time:.2f}s，统计: {stats}")
+        #self.logger.info(f"✅ 分层同步完成，耗时 {elapsed_time:.2f}s，统计: {stats}")
         
         return {
             "success": success,
@@ -489,13 +513,17 @@ class LayeredSyncService:
             return
         
         # 获取源目录和目标目录的文件列表
+        #self.logger.info(f"📂 正在扫描目录 - 源: {source_path}")
         source_files = await self._get_source_files_single_layer(
             x_token, drive_type, source_definition, source_path, item_filter, db, **kwargs
         )
         
+        #self.logger.info(f"📁 正在扫描目录 - 目标: {target_path}")
         target_files = await self._get_target_files_single_layer(
             x_token, drive_type, target_definition, target_path, target_id, item_filter, db, **kwargs
         )
+        
+        #self.logger.info(f"📊 扫描结果 - 源文件: {len(source_files)}个, 目标文件: {len(target_files)}个")
         
         # 创建目标文件映射
         target_file_map = {file.file_name: file for file in target_files}
@@ -519,11 +547,19 @@ class LayeredSyncService:
         
         # 批量转存文件
         if source_files_to_transfer:
+            # 使用当前层级的目标路径，而不是根目标路径
+            current_target_path = target_path  # 使用当前实际的目标路径
+            
+            #self.logger.info(f"📤 开始批量转存 {len(source_files_to_transfer)} 个文件: {[f.file_name for f in source_files_to_transfer]}")
             success = await self._batch_transfer_files(
                 x_token=x_token,
                 drive_type=drive_type,
                 source_definition=source_definition,
-                target_definition=target_definition,
+                target_definition=DiskTargetDefinition(
+                    file_path=current_target_path,  # 使用当前层级路径
+                    file_id=target_id,
+                    drive_type=drive_type
+                ),
                 source_files=source_files_to_transfer,
                 recursion_speed=recursion_speed,
                 task_id=task_id,
@@ -533,9 +569,10 @@ class LayeredSyncService:
             
             if success:
                 stats["files_transferred"] += len(source_files_to_transfer)
-                self.logger.debug(f"批量转存成功: {len(source_files_to_transfer)} 个文件")
+                #self.logger.info(f"✅ 批量转存成功: {len(source_files_to_transfer)} 个文件")
             else:
-                error_msg = f"批量转存失败: {len(source_files_to_transfer)} 个文件"
+                error_msg = f"❌ 批量转存失败: {len(source_files_to_transfer)} 个文件"
+                self.logger.error(error_msg)
                 stats["errors"].append(error_msg)
         
         # 处理目录（逐个递归）
@@ -544,7 +581,11 @@ class LayeredSyncService:
                 x_token=x_token,
                 drive_type=drive_type,
                 source_definition=source_definition,
-                target_definition=target_definition,
+                target_definition=DiskTargetDefinition(
+                    file_path=target_path,  # 使用当前层级的完整路径
+                    file_id=target_id,
+                    drive_type=drive_type
+                ),
                 source_file=source_file,
                 target_file_map=target_file_map,
                 sync_method=sync_method,
@@ -557,6 +598,9 @@ class LayeredSyncService:
                 db=db,
                 **kwargs
             )
+        # 注意：source_files_to_transfer 中的文件已经在上面的批量转存中处理过了
+        # 这里不需要再次处理，避免重复转存
+        # 如果需要单独处理某些文件的特殊逻辑，应该在批量转存之外单独识别
         
         # 完全同步模式：删除目标目录中多余的文件
         if sync_method == "full":
@@ -569,6 +613,7 @@ class LayeredSyncService:
                 recursion_speed=recursion_speed,
                 stats=stats,
                 task_id=task_id,
+                db=db,  # 添加缺失的db参数
                 **kwargs
             )
 
@@ -668,7 +713,7 @@ class LayeredSyncService:
         
         if target_file and target_file.is_folder:
             # 目标目录存在，递归同步
-            self.logger.debug(f"目标目录存在，递归同步: {source_file.file_name}")
+            self.logger.info(f"📁 目标目录存在，递归同步: {source_file.file_name}")
             
             await self._sync_with_have(
                 x_token=x_token,
@@ -689,25 +734,52 @@ class LayeredSyncService:
                 **kwargs
             )
         else:
-            # 目标目录不存在，调用 syncWithOutHave 创建目录并转存所有内容
-            self.logger.debug(f"目标目录不存在，创建并转存: {source_file.file_name}")
+            # 创建目标目录
+            #self.logger.info(f"📁 目录不存在，需要创建")
+            target_dir_path = f"{target_definition.file_path}/{source_file.file_name}"  # 使用target_definition中的路径
             
-            await self._sync_without_have(
+            success = await self._create_directory(
                 x_token=x_token,
                 drive_type=drive_type,
-                source_definition=source_definition,
-                target_definition=target_definition,
-                source_file=source_file,
-                sync_method=sync_method,
-                recursion_speed=recursion_speed,
-                item_filter=item_filter,
-                current_depth=current_depth,
-                max_depth=max_depth,
-                stats=stats,
-                task_id=task_id,
+                target_definition=target_definition,  # 直接使用传入的target_definition
+                dir_name=source_file.file_name,
+                task_id=task_id,  # 添加缺失的task_id参数
                 db=db,
                 **kwargs
             )
+            
+            if success:
+                stats["folder_created"] += 1
+                #self.logger.info(f"📁 目录创建成功: {target_dir_path}")
+                
+                # 创建目录成功后，直接递归处理目录内的所有内容
+                #self.logger.info(f"🔄 开始递归处理新创建目录的内容: {source_file.file_name}")
+                await self._sync_with_have(
+                    x_token=x_token,
+                    drive_type=drive_type,
+                    source_definition=source_definition,
+                    target_definition=DiskTargetDefinition(
+                        file_path=target_dir_path,  # 使用新创建的完整目录路径
+                        file_id="",  # 新创建的目录可能没有 ID
+                        drive_type=drive_type
+                    ),
+                    source_path=source_file.file_path,  # 源目录路径
+                    target_path=target_dir_path,        # 新创建的目标目录路径
+                    target_id="",                       # 新创建的目录ID
+                    sync_method=sync_method,
+                    recursion_speed=recursion_speed,
+                    item_filter=item_filter,
+                    current_depth=current_depth + 1,
+                    max_depth=max_depth,
+                    stats=stats,
+                    task_id=task_id,
+                    db=db,
+                    **kwargs
+                )
+            else:
+                error_msg = f"创建目录失败: {target_dir_path}"
+                stats["errors"].append(error_msg)
+                self.logger.error(error_msg)
     
     async def _handle_source_file(
         self,
@@ -721,6 +793,7 @@ class LayeredSyncService:
         recursion_speed: RecursionSpeed,
         stats: Dict[str, Any],
         task_id: Optional[int],
+        db: Optional[AsyncSession] = None,
         **kwargs
     ) -> None:
         """处理源文件"""
@@ -748,7 +821,9 @@ class LayeredSyncService:
                     self.logger.debug(f"完全同步：文件已存在且大小相同，跳过: {source_file.file_name}")
         
         if need_transfer:
-            # 转存文件
+            # 需要转存文件
+            expected_dst_path = f"{target_definition.file_path}/{source_file.file_name}"
+            
             success = await self._transfer_file(
                 x_token=x_token,
                 drive_type=drive_type,
@@ -757,6 +832,7 @@ class LayeredSyncService:
                 source_file=source_file,
                 recursion_speed=recursion_speed,
                 task_id=task_id,
+                db=db,
                 **kwargs
             )
             
@@ -812,7 +888,6 @@ class LayeredSyncService:
             return
         
         stats["folder_created"] += 1
-        self.logger.debug(f"目录创建成功: {target_dir_path}")
         
         # 2. 扫描源目录内容
         source_children = await self._get_source_files_single_layer(
@@ -824,13 +899,13 @@ class LayeredSyncService:
             stats["files_processed"] += 1
             
             if child_file.is_folder:
-                # 递归处理子目录
+                # 递归处理子目录 - 使用新创建的目录作为目标路径
                 await self._sync_without_have(
                     x_token=x_token,
                     drive_type=drive_type,
                     source_definition=source_definition,
                     target_definition=DiskTargetDefinition(
-                        file_path=target_dir_path,
+                        file_path=target_dir_path,  # 使用新创建的完整目录路径
                         file_id="",  # 新创建的目录可能没有 ID
                         drive_type=drive_type
                     ),
@@ -858,6 +933,7 @@ class LayeredSyncService:
                     source_file=child_file,
                     recursion_speed=recursion_speed,
                     task_id=task_id,
+                    db=db,
                     **kwargs
                 )
                 
@@ -888,19 +964,18 @@ class LayeredSyncService:
         """
         处理覆盖同步模式：
         1. 先批量删除目标目录的所有文件
-        2. 然后直接转存整个源目录
+        2. 然后批量转存源目录的所有文件（不递归，只转存当前层级）
         """
         if current_depth >= max_depth:
             return
         
-        # 1. 获取目标目录的所有文件（只用于删除）
+        # 1. 获取目标目录的所有文件（用于删除）
         target_files = await self._get_target_files_single_layer(
             x_token, drive_type, target_definition, target_path, target_id, None, db, **kwargs
         )
         
         # 2. 批量删除目标目录的所有文件
         if target_files:
-            self.logger.debug(f"覆盖同步：批量删除目标目录 {target_path} 中的 {len(target_files)} 个文件")
             success = await self._batch_delete_files(
                 x_token=x_token,
                 drive_type=drive_type,
@@ -908,41 +983,52 @@ class LayeredSyncService:
                 target_files=target_files,
                 recursion_speed=recursion_speed,
                 task_id=task_id,
+                db=db,  # 添加缺失的db参数
                 **kwargs
             )
             
             if success:
                 stats["files_deleted"] += len(target_files)
-                self.logger.debug(f"覆盖同步：批量删除成功: {len(target_files)} 个文件")
+                #self.logger.info(f"✅ 覆盖同步：批量删除成功: {len(target_files)} 个文件")
             else:
                 error_msg = f"覆盖同步：批量删除失败: {len(target_files)} 个文件"
                 stats["errors"].append(error_msg)
+                self.logger.error(error_msg)
+        else:
+            self.logger.info("🔍 覆盖同步：目标目录为空，无需删除")
         
-        # 3. 直接转存整个源目录到目标目录
-        self.logger.debug(f"覆盖同步：直接转存源目录 {source_path} 到目标目录 {target_path}")
-        success = await self._transfer_entire_directory(
-            x_token=x_token,
-            drive_type=drive_type,
-            source_definition=source_definition,
-            target_definition=target_definition,
-            source_path=source_path,
-            recursion_speed=recursion_speed,
-            task_id=task_id,
-            **kwargs
+        # 3. 获取源目录的所有文件（用于转存）
+        source_files = await self._get_source_files_single_layer(
+            x_token, drive_type, source_definition, source_path, item_filter, db, **kwargs
         )
         
-        if success:
-            # 统计转存的文件数量（需要重新获取源文件列表进行统计）
-            source_files = await self._get_source_files_single_layer(
-                x_token, drive_type, source_definition, source_path, item_filter, db, **kwargs
+        if source_files:
+            #self.logger.info(f"📁 覆盖同步：批量转存源目录 {source_path} 中的 {len(source_files)} 个文件")
+            success = await self._batch_transfer_files(
+                x_token=x_token,
+                drive_type=drive_type,
+                source_definition=source_definition,
+                target_definition=target_definition,
+                source_files=source_files,
+                recursion_speed=recursion_speed,
+                task_id=task_id,
+                db=db,  # 传递db参数用于记录任务项
+                **kwargs
             )
-            file_count = sum(1 for f in source_files if not f.is_folder)
-            stats["files_transferred"] += file_count
-            stats["files_processed"] += len(source_files)
-            self.logger.debug(f"覆盖同步：整个目录转存成功，包含 {file_count} 个文件")
+            
+            if success:
+                file_count = sum(1 for f in source_files if not f.is_folder)
+                folder_count = sum(1 for f in source_files if f.is_folder)
+                stats["files_transferred"] += file_count
+                stats["folder_created"] += folder_count  # 目录也算作创建
+                stats["files_processed"] += len(source_files)
+                # self.logger.info(f"✅ 覆盖同步：批量转存成功，包含 {file_count} 个文件和 {folder_count} 个目录")
+            else:
+                error_msg = f"覆盖同步：批量转存失败: {source_path}"
+                stats["errors"].append(error_msg)
+                self.logger.error(error_msg)
         else:
-            error_msg = f"覆盖同步：整个目录转存失败: {source_path}"
-            stats["errors"].append(error_msg)
+            self.logger.info("🔍 覆盖同步：源目录为空，无需转存")
 
     async def _handle_target_cleanup_batch(
         self,
@@ -954,6 +1040,7 @@ class LayeredSyncService:
         recursion_speed: RecursionSpeed,
         stats: Dict[str, Any],
         task_id: Optional[int],
+        db: Optional[AsyncSession] = None,
         **kwargs
     ) -> None:
         """批量处理目标目录清理（完全同步模式）"""
@@ -967,6 +1054,7 @@ class LayeredSyncService:
         ]
         
         if files_to_delete:
+            #self.logger.info(f"🗑️ 完全同步：需要删除 {len(files_to_delete)} 个多余文件")
             success = await self._batch_delete_files(
                 x_token=x_token,
                 drive_type=drive_type,
@@ -974,6 +1062,7 @@ class LayeredSyncService:
                 target_files=files_to_delete,
                 recursion_speed=recursion_speed,
                 task_id=task_id,
+                db=db,  # 传递db参数用于记录删除任务项
                 **kwargs
             )
             
@@ -983,6 +1072,8 @@ class LayeredSyncService:
             else:
                 error_msg = f"批量删除多余文件失败: {len(files_to_delete)} 个文件"
                 stats["errors"].append(error_msg)
+        else:
+            self.logger.info("🔍 完全同步：未发现需要删除的多余文件")
 
     async def _apply_speed_control(self, recursion_speed: RecursionSpeed) -> None:
         """应用速度控制"""
@@ -1112,21 +1203,28 @@ class LayeredSyncService:
                 from backend.app.coulddrive.schema.filesync import CreateSyncTaskItemParam
                 from backend.app.coulddrive.crud.crud_filesync import sync_task_item_dao
                 
+                self.logger.debug(f"开始创建 {len(source_files)} 个文件的 add 类型任务项记录")
+                
                 for file in source_files:
+                    expected_dst_path = f"{target_definition.file_path}/{file.file_name}"
+                    
                     item_param = CreateSyncTaskItemParam(
                         task_id=task_id,
                         type="add",  # 转存操作
                         src_path=file.file_path,
-                        dst_path=f"{target_definition.file_path}/{file.file_name}",
+                        dst_path=expected_dst_path,
                         file_name=file.file_name,
-                        file_size=file.file_size,
+                        file_size=file.file_size or 0,  # 确保不为None
                         status="completed" if success else "failed",
                         err_msg=None if success else f"批量转存失败: {file.file_name}"
                     )
                     try:
                         await sync_task_item_dao.create(db, obj_in=item_param)
+                        self.logger.debug(f"创建 add 任务项成功: {file.file_name}")
                     except Exception as e:
-                        self.logger.error(f"创建任务项记录失败: {e}")
+                        self.logger.error(f"创建 add 任务项记录失败: {file.file_name}, 错误: {e}")
+            else:
+                self.logger.debug(f"跳过任务项记录创建 - task_id: {task_id}, db: {db is not None}")
             
             if not success:
                 # 记录详细的失败信息到日志，但不抛出异常
@@ -1196,6 +1294,8 @@ class LayeredSyncService:
                 from backend.app.coulddrive.schema.filesync import CreateSyncTaskItemParam
                 from backend.app.coulddrive.crud.crud_filesync import sync_task_item_dao
                 
+                self.logger.debug(f"开始创建 {len(target_files)} 个文件的 delete 类型任务项记录")
+                
                 for file in target_files:
                     item_param = CreateSyncTaskItemParam(
                         task_id=task_id,
@@ -1209,8 +1309,11 @@ class LayeredSyncService:
                     )
                     try:
                         await sync_task_item_dao.create(db, obj_in=item_param)
+                        self.logger.debug(f"创建 delete 任务项成功: {file.file_name}")
                     except Exception as e:
-                        self.logger.error(f"创建删除任务项记录失败: {e}")
+                        self.logger.error(f"创建 delete 任务项记录失败: {file.file_name}, 错误: {e}")
+            else:
+                self.logger.debug(f"跳过删除任务项记录创建 - task_id: {task_id}, db: {db is not None}")
             
             if not result:
                 # 记录详细的删除失败信息到日志，但不抛出异常
@@ -1305,6 +1408,7 @@ class LayeredSyncService:
         source_file: BaseFileInfo,
         recursion_speed: RecursionSpeed,
         task_id: Optional[int],
+        db: Optional[AsyncSession] = None,
         **kwargs
     ) -> bool:
         """转存单个文件（保留用于向后兼容）"""
@@ -1316,6 +1420,7 @@ class LayeredSyncService:
             source_files=[source_file],
             recursion_speed=recursion_speed,
             task_id=task_id,
+            db=db,
             **kwargs
         )
     
