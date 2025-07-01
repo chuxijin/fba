@@ -474,8 +474,6 @@ class LayeredSyncService:
         if current_depth >= max_depth:
             return
         
-        self.logger.debug(f"处理目录层级 {current_depth}: {source_path} -> {target_path}")
-        
         # 获取源目录和目标目录的文件列表
         source_files = await self._get_source_files_single_layer(
             x_token, drive_type, source_definition, source_path, item_filter, db, **kwargs
@@ -880,8 +878,6 @@ class LayeredSyncService:
         """
         if current_depth >= max_depth:
             return
-        
-        self.logger.debug(f"覆盖同步：开始处理目录层级 {current_depth}")
         
         # 1. 获取目标目录的所有文件（只用于删除）
         target_files = await self._get_target_files_single_layer(
