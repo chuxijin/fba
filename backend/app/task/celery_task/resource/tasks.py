@@ -378,4 +378,206 @@ async def _get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
     
     except Exception as e:
         logger.error(f"获取即将过期的资源列表时发生错误: {str(e)}")
-        return [] 
+        return []
+
+
+@celery_app.task(name='cleanup_expired_local_shares')
+async def cleanup_expired_local_shares() -> Dict[str, Any]:
+    """
+    清理本地失效分享
+    
+    遍历数据库中的网盘账户，获取他们的本地分享列表，
+    找出过期的分享并批量取消
+    
+    :return: 执行结果统计
+    """
+    try:
+        result = await _cleanup_expired_local_shares()
+        logger.info(f"本地分享清理完成: 检查{result['checked_accounts']}个账户，清理{result['cleaned_shares']}个分享")
+        return result
+            
+    except Exception as e:
+        logger.error(f"本地分享清理失败: {str(e)}")
+        return {
+            "checked_accounts": 0,
+            "cleaned_shares": 0,
+            "failed_accounts": 0,
+            "cleanup_details": [],
+            "error": str(e)
+        }
+
+
+async def _cleanup_expired_local_shares() -> Dict[str, Any]:
+    """
+    清理本地失效分享的异步实现
+    
+    :return: 执行结果统计
+    """
+    result = {
+        "checked_accounts": 0,
+        "cleaned_shares": 0,
+        "failed_accounts": 0,
+        "cleanup_details": []
+    }
+    
+    try:
+        async with async_db_session() as db:
+            # 获取所有有效的网盘账户
+            drive_accounts = await drive_account_dao.get_list_with_pagination(db, is_valid=True)
+            
+            result["checked_accounts"] = len(drive_accounts)
+            
+            drive_manager = get_drive_manager()
+            
+            for account in drive_accounts:
+                try:
+                    # 跳过无效账户
+                    if not account.is_valid or not account.cookies:
+                        result["cleanup_details"].append({
+                            "account_id": account.id,
+                            "account_type": account.type,
+                            "status": "skipped",
+                            "reason": "账户无效或缺少认证信息"
+                        })
+                        continue
+                    
+                    logger.info(f"开始检查账户 {account.id} ({account.type}) 的本地分享")
+                    
+                    # 获取该账户的所有本地分享（自动翻页）
+                    all_expired_shares = []
+                    page = 1
+                    
+                    while True:
+                        try:
+                            from backend.app.coulddrive.schema.file import ListShareInfoParam
+                            from backend.app.coulddrive.schema.enum import DriveType
+                            
+                            # 构建查询参数
+                            share_info_params = ListShareInfoParam(
+                                drive_type=DriveType(account.type),
+                                source_type="local",
+                                source_id="",  # local类型时可为空
+                                page=page,
+                                size=50,  # 每页50条
+                                order_field="created_at",
+                                order_type="desc"
+                            )
+                            
+                            # 获取分享信息
+                            share_info_list = await drive_manager.get_share_info(
+                                account.cookies, 
+                                share_info_params
+                            )
+                            
+                            # 如果没有更多数据，退出循环
+                            if not share_info_list:
+                                break
+                            
+                            # 筛选过期的分享
+                            expired_shares_in_page = []
+                            for share_info in share_info_list:
+                                # 判断是否过期
+                                is_expired = False
+                                
+                                # 判断逻辑1: expired_type为-1表示过期
+                                if share_info.expired_type == -1:
+                                    is_expired = True
+                                # 判断逻辑2: expired_left为0或负数表示过期
+                                elif share_info.expired_left is not None and share_info.expired_left <= 0:
+                                    is_expired = True
+                                
+                                if is_expired:
+                                    expired_shares_in_page.append(share_info.share_id)
+                            
+                            all_expired_shares.extend(expired_shares_in_page)
+                            
+                            # 如果本页数据少于50条，说明已经是最后一页
+                            if len(share_info_list) < 50:
+                                break
+                            
+                            page += 1
+                            
+                            # 翻页间隔10秒
+                            logger.debug(f"账户 {account.id} 翻页间隔，等待10秒...")
+                            await asyncio.sleep(10)
+                            
+                        except Exception as e:
+                            logger.error(f"获取账户 {account.id} 第{page}页分享信息失败: {str(e)}")
+                            break
+                    
+                    # 如果有过期的分享，批量取消
+                    if all_expired_shares:
+                        try:
+                            from backend.app.coulddrive.schema.file import CancelShareParam
+                            
+                            cancel_params = CancelShareParam(
+                                drive_type=DriveType(account.type),
+                                shareid_list=all_expired_shares
+                            )
+                            
+                            # 批量取消分享
+                            success = await drive_manager.cancel_share(
+                                account.cookies,
+                                cancel_params
+                            )
+                            
+                            if success:
+                                result["cleaned_shares"] += len(all_expired_shares)
+                                result["cleanup_details"].append({
+                                    "account_id": account.id,
+                                    "account_type": account.type,
+                                    "status": "success",
+                                    "cleaned_count": len(all_expired_shares),
+                                    "share_ids": all_expired_shares
+                                })
+                                logger.info(f"账户 {account.id} 成功清理 {len(all_expired_shares)} 个过期分享")
+                            else:
+                                result["failed_accounts"] += 1
+                                result["cleanup_details"].append({
+                                    "account_id": account.id,
+                                    "account_type": account.type,
+                                    "status": "failed",
+                                    "reason": "取消分享API调用失败",
+                                    "expired_count": len(all_expired_shares)
+                                })
+                                logger.error(f"账户 {account.id} 取消分享失败")
+                        
+                        except Exception as e:
+                            result["failed_accounts"] += 1
+                            result["cleanup_details"].append({
+                                "account_id": account.id,
+                                "account_type": account.type,
+                                "status": "error",
+                                "error": str(e),
+                                "expired_count": len(all_expired_shares)
+                            })
+                            logger.error(f"账户 {account.id} 取消分享时发生错误: {str(e)}")
+                    
+                    else:
+                        result["cleanup_details"].append({
+                            "account_id": account.id,
+                            "account_type": account.type,
+                            "status": "no_expired",
+                            "reason": "没有找到过期的分享"
+                        })
+                        logger.info(f"账户 {account.id} 没有过期的分享需要清理")
+                    
+                    # 每个账号间隔1分钟
+                    logger.debug(f"账户 {account.id} 处理完成，等待1分钟后处理下一个账户...")
+                    await asyncio.sleep(60)
+                
+                except Exception as e:
+                    logger.error(f"处理账户 {account.id} 时发生错误: {str(e)}")
+                    result["failed_accounts"] += 1
+                    result["cleanup_details"].append({
+                        "account_id": account.id,
+                        "account_type": account.type,
+                        "status": "error",
+                        "error": str(e)
+                    })
+    
+    except Exception as e:
+        logger.error(f"清理本地分享时发生错误: {str(e)}")
+        result["error"] = str(e)
+    
+    return result 

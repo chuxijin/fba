@@ -262,9 +262,14 @@ class CRUDSyncTask(CRUDPlus[SyncTask]):
         :return: 同步任务列表
         """
         from sqlalchemy import select, desc
+        from sqlalchemy.orm import noload
         
         stmt = (
             select(SyncTask)
+            .options(
+                noload(SyncTask.sync_config),
+                noload(SyncTask.task_items)
+            )
             .where(SyncTask.config_id == config_id)
             .order_by(desc(SyncTask.created_time))
         )
@@ -347,9 +352,11 @@ class CRUDSyncTaskItem(CRUDPlus[SyncTaskItem]):
         :return: 同步任务项列表
         """
         from sqlalchemy import select, desc
+        from sqlalchemy.orm import noload
         
         stmt = (
             select(SyncTaskItem)
+            .options(noload(SyncTaskItem.sync_task))
             .where(SyncTaskItem.task_id == task_id)
             .order_by(desc(SyncTaskItem.created_time))
         )

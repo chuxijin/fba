@@ -276,6 +276,7 @@ class BaseDriveClient:
             share_id="",
             pwd_id="",
             url="",
+            password="",
             expired_type=0,
             view_count=0,
             expired_at=None,
@@ -434,7 +435,7 @@ class BaseDrive:
             return BaiduClient(cookies=x_token)
         except Exception as e:
             from backend.common.log import log
-            log.error(f"创建百度网盘客户端失败: {e}", exc_info=True)
+            log.error(f"创建百度网盘客户端失败: {e}")
             return None
     
     def _create_quark_client(self, x_token: str) -> Optional[BaseDriveClient]:

@@ -151,13 +151,10 @@ class ListFilesParam(SchemaBase):
     drive_type: DriveType = Field(..., description="网盘类型")
     file_path: Optional[str] = Field("/", description="文件路径，默认为根目录")
     file_id: Optional[str] = Field("", description="文件ID")
-    recursive: bool = Field(False, description="是否递归获取子目录")
     desc: bool = Field(False, description="是否按降序排序")
     name: bool = Field(False, description="是否按名称排序")
     time: bool = Field(False, description="是否按时间排序")
     size_sort: bool = Field(False, description="是否按大小排序")
-    recursion_speed: RecursionSpeed = Field(RecursionSpeed.NORMAL, description="递归速度")
-    exclude_rules: str | None = Field(None, description="排除规则JSON")
 
 
 class ListShareFilesParam(SchemaBase):
@@ -167,9 +164,6 @@ class ListShareFilesParam(SchemaBase):
     source_type: str = Field(..., description="分享来源类型")
     source_id: str = Field(..., description="分享来源ID")
     file_path: str = Field(..., description="分享内部路径")
-    recursive: bool = Field(False, description="是否递归")
-    recursion_speed: RecursionSpeed = Field(RecursionSpeed.NORMAL, description="递归速度")
-    exclude_rules: str | None = Field(None, description="排除规则JSON")
 
 class ListShareInfoParam(SchemaBase):
     """分享详情列表参数"""

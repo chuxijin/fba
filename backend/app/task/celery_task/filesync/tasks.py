@@ -58,6 +58,9 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
         "execution_details": []
     }
     
+    # 用于收集详细信息的临时列表
+    temp_details = []
+    
     try:
         async with async_db_session() as db:
             # 获取所有启用的同步配置
@@ -71,7 +74,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                     # 检查是否有cron表达式
                     if not config.cron:
                         result["skipped_tasks"] += 1
-                        result["execution_details"].append({
+                        temp_details.append({
                             "config_id": config.id,
                             "status": "skipped",
                             "reason": "没有设置cron表达式"
@@ -82,7 +85,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                     end_time = datetime.fromisoformat(str(config.end_time)) if config.end_time else None
                     if end_time and current_time > end_time:
                         result["skipped_tasks"] += 1
-                        result["execution_details"].append({
+                        temp_details.append({
                             "config_id": config.id,
                             "status": "skipped",
                             "reason": "任务已过期"
@@ -92,7 +95,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                     # 验证cron表达式
                     if not _is_valid_cron_expression(config.cron):
                         result["failed_tasks"] += 1
-                        result["execution_details"].append({
+                        temp_details.append({
                             "config_id": config.id,
                             "status": "failed",
                             "reason": "cron表达式无效"
@@ -104,7 +107,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                     
                     if not should_execute:
                         result["skipped_tasks"] += 1
-                        result["execution_details"].append({
+                        temp_details.append({
                             "config_id": config.id,
                             "status": "skipped",
                             "reason": "未到执行时间"
@@ -118,7 +121,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                     
                     if sync_result.get("success"):
                         result["executed_tasks"] += 1
-                        result["execution_details"].append({
+                        temp_details.append({
                             "config_id": config.id,
                             "status": "success",
                             "task_id": sync_result.get("task_id"),
@@ -128,7 +131,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                         logger.info(f"配置 {config.remark} 执行成功")
                     else:
                         result["failed_tasks"] += 1
-                        result["execution_details"].append({
+                        temp_details.append({
                             "config_id": config.id,
                             "status": "failed",
                             "error": sync_result.get("error"),
@@ -139,7 +142,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                 except Exception as e:
                     logger.error(f"处理配置 {config.id} 时发生错误: {str(e)}")
                     result["failed_tasks"] += 1
-                    result["execution_details"].append({
+                    temp_details.append({
                         "config_id": config.id,
                         "status": "error",
                         "error": str(e)
@@ -148,6 +151,9 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"检查文件同步定时任务时发生错误: {str(e)}")
         result["error"] = str(e)
+    
+    # 合并相同状态和原因的配置
+    result["execution_details"] = _merge_execution_details(temp_details)
     
     return result
 
@@ -301,4 +307,61 @@ def _should_execute_now(cron_expr: str, last_sync: Any | None, current_time: dat
     
     except Exception as e:
         logger.error(f"解析cron表达式 {cron_expr} 时发生错误: {str(e)}")
-        return False 
+        return False
+
+
+def _merge_execution_details(details: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    合并相同状态和原因的执行详情
+    
+    :param details: 原始执行详情列表
+    :return: 合并后的执行详情列表
+    """
+    if not details:
+        return []
+    
+    # 用于分组的字典，key为(status, reason/error)，value为配置ID列表和其他信息
+    groups = {}
+    
+    for detail in details:
+        status = detail.get("status")
+        
+        # 根据状态确定分组的key
+        if status in ["skipped", "failed"] and "reason" in detail:
+            # 对于有reason的情况，使用(status, reason)作为key
+            group_key = (status, detail.get("reason"))
+        elif status == "failed" and "error" in detail:
+            # 对于有error的情况，使用(status, error)作为key
+            group_key = (status, detail.get("error"))
+        else:
+            # 对于success等其他情况，每个配置单独一条记录
+            group_key = (status, detail.get("config_id"))
+        
+        if group_key not in groups:
+            groups[group_key] = {
+                "config_ids": [],
+                "detail": detail.copy()
+            }
+        
+        groups[group_key]["config_ids"].append(detail.get("config_id"))
+    
+    # 生成合并后的结果
+    merged_details = []
+    for (status, reason_or_error), group_data in groups.items():
+        config_ids = group_data["config_ids"]
+        detail = group_data["detail"]
+        
+        if len(config_ids) > 1:
+            # 多个配置ID，合并显示
+            detail["config_id"] = config_ids
+        else:
+            # 单个配置ID，保持原样
+            detail["config_id"] = config_ids[0]
+        
+        merged_details.append(detail)
+    
+    # 按状态排序：success -> failed -> error -> skipped
+    status_order = {"success": 1, "failed": 2, "error": 3, "skipped": 4}
+    merged_details.sort(key=lambda x: status_order.get(x.get("status"), 5))
+    
+    return merged_details 

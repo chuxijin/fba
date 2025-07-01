@@ -32,7 +32,6 @@ from backend.app.coulddrive.schema.file import (
     RemoveParam,
     TransferParam,
     UserInfoParam,
-    CancelShareParam,
 )
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
@@ -295,7 +294,7 @@ class QuarkClient(BaseDriveClient):
 
     async def get_disk_list(self, params: ListFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
         """
-        获取目录下的文件和目录列表
+        获取目录下的文件和目录列表（单层，不递归）
         
         :param params: 文件列表查询参数
         :param kwargs: 其他关键字参数
@@ -303,40 +302,10 @@ class QuarkClient(BaseDriveClient):
         # 从 params 中提取参数
         file_path = params.file_path or "/"
         file_id = params.file_id or ""
-        recursive = params.recursive
-        recursion_speed = params.recursion_speed
         
         # 从 kwargs 中获取可选参数
-        item_filter = kwargs.get('item_filter', None)
         drive_account_id = kwargs.get('drive_account_id', None)
         db = kwargs.get('db', None)
-
-        # 快速模式：优先从缓存获取
-        if recursion_speed == RecursionSpeed.FAST and drive_account_id and db:
-            try:
-                from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                
-                # 检查缓存新鲜度
-                cache_fresh = await file_cache_service.check_cache_freshness(
-                    db, drive_account_id=drive_account_id, parent_id=file_id or file_path
-                )
-                
-                if cache_fresh:
-                    # self.logger.info(f"快速模式：从缓存获取文件列表 {file_path}")
-                    cached_files = await file_cache_service.get_cached_children_as_file_info(
-                        db, parent_id=file_id or file_path, drive_account_id=drive_account_id
-                    )
-                    
-                    # 应用过滤器
-                    if item_filter:
-                        cached_files = [item for item in cached_files if not item_filter.should_exclude(item)]
-                    
-                    return cached_files
-                else:
-                    # self.logger.info(f"快速模式：缓存过期，回退到API获取 {file_path}")
-                    pass
-            except Exception as e:
-                self.logger.warning(f"快速模式缓存获取失败，回退到API获取: {e}")
 
         # 构建排序参数
         sort_str = "file_type:asc,updated_at:desc"  # 默认排序
@@ -348,7 +317,7 @@ class QuarkClient(BaseDriveClient):
         
         async def fetch_all_quark_pages_from_api(pdir_fid: str, sort_str: str) -> List[Dict]:
             """
-            自动翻页获取夸克网盘指定目录下的所有文件/目录
+            自动翻页获取夸克网盘指定目录下的所有文件/目录（单层）
             
             :param pdir_fid: 父目录ID
             :param sort_str: 排序字符串
@@ -386,49 +355,23 @@ class QuarkClient(BaseDriveClient):
             return all_items
         
         try:
-            # 获取初始目录内容
-            initial_items_raw = await fetch_all_quark_pages_from_api(initial_pdir_fid, sort_str)
+            # 获取目录内容
+            items_raw = await fetch_all_quark_pages_from_api(initial_pdir_fid, sort_str)
         except Exception as e:
             self.logger.error(f"Error listing path '{file_path}' with fid '{initial_pdir_fid}': {e}")
             return []
 
-        # 使用队列处理递归遍历
-        queue = deque()
-        
-        # 将初始项目转换为 BaseFileInfo 以便进行早期过滤
-        for item_dict in initial_items_raw:
-            temp_df_for_filter = BaseFileInfo(
-                file_id=item_dict.get('fid', ''),
-                file_path=item_dict.get('file_name', ''),  # 夸克API返回的是文件名，不是完整路径
-                file_name=item_dict.get('file_name', ''),
-                is_folder=bool(item_dict.get('dir', False)),
-                file_size=item_dict.get('size', 0),
-                created_at=str(item_dict.get('created_at', '')),
-                updated_at=str(item_dict.get('updated_at', '')),
-                parent_id=initial_pdir_fid
-            )
-            
-            if item_filter and item_filter.should_exclude(temp_df_for_filter):
-                self.logger.debug(f"[Filter] Excluding initial item: {temp_df_for_filter.file_name}")
-                continue
-            
-            queue.append((item_dict, file_path, initial_pdir_fid))
-
-        processed_fids = set()
-        is_first_pass = True
-
-        while queue:
-            item_dict, current_path, parent_fid = queue.popleft()
-            
+        # 将API返回的数据转换为BaseFileInfo
+        for item_dict in items_raw:
             current_fid = item_dict.get('fid')
             current_item_name = item_dict.get('file_name', '')
             is_folder = bool(item_dict.get('dir', False))
             
             # 构建当前项目的完整路径
-            if is_first_pass and file_path == "/":
+            if file_path == "/":
                 item_full_path = f"/{current_item_name}"
             else:
-                item_full_path = f"{current_path.rstrip('/')}/{current_item_name}"
+                item_full_path = f"{file_path.rstrip('/')}/{current_item_name}"
             
             # 创建 BaseFileInfo 对象
             file_info = BaseFileInfo(
@@ -436,115 +379,14 @@ class QuarkClient(BaseDriveClient):
                 file_name=current_item_name,
                 file_path=item_full_path,
                 is_folder=is_folder,
-                parent_id=parent_fid,
+                parent_id=initial_pdir_fid,
                 file_size=item_dict.get('size', 0),
                 created_at=str(item_dict.get('created_at', '')),
                 updated_at=str(item_dict.get('updated_at', '')),
                 file_ext={}  # 夸克可以根据需要添加扩展信息
             )
             
-            # 应用过滤器
-            if item_filter and item_filter.should_exclude(file_info):
-                self.logger.debug(f"[Filter] Excluding item: {file_info.file_path}")
-                if is_folder and recursive:
-                    # 如果文件夹被排除，不要将其子项添加到队列
-                    pass
-                continue
-            
             drive_files_list.append(file_info)
-            
-            # 处理递归
-            if is_folder and recursive and current_fid and current_fid not in processed_fids:
-                # 检查该目录本身是否应该被过滤掉
-                current_dir_drive_file = BaseFileInfo(
-                    file_id=current_fid,
-                    file_path=item_full_path,
-                    file_name=current_item_name,
-                    is_folder=True,
-                    parent_id=parent_fid,
-                    file_size=0,
-                    created_at="0",
-                    updated_at="0"
-                )
-                
-                if item_filter and item_filter.should_exclude(current_dir_drive_file):
-                    self.logger.debug(f"[Filter] Excluding directory from recursion: {current_item_name}")
-                else:
-                    if current_fid:
-                        processed_fids.add(current_fid)
-                        if recursion_speed == RecursionSpeed.FAST:
-                            # 快速模式：尝试从缓存获取子目录内容
-                            if drive_account_id and db:
-                                try:
-                                    from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                                    
-                                    cached_children = await file_cache_service.get_cached_children_as_file_info(
-                                        db, 
-                                        parent_id=current_fid, 
-                                        drive_account_id=drive_account_id
-                                    )
-                                    
-                                    if cached_children:
-                                        self.logger.debug(f"快速模式：从缓存获取子目录 {current_item_name}")
-                                        # 将缓存的子项添加到结果列表
-                                        for cached_child in cached_children:
-                                            # 应用过滤器
-                                            if not (item_filter and item_filter.should_exclude(cached_child)):
-                                                drive_files_list.append(cached_child)
-                                                
-                                                # 如果是文件夹且启用递归，添加到队列
-                                                if cached_child.is_folder and recursive:
-                                                    queue.append((cached_child.file_id, cached_child.file_path, cached_child.file_id))
-                                        continue
-                                    else:
-                                        self.logger.debug(f"快速模式：缓存中无子目录数据，回退到API获取 {current_item_name}")
-                                except Exception as e:
-                                    self.logger.warning(f"快速模式缓存获取失败，回退到API: {e}")
-                            else:
-                                self.logger.debug(f"快速模式：缺少必要参数，跳过子目录递归 {current_item_name}")
-                                continue
-                        elif recursion_speed == RecursionSpeed.SLOW:
-                            self.logger.debug(f"Slow mode (disk): Pausing for 3s before listing {current_item_name}...")
-                            time.sleep(3)
-                    
-                        try:
-                            sub_list = await fetch_all_quark_pages_from_api(current_fid, sort_str)
-                            for sub_item_dict in sub_list:
-                                temp_sub_df = BaseFileInfo(
-                                    file_id=sub_item_dict.get('fid', ''),
-                                    file_path=f"{item_full_path}/{sub_item_dict.get('file_name', '')}",
-                                    file_name=sub_item_dict.get('file_name', ''),
-                                    is_folder=bool(sub_item_dict.get('dir', False)),
-                                    file_size=sub_item_dict.get('size', 0),
-                                    created_at=str(sub_item_dict.get('created_at', '')),
-                                    updated_at=str(sub_item_dict.get('updated_at', '')),
-                                    parent_id=current_fid
-                                )
-                                if item_filter and item_filter.should_exclude(temp_sub_df):
-                                    self.logger.debug(f"[Filter] Excluding sub-item: {temp_sub_df.file_name}")
-                                    continue
-                                queue.append((sub_item_dict, item_full_path, current_fid))
-                        except Exception as e:
-                            self.logger.error(f"Error listing subdirectory '{current_item_name}': {e}")
-                            # 允许流程继续，如果子目录失败
-            
-            is_first_pass = False
-
-        # 智能缓存写入：在获取文件列表后自动写入缓存
-        if drive_account_id and db and drive_files_list:
-            try:
-                from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                
-                cache_version = datetime.now().strftime("%Y%m%d_%H%M%S")
-                await file_cache_service.smart_cache_write(
-                    db, 
-                    drive_account_id=drive_account_id,
-                    files=drive_files_list,
-                    cache_version=cache_version
-                )
-                # self.logger.info(f"自动缓存写入完成: {len(drive_files_list)} 个文件")
-            except Exception as e:
-                self.logger.warning(f"自动缓存写入失败: {e}")
 
         return drive_files_list
 
@@ -743,7 +585,7 @@ class QuarkClient(BaseDriveClient):
 
     async def get_share_list(self, params: ListShareFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
         """
-        获取指定分享中特定路径下的文件/目录列表
+        获取指定分享中特定路径下的文件/目录列表（单层，不递归）
         
         :param params: 分享列表参数
         :return: 分享列表
@@ -751,11 +593,6 @@ class QuarkClient(BaseDriveClient):
         source_type = params.source_type
         source_id = params.source_id
         file_path = params.file_path
-        recursive = params.recursive
-        recursion_speed = params.recursion_speed
-        
-        # 从 kwargs 中获取可选参数，与 get_disk_list 保持一致
-        item_filter = kwargs.get('item_filter', None)
         
         drive_files_list: List[BaseFileInfo] = []
 
@@ -766,7 +603,7 @@ class QuarkClient(BaseDriveClient):
             sort: str = "file_type:asc,file_name:asc"
         ) -> List[Dict]:
             """
-            自动翻页获取夸克网盘分享文件列表的所有页面数据
+            自动翻页获取夸克网盘分享文件列表的所有页面数据（单层）
             
             :param pwd_id: 分享密码ID
             :param stoken: 分享token
@@ -885,123 +722,37 @@ class QuarkClient(BaseDriveClient):
                             # 目标是文件，返回该文件
                             current_items = [found_item]
             
-            # 使用队列处理递归遍历
-            queue = deque([(current_items, current_path, current_pdir_fid)])
-            processed_fids = set()
-            is_first_pass = True
-            
-            while queue:
-                items_to_process, path_base, parent_fid = queue.popleft()
+            # 处理当前目录的项目（单层）
+            for item in current_items:
+                item_fid = str(item.get("fid", ""))
+                item_name = item.get("file_name", "")
+                is_dir = bool(item.get("dir", False))
                 
-                # 递归速度控制
-                if recursive and not is_first_pass:
-                    if recursion_speed == RecursionSpeed.SLOW:
-                        self.logger.debug(f"慢速模式 (夸克分享): 暂停 3 秒")
-                        time.sleep(3)
-                    elif recursion_speed == RecursionSpeed.FAST:
-                        # 快速模式：尝试从缓存获取子目录内容
-                        if kwargs.get('drive_account_id') and kwargs.get('db'):
-                            try:
-                                from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                                
-                                # 为分享文件构建特殊的缓存键，包含分享信息
-                                share_cache_key = f"share_{source_type}_{source_id}_{parent_fid}"
-                                
-                                cached_children = await file_cache_service.get_cached_children_as_file_info(
-                                    kwargs['db'], 
-                                    parent_id=share_cache_key, 
-                                    drive_account_id=kwargs['drive_account_id']
-                                )
-                                
-                                if cached_children:
-                                    self.logger.debug(f"快速模式：从缓存获取分享子目录 {path_base}")
-                                    # 将缓存的子项添加到结果列表
-                                    for cached_child in cached_children:
-                                        # 应用过滤器
-                                        if not (item_filter and item_filter.should_exclude(cached_child)):
-                                            drive_files_list.append(cached_child)
-                                            
-                                            # 如果是文件夹且启用递归，添加到队列
-                                            if cached_child.is_folder and recursive:
-                                                queue.append((cached_child.file_id, cached_child.file_path, cached_child.file_id))
-                                    continue
-                                else:
-                                    self.logger.debug(f"快速模式：缓存中无分享子目录数据，回退到API获取 {path_base}")
-                            except Exception as e:
-                                self.logger.warning(f"快速模式缓存获取失败，回退到API: {e}")
-                        else:
-                            self.logger.debug(f"快速模式：缺少必要参数，跳过分享子目录递归 {path_base}")
-                            continue
-                    # NORMAL 模式无需特殊处理，直接继续
+                # 构建完整路径
+                if current_path == "/":
+                    full_path = f"/{item_name}"
+                else:
+                    full_path = f"{current_path}/{item_name}" if current_path else f"/{item_name}"
                 
-                is_first_pass = False
+                # 创建 BaseFileInfo
+                drive_file = BaseFileInfo(
+                    file_id=item_fid,
+                    file_name=item_name,
+                    file_path=full_path,
+                    file_size=item.get("size", 0),
+                    is_folder=is_dir,
+                    created_at=str(item.get("created_at", "")),
+                    updated_at=str(item.get("updated_at", "")),
+                    parent_id=current_pdir_fid,
+                    file_ext={
+                        "pwd_id": pwd_id,
+                        "stoken": stoken,
+                        "share_url": source_id,
+                        "share_fid_token": item.get("share_fid_token", ""),
+                    }
+                )
                 
-                for item in items_to_process:
-                    item_fid = str(item.get("fid", ""))
-                    item_name = item.get("file_name", "")
-                    is_dir = bool(item.get("dir", False))
-                    
-                    # 构建完整路径
-                    if path_base == "/":
-                        full_path = f"/{item_name}"
-                    else:
-                        full_path = f"{path_base}/{item_name}"
-                    
-                    # 创建 BaseFileInfo
-                    drive_file = BaseFileInfo(
-                        file_id=item_fid,
-                        file_name=item_name,
-                        file_path=full_path,
-                        file_size=item.get("size", 0),
-                        is_folder=is_dir,
-                        created_at=str(item.get("created_at", "")),
-                        updated_at=str(item.get("updated_at", "")),
-                        parent_id=parent_fid,
-                        file_ext={
-                            "pwd_id": pwd_id,
-                            "stoken": stoken,
-                            "share_url": source_id,
-                            "share_fid_token": item.get("share_fid_token", ""),
-                        }
-                    )
-                    
-                    # 应用过滤器
-                    if item_filter and item_filter.should_exclude(drive_file):
-                        self.logger.debug(f"[Filter] Excluding share item: {drive_file.file_path}")
-                        continue
-                    
-                    drive_files_list.append(drive_file)
-                    
-                    # 如果启用递归且是目录，添加到队列
-                    if recursive and is_dir and item_fid not in processed_fids:
-                        processed_fids.add(item_fid)
-                        try:
-                            sub_list = await fetch_all_quark_share_pages_from_api(
-                                pwd_id=pwd_id,
-                                stoken=stoken,
-                                pdir_fid=item_fid
-                            )
-                            if sub_list:
-                                queue.append((sub_list, full_path, item_fid))
-                        except Exception as e:
-                            self.logger.error(f"获取子目录内容失败 {full_path}: {e}")
-            
-            # 自动写入缓存（分享文件）
-            if drive_files_list and kwargs.get('drive_account_id') and kwargs.get('db'):
-                try:
-                    from backend.app.coulddrive.service.file_cache_service import file_cache_service
-                    
-                    # 为分享文件构建特殊的缓存键
-                    share_cache_key = f"share_{source_type}_{source_id}"
-                    
-                    await file_cache_service.smart_cache_write(
-                        kwargs['db'],
-                        drive_account_id=kwargs['drive_account_id'],
-                        files=drive_files_list
-                    )
-                    self.logger.debug(f"分享文件列表缓存写入成功，共 {len(drive_files_list)} 个文件")
-                except Exception as e:
-                    self.logger.warning(f"分享文件列表缓存写入失败: {e}")
+                drive_files_list.append(drive_file)
             
             return drive_files_list
             
@@ -1009,7 +760,7 @@ class QuarkClient(BaseDriveClient):
             self.logger.error(f"处理分享链接时发生错误: {e}")
             return []
 
-    async def cancel_share(self, params: CancelShareParam, **kwargs: Any) -> bool:
+    async def cancel_share(self, params: 'CancelShareParam', **kwargs: Any) -> bool:
         """
         取消分享链接
         
@@ -1017,6 +768,8 @@ class QuarkClient(BaseDriveClient):
         :param kwargs: 其他关键字参数
         :return: 是否成功取消
         """
+        from backend.app.coulddrive.schema.file import CancelShareParam
+        
         try:
             # 将ID转换为字符串列表
             share_ids = [str(sid) for sid in params.shareid_list]
