@@ -203,14 +203,25 @@ class FileSyncService:
                     "elapsed_time": 0
                 }
             
-            # 创建同步任务记录
-            task_params = CreateSyncTaskParam(
-                config_id=config_id,
-                start_time=datetime.now(),
-                status="running"
-            )
-            sync_task = await sync_task_dao.create(db, obj_in=task_params, current_user_id=config.created_by)
-            task_id = sync_task.id
+            # 创建同步任务记录（添加异常处理）
+            try:
+                task_params = CreateSyncTaskParam(
+                    config_id=config_id,
+                    start_time=datetime.now(),
+                    status="running"
+                )
+                sync_task = await sync_task_dao.create(db, obj_in=task_params, current_user_id=config.created_by)
+                task_id = sync_task.id
+                logger.info(f"同步任务记录创建成功，任务ID: {task_id}")
+            except Exception as create_error:
+                error_msg = f"创建同步任务记录失败: {str(create_error)}"
+                logger.error(error_msg, exc_info=True)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "config_id": config_id,
+                    "elapsed_time": int(time.time() - start_time)
+                }
             
             # 解析配置参数
             sync_method = self._parse_sync_method(config.method)
@@ -322,8 +333,32 @@ class FileSyncService:
                     sync_task = await sync_task_dao.select_model(db, task_id)
                     if sync_task:
                         await sync_task_dao.update(db, db_obj=sync_task, obj_in=update_params)
+                        logger.info(f"同步任务 {task_id} 状态已更新为失败")
+                    else:
+                        logger.error(f"无法找到任务ID {task_id} 对应的任务记录")
                 except Exception as update_error:
                     logger.error(f"更新任务状态失败: {update_error}")
+            else:
+                # 如果没有任务ID，尝试创建一个失败的任务记录
+                try:
+                    # 先获取配置信息（如果没有的话）
+                    if 'config' not in locals():
+                        config, _ = await sync_config_dao.get_with_validation(db, config_id)
+                    
+                    if config:
+                        task_params = CreateSyncTaskParam(
+                            config_id=config_id,
+                            start_time=datetime.now(),
+                            task_num=json.dumps(sync_result.get("stats", {})),
+                            status="failed",
+                            err_msg=error_msg,
+                            dura_time=int(time.time() - start_time)
+                        )
+                        failed_task = await sync_task_dao.create(db, obj_in=task_params, current_user_id=config.created_by)
+                        task_id = failed_task.id
+                        logger.info(f"创建失败任务记录成功，任务ID: {task_id}")
+                except Exception as create_failed_error:
+                    logger.error(f"创建失败任务记录也失败了: {create_failed_error}")
             
             return {
                 "success": False,
@@ -1182,8 +1217,26 @@ class LayeredSyncService:
             
             # 合并扩展参数：基础参数 + 文件特定参数
             ext_params = dict(source_definition.ext_params)
+            
+            # 为每个文件构建扩展信息，确保每个文件都有各自的share_fid_token
+            files_ext_info = []
+            for file in source_files:
+                file_ext_info = {
+                    'file_id': file.file_id,
+                    'file_ext': file.file_ext or {}
+                }
+                files_ext_info.append(file_ext_info)
+            
+            # 将文件扩展信息添加到参数中
+            ext_params['files_ext_info'] = files_ext_info
+            
+            # 如果第一个文件有file_ext，也合并其基础信息（保持向后兼容）
             if source_files and source_files[0].file_ext:
-                ext_params.update(source_files[0].file_ext)
+                first_file_ext = source_files[0].file_ext
+                # 合并基础信息，但不覆盖files_ext_info
+                for key, value in first_file_ext.items():
+                    if key not in ext_params:
+                        ext_params[key] = value
             
             params = TransferParam(
                 drive_type=drive_type,
