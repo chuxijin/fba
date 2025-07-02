@@ -785,12 +785,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "dulwich", specifier = ">=0.22.8" },
     { name = "fast-captcha", specifier = ">=0.3.2" },
-<<<<<<< HEAD
-    { name = "fastapi", extras = ["standard"], specifier = "==0.115.12" },
-    { name = "fastapi-cli", specifier = "==0.0.5" },
-=======
     { name = "fastapi", extras = ["standard"], specifier = "==0.115.11" },
->>>>>>> c3064327085c7a881925a1356d89bad75ff22bb6
     { name = "fastapi-limiter", specifier = ">=0.1.6" },
     { name = "fastapi-oauth20", specifier = ">=0.0.1" },
     { name = "fastapi-pagination", specifier = ">=0.13.0" },
