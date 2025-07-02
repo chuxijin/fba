@@ -578,7 +578,7 @@ class LayeredSyncService:
                     source_files_to_transfer.append(source_file)
                 else:
                     stats["files_skipped"] += 1
-                    self.logger.debug(f"文件已存在，跳过: {source_file.file_name}")
+                    #self.logger.debug(f"文件已存在，跳过: {source_file.file_name}")
         
         # 批量转存文件
         if source_files_to_transfer:
@@ -722,7 +722,7 @@ class LayeredSyncService:
                     self.logger.debug(f"排除规则匹配，跳过目标文件: {file.file_name}")
             files = filtered_files
         
-        self.logger.debug(f"获取目标目录 {target_path} 文件列表: {len(files)} 个项目")
+        #self.logger.debug(f"获取目标目录 {target_path} 文件列表: {len(files)} 个项目")
         return files
     
     async def _handle_source_directory(
@@ -748,7 +748,7 @@ class LayeredSyncService:
         
         if target_file and target_file.is_folder:
             # 目标目录存在，递归同步
-            self.logger.info(f"📁 目标目录存在，递归同步: {source_file.file_name}")
+            #self.logger.info(f"📁 目标目录存在，递归同步: {source_file.file_name}")
             
             await self._sync_with_have(
                 x_token=x_token,
@@ -843,7 +843,7 @@ class LayeredSyncService:
                 if target_file.file_size == source_file.file_size:
                     need_transfer = False
                     stats["files_skipped"] += 1
-                    self.logger.debug(f"增量同步：文件已存在且大小相同，跳过: {source_file.file_name}")
+                    #self.logger.debug(f"增量同步：文件已存在且大小相同，跳过: {source_file.file_name}")
             elif sync_method == "overwrite":
                 # 覆盖同步：总是转存文件（覆盖模式在外层已处理目录清理）
                 need_transfer = True
@@ -853,7 +853,7 @@ class LayeredSyncService:
                 if target_file.file_size == source_file.file_size:
                     need_transfer = False
                     stats["files_skipped"] += 1
-                    self.logger.debug(f"完全同步：文件已存在且大小相同，跳过: {source_file.file_name}")
+                    #self.logger.debug(f"完全同步：文件已存在且大小相同，跳过: {source_file.file_name}")
         
         if need_transfer:
             # 需要转存文件
