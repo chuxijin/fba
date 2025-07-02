@@ -119,6 +119,11 @@ def parse_user_agent_info(request: Request) -> UserAgentInfo:
     :return:
     """
     user_agent = request.headers.get('User-Agent')
+    
+    # 如果User-Agent为None，提供默认值
+    if user_agent is None:
+        user_agent = 'Unknown'
+    
     _user_agent = parse(user_agent)
     os = _user_agent.get_os()
     browser = _user_agent.get_browser()
