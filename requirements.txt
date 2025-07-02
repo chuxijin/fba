@@ -113,6 +113,8 @@ flower==2.0.1
     # via fastapi-best-architecture
 gevent==24.11.1
     # via fastapi-best-architecture
+granian>=2.4.0
+    # via fastapi-best-architecture
 greenlet==3.1.1
     # via
     #   gevent
