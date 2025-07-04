@@ -1108,7 +1108,7 @@ class LayeredSyncService:
                 error_msg = f"批量删除多余文件失败: {len(files_to_delete)} 个文件"
                 stats["errors"].append(error_msg)
         else:
-            self.logger.info("🔍 完全同步：未发现需要删除的多余文件")
+            self.logger.debug("🔍 完全同步：未发现需要删除的多余文件")
 
     async def _apply_speed_control(self, recursion_speed: RecursionSpeed) -> None:
         """应用速度控制"""
