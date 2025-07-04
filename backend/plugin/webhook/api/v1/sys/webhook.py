@@ -23,10 +23,24 @@ from backend.plugin.webhook.service.webhook_service import webhook_service
 router = APIRouter()
 
 
-@router.post('/receive', summary='接收Webhook事件')
-async def receive_webhook(request: Request, obj: WebhookReceiveParam) -> ResponseSchemaModel[dict[str, Any]]:
-    """接收外部系统的Webhook POST事件"""
+@router.post('/receive', summary='通用Webhook接收')
+async def receive_webhook(request: Request) -> ResponseSchemaModel[dict[str, Any]]:
+    """通用Webhook接收，支持所有格式"""
+    result = await webhook_service.receive_generic_webhook(request=request)
+    return response_base.success(data=result)
+
+
+@router.post('/receive/structured', summary='结构化Webhook接收')
+async def receive_structured_webhook(request: Request, obj: WebhookReceiveParam) -> ResponseSchemaModel[dict[str, Any]]:
+    """结构化Webhook接收，使用我们的schema格式"""
     result = await webhook_service.receive_webhook(request=request, obj=obj)
+    return response_base.success(data=result)
+
+
+@router.post('/receive/standard', summary='Standard Webhooks接收')
+async def receive_standard_webhook(request: Request) -> ResponseSchemaModel[dict[str, Any]]:
+    """Standard Webhooks专用接收，严格按照Standard Webhooks规范验证"""
+    result = await webhook_service.receive_standard_webhook(request=request)
     return response_base.success(data=result)
 
 
