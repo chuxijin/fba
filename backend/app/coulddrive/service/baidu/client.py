@@ -418,7 +418,7 @@ class BaiduClient(BaseDriveClient):
             # 检查目录是否已存在
             if return_if_exist and await self.exists(file_path):
                 # 获取已存在目录的信息
-                meta_info = self.meta(file_path)
+                meta_info = await self.meta(file_path)
                 if meta_info and len(meta_info) > 0:
                     pcs_file = meta_info[0]
                     return BaseFileInfo(
