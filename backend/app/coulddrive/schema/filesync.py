@@ -124,7 +124,7 @@ class CreateSyncTaskItemParam(SchemaBase):
     @classmethod
     def validate_status(cls, v: str) -> str:
         """验证状态"""
-        allowed_status = ['pending', 'running', 'completed', 'failed']
+        allowed_status = ['pending', 'running', 'completed', 'failed', 'skipped']
         if v not in allowed_status:
             raise ValueError(f"状态必须是 {allowed_status} 之一")
         return v
@@ -156,7 +156,7 @@ class UpdateSyncTaskItemParam(SchemaBase):
     def validate_status(cls, v: str | None) -> str | None:
         """验证状态"""
         if v is not None:
-            allowed_status = ['pending', 'running', 'completed', 'failed']
+            allowed_status = ['pending', 'running', 'completed', 'failed', 'skipped']
             if v not in allowed_status:
                 raise ValueError(f"状态必须是 {allowed_status} 之一")
         return v
