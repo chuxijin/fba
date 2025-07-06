@@ -1395,9 +1395,47 @@ class BaiduClient(BaseDriveClient):
                 # 对于本地分享（用户自己创建的分享），使用 get_share_page API
                 info = await self._baidupcs.get_share_page(page=page, size=size)
                 
-                # 直接返回原始API数据用于调试
-                self.logger.info(f"调试：返回原始API数据")
-                return info
+                # 处理API返回的数据，转换为 BaseShareInfo 对象列表
+                share_info_list = []
+                
+                if isinstance(info, dict) and "list" in info:
+                    list_data = info.get("list", [])
+                    
+                    for share_item in list_data:
+                        from datetime import datetime
+                        
+                        # 解析过期时间和过期类型
+                        expired_type = share_item.get("expiredType", 0)
+                        
+                        # 解析过期时间
+                        expired_at = None
+                        if expired_type > 0:
+                            # 使用创建时间 + 有效期计算过期时间
+                            create_time = share_item.get("ctime")
+                            if create_time:
+                                expired_at = datetime.fromtimestamp(create_time + expired_type * 24 * 3600)
+                        
+                        # 构建 BaseShareInfo 对象
+                        share_info = BaseShareInfo(
+                            title=share_item.get("typicalPath", "") or share_item.get("title", ""),
+                            share_id=str(share_item.get("shareId", "")),
+                            pwd_id=str(share_item.get("shareId", "")),  # 使用 shareId 作为 pwd_id
+                            url=share_item.get("shorturl", ""),
+                            password=share_item.get("passwd", ""),
+                            expired_type=expired_type,
+                            view_count=int(share_item.get("viewCount", 0)),
+                            expired_at=expired_at,
+                            expired_left=None,  # 留空，不计算也不使用API返回值
+                            audit_status=1,  # 假设通过审核
+                            status=1 if expired_type != -1 else 0,  # 过期则状态为0
+                            file_id=str(share_item.get("fileId", "")),
+                            file_only_num=None,
+                            file_size=int(share_item.get("fileSize", 0)) if share_item.get("fileSize") else None,
+                            path_info=share_item.get("typicalPath", "")
+                        )
+                        share_info_list.append(share_info)
+                
+                return share_info_list
                 
             else:
                 return {"errno": -1, "error_msg": f"不支持的分享来源类型: {source_type}"}
