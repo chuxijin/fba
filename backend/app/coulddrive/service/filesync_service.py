@@ -177,6 +177,16 @@ class FileSyncService:
                 await db.commit()
                 #logger.info(f"任务 {task_id} 状态更新为成功")
                 
+                # 更新配置的最后同步时间
+                try:
+                    config_update = UpdateSyncConfigParam(last_sync=datetime.now())
+                    await sync_config_dao.update(db, db_obj=config, obj_in=config_update)
+                    await db.commit()
+                    #logger.info(f"配置 {config_id} 的last_sync已更新")
+                except Exception as update_error:
+                    logger.error(f"更新配置last_sync失败: {update_error}")
+                    # 即使更新失败，也返回成功，因为同步已完成
+                
                 return {
                     "success": True,
                     "task_id": task_id,
@@ -417,7 +427,7 @@ class FileSyncService:
                     files_to_transfer.append(transfer_file_info)
                 else:
                     stats["files_skipped"] += 1
-                    self.logger.debug(f"[任务{task_id or 'unknown'}] 跳过相同文件: {file_name}")
+                    #self.logger.debug(f"[任务{task_id or 'unknown'}] 跳过相同文件: {file_name}")
                     # 跳过的文件不需要记录到数据库任务项
                     # 只在日志中记录即可
             # 如果是目录
