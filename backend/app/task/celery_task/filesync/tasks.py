@@ -159,15 +159,16 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
 
 
 @celery_app.task(name='execute_filesync_task_by_config_id')
-async def execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
+def execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
     """
     根据配置ID执行单个文件同步任务
     
     :param config_id: 同步配置ID
     :return: 执行结果
     """
+    import asyncio
     try:
-        return await _execute_filesync_task_by_config_id(config_id)
+        return asyncio.run(_execute_filesync_task_by_config_id(config_id))
     except Exception as e:
         logger.error(f"执行配置 {config_id} 同步任务失败: {str(e)}")
         return {
