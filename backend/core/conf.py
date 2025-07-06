@@ -248,6 +248,10 @@ class Settings(BaseSettings):
             #'schedule': crontab(minute='*/5'),  # 每1分钟检查一次
             'schedule': crontab(hour='23', minute='0'),  # 每晚11点检查一次
         },
+        'cleanup-expired-local-shares': {
+            'task': 'cleanup_expired_local_shares',
+            'schedule': crontab(hour='2', minute='0'),  # 每天凌晨2点执行清理过期分享
+        },
     }
 
     # Plugin Code Generator

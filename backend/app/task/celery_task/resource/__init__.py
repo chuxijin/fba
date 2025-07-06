@@ -9,11 +9,13 @@
 from .tasks import (
     check_and_refresh_expiring_resources,
     refresh_resource_share_by_id,
-    get_expiring_resources
+    get_expiring_resources,
+    cleanup_expired_local_shares
 )
 
 __all__ = [
     "check_and_refresh_expiring_resources",
     "refresh_resource_share_by_id", 
-    "get_expiring_resources"
+    "get_expiring_resources",
+    "cleanup_expired_local_shares"
 ] 

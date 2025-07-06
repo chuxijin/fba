@@ -10,6 +10,7 @@ from backend.app.coulddrive.crud.crud_resource import resource_dao
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.app.coulddrive.service.yp_service import get_drive_manager
 from backend.app.coulddrive.schema.file import ShareParam, ListShareInfoParam
+from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.task.celery import celery_app
 from backend.database.db import async_db_session
 
@@ -107,6 +108,16 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         })
                         continue
                     
+                    # 检查 cookies 是否存在
+                    if not drive_account.cookies:
+                        result["failed_resources"] += 1
+                        result["refresh_details"].append({
+                            "resource_id": resource.id,
+                            "status": "failed",
+                            "reason": "网盘账户缺少认证信息"
+                        })
+                        continue
+                    
                     # 需要重新分享，但需要文件ID
                     if not resource.file_id:
                         result["failed_resources"] += 1
@@ -119,7 +130,7 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                     
                     # 创建新的分享，默认7天过期
                     share_params = ShareParam(
-                        drive_type=drive_account.type,
+                        drive_type=DriveType(drive_account.type),
                         file_name=resource.title or resource.main_name,
                         file_ids=[resource.file_id],
                         expired_type=7,  # 默认创建7天的分享
@@ -136,16 +147,18 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                     from backend.app.coulddrive.schema.resource import UpdateResourceParam, CreateResourceViewHistoryParam
                     from backend.app.coulddrive.crud.crud_resource import resource_view_history_dao
                     
-                    update_params = UpdateResourceParam(
-                        url=new_share_info.url,
-                        share_id=new_share_info.share_id,
-                        pwd_id=new_share_info.pwd_id,
-                        expired_at=new_share_info.expired_at,
-                        expired_left=new_share_info.expired_left,
-                        expired_type=new_share_info.expired_type,
-                        extract_code=resource.extract_code or "",  # 如果没有提取码，留空
-                        view_count=0  # 新录入的浏览量设为0
-                    )
+                    # 创建更新参数，只设置需要更新的字段
+                    update_data = {
+                        "url": new_share_info.url,
+                        "share_id": new_share_info.share_id,
+                        "pwd_id": new_share_info.pwd_id,
+                        "expired_at": new_share_info.expired_at,
+                        "expired_left": new_share_info.expired_left,
+                        "expired_type": new_share_info.expired_type,
+                        "extract_code": resource.extract_code or "",
+                        "view_count": 0
+                    }
+                    update_params = UpdateResourceParam(**update_data)
                     
                     # 更新数据库
                     await resource_dao.update(db, resource.id, update_params)
@@ -250,6 +263,14 @@ async def _refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
                     "resource_id": resource_id
                 }
             
+            # 检查 cookies 是否存在
+            if not drive_account.cookies:
+                return {
+                    "success": False,
+                    "error": "网盘账户缺少认证信息",
+                    "resource_id": resource_id
+                }
+            
             # 检查是否有文件ID
             if not resource.file_id:
                 return {
@@ -261,7 +282,7 @@ async def _refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
             # 创建新的分享，默认7天过期
             drive_manager = get_drive_manager()
             share_params = ShareParam(
-                drive_type=drive_account.type,
+                drive_type=DriveType(drive_account.type),
                 file_name=resource.title or resource.main_name,
                 file_ids=[resource.file_id],
                 expired_type=7,  # 默认创建7天的分享
@@ -278,16 +299,18 @@ async def _refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
             from backend.app.coulddrive.schema.resource import UpdateResourceParam, CreateResourceViewHistoryParam
             from backend.app.coulddrive.crud.crud_resource import resource_view_history_dao
             
-            update_params = UpdateResourceParam(
-                url=new_share_info.url,
-                share_id=new_share_info.share_id,
-                pwd_id=new_share_info.pwd_id,
-                expired_at=new_share_info.expired_at,
-                expired_left=new_share_info.expired_left,
-                expired_type=new_share_info.expired_type,
-                extract_code=resource.extract_code or "",
-                view_count=0  # 新录入的浏览量设为0
-            )
+            # 创建更新参数，只设置需要更新的字段
+            update_data = {
+                "url": new_share_info.url,
+                "share_id": new_share_info.share_id,
+                "pwd_id": new_share_info.pwd_id,
+                "expired_at": new_share_info.expired_at,
+                "expired_left": new_share_info.expired_left,
+                "expired_type": new_share_info.expired_type,
+                "extract_code": resource.extract_code or "",
+                "view_count": 0
+            }
+            update_params = UpdateResourceParam(**update_data)
             
             # 更新数据库
             await resource_dao.update(db, resource_id, update_params)
@@ -482,8 +505,8 @@ async def _cleanup_expired_local_shares() -> Dict[str, Any]:
                                 # 判断逻辑1: expired_type为-1表示过期
                                 if share_info.expired_type == -1:
                                     is_expired = True
-                                # 判断逻辑2: expired_left为0或负数表示过期
-                                elif share_info.expired_left is not None and share_info.expired_left <= 0:
+                                # 判断逻辑2: expired_left为负数表示过期（跳过None值）
+                                elif share_info.expired_left is not None and share_info.expired_left < 0:
                                     is_expired = True
                                 
                                 if is_expired:
