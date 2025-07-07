@@ -481,16 +481,24 @@ async def _cleanup_expired_local_shares() -> Dict[str, Any]:
                                 source_type="local",
                                 source_id="",  # local类型时可为空
                                 page=page,
-                                size=50,  # 每页50条
+                                size=100,  # 每页100条
                                 order_field="created_at",
                                 order_type="desc"
                             )
                             
                             # 获取分享信息
-                            share_info_list = await drive_manager.get_share_info(
+                            share_info_response = await drive_manager.get_share_info(
                                 account.cookies, 
                                 share_info_params
                             )
+                            
+                            # 处理返回的字典格式，提取实际的分享列表
+                            if isinstance(share_info_response, dict) and 'list' in share_info_response:
+                                share_info_list = share_info_response['list']
+                            elif isinstance(share_info_response, list):
+                                share_info_list = share_info_response
+                            else:
+                                share_info_list = []
                             
                             # 如果没有更多数据，退出循环
                             if not share_info_list:
@@ -514,15 +522,16 @@ async def _cleanup_expired_local_shares() -> Dict[str, Any]:
                             
                             all_expired_shares.extend(expired_shares_in_page)
                             
-                            # 如果本页数据少于50条，说明已经是最后一页
-                            if len(share_info_list) < 50:
+                            # 如果本页数据少于100条，说明已经是最后一页
+                            if len(share_info_list) < 100:
                                 break
                             
                             page += 1
                             
-                            # 翻页间隔10秒
-                            logger.debug(f"账户 {account.id} 翻页间隔，等待10秒...")
-                            await asyncio.sleep(10)
+                            # 翻页间隔5-8秒
+                            wait_time = random.randint(5, 8)
+                            logger.debug(f"账户 {account.id} 翻页间隔，等待{wait_time}秒...")
+                            await asyncio.sleep(wait_time)
                             
                         except Exception as e:
                             logger.error(f"获取账户 {account.id} 第{page}页分享信息失败: {str(e)}")
@@ -585,9 +594,10 @@ async def _cleanup_expired_local_shares() -> Dict[str, Any]:
                         })
                         logger.info(f"账户 {account.id} 没有过期的分享需要清理")
                     
-                    # 每个账号间隔1分钟
-                    logger.debug(f"账户 {account.id} 处理完成，等待1分钟后处理下一个账户...")
-                    await asyncio.sleep(60)
+                    # 每个账号间隔30-40秒
+                    wait_time = random.randint(30, 40)
+                    logger.debug(f"账户 {account.id} 处理完成，等待{wait_time}秒后处理下一个账户...")
+                    await asyncio.sleep(wait_time)
                 
                 except Exception as e:
                     logger.error(f"处理账户 {account.id} 时发生错误: {str(e)}")

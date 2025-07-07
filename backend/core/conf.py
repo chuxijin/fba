@@ -222,6 +222,7 @@ class Settings(BaseSettings):
         'app.task.celery_task.db_log',
         'app.task.celery_task.filesync',
         'app.task.celery_task.resource',
+        'app.task.celery_task.user',
     ]
     CELERY_TASK_MAX_RETRIES: int = 5
 
@@ -246,7 +247,11 @@ class Settings(BaseSettings):
         },
         'cleanup-expired-local-shares': {
             'task': 'cleanup_expired_local_shares',
-            'schedule': crontab(hour='2', minute='0'),  # 每天凌晨2点执行清理过期分享
+            'schedule': crontab(hour='3', minute='0'),  # 每天凌晨2点执行清理过期分享
+        },
+        'refresh-all-valid-drive-users': {
+            'task': 'refresh_all_valid_drive_users',
+            'schedule': crontab(hour='5', minute='0'),  # 每天凌晨5点执行刷新所有有效网盘用户
         },
     }
 

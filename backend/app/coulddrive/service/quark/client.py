@@ -242,7 +242,7 @@ class QuarkClient(BaseDriveClient):
                 return BaseUserInfo(
                     user_id=str(account_data.get('mobilekps', '')),
                     username=account_data.get('nickname', ''),
-                    avatar_url=account_data.get('avatarUrl', ''),
+                    avatar_url=account_data.get('avatarUri', ''),
                     quota=member_data.get('total_capacity', 0),
                     used=member_data.get('use_capacity', 0),
                     is_vip=member_data.get('is_vip', False),

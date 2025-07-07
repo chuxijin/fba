@@ -5,3 +5,4 @@
 from . import db_log
 from . import filesync
 from . import resource
+from . import user
