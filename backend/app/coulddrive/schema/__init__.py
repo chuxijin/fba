@@ -32,3 +32,20 @@ from backend.app.coulddrive.schema.resource import (
     ResourceListItem,
     ResourceStatistics,
 )
+
+from backend.app.coulddrive.schema.category import (
+    CategoryBase,
+    CreateCategoryParam,
+    UpdateCategoryParam,
+    GetCategoryDetail,
+    GetCategoryListParam,
+    CategoryListItem,
+    CategoryTreeNode,
+    GetCategoryTreeParam,
+    CategoryOption,
+    GetCategoryOptionsParam,
+    CategoryStatistics,
+    BatchUpdateCategoryStatusParam,
+    BatchDeleteCategoryParam,
+    MoveCategoryParam,
+)
