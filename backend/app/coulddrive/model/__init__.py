@@ -10,6 +10,7 @@ from .filesync import SyncConfig, SyncTask, SyncTaskItem
 from .rule_template import RuleTemplate
 from .file_cache import FileCache
 from .resource import Resource, ResourceViewHistory
+from .category import Category
 
 __all__ = [
     "DriveAccount",
@@ -19,5 +20,6 @@ __all__ = [
     "RuleTemplate",
     "FileCache",
     "Resource",
-    "ResourceViewHistory"
+    "ResourceViewHistory",
+    "Category"
 ]
