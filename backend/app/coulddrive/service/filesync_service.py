@@ -117,6 +117,22 @@ class FileSyncService:
             await db.commit()
             #logger.info(f"同步任务记录创建成功，任务ID: {task_id}")
             
+            # 立即更新配置的最后同步时间，防止并发执行
+            try:
+                config_update = UpdateSyncConfigParam(last_sync=datetime.now())
+                await sync_config_dao.update(db, db_obj=config, obj_in=config_update)
+                await db.commit()
+                #logger.info(f"配置 {config_id} 的last_sync已在任务开始时更新")
+            except Exception as update_error:
+                logger.error(f"更新配置last_sync失败: {update_error}")
+                # 如果更新失败，任务可能会重复执行，但这比数据不一致更安全
+                return {
+                    "success": False,
+                    "error": f"更新last_sync失败: {update_error}",
+                    "config_id": config_id,
+                    "elapsed_time": 0
+                }
+            
             # 解析配置参数
             sync_method = self._parse_sync_method(config.method)
             recursion_speed = self._parse_recursion_speed(config.speed)
@@ -177,15 +193,7 @@ class FileSyncService:
                 await db.commit()
                 #logger.info(f"任务 {task_id} 状态更新为成功")
                 
-                # 更新配置的最后同步时间
-                try:
-                    config_update = UpdateSyncConfigParam(last_sync=datetime.now())
-                    await sync_config_dao.update(db, db_obj=config, obj_in=config_update)
-                    await db.commit()
-                    #logger.info(f"配置 {config_id} 的last_sync已更新")
-                except Exception as update_error:
-                    logger.error(f"更新配置last_sync失败: {update_error}")
-                    # 即使更新失败，也返回成功，因为同步已完成
+                # last_sync 已在任务开始时更新，无需重复更新
                 
                 return {
                     "success": True,
@@ -460,11 +468,18 @@ class FileSyncService:
         # 批量转存当前目录下需要同步的文件
         if files_to_transfer:
             #self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件: {[f['file_name'] for f in files_to_transfer]}")
-            await self.transfer_files(
+            transfer_result = await self.transfer_files(
                 x_token, drive_type, source_definition, target_definition,
                 files_to_transfer,
                 recursion_speed, stats, task_id, db
             )
+            
+            # 智能错误处理：根据错误类型决定是否继续
+            if not transfer_result:
+                should_continue = await self._handle_transfer_error(stats, task_id, target_path)
+                if not should_continue:
+                    self.logger.warning(f"[任务{task_id or 'unknown'}] 检测到严重错误，终止同步任务")
+                    return
         
         # 如果是完全同步，删除目标目录中多余的文件
         if sync_method == "full":
@@ -599,11 +614,18 @@ class FileSyncService:
         # 批量转存当前目录下的所有文件
         if files_to_transfer:
             #self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件: {[f['file_name'] for f in files_to_transfer]}")
-            await self.transfer_files(
+            transfer_result = await self.transfer_files(
                 x_token, drive_type, source_definition, target_definition,
                 files_to_transfer,
                 recursion_speed, stats, task_id, db
             )
+            
+            # 智能错误处理：根据错误类型决定是否继续
+            if not transfer_result:
+                should_continue = await self._handle_transfer_error(stats, task_id, target_path)
+                if not should_continue:
+                    self.logger.warning(f"[任务{task_id or 'unknown'}] 检测到严重错误，终止同步任务")
+                    return
 
     async def list_dir(
         self,
@@ -1096,15 +1118,109 @@ class FileSyncService:
                 
                 # 批量转存所有内容（正确构建参数对应关系）
                 #self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量转存 {len(all_files_to_transfer)} 个项目")
-                await self.transfer_files(
+                transfer_result = await self.transfer_files(
                     x_token, drive_type, source_definition, target_definition,
                     all_files_to_transfer, recursion_speed, stats, task_id, db
                 )
+                
+                # 智能错误处理：根据错误类型决定是否继续
+                if not transfer_result:
+                    should_continue = await self._handle_transfer_error(stats, task_id, target_definition.file_path)
+                    if not should_continue:
+                        self.logger.warning(f"[任务{task_id or 'unknown'}] 覆盖同步检测到严重错误，终止任务")
+                        return
                 
         except Exception as e:
             error_msg = f"覆盖同步失败: {str(e)}"
             self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
             stats["errors"].append(error_msg)
+
+    async def _handle_transfer_error(
+        self,
+        stats: Dict[str, Any],
+        task_id: Optional[int],
+        current_path: str
+    ) -> bool:
+        """
+        智能错误处理：根据错误类型决定是否继续执行
+        
+        Args:
+            stats: 任务统计信息
+            task_id: 任务ID
+            current_path: 当前处理的路径
+            
+        Returns:
+            bool: True=继续执行, False=终止任务
+        """
+        if not stats.get("errors"):
+            return True
+        
+        # 检查总错误数量 - 超过5个就终止
+        if len(stats["errors"]) >= 5:
+            logger.error(f"[任务{task_id or 'unknown'}] 总错误数量达到5个，终止任务")
+            stats["errors"].append(f"任务终止：总错误数量达到{len(stats['errors'])}个")
+            return False
+        
+        # 获取最近的错误信息
+        latest_error = stats["errors"][-1] if stats["errors"] else ""
+        
+        # 错误类型分析
+        if "error_code: 111" in latest_error or "当前还有未完成的任务" in latest_error:
+            # 账户冲突错误：当前还有未完成的任务，需完成后才能操作
+            logger.warning(f"[任务{task_id or 'unknown'}] 检测到账户冲突错误，暂停30秒后重试")
+            await asyncio.sleep(30)
+            
+            # 检查连续冲突次数
+            conflict_count = sum(1 for error in stats["errors"] 
+                               if "error_code: 111" in error or "当前还有未完成的任务" in error)
+            if conflict_count >= 3:
+                logger.error(f"[任务{task_id or 'unknown'}] 连续3次账户冲突，终止任务避免资源浪费")
+                stats["errors"].append(f"任务终止：连续{conflict_count}次账户冲突")
+                return False
+            
+            return True  # 继续重试
+            
+        elif "批量转存失败：API返回False" in latest_error or "转存失败" in latest_error:
+            # 转存失败：暂停30秒后重试
+            logger.warning(f"[任务{task_id or 'unknown'}] 转存失败，暂停30秒后重试")
+            await asyncio.sleep(30)
+            
+            # 检查连续转存失败次数
+            transfer_fail_count = sum(1 for error in stats["errors"] 
+                                    if "批量转存失败" in error or "转存失败" in error)
+            if transfer_fail_count >= 3:
+                logger.error(f"[任务{task_id or 'unknown'}] 连续3次转存失败，终止任务")
+                stats["errors"].append(f"任务终止：连续{transfer_fail_count}次转存失败")
+                return False
+                
+            return True
+            
+        elif "批量删除失败" in latest_error or "删除失败" in latest_error or "error_code: 31066" in latest_error:
+            # 删除失败：直接跳过，不影响任务继续
+            logger.info(f"[任务{task_id or 'unknown'}] 删除失败，跳过继续处理: {current_path}")
+            return True
+            
+        elif ("error_code: 6" in latest_error or "网络" in latest_error or 
+              "timeout" in latest_error.lower() or "Expecting value" in latest_error):
+            # 网络相关错误：等10秒，最多两次
+            logger.warning(f"[任务{task_id or 'unknown'}] 检测到网络错误，暂停10秒后继续")
+            await asyncio.sleep(10)
+            
+            # 检查网络错误次数
+            network_error_count = sum(1 for error in stats["errors"] 
+                                    if ("error_code: 6" in error or "网络" in error or 
+                                        "timeout" in error.lower() or "Expecting value" in error))
+            if network_error_count >= 2:
+                logger.error(f"[任务{task_id or 'unknown'}] 网络错误达到2次，终止任务")
+                stats["errors"].append(f"任务终止：网络错误达到{network_error_count}次")
+                return False
+                
+            return True
+            
+        else:
+            # 其他未知错误：记录但继续执行
+            logger.warning(f"[任务{task_id or 'unknown'}] 未知错误类型，继续执行: {latest_error[:100]}...")
+            return True
 
 
 # 全局实例
