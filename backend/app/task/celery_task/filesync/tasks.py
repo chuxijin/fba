@@ -289,19 +289,32 @@ def _should_execute_now(cron_expr: str, last_sync: Any | None, current_time: dat
     :return: 是否应该执行
     """
     try:
-        # 从未同步过，立即执行
-        if last_sync is None:
-            return True
-        
-        # 基于当前时间创建 croniter，检查当前时间是否符合 cron 表达式
+        # 基于当前时间创建 croniter
         cron = croniter(cron_expr, current_time)
         
-        # 获取当前时间之前的最近一次执行时间
+        # 获取当前时间之前的最近一次应该执行的时间
         prev_execution_time = cron.get_prev(datetime)
         
-        # 如果上次同步时间早于最近一次应该执行的时间，说明需要执行
+        # 获取下一次应该执行的时间
+        next_execution_time = cron.get_next(datetime)
+        
+        # 计算当前检查时间与最近执行时间的差距（分钟）
+        # 如果差距在合理范围内（比如5分钟内），认为是在执行窗口内
+        time_diff_minutes = (current_time - prev_execution_time).total_seconds() / 60
+        
+        # 定义执行窗口：最近执行时间后的5分钟内都算有效执行窗口
+        execution_window_minutes = 5
+        
+        # 检查是否在执行窗口内
+        in_execution_window = 0 <= time_diff_minutes <= execution_window_minutes
+        
+        # 从未同步过的情况：只有在执行窗口内才执行
+        if last_sync is None:
+            return in_execution_window
+        
+        # 已有同步历史的情况：检查上次同步时间是否早于最近的执行时间
         last_sync_dt = datetime.fromisoformat(str(last_sync)) if last_sync else None
-        if last_sync_dt and last_sync_dt < prev_execution_time:
+        if last_sync_dt and last_sync_dt < prev_execution_time and in_execution_window:
             return True
         
         return False
