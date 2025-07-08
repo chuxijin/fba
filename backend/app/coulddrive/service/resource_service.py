@@ -442,10 +442,8 @@ class ResourceService:
         if not updated_resource:
             raise NotFoundError(msg="获取更新后的资源失败")
         
-        # 如果浏览量有变化且有pwd_id，记录浏览量历史
-        if (updated_resource.pwd_id and 
-            'view_count' in update_fields and 
-            update_fields['view_count'] != resource.view_count):
+        # 如果有pwd_id，记录浏览量历史（无论浏览量是否变化）
+        if updated_resource.pwd_id:
             try:
                 history_param = CreateResourceViewHistoryParam(
                     pwd_id=updated_resource.pwd_id,
