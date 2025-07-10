@@ -248,4 +248,27 @@ class ResourceViewTrendResponse(SchemaBase):
 class UpdateResourceViewCountParam(SchemaBase):
     """更新资源浏览量参数"""
     pwd_id: str = Field(..., description="资源唯一ID")
-    view_count: int = Field(..., description="新的浏览量") 
+    view_count: int = Field(..., description="新的浏览量")
+
+
+# 整体统计趋势相关Schema
+class OverallStatisticsTrendData(SchemaBase):
+    """整体统计趋势数据点"""
+    date: str = Field(..., description="日期 (YYYY-MM-DD)")
+    total_count: int = Field(0, description="总资源数")
+    total_views: int = Field(0, description="总浏览量")
+    active_count: int = Field(0, description="活跃资源数")
+    new_resources: int = Field(0, description="新增资源数")
+
+
+class GetOverallStatisticsTrendParam(SchemaBase):
+    """获取整体统计趋势参数"""
+    start_date: Optional[str] = Field(None, description="开始日期 (YYYY-MM-DD)")
+    end_date: Optional[str] = Field(None, description="结束日期 (YYYY-MM-DD)")
+    days: Optional[int] = Field(7, description="获取最近天数 (默认7天)")
+
+
+class OverallStatisticsTrendResponse(SchemaBase):
+    """整体统计趋势响应"""
+    trend_data: List[OverallStatisticsTrendData] = Field([], description="趋势数据")
+    summary: dict = Field({}, description="汇总信息") 

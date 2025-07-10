@@ -247,15 +247,15 @@ class Settings(BaseSettings):
         },
         'cleanup-expired-local-shares': {
             'task': 'cleanup_expired_local_shares',
-            'schedule': crontab(hour='3', minute='0'),  # 每天凌晨2点执行清理过期分享
+            'schedule': crontab(hour='6', minute='0'),  # 每天凌晨6点执行清理过期分享
         },
         'refresh-all-valid-drive-users': {
             'task': 'refresh_all_valid_drive_users',
-            'schedule': crontab(hour='5', minute='0'),  # 每天凌晨5点执行刷新所有有效网盘用户
+            'schedule': crontab(hour='5', minute='0'),  # 每天凌晨6点执行刷新所有有效网盘用户
         },
     }
 
-    # Plugin Code Generator
+    # Plugin Code Generator 
     CODE_GENERATOR_DOWNLOAD_ZIP_FILENAME: str = 'fba_generator'
 
     @model_validator(mode='before')

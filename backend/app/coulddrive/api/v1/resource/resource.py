@@ -8,7 +8,6 @@ from starlette.concurrency import run_in_threadpool
 from backend.app.coulddrive.schema.resource import (
     CreateResourceParam,
     UpdateResourceParam,
-    GetResourceDetail,
     GetResourceListParam,
     ResourceStatistics,
     CreateResourceViewHistoryParam,
@@ -17,7 +16,11 @@ from backend.app.coulddrive.schema.resource import (
     ResourceViewTrendResponse,
     GetResourceViewTrendParam,
     UpdateResourceViewCountParam,
-    UpdateResourceUserParam
+    GetResourceDetail,
+    ResourceListItem,
+    UpdateResourceUserParam,
+    OverallStatisticsTrendResponse,
+    GetOverallStatisticsTrendParam
 )
 from backend.app.coulddrive.schema.enum import (
     ResourceDomain,
@@ -127,6 +130,29 @@ async def get_resource_statistics(
     """
     stats = await resource_service.get_resource_statistics(db, user_id)
     return response_base.success(data=stats)
+
+
+@router.get(
+    '/statistics/trend',
+    summary='获取整体资源统计趋势',
+    response_model=ResponseSchemaModel[OverallStatisticsTrendResponse],
+    dependencies=[DependsJwtAuth]
+)
+async def get_overall_statistics_trend(
+    request: Request,
+    db: CurrentSession,
+    params: Annotated[GetOverallStatisticsTrendParam, Depends()]
+) -> ResponseSchemaModel[OverallStatisticsTrendResponse]:
+    """
+    获取整体资源统计趋势
+    
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param params: 查询参数
+    :return: 整体统计趋势数据
+    """
+    trend_data = await resource_service.get_overall_statistics_trend(db, params)
+    return response_base.success(data=trend_data)
 
 
 @router.get(

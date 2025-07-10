@@ -23,7 +23,10 @@ from backend.app.coulddrive.schema.resource import (
     GetResourceDetail,
     ResourceListItem,
     GetResourceViewHistoryDetail,
-    GetResourceViewTrendParam
+    GetResourceViewTrendParam,
+    OverallStatisticsTrendResponse,
+    OverallStatisticsTrendData,
+    GetOverallStatisticsTrendParam
 )
 from backend.app.coulddrive.schema.file import ListShareInfoParam
 from backend.app.coulddrive.service.yp_service import get_drive_manager
@@ -604,6 +607,79 @@ class ResourceService:
             raise NotFoundError(msg="网盘用户不存在")
 
         return await resource_dao.get_by_user_id(db, user_id)
+
+    @staticmethod
+    async def get_overall_statistics_trend(
+        db: AsyncSession, 
+        params: GetOverallStatisticsTrendParam
+    ) -> OverallStatisticsTrendResponse:
+        """
+        获取整体资源统计趋势
+
+        :param db: 数据库会话
+        :param params: 查询参数
+        :return:
+        """
+        from datetime import datetime, timedelta
+        from sqlalchemy import func, and_
+        
+        # 确定查询的日期范围
+        if params.start_date and params.end_date:
+            start_date = datetime.strptime(params.start_date, '%Y-%m-%d').date()
+            end_date = datetime.strptime(params.end_date, '%Y-%m-%d').date()
+        else:
+            # 默认获取最近7天的数据
+            days = params.days or 7
+            end_date = datetime.now().date()
+            start_date = end_date - timedelta(days=days-1)
+        
+        # 生成日期列表
+        date_list = []
+        current_date = start_date
+        while current_date <= end_date:
+            date_list.append(current_date)
+            current_date += timedelta(days=1)
+        
+        trend_data = []
+        
+        # 为每个日期获取统计数据
+        for date in date_list:
+            date_start = datetime.combine(date, datetime.min.time())
+            date_end = datetime.combine(date, datetime.max.time())
+            
+            # 获取当日的资源统计
+            total_count = await resource_dao.count_resources_by_date(db, date_end)
+            active_count = await resource_dao.count_active_resources_by_date(db, date_end)
+            new_resources = await resource_dao.count_new_resources_by_date(db, date_start, date_end)
+            
+            # 获取当日的总浏览量（从浏览量历史记录中获取）
+            total_views = await resource_view_history_dao.get_total_views_by_date(db, date_end)
+            
+            trend_data.append(
+                OverallStatisticsTrendData(
+                    date=date.strftime('%Y-%m-%d'),
+                    total_count=total_count,
+                    total_views=total_views,
+                    active_count=active_count,
+                    new_resources=new_resources
+                )
+            )
+        
+        # 计算汇总信息
+        if trend_data:
+            summary = {
+                "total_resources_growth": trend_data[-1].total_count - trend_data[0].total_count if len(trend_data) > 1 else 0,
+                "total_views_growth": trend_data[-1].total_views - trend_data[0].total_views if len(trend_data) > 1 else 0,
+                "average_daily_new_resources": sum(item.new_resources for item in trend_data) / len(trend_data),
+                "period_days": len(trend_data)
+            }
+        else:
+            summary = {}
+        
+        return OverallStatisticsTrendResponse(
+            trend_data=trend_data,
+            summary=summary
+        )
 
 
 class ResourceViewHistoryService:
