@@ -395,6 +395,54 @@ class CRUDResource(CRUDPlus[Resource]):
         count = result.scalar()
         return count > 0
 
+    async def count_resources_by_date(self, db: AsyncSession, date_end: datetime) -> int:
+        """
+        获取指定日期前的资源总数
+
+        :param db: 数据库会话
+        :param date_end: 截止日期
+        :return:
+        """
+        stmt = select(func.count(self.model.id)).where(
+            self.model.created_time <= date_end,
+            self.model.is_deleted == False
+        )
+        result = await db.execute(stmt)
+        return result.scalar() or 0
+
+    async def count_active_resources_by_date(self, db: AsyncSession, date_end: datetime) -> int:
+        """
+        获取指定日期前的活跃资源数
+
+        :param db: 数据库会话
+        :param date_end: 截止日期
+        :return:
+        """
+        stmt = select(func.count(self.model.id)).where(
+            self.model.created_time <= date_end,
+            self.model.is_deleted == False,
+            self.model.status == 1
+        )
+        result = await db.execute(stmt)
+        return result.scalar() or 0
+
+    async def count_new_resources_by_date(self, db: AsyncSession, date_start: datetime, date_end: datetime) -> int:
+        """
+        获取指定日期范围内的新增资源数
+
+        :param db: 数据库会话
+        :param date_start: 开始日期
+        :param date_end: 结束日期
+        :return:
+        """
+        stmt = select(func.count(self.model.id)).where(
+            self.model.created_time >= date_start,
+            self.model.created_time <= date_end,
+            self.model.is_deleted == False
+        )
+        result = await db.execute(stmt)
+        return result.scalar() or 0
+
 
 class CRUDResourceViewHistory(CRUDPlus[ResourceViewHistory]):
     """资源浏览量历史记录数据库操作类"""
@@ -504,6 +552,31 @@ class CRUDResourceViewHistory(CRUDPlus[ResourceViewHistory]):
         )
         await db.commit()
         return result
+
+    async def get_total_views_by_date(self, db: AsyncSession, date_end: datetime) -> int:
+        """
+        获取指定日期前的总浏览量
+
+        :param db: 数据库会话
+        :param date_end: 截止日期
+        :return:
+        """
+        # 获取每个pwd_id在指定日期前的最新浏览量记录
+        subquery = select(
+            self.model.pwd_id,
+            func.max(self.model.view_count).label('latest_views')
+        ).where(
+            self.model.record_time <= date_end
+        ).group_by(self.model.pwd_id).subquery()
+        
+        # 计算总浏览量
+        stmt = select(
+            func.coalesce(func.sum(subquery.c.latest_views), 0).label('total_views')
+        ).select_from(subquery)
+        
+        result = await db.execute(stmt)
+        row = result.first()
+        return row.total_views or 0
 
 
 # 创建 DAO 实例
