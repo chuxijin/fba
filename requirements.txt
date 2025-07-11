@@ -134,7 +134,7 @@ httpx==0.28.1
     # via
     #   fastapi
     #   fastapi-oauth20
-humanize==4.12.2
+humanize==4.12.0
     # via flower
 identify==2.6.9
     # via pre-commit
@@ -154,6 +154,8 @@ jinja2==3.1.6
     # via
     #   fastapi
     #   fastapi-best-architecture
+jieba==0.42.1
+    # via fastapi-best-architecture
 kombu==5.5.1
     # via celery
 loguru==0.7.3
@@ -277,10 +279,13 @@ sqlalchemy-crud-plus==1.10.0
     # via fastapi-best-architecture
 sqlparse==0.5.3
     # via fastapi-best-architecture
+sse-starlette==2.2.1
+    # via fastapi-best-architecture
 starlette==0.46.1
     # via
     #   asgi-correlation-id
     #   fastapi
+    #   sse-starlette
 termcolor==2.5.0
     # via pytest-sugar
 tomli==2.2.1 ; python_full_version < '3.11'

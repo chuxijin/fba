@@ -1,0 +1,8 @@
+[plugin]
+summary = 'MCP服务'
+version = '1.0.0'
+description = '基于FastAPI的MCP(Model Context Protocol)服务，提供数据库搜索和链接返回功能'
+author = 'null'
+ 
+[app]
+router = ['v1'] 
