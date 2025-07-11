@@ -13,27 +13,16 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 sys.path.append('../')
 
+from backend.app import get_app_models
 from backend.common.model import MappedBase
 from backend.core import path_conf
 from backend.database.db import SQLALCHEMY_DATABASE_URL
 from backend.plugin.tools import get_plugin_models
 
-# import your new model here
-# 首先导入系统基础模型（被其他模型引用的表）
-from backend.app.admin.model import *  # noqa: F401 - 包含 sys_user 等基础表
-
-# 然后导入代码生成器模型（包含 gen_business 等）
-from backend.plugin.code_generator.model import *  # noqa: F401
-
-# 最后导入云盘模型（引用上述表的模型）
-from backend.app.coulddrive.model import *  # noqa: F401
-
-# import plugin model
-for cls in get_plugin_models():
+# import models
+for cls in get_app_models() + get_plugin_models():
     class_name = cls.__name__
-    if class_name in globals():
-        print(f'\nWarning: Class "{class_name}" already exists in global namespace.')
-    else:
+    if class_name not in globals():
         globals()[class_name] = cls
 
 if not os.path.exists(path_conf.ALEMBIC_VERSION_DIR):
