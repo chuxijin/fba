@@ -4,7 +4,7 @@ from typing import Annotated, Dict, Any
 
 from fastapi import APIRouter, Path
 
-from backend.app.task.celery_task.filesync.tasks import (
+from backend.app.task.tasks.filesync.tasks import (
     check_and_execute_filesync_cron_tasks,
     execute_filesync_task_by_config_id,
     get_filesync_configs_with_cron,

@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.coulddrive.service.filesync_service import file_sync_service
 from backend.app.coulddrive.service.synctask_service import sync_task_service
-from backend.app.task.celery_task.filesync.tasks import execute_filesync_task_by_config_id
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.response.response_code import CustomResponseCode, CustomResponse
 from backend.common.security.jwt import DependsJwtAuth
