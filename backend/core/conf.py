@@ -111,6 +111,7 @@ class Settings(BaseSettings):
         'https://admin.yzxj.vip',
         'https://blog.yzxj.vip',
         'https://static.yzxj.vip',
+        'https://ai.yzxj.vip',
     ]
     CORS_EXPOSE_HEADERS: list[str] = [
         'X-Request-ID',
