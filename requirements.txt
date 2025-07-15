@@ -193,6 +193,8 @@ prompt-toolkit==3.0.51
     # via click-repl
 psutil==7.0.0
     # via fastapi-best-architecture
+psycopg==3.2.9
+    # via fastapi-best-architecture
 pwdlib==0.2.1
     # via fastapi-best-architecture
 pyasn1==0.6.1
@@ -314,6 +316,7 @@ typing-extensions==4.14.1
     #   exceptiongroup
     #   fastapi
     #   fastapi-pagination
+    #   psycopg
     #   pydantic
     #   pydantic-core
     #   rich
@@ -328,7 +331,9 @@ typing-inspection==0.4.1
     #   pydantic
     #   pydantic-settings
 tzdata==2025.2
-    # via kombu
+    # via
+    #   kombu
+    #   psycopg
 ua-parser==1.0.1
     # via user-agents
 ua-parser-builtins==0.18.0.post1
