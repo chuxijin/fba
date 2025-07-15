@@ -28,7 +28,6 @@ dependencies = [
     "dulwich>=0.23.2",
     "fast-captcha>=0.3.2",
     "fastapi-limiter>=0.1.6",
-    "fastapi-oauth20>=0.0.1",
     "fastapi-pagination>=0.13.0",
     "fastapi[standard-no-fastapi-cloud-cli]>=0.116.0",
     "flower>=2.0.0",
@@ -53,15 +52,14 @@ dependencies = [
     "sqlalchemy-crud-plus>=1.10.0",
     "sqlalchemy[asyncio]>=2.0.40",
     "sqlparse>=0.5.3",
-    "sse-starlette>=2.2.1",
-    "user-agents==2.2.0",
+    "sse-starlette>=2.1.3",
+    "user-agents>=2.2.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
     "pytest-sugar>=1.0.0",
-    "pytest-asyncio>=0.23.0",
 ]
 lint = [
     "pre-commit>=4.0.0",
@@ -91,7 +89,3 @@ fba = "backend.cli:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-addopts = "-p no:warnings"
