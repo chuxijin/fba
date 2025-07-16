@@ -21,4 +21,24 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'app.task.tasks.db_log.tasks.delete_db_login_log',
         'schedule': TzAwareCrontab('0', '0', day_of_month='15'),
     },
+    # 文件同步定时任务检查 - 每5分钟执行一次
+    '文件同步定时任务检查': {
+        'task': 'check_and_execute_filesync_cron_tasks',
+        'schedule': TzAwareCrontab('*/5'),  # 每5分钟
+    },
+    # 刷新网盘用户信息 - 每天晚上10点执行
+    '刷新网盘用户信息': {
+        'task': 'refresh_all_valid_drive_users',
+        'schedule': TzAwareCrontab('0', '22'),  # 每天晚上10点
+    },
+    # 检查并刷新过期资源 - 每天晚上11点执行
+    '检查并刷新过期资源': {
+        'task': 'check_and_refresh_expiring_resources',
+        'schedule': TzAwareCrontab('0', '23'),  # 每天晚上11点
+    },
+    # 清理本地失效分享 - 每天凌晨5点执行
+    '清理本地失效分享': {
+        'task': 'cleanup_expired_local_shares',
+        'schedule': TzAwareCrontab('0', '5'),  # 每天凌晨5点
+    },
 }

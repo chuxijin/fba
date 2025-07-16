@@ -58,7 +58,8 @@ class CRUDLoginLog(CRUDPlus[LoginLog]):
         :param db: 数据库会话
         :return:
         """
-        return await self.delete_model_by_column(db, allow_multiple=True)
+        # 使用 id > 0 作为条件来删除所有记录
+        return await self.delete_model_by_column(db, allow_multiple=True, id__gt=0)
 
 
 login_log_dao: CRUDLoginLog = CRUDLoginLog(LoginLog)
