@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from sqlalchemy import Select
+from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -51,15 +52,15 @@ class CRUDOperaLogDao(CRUDPlus[OperaLog]):
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=pks)
 
-    async def delete_all(self, db: AsyncSession) -> int:
+    @staticmethod
+    async def delete_all(db: AsyncSession) -> None:
         """
         删除所有日志
 
         :param db: 数据库会话
         :return:
         """
-        # 使用 id > 0 作为条件来删除所有记录
-        return await self.delete_model_by_column(db, allow_multiple=True, id__gt=0)
+        await db.execute(sa_delete(OperaLog))
 
 
 opera_log_dao: CRUDOperaLogDao = CRUDOperaLogDao(OperaLog)
