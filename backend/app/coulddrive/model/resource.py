@@ -55,7 +55,7 @@ class Resource(Base, UserMixin):
     uk_uid: Mapped[str | None] = mapped_column(String(200), default=None, comment='用户唯一标识')
     
     # 有默认值的字段
-    is_temp_file: Mapped[bool] = mapped_column(Boolean, default=False, comment='是否为临时文件')
+    is_temp_file: Mapped[int] = mapped_column(default=0, comment='临时处理模式(0无操作 1定时删除 2定时刷新 3定时更新)')
     view_count: Mapped[int] = mapped_column(BigInteger, default=0, comment='浏览量')
     sort: Mapped[int] = mapped_column(default=0, comment='排序')
     status: Mapped[int] = mapped_column(default=1, comment='状态(0停用 1正常)')

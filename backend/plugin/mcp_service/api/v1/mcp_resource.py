@@ -66,7 +66,7 @@ async def search_stream_generator(search_params: McpSearchParam, request: Reques
 
 
 @router.post(
-    '',
+    '/',
     summary='搜索资源'
 )
 async def search_resources(

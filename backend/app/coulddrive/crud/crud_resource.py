@@ -232,6 +232,33 @@ class CRUDResource(CRUDPlus[Resource]):
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_resources_by_temp_mode(
+        self,
+        db: AsyncSession,
+        temp_mode: int,
+    ) -> list[Resource]:
+        """
+        获取指定临时处理模式的资源列表
+
+        :param db: 数据库会话
+        :param temp_mode: 临时处理模式（0无操作 1定时删除 2定时刷新 3定时更新）
+        :return:
+        """
+        stmt = (
+            select(self.model)
+            .where(
+                and_(
+                    self.model.is_deleted == False,
+                    self.model.status == 1,
+                    self.model.is_temp_file == temp_mode,
+                )
+            )
+            .order_by(self.model.updated_time.desc())
+            .options(noload(Resource.user), noload(Resource.view_history))
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     async def update_view_count(self, db: AsyncSession, pwd_id: str, increment: int = 1) -> int:
         """
         更新资源浏览量

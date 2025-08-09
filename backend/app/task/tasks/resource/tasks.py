@@ -64,12 +64,15 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
             current_time = datetime.now()
             expiring_threshold = current_time + timedelta(hours=24)
             
-            # 查询即将过期的资源
+            # 查询即将过期的资源（仅限临时处理模式：2 定时刷新）
             expiring_resources = await resource_dao.get_expiring_resources(
-                db, 
+                db,
                 current_time=current_time,
-                expiring_threshold=expiring_threshold
+                expiring_threshold=expiring_threshold,
             )
+
+            # 仅保留 is_temp_file == 2 的资源
+            expiring_resources = [r for r in expiring_resources if getattr(r, 'is_temp_file', 0) == 2]
             
             result["checked_resources"] = len(expiring_resources)
             
@@ -87,13 +90,13 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         })
                         continue
                     
-                    # 跳过永久分享的资源（expired_type = 0）
-                    if resource.expired_type == 0:
+                    # 跳过永久分享的资源（expired_type = 0）或非定时刷新模式
+                    if resource.expired_type == 0 or resource.is_temp_file != 2:
                         result["skipped_resources"] += 1
                         result["refresh_details"].append({
                             "resource_id": resource.id,
                             "status": "skipped",
-                            "reason": "永久分享无需刷新"
+                            "reason": "非定时刷新模式或永久分享"
                         })
                         continue
                     
@@ -226,6 +229,66 @@ async def refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
             "error": str(e),
             "resource_id": resource_id
         }
+
+
+@celery_app.task(name='refresh_resources_with_update_mode')
+async def refresh_resources_with_update_mode() -> Dict[str, Any]:
+    """
+    刷新临时处理模式为 3（定时更新）的资源分享信息
+
+    :return: 执行结果统计
+    """
+    summary = {
+        "checked_resources": 0,
+        "refreshed_resources": 0,
+        "failed_resources": 0,
+        "skipped_resources": 0,
+        "details": [],
+    }
+
+    try:
+        async with async_db_session() as db:
+            resources = await resource_dao.get_resources_by_temp_mode(db, temp_mode=3)
+            summary["checked_resources"] = len(resources)
+
+            from backend.app.coulddrive.service.resource_service import resource_service
+
+            for res in resources:
+                try:
+                    if res.is_deleted or res.status != 1:
+                        summary["skipped_resources"] += 1
+                        summary["details"].append({
+                            "resource_id": res.id,
+                            "status": "skipped",
+                            "reason": "资源已删除或停用",
+                        })
+                        continue
+
+                    # 复用服务层的刷新逻辑（等价于 @resource.py 的 refresh_share_info）
+                    await resource_service.refresh_share_info(db, res.id, updated_by=res.updated_by or res.created_by)
+                    summary["refreshed_resources"] += 1
+                    summary["details"].append({
+                        "resource_id": res.id,
+                        "status": "success",
+                    })
+
+                    # 随机间隔，避免频繁请求
+                    wait_time = random.randint(3, 6)
+                    await asyncio.sleep(wait_time)
+
+                except Exception as e:
+                    logger.error(f"更新模式资源 {res.id} 刷新失败: {str(e)}")
+                    summary["failed_resources"] += 1
+                    summary["details"].append({
+                        "resource_id": res.id,
+                        "status": "error",
+                        "error": str(e),
+                    })
+    except Exception as e:
+        logger.error(f"刷新更新模式资源时发生错误: {str(e)}")
+        summary["error"] = str(e)
+
+    return summary
 
 
 async def _refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:

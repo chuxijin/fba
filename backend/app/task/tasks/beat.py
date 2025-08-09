@@ -48,4 +48,9 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'cleanup_expired_local_shares',
         'schedule': TzAwareCrontab('0', '5'),  # 每天凌晨5点
     },
+    # 刷新“定时更新”模式资源 - 每天早上7点执行
+    '刷新更新模式资源': {
+        'task': 'refresh_resources_with_update_mode',
+        'schedule': TzAwareCrontab('0', '7'),  # 每天早上7点
+    },
 }
