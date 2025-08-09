@@ -78,6 +78,7 @@ def register_app() -> FastAPI:
     register_static_file(app)
     register_middleware(app)
     register_router(app)
+    register_mcp_starlette(app)
     register_page(app)
     register_exception(app)
 
@@ -173,6 +174,24 @@ def register_page(app: FastAPI) -> None:
     :return:
     """
     add_pagination(app)
+
+
+def register_mcp_starlette(app: FastAPI) -> None:
+    """挂载 MCP SSE 端点。通过 mount 子应用规避中间件对流式响应的干扰。"""
+    from backend.app.mcp.service.mcp_server_builder import create_sse_components
+    from starlette.applications import Starlette
+    from starlette.routing import Route, Mount
+
+    handle_sse, post_message_app = create_sse_components()
+
+    # 将 /sse 挂为子应用：
+    # - GET /sse               -> SSE 握手
+    # - POST /sse/messages/... -> 消息通道（与 mcp.client.sse 期望一致）
+    sse_subapp = Starlette(routes=[
+        Route("/", endpoint=handle_sse),
+        Mount("/messages", app=post_message_app),
+    ])
+    app.mount("/sse", sse_subapp)
 
 
 def register_socket_app(app: FastAPI) -> None:

@@ -127,6 +127,8 @@ httptools==0.6.4
     # via uvicorn
 httpx==0.28.1
     # via fastapi
+mcp==1.2.0
+    # via fastapi-best-architecture
 humanize==4.12.3
     # via flower
 identify==2.6.12
