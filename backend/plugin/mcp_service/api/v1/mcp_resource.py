@@ -116,3 +116,37 @@ async def search_resources(
             "Access-Control-Allow-Headers": "*"
         }
     ) 
+
+
+@router.get(
+    '/stream',
+    summary='搜索资源（GET-SSE）'
+)
+async def search_resources_stream(
+    request: Request,
+    key: str = Query(..., description="API访问密钥"),
+    q: str = Query(..., description="搜索关键词"),
+    limit: int = Query(5, ge=1, le=50, description="返回数量限制")
+):
+    """
+    SSE 流式搜索（GET 版）。
+
+    用于仅支持 GET+Query 的外部 MCP 平台：
+    - q: 搜索关键词
+    - limit: 返回条数（默认 5）
+    - key: 访问密钥
+    """
+    if not verify_api_key(key):
+        raise HTTPException(status_code=401, detail="无效的API密钥，请提供正确的key参数")
+
+    search_params = McpSearchParam(query=q, limit=limit)
+    return EventSourceResponse(
+        search_stream_generator(search_params, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*"
+        }
+    )
