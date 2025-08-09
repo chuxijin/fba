@@ -291,6 +291,174 @@ async def refresh_resources_with_update_mode() -> Dict[str, Any]:
     return summary
 
 
+@celery_app.task(name='refresh_subject_mode2_to_permanent')
+async def refresh_subject_mode2_to_permanent(subject: str) -> Dict[str, Any]:
+    """
+    将指定科目下临时处理模式为 2 的资源刷新为永久分享链接
+    
+    :param subject: 科目
+    :return: 执行结果统计
+    """
+    try:
+        return await _refresh_subject_mode2_to_permanent(subject)
+    except Exception as e:
+        logger.error(f"按科目刷新永久链接失败: {str(e)}")
+        return {
+            "checked_resources": 0,
+            "refreshed_resources": 0,
+            "failed_resources": 0,
+            "skipped_resources": 0,
+            "details": [],
+            "error": str(e),
+            "subject": subject,
+        }
+
+
+async def _refresh_subject_mode2_to_permanent(subject: str) -> Dict[str, Any]:
+    """
+    将指定科目下临时处理模式为 2 的资源刷新为永久分享链接的异步实现
+    
+    :param subject: 科目
+    :return: 执行结果统计
+    """
+    summary: Dict[str, Any] = {
+        "subject": subject,
+        "checked_resources": 0,
+        "refreshed_resources": 0,
+        "failed_resources": 0,
+        "skipped_resources": 0,
+        "details": [],
+    }
+
+    try:
+        async with async_db_session() as db:
+            # 取出临时模式为 2 的资源，再根据 subject 过滤
+            resources = await resource_dao.get_resources_by_temp_mode(db, temp_mode=2)
+            filtered_resources = [r for r in resources if r.subject == subject]
+            summary["checked_resources"] = len(filtered_resources)
+
+            if not filtered_resources:
+                return summary
+
+            drive_manager = get_drive_manager()
+
+            for res in filtered_resources:
+                try:
+                    # 跳过已删除或停用
+                    if res.is_deleted or res.status != 1:
+                        summary["skipped_resources"] += 1
+                        summary["details"].append({
+                            "resource_id": res.id,
+                            "status": "skipped",
+                            "reason": "资源已删除或停用",
+                        })
+                        continue
+
+                    # 账户检查
+                    drive_account = await drive_account_dao.get(db, res.user_id)
+                    if not drive_account or not drive_account.is_valid:
+                        summary["failed_resources"] += 1
+                        summary["details"].append({
+                            "resource_id": res.id,
+                            "status": "failed",
+                            "reason": "网盘账户不存在或无效",
+                        })
+                        continue
+
+                    if not drive_account.cookies:
+                        summary["failed_resources"] += 1
+                        summary["details"].append({
+                            "resource_id": res.id,
+                            "status": "failed",
+                            "reason": "网盘账户缺少认证信息",
+                        })
+                        continue
+
+                    # 必须有文件 ID
+                    if not res.file_id:
+                        summary["failed_resources"] += 1
+                        summary["details"].append({
+                            "resource_id": res.id,
+                            "status": "failed",
+                            "reason": "缺少文件ID，无法创建永久分享",
+                        })
+                        continue
+
+                    # 创建永久分享
+                    share_params = ShareParam(
+                        drive_type=DriveType(drive_account.type),
+                        file_name=res.title or res.main_name,
+                        file_ids=[res.file_id],
+                        expired_type=0,  # 永久
+                        password=res.extract_code,
+                    )
+
+                    new_share_info = await drive_manager.create_share(
+                        drive_account.cookies,
+                        share_params,
+                    )
+
+                    # 组装更新字段：设为永久，并清空临时模式
+                    from backend.app.coulddrive.schema.resource import UpdateResourceParam, CreateResourceViewHistoryParam
+                    from backend.app.coulddrive.crud.crud_resource import resource_view_history_dao
+
+                    update_data = {
+                        "url": new_share_info.url,
+                        "share_id": new_share_info.share_id,
+                        "pwd_id": new_share_info.pwd_id,
+                        "expired_at": new_share_info.expired_at,
+                        "expired_left": new_share_info.expired_left,
+                        "expired_type": 0,
+                        "extract_code": res.extract_code or "",
+                        "view_count": 0,
+                        "is_temp_file": 0,
+                    }
+                    update_params = UpdateResourceParam(**update_data)
+
+                    await resource_dao.update(db, res.id, update_params)
+
+                    # 记录初始浏览量历史（可选）
+                    if new_share_info.pwd_id:
+                        try:
+                            history_param = CreateResourceViewHistoryParam(
+                                pwd_id=new_share_info.pwd_id,
+                                view_count=0,
+                            )
+                            await resource_view_history_dao.create(db, history_param)
+                        except Exception as e:  # noqa: F841
+                            logger.error("记录浏览量历史失败")
+
+                    summary["refreshed_resources"] += 1
+                    summary["details"].append({
+                        "resource_id": res.id,
+                        "resource_title": res.title or res.main_name,
+                        "status": "success",
+                        "old_url": res.url,
+                        "new_url": new_share_info.url,
+                        "new_expired_at": new_share_info.expired_at.isoformat() if new_share_info.expired_at else None,
+                    })
+
+                    # 随机间隔，避免频繁请求
+                    wait_time = random.randint(3, 6)
+                    await asyncio.sleep(wait_time)
+
+                except Exception as e:
+                    logger.error(f"资源 {res.id} 刷新永久链接失败: {str(e)}")
+                    summary["failed_resources"] += 1
+                    summary["details"].append({
+                        "resource_id": res.id,
+                        "resource_title": res.title or res.main_name,
+                        "status": "error",
+                        "error": str(e),
+                    })
+
+    except Exception as e:
+        logger.error(f"按科目刷新永久链接任务异常: {str(e)}")
+        summary["error"] = str(e)
+
+    return summary
+
+
 async def _refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
     """
     根据资源ID刷新单个资源的分享链接的异步实现
