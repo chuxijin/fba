@@ -7,7 +7,7 @@ from fastapi import APIRouter
 from backend.app.mcp.service.mcp_server_builder import get_registered_tools
 
 
-router = APIRouter(prefix="/mcp", tags=["mcp"])
+router = APIRouter()
 
 
 @router.get("/tools", summary="列出 MCP 工具")

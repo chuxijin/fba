@@ -24,6 +24,7 @@ from backend.app.coulddrive.service.yp_service import get_drive_manager
 from backend.app.coulddrive.schema.file import ListShareFilesParam, TransferParam, ShareParam
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.database.db import async_db_session
+from backend.app.mcp.service.drive_constants import ALLOWED_PROVIDERS
 from backend.database.redis import redis_client
 
 
@@ -147,13 +148,15 @@ def register_resource_search_tools(mcp: FastMCP) -> None:
                 total_score += (field_hits / len(keywords)) * weight
         return round(total_score / max_possible if max_possible else 0.0, 3)
 
-    async def _fallback_external_search(query: str, final_limit: int) -> List[dict[str, Any]]:
+    async def _fallback_external_search(query: str, final_limit: int, providers: list[str] | None = None) -> List[dict[str, Any]]:
         """当本地无结果时回退外部搜索，返回精简结果列表"""
         import httpx
         from datetime import datetime
 
         url = "https://resource.yzxj.vip/api/search"
-        params = {"kw": query, "cloud_types": "quark", "res": "merge", "conc": 5}
+        params = {"kw": query, "res": "merge", "conc": 5}
+        if providers:
+            params["cloud_types"] = ",".join(providers)
         results: list[dict[str, Any]] = []
         try:
             async with httpx.AsyncClient(timeout=8, verify=False) as client:
@@ -298,21 +301,74 @@ def register_resource_search_tools(mcp: FastMCP) -> None:
         except Exception:
             return None
 
-    @mcp.tool()
-    async def search_resources(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    async def _load_drive_config(provider: str) -> tuple[int | None, str | None]:
         """
-        搜索资源库（基于 yp_resource）
+        读取指定网盘的账号与文件夹配置（JSON 模式）
+
+        :param provider: 网盘类型标识
+        :return:
+        """
+        account_id: int | None = None
+        folder_id: str | None = None
+        config_field = f"{provider}_config"
+        try:
+            async with async_db_session() as db_cfg:
+                cfg = await mcp_config_dao.get_by_mcp_and_field(db_cfg, "resource", config_field)
+                data = (cfg.value or {}) if cfg else {}
+                if isinstance(data, dict):
+                    acc_raw = data.get("account_id")
+                    fid_raw = data.get("folder_id")
+                    if acc_raw is not None:
+                        try:
+                            account_id = int(str(acc_raw).strip())
+                        except Exception:
+                            account_id = None
+                    if fid_raw is not None:
+                        folder_id = str(fid_raw).strip()
+        except Exception as e:
+            print(f"[MCP] load drive config failed: provider={provider} err={e}")
+        return account_id, folder_id
+
+    async def _save_not_implemented(account_id: int, folder_id: str, share_url: str, ext_note: str | None) -> dict[str, Any] | None:
+        """占位：未实现的网盘类型"""
+        return None
+
+    SAVE_SHARE_HANDLERS = {p: _save_not_implemented for p in ALLOWED_PROVIDERS}
+    SAVE_SHARE_HANDLERS.update({
+        "quark": _save_quark_and_share,
+    })
+
+    async def _save_share(provider: str, account_id: int, folder_id: str, share_url: str, ext_note: str | None) -> dict[str, Any] | None:
+        """
+        根据网盘类型分发转存分享
+
+        :param provider: 网盘类型标识
+        :param account_id: 账户 ID
+        :param folder_id: 目标文件夹 ID
+        :param share_url: 外部分享链接
+        :param ext_note: 备注
+        :return:
+        """
+        handler = SAVE_SHARE_HANDLERS.get(provider, _save_not_implemented)
+        return await handler(account_id, folder_id, share_url, ext_note)
+
+
+    @mcp.tool()
+    async def search_resources(query: str, limit: int = 5, cloud_types: str | None = None) -> list[dict[str, Any]]:
+        """
+        搜索资源库
 
         使用建议（供 LLM 调用方参考）：
         - 先从用户问题中抽取最核心的检索短语作为 query（去掉“有没有/资源/哪里有/找/搜索/关于/的”等冗词）。
         - 示例：
-          * 用户问“有没有 洛洛历险记 的资源？” → query="洛洛历险记"
-          * 用户问“徐涛核心考研资料” → query="徐涛 核心考研"
+          * 用户问“有没有 XX 的资源？” → query="XX"
+          * 用户问“XX 资源” → query="XX"
         - 本地有结果：仅返回本地前 N 条（受 limit 限制，不补齐）。
         - 本地无结果：仅当配置齐全且转存分享成功时，返回最新的一条分享，否则返回空。
 
         :param query: 核心检索短语（后端会做分词与去噪，且包含规则短语兜底）
         :param limit: 返回条数（默认 5, 1-50）
+        :param cloud_types: 逗号分隔的网盘类型（如 "quark,baidu,aliyun,123"），当前仅 quark
         :return:
         """
         start = time.time()
@@ -349,17 +405,25 @@ def register_resource_search_tools(mcp: FastMCP) -> None:
                     break
                 await asyncio.sleep(0.1)
 
-        # 读取动态配置
+        # 读取动态配置（JSON 结构，字段如 quark_config/baidu_config/...）
         drive_account_id = None
         target_folder_id = None
         try:
             async with async_db_session() as db_cfg:
-                cfg = await mcp_config_dao.get_by_mcp(db_cfg, "resource")
-                if cfg and isinstance(cfg.config, dict):
-                    drive_account_id = cfg.config.get("drive_account_id")
-                    target_folder_id = cfg.config.get("target_folder_id")
-        except Exception:
-            pass
+                cfg = await mcp_config_dao.get_by_mcp_and_field(db_cfg, "resource", "quark_config")
+                data = (cfg.value or {}) if cfg else {}
+                if isinstance(data, dict):
+                    acc_raw = data.get("account_id")
+                    fid_raw = data.get("folder_id")
+                    if acc_raw is not None:
+                        try:
+                            drive_account_id = int(str(acc_raw).strip())
+                        except Exception:
+                            drive_account_id = None
+                    if fid_raw is not None:
+                        target_folder_id = str(fid_raw).strip()
+        except Exception as e:
+            print(f"[MCP] load quark config failed: {e}")
 
         async with async_db_session() as db:
             conditions: list[Any] = [Resource.status == 1, Resource.is_deleted == False]  # noqa: E712
@@ -398,18 +462,33 @@ def register_resource_search_tools(mcp: FastMCP) -> None:
 
             # 本地为空：仅在配置齐全且成功“转存分享”时，返回最新一条分享；否则不返回外部结果
             if not top_rows:
-                ext_rows = await _fallback_external_search(normalized_query, limit)
-                if ext_rows and drive_account_id and target_folder_id:
-                    first = ext_rows[0]
-                    saved = await _save_quark_and_share(
-                        account_id=int(drive_account_id),
-                        target_folder_id=str(target_folder_id),
-                        share_url=first["url"],
-                        ext_note=first["remark"],
-                    )
-                    top_rows = [saved] if saved else []
+                providers_to_try: list[str]
+                if cloud_types:
+                    providers_to_try = [p for p in [s.strip() for s in cloud_types.split(",") if s.strip()] if p in ALLOWED_PROVIDERS]
+                    if not providers_to_try:
+                        providers_to_try = ["quark"]
                 else:
-                    top_rows = []
+                    providers_to_try = ["quark"]
+
+                saved_row: dict[str, Any] | None = None
+                for provider in providers_to_try:
+                    ext_rows = await _fallback_external_search(normalized_query, 1, providers=[provider])
+                    if not ext_rows:
+                        continue
+                    account_id, folder_id = await _load_drive_config(provider)
+                    if not account_id or not folder_id:
+                        continue
+                    first = ext_rows[0]
+                    saved_row = await _save_share(
+                        provider=provider,
+                        account_id=account_id,
+                        folder_id=folder_id,
+                        share_url=first.get("url", ""),
+                        ext_note=first.get("remark"),
+                    )
+                    if saved_row:
+                        break
+                top_rows = [saved_row] if saved_row else []
 
         try:
             if resources:
