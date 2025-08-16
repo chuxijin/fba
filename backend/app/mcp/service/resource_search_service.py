@@ -645,6 +645,14 @@ async def perform_resource_search(query: str, limit: int = 5, cloud_types: str |
                 "description": r.description or "无描述",
                 "url": r.url,
             }
+            # 如果是百度网盘且有提取码，则拼接提取码到 URL
+            if r.url_type == DriveType.BAIDU_DRIVE.value and r.extract_code:
+                parsed_url = urlparse(item["url"])
+                query_params = parse_qs(parsed_url.query)
+                query_params["pwd"] = [r.extract_code] # 将提取码作为 pwd 参数添加
+                new_query = urlencode(query_params, doseq=True)
+                item["url"] = parsed_url._replace(query=new_query).geturl()
+
             scored.append((score, item))
         scored.sort(key=lambda x: x[0], reverse=True)
         top_rows = [item for _, item in scored[:limit]]
