@@ -166,19 +166,43 @@ class FileSyncService:
             
             # 执行同步
             account_key = f"filesync:{DriveType(drive_account.type).value}:{config.user_id}"
-            sync_result = await self.perform_sync(
-                x_token=drive_account.cookies,
-                drive_type=DriveType(drive_account.type),
-                source_definition=source_definition,
-                target_definition=target_definition,
-                sync_method=sync_method,
-                recursion_speed=recursion_speed,
-                exclude_rules=exclude_rules,
-                max_depth=100,
-                task_id=task_id,
-                db=db,
-                account_key=account_key
-            )
+            # 确保同一账号同一网盘类型下的同步任务串行执行，避免并发操作导致的数据冲突
+            if config.account_id and config.drive_type:
+                lock_key = f"filesync:{config.drive_type.value}:{config.account_id}"
+                try:
+                    async with AccountMutex(redis_client, lock_key, max_wait_seconds=600):  # 最多等待10分钟
+                        sync_result = await self.perform_sync(
+                            x_token=drive_account.cookies,
+                            drive_type=DriveType(drive_account.type),
+                            source_definition=source_definition,
+                            target_definition=target_definition,
+                            sync_method=sync_method,
+                            recursion_speed=recursion_speed,
+                            exclude_rules=exclude_rules,
+                            max_depth=100,
+                            task_id=task_id,
+                            db=db,
+                            account_key=account_key
+                        )
+                except TimeoutError:
+                    error_message = f"获取文件同步锁超时，请稍后再试或检查是否有其他同步任务正在进行: {lock_key}"
+                    logger.warning(error_message)
+                    await self.update_task_status(db, task_id, "failed", error_message)
+                    return {"success": False, "error": error_message, "config_id": config_id, "task_id": task_id, "elapsed_time": time.time() - start_time}
+            else:
+                sync_result = await self.perform_sync(
+                    x_token=drive_account.cookies,
+                    drive_type=DriveType(drive_account.type),
+                    source_definition=source_definition,
+                    target_definition=target_definition,
+                    sync_method=sync_method,
+                    recursion_speed=recursion_speed,
+                    exclude_rules=exclude_rules,
+                    max_depth=100,
+                    task_id=task_id,
+                    db=db,
+                    account_key=account_key
+                )
             
             # 计算执行时间并更新任务状态
             elapsed_time = int(time.time() - start_time)

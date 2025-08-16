@@ -21,11 +21,11 @@ LOCAL_BEAT_SCHEDULE = {
         'kwargs': {'world': '世界'},
     },
     '清理操作日志': {
-        'task': 'backend.app.task.tasks.db_log.tasks.delete_db_opera_log',
+        'task': 'app.task.tasks.db_log.tasks.delete_db_opera_log',
         'schedule': TzAwareCrontab('0', '0', day_of_week='6'),
     },
     '清理登录日志': {
-        'task': 'backend.app.task.tasks.db_log.tasks.delete_db_login_log',
+        'task': 'app.task.tasks.db_log.tasks.delete_db_login_log',
         'schedule': TzAwareCrontab('0', '0', day_of_month='15'),
     },
     # 文件同步定时任务检查 - 每5分钟执行一次

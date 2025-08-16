@@ -52,7 +52,9 @@ class Settings(BaseSettings):
     REDIS_DATABASE: int
 
     # Redis
-    REDIS_TIMEOUT: int = 5
+    REDIS_TIMEOUT: int = 5 # redis 默认连接超时时间
+    REDIS_SOCKET_TIMEOUT: int = 5 # redis socket 连接超时时间
+    REDIS_CONNECT_TIMEOUT: int = 5 # redis 连接超时时间
 
     # .env Token
     TOKEN_SECRET_KEY: str  # 密钥 secrets.token_urlsafe(32)
@@ -190,6 +192,9 @@ class Settings(BaseSettings):
     ]
     OPERA_LOG_QUEUE_BATCH_CONSUME_SIZE: int = 100
     OPERA_LOG_QUEUE_TIMEOUT: int = 60  # 1 分钟
+
+    # Server Chan
+    SERVER_CHAN_SEND_KEY: str = "SCT241185TZMzg15OPJD8qIxVo6I0DUGTw"
 
     # Plugin 配置
     PLUGIN_PIP_CHINA: bool = True

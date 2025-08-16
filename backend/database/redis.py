@@ -19,8 +19,8 @@ class RedisCli(Redis):
             port=settings.REDIS_PORT,
             password=settings.REDIS_PASSWORD,
             db=settings.REDIS_DATABASE,
-            socket_timeout=settings.REDIS_TIMEOUT,
-            socket_connect_timeout=settings.REDIS_TIMEOUT,
+            socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
+            socket_connect_timeout=settings.REDIS_CONNECT_TIMEOUT,
             socket_keepalive=True,  # 保持连接
             health_check_interval=30,  # 健康检查间隔
             decode_responses=True,  # 转码 utf-8

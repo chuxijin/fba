@@ -17,15 +17,13 @@ def find_task_packages():
     task_dir = os.path.join(BASE_PATH, 'app', 'task', 'tasks')
     for root, dirs, files in os.walk(task_dir):
         if 'tasks.py' in files:
-            package = root.replace(str(BASE_PATH.parent) + os.path.sep, '').replace(os.path.sep, '.')
+            package = root.replace(str(BASE_PATH) + os.path.sep, '').replace(os.path.sep, '.')
             packages.append(package)
     return packages
 
 
 def init_celery() -> celery.Celery:
     """初始化 Celery 应用"""
-    print(f"DEBUG: sys.path at init_celery: {sys.path}")
-
     # TODO: Update this work if celery version >= 6.0.0
     # https://github.com/fastapi-practices/fastapi_best_architecture/issues/321
     # https://github.com/celery/celery/issues/7874
