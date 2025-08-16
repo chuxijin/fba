@@ -122,10 +122,12 @@ def tokenize(text: str, stop_words: set[str]) -> list[str]:
             kws.insert(0, ph)
     return kws
 
-def build_cache_key(query: str, final_limit: int) -> str:
+def build_cache_key(query: str, final_limit: int, cloud_types: str | None) -> str:
     normalized = (query or "").strip().lower()
-    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()
-    return f"mcp:search:resp:{digest}:{final_limit}"
+    cloud_key = (cloud_types or "").strip().lower()
+    full_key = f"{normalized}-{cloud_key}-{final_limit}"
+    digest = hashlib.sha1(full_key.encode("utf-8")).hexdigest()
+    return f"mcp:search:resp:{digest}"
 
 def build_lock_key(query: str, final_limit: int) -> str:
     normalized = (query or "").strip().lower()
@@ -553,7 +555,7 @@ async def perform_resource_search(query: str, limit: int = 5, cloud_types: str |
     if not keywords:
         return []
 
-    cache_key = build_cache_key(normalized_query, limit)
+    cache_key = build_cache_key(normalized_query, limit, cloud_types)
     lock_key = build_lock_key(normalized_query, limit)
 
     try:
@@ -586,6 +588,34 @@ async def perform_resource_search(query: str, limit: int = 5, cloud_types: str |
     
     async with async_db_session() as db:
         conditions: list[Any] = [Resource.status == 1, Resource.is_deleted == False]  # noqa: E712
+
+        if cloud_types:
+            allowed_drive_types = []
+            # 将传入的 cloud_types 字符串（如 "baidu,quark"）转换为 DriveType 枚举值
+            # 并只保留有效的网盘类型
+            for ct_str in [s.strip() for s in cloud_types.split(",") if s.strip()]:
+                try:
+                    # DriveType 枚举值是 "BaiduDrive", "QuarkDrive" 等
+                    # 尝试从字符串直接获取枚举值，忽略大小写，并处理可能的别名
+                    # 例如："baidu" -> DriveType.BAIDU_DRIVE
+                    # 或者 "quark" -> DriveType.QUARK_DRIVE
+                    # 这里需要一个从字符串到枚举值的映射
+                    if ct_str.lower() == "baidu":
+                        allowed_drive_types.append(DriveType.BAIDU_DRIVE.value)
+                    elif ct_str.lower() == "quark":
+                        allowed_drive_types.append(DriveType.QUARK_DRIVE.value)
+                    # 可以根据需要添加其他网盘类型的映射
+                except Exception:
+                    # 如果转换失败，说明是不支持的类型，忽略
+                    print(f"[MCP] Warning: Unsupported cloud_type '{ct_str}' in local search filter.")
+                    continue
+
+            # 如果指定了 cloud_types，但没有有效的网盘类型被解析出来，则直接返回空列表
+            if not allowed_drive_types and cloud_types:
+                return []
+            
+            conditions.append(Resource.url_type.in_(allowed_drive_types))
+
         per_kw_conditions: list[Any] = []
         for kw in keywords:
             c: list[Any] = []
@@ -634,12 +664,9 @@ async def perform_resource_search(query: str, limit: int = 5, cloud_types: str |
                 # 如果没有指定云类型，默认尝试百度和夸克
                 providers_to_try = ["baidu", "quark"]
 
-            print(f"[MCP] External search: query='{normalized_query}', providers_to_try={providers_to_try}")
-
             saved_row: dict[str, Any] | None = None
             for provider in providers_to_try:
                 ext_rows = await _fallback_external_search(normalized_query, 1, providers=[provider])
-                print(f"[MCP] External search returned for {provider}: {ext_rows}")
 
                 if not ext_rows:
                     continue
@@ -648,7 +675,6 @@ async def perform_resource_search(query: str, limit: int = 5, cloud_types: str |
                     print(f"[MCP] Config incomplete for {provider}: account_id={account_id}, folder_id={folder_id}")
                     continue
                 first = ext_rows[0]
-                print(f"[MCP] Attempting to save share for {provider}: account_id={account_id}, folder_id={folder_id}, share_url={first.get('url', '')}, password={first.get('password')}, ext_note={first.get('remark')}")
                 saved_row = await _save_share(
                     provider=provider,
                     account_id=account_id,
@@ -659,7 +685,6 @@ async def perform_resource_search(query: str, limit: int = 5, cloud_types: str |
                     query=normalized_query, # 新增：传递搜索query
                 )
                 if saved_row:
-                    print(f"[MCP] Successfully saved share for {provider}: {saved_row}")
                     break
             top_rows = [saved_row] if saved_row else []
 
@@ -693,13 +718,6 @@ async def perform_resource_search(query: str, limit: int = 5, cloud_types: str |
     except Exception as e:
         print(f"[MCP] write search log failed: {e}")
 
-    print(
-        "[MCP] perform_resource_search query='{}' keywords={} cost={}ms return={}",
-        normalized_query,
-        keywords,
-        int((time.time() - start) * 1000),
-        len(top_rows),
-    )
     return top_rows
 
 

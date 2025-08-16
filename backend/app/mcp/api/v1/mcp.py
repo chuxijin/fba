@@ -30,11 +30,11 @@ async def search_mcp_resources(
     search_param: SearchResourceParam = Depends(),
 ) -> ResponseSchemaModel[List[McpSearchResult]]:
     """根据查询参数搜索 MCP 资源库"""
-    cloud_types = search_param.cloud_types if search_param.external_search else None
     results = await perform_resource_search(
         query=search_param.query,
         limit=search_param.limit,
-        cloud_types=cloud_types,
+        cloud_types=search_param.cloud_types,
+        enable_external_search=search_param.external_search,
     )
     return response_base.success(data=results)
 
