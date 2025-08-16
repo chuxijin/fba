@@ -12,6 +12,7 @@ from celery.beat import ScheduleEntry, Scheduler
 from celery.signals import beat_init
 from celery.utils.log import get_logger
 from redis.asyncio.lock import Lock
+from redis.exceptions import LockError, TimeoutError as RedisTimeoutError
 from sqlalchemy import select
 from sqlalchemy.exc import DatabaseError, InterfaceError
 
@@ -34,7 +35,7 @@ DEFAULT_MAX_INTERVAL = 5  # seconds
 DEFAULT_MAX_LOCK_TIMEOUT = 300  # seconds
 
 # 锁检测周期，应小于计划锁时长
-DEFAULT_LOCK_INTERVAL = 60  # seconds
+DEFAULT_LOCK_INTERVAL = 30  # seconds
 
 # Copied from:
 # https://github.com/andymccurdy/redis-py/blob/master/redis/lock.py#L33
@@ -304,7 +305,7 @@ class DatabaseScheduler(Scheduler):
     _heap_invalidated = False
 
     lock: Lock | None = None
-    lock_key = f'{settings.CELERY_REDIS_PREFIX}:beat_lock'
+    lock_key = f'{settings.CELERY_REDIS_PREFIX}:{settings.ENVIRONMENT}:beat_lock'
 
     def __init__(self, *args, **kwargs):
         self.app = kwargs['app']
@@ -461,11 +462,28 @@ async def extend_scheduler_lock(lock):
     """
     while True:
         await asyncio.sleep(DEFAULT_LOCK_INTERVAL)
-        if lock:
+        if not lock:
+            continue
+        try:
+            await lock.extend(DEFAULT_MAX_LOCK_TIMEOUT)
+        except RedisTimeoutError as e:
+            # Redis/网络抖动导致的超时，记录并等待下轮
+            logger.warning(f'Extend lock timeout (network/redis jitter): {e}')
+        except LockError as e:
+            # 续期发现已不再持有，尝试非阻塞重获
+            logger.error(f'Failed to extend lock (no longer owned): {e}; trying to re-acquire...')
             try:
-                await lock.extend(DEFAULT_MAX_LOCK_TIMEOUT)
-            except Exception as e:
-                logger.error(f'Failed to extend lock: {e}')
+                acquired = await lock.acquire(blocking=False)
+                if acquired:
+                    logger.info('beat: Re-acquired lock successfully')
+                else:
+                    logger.warning('beat: Another instance currently holds the lock')
+            except RedisTimeoutError as e2:
+                logger.warning(f'beat: Re-acquire timeout: {e2}')
+            except Exception as e2:
+                logger.exception(f'beat: Re-acquire lock failed: {e2}')
+        except Exception as e:
+            logger.exception(f'Extend lock unexpected error: {e}')
 
 
 @beat_init.connect
@@ -484,7 +502,7 @@ def acquire_distributed_beat_lock(sender=None, *args, **kwargs):
     lock = redis_client.lock(
         scheduler.lock_key,
         timeout=DEFAULT_MAX_LOCK_TIMEOUT,
-        sleep=scheduler.max_interval,
+        sleep=max(1, scheduler.max_interval),
     )
     # overwrite redis-py's extend script
     # which will add additional timeout instead of extend to a new timeout

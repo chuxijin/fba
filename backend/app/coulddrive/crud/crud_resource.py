@@ -232,6 +232,39 @@ class CRUDResource(CRUDPlus[Resource]):
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_expired_resources(
+        self, 
+        db: AsyncSession, 
+        current_time: datetime
+    ) -> list[Resource]:
+        """
+        获取已经过期的资源列表
+
+        :param db: 数据库会话
+        :param current_time: 当前时间
+        :return: 已经过期的资源列表
+        """
+        stmt = (
+            select(self.model)
+            .where(
+                and_(
+                    # 资源未删除且状态正常
+                    self.model.is_deleted == False,
+                    self.model.status == 1,
+                    # 有过期时间设置
+                    self.model.expired_at.is_not(None),
+                    # 过期时间小于等于当前时间
+                    self.model.expired_at <= current_time,
+                    # 非永久分享
+                    self.model.expired_type > 0
+                )
+            )
+            .order_by(self.model.expired_at.asc())
+        )
+        
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_resources_by_temp_mode(
         self,
         db: AsyncSession,

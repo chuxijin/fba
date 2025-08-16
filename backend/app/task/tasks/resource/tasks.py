@@ -22,7 +22,10 @@ async def check_and_refresh_expiring_resources() -> Dict[str, Any]:
     """
     检查即将过期的资源并重新分享
     
-    扫描yp_resource表中距离过期时间小于24小时的记录，
+    扫描yp_resource表中以下两种情况的记录：
+    1. 距离过期时间小于24小时的资源
+    2. 已经过期的资源
+    
     重新创建分享链接并更新数据库
     
     :return: 执行结果统计
@@ -48,6 +51,10 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
     """
     检查即将过期的资源并重新分享的异步实现
     
+    处理两种情况：
+    1. 24小时内即将过期的资源
+    2. 已经过期的资源
+    
     :return: 执行结果统计
     """
     result = {
@@ -60,25 +67,45 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
     
     try:
         async with async_db_session() as db:
-            # 获取即将过期的资源（24小时内过期）
             current_time = datetime.now()
-            expiring_threshold = current_time + timedelta(hours=24)
             
-            # 查询即将过期的资源（仅限临时处理模式：2 定时刷新）
-            expiring_resources = await resource_dao.get_expiring_resources(
+            # 1. 获取24小时内即将过期的资源
+            expiring_threshold_24h = current_time + timedelta(hours=24)
+            expiring_resources_24h = await resource_dao.get_expiring_resources(
                 db,
                 current_time=current_time,
-                expiring_threshold=expiring_threshold,
+                expiring_threshold=expiring_threshold_24h,
             )
-
-            # 仅保留 is_temp_file == 2 的资源
-            expiring_resources = [r for r in expiring_resources if getattr(r, 'is_temp_file', 0) == 2]
             
-            result["checked_resources"] = len(expiring_resources)
+            # 2. 获取已经过期的资源（过期时间小于等于当前时间）
+            expired_resources = await resource_dao.get_expired_resources(
+                db,
+                current_time=current_time
+            )
+            
+            # 合并所有需要处理的资源
+            all_resources = []
+            
+            # 添加24小时内即将过期的资源
+            for resource in expiring_resources_24h:
+                if getattr(resource, 'is_temp_file', 0) == 2:
+                    resource.expiry_category = "24h_expiring"
+                    all_resources.append(resource)
+            
+            # 添加已经过期的资源
+            for resource in expired_resources:
+                if getattr(resource, 'is_temp_file', 0) == 2:
+                    resource.expiry_category = "expired"
+                    all_resources.append(resource)
+            
+            # 按过期时间排序，优先处理已过期的资源
+            all_resources.sort(key=lambda x: (x.expired_at or datetime.max, getattr(x, 'expiry_category', '')))
+            
+            result["checked_resources"] = len(all_resources)
             
             drive_manager = get_drive_manager()
             
-            for resource in expiring_resources:
+            for resource in all_resources:
                 try:
                     # 跳过已删除或停用的资源
                     if resource.is_deleted or resource.status != 1:
@@ -86,7 +113,8 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         result["refresh_details"].append({
                             "resource_id": resource.id,
                             "status": "skipped",
-                            "reason": "资源已删除或停用"
+                            "reason": "资源已删除或停用",
+                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
                         })
                         continue
                     
@@ -96,7 +124,8 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         result["refresh_details"].append({
                             "resource_id": resource.id,
                             "status": "skipped",
-                            "reason": "非定时刷新模式或永久分享"
+                            "reason": "非定时刷新模式或永久分享",
+                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
                         })
                         continue
                     
@@ -107,7 +136,8 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         result["refresh_details"].append({
                             "resource_id": resource.id,
                             "status": "failed",
-                            "reason": "网盘账户不存在或无效"
+                            "reason": "网盘账户不存在或无效",
+                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
                         })
                         continue
                     
@@ -117,7 +147,8 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         result["refresh_details"].append({
                             "resource_id": resource.id,
                             "status": "failed",
-                            "reason": "网盘账户缺少认证信息"
+                            "reason": "网盘账户缺少认证信息",
+                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
                         })
                         continue
                     
@@ -127,16 +158,28 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         result["refresh_details"].append({
                             "resource_id": resource.id,
                             "status": "failed",
-                            "reason": "缺少文件ID，无法重新分享"
+                            "reason": "缺少文件ID，无法重新分享",
+                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
                         })
                         continue
                     
-                    # 创建新的分享，默认7天过期
+                    # 根据过期类别设置不同的过期时间
+                    expiry_category = getattr(resource, 'expiry_category', '24h_expiring')
+                    if expiry_category == "expired":
+                        # 已过期的资源，创建7天分享
+                        expired_type = 7
+                        log_message = "已过期资源重新分享"
+                    else:
+                        # 24小时内即将过期的资源，创建7天分享
+                        expired_type = 7
+                        log_message = "即将过期资源刷新"
+                    
+                    # 创建新的分享
                     share_params = ShareParam(
                         drive_type=DriveType(drive_account.type),
                         file_name=resource.title or resource.main_name,
                         file_ids=[resource.file_id],
-                        expired_type=7,  # 默认创建7天的分享
+                        expired_type=expired_type,
                         password=resource.extract_code
                     )
                     
@@ -186,10 +229,12 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         "status": "success",
                         "old_url": resource.url,
                         "new_url": new_share_info.url,
-                        "new_expired_at": new_share_info.expired_at.isoformat() if new_share_info.expired_at else None
+                        "new_expired_at": new_share_info.expired_at.isoformat() if new_share_info.expired_at else None,
+                        "expiry_category": expiry_category,
+                        "log_message": log_message
                     })
                     
-                    logger.info(f"{resource.title or resource.main_name} 刷新成功")
+                    logger.info(f"{resource.title or resource.main_name} {log_message}成功")
                     
                     # 添加随机间隔时间，避免频繁请求
                     wait_time = random.randint(5, 10)
@@ -202,7 +247,8 @@ async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
                         "resource_id": resource.id,
                         "resource_title": resource.title or resource.main_name,
                         "status": "error",
-                        "error": str(e)
+                        "error": str(e),
+                        "expiry_category": getattr(resource, 'expiry_category', 'unknown')
                     })
     
     except Exception as e:

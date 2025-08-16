@@ -7,6 +7,7 @@ from typing import Any, Callable, Tuple
 from typing import Any, Callable, Tuple
 
 from starlette.applications import Starlette
+from starlette.responses import PlainTextResponse
 from starlette.requests import Request
 from starlette.routing import Mount, Route
 
@@ -53,7 +54,7 @@ def _create_starlette_app(mcp_server: Any, *, debug: bool = False) -> Starlette:
 
     sse = SseServerTransport("/messages/")
 
-    async def handle_sse(request: Request) -> None:
+    async def handle_sse(request: Request):
         async with sse.connect_sse(
             request.scope,
             request.receive,
@@ -64,6 +65,7 @@ def _create_starlette_app(mcp_server: Any, *, debug: bool = False) -> Starlette:
                 write_stream,
                 mcp_server.create_initialization_options(),
             )
+        return PlainTextResponse('', status_code=204)
 
     return Starlette(
         debug=debug,
@@ -87,7 +89,7 @@ def create_sse_components() -> Tuple[Callable[..., Any], Any]:
     mcp_server: Any = _ensure_mcp()._mcp_server  # type: ignore[attr-defined]
     sse = SseServerTransport("/messages/")
 
-    async def handle_sse(request: Request) -> None:
+    async def handle_sse(request: Request):
         async with sse.connect_sse(
             request.scope,
             request.receive,
@@ -98,6 +100,7 @@ def create_sse_components() -> Tuple[Callable[..., Any], Any]:
                 write_stream,
                 mcp_server.create_initialization_options(),
             )
+        return PlainTextResponse('', status_code=204)
 
     return handle_sse, sse.handle_post_message
 

@@ -19,6 +19,7 @@ import logging  # 导入标准日志模块
 import asyncio
 
 from PIL import Image
+from urllib.parse import urlparse, parse_qs
 
 from backend.app.coulddrive.schema.enum import RecursionSpeed
 from backend.app.coulddrive.schema.file import (
@@ -35,6 +36,7 @@ from backend.app.coulddrive.schema.file import (
     TransferParam,
     UserInfoParam,
 )
+from backend.app.coulddrive.schema.file import CancelShareParam
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
     GetUserFriendDetail,
@@ -126,6 +128,8 @@ class BaiduClient(BaseDriveClient):
             pass
         else:
             raise ValueError("BaiduClient 初始化失败：登录失败")
+
+
 
     @property
     def drive_type(self) -> str:
@@ -615,53 +619,10 @@ class BaiduClient(BaseDriveClient):
 
 
 
-    def access_shared(self, shared_url: str, password: str, vcode_str: Optional[str] = None, vcode: Optional[str] = None) -> Dict[str, Any]:
-        """验证需要`password`的`shared_url`
-        如果需要验证码，将返回包含验证码信息的字典。
-        否则，返回成功或失败的信息。
-        """
-        try:
-            self._baidupcs.access_shared(shared_url, password, vcode_str or "", vcode or "") 
-            return {"vcode_required": False, "success": True, "message": "访问共享链接成功"}
-        except BaiduApiError as err:
-            if err.error_code in (-9, -62):
-                self.logger.warning(f"验证码相关错误: {err.error_code} - {err.message}")
-                try:
-                    vcode_challenge_str, vcode_img_url = self.getcaptcha(shared_url)
-                    return {
-                        "vcode_required": True,
-                        "vcode_str": vcode_challenge_str,
-                        "vcode_image_url": vcode_img_url,
-                        "message": err.message or ("验证码错误或需要输入验证码" if err.error_code == -9 else "需要输入验证码"),
-                        "original_error_code": err.error_code
-                    }
-                except BaiduApiError as captcha_err:
-                    self.logger.error(f"获取验证码失败: {captcha_err}")
-                    raise BaiduApiError(
-                        message=f"访问共享链接时需要验证码，但获取新验证码失败: {captcha_err.message}", 
-                        error_code=err.error_code,
-                        cause=captcha_err
-                    ) 
-            else:
-                self.logger.error(f"访问共享时发生其他错误: {err}")
-                raise err
-
-    def getcaptcha(self, shared_url: str) -> Tuple[str, str]:
-        """获取一个验证码信息
-        返回 `vcode_str`, `vcode_img_url`"""
-
-        info = self._baidupcs.getcaptcha(shared_url)
-        return info["vcode_str"], info["vcode_img"]
-
-    def get_vcode_img(self, vcode_img_url: str, shared_url: str) -> bytes:
-        """获取验证码图像内容"""
-
-        return self._baidupcs.get_vcode_img(vcode_img_url, shared_url)
-
-    def shared_paths(self, shared_url: str) -> List[PcsSharedPath]:
+    async def _shared_paths(self, shared_url: str) -> List[PcsSharedPath]:
         """获取`shared_url`的共享路径"""
 
-        info = self._baidupcs.shared_paths(shared_url)
+        info = await self._baidupcs.shared_paths(shared_url)
         uk = info.get("share_uk") or info.get("uk")
         uk = int(uk)
 
@@ -685,7 +646,7 @@ class BaiduClient(BaseDriveClient):
             for v in file_list
         ]
 
-    async def list_shared_paths(
+    async def _list_shared_paths(
         self,
         sharedpath: str,
         uk: int,
@@ -696,7 +657,7 @@ class BaiduClient(BaseDriveClient):
     ) -> List[PcsSharedPath]:
         """共享目录`sharedpath`的子共享路径"""
 
-        info = self._baidupcs.list_shared_paths(
+        info = await self._baidupcs.list_shared_paths(
             sharedpath, uk, share_id, page=page, size=size
         )
         return [
@@ -704,7 +665,7 @@ class BaiduClient(BaseDriveClient):
             for v in info["list"]
         ]
 
-    async def transfer_shared_paths(
+    async def _transfer_shared_paths(
         self,
         remotedir: str,
         fs_ids: List[int],
@@ -715,104 +676,25 @@ class BaiduClient(BaseDriveClient):
     ):
         """保存这些共享路径的`fs_ids`到`remotedir`"""
 
-        self._baidupcs.transfer_shared_paths(
+        await self._baidupcs.transfer_shared_paths(
             remotedir, fs_ids, uk, share_id, bdstoken, shared_url
         )
 
-    async def save_shared(
-        self, shared_url: str, remote_dir: str, password: Optional[str] = None
-    ):
-        """保存共享链接到指定目录"""
-        
-        shared_url = _unify_shared_url(shared_url)
-
-        access_result = self.access_shared(shared_url, password or "") 
-        if password:
-            access_result = self.access_shared(shared_url, password, vcode_str=None, vcode=None)
-            if access_result.get("vcode_required"):
-                self.logger.error(f"保存共享失败: 需要验证码才能继续. {access_result}")
-                raise BaiduApiError(message=f"需要验证码才能保存共享: {access_result.get('message')}", error_code=access_result.get('original_error_code', -62))
-        
-        shared_paths_list = self.shared_paths(shared_url)
-        if not shared_paths_list:
-            # self.logger.info("共享链接中没有文件或访问失败后未能正确设置会话。")
-            return
-
-        shared_paths_deque = deque(shared_paths_list)
-        _remote_dirs: Dict[PcsSharedPath, str] = dict(
-            [(sp, remote_dir) for sp in shared_paths_deque]
-        )
-        _dir_exists: Set[str] = set()
-
-        while shared_paths_deque:
-            shared_path = shared_paths_deque.popleft()
-            rd = _remote_dirs[shared_path]
-
-            if rd not in _dir_exists:
-                if not await self.exists(rd):
-                    await self.mkdir(rd)
-                _dir_exists.add(rd)
-
-            if shared_path.is_file and await self.remote_path_exists(
-                PurePosixPath(shared_path.path).name, rd
-            ):
-                self.logger.warning(f"{shared_path.path} has be in {rd}")
-                continue
-
-            uk, share_id_val, bdstoken_val = (
-                shared_path.uk,
-                shared_path.share_id,
-                shared_path.bdstoken,
-            )
-
-            try:
-                await self.transfer_shared_paths(
-                    rd, [shared_path.fs_id], uk, share_id_val, bdstoken_val, shared_url
-                )
-                # self.logger.info(f"save: {shared_path.path} to {rd}")
-                continue
-            except BaiduApiError as err:
-                if err.error_code == 12:
-                    self.logger.warning(
-                        f"error_code: {err.error_code}, 文件已经存在, {shared_path.path} has be in {rd}"
-                    )
-                elif err.error_code == -32:
-                    self.logger.error(f"error_code:{err.error_code} 剩余空间不足，无法转存")
-                elif err.error_code == -33:
-                    self.logger.error(
-                        f"error_code:{err.error_code} 一次支持操作999个，减点试试吧"
-                    )
-                elif err.error_code == 4:
-                    self.logger.error(
-                        f"error_code:{err.error_code} share transfer pcs error"
-                    )
-                elif err.error_code == 130:
-                    self.logger.error(f"error_code:{err.error_code} 转存文件数超限")
-                elif err.error_code == 120:
-                    self.logger.error(f"error_code:{err.error_code} 转存文件数超限")
-                else:
-                    self.logger.error(f"转存 {shared_path.path} 失败: error_code:{err.error_code}:{err}")
-                    continue
-
-            if shared_path.is_dir:
-                sub_paths = await self.list_all_sub_paths(
-                    shared_path.path, uk, share_id_val, bdstoken_val
-                )
-                current_dir_name = PurePosixPath(shared_path.path).name
-                sub_remote_dir = (Path(rd) / current_dir_name).as_posix()
-                
-                for sp in sub_paths:
-                    _remote_dirs[sp] = sub_remote_dir
-                shared_paths_deque.extendleft(sub_paths[::-1])
+    # save_shared 已内联至 transfer 的 link 分支，避免额外公开方法
 
     async def remote_path_exists(self, name: str, rd: str, _cache: Dict[str, Set[str]] = {}) -> bool:
         """检查远程路径是否存在"""
-        
+
         names = _cache.get(rd)
-        if not names:
-            listed_items = self.list(rd)
-            names = set([PurePosixPath(item.get('path', '')).name for item in listed_items if item.get('path')])
-            _cache[rd] = names
+        if names is None:
+            try:
+                # 复用 get_disk_list 单层列目录
+                params = ListFilesParam(drive_type=self.drive_type, file_path=rd)
+                items = await self.get_disk_list(params)
+                names = set([PurePosixPath(i.file_path).name for i in items])
+                _cache[rd] = names
+            except Exception:
+                return False
         return name in names
 
     async def list_all_sub_paths(
@@ -822,7 +704,7 @@ class BaiduClient(BaseDriveClient):
         
         sub_paths = []
         for page in range(1, 1000):
-            sps = await self.list_shared_paths(
+            sps = await self._list_shared_paths(
                 shared_path, uk, share_id, bdstoken, page=page, size=size
             )
             sub_paths.extend(sps)
@@ -1061,6 +943,179 @@ class BaiduClient(BaseDriveClient):
         file_path = params.file_path
         
         drive_files_list: List[BaseFileInfo] = []
+
+        # 链接类型（外部链接）
+        if source_type == "link":
+            # 支持 "url|pwd" 的混合输入；否则从 kwargs 中读取 password（可选）
+            link = source_id
+            password = kwargs.get("password", "")
+            if "|" in link:
+                parts = link.split("|", 1)
+                link, password = parts[0].strip(), parts[1].strip()
+            else:
+                # 从查询串中提取 pwd 参数（如 ?pwd=xxxx）
+                try:
+                    parsed = urlparse(link)
+                    if not password and parsed.query:
+                        q = parse_qs(parsed.query)
+                        if "pwd" in q and q["pwd"]:
+                            password = q["pwd"][0]
+                except Exception:
+                    pass
+
+            # 规范化链接
+            try:
+                shared_url = _unify_shared_url(link)
+            except Exception as e:
+                self.logger.error(f"无效的分享链接: {link}, 错误: {e}")
+                return []
+
+            # 如果提供了密码或链接需要密码，则尝试访问（无验证码流程）
+            if password:
+                try:
+                    await self._baidupcs.access_shared(shared_url, password, "", "")
+                except BaiduApiError as e:
+                    self.logger.error(f"访问加密分享链接失败或需要验证码（暂不支持验证码流程）: {e}")
+                    return []
+
+            # 根级列表
+            try:
+                root_items: List[PcsSharedPath] = await self._shared_paths(shared_url)
+            except Exception as e:
+                self.logger.error(f"读取分享根目录失败: {e}")
+                return []
+
+            # 如果 file_path 为根，直接返回根级
+            normalized = (file_path or "/").strip('/')
+            if not normalized:
+                for sp in root_items:
+                    base_name = PurePosixPath(sp.path).name
+                    drive_files_list.append(
+                        BaseFileInfo(
+                            file_id=str(sp.fs_id),
+                            file_name=base_name,
+                            file_path=f"/{base_name}",
+                            file_size=sp.size if hasattr(sp, "size") else 0,
+                            is_folder=not getattr(sp, "is_file", False),
+                            created_at=str(getattr(sp, "server_ctime", "")),
+                            updated_at=str(getattr(sp, "server_mtime", "")),
+                            parent_id="",
+                            file_ext={
+                                "uk": getattr(sp, "uk", None),
+                                "share_id": getattr(sp, "share_id", None),
+                                "bdstoken": getattr(sp, "bdstoken", None),
+                                "shorturl": _extract_shorturl_from_url(shared_url),
+                                "path": sp.path,
+                            },
+                        )
+                    )
+                return drive_files_list
+
+            # 否则逐级导航到指定路径
+            # 提取共享上下文（uk, share_id, bdstoken）
+            if not root_items:
+                return []
+            uk = getattr(root_items[0], "uk", None)
+            share_id = getattr(root_items[0], "share_id", None)
+            bdstoken = getattr(root_items[0], "bdstoken", None)
+            if uk is None or share_id is None or bdstoken is None:
+                self.logger.error("无法解析分享上下文(uk/share_id/bdstoken)")
+                return []
+
+            async def list_children(dir_path: str) -> List[PcsSharedPath]:
+                page = 1
+                page_size = 100
+                all_items: List[PcsSharedPath] = []
+                while True:
+                    try:
+                        items = await self._list_shared_paths(
+                            dir_path, int(uk), int(share_id), str(bdstoken), page=page, size=page_size
+                        )
+                    except Exception as err:
+                        self.logger.error(f"获取子目录失败: {dir_path}: {err}")
+                        break
+                    all_items.extend(items)
+                    if len(items) < page_size:
+                        break
+                    page += 1
+                return all_items
+
+            # 当前目录的列表（从根出发）
+            current_dir_items = root_items
+            current_dir_path = ""
+            components = normalized.split('/')
+
+            for idx, name in enumerate(components):
+                # 在当前层查找目标项
+                matched: Optional[PcsSharedPath] = None
+                for sp in current_dir_items:
+                    if PurePosixPath(sp.path).name == name:
+                        matched = sp
+                        break
+                if not matched:
+                    self.logger.error(f"路径组件不存在: {name}")
+                    return []
+
+                is_last = idx == len(components) - 1
+                current_dir_path = matched.path
+                if not getattr(matched, "is_file", False):
+                    # 是目录
+                    if is_last:
+                        # 列出该目录
+                        children = await list_children(current_dir_path)
+                        for child in children:
+                            base_name = PurePosixPath(child.path).name
+                            drive_files_list.append(
+                                BaseFileInfo(
+                                    file_id=str(child.fs_id),
+                                    file_name=base_name,
+                                    file_path=f"/{normalized}/{base_name}",
+                                    file_size=child.size if hasattr(child, "size") else 0,
+                                    is_folder=not getattr(child, "is_file", False),
+                                    created_at=str(getattr(child, "server_ctime", "")),
+                                    updated_at=str(getattr(child, "server_mtime", "")),
+                                    parent_id=str(matched.fs_id),
+                                    file_ext={
+                                        "uk": uk,
+                                        "share_id": share_id,
+                                        "bdstoken": bdstoken,
+                                        "shorturl": _extract_shorturl_from_url(shared_url),
+                                        "path": child.path,
+                                    },
+                                )
+                            )
+                        return drive_files_list
+                    # 不是最后一段，进入下一层
+                    current_dir_items = await list_children(current_dir_path)
+                else:
+                    # 是文件
+                    if not is_last:
+                        self.logger.error(f"路径组件 '{name}' 是文件，但还有后续路径")
+                        return []
+                    # 目标就是该文件
+                    base_name = PurePosixPath(matched.path).name
+                    drive_files_list.append(
+                        BaseFileInfo(
+                            file_id=str(matched.fs_id),
+                            file_name=base_name,
+                            file_path=f"/{normalized}",
+                            file_size=matched.size if hasattr(matched, "size") else 0,
+                            is_folder=False,
+                            created_at=str(getattr(matched, "server_ctime", "")),
+                            updated_at=str(getattr(matched, "server_mtime", "")),
+                            parent_id=str(getattr(matched, "parent_id", "")),
+                            file_ext={
+                                "uk": uk,
+                                "share_id": share_id,
+                                "bdstoken": bdstoken,
+                                "shorturl": _extract_shorturl_from_url(shared_url),
+                                "path": matched.path,
+                            },
+                        )
+                    )
+                    return drive_files_list
+
+            return drive_files_list
 
         normalized_file_path = file_path.strip('/')
         if not normalized_file_path:
@@ -1508,12 +1563,87 @@ class BaiduClient(BaseDriveClient):
             return False
 
         if source_type == "link":
-            self.logger.warning("来自 'link' 类型的转存尚未为百度网盘实现.")
-            # TODO: 如果接口适用，在此处实现 save_shared 或类似逻辑
-            # 目前根据用户请求，这是一个占位符。
-            # self.save_shared(shared_url=source_id, remote_dir=target_path, password=kwargs.get("password"))
-            # save_shared 方法本身需要调整以返回简单的布尔值。
-            raise NotImplementedError("百度客户端尚不支持从 'link' 类型转存.")
+            # 直接在此内联原 save_shared 逻辑，避免额外方法
+            shared_url = _unify_shared_url(source_id)
+
+            # 若提供密码则访问授权；公开分享可跳过
+            password = combined_kwargs.get("password", "")
+            if password:
+                try:
+                    await self._baidupcs.access_shared(shared_url, password, "", "")
+                except BaiduApiError as err:
+                    self.logger.error(f"保存共享失败: 访问加密分享需要验证码或密码错误: {err}")
+                    return False
+
+            shared_paths_list = await self._shared_paths(shared_url)
+            if not shared_paths_list:
+                return False
+
+            shared_paths_deque = deque(shared_paths_list)
+            remote_dir = target_path
+            _remote_dirs: Dict[PcsSharedPath, str] = dict(
+                [(sp, remote_dir) for sp in shared_paths_deque]
+            )
+            _dir_exists: Set[str] = set()
+
+            while shared_paths_deque:
+                shared_path = shared_paths_deque.popleft()
+                rd = _remote_dirs[shared_path]
+
+                if rd not in _dir_exists:
+                    if not await self.exists(rd):
+                        await self.mkdir(MkdirParam(drive_type=self.drive_type, file_path=rd))
+                    _dir_exists.add(rd)
+
+                if shared_path.is_file and await self.remote_path_exists(
+                    PurePosixPath(shared_path.path).name, rd
+                ):
+                    self.logger.warning(f"{shared_path.path} has be in {rd}")
+                    continue
+
+                uk, share_id_val, bdstoken_val = (
+                    shared_path.uk,
+                    shared_path.share_id,
+                    shared_path.bdstoken,
+                )
+
+                try:
+                    await self._transfer_shared_paths(
+                        rd, [shared_path.fs_id], uk, share_id_val, bdstoken_val, shared_url
+                    )
+                    continue
+                except BaiduApiError as err:
+                    if err.error_code == 12:
+                        self.logger.warning(
+                            f"error_code: {err.error_code}, 文件已经存在, {shared_path.path} has be in {rd}"
+                        )
+                    elif err.error_code == -32:
+                        self.logger.error(f"error_code:{err.error_code} 剩余空间不足，无法转存")
+                    elif err.error_code == -33:
+                        self.logger.error(
+                            f"error_code:{err.error_code} 一次支持操作999个，减点试试吧"
+                        )
+                    elif err.error_code == 4:
+                        self.logger.error(
+                            f"error_code:{err.error_code} share transfer pcs error"
+                        )
+                    elif err.error_code in (120, 130):
+                        self.logger.error(f"error_code:{err.error_code} 转存文件数超限")
+                    else:
+                        self.logger.error(f"转存 {shared_path.path} 失败: error_code:{err.error_code}:{err}")
+                        continue
+
+                if shared_path.is_dir:
+                    sub_paths = await self.list_all_sub_paths(
+                        shared_path.path, uk, share_id_val, bdstoken_val
+                    )
+                    current_dir_name = PurePosixPath(shared_path.path).name
+                    sub_remote_dir = (Path(rd) / current_dir_name).as_posix()
+                    for sp in sub_paths:
+                        _remote_dirs[sp] = sub_remote_dir
+                    shared_paths_deque.extendleft(sub_paths[::-1])
+
+            return True
 
         elif source_type in ["friend", "group"]:
             if not file_ids:
@@ -1577,7 +1707,7 @@ class BaiduClient(BaseDriveClient):
             self.logger.error(f"不支持的转存 source_type: {source_type}")
             return False
 
-    async def cancel_share(self, params: 'CancelShareParam', **kwargs: Any) -> bool:
+    async def cancel_share(self, params: "CancelShareParam", **kwargs: Any) -> bool:
         """
         取消分享链接
         

@@ -12,7 +12,7 @@ from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
 
 
-router = APIRouter(prefix="/config", tags=["mcp-config"])
+router = APIRouter(prefix="/config")
 
 
 @router.get(

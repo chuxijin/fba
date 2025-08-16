@@ -75,6 +75,8 @@ class AlistClient(BaseDriveClient):
         else:
             raise ValueError("AlistClient 初始化失败：登录失败")
 
+
+
     @property
     def drive_type(self) -> str:
         return "AlistDrive"

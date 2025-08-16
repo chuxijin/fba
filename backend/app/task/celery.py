@@ -4,6 +4,7 @@ import os
 
 import celery
 import celery_aio_pool
+import sys
 
 from backend.app.task.model.result import OVERWRITE_CELERY_RESULT_GROUP_TABLE_NAME, OVERWRITE_CELERY_RESULT_TABLE_NAME
 from backend.app.task.tasks.beat import LOCAL_BEAT_SCHEDULE
@@ -23,6 +24,7 @@ def find_task_packages():
 
 def init_celery() -> celery.Celery:
     """初始化 Celery 应用"""
+    print(f"DEBUG: sys.path at init_celery: {sys.path}")
 
     # TODO: Update this work if celery version >= 6.0.0
     # https://github.com/fastapi-practices/fastapi_best_architecture/issues/321

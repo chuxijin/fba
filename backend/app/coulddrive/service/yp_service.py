@@ -109,33 +109,17 @@ class BaseDriveClient:
     # 文件和目录管理
     #--------------------------------------------------
 
-    async def mkdir(
-        self,
-        file_path: str,
-        parent_id: str,
-        file_name: str,
-        return_if_exist: bool = True,
-        *args: Any,
-        **kwargs: Any,
-    ) -> BaseFileInfo:
-        """
-        创建目录
-        :param fid: 父目录ID
-        :param name: 目录名称
-        :param return_if_exist: 如果目录已存在，是否返回已存在目录的ID
-        :param args: 位置参数
-        :param kwargs: 关键字参数
-        :return: 创建的目录信息
-        """
+    async def mkdir(self, params: MkdirParam, **kwargs: Any) -> BaseFileInfo:
+        """创建目录（占位默认实现）"""
         return BaseFileInfo(
             file_id="",
-            file_name=file_name,
-            file_path=file_path,
+            file_name=params.file_name,
+            file_path=params.file_path,
             file_size=0,
             is_folder=True,
-            parent_id="",
+            parent_id=params.parent_id or "",
             created_at="",
-            updated_at=""
+            updated_at="",
         )
 
     async def exist(self, fid: str, *args: Any, **kwargs: Any) -> bool:
@@ -226,11 +210,7 @@ class BaseDriveClient:
         """
         return False
 
-    async def get_disk_list(
-        self,
-        params: ListFilesParam,
-        **kwargs: Any
-    ) -> List[BaseFileInfo]:
+    async def get_disk_list(self, params: ListFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
         """
         获取目录下的文件和目录列表
         
@@ -239,11 +219,7 @@ class BaseDriveClient:
         """
         return []
     
-    async def get_share_list(
-        self,
-        params: ListShareFilesParam,
-        **kwargs: Any
-    ) -> List[BaseFileInfo]:
+    async def get_share_list(self, params: ListShareFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
         """
         获取分享来源的文件列表
         
@@ -427,7 +403,7 @@ class BaseDrive:
             from backend.common.log import log
             log.error(f"创建网盘客户端失败: {e}")
             return None
-    
+
     def _create_baidu_client(self, x_token: str) -> Optional[BaseDriveClient]:
         """创建百度网盘客户端"""
         try:
@@ -437,7 +413,7 @@ class BaseDrive:
             from backend.common.log import log
             log.error(f"创建百度网盘客户端失败: {e}")
             return None
-    
+
     def _create_quark_client(self, x_token: str) -> Optional[BaseDriveClient]:
         """创建夸克网盘客户端"""
         try:
@@ -457,6 +433,8 @@ class BaseDrive:
             from backend.common.log import log
             log.error(f"创建 Alist 网盘客户端失败: {e}", exc_info=True)
             return None
+    
+    # 旧的具体创建函数已移除，统一通过注册表构造
     
     async def call_method(self, x_token: str, drive_type: Union[str, DriveType], method_name: str, params: Any, **kwargs) -> Any:
         """
@@ -485,57 +463,43 @@ class BaseDrive:
             raise ValueError(f"无法创建网盘客户端: {drive_type}")
         
         # 检查方法是否存在
-        if not hasattr(client, method_name):
+        method = getattr(client, method_name, None)
+        if method is None:
             raise AttributeError(f"客户端不支持方法: {method_name}")
-        
-        method = getattr(client, method_name)
-        
-        # 统一调用，让具体客户端自己处理参数
         return await method(params, **kwargs)
     
-    # 便捷方法
+    # 便捷方法（恢复）
     async def get_disk_list(self, x_token: str, params: 'ListFilesParam', **kwargs) -> List[BaseFileInfo]:
-        """获取磁盘文件列表"""
         return await self.call_method(x_token, params.drive_type, "get_disk_list", params, **kwargs)
-    
+
     async def get_user_info(self, x_token: str, params: 'UserInfoParam', **kwargs) -> BaseUserInfo:
-        """获取用户信息"""
         return await self.call_method(x_token, params.drive_type, "get_user_info", params, **kwargs)
-    
+
     async def get_quota(self, x_token: str, params: 'ListFilesParam', **kwargs) -> dict:
-        """获取配额信息"""
         return await self.call_method(x_token, params.drive_type, "get_quota", params, **kwargs)
-    
+
     async def get_share_list(self, x_token: str, params: 'ListShareFilesParam', **kwargs) -> List[BaseFileInfo]:
-        """获取分享文件列表"""
         return await self.call_method(x_token, params.drive_type, "get_share_list", params, **kwargs)
-    
+
     async def get_share_info(self, x_token: str, params: 'ListShareInfoParam', **kwargs) -> List[BaseShareInfo]:
-        """获取分享详情列表"""
         return await self.call_method(x_token, params.drive_type, "get_share_info", params, **kwargs)
-    
+
     async def create_mkdir(self, x_token: str, params: 'MkdirParam', **kwargs) -> BaseFileInfo:
-        """创建文件夹"""
         return await self.call_method(x_token, params.drive_type, "mkdir", params, **kwargs)
-    
+
     async def remove_files(self, x_token: str, params: 'RemoveParam', **kwargs) -> bool:
-        """删除文件"""
         return await self.call_method(x_token, params.drive_type, "remove", params, **kwargs)
-    
+
     async def transfer_files(self, x_token: str, params: 'TransferParam', **kwargs) -> bool:
-        """转存文件"""
         return await self.call_method(x_token, params.drive_type, "transfer", params, **kwargs)
-    
+
     async def get_relationship_list(self, x_token: str, params: 'RelationshipParam', **kwargs) -> List[RelationshipItem]:
-        """获取关系列表（好友或群组）"""
         return await self.call_method(x_token, params.drive_type, "get_relationship_list", params, **kwargs)
 
     async def create_share(self, x_token: str, params: 'ShareParam', **kwargs) -> BaseShareInfo:
-        """创建分享链接"""
         return await self.call_method(x_token, params.drive_type, "create_share", params, **kwargs)
-    
+
     async def cancel_share(self, x_token: str, params: 'CancelShareParam', **kwargs) -> bool:
-        """取消分享链接"""
         return await self.call_method(x_token, params.drive_type, "cancel_share", params, **kwargs)
     
     def get_client_status(self) -> Dict[str, Dict[str, Any]]:
@@ -566,80 +530,6 @@ drive_manager = BaseDrive()
 def get_drive_manager() -> BaseDrive:
     """获取全局网盘管理器实例"""
     return drive_manager
-
-
-# 保持向后兼容的函数
-def get_drive_client(drive_type: DriveType, **config_kwargs: Any) -> Optional[BaseDriveClient]:
-    """
-    网盘客户端工厂函数（向后兼容）
-
-    根据指定的网盘类型和配置参数，返回相应的网盘客户端实例。
-
-    参数:
-        drive_type (DriveType): 网盘类型枚举值
-        **config_kwargs: 传递给特定网盘客户端构造函数的配置参数
-
-    返回:
-        Optional[BaseDriveClient]: 成功则返回对应网盘的 BaseDriveClient 实例，否则返回 None
-    """
-    try:
-        # 使用全局 drive_manager 来创建客户端
-        x_token = config_kwargs.get("cookies") or config_kwargs.get("cookie", "")
-        if not x_token:
-            return None
-        return drive_manager._get_or_create_client(drive_type, x_token)
-    except Exception:
-        return None
-
-
-# 保持向后兼容的服务管理器
-class DriveServiceManager:
-    """
-    网盘服务管理器（向后兼容）
-    """
-    
-    def __init__(self):
-        """初始化网盘服务管理器"""
-        self._drive_manager = drive_manager
-    
-    def get_or_create_client(
-        self, 
-        drive_type: DriveType, 
-        account_id: str, 
-        **config_kwargs: Any
-    ) -> Optional[BaseDriveClient]:
-        """
-        获取或创建网盘客户端（向后兼容）
-        """
-        # 使用新的管理器，但保持旧的接口
-        x_token = config_kwargs.get("cookies") or config_kwargs.get("cookie", account_id)
-        return self._drive_manager._get_or_create_client(drive_type, x_token)
-    
-    def remove_client(self, drive_type: DriveType, account_id: str) -> bool:
-        """移除指定的客户端"""
-        cache_key = f"{drive_type.value}:{hash(account_id)}"
-        if cache_key in self._drive_manager._clients:
-            del self._drive_manager._clients[cache_key]
-            return True
-        return False
-    
-    def clear_all_clients(self) -> None:
-        """清除所有缓存的客户端"""
-        self._drive_manager.clear_all_clients()
-    
-    def get_client_status(self) -> Dict[str, Dict[str, Any]]:
-        """获取所有客户端状态"""
-        return self._drive_manager.get_client_status()
-
-
-# 全局服务管理器实例（向后兼容）
-drive_service_manager = DriveServiceManager()
-
-
-def get_drive_service_manager() -> DriveServiceManager:
-    """获取全局网盘服务管理器实例（向后兼容）"""
-    return drive_service_manager
-
 
 def validate_drive_config(drive_type: DriveType, config: Dict[str, Any]) -> Dict[str, List[str]]:
     """

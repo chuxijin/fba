@@ -22,7 +22,10 @@ async def trigger_refresh_expiring_resources() -> ResponseSchemaModel[Dict[str, 
     """
     手动触发检查并刷新即将过期的资源任务
     
-    扫描yp_resource表中距离过期时间小于24小时的记录，
+    扫描yp_resource表中以下两种情况的记录：
+    1. 距离过期时间小于24小时的资源
+    2. 已经过期的资源
+    
     重新创建分享链接并更新数据库
     """
     # 在线程池中执行任务

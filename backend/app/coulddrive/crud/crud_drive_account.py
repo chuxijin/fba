@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Sequence
+from typing import Sequence, TYPE_CHECKING
 
 from sqlalchemy import Select, and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,8 @@ from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.user import DriveAccount
 from backend.app.coulddrive.schema.user import CreateDriveAccountParam, UpdateDriveAccountParam
+if TYPE_CHECKING:
+    from backend.app.coulddrive.schema.user import BaseUserInfo
 
 
 class CRUDDriveAccount(CRUDPlus[DriveAccount]):
@@ -67,7 +69,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         """
         stmt = await self.get_list(type, is_valid)
         # 避免加载关联数据，防止懒加载导致的异步问题
-        stmt = stmt.options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches), noload(DriveAccount.resources))
+        stmt = stmt.options(noload(DriveAccount.sync_configs), noload(DriveAccount.resources))
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -78,7 +80,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param db: 数据库会话
         :return:
         """
-        stmt = select(self.model).options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches), noload(DriveAccount.resources))
+        stmt = select(self.model).options(noload(DriveAccount.sync_configs), noload(DriveAccount.resources))
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -93,7 +95,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         stmt = select(self.model).where(
             self.model.type == type, 
             self.model.is_valid == True
-        ).options(noload(DriveAccount.sync_configs), noload(DriveAccount.file_caches), noload(DriveAccount.resources))
+        ).options(noload(DriveAccount.sync_configs), noload(DriveAccount.resources))
         result = await db.execute(stmt)
         return result.scalars().all()
 
