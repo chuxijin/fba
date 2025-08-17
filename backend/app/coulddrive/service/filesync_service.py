@@ -167,10 +167,12 @@ class FileSyncService:
             # 执行同步
             account_key = f"filesync:{DriveType(drive_account.type).value}:{config.user_id}"
             # 确保同一账号同一网盘类型下的同步任务串行执行，避免并发操作导致的数据冲突
-            if config.account_id and config.drive_type:
-                lock_key = f"filesync:{config.drive_type.value}:{config.account_id}"
+            if config.user_id and config.type:
+                lock_key = f"filesync:{config.type.value}:{config.user_id}"
+                self.logger.debug(f"[任务{task_id}] 尝试获取文件同步锁: {lock_key}")
                 try:
                     async with AccountMutex(redis_client, lock_key, max_wait_seconds=600):  # 最多等待10分钟
+                        self.logger.debug(f"[任务{task_id}] 成功获取文件同步锁: {lock_key}")
                         sync_result = await self.perform_sync(
                             x_token=drive_account.cookies,
                             drive_type=DriveType(drive_account.type),
@@ -184,12 +186,14 @@ class FileSyncService:
                             db=db,
                             account_key=account_key
                         )
+                    self.logger.debug(f"[任务{task_id}] 释放文件同步锁: {lock_key}")
                 except TimeoutError:
                     error_message = f"获取文件同步锁超时，请稍后再试或检查是否有其他同步任务正在进行: {lock_key}"
                     logger.warning(error_message)
                     await self.update_task_status(db, task_id, "failed", error_message)
                     return {"success": False, "error": error_message, "config_id": config_id, "task_id": task_id, "elapsed_time": time.time() - start_time}
             else:
+                self.logger.debug(f"[任务{task_id}] 无需文件同步锁，直接执行同步")
                 sync_result = await self.perform_sync(
                     x_token=drive_account.cookies,
                     drive_type=DriveType(drive_account.type),
@@ -838,11 +842,15 @@ class FileSyncService:
             )
             
             if account_key:
+                self.logger.debug(f"[任务{task_id}] 尝试获取文件转存锁: {account_key}")
                 async with AccountMutex(redis_client, account_key, ttl_seconds=300):
+                    self.logger.debug(f"[任务{task_id}] 成功获取文件转存锁: {account_key}")
                     result = await self.drive_manager.transfer_files(x_token, params, db=db, **kwargs)
                     # 写后安静期，等待上游平台落盘/索引收敛
                     await asyncio.sleep(2)
+                self.logger.debug(f"[任务{task_id}] 释放文件转存锁: {account_key}")
             else:
+                self.logger.debug(f"[任务{task_id}] 无需文件转存锁，直接执行转存")
                 result = await self.drive_manager.transfer_files(x_token, params, db=db, **kwargs)
             
             if result:
@@ -948,11 +956,15 @@ class FileSyncService:
             #self.logger.info(f"[任务{task_id or 'unknown'}] 删除文件详情: {files}")
             
             if account_key:
+                self.logger.debug(f"[任务{task_id}] 尝试获取文件删除锁: {account_key}")
                 async with AccountMutex(redis_client, account_key, ttl_seconds=300):
+                    self.logger.debug(f"[任务{task_id}] 成功获取文件删除锁: {account_key}")
                     result = await self.drive_manager.remove_files(x_token, params, db=db, **kwargs)
                     # 写后安静期
                     await asyncio.sleep(2)
+                self.logger.debug(f"[任务{task_id}] 释放文件删除锁: {account_key}")
             else:
+                self.logger.debug(f"[任务{task_id}] 无需文件删除锁，直接执行删除")
                 result = await self.drive_manager.remove_files(x_token, params, db=db, **kwargs)
             
             #self.logger.info(f"[任务{task_id or 'unknown'}] remove_files返回结果: {result}")
