@@ -45,14 +45,14 @@ class AccountMutex:
         self._watchdog_task: Optional[asyncio.Task] = None
 
     async def __aenter__(self) -> "AccountMutex":
-        log.debug(f"AccountMutex: 尝试获取锁 key={self._key}, token={self._token[:8]}...")
+        log.info(f"AccountMutex: 尝试获取锁 key={self._key}, token={self._token[:8]}...")
         start_time = asyncio.get_event_loop().time()
         elapsed = 0.0
         while True:
             try:
                 ok = await self._redis.set(self._key, self._token, nx=True, ex=self._ttl)
                 if ok:
-                    log.debug(f"AccountMutex: 成功获取锁 key={self._key}, token={self._token[:8]}...")
+                    log.info(f"AccountMutex: 成功获取锁 key={self._key}, token={self._token[:8]}...")
                     self._watchdog_task = asyncio.create_task(self._watchdog())
                     return self
             except Exception as e:
@@ -63,17 +63,17 @@ class AccountMutex:
                 log.error(f"AccountMutex: 获取锁超时 key={self._key}, 已等待 {elapsed:.2f} 秒")
                 raise TimeoutError(f"Acquire lock timeout: {self._key}")
             
-            log.debug(f"AccountMutex: 获取锁失败，重试 key={self._key}, 已等待 {elapsed:.2f} 秒")
+            log.info(f"AccountMutex: 获取锁失败，重试 key={self._key}, 已等待 {elapsed:.2f} 秒")
             await asyncio.sleep(self._retry_interval)
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
-        log.debug(f"AccountMutex: 准备退出锁 key={self._key}, token={self._token[:8]}...")
+        log.info(f"AccountMutex: 准备退出锁 key={self._key}, token={self._token[:8]}...")
         if self._watchdog_task and not self._watchdog_task.done():
             self._watchdog_task.cancel()
             try:
                 await self._watchdog_task
             except asyncio.CancelledError:
-                log.debug(f"AccountMutex: 看门狗任务已取消 key={self._key}")
+                log.info(f"AccountMutex: 看门狗任务已取消 key={self._key}")
             except Exception as e:
                 log.error(f"AccountMutex: 看门狗任务异常 key={self._key}, 错误: {e}")
 
@@ -85,7 +85,7 @@ class AccountMutex:
         try:
             del_result = await self._redis.eval(lua, 1, self._key, self._token)
             if del_result == 1:
-                log.debug(f"AccountMutex: 成功释放锁 key={self._key}, token={self._token[:8]}...")
+                log.info(f"AccountMutex: 成功释放锁 key={self._key}, token={self._token[:8]}...")
             else:
                 log.warning(f"AccountMutex: 释放锁失败，token 不匹配或锁已过期 key={self._key}, token={self._token[:8]}...")
         except Exception as e:
@@ -94,7 +94,7 @@ class AccountMutex:
             pass
 
     async def _watchdog(self) -> None:
-        log.debug(f"AccountMutex: 看门狗任务启动 key={self._key}, token={self._token[:8]}...")
+        log.info(f"AccountMutex: 看门狗任务启动 key={self._key}, token={self._token[:8]}...")
         try:
             while True:
                 await asyncio.sleep(self._watchdog_interval)
@@ -106,7 +106,7 @@ class AccountMutex:
                 try:
                     續租結果 = await self._redis.eval(lua, 1, self._key, self._token)
                     if 續租結果 == 1:
-                        log.debug(f"AccountMutex: 成功续租 key={self._key}, token={self._token[:8]}...")
+                        log.info(f"AccountMutex: 成功续租 key={self._key}, token={self._token[:8]}...")
                     else:
                         log.warning(f"AccountMutex: 续租失败，锁可能已被其他客户端获取或已过期 key={self._key}, token={self._token[:8]}...")
                 except Exception as e:
@@ -114,7 +114,7 @@ class AccountMutex:
                     # 续租失败时继续下一轮，可能是锁已被释放
                     pass
         except asyncio.CancelledError:
-            log.debug(f"AccountMutex: 看门狗任务被取消 key={self._key}")
+            log.info(f"AccountMutex: 看门狗任务被取消 key={self._key}")
             return
 
 
