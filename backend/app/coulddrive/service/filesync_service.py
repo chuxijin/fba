@@ -36,8 +36,8 @@ from backend.app.coulddrive.schema.filesync import (
 from backend.app.coulddrive.crud.crud_filesync import sync_task_dao, sync_config_dao, sync_task_item_dao
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.common.log import log
-from backend.common.lock import AccountMutex
-from backend.database.redis import redis_client
+from backend.common.db_lock import DatabaseMutex
+from backend.database.db import async_db_session # 用于获取数据库会话工厂
 
 logger = logging.getLogger(__name__)
 
@@ -76,28 +76,20 @@ class FileSyncService:
         """
         start_time = time.time()
         task_id = None
+        self.logger.info(f"[任务{task_id or 'unknown'}] 开始执行同步任务，配置ID: {config_id}")
         
         try:
             # 获取并验证配置
             config, error_msg = await sync_config_dao.get_with_validation(db, config_id)
             if not config:
+                self.logger.error(f"[任务{task_id or 'unknown'}] 获取配置失败: {error_msg}")
                 return {"success": False, "error": error_msg, "config_id": config_id, "elapsed_time": 0}
-
-            # [DEBUG] 打印 config 对象信息
-            self.logger.debug(f"[任务{task_id or 'unknown'}] Config 对象类型: {type(config)}")
-            self.logger.debug(f"[任务{task_id or 'unknown'}] Config 对象ID: {getattr(config, 'id', 'N/A')}")
-            self.logger.debug(f"[任务{task_id or 'unknown'}] Config.user_id: {getattr(config, 'user_id', 'N/A')}")
-            self.logger.debug(f"[任务{task_id or 'unknown'}] Config.type: {getattr(config, 'type', 'N/A')}")
-            self.logger.debug(f"[任务{task_id or 'unknown'}] Config dir(): {dir(config)}")
-            try:
-                self.logger.debug(f"[任务{task_id or 'unknown'}] Config __dict__: {config.__dict__}")
-            except AttributeError:
-                self.logger.debug(f"[任务{task_id or 'unknown'}] Config does not have __dict__ attribute.")
 
             # 检查任务是否过期 - 先转换为Python datetime进行比较
             if config.end_time:
                 end_time_dt = config.end_time if isinstance(config.end_time, datetime) else datetime.fromisoformat(str(config.end_time))
                 if datetime.now() > end_time_dt:
+                    self.logger.info(f"[任务{task_id or 'unknown'}] 同步任务已过期，截止时间: {config.end_time}")
                     return {
                     "success": True,
                     "message": f"同步任务已过期，截止时间: {config.end_time}",
@@ -109,6 +101,7 @@ class FileSyncService:
             # 获取网盘账户信息
             drive_account = await drive_account_dao.get(db, config.user_id)
             if not drive_account or not drive_account.cookies:
+                self.logger.error(f"[任务{task_id or 'unknown'}] 网盘账户 {config.user_id} 不存在或cookies为空")
                 return {
                     "success": False,
                     "error": f"网盘账户 {config.user_id} 不存在或cookies为空",
@@ -128,16 +121,16 @@ class FileSyncService:
             sync_task = await sync_task_dao.create(db, obj_in=task_params, current_user_id=config.created_by)
             task_id = sync_task.id
             await db.commit()
-            #logger.info(f"同步任务记录创建成功，任务ID: {task_id}")
+            self.logger.info(f"[任务{task_id}] 同步任务记录创建成功，任务ID: {task_id}")
             
             # 立即更新配置的最后同步时间，防止并发执行
             try:
                 config_update = UpdateSyncConfigParam(last_sync=datetime.now())
                 await sync_config_dao.update(db, db_obj=config, obj_in=config_update)
                 await db.commit()
-                #logger.info(f"配置 {config_id} 的last_sync已在任务开始时更新")
+                self.logger.info(f"[任务{task_id}] 配置 {config_id} 的last_sync已在任务开始时更新")
             except Exception as update_error:
-                logger.error(f"更新配置last_sync失败: {update_error}")
+                self.logger.error(f"[任务{task_id}] 更新配置last_sync失败: {update_error}")
                 # 如果更新失败，任务可能会重复执行，但这比数据不一致更安全
                 return {
                     "success": False,
@@ -173,8 +166,7 @@ class FileSyncService:
                 file_id=dst_meta.get("file_id", "")
             )
             
-            #logger.info(f"开始执行同步 - 任务ID: {task_id}, 方式: {sync_method}, 源: {source_definition.file_path}, 目标: {target_definition.file_path}")
-            
+            self.logger.info(f"[任务{task_id}] 开始执行核心同步逻辑 perform_sync")
             # 执行同步
             account_key = f"filesync:{DriveType(drive_account.type).value}:{config.user_id}"
             # 确保同一账号同一网盘类型下的同步任务串行执行，避免并发操作导致的数据冲突
@@ -182,7 +174,7 @@ class FileSyncService:
                 lock_key = f"filesync:{config.type}:{config.user_id}"
                 self.logger.info(f"[任务{task_id}] 尝试获取文件同步锁: {lock_key}")
                 try:
-                    async with AccountMutex(redis_client, lock_key, max_wait_seconds=600):  # 最多等待10分钟
+                    async with DatabaseMutex(async_db_session, lock_key, owner_id=str(task_id), max_wait_seconds=600, timeout_seconds=300): # 数据库锁，默认持有5分钟，最长等待10分钟
                         self.logger.info(f"[任务{task_id}] 成功获取文件同步锁: {lock_key}")
                         sync_result = await self.perform_sync(
                             x_token=drive_account.cookies,
@@ -200,7 +192,7 @@ class FileSyncService:
                     self.logger.info(f"[任务{task_id}] 释放文件同步锁: {lock_key}")
                 except TimeoutError:
                     error_message = f"获取文件同步锁超时，请稍后再试或检查是否有其他同步任务正在进行: {lock_key}"
-                    logger.warning(error_message)
+                    logger.warning(f"[任务{task_id}] {error_message}")
                     await self.update_task_status(db, task_id, "failed", error_message)
                     return {"success": False, "error": error_message, "config_id": config_id, "task_id": task_id, "elapsed_time": time.time() - start_time}
             else:
@@ -234,7 +226,7 @@ class FileSyncService:
                 )
                 await sync_task_dao.update(db, db_obj=sync_task, obj_in=update_params)
                 await db.commit()
-                #logger.info(f"任务 {task_id} 状态更新为成功")
+                self.logger.info(f"[任务{task_id}] 任务 {task_id} 状态更新为成功，总耗时: {elapsed_time:.2f}秒")
                 
                 # last_sync 已在任务开始时更新，无需重复更新
                 
@@ -259,7 +251,7 @@ class FileSyncService:
                 )
                 await sync_task_dao.update(db, db_obj=sync_task, obj_in=update_params)
                 await db.commit()
-                #logger.info(f"任务 {task_id} 状态更新为失败")
+                self.logger.error(f"[任务{task_id}] 任务 {task_id} 状态更新为失败，错误: {error_msg}，总耗时: {elapsed_time:.2f}秒")
                 
                 return {
                     "success": False,
@@ -272,7 +264,7 @@ class FileSyncService:
                 
         except Exception as e:
             error_msg = f"执行同步任务时发生异常: {str(e)}"
-            logger.error(error_msg, exc_info=True)
+            logger.error(f"[任务{task_id or 'unknown'}] {error_msg}", exc_info=True)
             
             return {
                 "success": False,
@@ -293,7 +285,7 @@ class FileSyncService:
         elif method_lower == SyncMethod.OVERWRITE.value:
             return SyncMethod.OVERWRITE.value
         else:
-            logger.warning(f"未知的同步方式: {method_str}，使用默认增量同步")
+            self.logger.warning(f"未知的同步方式: {method_str}，使用默认增量同步")
             return SyncMethod.INCREMENTAL.value
 
     def _parse_recursion_speed(self, speed_value: int) -> RecursionSpeed:
@@ -338,7 +330,7 @@ class FileSyncService:
         Returns:
             Dict[str, Any]: 同步结果统计
         """
-        start_time = time.time()
+        start_perform_sync_time = time.time()
         
         # 解析过滤器
         item_filter = parse_exclusion_rules(exclude_rules) if exclude_rules else None
@@ -352,21 +344,19 @@ class FileSyncService:
             "files_skipped": 0,
             "errors": [],
             "sync_method": sync_method,
-            "start_time": datetime.fromtimestamp(start_time).isoformat(),
+            "start_time": datetime.fromtimestamp(start_perform_sync_time).isoformat(),
         }
         
         try:
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 开始执行同步 - 方式: {sync_method}, 源: {source_definition.file_path}, 目标: {target_definition.file_path}")
-            
             # 根据同步方式选择处理逻辑
             if sync_method == "overwrite":
-                # 覆盖同步：先删除目标目录所有文件，再转存源目录所有文件
+                self.logger.info(f"[任务{task_id or 'unknown'}] 采用覆盖同步模式")
                 await self._handle_overwrite_sync(
                     x_token, drive_type, source_definition, target_definition,
                     recursion_speed, item_filter, stats, task_id, db, account_key=account_key
                 )
             else:
-                # 增量同步和完全同步：使用标准递归逻辑
+                self.logger.info(f"[任务{task_id or 'unknown'}] 采用增量/完全同步模式")
                 await self.sync_with_have(
                     x_token, drive_type, source_definition, target_definition,
                     source_definition.file_path, target_definition.file_path, target_definition.file_id,
@@ -379,14 +369,12 @@ class FileSyncService:
             stats["errors"].append(error_msg)
         
         # 计算总耗时
-        elapsed_time = time.time() - start_time
+        elapsed_time = time.time() - start_perform_sync_time
         stats["elapsed_time"] = elapsed_time
         stats["end_time"] = datetime.fromtimestamp(time.time()).isoformat()
         
         # 判断同步是否成功 - 有错误就是失败
         success = len(stats["errors"]) == 0
-        
-        #self.logger.info(f"[任务{task_id or 'unknown'}] 同步完成 - 成功: {success}, 错误数: {len(stats['errors'])}, 统计: {stats}")
         
         return {
             "success": success,
@@ -424,22 +412,21 @@ class FileSyncService:
         3. 处理差异文件和目录
         4. 如果是完全同步，删除目标多余文件
         """
+        start_sync_with_have_time = time.time()
+        
         if current_depth >= max_depth:
-            self.logger.warning(f"[任务{task_id or 'unknown'}] 达到最大递归深度 {max_depth}，停止递归")
+            self.logger.warning(f"[任务{task_id or 'unknown'}] 达到最大递归深度 {max_depth}，停止递归: {source_path}")
             return
         
         try:
-            #self.logger.info(f"[任务{task_id or 'unknown'}] sync_with_have - 源: {source_path}, 目标: {target_path}, 深度: {current_depth}")
-            
             # 获取源文件和目标文件映射（文件名 -> 文件大小）
             source_file_map = await self.list_dir(
-                source_path, True, item_filter, True, x_token, drive_type, source_definition, task_id=task_id, db=db
-        )
-            target_file_map = await self.list_dir(
-                target_path, False, item_filter, False, x_token, drive_type, target_definition, target_id, task_id, db
+                source_path, True, item_filter, True, x_token, drive_type, source_definition, task_id=task_id, db=db, account_key=account_key
             )
             
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 源目录文件数: {len(source_file_map)}, 目标目录文件数: {len(target_file_map)}")
+            target_file_map = await self.list_dir(
+                target_path, False, item_filter, False, x_token, drive_type, target_definition, target_id, task_id, db, account_key=account_key
+            )
             
         except Exception as e:
             error_msg = f"扫描目录失败: {source_path} -> {target_path}, 错误: {str(e)}"
@@ -461,7 +448,6 @@ class FileSyncService:
                 target_file_size = target_file_info.get("file_size", -1)  # 用-1表示不存在
                 
                 if file_name not in target_file_map or target_file_size != source_file_size:
-                    #self.logger.info(f"[任务{task_id or 'unknown'}] 需要转存文件: {file_name} (大小: {source_file_size})")
                     
                     # 构建完整的文件信息，包含转存所需的所有参数
                     transfer_file_info = {
@@ -480,7 +466,6 @@ class FileSyncService:
                     files_to_transfer.append(transfer_file_info)
                 else:
                     stats["files_skipped"] += 1
-                    #self.logger.debug(f"[任务{task_id or 'unknown'}] 跳过相同文件: {file_name}")
                     # 跳过的文件不需要记录到数据库任务项
                     # 只在日志中记录即可
             # 如果是目录
@@ -489,11 +474,9 @@ class FileSyncService:
                 source_sub_path = source_path.rstrip('/') + '/' + dir_name + '/'
                 target_sub_path = target_path.rstrip('/') + '/' + dir_name + '/'
                 
-                #self.logger.info(f"[任务{task_id or 'unknown'}] 处理目录: {dir_name}, 源子路径: {source_sub_path}, 目标子路径: {target_sub_path}")
                 
                 # 目标目录没有这个目录
                 if file_name not in target_file_map:
-                    #self.logger.info(f"[任务{task_id or 'unknown'}] 目标不存在目录，使用sync_without_have: {dir_name}")
                     await self.sync_without_have(
                         x_token, drive_type, source_definition, target_definition,
                         source_sub_path, target_sub_path,
@@ -501,7 +484,6 @@ class FileSyncService:
                     )
                 # 目标目录有这个目录，继续递归
                 else:
-                    #self.logger.info(f"[任务{task_id or 'unknown'}] 目标存在目录，继续递归: {dir_name}")
                     # 获取子目录的file_id
                     target_sub_file_id = target_file_map.get(file_name, {}).get("file_id", "")
                     await self.sync_with_have(
@@ -512,12 +494,14 @@ class FileSyncService:
         
         # 批量转存当前目录下需要同步的文件
         if files_to_transfer:
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件: {[f['file_name'] for f in files_to_transfer]}")
+            self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件")
+            transfer_start_time = time.time()
             transfer_result = await self.transfer_files(
                 x_token, drive_type, source_definition, target_definition,
                 files_to_transfer,
                 recursion_speed, stats, task_id, db, account_key=account_key
             )
+            self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存完成，成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒")
             
             # 失败则跳过当前目录后续处理
             if not transfer_result:
@@ -539,12 +523,14 @@ class FileSyncService:
                     })
             
             if files_to_delete:
-                #self.logger.info(f"[任务{task_id or 'unknown'}] 完全同步模式，需要删除 {len(files_to_delete)} 个多余文件")
+                self.logger.info(f"[任务{task_id or 'unknown'}] 完全同步模式，需要删除 {len(files_to_delete)} 个多余文件")
+                delete_start_time = time.time()
                 await self.delete_files(
                     x_token, drive_type, target_definition, files_to_delete,
                     recursion_speed, stats, task_id, db, account_key=account_key
                 )
-    
+                self.logger.info(f"[任务{task_id or 'unknown'}] 批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
+        
     async def sync_without_have(
         self,
         x_token: str,
@@ -573,14 +559,15 @@ class FileSyncService:
         2. 扫描源目录
         3. 递归处理所有文件和子目录
         """
-        if current_depth >= max_depth:
-            self.logger.warning(f"[任务{task_id or 'unknown'}] 达到最大递归深度 {max_depth}，停止递归")
-            return
+        start_sync_without_have_time = time.time()
         
-        #self.logger.info(f"[任务{task_id or 'unknown'}] sync_without_have - 源: {source_path}, 目标: {target_path}, 深度: {current_depth}")
+        if current_depth >= max_depth:
+            self.logger.warning(f"[任务{task_id or 'unknown'}] 达到最大递归深度 {max_depth}，停止递归: {source_path}")
+            return
         
         # 创建目标目录
         dir_name = target_path.rstrip('/').split('/')[-1]
+        create_dir_start_time = time.time()
         created_dir_info = await self.create_directory(
             x_token, drive_type, target_definition, dir_name, task_id, db, account_key=account_key
         )
@@ -591,7 +578,6 @@ class FileSyncService:
             return
         
         stats["folder_created"] += 1
-        #self.logger.info(f"[任务{task_id or 'unknown'}] 成功创建目录: {dir_name}, file_id: {created_dir_info.file_id}")
         
         # 记录创建目录的任务项
         if task_id and db:
@@ -609,7 +595,7 @@ class FileSyncService:
         try:
             # 获取源目录文件列表
             source_file_map = await self.list_dir(
-                source_path, True, item_filter, True, x_token, drive_type, source_definition, task_id=task_id, db=db
+                source_path, True, item_filter, True, x_token, drive_type, source_definition, task_id=task_id, db=db, account_key=account_key
             )
         except Exception as e:
             error_msg = f"扫描源目录失败: {source_path}, 错误: {str(e)}"
@@ -627,8 +613,6 @@ class FileSyncService:
                 dir_name = file_name.rstrip('/')
                 source_sub_path = source_path.rstrip('/') + '/' + dir_name + '/'
                 target_sub_path = target_path.rstrip('/') + '/' + dir_name + '/'
-                
-                #self.logger.info(f"[任务{task_id or 'unknown'}] 递归处理子目录: {dir_name}, 源: {source_sub_path}, 目标: {target_sub_path}")
                 await self.sync_without_have(
                     x_token, drive_type, source_definition, target_definition,
                     source_sub_path, target_sub_path,
@@ -657,12 +641,14 @@ class FileSyncService:
         
         # 批量转存当前目录下的所有文件
         if files_to_transfer:
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件: {[f['file_name'] for f in files_to_transfer]}")
+            self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件")
+            transfer_start_time = time.time()
             transfer_result = await self.transfer_files(
                 x_token, drive_type, source_definition, target_definition,
                 files_to_transfer,
                 recursion_speed, stats, task_id, db, account_key=account_key
             )
+            self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存完成，成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒")
             
             if not transfer_result:
                 self.logger.warning(f"[任务{task_id or 'unknown'}] 批量转存失败，跳过当前目录后续处理: {target_path}")
@@ -700,9 +686,9 @@ class FileSyncService:
         Returns:
             Dict[str, Dict[str, Any]]: 文件映射 {文件名: {file_size: 大小, file_id: ID, msg_id: 消息ID, from_uk: 分享者UK}}
         """
+        start_list_dir_time = time.time()
+        
         try:
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 开始扫描目录: {path}, 是否源目录: {is_src}")
-            
             if is_src:
                 # 获取源文件列表
                 from backend.app.coulddrive.schema.file import ListShareFilesParam
@@ -712,10 +698,8 @@ class FileSyncService:
                     source_id=definition.source_id,
                     file_path=path
                 )
-                #self.logger.info(f"[任务{task_id or 'unknown'}] 调用get_share_list - 参数: drive_type={drive_type}, source_type={definition.source_type}, source_id={definition.source_id}, file_path={path}")
                 
                 files = await self.drive_manager.get_share_list(x_token, params, db=db, **kwargs)
-                #self.logger.info(f"[任务{task_id or 'unknown'}] get_share_list返回 {len(files)} 个文件")
                 
             else:
                 # 获取目标文件列表
@@ -729,11 +713,9 @@ class FileSyncService:
                     time=False,
                     size_sort=False
                 )
-                #self.logger.info(f"[任务{task_id or 'unknown'}] 调用get_disk_list - 参数: drive_type={drive_type}, file_path={path}, file_id={target_id or ''}")
                 
                 files = await self.drive_manager.get_disk_list(x_token, params, db=db, **kwargs)
-                #self.logger.info(f"[任务{task_id or 'unknown'}] get_disk_list返回 {len(files)} 个文件")
-            
+                
             # 构建文件映射 {文件名: {file_size: 大小, file_id: ID, 扩展信息}}
             file_map = {}
             for file in files:
@@ -758,7 +740,6 @@ class FileSyncService:
                 
                 file_map[file_name] = file_info
             
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 目录扫描完成: {path}, 有效文件数: {len(file_map)}")
             return file_map
             
         except Exception as e:
@@ -787,11 +768,10 @@ class FileSyncService:
             files: 文件列表，格式：[{"file_name": "xxx", "file_size": 123, "source_path": "xxx", "target_path": "xxx", "file_id": "xxx", "share_fid_token": "xxx", ...}]
         """
         if not files:
+            self.logger.info(f"[任务{task_id or 'unknown'}] 没有文件需要转存，跳过批量转存。")
             return True
         
         try:
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 开始批量转存 {len(files)} 个文件")
-            
             # 提取文件ID列表
             file_ids = []
             for file_info in files:
@@ -821,7 +801,7 @@ class FileSyncService:
                 
                 # 提取文件级别的扩展参数
                 for key, value in file_info.items():
-                    if key not in ["file_name", "file_size", "source_path", "target_path", "file_id"]:
+                    if key not in ["file_size", "file_id"]:
                         file_ext_info['file_ext'][key] = value
                 
                 files_ext_info.append(file_ext_info)
@@ -836,9 +816,6 @@ class FileSyncService:
                     if key not in ["file_name", "file_size", "source_path", "target_path", "file_id"]:
                         ext_params[key] = value
             
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 文件列表: {[f['file_name'] for f in files]}")
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 构建了 {len(files_ext_info)} 个文件的扩展信息")
-            
             # 构建转存参数
             from backend.app.coulddrive.schema.file import TransferParam
             params = TransferParam(
@@ -852,21 +829,14 @@ class FileSyncService:
                 ext=ext_params
             )
             
-            if account_key:
-                self.logger.info(f"[任务{task_id}] 尝试获取文件转存锁: {account_key}")
-                async with AccountMutex(redis_client, account_key, ttl_seconds=300):
-                    self.logger.info(f"[任务{task_id}] 成功获取文件转存锁: {account_key}")
-                    result = await self.drive_manager.transfer_files(x_token, params, db=db, **kwargs)
-                    # 写后安静期，等待上游平台落盘/索引收敛
-                    await asyncio.sleep(2)
-                self.logger.info(f"[任务{task_id}] 释放文件转存锁: {account_key}")
-            else:
-                self.logger.info(f"[任务{task_id}] 无需文件转存锁，直接执行转存")
-                result = await self.drive_manager.transfer_files(x_token, params, db=db, **kwargs)
+            self.logger.info(f"[任务{task_id}] 执行文件转存（已由上层获取账户锁）")
+            result = await self.drive_manager.transfer_files(x_token, params, db=db, **kwargs)
+            # 写后安静期，等待上游平台落盘/索引收敛
+            await asyncio.sleep(2)
             
             if result:
                 stats["files_transferred"] += len(files)
-                #self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存成功: {len(files)} 个文件")
+                self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存成功: {len(files)} 个文件")
                 
                 # 记录成功的文件
                 for file_info in files:
@@ -932,11 +902,10 @@ class FileSyncService:
             files: 文件列表，格式：[{"file_name": "xxx", "file_size": 123, "target_path": "xxx"}]
         """
         if not files:
+            self.logger.info(f"[任务{task_id or 'unknown'}] 没有文件需要删除，跳过批量删除。")
             return True
             
         try:
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 开始批量删除 {len(files)} 个文件")
-            
             # 批量删除文件
             from backend.app.coulddrive.schema.file import RemoveParam
             
@@ -962,26 +931,13 @@ class FileSyncService:
                 file_name=None  # 批量删除时不需要单个文件名
             )
             
-            # 打印删除请求的详细参数
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 调用remove_files - 参数: drive_type={drive_type}, file_paths={file_paths}, file_ids={file_ids}, parent_id={target_definition.file_id}, file_name=None")
-            #self.logger.info(f"[任务{task_id or 'unknown'}] 删除文件详情: {files}")
-            
-            if account_key:
-                self.logger.info(f"[任务{task_id}] 尝试获取文件删除锁: {account_key}")
-                async with AccountMutex(redis_client, account_key, ttl_seconds=300):
-                    self.logger.info(f"[任务{task_id}] 成功获取文件删除锁: {account_key}")
-                    result = await self.drive_manager.remove_files(x_token, params, db=db, **kwargs)
-                    # 写后安静期
-                    await asyncio.sleep(2)
-                self.logger.info(f"[任务{task_id}] 释放文件删除锁: {account_key}")
-            else:
-                self.logger.info(f"[任务{task_id}] 无需文件删除锁，直接执行删除")
-                result = await self.drive_manager.remove_files(x_token, params, db=db, **kwargs)
-            
-            #self.logger.info(f"[任务{task_id or 'unknown'}] remove_files返回结果: {result}")
+            self.logger.info(f"[任务{task_id}] 执行文件删除（已由上层获取账户锁）")
+            result = await self.drive_manager.remove_files(x_token, params, db=db, **kwargs)
             
             if result:
                 stats["files_deleted"] += len(files)
+                self.logger.info(f"[任务{task_id or 'unknown'}] 批量删除成功: {len(files)} 个文件")
+                
                 # 记录删除的文件
                 for file_info in files:
                     self.logger.info(f"删除成功: {file_info['file_name']}")
@@ -1057,23 +1013,19 @@ class FileSyncService:
                 parent_id=target_definition.file_id,
                 return_if_exist=True
             )
-            if account_key:
-                async with AccountMutex(redis_client, account_key, ttl_seconds=300):
-                    result = await self.drive_manager.create_mkdir(x_token, params, db=db, **kwargs)
-                    # 写后安静期
-                    await asyncio.sleep(2)
-            else:
-                result = await self.drive_manager.create_mkdir(x_token, params, db=db, **kwargs)
+            self.logger.info(f"[任务{task_id}] 无需创建目录锁，直接执行创建")
+            result = await self.drive_manager.create_mkdir(x_token, params, db=db, **kwargs)
             
             # create_mkdir返回BaseFileInfo对象，如果成功创建则有file_id
             if result is not None and result.file_id is not None:
+                self.logger.info(f"[任务{task_id or 'unknown'}] 成功创建目录: {dir_name}, file_id: {result.file_id}")
                 return result
             else:
-                self.logger.error(f"创建目录失败: {dir_name}")
+                self.logger.error(f"[任务{task_id or 'unknown'}] 创建目录失败: {dir_name}, API返回结果: {result}")
                 return None
             
         except Exception as e:
-            self.logger.error(f"创建目录失败: {e}")
+            self.logger.error(f"[任务{task_id or 'unknown'}] 创建目录异常: {dir_name}, 错误: {e}")
             return None
 
     async def record_task_item(
@@ -1116,9 +1068,10 @@ class FileSyncService:
             
             await sync_task_item_dao.create(db, obj_in=task_item_params)
             # 注意：这里不提交事务，由上层统一提交
+            self.logger.debug(f"[任务{task_id}] 记录任务项成功: 类型={operation_type}, 文件={file_name}, 状态={status}")
             
         except Exception as e:
-            self.logger.error(f"记录任务项失败: {e}")
+            self.logger.error(f"[任务{task_id}] 记录任务项失败: {e}", exc_info=True)
     
     async def _handle_overwrite_sync(
         self,
@@ -1137,12 +1090,16 @@ class FileSyncService:
         """
         处理覆盖同步：先删除目标目录所有文件，再一次性转存源目录所有内容
         """
+        start_overwrite_sync_time = time.time()
+        self.logger.info(f"[任务{task_id or 'unknown'}] 开始覆盖同步: 源={source_definition.file_path}, 目标={target_definition.file_path}")
         try:
             # 1. 获取目标目录所有文件
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始扫描目标目录进行删除前准备")
             target_file_map = await self.list_dir(
                 target_definition.file_path, False, item_filter, False, 
-                x_token, drive_type, target_definition, target_definition.file_id, task_id, db
+                x_token, drive_type, target_definition, target_definition.file_id, task_id, db, account_key=account_key
             )
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：目标目录扫描完成，耗时: {time.time() - start_overwrite_sync_time:.2f}秒，找到 {len(target_file_map)} 个文件/目录")
             
             # 2. 删除目标目录所有文件
             if target_file_map:
@@ -1154,17 +1111,23 @@ class FileSyncService:
                         "target_path": target_definition.file_path,
                         "file_id": file_info.get("file_id", "")
                     })
+                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始批量删除 {len(files_to_delete)} 个文件/目录")
+                delete_start_time = time.time()
                 await self.delete_files(
                     x_token, drive_type, target_definition, files_to_delete,
                     recursion_speed, stats, task_id, db, account_key=account_key
                 )
+                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
+            else:
+                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：目标目录为空，无需删除。")
             
             # 3. 一次性转存整个源目录的所有内容
-            # 获取源目录的第一层文件列表
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始扫描源目录进行转存准备")
             source_file_map = await self.list_dir(
                 source_definition.file_path, True, item_filter, True, 
-                x_token, drive_type, source_definition, task_id=task_id, db=db
+                x_token, drive_type, source_definition, task_id=task_id, db=db, account_key=account_key
             )
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：源目录扫描完成，耗时: {time.time() - start_overwrite_sync_time:.2f}秒，找到 {len(source_file_map)} 个文件/目录")
             
             if source_file_map:
                 # 构建所有文件的转存信息（包括文件和目录）
@@ -1187,24 +1150,27 @@ class FileSyncService:
                     all_files_to_transfer.append(transfer_file_info)
                     stats["files_processed"] += 1
                 
-                # 批量转存所有内容（正确构建参数对应关系）
-                #self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量转存 {len(all_files_to_transfer)} 个项目")
+                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始批量转存 {len(all_files_to_transfer)} 个项目")
+                transfer_start_time = time.time()
                 transfer_result = await self.transfer_files(
                     x_token, drive_type, source_definition, target_definition,
                     all_files_to_transfer, recursion_speed, stats, task_id, db, account_key=account_key
                 )
+                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量转存完成，成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒")
                 
                 if not transfer_result:
                     self.logger.warning(f"[任务{task_id or 'unknown'}] 覆盖同步批量转存失败，终止当前覆盖流程: {target_definition.file_path}")
+                    self.logger.info(f"[任务{task_id or 'unknown'}] 退出 _handle_overwrite_sync (因批量转存失败), 耗时: {time.time() - start_overwrite_sync_time:.2f}秒")
                     return
+            else:
+                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：源目录为空，无需转存。")
                 
         except Exception as e:
             error_msg = f"覆盖同步失败: {str(e)}"
-            self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
+            self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}", exc_info=True)
             stats["errors"].append(error_msg)
-
-    
-
+        
+        self.logger.info(f"[任务{task_id or 'unknown'}] 退出 _handle_overwrite_sync, 耗时: {time.time() - start_overwrite_sync_time:.2f}秒")
 
 # 全局实例
 file_sync_service = FileSyncService()

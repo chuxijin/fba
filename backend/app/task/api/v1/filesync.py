@@ -9,6 +9,9 @@ from backend.app.task.tasks.filesync.tasks import (
     execute_filesync_task_by_config_id,
     get_filesync_configs_with_cron,
 )
+from backend.app.task.tasks.db_log.tasks import (
+    delete_filesync_data_older_than_30_days,
+)
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 
@@ -43,10 +46,10 @@ async def check_filesync_cron_tasks() -> ResponseSchemaModel[Dict[str, Any]]:
     dependencies=[DependsJwtAuth],
 )
 async def execute_filesync_task(
-    config_id: Annotated[int, Path(description='同步配置ID')]
+    config_id: Annotated[int, Path(description="同步配置ID")]
 ) -> ResponseSchemaModel[Dict[str, Any]]:
     """
-    根据配置ID执行单个文件同步任务
+    手动触发执行指定配置的文件同步任务
     
     :param config_id: 同步配置ID
     :return: 任务ID和状态
@@ -54,26 +57,44 @@ async def execute_filesync_task(
     task = execute_filesync_task_by_config_id.delay(config_id)
     return response_base.success(data={
         "task_id": task.id,
-        "config_id": config_id,
         "status": "submitted",
-        "message": f"配置 {config_id} 的同步任务已提交到队列"
+        "message": f"配置 {config_id} 的文件同步任务已提交到队列"
     })
 
 
 @router.get(
-    '/configs-with-cron',
-    summary='获取设置了cron的同步配置',
+    '/cron-configs',
+    summary='获取所有设置了cron表达式的同步配置',
     dependencies=[DependsJwtAuth],
 )
-async def get_configs_with_cron() -> ResponseSchemaModel[Dict[str, Any]]:
+async def get_filesync_cron_configs() -> ResponseSchemaModel[Dict[str, Any]]:
     """
     获取所有设置了cron表达式的同步配置列表
     
-    :return: 任务ID和状态
+    :return: 配置列表
     """
     task = get_filesync_configs_with_cron.delay()
     return response_base.success(data={
         "task_id": task.id,
         "status": "submitted",
-        "message": "获取配置列表任务已提交到队列"
+        "message": "获取cron配置任务已提交到队列"
+    })
+
+
+@router.post(
+    '/cleanup/expired-data',
+    summary='清理30天以外的文件同步数据',
+    dependencies=[DependsJwtAuth],
+)
+async def cleanup_expired_filesync_data() -> ResponseSchemaModel[Dict[str, Any]]:
+    """
+    手动触发清理30天以外的文件同步数据（包括任务和任务项）
+    
+    :return: 任务ID和状态
+    """
+    task = delete_filesync_data_older_than_30_days.delay()
+    return response_base.success(data={
+        "task_id": task.id,
+        "status": "submitted",
+        "message": "清理过期文件同步数据已提交到队列"
     }) 

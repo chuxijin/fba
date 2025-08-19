@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
 
 from backend.app.coulddrive.schema.filesync import (
     GetSyncTaskDetail,
@@ -15,6 +16,7 @@ from backend.app.coulddrive.schema.filesync import (
     GetSyncTaskItemDetail,
 )
 from backend.app.coulddrive.crud.crud_filesync import sync_task_dao, sync_task_item_dao
+from backend.app.coulddrive.model.filesync import SyncTask, SyncTaskItem
 from backend.common.log import log
 
 logger = logging.getLogger(__name__)
@@ -96,6 +98,63 @@ class SyncTaskService:
             dict[str, int]: 统计信息字典
         """
         return await sync_task_item_dao.get_task_statistics(db, task_id=task_id)
+
+    async def delete_tasks_30days(self, db: AsyncSession) -> Dict[str, Any]:
+        """
+        删除30天以外的文件同步任务和任务项数据
+        
+        Args:
+            db: 数据库会话
+            
+        Returns:
+            Dict[str, Any]: 删除结果统计
+        """
+        try:
+            # 计算30天前的日期
+            cutoff_date = datetime.now() - timedelta(days=30)
+            
+            # 先删除30天以外的同步任务项（因为外键约束）
+            task_items_stmt = delete(SyncTaskItem).where(
+                SyncTaskItem.created_time < cutoff_date
+            )
+            task_items_result = await db.execute(task_items_stmt)
+            deleted_task_items_count = task_items_result.rowcount
+            
+            # 再删除30天以外的同步任务
+            tasks_stmt = delete(SyncTask).where(
+                SyncTask.created_time < cutoff_date
+            )
+            tasks_result = await db.execute(tasks_stmt)
+            deleted_tasks_count = tasks_result.rowcount
+            
+            # 提交事务
+            await db.commit()
+            
+            total_deleted = deleted_task_items_count + deleted_tasks_count
+            
+            logger.info(f"成功删除30天以外的数据: 任务项 {deleted_task_items_count} 条, 任务 {deleted_tasks_count} 条")
+            
+            return {
+                "success": True,
+                "deleted_task_items": deleted_task_items_count,
+                "deleted_tasks": deleted_tasks_count,
+                "total_deleted": total_deleted,
+                "cutoff_date": cutoff_date.isoformat(),
+                "message": f"成功删除30天以外的数据: 任务项 {deleted_task_items_count} 条, 任务 {deleted_tasks_count} 条"
+            }
+            
+        except Exception as e:
+            logger.error(f"删除30天以外的文件同步数据失败: {str(e)}")
+            # 回滚事务
+            await db.rollback()
+            return {
+                "success": False,
+                "error": str(e),
+                "deleted_task_items": 0,
+                "deleted_tasks": 0,
+                "total_deleted": 0,
+                "message": f"删除失败: {str(e)}"
+            }
 
 
 # 全局实例
