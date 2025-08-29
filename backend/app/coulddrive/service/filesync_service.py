@@ -355,6 +355,7 @@ class FileSyncService:
                     x_token, drive_type, source_definition, target_definition,
                     recursion_speed, item_filter, stats, task_id, db, account_key=account_key
                 )
+                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步逻辑执行完成。")
             else:
                 self.logger.info(f"[任务{task_id or 'unknown'}] 采用增量/完全同步模式")
                 await self.sync_with_have(
@@ -362,6 +363,7 @@ class FileSyncService:
                     source_definition.file_path, target_definition.file_path, target_definition.file_id,
                     sync_method, recursion_speed, item_filter, 0, max_depth, stats, task_id, db, account_key=account_key
                 )
+                self.logger.info(f"[任务{task_id or 'unknown'}] 增量/完全同步逻辑执行完成。")
             
         except Exception as e:
             error_msg = f"同步失败: {str(e)}"
@@ -507,6 +509,7 @@ class FileSyncService:
             if not transfer_result:
                 self.logger.warning(f"[任务{task_id or 'unknown'}] 批量转存失败，跳过当前目录后续处理: {target_path}")
                 return
+            if db: await db.commit() # 每次批量转存后提交
         
         # 如果是完全同步，删除目标目录中多余的文件
         if sync_method == "full":
@@ -530,7 +533,9 @@ class FileSyncService:
                     recursion_speed, stats, task_id, db, account_key=account_key
                 )
                 self.logger.info(f"[任务{task_id or 'unknown'}] 批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
-        
+                if db: await db.commit() # 每次批量删除后提交
+        self.logger.info(f"[任务{task_id or 'unknown'}] 目录 {source_path} ({target_path}) 的 sync_with_have 操作完成，耗时: {time.time() - start_sync_with_have_time:.2f}秒")
+
     async def sync_without_have(
         self,
         x_token: str,
@@ -585,6 +590,7 @@ class FileSyncService:
                 task_id, "create", source_path, target_path, dir_name, 0, 
                 "completed", None, db
             )
+            if db: await db.commit() # 每次创建目录后提交
         
         # 更新target_definition为新创建的目录
         target_definition = DiskTargetDefinition(
@@ -653,6 +659,8 @@ class FileSyncService:
             if not transfer_result:
                 self.logger.warning(f"[任务{task_id or 'unknown'}] 批量转存失败，跳过当前目录后续处理: {target_path}")
                 return
+            if db: await db.commit() # 每次批量转存后提交
+        self.logger.info(f"[任务{task_id or 'unknown'}] 目录 {source_path} ({target_path}) 的 sync_without_have 操作完成，耗时: {time.time() - start_sync_without_have_time:.2f}秒")
 
     async def list_dir(
         self,
@@ -940,7 +948,7 @@ class FileSyncService:
                 
                 # 记录删除的文件
                 for file_info in files:
-                    self.logger.info(f"删除成功: {file_info['file_name']}")
+                    # self.logger.info(f"删除成功: {file_info['file_name']}")
                     # 记录任务项
                     if task_id and db:
                         await self.record_task_item(
@@ -1068,7 +1076,7 @@ class FileSyncService:
             
             await sync_task_item_dao.create(db, obj_in=task_item_params)
             # 注意：这里不提交事务，由上层统一提交
-            self.logger.debug(f"[任务{task_id}] 记录任务项成功: 类型={operation_type}, 文件={file_name}, 状态={status}")
+            # self.logger.debug(f"[任务{task_id}] 记录任务项成功: 类型={operation_type}, 文件={file_name}, 状态={status}")
             
         except Exception as e:
             self.logger.error(f"[任务{task_id}] 记录任务项失败: {e}", exc_info=True)
@@ -1118,6 +1126,7 @@ class FileSyncService:
                     recursion_speed, stats, task_id, db, account_key=account_key
                 )
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
+                if db: await db.commit() # 每次批量删除后提交
             else:
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：目标目录为空，无需删除。")
             
@@ -1162,6 +1171,7 @@ class FileSyncService:
                     self.logger.warning(f"[任务{task_id or 'unknown'}] 覆盖同步批量转存失败，终止当前覆盖流程: {target_definition.file_path}")
                     self.logger.info(f"[任务{task_id or 'unknown'}] 退出 _handle_overwrite_sync (因批量转存失败), 耗时: {time.time() - start_overwrite_sync_time:.2f}秒")
                     return
+                if db: await db.commit() # 每次批量转存后提交
             else:
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：源目录为空，无需转存。")
                 

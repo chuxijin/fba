@@ -3,11 +3,12 @@
 
 #api.py
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import requests
 
 from .errors import AlistApiError, assert_ok
+from backend.core.conf import settings
 
 # API 基础URL
 ALIST_URL = "https://alist.yzxj.vip"
@@ -56,6 +57,7 @@ class AlistApi:
         self._password = password
         self._cookies = cookies
         self._session = requests.Session()
+        self._timeout = settings.HTTP_REQUEST_TIMEOUT
         self._headers = ALIST_HEADERS.copy()
         
         if cookies:
@@ -107,6 +109,7 @@ class AlistApi:
         headers: Optional[Dict[str, str]] = None,
         data: Union[str, bytes, Dict[str, str], Any] = None,
         files: Optional[Dict[str, Any]] = None,
+        timeout: Optional[Union[float, Tuple[float, float]]] = None,
         **kwargs,
     ) -> requests.Response:
         """原始请求方法，不进行自动重试"""
@@ -121,6 +124,7 @@ class AlistApi:
                 headers=headers,
                 json=data,  # 使用json参数，因为Alist API使用JSON格式
                 files=files,
+                timeout=timeout or self._timeout, # 使用传入的timeout，如果没有则使用实例的默认timeout
                 **kwargs,
             )
             
@@ -144,11 +148,12 @@ class AlistApi:
         data: Union[str, bytes, Dict[str, str], Any] = None,
         files: Optional[Dict[str, Any]] = None,
         retry_login: bool = True,
+        timeout: Optional[Union[float, Tuple[float, float]]] = None,
         **kwargs,
     ) -> requests.Response:
         """带自动重新登录的请求方法"""
         try:
-            resp = await self._request_raw(method, url, params, headers, data, files, **kwargs)
+            resp = await self._request_raw(method, url, params, headers, data, files, timeout=timeout, **kwargs)
             
             # 检查是否是认证失败
             if resp.status_code == 401 or (resp.status_code == 200 and resp.json().get("code") == 401):
@@ -156,7 +161,7 @@ class AlistApi:
                     print("🔄 检测到认证失败，尝试重新登录...")
                     await self.login()
                     # 重新发送请求，但不再重试登录
-                    return await self._request(method, url, params, headers, data, files, retry_login=False, **kwargs)
+                    return await self._request(method, url, params, headers, data, files, retry_login=False, timeout=timeout, **kwargs)
                 else:
                     raise AlistApiError("认证失败且无法自动重新登录")
             

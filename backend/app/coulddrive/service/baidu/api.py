@@ -6,7 +6,7 @@ import urllib
 from base64 import standard_b64encode
 from enum import Enum
 from pathlib import Path
-from typing import IO, Any, Callable, Dict, List, Optional, Union
+from typing import IO, Any, Callable, Dict, List, Optional, Union, Tuple
 from urllib.error import HTTPError
 from urllib.parse import quote_plus, urlparse
 
@@ -120,6 +120,9 @@ class BaiduApi:
         # 设置 cookies 和 session
         self._cookies = parsed_cookies
         self._session = requests.Session()
+        # 从全局配置获取超时时间
+        from backend.core.conf import settings
+        self._timeout = settings.HTTP_REQUEST_TIMEOUT
         self._session.cookies.update(parsed_cookies)
         self._user_id = user_id
         self._user_info = None  # 用户信息将在需要时通过异步方法获取
@@ -191,6 +194,7 @@ class BaiduApi:
         headers: Optional[Dict[str, str]] = None,
         data: Union[str, bytes, Dict[str, str], Any] = None,
         files: Optional[Dict[str, Any]] = None,
+        timeout: Optional[Union[float, Tuple[float, float]]] = None,
         **kwargs,
     ) -> requests.Response:
         if params and isinstance(params, dict):
@@ -214,6 +218,7 @@ class BaiduApi:
                 headers=headers,
                 data=data,
                 files=files,
+                timeout=timeout or self._timeout, # 使用传入的timeout，如果没有则使用实例的默认timeout
                 **kwargs,
             )
             

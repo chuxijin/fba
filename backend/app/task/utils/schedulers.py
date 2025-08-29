@@ -462,28 +462,11 @@ async def extend_scheduler_lock(lock):
     """
     while True:
         await asyncio.sleep(DEFAULT_LOCK_INTERVAL)
-        if not lock:
-            continue
-        try:
-            await lock.extend(DEFAULT_MAX_LOCK_TIMEOUT)
-        except RedisTimeoutError as e:
-            # Redis/网络抖动导致的超时，记录并等待下轮
-            logger.warning(f'Extend lock timeout (network/redis jitter): {e}')
-        except LockError as e:
-            # 续期发现已不再持有，尝试非阻塞重获
-            logger.error(f'Failed to extend lock (no longer owned): {e}; trying to re-acquire...')
+        if lock:
             try:
-                acquired = await lock.acquire(blocking=False)
-                if acquired:
-                    logger.info('beat: Re-acquired lock successfully')
-                else:
-                    logger.warning('beat: Another instance currently holds the lock')
-            except RedisTimeoutError as e2:
-                logger.warning(f'beat: Re-acquire timeout: {e2}')
-            except Exception as e2:
-                logger.exception(f'beat: Re-acquire lock failed: {e2}')
-        except Exception as e:
-            logger.exception(f'Extend lock unexpected error: {e}')
+                await lock.extend(DEFAULT_MAX_LOCK_TIMEOUT)
+            except Exception as e:
+                logger.error(f'Failed to extend lock: {e}')
 
 
 @beat_init.connect

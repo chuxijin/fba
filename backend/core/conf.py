@@ -201,6 +201,9 @@ class Settings(BaseSettings):
     PLUGIN_PIP_INDEX_URL: str = 'https://mirrors.aliyun.com/pypi/simple/'
     PLUGIN_REDIS_PREFIX: str = 'fba:plugin'
 
+    # HTTP 请求
+    HTTP_REQUEST_TIMEOUT: int = 60 # HTTP 请求超时时间（秒）
+
     # I18n 配置
     I18N_DEFAULT_LANGUAGE: str = 'zh-CN'
 

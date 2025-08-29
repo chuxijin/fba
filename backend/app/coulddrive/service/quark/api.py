@@ -1,10 +1,11 @@
 #api.py
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import requests
 
 from .errors import QuarkApiError, assert_ok
+from backend.core.conf import settings
 
 # API 基础URL
 PAN_QUARK_COM = "https://pan.quark.cn"
@@ -70,6 +71,7 @@ class QuarkApi:
 
         self._cookies = self._parse_cookies(cookies)
         self._session = requests.Session()
+        self._timeout = settings.HTTP_REQUEST_TIMEOUT
         self._session.cookies.update(self._cookies)
         self._user_id = None
         self._user_info = None
@@ -94,6 +96,7 @@ class QuarkApi:
         headers: Optional[Dict[str, str]] = None,
         data: Union[str, bytes, Dict[str, str], Any] = None,
         files: Optional[Dict[str, Any]] = None,
+        timeout: Optional[Union[float, Tuple[float, float]]] = None,
         **kwargs,
     ) -> requests.Response:
         if not headers:
@@ -113,6 +116,7 @@ class QuarkApi:
                 headers=headers,
                 data=data,
                 files=files,
+                timeout=timeout or self._timeout, # 使用传入的timeout，如果没有则使用实例的默认timeout
                 **kwargs,
             )
             
