@@ -411,7 +411,7 @@ class BaiduApi:
         return self.file_operate("move", param)
 
     @assert_ok
-    def rename(self, source: str, dest: str):
+    async def rename(self, source: str, dest: str):
         """将`source`重命名为`dest`"""
 
         assert all(
@@ -419,7 +419,7 @@ class BaiduApi:
         ), "`source`, `dest`必须是绝对路径"
 
         param = [_from_to(source, dest)]
-        return self.file_operate("move", param)
+        return await self.file_operate("move", param)
 
     @assert_ok
     async def copy(self, *file_paths: str):

@@ -32,6 +32,7 @@ from backend.app.coulddrive.schema.file import (
     RemoveParam,
     TransferParam,
     UserInfoParam,
+    RenameParam,
 )
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
@@ -439,8 +440,10 @@ class QuarkClient(BaseDriveClient):
             self.logger.error(f"创建文件夹时发生错误: {e}")
             raise
 
-    async def rename(self, file_id: str, new_name: str) -> bool:
+    async def rename(self, params: RenameParam, **kwargs: Any) -> bool:
         """重命名文件或文件夹"""
+        file_id = params.file_id
+        new_name = params.new_name
         try:
             await self._quarkapi.rename_file(fid=file_id, file_name=new_name)
             return True

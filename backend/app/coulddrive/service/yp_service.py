@@ -27,6 +27,7 @@ from backend.app.coulddrive.schema.file import (
     ShareParam,
     TransferParam,
     UserInfoParam,
+    RenameParam,
 )
 from backend.app.coulddrive.schema.user import BaseUserInfo, RelationshipItem
 
@@ -241,9 +242,9 @@ class BaseDriveClient:
         """获取文件或目录的详细信息"""
         return None
         
-    async def rename(self, params: RemoveParam, **kwargs: Any) -> bool:
+    async def rename(self, params: RenameParam, **kwargs: Any) -> bool:
         """重命名文件或目录"""
-        return False
+        raise NotImplementedError("子类必须实现 rename 方法")
         
     async def create_share(self, params: 'ShareParam', **kwargs: Any) -> BaseShareInfo:
         """创建分享链接"""
@@ -501,6 +502,10 @@ class BaseDrive:
 
     async def cancel_share(self, x_token: str, params: 'CancelShareParam', **kwargs) -> bool:
         return await self.call_method(x_token, params.drive_type, "cancel_share", params, **kwargs)
+    
+    async def rename_files(self, x_token: str, params: 'RenameParam', **kwargs) -> bool:
+        """重命名文件或目录"""
+        return await self.call_method(x_token, params.drive_type, "rename", params, **kwargs)
     
     def get_client_status(self) -> Dict[str, Dict[str, Any]]:
         """

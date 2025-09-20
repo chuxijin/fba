@@ -7,6 +7,7 @@ Created On: 2023-01-01
 """
 
 from __future__ import annotations
+from imp import source_from_cache
 import os
 from collections import deque
 from io import BytesIO
@@ -29,6 +30,7 @@ from backend.app.coulddrive.schema.file import (
     ListShareFilesParam,
     ListShareInfoParam,
     MkdirParam,
+    RenameParam,
     RelationshipParam,
     RelationshipType,
     RemoveParam,
@@ -464,15 +466,23 @@ class BaiduClient(BaseDriveClient):
             raise BaiduApiError("File operator [move] fails")
         return [FromTo(from_=v["from"], to_=v["to"]) for v in r]
 
-    async def rename(self, source: str, dest: str) -> FromTo:
+    async def rename(self, params: RenameParam, **kwargs: Any) -> FromTo:
         """重命名文件"""
-        
-        info = self._baidupcs.rename(source, dest)
-        r = info["extra"].get("list")
-        if not r:
-            raise BaiduApiError("File operator [rename] fails")
-        v = r[0]
-        return FromTo(from_=v["from"], to_=v["to"])
+        source=params.file_path
+        dest=params.new_path
+        try:
+            info = await self._baidupcs.rename(source, dest)
+            r = info["extra"].get("list")
+            if not r:
+                self.logger.error(f"重命名文件失败: 返回列表为空")
+                return False
+            # 如果需要，这里可以保留 FromTo 对象的构建或日志记录，但最终返回 True
+            # v = r[0]
+            # FromTo(from_=v["from"], to_=v["to"])
+            return True
+        except Exception as e:
+            self.logger.error(f"重命名文件时发生错误: {e}")
+            return False
 
     async def copy(self, *file_paths: str):
         """将`file_paths[:-1]`复制到`file_paths[-1]`"""

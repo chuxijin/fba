@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, List, Literal, Optional
 from enum import Enum
 
 from pydantic import ConfigDict, Field, field_validator
@@ -74,6 +74,7 @@ class ExclusionRuleDefinition(SchemaBase):
 class RenameRuleDefinition(SchemaBase):
     """重命名规则"""
     
+    enable: bool = Field(True, description="是否启用")
     match_regex: str = Field(..., description="匹配正则")
     replace_string: str = Field(..., description="替换字符串")
     target_scope: MatchTarget = Field(MatchTarget.NAME, description="目标范围")
@@ -206,6 +207,24 @@ class MkdirParam(SchemaBase):
     file_name: str | None = Field(None, description="文件夹名称")
     return_if_exist: bool = Field(True, description="存在时是否返回")
 
+class RenameParam(SchemaBase):
+    """重命名文件或目录参数"""
+
+    drive_type: DriveType = Field(..., description="网盘类型")
+    file_id: str | None = Field(None, description="文件ID")
+    file_path: str | None = Field(None, description="文件路径")
+    file_name: str | None = Field(None, description="文件名称")
+    parent_id: str | None = Field(None, description="父目录ID")
+    new_path: str | None = Field(None, description="新的文件/目录路径")
+    new_name: str | None = Field(None, description="新的文件/目录名称")
+
+    @field_validator('new_name')
+    @classmethod
+    def validate_new_name(cls, v: str) -> str:
+        """验证新的文件/目录名称"""
+        if not v:
+            raise ValueError("新的文件/目录名称不能为空")
+        return v
 
 class RemoveParam(SchemaBase):
     """删除参数"""
@@ -333,3 +352,34 @@ def get_filepath(
         return os.path.join(filedir, filename)
         
     return None
+
+
+class BatchRenameFileItem(SchemaBase):
+    """批量重命名中的单个文件信息"""
+    file_id: str = Field(..., description="文件或目录的ID")
+    file_path: str = Field(..., description="文件或目录的完整路径")
+    is_folder: bool = Field(False, description="是否为文件夹")
+    file_name: str = Field(..., description="文件或目录名称")
+    parent_id: Optional[str] = Field(None, description="父目录ID")
+
+
+class BatchRenameParam(SchemaBase):
+    """批量重命名参数"""
+
+    drive_type: DriveType = Field(..., description="网盘类型")
+    file_infos: List[BatchRenameFileItem] = Field(..., description="要重命名的文件/目录列表")
+    recursive: bool = Field(False, description="是否递归遍历子项进行重命名")
+    target_scope: Literal["file", "folder", "all"] = Field("all", description="重命名目标范围 (file:仅文件, folder:仅文件夹, all:所有)")
+    rename_rules: Optional[List[RenameRuleDefinition]] = Field(None, description="重命名规则列表")
+    template_id: Optional[int] = Field(None, description="规则模板ID")
+    task_id: Optional[str] = Field(None, description="任务ID，用于SSE进度追踪")
+
+
+class CreateSyncTaskItemParam(SchemaBase):
+    """创建同步任务项参数"""
+
+    task_id: int = Field(..., description="同步任务ID")
+    operation_type: str = Field(..., description="操作类型")
+    src_path: str = Field(..., description="源路径")
+
+

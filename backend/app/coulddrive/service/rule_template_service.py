@@ -402,27 +402,24 @@ def parse_rename_rules(rules_def: Optional[List[RenameRuleDefinition]]) -> Optio
         return None
     
     rules = []
-    for rule_def in rules_def:
-        try:
-            rule = RenameRule(
-                match_regex=rule_def.match_regex,
-                replace_string=rule_def.replace_string,
-                target_scope=MatchTarget(rule_def.target_scope),
-                case_sensitive=rule_def.case_sensitive
+    for rule_definition in rules_def:
+        if rule_definition.enable:
+            rules.append(
+                RenameRule(
+                    match_regex=rule_definition.match_regex,
+                    replace_string=rule_definition.replace_string,
+                    target_scope=MatchTarget(rule_definition.target_scope),
+                    case_sensitive=rule_definition.case_sensitive
+                )
             )
-            rules.append(rule)
-        except (ValueError, AttributeError) as e:
-            # 跳过无效的规则定义
-            continue
-    
-    return rules if rules else None
+    return rules
 
 
 async def parse_rule_templates(
     exclude_template_id: Optional[int], 
     rename_template_id: Optional[int],
     db: AsyncSession
-) -> tuple[Optional[List[ExclusionRuleDefinition]], Optional[List[RenameRuleDefinition]]]:
+) -> tuple[Optional[List[ExclusionRuleDefinition]], Optional[List[RenameRule]]]: # 修正类型注解
     """
     解析规则模板
     
@@ -432,7 +429,7 @@ async def parse_rule_templates(
         db: 数据库会话
         
     Returns:
-        tuple[Optional[List[ExclusionRuleDefinition]], Optional[List[RenameRuleDefinition]]]: 排除规则和重命名规则
+        tuple[Optional[List[ExclusionRuleDefinition]], Optional[List[RenameRule]]]: 排除规则和重命名规则
     """
     import json
     import logging
@@ -476,6 +473,8 @@ async def parse_rule_templates(
                     rename_rules = [
                         RenameRuleDefinition(**rule) for rule in rules_list
                     ]
+                if rename_rules:
+                    rename_rules = parse_rename_rules(rename_rules)
         except Exception as e:
             logger.error(f"解析重命名规则模板失败: {e}")
     

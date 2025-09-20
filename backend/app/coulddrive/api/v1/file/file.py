@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Annotated, List
+from typing import Annotated, Any, Dict, List
 
 from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import StreamingResponse
 
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo, 
@@ -14,15 +15,22 @@ from backend.app.coulddrive.schema.file import (
     RemoveParam,
     ShareParam,
     TransferParam,
-    CancelShareParam
+    CancelShareParam,
+    RenameParam,
+    BatchRenameParam # 导入批量重命名参数
 )
+from backend.app.coulddrive.service.fileoprate_service import FileOperateService # 导入新的服务
 from backend.app.coulddrive.service.yp_service import get_drive_manager
 from backend.common.pagination import DependsPagination, PageData, paging_list_data, _CustomPageParams
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.response.response_code import CustomResponse
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
 
 router = APIRouter()
+
+# 全局服务实例，确保进度数据在同一个实例中
+file_operate_service_instance = None
 
 
 @router.get('/list', summary='获取文件列表', description='获取网盘文件列表，支持缓存加速', response_model=ResponseSchemaModel[PageData[BaseFileInfo]], dependencies=[DependsJwtAuth, DependsPagination])
@@ -111,6 +119,22 @@ async def create_folder(
     return response_base.success(data=folder_info)
 
 
+@router.post(
+    '/rename',
+    summary='重命名文件或文件夹',
+    description='重命名网盘中的文件或文件夹',
+    response_model=ResponseSchemaModel[bool],
+    dependencies=[DependsJwtAuth]
+)
+async def rename_file(
+    x_token: Annotated[str, Header(description="认证令牌")],
+    params: RenameParam
+) -> ResponseSchemaModel[bool]:
+    drive_manager = get_drive_manager()
+    result = await drive_manager.rename_files(x_token, params)
+    return response_base.success(data=result)
+
+
 @router.delete(
     '/remove',
     summary='删除文件或文件夹',
@@ -141,6 +165,103 @@ async def transfer_files(
     drive_manager = get_drive_manager()
     result = await drive_manager.transfer_files(x_token, params)
     return response_base.success(data=result)
+
+
+@router.post(
+    '/batch_rename',
+    summary='批量重命名文件或文件夹',
+    description='对选定的网盘文件或文件夹进行批量重命名，支持递归和规则模板',
+    response_model=ResponseSchemaModel[Dict[str, Any]],
+    dependencies=[DependsJwtAuth]
+)
+async def batch_rename_files(
+    db: CurrentSession,
+    x_token: Annotated[str, Header(description="认证令牌")],
+    params: BatchRenameParam,
+) -> ResponseSchemaModel[Dict[str, Any]]:
+    """批量重命名文件或文件夹"""
+    global file_operate_service_instance
+    if not file_operate_service_instance:
+        file_operate_service_instance = FileOperateService()
+    
+    # 使用前端传递的task_id，如果没有则生成一个
+    import uuid
+    temp_task_id = params.task_id or str(int(str(uuid.uuid4().int)[:8]))
+    
+    # 在开始长时间处理前，先获取账户信息和模板信息，然后释放数据库连接
+    try:
+        # 快速获取账户ID，避免长时间持有数据库连接
+        from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
+        account_id = await drive_account_dao.get_id_by_cookies(db, x_token)
+        if not account_id:
+            return response_base.fail(res=CustomResponse(400, "无法获取网盘账户信息"))
+        account_key = str(account_id)
+        
+        # 如果有模板ID，预先获取模板信息
+        template_data = None
+        if params.template_id:
+            try:
+                from backend.app.coulddrive.crud.crud_rule_template import rule_template_dao
+                template = await rule_template_dao.get(db, params.template_id)
+                if template and template.rule_config:
+                    template_data = template.rule_config
+            except Exception as e:
+                return response_base.fail(res=CustomResponse(400, f"获取重命名模板失败: {str(e)}"))
+        
+        # 初始化进度信息
+        file_operate_service_instance.update_progress(str(temp_task_id), {
+            'type': 'start',
+            'message': '开始批量重命名...',
+            'current_folder': '',
+            'current_file': '',
+            'completed': 0,
+            'total': 0
+        })
+        
+        # 定义进度回调函数
+        async def progress_callback(progress_data):
+            file_operate_service_instance.update_progress(str(temp_task_id), progress_data)
+        
+        # 调用服务层，传递进度回调（不传递数据库连接，避免长时间持有）
+        result = await file_operate_service_instance.batch_rename_files_with_progress(
+            x_token, params, task_id=temp_task_id, db=None, account_key=account_key,
+            progress_callback=progress_callback, template_data=template_data
+        )
+        
+        # 标记任务完成
+        file_operate_service_instance.update_progress(str(temp_task_id), {
+            'type': 'complete',
+            'message': '批量重命名完成',
+            'stats': result
+        })
+        return response_base.success(data=result)
+        
+    except Exception as e:
+        return response_base.fail(res=CustomResponse(500, f"批量重命名失败: {str(e)}"))
+
+
+@router.get(
+    '/batch-rename-progress/{task_id}',
+    summary='获取批量重命名进度',
+    description='通过SSE获取批量重命名实时进度',
+)
+async def get_batch_rename_progress(task_id: str):
+    """获取批量重命名进度 - SSE"""
+    global file_operate_service_instance
+    if not file_operate_service_instance:
+        file_operate_service_instance = FileOperateService()
+    
+    return StreamingResponse(
+        file_operate_service_instance.progress_stream_generator(task_id),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        }
+    )
 
 
 @router.get(
