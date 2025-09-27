@@ -152,3 +152,15 @@ class PrimaryKeyType(StrEnum):
 
     autoincrement = 'autoincrement'
     snowflake = 'snowflake'
+
+
+class ApplicationStatus(StrEnum):
+    """投递状态"""
+
+    not_applied = '未投递'
+    applied = '已投递'
+    written_test = '已笔试'
+    interview = '已面试'
+    rejected = '已挂'
+    passed_interview = '面试通过'
+    not_interested = '暂不投递'
