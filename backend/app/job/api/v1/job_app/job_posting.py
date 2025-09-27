@@ -21,42 +21,47 @@ router = APIRouter()
 @router.post("/job_posting", summary="创建招聘信息", response_model=ResponseSchemaModel[JobPostingSchema], dependencies=[DependsJwtAuth, Depends(superuser_verify)])
 async def create_job_posting(
     obj_in: CreateJobPosting,
+    db: CurrentSession,
     request: Request,
 ) -> ResponseSchemaModel[JobPostingSchema]:
-    job_posting = await job_posting_service.create(request, obj_in, request.user.id)
-    return await response_base.success(data=job_posting)
+    job_posting = await job_posting_service.create(db, obj_in, request.user.id)
+    return response_base.success(data=job_posting)
 
 
 @router.delete("/job_posting/{job_posting_id}", summary="删除招聘信息", response_model=ResponseSchemaModel[int], dependencies=[DependsJwtAuth, Depends(superuser_verify)])
 async def delete_job_posting(
     job_posting_id: int,
+    db: CurrentSession,
     request: Request,
 ) -> ResponseSchemaModel[int]:
-    deleted_count = await job_posting_service.delete(request, job_posting_id)
-    return await response_base.success(data=deleted_count)
+    deleted_count = await job_posting_service.delete(db, job_posting_id)
+    return response_base.success(data=deleted_count)
 
 
 @router.put("/job_posting/{job_posting_id}", summary="更新招聘信息", response_model=ResponseSchemaModel[JobPostingSchema], dependencies=[DependsJwtAuth, Depends(superuser_verify)])
 async def update_job_posting(
     job_posting_id: int,
     obj_in: UpdateJobPosting,
+    db: CurrentSession,
     request: Request,
 ) -> ResponseSchemaModel[JobPostingSchema]:
-    updated_job_posting = await job_posting_service.update(request, obj_in, job_posting_id, request.user.id)
-    return await response_base.success(data=updated_job_posting)
+    updated_job_posting = await job_posting_service.update(db, obj_in, job_posting_id, request.user.id)
+    return response_base.success(data=updated_job_posting)
 
 
 @router.get("/job_posting/{job_posting_id}", summary="获取招聘信息详情", response_model=ResponseSchemaModel[JobPostingSchema], dependencies=[DependsJwtAuth])
 async def get_job_posting_detail(
     job_posting_id: int,
+    db: CurrentSession,
     request: Request,
 ) -> ResponseSchemaModel[JobPostingSchema]:
-    job_posting = await job_posting_service.get(request, job_posting_id)
-    return await response_base.success(data=job_posting)
+    job_posting = await job_posting_service.get(db, job_posting_id)
+    return response_base.success(data=job_posting)
 
 
 @router.get("/job_posting", summary="获取招聘信息列表", response_model=ResponseSchemaModel[PageData[JobPostingSchema]], dependencies=[DependsJwtAuth, DependsPagination])
 async def get_job_posting_list(
+    db: CurrentSession,
     request: Request,
     page_params: _CustomPageParams = DependsPagination,
     company_name: Optional[str] = Query(None, description="公司名称"),
@@ -65,6 +70,6 @@ async def get_job_posting_list(
     recruitment_type: Optional[str] = Query(None, description="招聘类型"),
 ) -> ResponseSchemaModel[PageData[JobPostingSchema]]:
     job_postings = await job_posting_service.get_list(
-        request, company_name, position, industry, recruitment_type, page_params
+        db, company_name, position, industry, recruitment_type, page_params
     )
-    return await response_base.success(data=job_postings)
+    return response_base.success(data=job_postings)

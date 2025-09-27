@@ -41,10 +41,21 @@ class CRUDJobPosting(CRUDPlus[JobPosting]):
         return await self.get_multi(db)
 
     async def create(self, db: AsyncSession, obj_in: CreateJobPosting, created_by: int) -> JobPosting:
-        return await self.create_with_user(db, obj_in, created_by)
+        db_obj = self.model(**obj_in.model_dump(), created_by=created_by)
+        db.add(db_obj)
+        await db.flush()
+        await db.refresh(db_obj)
+        return db_obj
 
     async def update(self, db: AsyncSession, obj_in: UpdateJobPosting, _id: int, updated_by: int) -> JobPosting | None:
-        return await self.update_with_user(db, obj_in, _id, updated_by)
+        db_obj = await self.get(db, _id)
+        if db_obj:
+            for field, value in obj_in.model_dump(exclude_unset=True).items():
+                setattr(db_obj, field, value)
+            db_obj.updated_by = updated_by
+            await db.flush()
+            await db.refresh(db_obj)
+        return db_obj
 
     async def delete(self, db: AsyncSession, _id: int) -> int | None:
         return await self.remove(db, _id)

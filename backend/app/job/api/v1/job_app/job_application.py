@@ -24,19 +24,21 @@ router = APIRouter()
 )
 async def create_job_application(
     obj_in: CreateJobApplication,
+    db: CurrentSession,
     request: Request,
 ) -> ResponseSchemaModel[JobApplicationSchema]:
-    job_application = await job_application_service.create(request, obj_in, request.user.id)
-    return await response_base.success(data=job_application)
+    job_application = await job_application_service.create(db, obj_in, request.user.id)
+    return response_base.success(data=job_application)
 
 
 @router.delete("/job_application/{job_application_id}", summary="删除投递记录", response_model=ResponseSchemaModel[int], dependencies=[DependsJwtAuth])
 async def delete_job_application(
     job_application_id: int,
+    db: CurrentSession,
     request: Request,
 ) -> ResponseSchemaModel[int]:
-    deleted_count = await job_application_service.delete(request, job_application_id, request.user.id)
-    return await response_base.success(data=deleted_count)
+    deleted_count = await job_application_service.delete(db, job_application_id, request.user.id)
+    return response_base.success(data=deleted_count)
 
 
 @router.put(
@@ -45,12 +47,13 @@ async def delete_job_application(
 async def update_job_application(
     job_application_id: int,
     obj_in: UpdateJobApplication,
+    db: CurrentSession,
     request: Request,
 ) -> ResponseSchemaModel[JobApplicationSchema]:
     updated_job_application = await job_application_service.update(
-        request, obj_in, job_application_id, request.user.id
+        db, obj_in, job_application_id, request.user.id
     )
-    return await response_base.success(data=updated_job_application)
+    return response_base.success(data=updated_job_application)
 
 
 @router.get(
@@ -58,22 +61,24 @@ async def update_job_application(
 )
 async def get_job_application_detail(
     job_application_id: int,
+    db: CurrentSession,
     request: Request,
 ) -> ResponseSchemaModel[JobApplicationSchema]:
-    job_application = await job_application_service.get(request, job_application_id, request.user.id)
-    return await response_base.success(data=job_application)
+    job_application = await job_application_service.get(db, job_application_id, request.user.id)
+    return response_base.success(data=job_application)
 
 
 @router.get(
     "/job_application", summary="获取投递记录列表", response_model=ResponseSchemaModel[PageData[JobApplicationSchema]], dependencies=[DependsJwtAuth, DependsPagination]
 )
 async def get_job_application_list(
+    db: CurrentSession,
     request: Request,
     page_params: _CustomPageParams = DependsPagination,
     job_posting_id: Optional[int] = Query(None, description="招聘信息 ID"),
     application_status: Optional[ApplicationStatus] = Query(None, description="投递状态"),
 ) -> ResponseSchemaModel[PageData[JobApplicationSchema]]:
     job_applications = await job_application_service.get_list(
-        request, request.user.id, job_posting_id, application_status, page_params
+        db, request.user.id, job_posting_id, application_status, page_params
     )
-    return await response_base.success(data=job_applications)
+    return response_base.success(data=job_applications)
