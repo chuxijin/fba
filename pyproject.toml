@@ -61,6 +61,7 @@ dependencies = [
     "sse-starlette>=2.1.3",
     "user-agents>=2.2.0",
     "cozepy>=0.1.0",
+    "beautifulsoup4>=4.13.5",
 ]
 
 [dependency-groups]

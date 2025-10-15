@@ -426,8 +426,12 @@ class ResourceService:
         if 'password' in share_data:
             share_data['extract_code'] = share_data.pop('password')
         
-        # 刷新分享信息时，不更新用户手动输入的extract_code字段
-        for field in ['view_count', 'expired_left', 'file_size', 'expired_at', 'path_info', 'expired_type', 'file_only_num']:
+        # 刷新分享信息时，同步核心分享字段与展示字段（不覆盖用户手动维护的提取码）
+        for field in [
+            'title', 'share_id', 'pwd_id', 'url',
+            'audit_status', 'status', 'file_id',
+            'view_count', 'expired_left', 'file_size', 'expired_at', 'path_info', 'expired_type', 'file_only_num'
+        ]:
             if hasattr(resource, field):
                 old_value = getattr(resource, field)
                 new_value = share_data.get(field)

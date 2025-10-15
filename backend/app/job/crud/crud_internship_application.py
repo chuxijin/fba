@@ -7,15 +7,15 @@ from sqlalchemy.orm import noload
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.job.model.job_application import JobApplication
-from backend.app.job.schema.job_application import CreateJobApplication, UpdateJobApplication
+from backend.app.job.model.internship_application import InternshipApplication
+from backend.app.job.schema.internship_application import CreateInternshipApplication, UpdateInternshipApplication
 from backend.common.enums import ApplicationStatus
 
 
-class CRUDJobApplication(CRUDPlus[JobApplication]):
+class CRUDInternshipApplication(CRUDPlus[InternshipApplication]):
     """投递记录数据库操作类"""
 
-    async def get(self, db: AsyncSession, pk: int) -> JobApplication | None:
+    async def get(self, db: AsyncSession, pk: int) -> InternshipApplication | None:
         """
         获取投递记录详情
 
@@ -25,7 +25,7 @@ class CRUDJobApplication(CRUDPlus[JobApplication]):
         """
         return await self.select_model(db, pk)
 
-    async def get_by_job_posting_id(self, db: AsyncSession, job_posting_id: int) -> JobApplication | None:
+    async def get_by_job_posting_id(self, db: AsyncSession, job_posting_id: int) -> InternshipApplication | None:
         """
         通过招聘信息 ID 获取投递记录
 
@@ -63,7 +63,7 @@ class CRUDJobApplication(CRUDPlus[JobApplication]):
             **filters,
         )
 
-    async def get_all(self, db: AsyncSession) -> Sequence[JobApplication]:
+    async def get_all(self, db: AsyncSession) -> Sequence[InternshipApplication]:
         """
         获取所有投递记录
 
@@ -72,7 +72,7 @@ class CRUDJobApplication(CRUDPlus[JobApplication]):
         """
         return await self.select_models(db)
 
-    async def create(self, db: AsyncSession, obj: CreateJobApplication) -> None:
+    async def create(self, db: AsyncSession, obj: CreateInternshipApplication) -> None:
         """
         创建投递记录
 
@@ -82,7 +82,7 @@ class CRUDJobApplication(CRUDPlus[JobApplication]):
         """
         await self.create_model(db, obj)
 
-    async def update(self, db: AsyncSession, pk: int, obj: UpdateJobApplication) -> int:
+    async def update(self, db: AsyncSession, pk: int, obj: UpdateInternshipApplication) -> int:
         """
         更新投递记录
 
@@ -104,4 +104,6 @@ class CRUDJobApplication(CRUDPlus[JobApplication]):
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=job_application_ids)
 
 
-job_application_dao: CRUDJobApplication = CRUDJobApplication(JobApplication)
+internship_application_dao: CRUDInternshipApplication = CRUDInternshipApplication(InternshipApplication)
+
+

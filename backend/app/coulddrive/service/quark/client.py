@@ -22,6 +22,7 @@ from backend.app.coulddrive.schema.enum import RecursionSpeed
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     BaseShareInfo,
+    CancelShareParam,
     ListFilesParam,
     ListShareFilesParam,
     ListShareInfoParam,

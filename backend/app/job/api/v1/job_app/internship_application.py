@@ -4,13 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request
 
-from backend.app.job.schema.job_application import (
-    CreateJobApplication,
-    DeleteJobApplicationParam,
-    JobApplicationSchema,
-    UpdateJobApplication,
+from backend.app.job.schema.internship_application import (
+    CreateInternshipApplication,
+    DeleteInternshipApplicationParam,
+    InternshipApplicationSchema,
+    UpdateInternshipApplication,
 )
-from backend.app.job.service.job_application_service import job_application_service
+from backend.app.job.service.internship_application_service import internship_application_service
 from backend.common.enums import ApplicationStatus
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -23,17 +23,17 @@ router = APIRouter()
 
 
 @router.get('/all', summary='获取所有投递记录', dependencies=[DependsJwtAuth])
-async def get_all_job_applications() -> ResponseSchemaModel[list[JobApplicationSchema]]:
-    data = await job_application_service.get_all()
+async def get_all_internship_applications() -> ResponseSchemaModel[list[InternshipApplicationSchema]]:
+    data = await internship_application_service.get_all()
     return response_base.success(data=data)
 
 
 @router.get('/{pk}', summary='获取投递记录详情', dependencies=[DependsJwtAuth])
-async def get_job_application(
+async def get_internship_application(
     pk: Annotated[int, Path(description='投递记录 ID')],
     request: Request,
-) -> ResponseSchemaModel[JobApplicationSchema]:
-    data = await job_application_service.get(pk=pk, user_id=request.user.id)
+) -> ResponseSchemaModel[InternshipApplicationSchema]:
+    data = await internship_application_service.get(pk=pk, user_id=request.user.id)
     return response_base.success(data=data)
 
 
@@ -45,13 +45,13 @@ async def get_job_application(
         DependsPagination,
     ],
 )
-async def get_job_applications_paged(
+async def get_internship_applications_paged(
     db: CurrentSession,
     request: Request,
     job_posting_id: Annotated[int | None, Query(description='招聘信息 ID')] = None,
     application_status: Annotated[ApplicationStatus | None, Query(description='投递状态')] = None,
-) -> ResponseSchemaModel[PageData[JobApplicationSchema]]:
-    job_application_select = await job_application_service.get_select(
+        ) -> ResponseSchemaModel[PageData[InternshipApplicationSchema]]:
+    job_application_select = await internship_application_service.get_select(
         user_id=request.user.id,
         job_posting_id=job_posting_id,
         application_status=application_status
@@ -68,8 +68,8 @@ async def get_job_applications_paged(
         DependsRBAC,
     ],
 )
-async def create_job_application(obj: CreateJobApplication, request: Request) -> ResponseModel:
-    await job_application_service.create(obj=obj, user_id=request.user.id)
+async def create_internship_application(obj: CreateInternshipApplication, request: Request) -> ResponseModel:
+    await internship_application_service.create(obj=obj, user_id=request.user.id)
     return response_base.success()
 
 
@@ -81,12 +81,12 @@ async def create_job_application(obj: CreateJobApplication, request: Request) ->
         DependsRBAC,
     ],
 )
-async def update_job_application(
+async def update_internship_application(
     pk: Annotated[int, Path(description='投递记录 ID')], 
-    obj: UpdateJobApplication, 
+    obj: UpdateInternshipApplication, 
     request: Request
 ) -> ResponseModel:
-    count = await job_application_service.update(pk=pk, obj=obj, user_id=request.user.id)
+    count = await internship_application_service.update(pk=pk, obj=obj, user_id=request.user.id)
     if count > 0:
         return response_base.success()
     return response_base.fail()
@@ -100,8 +100,8 @@ async def update_job_application(
         DependsRBAC,
     ],
 )
-async def delete_job_applications(obj: DeleteJobApplicationParam, request: Request) -> ResponseModel:
-    count = await job_application_service.delete(obj=obj, user_id=request.user.id)
+async def delete_internship_applications(obj: DeleteInternshipApplicationParam, request: Request) -> ResponseModel:
+    count = await internship_application_service.delete(obj=obj, user_id=request.user.id)
     if count > 0:
         return response_base.success()
     return response_base.fail()

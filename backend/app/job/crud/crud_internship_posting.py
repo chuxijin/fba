@@ -7,16 +7,16 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select, exists, select as sa_select
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.job.model.job_posting import JobPosting
-from backend.app.job.model.job_application import JobApplication
-from backend.app.job.schema.job_posting import CreateJobPosting, UpdateJobPosting
+from backend.app.job.model.internship_posting import InternshipPosting
+from backend.app.job.model.internship_application import InternshipApplication
+from backend.app.job.schema.internship_posting import CreateInternshipPosting, UpdateInternshipPosting
 from backend.common.enums import ApplicationStatus
 
 
-class CRUDJobPosting(CRUDPlus[JobPosting]):
-    """招聘信息数据库操作类"""
+class CRUDJobPosting(CRUDPlus[InternshipPosting]):
+    """实习信息数据库操作类"""
 
-    async def get(self, db: AsyncSession, pk: int) -> JobPosting | None:
+    async def get(self, db: AsyncSession, pk: int) -> InternshipPosting | None:
         """
         获取招聘信息详情
 
@@ -26,7 +26,7 @@ class CRUDJobPosting(CRUDPlus[JobPosting]):
         """
         return await self.select_model(db, pk)
 
-    async def get_by_company_name(self, db: AsyncSession, company_name: str) -> JobPosting | None:
+    async def get_by_company_name(self, db: AsyncSession, company_name: str) -> InternshipPosting | None:
         """
         通过公司名称获取招聘信息
 
@@ -86,16 +86,16 @@ class CRUDJobPosting(CRUDPlus[JobPosting]):
         )
 
         if application_status is not None and user_id is not None:
-            subq = sa_select(JobApplication.id).where(
-                JobApplication.job_posting_id == self.model.id,
-                JobApplication.created_by == user_id,
-                JobApplication.application_status == application_status,
+            subq = sa_select(InternshipApplication.id).where(
+                InternshipApplication.job_posting_id == self.model.id,
+                InternshipApplication.created_by == user_id,
+                InternshipApplication.application_status == application_status,
             ).limit(1)
             stmt = stmt.where(exists(subq))
 
         return stmt
 
-    async def get_all(self, db: AsyncSession) -> Sequence[JobPosting]:
+    async def get_all(self, db: AsyncSession) -> Sequence[InternshipPosting]:
         """
         获取所有招聘信息
 
@@ -104,7 +104,7 @@ class CRUDJobPosting(CRUDPlus[JobPosting]):
         """
         return await self.select_models(db)
 
-    async def create(self, db: AsyncSession, obj: CreateJobPosting, created_by: int) -> None:
+    async def create(self, db: AsyncSession, obj: CreateInternshipPosting, created_by: int) -> None:
         """
         创建招聘信息
 
@@ -114,10 +114,10 @@ class CRUDJobPosting(CRUDPlus[JobPosting]):
         :return:
         """
         data = obj.model_dump()
-        new_obj = JobPosting(created_by=created_by, **data)
+        new_obj = InternshipPosting(created_by=created_by, **data)
         db.add(new_obj)
 
-    async def update(self, db: AsyncSession, pk: int, obj: UpdateJobPosting) -> int:
+    async def update(self, db: AsyncSession, pk: int, obj: UpdateInternshipPosting) -> int:
         """
         更新招聘信息
 
@@ -139,4 +139,4 @@ class CRUDJobPosting(CRUDPlus[JobPosting]):
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=job_posting_ids)
 
 
-job_posting_dao: CRUDJobPosting = CRUDJobPosting(JobPosting)
+internship_posting_dao: CRUDJobPosting = CRUDJobPosting(InternshipPosting)

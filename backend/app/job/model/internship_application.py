@@ -11,15 +11,16 @@ from backend.common.enums import ApplicationStatus
 from backend.common.model import Base, UserMixin, id_key
 
 if TYPE_CHECKING:
-    from backend.app.job.model.job_posting import JobPosting
+    from backend.app.job.model.internship_posting import InternshipPosting
 
 
-class JobApplication(Base, UserMixin):
-    """投递记录表"""
-    __tablename__ = "job_application"
+class InternshipApplication(Base, UserMixin):
+    """实习投递记录表"""
+    __tablename__ = "internship_application"
 
     id: Mapped[id_key] = mapped_column(init=False)
-    job_posting_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("job_posting.id"), comment="招聘信息 ID")
+    internship_posting_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("internship_posting.id"), comment="实习信息 ID")
     application_status: Mapped[ApplicationStatus] = mapped_column(String(50), comment="投递状态")
 
-    job_posting: Mapped[JobPosting] = relationship(init=False, back_populates="job_applications")
+    internship_posting: Mapped[InternshipPosting] = relationship(init=False, back_populates="internship_applications")
+

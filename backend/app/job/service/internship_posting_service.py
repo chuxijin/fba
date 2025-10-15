@@ -4,9 +4,9 @@ from typing import Sequence
 
 from sqlalchemy.sql import Select
 
-from backend.app.job.crud.crud_job_posting import job_posting_dao
-from backend.app.job.model.job_posting import JobPosting
-from backend.app.job.schema.job_posting import CreateJobPosting, UpdateJobPosting, DeleteJobPostingParam
+from backend.app.job.crud.crud_internship_posting import internship_posting_dao
+from backend.app.job.model.internship_posting import InternshipPosting
+from backend.app.job.schema.internship_posting import CreateInternshipPosting, UpdateInternshipPosting, DeleteInternshipPostingParam
 from backend.common.exception import errors
 from backend.database.db import async_db_session
 from backend.common.enums import ApplicationStatus
@@ -16,7 +16,7 @@ class JobPostingService:
     """招聘信息服务类"""
 
     @staticmethod
-    async def get(*, pk: int) -> JobPosting:
+    async def get(*, pk: int) -> InternshipPosting:
         """
         获取招聘信息详情
 
@@ -24,16 +24,16 @@ class JobPostingService:
         :return:
         """
         async with async_db_session() as db:
-            job_posting = await job_posting_dao.get(db, pk)
+            job_posting = await internship_posting_dao.get(db, pk)
             if not job_posting:
                 raise errors.NotFoundError(msg='招聘信息不存在')
             return job_posting
 
     @staticmethod
-    async def get_all() -> Sequence[JobPosting]:
+    async def get_all() -> Sequence[InternshipPosting]:
         """获取所有招聘信息"""
         async with async_db_session() as db:
-            job_postings = await job_posting_dao.get_all(db)
+            job_postings = await internship_posting_dao.get_all(db)
             return job_postings
 
     @staticmethod
@@ -58,7 +58,7 @@ class JobPostingService:
         :param recruitment_type: 招聘类型
         :return:
         """
-        return await job_posting_dao.get_list(
+        return await internship_posting_dao.get_list(
             company_name=company_name,
             position=position,
             industry=industry,
@@ -71,7 +71,7 @@ class JobPostingService:
         )
 
     @staticmethod
-    async def create(*, obj: CreateJobPosting, created_by: int) -> None:
+    async def create(*, obj: CreateInternshipPosting, created_by: int) -> None:
         """
         创建招聘信息
 
@@ -80,10 +80,10 @@ class JobPostingService:
         :return:
         """
         async with async_db_session.begin() as db:
-            await job_posting_dao.create(db, obj, created_by)
+            await internship_posting_dao.create(db, obj, created_by)
 
     @staticmethod
-    async def update(*, pk: int, obj: UpdateJobPosting) -> int:
+    async def update(*, pk: int, obj: UpdateInternshipPosting) -> int:
         """
         更新招聘信息
 
@@ -92,14 +92,14 @@ class JobPostingService:
         :return:
         """
         async with async_db_session.begin() as db:
-            job_posting = await job_posting_dao.get(db, pk)
+            job_posting = await internship_posting_dao.get(db, pk)
             if not job_posting:
                 raise errors.NotFoundError(msg='招聘信息不存在')
-            count = await job_posting_dao.update(db, pk, obj)
+            count = await internship_posting_dao.update(db, pk, obj)
             return count
 
     @staticmethod
-    async def delete(*, obj: DeleteJobPostingParam) -> int:
+    async def delete(*, obj: DeleteInternshipPostingParam) -> int:
         """
         批量删除招聘信息
 
@@ -107,8 +107,8 @@ class JobPostingService:
         :return:
         """
         async with async_db_session.begin() as db:
-            count = await job_posting_dao.delete(db, obj.pks)
+            count = await internship_posting_dao.delete(db, obj.pks)
             return count
 
 
-job_posting_service = JobPostingService()
+internship_posting_service = JobPostingService()

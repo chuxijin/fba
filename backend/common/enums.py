@@ -164,3 +164,10 @@ class ApplicationStatus(StrEnum):
     rejected = '已挂'
     passed_interview = '面试通过'
     not_interested = '暂不投递'
+
+
+class JobType(StrEnum):
+    """招聘类型"""
+
+    job = '校招'
+    internship = '实习'

@@ -226,10 +226,12 @@ class FileSyncService:
             if sync_result.get("success", False):
                 # 在同步成功后，如果存在重命名规则，则执行重命名操作
                 if rename_rules:
-                    # self.logger.info(f"[任务{task_id}] 开始执行重命名操作，重命名规则: {rename_rules}") # 添加调试日志
+                    self.logger.info(f"[任务{task_id}] 开始执行重命名操作，重命名规则数量: {len(rename_rules)}")
                     # 收集所有转存成功的文件信息
-                    transferred_files_info = stats_from_sync.get("transferred_files_info", []) # 修正这里
-                    # self.logger.info(f"[任务{task_id}] 成功转存的文件信息 (来自 sync_result): {transferred_files_info}") # 修改调试日志
+                    transferred_files_info = stats_from_sync.get("transferred_files_info", [])
+                    self.logger.info(f"[任务{task_id}] 成功转存的文件信息数量: {len(transferred_files_info)}")
+                    if transferred_files_info:
+                        self.logger.info(f"[任务{task_id}] 成功转存的文件列表: {[f.get('file_name', '') for f in transferred_files_info]}")
                     
                     # 为重命名操作传递stats_from_sync，以便收集重命名任务项
                     await self.rename_files(
@@ -389,7 +391,6 @@ class FileSyncService:
         rename_rules: Optional[List[RenameRule]],
     ) -> Optional[Dict[str, Any]]:
         """在转存文件信息上应用重命名规则，返回带有新名称的文件信息，如果未重命名则返回None"""
-        # self.logger.debug(f"[任务{file_info.get('task_id')}][_apply_rename_rules] 应用重命名规则到文件: {file_info.get('file_name', '')}, 规则: {rename_rules}") # 添加调试日志
         if not rename_rules:
             return None
 
@@ -400,13 +401,11 @@ class FileSyncService:
         new_path = original_path
 
         temp_item = type('obj', (object,), {'file_name': original_name, 'file_path': original_path})()
-        # self.logger.debug(f"[任务{file_info.get('task_id')}] [_apply_rename_rules] 原始名称: {original_name}, 原始路径: {original_path}") # 添加调试日志
 
-        for rule in rename_rules:
-            # self.logger.debug(f"[任务{file_info.get('task_id')}] [_apply_rename_rules] 尝试规则: {rule.match_regex} -> {rule.replace_string}, 目标: {rule.target_scope}") # 添加调试日志
+
+        for i, rule in enumerate(rename_rules):
             # 尝试生成新路径
             generated_value = rule.generate_new_path(temp_item)
-            # self.logger.debug(f"[任务{file_info.get('task_id')}] [_apply_rename_rules] generated_value: {generated_value}") # 添加调试日志
             
             if generated_value:
                 if rule.target_scope == MatchTarget.NAME:
@@ -420,11 +419,10 @@ class FileSyncService:
                     new_name = new_path.rsplit('/', 1)[-1] if '/' in new_path else new_path
                 
                 # 规则被应用，可以跳出循环（或者继续应用其他规则，这里选择跳出）
-                # self.logger.debug(f"[任务{file_info.get('task_id')}] [_apply_rename_rules] 规则应用成功，新名称: {new_name}, 新路径: {new_path}") # 添加调试日志
                 break
 
         if new_name != original_name or new_path != original_path:
-            # self.logger.debug(f"[任务{file_info.get('task_id')}] [_apply_rename_rules] 文件需要重命名: '{original_name}' -> '{new_name}'") # 添加调试日志
+            self.logger.info(f"[任务{file_info.get('task_id', 'unknown')}] 文件需要重命名: '{original_name}' -> '{new_name}'")
             # 创建一个新的字典，包含所有原始信息和更新后的名称/路径
             renamed_file_info = dict(file_info)
             renamed_file_info["file_name"] = new_name
@@ -433,7 +431,7 @@ class FileSyncService:
             renamed_file_info["new_full_path"] = new_path # 存储完整新路径用于rename参数
             return renamed_file_info
         
-        # self.logger.debug(f"[任务{file_info.get('task_id')}] [_apply_rename_rules] 文件无需重命名") # 添加调试日志
+        self.logger.info(f"[任务{file_info.get('task_id', 'unknown')}] 文件无需重命名")
         return None
     
     async def rename_file_item(
@@ -448,7 +446,6 @@ class FileSyncService:
         **kwargs
     ) -> bool:
         """执行单个文件的重命名操作并记录任务项"""
-        # self.logger.debug(f"[任务{task_id}][rename_file_item] 开始处理文件重命名: {file_info.get('file_name', '')}") # 添加调试日志
         original_name = file_info.get("original_name", file_info.get("file_name", "")) # 获取原始名称
         new_name = file_info.get("file_name", original_name) # 获取新名称
         original_path = file_info.get("target_path", "")
@@ -456,7 +453,6 @@ class FileSyncService:
         file_id = file_info.get("file_id", "")
 
         if not new_name or new_name == original_name: # 如果没有新名称或者名称没有改变，则直接返回成功
-            # self.logger.debug(f"[任务{task_id}][rename_file_item] 无需重命名，名称未改变或为空") # 添加调试日志
             return True
             
         try:
@@ -469,12 +465,10 @@ class FileSyncService:
                 new_path=new_full_path, # 新增此行，补充新的完整路径
                 new_name=new_name
             )
-            # self.logger.debug(f"[任务{task_id}][rename_file_item] 构建重命名参数: {rename_params.model_dump_json()}") # 添加调试日志
             
-            self.logger.info(f"[任务{task_id}] 执行文件重命名: 从 '{original_name}' 到 '{new_name}'")
+            
             # 调用 drive_manager 的重命名接口
             renamed_file_info = await self.drive_manager.rename_files(x_token, rename_params, **kwargs) # 移除 db=db
-            # self.logger.debug(f"[任务{task_id}][rename_file_item] drive_manager.rename_files 结果: {renamed_file_info}") # 添加调试日志
             
             if renamed_file_info:
                 self.logger.info(f"[任务{task_id}] 文件重命名成功: '{original_name}' -> '{new_name}'")
@@ -560,24 +554,23 @@ class FileSyncService:
         # self.logger.info(f"[任务{task_id}] [perform_sync] stats初始化后 transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
         
         try:
+            
             # 根据同步方式选择处理逻辑
             if sync_method == "overwrite":
-                # self.logger.info(f"[任务{task_id or 'unknown'}] 采用覆盖同步模式")
-                # self.logger.info(f"[任务{task_id}] [perform_sync] 调用 _handle_overwrite_sync 之前 transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
+                self.logger.info(f"[任务{task_id}] 采用覆盖同步模式")
                 await self._handle_overwrite_sync(
                     x_token, drive_type, source_definition, target_definition,
                     recursion_speed, item_filter, stats, task_id, db, account_key=account_key
                 )
-                # self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步逻辑执行完成。")
+                self.logger.info(f"[任务{task_id}] 覆盖同步逻辑执行完成")
             else:
-                # self.logger.info(f"[任务{task_id or 'unknown'}] 采用增量/完全同步模式")
-                # self.logger.info(f"[任务{task_id}] [perform_sync] 调用 sync_with_have 之前 transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
+                self.logger.info(f"[任务{task_id}] 采用增量/完全同步模式")
                 await self.sync_with_have(
                     x_token, drive_type, source_definition, target_definition,
                     source_definition.file_path, target_definition.file_path, target_definition.file_id,
                     sync_method, recursion_speed, item_filter, 0, max_depth, stats, task_id, db, account_key=account_key
                 )
-                # self.logger.info(f"[任务{task_id or 'unknown'}] 增量/完全同步逻辑执行完成。")
+                self.logger.info(f"[任务{task_id}] 增量/完全同步逻辑执行完成")
             
         except Exception as e:
             error_msg = f"同步失败: {str(e)}"
@@ -592,7 +585,7 @@ class FileSyncService:
         # 判断同步是否成功 - 有错误就是失败
         success = len(stats["errors"]) == 0
         
-        # self.logger.info(f"[任务{task_id}] [perform_sync] 返回前 final transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
+        
         return {
             "success": success,
             "stats": stats,
@@ -667,6 +660,7 @@ class FileSyncService:
                 file_size = target_file_info.get("file_size", 0)
                 unmatched_target_files_by_size[file_size].append((target_filename, target_file_info))
 
+
         # 处理源目录中的每个文件/目录
         for source_filename, source_file_info in source_file_map.items():
             source_is_folder = source_filename.endswith('/')
@@ -678,12 +672,13 @@ class FileSyncService:
                 dir_name = source_filename.rstrip('/')
                 source_sub_path = source_path.rstrip('/') + '/' + dir_name + '/'
                 target_sub_path = target_path.rstrip('/') + '/' + dir_name + '/'
+                
 
                 # 目标目录没有这个目录
                 if source_filename not in target_file_map:
                     await self.sync_without_have(
                         x_token, drive_type, source_definition, target_definition,
-                        source_sub_path, target_sub_path,
+                        source_sub_path, target_sub_path, target_id,  # 传递当前目录的target_id作为父目录ID
                         sync_method, recursion_speed, item_filter, current_depth + 1, max_depth, stats, task_id, db, account_key=account_key
                     )
                 # 目标目录有这个目录，继续递归
@@ -704,6 +699,7 @@ class FileSyncService:
 
             else: # 是文件
                 stats["files_processed"] += 1
+                
 
                 target_file_info_in_map = target_file_map.get(source_filename)
                 
@@ -728,6 +724,7 @@ class FileSyncService:
                             **{k: v for k, v in source_file_info.items() if k not in ["file_size", "file_id"]}
                         }
                         files_to_transfer.append(transfer_file_info)
+                        
                         processed_target_signatures.add((source_filename, target_size_by_name)) # 旧目标文件被"处理"了 (即将被覆盖)
                         item_handled = True
 
@@ -770,18 +767,18 @@ class FileSyncService:
                         **{k: v for k, v in source_file_info.items() if k not in ["file_size", "file_id"]}
                     }
                     files_to_transfer.append(transfer_file_info)
+                    
 
         # 批量转存当前目录下需要同步的文件
         if files_to_transfer:
             # self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件")
             transfer_start_time = time.time()
-            # self.logger.info(f"[任务{task_id}] [sync_with_have] 调用 transfer_files 之前 transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
             transfer_result = await self.transfer_files(
                 x_token, drive_type, source_definition, target_definition,
                 files_to_transfer,
-                recursion_speed, stats, task_id, db, account_key=account_key
+                recursion_speed, stats, task_id, db, account_key=account_key,
+                current_target_id=target_id
             )
-            # self.logger.info(f"[任务{task_id}] [sync_with_have] 调用 transfer_files 之后 transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
             # self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存完成，成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒")
             
             # 失败则跳过当前目录后续处理
@@ -827,6 +824,7 @@ class FileSyncService:
         target_definition: DiskTargetDefinition,
         source_path: str,
         target_path: str,
+        target_id: Optional[str],
         sync_method: str,
         recursion_speed: RecursionSpeed,
         item_filter: Optional[ItemFilter],
@@ -856,14 +854,56 @@ class FileSyncService:
         # 创建目标目录
         dir_name = target_path.rstrip('/').split('/')[-1]
         create_dir_start_time = time.time()
+        
         created_dir_info = await self.create_directory(
-            x_token, drive_type, target_definition, dir_name, task_id, db, account_key=account_key
+            x_token, drive_type, target_definition, dir_name, task_id, db, account_key=account_key,
+            parent_id=target_id or target_definition.file_id  # 如果target_id为None，使用target_definition.file_id
         )
+        
+        # 如果创建失败，尝试查找已存在的目录
         if not created_dir_info:
-            error_msg = f"创建目录失败: {target_path}"
-            self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
-            stats["errors"].append(error_msg)
-            return
+            self.logger.warning(f"[任务{task_id}] 创建目录失败，尝试查找已存在的目录: {dir_name}")
+            
+            # 尝试在父目录中查找已存在的同名目录
+            try:
+                parent_id_for_search = target_id or target_definition.file_id
+                existing_files = await self.list_dir(
+                    target_definition.file_path, False, None, False,
+                    x_token, drive_type, target_definition, parent_id_for_search,
+                    task_id, db, account_key=account_key
+                )
+                
+                # 查找同名目录
+                dir_name_with_slash = dir_name + '/'
+                if dir_name_with_slash in existing_files:
+                    existing_dir_info = existing_files[dir_name_with_slash]
+                    if existing_dir_info.get("is_folder", False):
+                        # 构造已存在目录的信息
+                        from backend.app.coulddrive.schema.file import BaseFileInfo
+                        created_dir_info = BaseFileInfo(
+                            file_id=existing_dir_info.get("file_id"),
+                            file_name=dir_name,
+                            file_path=target_path,
+                            is_folder=True,
+                            file_size=0
+                        )
+                        self.logger.info(f"[任务{task_id}] 找到已存在的目录: {dir_name}, file_id: {created_dir_info.file_id}")
+                    else:
+                        error_msg = f"同名文件已存在，无法创建目录: {target_path}"
+                        self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
+                        stats["errors"].append(error_msg)
+                        return
+                else:
+                    error_msg = f"创建目录失败且未找到已存在目录: {target_path}"
+                    self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
+                    stats["errors"].append(error_msg)
+                    return
+                    
+            except Exception as e:
+                error_msg = f"查找已存在目录时发生错误: {target_path}, 错误: {str(e)}"
+                self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
+                stats["errors"].append(error_msg)
+                return
         
         stats["folder_created"] += 1
         
@@ -896,6 +936,7 @@ class FileSyncService:
         # 收集当前目录下的所有文件，用于批量转存
         files_to_transfer = []
         
+
         # 处理源目录中的每个文件/目录
         for file_name, file_info in source_file_map.items():
             if file_name.endswith('/'):
@@ -903,15 +944,18 @@ class FileSyncService:
                 dir_name = file_name.rstrip('/')
                 source_sub_path = source_path.rstrip('/') + '/' + dir_name + '/'
                 target_sub_path = target_path.rstrip('/') + '/' + dir_name + '/'
+                
+                
                 await self.sync_without_have(
                     x_token, drive_type, source_definition, target_definition,
-                    source_sub_path, target_sub_path,
+                    source_sub_path, target_sub_path, created_dir_info.file_id,  # 使用当前创建的目录ID作为父目录ID
                     sync_method, recursion_speed, item_filter, current_depth + 1, max_depth, stats, task_id, db, account_key=account_key
                 )
             else:
                 # 收集文件信息，用于批量转存
                 stats["files_processed"] += 1  # 增加文件处理计数
                 source_file_size = file_info.get("file_size", 0)
+                
                 
                 # 构建完整的文件信息，包含转存所需的所有参数
                 transfer_file_info = {
@@ -928,18 +972,19 @@ class FileSyncService:
                         transfer_file_info[key] = value
                 
                 files_to_transfer.append(transfer_file_info)
+                
         
         # 批量转存当前目录下的所有文件
         if files_to_transfer:
             # self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件")
             transfer_start_time = time.time()
-            # self.logger.info(f"[任务{task_id}] [sync_without_have] 调用 transfer_files 之前 transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
+            
             transfer_result = await self.transfer_files(
                 x_token, drive_type, source_definition, target_definition,
                 files_to_transfer,
-                recursion_speed, stats, task_id, db, account_key=account_key
+                recursion_speed, stats, task_id, db, account_key=account_key,
+                current_target_id=target_definition.file_id  # 使用新创建的目录ID
             )
-            # self.logger.info(f"[任务{task_id}] [sync_without_have] 调用 transfer_files 之后 transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
             # self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存完成，成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒")
             
             if not transfer_result:
@@ -984,6 +1029,7 @@ class FileSyncService:
         start_list_dir_time = time.time()
         
         try:
+            
             if is_src:
                 # 获取源文件列表
                 from backend.app.coulddrive.schema.file import ListShareFilesParam
@@ -1013,7 +1059,7 @@ class FileSyncService:
                 
             # 构建文件映射 {文件名: {file_size: 大小, file_id: ID, 扩展信息}}
             file_map = {}
-            for file in files:
+            for i, file in enumerate(files):
                 # 应用过滤器
                 if item_filter and item_filter.should_exclude(file):
                     self.logger.debug(f"[任务{task_id or 'unknown'}] 文件被过滤器排除: {file.file_name}")
@@ -1054,6 +1100,7 @@ class FileSyncService:
         task_id: Optional[int],
         db: Optional[AsyncSession] = None,
         account_key: Optional[str] = None,
+        current_target_id: Optional[str] = None,
         **kwargs
     ) -> bool:
         """
@@ -1066,10 +1113,11 @@ class FileSyncService:
             self.logger.info(f"[任务{task_id or 'unknown'}] 没有文件需要转存，跳过批量转存。")
             return True
         
+        
         try:
             # 提取文件ID列表
             file_ids = []
-            for file_info in files:
+            for i, file_info in enumerate(files):
                 file_id = file_info.get("file_id", "")
                 if not file_id:
                     error_msg = f"文件 {file_info.get('file_name', '')} 缺少file_id"
@@ -1084,12 +1132,14 @@ class FileSyncService:
                     return False
                 file_ids.append(file_id)
             
+            
             # 构建扩展参数：基础参数 + 文件特定参数
             ext_params = dict(source_definition.ext_params) if source_definition.ext_params else {}
             
+            
             # 为每个文件构建扩展信息，确保每个文件都有各自的扩展参数
             files_ext_info = []
-            for file_info in files:
+            for i, file_info in enumerate(files):
                 file_ext_info = {
                     'file_id': file_info.get('file_id'),
                     'file_ext': {}
@@ -1112,21 +1162,29 @@ class FileSyncService:
                     if key not in ["file_name", "file_size", "source_path", "target_path", "file_id"]:
                         ext_params[key] = value
             
+            
             # 构建转存参数
             from backend.app.coulddrive.schema.file import TransferParam
+            first_file = files[0] if files else {}
+            
+            # 使用当前目标目录ID，如果没有提供则使用根目录ID
+            actual_target_id = current_target_id or target_definition.file_id
+            
             params = TransferParam(
                 drive_type=drive_type,
                 source_type=source_definition.source_type,
                 source_id=source_definition.source_id,
                 source_path=first_file.get("source_path", ""),
                 target_path=first_file.get("target_path", target_definition.file_path),
-                target_id=target_definition.file_id,
+                target_id=actual_target_id,
                 file_ids=file_ids,
                 ext=ext_params
             )
             
+            
             self.logger.info(f"[任务{task_id}] 执行文件转存（已由上层获取账户锁）")
             transfer_result = await self.drive_manager.transfer_files(x_token, params, **kwargs)
+            self.logger.info(f"[任务{task_id}] 转存API调用结果: {transfer_result}")
             # 写后安静期，等待上游平台落盘/索引收敛
             await asyncio.sleep(2)
             
@@ -1136,9 +1194,7 @@ class FileSyncService:
                 
                 # 记录成功的文件
                 for file_info in files:
-                    # stats["transferred_files_info"].append(file_info) # 收集成功转存的文件信息
-                    # self.logger.info(f"[任务{task_id}] [transfer_files] 添加文件后 transferred_files_info: {stats['transferred_files_info']}") # 添加调试日志
-
+                    self.logger.info(f"[任务{task_id}] 转存成功: '{file_info.get('file_name', '')}'")
                     if task_id and stats:
                         task_item = await self.record_task_item(
                             task_id, "copy", file_info.get("source_path", ""), file_info.get("target_path", ""),
@@ -1148,14 +1204,19 @@ class FileSyncService:
 
                 # ========== 解决 file not found 问题 ========== #
                 # 重新获取目标目录的最新文件列表，以获取转存后的正确file_id
+                # 使用实际转存的目标目录ID进行扫描，而不是根目录ID
+                actual_target_id_for_scan = actual_target_id
+                actual_target_path_for_scan = first_file.get("target_path", target_definition.file_path)
+                
                 current_target_file_map = await self.list_dir(
-                    target_definition.file_path, False, None, False,
-                    x_token, drive_type, target_definition, target_definition.file_id,
+                    actual_target_path_for_scan, False, None, False,
+                    x_token, drive_type, target_definition, actual_target_id_for_scan,
                     task_id, db, account_key=account_key # 这里需要 db, account_key
                 )
                 
+                
                 # 更新 stats["transferred_files_info"] 中的文件file_id
-                for original_file_info in files:
+                for i, original_file_info in enumerate(files):
                     original_file_name = original_file_info.get("file_name", "")
                     # 处理目录的情况，list_dir 返回的目录名是带 '/' 的
                     search_name = original_file_name + '/' if original_file_info.get("is_folder") else original_file_name
@@ -1164,13 +1225,12 @@ class FileSyncService:
                         new_file_info_from_target = current_target_file_map[search_name]
                         updated_file_info = dict(original_file_info) # 复制一份，避免修改原始数据
                         updated_file_info["file_id"] = new_file_info_from_target.get("file_id", original_file_info.get("file_id"))
-                        updated_file_info["parent_id"] = target_definition.file_id # 更新 parent_id 为目标目录ID
+                        updated_file_info["parent_id"] = actual_target_id_for_scan # 更新 parent_id 为实际转存的目标目录ID
                         stats["transferred_files_info"].append(updated_file_info) # 收集成功转存并更新ID的文件信息
-                        self.logger.debug(f"[任务{task_id}] [transfer_files] 更新文件ID并添加到 transferred_files_info: {updated_file_info.get('file_name')}, new_id: {updated_file_info.get('file_id')}")
                     else:
-                        self.logger.warning(f"[任务{task_id}] [transfer_files] 未在目标目录找到转存后的文件: {original_file_name}")
                         # 如果找不到，仍然将原始文件信息添加到 transferred_files_info，但可能ID是旧的或空的
                         stats["transferred_files_info"].append(original_file_info)
+                
                 # ========== 解决 file not found 问题 ========== #
 
             else:
@@ -1180,6 +1240,7 @@ class FileSyncService:
                 
                 # 记录失败的文件
                 for file_info in files:
+                    self.logger.info(f"[任务{task_id}] 转存失败: '{file_info.get('file_name', '')}'")
                     if task_id and stats:
                         task_item = await self.record_task_item(
                             task_id, "copy", file_info.get("source_path", ""), file_info.get("target_path", ""),
@@ -1203,6 +1264,7 @@ class FileSyncService:
             
             # 记录所有文件失败
             for file_info in files:
+                self.logger.info(f"[任务{task_id}] 转存异常: '{file_info.get('file_name', '')}'")
                 if task_id and stats:
                     task_item = await self.record_task_item(
                         task_id, "copy", file_info.get("source_path", ""), file_info.get("target_path", ""),
@@ -1252,7 +1314,7 @@ class FileSyncService:
                 # 如果有file_id，也添加到file_ids中
                 if "file_id" in file_info and file_info["file_id"]:
                     file_ids.append(file_info["file_id"])
-            
+
             params = RemoveParam(
                 drive_type=drive_type,
                 file_paths=file_paths if file_paths else None,
@@ -1270,7 +1332,7 @@ class FileSyncService:
                 
                 # 记录删除的文件
                 for file_info in files:
-                    # self.logger.info(f"删除成功: {file_info['file_name']}")
+                    self.logger.info(f"[任务{task_id}] 删除成功: '{file_info['file_name']}'")
                     # 记录任务项
                     if task_id and stats:
                         task_item = await self.record_task_item(
@@ -1284,6 +1346,7 @@ class FileSyncService:
                 stats["errors"].append(error_msg)
                 # 记录失败的文件
                 for file_info in files:
+                    self.logger.info(f"[任务{task_id}] 删除失败: '{file_info['file_name']}'")
                     if task_id and stats:
                         task_item = await self.record_task_item(
                             task_id, "delete", "", file_info["target_path"],
@@ -1307,6 +1370,7 @@ class FileSyncService:
             
             # 记录失败的文件
             for file_info in files:
+                self.logger.info(f"[任务{task_id}] 删除异常: '{file_info['file_name']}'")
                 if task_id and stats:
                     task_item = await self.record_task_item(
                         task_id, "delete", "", file_info["target_path"],
@@ -1325,6 +1389,7 @@ class FileSyncService:
         task_id: Optional[int],
         db: Optional[AsyncSession] = None,
         account_key: Optional[str] = None,
+        parent_id: Optional[str] = None,
         **kwargs
     ) -> Optional[BaseFileInfo]:
         """
@@ -1336,17 +1401,19 @@ class FileSyncService:
         Returns:
             BaseFileInfo: 创建的目录信息，失败时返回None
         """
-        try:
+        try:      
             # 创建目录
             from backend.app.coulddrive.schema.file import MkdirParam
+            # 使用提供的父目录ID，如果没有提供则使用根目录ID
+            actual_parent_id = parent_id or target_definition.file_id
+            
             params = MkdirParam(
                 drive_type=drive_type,
                 file_path=target_definition.file_path,
                 file_name=dir_name,
-                parent_id=target_definition.file_id,
+                parent_id=actual_parent_id,
                 return_if_exist=True
             )
-            self.logger.info(f"[任务{task_id}] 无需创建目录锁，直接执行创建")
             result = await self.drive_manager.create_mkdir(x_token, params, db=db, **kwargs)
             
             # create_mkdir返回BaseFileInfo对象，如果成功创建则有file_id
@@ -1389,7 +1456,7 @@ class FileSyncService:
             self.logger.info(f"[任务{task_id}] 无重命名规则或无文件可重命名，跳过重命名操作。")
             return
 
-        self.logger.info(f"[任务{task_id}] 开始执行重命名操作，共有 {len(transferred_files_info)} 个文件待检查")
+        self.logger.info(f"[任务{task_id}] 开始执行重命名操作，共有 {len(transferred_files_info)} 个文件待检查，重命名规则数量: {len(rename_rules)}")
         files_to_rename = []
 
         # 遍历所有转存成功的文件，应用重命名规则
@@ -1554,6 +1621,7 @@ class FileSyncService:
                 transfer_result = await self.transfer_files(
                     x_token, drive_type, source_definition, target_definition,
                     all_files_to_transfer, recursion_speed, stats, task_id, db, account_key=account_key
+                    # 覆盖同步不需要传递 current_target_id，使用根目录ID
                 )
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量转存完成，成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒")
                 

@@ -4,13 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request
 
-from backend.app.job.schema.job_posting import (
-    CreateJobPosting,
-    DeleteJobPostingParam,
-    JobPostingSchema,
-    UpdateJobPosting,
+from backend.app.job.schema.internship_posting import (
+    CreateInternshipPosting,
+    DeleteInternshipPostingParam,
+    InternshipPostingSchema,
+    UpdateInternshipPosting,
 )
-from backend.app.job.service.job_posting_service import job_posting_service
+from backend.app.job.service.internship_posting_service import internship_posting_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.enums import ApplicationStatus
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -23,14 +23,14 @@ router = APIRouter()
 
 
 @router.get('/all', summary='获取所有招聘信息', dependencies=[DependsJwtAuth])
-async def get_all_job_postings() -> ResponseSchemaModel[list[JobPostingSchema]]:
-    data = await job_posting_service.get_all()
+async def get_all_internship_postings() -> ResponseSchemaModel[list[InternshipPostingSchema]]:
+    data = await internship_posting_service.get_all()
     return response_base.success(data=data)
 
 
 @router.get('/{pk}', summary='获取招聘信息详情', dependencies=[DependsJwtAuth])
-async def get_job_posting(pk: Annotated[int, Path(description='招聘信息 ID')]) -> ResponseSchemaModel[JobPostingSchema]:
-    data = await job_posting_service.get(pk=pk)
+async def get_internship_posting(pk: Annotated[int, Path(description='招聘信息 ID')]) -> ResponseSchemaModel[InternshipPostingSchema]:
+    data = await internship_posting_service.get(pk=pk)
     return response_base.success(data=data)
 
 
@@ -42,7 +42,7 @@ async def get_job_posting(pk: Annotated[int, Path(description='招聘信息 ID')
         DependsPagination,
     ],
 )
-async def get_job_postings_paged(
+async def get_internship_postings_paged(
     db: CurrentSession,
     request: Request,
     company_name: Annotated[str | None, Query(description='公司名称')] = None,
@@ -53,8 +53,8 @@ async def get_job_postings_paged(
     industry: Annotated[str | None, Query(description='所属行业')] = None,
     recruitment_type: Annotated[str | None, Query(description='招聘类型')] = None,
     application_status: Annotated[ApplicationStatus | None, Query(description='我的投递状态')] = None,
-) -> ResponseSchemaModel[PageData[JobPostingSchema]]:
-    job_posting_select = await job_posting_service.get_select(
+) -> ResponseSchemaModel[PageData[InternshipPostingSchema]]:
+    job_posting_select = await internship_posting_service.get_select(
         company_name=company_name,
         position=position,
         industry=industry,
@@ -77,8 +77,8 @@ async def get_job_postings_paged(
         DependsRBAC,
     ],
 )
-async def create_job_posting(obj: CreateJobPosting, request: Request) -> ResponseModel:
-    await job_posting_service.create(obj=obj, created_by=request.user.id)
+async def create_internship_posting(obj: CreateInternshipPosting, request: Request) -> ResponseModel:
+    await internship_posting_service.create(obj=obj, created_by=request.user.id)
     return response_base.success()
 
 
@@ -90,8 +90,8 @@ async def create_job_posting(obj: CreateJobPosting, request: Request) -> Respons
         DependsRBAC,
     ],
 )
-async def update_job_posting(pk: Annotated[int, Path(description='招聘信息 ID')], obj: UpdateJobPosting) -> ResponseModel:
-    count = await job_posting_service.update(pk=pk, obj=obj)
+async def update_internship_posting(pk: Annotated[int, Path(description='招聘信息 ID')], obj: UpdateInternshipPosting) -> ResponseModel:
+    count = await internship_posting_service.update(pk=pk, obj=obj)
     if count > 0:
         return response_base.success()
     return response_base.fail()
@@ -105,8 +105,8 @@ async def update_job_posting(pk: Annotated[int, Path(description='招聘信息 I
         DependsRBAC,
     ],
 )
-async def delete_job_postings(obj: DeleteJobPostingParam) -> ResponseModel:
-    count = await job_posting_service.delete(obj=obj)
+async def delete_internship_postings(obj: DeleteInternshipPostingParam) -> ResponseModel:
+    count = await internship_posting_service.delete(obj=obj)
     if count > 0:
         return response_base.success()
     return response_base.fail()
