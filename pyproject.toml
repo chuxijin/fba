@@ -59,6 +59,7 @@ dependencies = [
     "user-agents>=2.2.0",
     "cozepy>=0.1.0",
     "beautifulsoup4>=4.13.5",
+    "croniter>=6.0.0",
 ]
 
 [dependency-groups]

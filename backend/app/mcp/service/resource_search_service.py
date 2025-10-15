@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import json
@@ -742,7 +740,7 @@ def register_resource_search_tools(mcp: FastMCP) -> None:
 
 
     @mcp.tool()
-    async def search_resources(query: str, limit: int = 5, cloud_types: str | None = None, enable_external_search: bool = True) -> list[dict[str, Any]]:
+    async def search_resources(query: str, limit: int = 5, cloud_types: str = None, enable_external_search: bool = True) -> list[dict[str, Any]]:
         """
         搜索资源库
 

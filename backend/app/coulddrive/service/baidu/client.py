@@ -7,7 +7,7 @@ Created On: 2023-01-01
 """
 
 from __future__ import annotations
-from imp import source_from_cache
+from importlib.util import source_from_cache
 import os
 from collections import deque
 from io import BytesIO
