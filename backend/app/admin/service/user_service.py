@@ -1,8 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import random
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from fastapi import Request
 from sqlalchemy import Select
@@ -19,7 +17,7 @@ from backend.app.admin.schema.user import (
 from backend.common.enums import UserPermissionType
 from backend.common.exception import errors
 from backend.common.response.response_code import CustomErrorCode
-from backend.common.security.jwt import get_token, jwt_decode, password_verify, superuser_verify
+from backend.common.security.jwt import get_token, jwt_decode, password_verify
 from backend.core.conf import settings
 from backend.database.db import async_db_session
 from backend.database.redis import redis_client
@@ -71,19 +69,17 @@ class UserService:
         return await user_dao.get_list(dept=dept, username=username, phone=phone, status=status)
 
     @staticmethod
-    async def create(*, request: Request, obj: AddUserParam) -> None:
+    async def create(*, obj: AddUserParam) -> None:
         """
         创建用户
 
-        :param request: FastAPI 请求对象
         :param obj: 用户添加参数
         :return:
         """
         async with async_db_session.begin() as db:
-            superuser_verify(request)
             if await user_dao.get_by_username(db, obj.username):
                 raise errors.ConflictError(msg='用户名已注册')
-            obj.nickname = obj.nickname if obj.nickname else f'#{random.randrange(88888, 99999)}'
+            obj.nickname = obj.nickname or f'#{random.randrange(88888, 99999)}'
             if not obj.password:
                 raise errors.RequestError(msg='密码不允许为空')
             if not await dept_dao.get(db, obj.dept_id):
@@ -94,23 +90,20 @@ class UserService:
             await user_dao.add(db, obj)
 
     @staticmethod
-    async def update(*, request: Request, pk: int, obj: UpdateUserParam) -> int:
+    async def update(*, pk: int, obj: UpdateUserParam) -> int:
         """
         更新用户信息
 
-        :param request: FastAPI 请求对象
         :param pk: 用户 ID
         :param obj: 用户更新参数
         :return:
         """
         async with async_db_session.begin() as db:
-            superuser_verify(request)
             user = await user_dao.get_with_relation(db, user_id=pk)
             if not user:
                 raise errors.NotFoundError(msg='用户不存在')
-            if obj.username != user.username:
-                if await user_dao.get_by_username(db, obj.username):
-                    raise errors.ConflictError(msg='用户名已注册')
+            if obj.username != user.username and await user_dao.get_by_username(db, obj.username):
+                raise errors.ConflictError(msg='用户名已注册')
             for role_id in obj.roles:
                 if not await role_dao.get(db, role_id):
                     raise errors.NotFoundError(msg='角色不存在')
@@ -119,7 +112,7 @@ class UserService:
             return count
 
     @staticmethod
-    async def update_permission(*, request: Request, pk: int, type: UserPermissionType) -> int:
+    async def update_permission(*, request: Request, pk: int, type: UserPermissionType) -> int:  # noqa: C901
         """
         更新用户权限
 
@@ -129,7 +122,6 @@ class UserService:
         :return:
         """
         async with async_db_session.begin() as db:
-            superuser_verify(request)
             match type:
                 case UserPermissionType.superuser:
                     user = await user_dao.get(db, pk)
@@ -137,14 +129,14 @@ class UserService:
                         raise errors.NotFoundError(msg='用户不存在')
                     if pk == request.user.id:
                         raise errors.ForbiddenError(msg='禁止修改自身权限')
-                    count = await user_dao.set_super(db, pk, not user.status)
+                    count = await user_dao.set_super(db, pk, is_super=not user.status)
                 case UserPermissionType.staff:
                     user = await user_dao.get(db, pk)
                     if not user:
                         raise errors.NotFoundError(msg='用户不存在')
                     if pk == request.user.id:
                         raise errors.ForbiddenError(msg='禁止修改自身权限')
-                    count = await user_dao.set_staff(db, pk, not user.is_staff)
+                    count = await user_dao.set_staff(db, pk, is_staff=not user.is_staff)
                 case UserPermissionType.status:
                     user = await user_dao.get(db, pk)
                     if not user:
@@ -158,7 +150,7 @@ class UserService:
                         raise errors.NotFoundError(msg='用户不存在')
                     multi_login = user.is_multi_login if pk != user.id else request.user.is_multi_login
                     new_multi_login = not multi_login
-                    count = await user_dao.set_multi_login(db, pk, new_multi_login)
+                    count = await user_dao.set_multi_login(db, pk, multi_login=new_multi_login)
                     token = get_token(request)
                     token_payload = jwt_decode(token)
                     if pk == user.id:
@@ -166,7 +158,8 @@ class UserService:
                         if not new_multi_login:
                             key_prefix = f'{settings.TOKEN_REDIS_PREFIX}:{user.id}'
                             await redis_client.delete_prefix(
-                                key_prefix, exclude=f'{key_prefix}:{token_payload.session_uuid}'
+                                key_prefix,
+                                exclude=f'{key_prefix}:{token_payload.session_uuid}',
                             )
                     else:
                         # 系统管理员修改他人时，他人 token 全部失效
@@ -180,17 +173,15 @@ class UserService:
         return count
 
     @staticmethod
-    async def reset_password(*, request: Request, pk: int, password: str) -> int:
+    async def reset_password(*, pk: int, password: str) -> int:
         """
         重置用户密码
 
-        :param request: FastAPI 请求对象
         :param pk: 用户 ID
         :param password: 新密码
         :return:
         """
         async with async_db_session.begin() as db:
-            superuser_verify(request)
             user = await user_dao.get(db, pk)
             if not user:
                 raise errors.NotFoundError(msg='用户不存在')

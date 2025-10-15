@@ -1,10 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import logging
 import asyncio
-from datetime import datetime, timedelta
-from typing import Dict, Any
-
+import logging
+from typing import Any, Dict
 from celery import shared_task
 from sqlalchemy import delete, and_
 

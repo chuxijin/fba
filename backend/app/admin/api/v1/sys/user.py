@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
@@ -16,7 +14,7 @@ from backend.app.admin.service.user_service import user_service
 from backend.common.enums import UserPermissionType
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.security.jwt import DependsJwtAuth
+from backend.common.security.jwt import DependsJwtAuth, DependsSuperUser
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession
@@ -64,24 +62,25 @@ async def get_users_paged(
     return response_base.success(data=page_data)
 
 
-@router.post('', summary='创建用户', dependencies=[DependsRBAC])
-async def create_user(request: Request, obj: AddUserParam) -> ResponseSchemaModel[GetUserInfoWithRelationDetail]:
-    await user_service.create(request=request, obj=obj)
+@router.post('', summary='创建用户', dependencies=[DependsSuperUser])
+async def create_user(obj: AddUserParam) -> ResponseSchemaModel[GetUserInfoWithRelationDetail]:
+    await user_service.create(obj=obj)
     data = await user_service.get_userinfo(username=obj.username)
     return response_base.success(data=data)
 
 
-@router.put('/{pk}', summary='更新用户信息', dependencies=[DependsRBAC])
+@router.put('/{pk}', summary='更新用户信息', dependencies=[DependsSuperUser])
 async def update_user(
-    request: Request, pk: Annotated[int, Path(description='用户 ID')], obj: UpdateUserParam
+    pk: Annotated[int, Path(description='用户 ID')],
+    obj: UpdateUserParam,
 ) -> ResponseModel:
-    count = await user_service.update(request=request, pk=pk, obj=obj)
+    count = await user_service.update(pk=pk, obj=obj)
     if count > 0:
         return response_base.success()
     return response_base.fail()
 
 
-@router.put('/{pk}/permissions', summary='更新用户权限', dependencies=[DependsRBAC])
+@router.put('/{pk}/permissions', summary='更新用户权限', dependencies=[DependsSuperUser])
 async def update_user_permission(
     request: Request,
     pk: Annotated[int, Path(description='用户 ID')],
@@ -101,13 +100,12 @@ async def update_user_password(request: Request, obj: ResetPasswordParam) -> Res
     return response_base.fail()
 
 
-@router.put('/{pk}/password', summary='重置用户密码', dependencies=[DependsRBAC])
+@router.put('/{pk}/password', summary='重置用户密码', dependencies=[DependsSuperUser])
 async def reset_user_password(
-    request: Request,
     pk: Annotated[int, Path(description='用户 ID')],
     password: Annotated[str, Body(embed=True, description='新密码')],
 ) -> ResponseModel:
-    count = await user_service.reset_password(request=request, pk=pk, password=password)
+    count = await user_service.reset_password(pk=pk, password=password)
     if count > 0:
         return response_base.success()
     return response_base.fail()
@@ -115,7 +113,8 @@ async def reset_user_password(
 
 @router.put('/me/nickname', summary='更新当前用户昵称', dependencies=[DependsJwtAuth])
 async def update_user_nickname(
-    request: Request, nickname: Annotated[str, Body(embed=True, description='用户昵称')]
+    request: Request,
+    nickname: Annotated[str, Body(embed=True, description='用户昵称')],
 ) -> ResponseModel:
     count = await user_service.update_nickname(request=request, nickname=nickname)
     if count > 0:
@@ -125,7 +124,8 @@ async def update_user_nickname(
 
 @router.put('/me/avatar', summary='更新当前用户头像', dependencies=[DependsJwtAuth])
 async def update_user_avatar(
-    request: Request, avatar: Annotated[str, Body(embed=True, description='用户头像地址')]
+    request: Request,
+    avatar: Annotated[str, Body(embed=True, description='用户头像地址')],
 ) -> ResponseModel:
     count = await user_service.update_avatar(request=request, avatar=avatar)
     if count > 0:
