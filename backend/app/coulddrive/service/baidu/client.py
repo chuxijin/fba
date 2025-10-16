@@ -26,10 +26,12 @@ from backend.app.coulddrive.schema.enum import RecursionSpeed
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     BaseShareInfo,
+    CopyParam,
     ListFilesParam,
     ListShareFilesParam,
     ListShareInfoParam,
     MkdirParam,
+    MoveParam,
     RenameParam,
     RelationshipParam,
     RelationshipType,
@@ -457,14 +459,26 @@ class BaiduClient(BaseDriveClient):
             self.logger.error(f"创建目录失败: {e}")
             raise
 
-    async def move(self, *file_paths: str) -> List[FromTo]:
-        """将`file_paths[:-1]`移动到`file_paths[-1]`"""
-
-        info = self._baidupcs.move(*file_paths)
-        r = info["extra"].get("list")
-        if not r:
-            raise BaiduApiError("File operator [move] fails")
-        return [FromTo(from_=v["from"], to_=v["to"]) for v in r]
+    async def move(self, params: 'MoveParam', **kwargs: Any) -> bool:
+        """移动文件或目录"""
+        try:
+            # 百度网盘使用路径进行移动操作
+            if params.file_paths and params.target_path:
+                # 使用路径方式
+                all_paths = params.file_paths + [params.target_path]
+                info = await self._baidupcs.move(*all_paths)
+            else:
+                self.logger.error("百度网盘移动操作需要提供 file_paths 和 target_path")
+                return False
+                
+            r = info["extra"].get("list")
+            if not r:
+                self.logger.error("移动文件失败: 返回列表为空")
+                return False
+            return True
+        except Exception as e:
+            self.logger.error(f"移动文件时发生错误: {e}")
+            return False
 
     async def rename(self, params: RenameParam, **kwargs: Any) -> FromTo:
         """重命名文件"""
@@ -484,14 +498,26 @@ class BaiduClient(BaseDriveClient):
             self.logger.error(f"重命名文件时发生错误: {e}")
             return False
 
-    async def copy(self, *file_paths: str):
-        """将`file_paths[:-1]`复制到`file_paths[-1]`"""
-
-        info = self._baidupcs.copy(*file_paths)
-        r = info["extra"].get("list")
-        if not r:
-            raise BaiduApiError("File operator [copy] fails")
-        return [FromTo(from_=v["from"], to_=v["to"]) for v in r]
+    async def copy(self, params: 'CopyParam', **kwargs: Any) -> bool:
+        """复制文件或目录"""
+        try:
+            # 百度网盘使用路径进行复制操作
+            if params.file_paths and params.target_path:
+                # 使用路径方式
+                all_paths = params.file_paths + [params.target_path]
+                info = await self._baidupcs.copy(*all_paths)
+            else:
+                self.logger.error("百度网盘复制操作需要提供 file_paths 和 target_path")
+                return False
+                
+            r = info["extra"].get("list")
+            if not r:
+                self.logger.error("复制文件失败: 返回列表为空")
+                return False
+            return True
+        except Exception as e:
+            self.logger.error(f"复制文件时发生错误: {e}")
+            return False
 
     async def remove(self, params: RemoveParam, **kwargs: Any) -> bool:
         """删除文件或目录"""

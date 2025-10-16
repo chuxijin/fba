@@ -8,10 +8,12 @@ from fastapi.responses import StreamingResponse
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo, 
     BaseShareInfo,
+    CopyParam,
     ListFilesParam, 
     ListShareFilesParam,
     ListShareInfoParam,
     MkdirParam,
+    MoveParam,
     RemoveParam,
     ShareParam,
     TransferParam,
@@ -132,6 +134,38 @@ async def rename_file(
 ) -> ResponseSchemaModel[bool]:
     drive_manager = get_drive_manager()
     result = await drive_manager.rename_files(x_token, params)
+    return response_base.success(data=result)
+
+
+@router.post(
+    '/move',
+    summary='移动文件或文件夹',
+    description='移动网盘中的文件或文件夹到指定目录',
+    response_model=ResponseSchemaModel[bool],
+    dependencies=[DependsJwtAuth]
+)
+async def move_files(
+    x_token: Annotated[str, Header(description="认证令牌")],
+    params: MoveParam
+) -> ResponseSchemaModel[bool]:
+    drive_manager = get_drive_manager()
+    result = await drive_manager.move_files(x_token, params)
+    return response_base.success(data=result)
+
+
+@router.post(
+    '/copy',
+    summary='复制文件或文件夹',
+    description='复制网盘中的文件或文件夹到指定目录',
+    response_model=ResponseSchemaModel[bool],
+    dependencies=[DependsJwtAuth]
+)
+async def copy_files(
+    x_token: Annotated[str, Header(description="认证令牌")],
+    params: CopyParam
+) -> ResponseSchemaModel[bool]:
+    drive_manager = get_drive_manager()
+    result = await drive_manager.copy_files(x_token, params)
     return response_base.success(data=result)
 
 

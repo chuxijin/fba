@@ -23,10 +23,12 @@ from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     BaseShareInfo,
     CancelShareParam,
+    CopyParam,
     ListFilesParam,
     ListShareFilesParam,
     ListShareInfoParam,
     MkdirParam,
+    MoveParam,
     ShareParam,
     RelationshipParam,
     RelationshipType,
@@ -345,10 +347,14 @@ class QuarkClient(BaseDriveClient):
                     
                     # 检查是否还有更多数据
                     metadata = info.get("metadata", {})
-                    current_count = metadata.get("_count", 0)
+                    current_count = len(current_items)  # 使用实际返回的项目数量
+                    total_count = metadata.get("_total", 0)  # 总数量
                     
-                    # 如果本页返回数量小于page_size，说明已经是最后一页
-                    if current_count < page_size:
+                    self.logger.debug(f"获取第{page}页数据: 当前页{current_count}个, 累计{len(all_items)}个, 总计{total_count}个")
+                    
+                    # 如果本页返回数量小于page_size，或者已经获取了所有数据，说明已经是最后一页
+                    if current_count < page_size or (total_count > 0 and len(all_items) >= total_count):
+                        self.logger.debug(f"分页获取完成: 最终获取{len(all_items)}个项目")
                         break
                     
                     page += 1
@@ -452,25 +458,35 @@ class QuarkClient(BaseDriveClient):
             self.logger.error(f"重命名文件时发生错误: {e}")
             return False
 
-    async def move(self, file_ids: List[str], target_folder_id: str) -> bool:
+    async def move(self, params: 'MoveParam', **kwargs: Any) -> bool:
         """移动文件或文件夹"""
         try:
-            await self._quarkapi.move_files(
-                file_ids=file_ids,
-                to_pdir_fid=target_folder_id
-            )
+            # 夸克网盘使用file_ids和target_id
+            if params.file_ids and params.target_id:
+                await self._quarkapi.move_files(
+                    file_ids=params.file_ids,
+                    to_pdir_fid=params.target_id
+                )
+            else:
+                self.logger.error("夸克网盘移动操作需要提供 file_ids 和 target_id")
+                return False
             return True
         except Exception as e:
             self.logger.error(f"移动文件时发生错误: {e}")
             return False
 
-    async def copy(self, file_ids: List[str], target_folder_id: str) -> bool:
+    async def copy(self, params: 'CopyParam', **kwargs: Any) -> bool:
         """复制文件或文件夹"""
         try:
-            await self._quarkapi.copy_files(
-                file_ids=file_ids,
-                to_pdir_fid=target_folder_id
-            )
+            # 夸克网盘使用file_ids和target_id
+            if params.file_ids and params.target_id:
+                await self._quarkapi.copy_files(
+                    file_ids=params.file_ids,
+                    to_pdir_fid=params.target_id
+                )
+            else:
+                self.logger.error("夸克网盘复制操作需要提供 file_ids 和 target_id")
+                return False
             return True
         except Exception as e:
             self.logger.error(f"复制文件时发生错误: {e}")
@@ -637,10 +653,14 @@ class QuarkClient(BaseDriveClient):
                     
                     # 检查是否还有更多数据
                     metadata = detail_response.get("data", {}).get("metadata", {})
-                    current_count = metadata.get("_count", 0)
+                    current_count = len(current_items)  # 使用实际返回的项目数量
+                    total_count = metadata.get("_total", 0)  # 总数量
                     
-                    # 如果本页返回数量小于page_size，说明已经是最后一页
-                    if current_count < page_size:
+                    self.logger.debug(f"获取分享第{page}页数据: 当前页{current_count}个, 累计{len(all_items)}个, 总计{total_count}个")
+                    
+                    # 如果本页返回数量小于page_size，或者已经获取了所有数据，说明已经是最后一页
+                    if current_count < page_size or (total_count > 0 and len(all_items) >= total_count):
+                        self.logger.debug(f"分享分页获取完成: 最终获取{len(all_items)}个项目")
                         break
                     
                     page += 1

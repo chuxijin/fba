@@ -18,10 +18,12 @@ from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     BaseShareInfo,
     CancelShareParam,
+    CopyParam,
     ListFilesParam,
     ListShareFilesParam,
     ListShareInfoParam,
     MkdirParam,
+    MoveParam,
     RelationshipParam,
     RemoveParam,
     ShareParam,
@@ -157,57 +159,23 @@ class BaseDriveClient:
         """
         return False
 
-    async def move(
-        self,
-        source_fid: str,
-        target_fid: str,
-        *args: Any,
-        **kwargs: Any,
-    ) -> bool:
+    async def move(self, params: 'MoveParam', **kwargs: Any) -> bool:
         """
         移动文件或目录
         
-        将源文件或目录移动到目标目录
-        
-        参数:
-            source_fid (str): 源文件或目录ID
-            target_fid (str): 目标目录ID
-            args (Any): 位置参数
-            kwargs (Any): 关键字参数
-            
-        返回:
-            bool: 移动是否成功
-            
-        示例:
-            >>> drive.move("/源文件.txt", "/目标目录")
-            True
+        :param params: 移动参数
+        :param kwargs: 其他关键字参数
+        :return: 移动是否成功
         """
         return False
 
-    async def copy(
-        self,
-        source_fid: str,
-        target_fid: str,
-        *args: Any,
-        **kwargs: Any,
-    ) -> bool:
+    async def copy(self, params: 'CopyParam', **kwargs: Any) -> bool:
         """
         复制文件或目录
         
-        将源文件或目录复制到目标目录
-        
-        参数:
-            source_fid (str): 源文件或目录ID
-            target_fid (str): 目标目录ID
-            args (Any): 位置参数
-            kwargs (Any): 关键字参数
-            
-        返回:
-            bool: 复制是否成功
-            
-        示例:
-            >>> drive.copy("/源文件.txt", "/目标目录")
-            True
+        :param params: 复制参数
+        :param kwargs: 其他关键字参数
+        :return: 复制是否成功
         """
         return False
 
@@ -506,6 +474,14 @@ class BaseDrive:
     async def rename_files(self, x_token: str, params: 'RenameParam', **kwargs) -> bool:
         """重命名文件或目录"""
         return await self.call_method(x_token, params.drive_type, "rename", params, **kwargs)
+    
+    async def move_files(self, x_token: str, params: 'MoveParam', **kwargs) -> bool:
+        """移动文件或目录"""
+        return await self.call_method(x_token, params.drive_type, "move", params, **kwargs)
+    
+    async def copy_files(self, x_token: str, params: 'CopyParam', **kwargs) -> bool:
+        """复制文件或目录"""
+        return await self.call_method(x_token, params.drive_type, "copy", params, **kwargs)
     
     def get_client_status(self) -> Dict[str, Dict[str, Any]]:
         """

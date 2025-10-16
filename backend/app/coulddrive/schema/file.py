@@ -236,6 +236,70 @@ class RemoveParam(SchemaBase):
     file_name: str | None = Field(None, description="文件名称")
 
 
+class MoveParam(SchemaBase):
+    """移动文件或目录参数"""
+    
+    drive_type: DriveType = Field(..., description="网盘类型")
+    file_ids: list[str] | None = Field(None, description="文件ID列表")
+    file_paths: list[str] | None = Field(None, description="文件路径列表")
+    target_id: str | None = Field(None, description="目标文件夹ID")
+    target_path: str | None = Field(None, description="目标文件夹路径")
+
+    @field_validator('file_ids', 'file_paths')
+    @classmethod
+    def validate_source_files(cls, v, info):
+        """验证源文件参数"""
+        # 至少需要提供file_ids或file_paths中的一个
+        if info.field_name == 'file_paths' and hasattr(info, 'data'):
+            file_ids = info.data.get('file_ids')
+            if not v and not file_ids:
+                raise ValueError("必须提供file_ids或file_paths中的至少一个")
+        return v
+
+    @field_validator('target_id', 'target_path')
+    @classmethod
+    def validate_target(cls, v, info):
+        """验证目标参数"""
+        # 至少需要提供target_id或target_path中的一个
+        if info.field_name == 'target_path' and hasattr(info, 'data'):
+            target_id = info.data.get('target_id')
+            if not v and not target_id:
+                raise ValueError("必须提供target_id或target_path中的至少一个")
+        return v
+
+
+class CopyParam(SchemaBase):
+    """复制文件或目录参数"""
+    
+    drive_type: DriveType = Field(..., description="网盘类型")
+    file_ids: list[str] | None = Field(None, description="文件ID列表")
+    file_paths: list[str] | None = Field(None, description="文件路径列表")
+    target_id: str | None = Field(None, description="目标文件夹ID")
+    target_path: str | None = Field(None, description="目标文件夹路径")
+
+    @field_validator('file_ids', 'file_paths')
+    @classmethod
+    def validate_source_files(cls, v, info):
+        """验证源文件参数"""
+        # 至少需要提供file_ids或file_paths中的一个
+        if info.field_name == 'file_paths' and hasattr(info, 'data'):
+            file_ids = info.data.get('file_ids')
+            if not v and not file_ids:
+                raise ValueError("必须提供file_ids或file_paths中的至少一个")
+        return v
+
+    @field_validator('target_id', 'target_path')
+    @classmethod
+    def validate_target(cls, v, info):
+        """验证目标参数"""
+        # 至少需要提供target_id或target_path中的一个
+        if info.field_name == 'target_path' and hasattr(info, 'data'):
+            target_id = info.data.get('target_id')
+            if not v and not target_id:
+                raise ValueError("必须提供target_id或target_path中的至少一个")
+        return v
+
+
 class TransferParam(SchemaBase):
     """转存参数"""
     

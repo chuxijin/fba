@@ -248,17 +248,28 @@ class FileSyncService:
                 # 更新任务为成功状态
                 start_time_dt = sync_task.start_time if isinstance(sync_task.start_time, datetime) else None
                 
-                # 为json序列化准备stats副本
+                # 为json序列化准备stats副本，移除pending_task_items避免数据过长
                 stats_for_json = dict(stats_from_sync)
-                if "pending_task_items" in stats_for_json and stats_for_json["pending_task_items"]:
-                    stats_for_json["pending_task_items"] = [
-                        item.model_dump() for item in stats_for_json["pending_task_items"]
-                    ]
+                # 移除pending_task_items，因为这些已经单独记录到数据库中
+                if "pending_task_items" in stats_for_json:
+                    del stats_for_json["pending_task_items"]
+                
+                # 如果transferred_files_info过多，也进行精简
+                if "transferred_files_info" in stats_for_json and len(stats_for_json["transferred_files_info"]) > 10:
+                    # 只保留前10个文件的基本信息
+                    simplified_files = []
+                    for file_info in stats_for_json["transferred_files_info"][:10]:
+                        simplified_files.append({
+                            "file_name": file_info.get("file_name", ""),
+                            "file_size": file_info.get("file_size", 0)
+                        })
+                    stats_for_json["transferred_files_info"] = simplified_files
+                    stats_for_json["transferred_files_count"] = len(stats_from_sync.get("transferred_files_info", []))
 
                 update_params = UpdateSyncTaskParam(
                     status="completed",
                     dura_time=elapsed_time,
-                    task_num=json.dumps(stats_for_json), # 使用转换为JSON友好的stats_for_json
+                    task_num=json.dumps(stats_for_json), # 使用精简后的stats_for_json
                     err_msg=None,
                     start_time=start_time_dt
                 )
@@ -289,18 +300,29 @@ class FileSyncService:
                 error_msg = sync_result.get("error", "未知错误")
                 start_time_dt = sync_task.start_time if isinstance(sync_task.start_time, datetime) else None
 
-                # 为json序列化准备stats副本
+                # 为json序列化准备stats副本，移除pending_task_items避免数据过长
                 stats_for_json = dict(stats_from_sync)
-                if "pending_task_items" in stats_for_json and stats_for_json["pending_task_items"]:
-                    stats_for_json["pending_task_items"] = [
-                        item.model_dump() for item in stats_for_json["pending_task_items"]
-                    ]
+                # 移除pending_task_items，因为这些已经单独记录到数据库中
+                if "pending_task_items" in stats_for_json:
+                    del stats_for_json["pending_task_items"]
+                
+                # 如果transferred_files_info过多，也进行精简
+                if "transferred_files_info" in stats_for_json and len(stats_for_json["transferred_files_info"]) > 10:
+                    # 只保留前10个文件的基本信息
+                    simplified_files = []
+                    for file_info in stats_for_json["transferred_files_info"][:10]:
+                        simplified_files.append({
+                            "file_name": file_info.get("file_name", ""),
+                            "file_size": file_info.get("file_size", 0)
+                        })
+                    stats_for_json["transferred_files_info"] = simplified_files
+                    stats_for_json["transferred_files_count"] = len(stats_from_sync.get("transferred_files_info", []))
 
                 update_params = UpdateSyncTaskParam(
                     status="failed",
                     dura_time=elapsed_time,
                     err_msg=error_msg,
-                    task_num=json.dumps(stats_for_json), # 使用转换为JSON友好的stats_for_json
+                    task_num=json.dumps(stats_for_json), # 使用精简后的stats_for_json
                     start_time=start_time_dt
                 )
                 await sync_task_dao.update(db, db_obj=sync_task, obj_in=update_params)
