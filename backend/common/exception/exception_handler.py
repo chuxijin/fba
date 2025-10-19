@@ -72,7 +72,8 @@ async def _validation_exception_handler(exc: RequestValidationError | Validation
         'msg': msg,
         'data': data,
     }
-    ctx.__request_validation_exception__ = content  # 用于在中间件中获取异常信息
+    if ctx is not None:
+        ctx.__request_validation_exception__ = content  # 用于在中间件中获取异常信息
     content.update(trace_id=get_request_trace_id())
     return MsgSpecJSONResponse(status_code=StandardResponseCode.HTTP_422, content=content)
 
