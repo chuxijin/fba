@@ -10,13 +10,15 @@ from backend.app.coulddrive.service.synctask_service import get_sync_task_servic
 from backend.database.db import async_db_session
 
 logger = logging.getLogger(__name__)
+from backend.database.db import async_db_session
 
 
 @shared_task
 async def delete_db_opera_log() -> str:
     """自动删除数据库操作日志"""
-    await opera_log_service.delete_all()
-    return 'Success'
+    async with async_db_session.begin() as db:
+        await opera_log_service.delete_all(db=db)
+        return 'Success'
 
 
 @shared_task
@@ -65,3 +67,6 @@ async def _delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
             "deleted_count": 0,
             "message": f"删除失败: {str(e)}"
         }
+    async with async_db_session.begin() as db:
+        await login_log_service.delete_all(db=db)
+        return 'Success'

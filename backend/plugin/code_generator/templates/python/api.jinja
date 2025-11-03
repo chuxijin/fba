@@ -15,7 +15,6 @@ from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
-from backend.database.db import CurrentSession
 
 router = APIRouter()
 
@@ -37,7 +36,7 @@ async def get_{{ table_name }}(
     ],
 )
 async def get_{{ table_name }}s_paginated(db: CurrentSession) -> ResponseSchemaModel[PageData[Get{{ schema_name }}Detail]]:
-    page_data = = await {{ table_name }}_service.get_list(db=db)
+    page_data = await {{ table_name }}_service.get_list(db=db)
     return response_base.success(data=page_data)
 
 

@@ -180,6 +180,7 @@ class Settings(BaseSettings):
         '/openapi',
         f'{FASTAPI_API_V1_PATH}/auth/login/swagger',
         f'{FASTAPI_API_V1_PATH}/oauth2/github/callback',
+        f'{FASTAPI_API_V1_PATH}/oauth2/google/callback',
         f'{FASTAPI_API_V1_PATH}/oauth2/linux-do/callback',
     ]
     OPERA_LOG_ENCRYPT_TYPE: int = 1  # 0: AES (性能损耗); 1: md5; 2: ItsDangerous; 3: 不加密, others: 替换为 ******
@@ -198,6 +199,7 @@ class Settings(BaseSettings):
     # Plugin 配置
     PLUGIN_PIP_CHINA: bool = True
     PLUGIN_PIP_INDEX_URL: str = 'https://mirrors.aliyun.com/pypi/simple/'
+    PLUGIN_PIP_MAX_RETRY: int = 3
     PLUGIN_REDIS_PREFIX: str = 'fba:plugin'
 
     # HTTP 请求
@@ -221,6 +223,7 @@ class Settings(BaseSettings):
 
     # 基础配置
     CELERY_BROKER: Literal['rabbitmq', 'redis'] = 'redis'
+    CELERY_RABBITMQ_VHOST: str = ''
     CELERY_REDIS_PREFIX: str = 'fba:celery'
     CELERY_TASK_MAX_RETRIES: int = 5
 
@@ -241,6 +244,9 @@ class Settings(BaseSettings):
     OAUTH2_LINUX_DO_CLIENT_SECRET: str
 
     # 基础配置
+    OAUTH2_GITHUB_REDIRECT_URI: str = 'http://127.0.0.1:8000/api/v1/oauth2/github/callback'
+    OAUTH2_GOOGLE_REDIRECT_URI: str = 'http://127.0.0.1:8000/api/v1/oauth2/google/callback'
+    OAUTH2_LINUX_DO_REDIRECT_URI: str = 'http://127.0.0.1:8000/api/v1/oauth2/linux-do/callback'
     OAUTH2_FRONTEND_REDIRECT_URI: str = 'http://localhost:5173/oauth2/callback'
 
     ##################################################

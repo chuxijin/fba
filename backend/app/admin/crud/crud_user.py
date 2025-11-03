@@ -108,6 +108,7 @@ class CRUDUser(CRUDPlus[User]):
         """
         role_ids = obj.roles
         del obj.roles
+
         count = await self.update_model(db, input_user.id, obj)
 
         stmt = select(Role).where(Role.id.in_(role_ids))
