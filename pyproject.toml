@@ -61,6 +61,9 @@ dependencies = [
     "cozepy>=0.1.0",
     "beautifulsoup4>=4.13.5",
     "croniter>=6.0.0",
+    "flet>=0.28.3",
+    "bilibili-api-python>=17.4.0",
+    "apscheduler>=3.11.1",
 ]
 
 [dependency-groups]

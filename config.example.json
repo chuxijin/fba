@@ -1,0 +1,8 @@
+{
+  "theme": "light",
+  "api_base_url": "http://localhost:8000",
+  "bili_exclude_levels": [],
+  "bili_exclude_months": 0,
+  "bili_interval_min": 30,
+  "bili_interval_max": 60
+}

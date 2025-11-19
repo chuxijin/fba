@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from decimal import Decimal
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import Select
+from sqlalchemy_crud_plus import CRUDPlus
+
+from backend.app.question_bank.model import PracticeSession
+
+
+class CRUDPracticeSession(CRUDPlus[PracticeSession]):
+    """练习会话数据库操作类"""
+
+    async def get(self, db: AsyncSession, session_id: int) -> PracticeSession | None:
+        """
+        获取练习会话详情
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :return:
+        """
+        return await self.select_model(db, session_id)
+
+    async def get_by_user(
+        self, db: AsyncSession, user_id: int, session_type: str | None = None
+    ) -> list[PracticeSession]:
+        """
+        获取用户的练习会话列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param session_type: 会话类型
+        :return:
+        """
+        filters = {'user_id': user_id}
+        if session_type:
+            filters['session_type'] = session_type
+
+        stmt = await self.select_order('start_time', 'desc', **filters)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_latest_session(
+        self, db: AsyncSession, user_id: int, bank_id: int | None = None, chapter_id: int | None = None
+    ) -> PracticeSession | None:
+        """
+        获取用户最新的练习会话
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        :return:
+        """
+        filters = {'user_id': user_id, 'status': 'in_progress'}
+        if bank_id:
+            filters['bank_id'] = bank_id
+        if chapter_id:
+            filters['chapter_id'] = chapter_id
+
+        stmt = await self.select_order('start_time', 'desc', **filters)
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    async def create(self, db: AsyncSession, obj_dict: dict) -> PracticeSession:
+        """
+        创建练习会话
+
+        :param db: 数据库会话
+        :param obj_dict: 会话数据
+        :return:
+        """
+        new_session = self.model(**obj_dict)
+        db.add(new_session)
+        await db.flush()
+        await db.refresh(new_session)
+        return new_session
+
+    async def update_statistics(
+        self,
+        db: AsyncSession,
+        session_id: int,
+        completed_count: int,
+        correct_count: int,
+        wrong_count: int,
+        total_time: int,
+    ) -> int:
+        """
+        更新练习会话统计数据
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param completed_count: 已完成数量
+        :param correct_count: 答对数量
+        :param wrong_count: 答错数量
+        :param total_time: 总用时
+        :return:
+        """
+        accuracy_rate = Decimal('0')
+        if completed_count > 0:
+            accuracy_rate = Decimal(str(round(correct_count / completed_count * 100, 2)))
+
+        return await self.update_model(
+            db,
+            session_id,
+            {
+                'completed_count': completed_count,
+                'correct_count': correct_count,
+                'wrong_count': wrong_count,
+                'accuracy_rate': accuracy_rate,
+                'total_time': total_time,
+            },
+        )
+
+    async def submit_session(self, db: AsyncSession, session_id: int, submit_time, score: Decimal | None = None) -> int:
+        """
+        提交练习会话
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param submit_time: 提交时间
+        :param score: 得分
+        :return:
+        """
+        update_data = {'status': 'completed', 'submit_time': submit_time}
+        if score is not None:
+            update_data['score'] = score
+
+        return await self.update_model(db, session_id, update_data)
+
+    async def abandon_session(self, db: AsyncSession, session_id: int) -> int:
+        """
+        放弃练习会话
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :return:
+        """
+        return await self.update_model(db, session_id, {'status': 'abandoned'})
+
+    async def get_select(
+        self,
+        user_id: int | None = None,
+        session_type: str | None = None,
+        bank_id: int | None = None,
+        status: str | None = None,
+    ) -> Select:
+        """
+        获取练习会话列表查询表达式
+
+        :param user_id: 用户 ID
+        :param session_type: 会话类型
+        :param bank_id: 题库 ID
+        :param status: 状态
+        :return:
+        """
+        filters = {}
+
+        if user_id:
+            filters['user_id'] = user_id
+        if session_type:
+            filters['session_type'] = session_type
+        if bank_id:
+            filters['bank_id'] = bank_id
+        if status:
+            filters['status'] = status
+
+        return await self.select_order('start_time', 'desc', **filters)
+
+
+practice_session_dao: CRUDPracticeSession = CRUDPracticeSession(PracticeSession)

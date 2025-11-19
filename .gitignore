@@ -14,3 +14,7 @@ jia_app/
 app_jia/
 miniprogram/
 .claude/
+config.json
+dist/
+build/
+.__pycache__/

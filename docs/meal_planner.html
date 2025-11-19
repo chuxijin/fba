@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>交互式一周餐单规划器（修复方案加载）</title>
+  <style>
+    :root { --bg:#0b1220; --card:#0f172a; --text:#e5e7eb; --muted:#9ca3af; --border:#1f2937; --accent:#60a5fa; --ok:#34d399; --warn:#f59e0b; --bad:#f87171; }
+    *{ box-sizing:border-box; }
+    body{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Hiragino Sans GB','Microsoft Yahei',Arial,sans-serif; margin:16px; color:var(--text); background:linear-gradient(180deg,#0b1220 0%, #0b1220 60%, #0d1424 100%); font-size:13px; }
+    h1{ margin:0 0 6px; font-size:18px; }
+    h2{ font-size:14px; margin:12px 0 6px; }
+    .note{ color:var(--muted); font-size:11px; margin-bottom:8px; }
+    .btn{ padding:6px 10px; border-radius:6px; border:1px solid var(--border); background:#0b3a6a; color:#dbeafe; cursor:pointer; font-size:11px; }
+    .btn.primary{ background:linear-gradient(180deg,#2563eb,#1d4ed8); border:none; }
+    .btn.danger{ background:linear-gradient(180deg,#dc2626,#b91c1c); border:none; }
+    .toolbar{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; align-items:center; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:8px; }
+    th,td{ border:1px solid var(--border); padding:6px; font-size:11px; vertical-align:top; background:rgba(17,24,39,0.35); }
+    th{ background:rgba(59,130,246,0.08); font-weight:600; }
+    select,input{ padding:4px 6px; border:1px solid var(--border); border-radius:4px; font-size:11px; background:#0b1324; color:var(--text); }
+    input[type="text"]{ width:160px; }
+    .meal-items{ display:flex; flex-direction:column; gap:4px; }
+    .meal-item{ display:flex; flex-direction:column; gap:3px; }
+    .line{ display:grid; grid-template-columns: 1.2fr 0.6fr auto; gap:4px; align-items:center; }
+    .line select{ font-size:10px; }
+    .line input{ width:50px; font-size:10px; }
+    .line button{ padding:3px 6px; font-size:10px; }
+    .stats{ font-size:10px; color:var(--muted); padding:4px 6px; border:1px dashed var(--border); border-radius:4px; background:rgba(255,255,255,0.02); }
+    .add{ width:100%; margin-top:4px; background:rgba(59,130,246,0.08); border:1px dashed var(--border); border-radius:4px; padding:5px; font-size:10px; cursor:pointer; color:#93c5fd; }
+    .kpi{ font-size:10px; color:var(--muted); margin-top:4px; }
+    .status{ font-size:11px; margin-top:6px; }
+    .ok{ color:var(--ok); } .bad{ color:var(--bad); } .warn{ color:var(--warn); }
+    
+    /* 紧凑表格布局 */
+    #plannerTable th:first-child{ width:60px; }
+    #plannerTable th:not(:first-child){ width:calc((100% - 60px) / 7); }
+    #plannerTable td{ max-width:0; overflow:hidden; }
+    
+    /* 每日统计表格也紧凑化 */
+    #dailyTable th, #dailyTable td{ padding:4px; font-size:10px; }
+    #weeklyTotals th, #weeklyTotals td{ padding:4px; font-size:10px; }
+    #ingredientStats th, #ingredientStats td{ padding:4px; font-size:10px; }
+  </style>
+</head>
+<body>
+  <h1>交互式一周餐单规划器</h1>
+  <div class="note">紧凑布局：完整功能包含数据库管理、方案导入/导出/保存/加载、新建清空。已修复方案加载问题。</div>
+
+  <!-- 数据库管理 -->
+  <div class="toolbar">
+    <strong>数据库：</strong>
+    <button id="loadDB" class="btn">加载</button>
+    <button id="exportDB" class="btn">导出</button>
+    <label class="btn"><input id="importDB" type="file" accept="application/json" style="display:none;"/>导入</label>
+  </div>
+
+  <!-- 方案管理 -->
+  <div class="toolbar">
+    <strong>方案：</strong>
+    <button id="exportJSON" class="btn primary">导出JSON</button>
+    <button id="exportCSV" class="btn">导出CSV</button>
+    <label class="btn"><input id="importPlanJSON" type="file" accept="application/json" style="display:none;"/>导入JSON</label>
+    <label class="btn"><input id="importPlanCSV" type="file" accept="text/csv,.csv" style="display:none;"/>导入CSV</label>
+    <button id="newPlan" class="btn">新建</button>
+  </div>
+
+  <!-- 本地保存/加载 -->
+  <div class="toolbar">
+    <strong>本地：</strong>
+    <input id="planName" type="text" placeholder="方案名称" />
+    <button id="savePlan" class="btn">保存</button>
+    <select id="loadPlanKey"></select>
+    <button id="loadPlan" class="btn">加载</button>
+    <button id="deletePlan" class="btn danger">删除</button>
+  </div>
+
+  <table id="plannerTable">
+    <thead>
+      <tr>
+        <th>餐次</th>
+        <th>周一<br/>训</th>
+        <th>周二<br/>训</th>
+        <th>周三<br/>休</th>
+        <th>周四<br/>训</th>
+        <th>周五<br/>休</th>
+        <th>周六<br/>训</th>
+        <th>周日<br/>休</th>
+      </tr>
+    </thead>
+    <tbody id="plannerBody"></tbody>
+  </table>
+
+  <h2>每日统计与校验</h2>
+  <table id="dailyTable">
+    <thead>
+      <tr>
+        <th>日期</th><th>类型</th><th>kcal</th><th>P</th><th>F</th><th>C</th><th>鸡胸g</th><th>费用</th><th>校验</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <h2>全周汇总与库存/费用校验</h2>
+  <table>
+    <tbody id="weeklyTotals"></tbody>
+  </table>
+  <h3>食材消耗统计</h3>
+  <table id="ingredientStats">
+    <thead>
+      <tr><th>食材</th><th>总用量</th><th>单位</th><th>总费用</th></tr>
+    </thead>
+    <tbody id="ingredientStatsBody"></tbody>
+  </table>
+  <div id="weeklyChecks" class="status"></div>
+
+  <script>
+    const DAYS=['周一','周二','周三','周四','周五','周六','周日'];
+    const MEALS=['早饭','午餐','练后餐','晚餐'];
+    const TRAINING_DAYS=new Set([0,1,3,5]);
+
+    const DEFAULT_DB={
+      foods:[
+        {id:'mixed_mantou',name:'杂粮馒头',unitKind:'unit',gramsPerUnit:80,per100g:{p:8.5,f:0.1,c:49.1,kcal:231.3,cost:0}},
+        {id:'gaozhuang_mantou',name:'高庄馒头',unitKind:'unit',gramsPerUnit:100,per100g:{p:8,f:1,c:54.7,kcal:259.8,cost:0}},
+        {id:'buckwheat_noodle',name:'荞麦面（干）',unitKind:'unit',gramsPerUnit:60,per100g:{p:12.2,f:1.5,c:72.8,kcal:353.5,cost:0}},
+        {id:'chicken_breast',name:'生去皮鸡胸肉',unitKind:'gram',per100g:{p:22,f:2,c:0,kcal:106,cost:0}},
+        {id:'duck_leg',name:'鸭腿',unitKind:'unit',gramsPerUnit:130,per100g:{p:31.6,f:8.2,c:1.2,kcal:205.0,cost:0}},
+        {id:'milk',name:'全脂牛奶',unitKind:'gram',per100g:{p:3.2,f:3.8,c:5,kcal:67.0,cost:0}},
+        {id:'yogurt',name:'风味酸牛乳（酸奶）',unitKind:'unit',gramsPerUnit:100,per100g:{p:2.6,f:3,c:7.8,kcal:68.6,cost:0}},
+        {id:'oats',name:'麦片（燕麦）',unitKind:'gram',per100g:{p:14.3,f:4.2,c:66,kcal:359.0,cost:0}},
+        {id:'granola',name:'每日坚果燕麦脆',unitKind:'gram',per100g:{p:16.6,f:21.6,c:42.2,kcal:429.6,cost:0}},
+        {id:'nuts',name:'大罐纯坚果',unitKind:'gram',per100g:{p:21.5,f:44.2,c:30,kcal:603.8,cost:0}},
+        {id:'lettuce',name:'生菜',unitKind:'gram',per100g:{p:1.4,f:0.2,c:2.1,kcal:15.8,cost:0}},
+        {id:'egg_whole',name:'鸡蛋（全蛋）',unitKind:'unit',gramsPerUnit:50,per100g:{p:12.6,f:10.6,c:1.1,kcal:150.2,cost:0}},
+        {id:'egg_white',name:'鸡蛋（蛋白）',unitKind:'unit',gramsPerUnit:33,per100g:{p:10.9,f:0.2,c:0.7,kcal:48.2,cost:0}},
+        {id:'protein_powder',name:'蛋白粉',unitKind:'gram',per100g:{p:85,f:0,c:0,kcal:340,cost:0}}
+      ],
+      limits:{ duck_leg_per_week:5, gaozhuang_mantou_per_week:4, yogurt_per_day:1, egg_whole_per_day:1, egg_white_per_day:1, chicken_breast_per_day_g:400 },
+      goals:{ training:{kcal:{min:1750,max:1850},proteinMin:140,fat:{min:55,max:65},carbs:{min:160,max:200}}, rest:{kcal:{min:1500,max:1600},proteinMin:140,fat:{min:60,max:70},carbs:{min:100,max:140}} }
+    };
+
+    let DB=JSON.parse(JSON.stringify(DEFAULT_DB));
+
+    function energy(p,f,c){ return p*4+f*9+c*4; }
+    function foodById(id){ return DB.foods.find(x=>x.id===id); }
+    function compute(foodId, qty){ const fd=foodById(foodId); if(!fd||!qty) return {p:0,f:0,c:0,kcal:0,cost:0,grams:0,units:0,food:fd}; let factor=0,grams=0,units=0; if(fd.unitKind==='gram'){ factor=qty/100; grams=qty; } else { factor=(fd.gramsPerUnit/100)*qty; grams=fd.gramsPerUnit*qty; units=qty; } const p=fd.per100g.p*factor, f=fd.per100g.f*factor, c=fd.per100g.c*factor; const kcal=energy(p,f,c); const cost=(fd.per100g.cost||0)*(grams/100); return {p,f,c,kcal,cost,grams,units,food:fd}; }
+
+    const state={ plan:Array.from({length:7},()=>({'早饭':[], '午餐':[], '练后餐':[], '晚餐':[]})) };
+
+    function mealCell(day, meal){
+      const wrap=document.createElement('div'); wrap.className='meal-items';
+      
+      function addRow(item={foodId:'',qty:0}){
+        const row=document.createElement('div'); row.className='meal-item';
+        const line=document.createElement('div'); line.className='line';
+        const sel=document.createElement('select'); 
+        sel.innerHTML='<option value="">选择食材</option>' + DB.foods.map(f=>`<option value="${f.id}">${f.name}</option>`).join(''); 
+        sel.value=item.foodId||'';
+        const qty=document.createElement('input'); 
+        qty.type='number'; qty.min='0'; qty.step='1'; qty.value=item.qty||0;
+        const del=document.createElement('button'); del.className='btn'; del.textContent='删';
+        const stats=document.createElement('div'); stats.className='stats'; stats.textContent='—';
+
+        function refresh(){ 
+          const r=compute(sel.value, Number(qty.value)||0); 
+          stats.textContent = r.kcal>0 ? `P${r.p.toFixed(1)} F${r.f.toFixed(1)} C${r.c.toFixed(1)} ${Math.round(r.kcal)}k ¥${r.cost.toFixed(2)}` : '—'; 
+        }
+
+        sel.addEventListener('change',()=>{ 
+          const list=state.plan[day][meal]; 
+          const idx=Array.from(wrap.children).indexOf(row); 
+          if(idx>=0){ list[idx].foodId=sel.value; } 
+          refresh(); render(); 
+        });
+        qty.addEventListener('input',()=>{ 
+          const list=state.plan[day][meal]; 
+          const idx=Array.from(wrap.children).indexOf(row); 
+          if(idx>=0){ list[idx].qty=Number(qty.value)||0; } 
+          refresh(); render(); 
+        });
+        del.addEventListener('click',()=>{ 
+          const list=state.plan[day][meal]; 
+          const idx=Array.from(wrap.children).indexOf(row); 
+          if(idx>=0){ 
+            list.splice(idx,1); 
+            wrap.removeChild(row); 
+            render(); 
+          }
+        });
+
+        line.appendChild(sel); line.appendChild(qty); line.appendChild(del);
+        row.appendChild(line);
+        row.appendChild(stats);
+        wrap.insertBefore(row, addBtn);
+        
+        // 关键修复：不要在这里自动添加到state，而是依赖外部调用
+        refresh();
+        return row;
+      }
+      
+      const addBtn=document.createElement('button'); 
+      addBtn.className='add'; 
+      addBtn.textContent='+ 添加'; 
+      addBtn.addEventListener('click',()=>{ 
+        // 添加新项到state
+        state.plan[day][meal].push({foodId:'', qty:0});
+        addRow({foodId:'', qty:0});
+        render(); 
+      }); 
+      wrap.appendChild(addBtn);
+      
+      // 根据当前state中的数据创建行
+      state.plan[day][meal].forEach(item => {
+        addRow(item);
+      });
+      
+      // 如果没有任何项，添加一个空行
+      if(state.plan[day][meal].length === 0) {
+        state.plan[day][meal].push({foodId:'', qty:0});
+        addRow({foodId:'', qty:0});
+      }
+      
+      const k=document.createElement('div'); k.className='kpi'; k.id=`kpi-${day}-${meal}`; wrap.appendChild(k);
+      return wrap;
+    }
+
+    function buildTable(){ 
+      const tbody=document.getElementById('plannerBody'); 
+      tbody.innerHTML=''; 
+      MEALS.forEach(meal=>{ 
+        const tr=document.createElement('tr'); 
+        const th=document.createElement('th'); 
+        th.textContent=meal; 
+        tr.appendChild(th); 
+        for(let d=0; d<7; d++){ 
+          const td=document.createElement('td'); 
+          td.appendChild(mealCell(d,meal)); 
+          tr.appendChild(td); 
+        } 
+        tbody.appendChild(tr); 
+      }); 
+    }
+
+    function sumMeal(day,meal){ let p=0,f=0,c=0,kcal=0,cost=0; state.plan[day][meal].forEach(it=>{ const r=compute(it.foodId,it.qty); p+=r.p; f+=r.f; c+=r.c; kcal+=r.kcal; cost+=r.cost; }); return {p,f,c,kcal,cost}; }
+    function sumDay(day){ let p=0,f=0,c=0,kcal=0,cost=0,ch=0; for(const meal of MEALS){ state.plan[day][meal].forEach(it=>{ const r=compute(it.foodId,it.qty); p+=r.p; f+=r.f; c+=r.c; kcal+=r.kcal; cost+=r.cost; if(r.food?.id==='chicken_breast') ch+=r.grams; }); } return {p,f,c,kcal,cost,ch}; }
+
+    function countFoodInDay(day,id){ let n=0; for(const meal of MEALS){ state.plan[day][meal].forEach(it=>{ if(it.foodId===id){ const fd=foodById(id); n += (fd.unitKind==='unit'? it.qty : it.qty/100); } }); } return n; }
+
+    function round1(x){ return Math.round(x*10)/10; }
+
+    function validateDay(day){ const t=sumDay(day); const train=TRAINING_DAYS.has(day); const g=train?DB.goals.training:DB.goals.rest; const msgs=[]; let ok=true; if(t.kcal<g.kcal.min||t.kcal>g.kcal.max){ ok=false; msgs.push(`kcal ${Math.round(t.kcal)}∉[${g.kcal.min}-${g.kcal.max}]`);} if(t.p<g.proteinMin){ ok=false; msgs.push(`P ${round1(t.p)}<${g.proteinMin}`);} if(t.f<g.fat.min||t.f>g.fat.max){ ok=false; msgs.push(`F ${round1(t.f)}∉[${g.fat.min}-${g.fat.max}]`);} if(t.c<g.carbs.min||t.c>g.carbs.max){ ok=false; msgs.push(`C ${round1(t.c)}∉[${g.carbs.min}-${g.carbs.max}]`);} if(t.ch>DB.limits.chicken_breast_per_day_g){ ok=false; msgs.push(`鸡胸 ${Math.round(t.ch)}g>${DB.limits.chicken_breast_per_day_g}g/日`);} const y=countFoodInDay(day,'yogurt'); if(y>DB.limits.yogurt_per_day){ ok=false; msgs.push(`酸奶 ${y}>${DB.limits.yogurt_per_day}/天`);} const e=countFoodInDay(day,'egg_whole'); const ew=countFoodInDay(day,'egg_white'); if(e!==DB.limits.egg_whole_per_day||ew!==DB.limits.egg_white_per_day){ ok=false; msgs.push(`鸡蛋规则 全蛋=${DB.limits.egg_whole_per_day} 蛋白=${DB.limits.egg_white_per_day}`);} if(train){ const lunch=sumMeal(day,'午餐'); const post=sumMeal(day,'练后餐'); const ratio=((lunch.c+post.c)/(t.c||1)); if(ratio<0.6){ msgs.push(`提示：午餐+练后C占比${Math.round(ratio*100)}%<60%`); } }
+      return {ok, msgs, t}; }
+
+    function weeklyInventory(){ let duck=0,gz=0; for(let d=0; d<7; d++){ for(const meal of MEALS){ state.plan[d][meal].forEach(it=>{ if(it.foodId==='duck_leg') duck+=it.qty; if(it.foodId==='gaozhuang_mantou') gz+=it.qty; }); } } const msgs=[]; let ok=true; if(duck>DB.limits.duck_leg_per_week){ok=false; msgs.push(`鸭腿 ${duck}>${DB.limits.duck_leg_per_week}/周`);} if(gz>DB.limits.gaozhuang_mantou_per_week){ok=false; msgs.push(`高庄馒头 ${gz}>${DB.limits.gaozhuang_mantou_per_week}/周`);} return {ok,msgs,duck,gz}; }
+
+    function render(){
+      for(let d=0; d<7; d++){
+        MEALS.forEach(meal=>{ const k=document.getElementById(`kpi-${d}-${meal}`); if(!k) return; const m=sumMeal(d,meal); k.innerHTML = (m.kcal>0)?`合计：P${round1(m.p)} F${round1(m.f)} C${round1(m.c)} ${Math.round(m.kcal)}k ¥${m.cost.toFixed(2)}`:''; });
+      }
+      const tbody=document.querySelector('#dailyTable tbody'); tbody.innerHTML='';
+      for(let d=0; d<7; d++){ const v=validateDay(d); const tr=document.createElement('tr'); tr.innerHTML=`<td>${DAYS[d]}</td><td>${TRAINING_DAYS.has(d)?'训':'休'}</td><td>${Math.round(v.t.kcal)}</td><td>${round1(v.t.p)}</td><td>${round1(v.t.f)}</td><td>${round1(v.t.c)}</td><td>${Math.round(v.t.ch)}</td><td>¥${v.t.cost.toFixed(2)}</td><td>${v.ok?'<span class="ok">达标</span>':('<span class="bad">未达标</span><br><span class="note">'+v.msgs.join('；')+'</span>')}</td>`; tbody.appendChild(tr);}      
+      let P=0,F=0,C=0,K=0,CH=0,COST=0; for(let d=0; d<7; d++){ for(const meal of MEALS){ state.plan[d][meal].forEach(it=>{ const r=compute(it.foodId,it.qty); P+=r.p; F+=r.f; C+=r.c; K+=r.kcal; COST+=r.cost; }); } }
+      const inv=weeklyInventory(); const wt=document.getElementById('weeklyTotals'); wt.innerHTML = `<tr><th>总kcal</th><td>${Math.round(K)}</td></tr><tr><th>总蛋白</th><td>${Math.round(P)} g</td></tr><tr><th>总脂肪</th><td>${Math.round(F)} g</td></tr><tr><th>总碳水</th><td>${Math.round(C)} g</td></tr><tr><th>周总费用</th><td>¥${COST.toFixed(2)}</td></tr>`;
+      
+      // 食材消耗统计
+      const ingredientStats = calculateIngredientStats();
+      const statsBody = document.getElementById('ingredientStatsBody');
+      statsBody.innerHTML = '';
+      ingredientStats.forEach(stat => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${stat.name}</td><td>${stat.totalQty}</td><td>${stat.unit}</td><td>¥${stat.totalCost.toFixed(2)}</td>`;
+        statsBody.appendChild(tr);
+      });
+      
+      document.getElementById('weeklyChecks').innerHTML = inv.ok?'<span class="ok">周度限制满足</span>':('<span class="bad">存在超限：</span><span class="note">'+inv.msgs.join('；')+'</span>');
+    }
+
+    function sumWeekChicken(){ let g=0; for(let d=0; d<7; d++){ for(const meal of MEALS){ state.plan[d][meal].forEach(it=>{ if(it.foodId==='chicken_breast') g+=compute(it.foodId,it.qty).grams; }); } } return g; }
+
+    function calculateIngredientStats(){
+      const stats = new Map();
+      
+      // 遍历所有餐次，统计每种食材的使用量
+      for(let d=0; d<7; d++){
+        for(const meal of MEALS){
+          state.plan[d][meal].forEach(item => {
+            if(item.foodId && item.qty > 0){
+              const food = foodById(item.foodId);
+              if(!food) return;
+              
+              const result = compute(item.foodId, item.qty);
+              const key = item.foodId;
+              
+              if(!stats.has(key)){
+                stats.set(key, {
+                  name: food.name,
+                  totalQty: 0,
+                  totalCost: 0,
+                  unit: food.unitKind === 'unit' ? '个' : 'g',
+                  food: food
+                });
+              }
+              
+              const stat = stats.get(key);
+              if(food.unitKind === 'unit'){
+                stat.totalQty += item.qty; // 按个数计算
+              } else {
+                stat.totalQty += result.grams; // 按克数计算
+              }
+              stat.totalCost += result.cost;
+            }
+          });
+        }
+      }
+      
+      // 转换为数组并按名称排序
+      return Array.from(stats.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // 数据库管理
+    async function loadDB(){ try{ const res=await fetch('meal_db.json',{cache:'no-store'}); if(!res.ok) throw new Error('http'); const data=await res.json(); if(!data.foods||!data.limits||!data.goals) throw new Error('shape'); DB=data; } catch(e){ DB=JSON.parse(JSON.stringify(DEFAULT_DB)); alert('读取 docs/meal_db.json 失败，已使用内置默认数据库'); } finally { buildTable(); render(); rebuildPlanList(); } }
+    function exportDB(){ const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='meal_db.json'; a.click(); URL.revokeObjectURL(a.href); }
+    function importDB(file){ const fr=new FileReader(); fr.onload=()=>{ try{ const data=JSON.parse(fr.result); if(!data.foods||!data.limits||!data.goals) throw new Error('shape'); DB=data; buildTable(); render(); alert('数据库已导入'); }catch(e){ alert('数据库JSON解析失败'); } }; fr.readAsText(file); }
+
+    // 方案导出/导入
+    function exportPlanJSON(){ const data={plan:state.plan,days:DAYS,meals:MEALS,version:1,exportedAt:new Date().toISOString()}; const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='meal_plan.json'; a.click(); URL.revokeObjectURL(a.href); }
+    function exportPlanCSV(){ const lines=[]; lines.push(['日期','餐次','食材ID','数量'].join(',')); for(let d=0; d<7; d++){ for(const meal of MEALS){ state.plan[d][meal].forEach(it=>{ lines.push([DAYS[d],meal,it.foodId,it.qty].join(',')); }); } } const blob=new Blob([lines.join('\n')],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='meal_plan.csv'; a.click(); URL.revokeObjectURL(a.href); }
+    function importPlanJSON(file){ const fr=new FileReader(); fr.onload=()=>{ try{ const data=JSON.parse(fr.result); if(data.plan) { state.plan=data.plan; buildTable(); render(); alert('方案已导入'); } }catch(e){ alert('方案JSON解析失败'); } }; fr.readAsText(file); }
+    function importPlanCSV(file){ const fr=new FileReader(); fr.onload=()=>{ try{ const text=fr.result; const rows=text.split(/\r?\n/).slice(1).filter(Boolean); const plan=Array.from({length:7},()=>({'早饭':[], '午餐':[], '练后餐':[], '晚餐':[]})); rows.forEach(line=>{ const [day,meal,foodId,qtyStr]=line.split(','); const d=DAYS.indexOf(day.trim()); if(d>=0 && MEALS.includes(meal.trim())){ plan[d][meal.trim()].push({foodId:foodId.trim(), qty:Number(qtyStr)||0}); } }); state.plan=plan; buildTable(); render(); alert('方案已导入'); }catch(e){ alert('方案CSV解析失败'); } }; fr.readAsText(file); }
+
+    // 本地保存/加载 - 修复版本
+    function savePlanLocal(){ 
+      const key=document.getElementById('planName').value.trim(); 
+      if(!key) return alert('请输入方案名称'); 
+      const all=JSON.parse(localStorage.getItem('meal_plans')||'{}'); 
+      all[key]=JSON.parse(JSON.stringify(state.plan)); // 深拷贝
+      localStorage.setItem('meal_plans', JSON.stringify(all)); 
+      rebuildPlanList(); 
+      alert('方案已保存到浏览器'); 
+    }
+    
+    function rebuildPlanList(){ 
+      const sel=document.getElementById('loadPlanKey'); 
+      const all=JSON.parse(localStorage.getItem('meal_plans')||'{}'); 
+      sel.innerHTML='<option value="">选择方案</option>'; 
+      Object.keys(all).forEach(k=>{ 
+        const op=document.createElement('option'); 
+        op.value=k; 
+        op.textContent=k; 
+        sel.appendChild(op); 
+      }); 
+    }
+    
+    function loadPlanLocal(){ 
+      const key=document.getElementById('loadPlanKey').value; 
+      if(!key) return alert('请选择方案'); 
+      const all=JSON.parse(localStorage.getItem('meal_plans')||'{}'); 
+      if(all[key]){ 
+        // 关键修复：先更新state，再重建表格
+        state.plan=JSON.parse(JSON.stringify(all[key])); // 深拷贝
+        buildTable(); 
+        render(); 
+        alert('方案已加载'); 
+      } else {
+        alert('方案不存在');
+      }
+    }
+    
+    function deletePlanLocal(){ 
+      const key=document.getElementById('loadPlanKey').value; 
+      if(!key) return alert('请选择方案'); 
+      if(!confirm(`确认删除方案"${key}"？`)) return; 
+      const all=JSON.parse(localStorage.getItem('meal_plans')||'{}'); 
+      delete all[key]; 
+      localStorage.setItem('meal_plans', JSON.stringify(all)); 
+      rebuildPlanList(); 
+      alert('方案已删除'); 
+    }
+
+    // 新建方案
+    function newPlan(){ 
+      if(!confirm('确认清空当前方案并新建？')) return; 
+      state.plan=Array.from({length:7},()=>({'早饭':[], '午餐':[], '练后餐':[], '晚餐':[]})); 
+      buildTable(); 
+      render(); 
+    }
+
+    // 绑定事件
+    document.getElementById('loadDB').addEventListener('click', loadDB);
+    document.getElementById('exportDB').addEventListener('click', exportDB);
+    document.getElementById('importDB').addEventListener('change', e=>{ if(e.target.files[0]) importDB(e.target.files[0]); });
+
+    document.getElementById('exportJSON').addEventListener('click', exportPlanJSON);
+    document.getElementById('exportCSV').addEventListener('click', exportPlanCSV);
+    document.getElementById('importPlanJSON').addEventListener('change', e=>{ if(e.target.files[0]) importPlanJSON(e.target.files[0]); });
+    document.getElementById('importPlanCSV').addEventListener('change', e=>{ if(e.target.files[0]) importPlanCSV(e.target.files[0]); });
+    document.getElementById('newPlan').addEventListener('click', newPlan);
+
+    document.getElementById('savePlan').addEventListener('click', savePlanLocal);
+    document.getElementById('loadPlan').addEventListener('click', loadPlanLocal);
+    document.getElementById('deletePlan').addEventListener('click', deletePlanLocal);
+
+    // 初始化
+    loadDB();
+  </script>
+</body>
+</html>

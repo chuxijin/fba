@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from backend.app.admin.api.router import v1 as admin_v1
+from backend.app.bili.api.router import v1 as bili_v1
 from backend.app.task.api.router import v1 as task_v1
 from backend.app.coulddrive.api.router import v1 as coulddrive_v1
 from backend.app.mcp.api.router import v1 as mcp_v1
@@ -12,6 +13,7 @@ from backend.app.question_bank.api.router import v1 as question_bank_v1
 router = APIRouter()
 
 router.include_router(admin_v1)
+router.include_router(bili_v1)
 router.include_router(task_v1)
 router.include_router(job_v1)
 router.include_router(coulddrive_v1)

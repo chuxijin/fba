@@ -66,7 +66,17 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
     # 创建操作日志任务
     create_task(OperaLogMiddleware.consumer())
 
+    # 初始化任务调度器
+    from backend.app.bili.scheduler import register_all_tasks
+    from backend.app.bili.scheduler.manager import task_scheduler
+
+    register_all_tasks()
+    await task_scheduler.start()
+
     yield
+
+    # 停止任务调度器
+    await task_scheduler.stop()
 
     # 关闭 redis 连接
     await redis_client.aclose()

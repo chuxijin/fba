@@ -1,0 +1,30 @@
+{
+  "foods": [
+    { "id": "mixed_mantou", "name": "杂粮馒头", "unitKind": "unit", "gramsPerUnit": 80, "per100g": { "p": 8.5, "f": 0.1, "c": 49.1, "kcal": 231.3, "cost": 1.25 } },
+    { "id": "gaozhuang_mantou", "name": "高庄馒头", "unitKind": "unit", "gramsPerUnit": 100, "per100g": { "p": 8, "f": 1, "c": 54.7, "kcal": 259.8, "cost": 0.75 } },
+    { "id": "buckwheat_noodle", "name": "荞麦面（干）", "unitKind": "unit", "gramsPerUnit": 60, "per100g": { "p": 12.2, "f": 1.5, "c": 72.8, "kcal": 353.5, "cost": 1.67 } },
+    { "id": "chicken_breast", "name": "生去皮鸡胸肉", "unitKind": "gram", "per100g": { "p": 22, "f": 2, "c": 0, "kcal": 106, "cost": 1.5 } },
+    { "id": "duck_leg", "name": "鸭腿", "unitKind": "unit", "gramsPerUnit": 130, "per100g": { "p": 31.6, "f": 8.2, "c": 1.2, "kcal": 205.0, "cost": 3.08 } },
+    { "id": "milk", "name": "全脂牛奶", "unitKind": "gram", "per100g": { "p": 3.2, "f": 3.8, "c": 5, "kcal": 67.0, "cost": 1.33 } },
+    { "id": "yogurt", "name": "风味酸牛乳（酸奶）", "unitKind": "unit", "gramsPerUnit": 100, "per100g": { "p": 2.6, "f": 3, "c": 7.8, "kcal": 68.6, "cost": 1.0 } },
+    { "id": "oats", "name": "麦片（燕麦）", "unitKind": "gram", "per100g": { "p": 14.3, "f": 4.2, "c": 66, "kcal": 359.0, "cost": 0 } },
+    { "id": "granola", "name": "每日坚果燕麦脆", "unitKind": "gram", "per100g": { "p": 16.6, "f": 21.6, "c": 42.2, "kcal": 429.6, "cost": 0 } },
+    { "id": "nuts", "name": "大罐纯坚果", "unitKind": "gram", "per100g": { "p": 21.5, "f": 44.2, "c": 30, "kcal": 603.8, "cost": 8.89 } },
+    { "id": "lettuce", "name": "生菜", "unitKind": "gram", "per100g": { "p": 1.4, "f": 0.2, "c": 2.1, "kcal": 15.8, "cost": 1.25 } },
+    { "id": "egg_whole", "name": "鸡蛋（全蛋）", "unitKind": "unit", "gramsPerUnit": 50, "per100g": { "p": 12.6, "f": 10.6, "c": 1.1, "kcal": 150.2, "cost": 1.0 } },
+    { "id": "egg_white", "name": "鸡蛋（蛋白）", "unitKind": "unit", "gramsPerUnit": 33, "per100g": { "p": 10.9, "f": 0.2, "c": 0.7, "kcal": 48.2, "cost": 1.52 } },
+    { "id": "protein_powder", "name": "蛋白粉", "unitKind": "gram", "per100g": { "p": 85, "f": 0, "c": 0, "kcal": 340, "cost": 8.0 } }
+  ],
+  "limits": {
+    "duck_leg_per_week": 5,
+    "gaozhuang_mantou_per_week": 4,
+    "yogurt_per_day": 1,
+    "egg_whole_per_day": 1,
+    "egg_white_per_day": 1,
+    "chicken_breast_per_day_g": 400
+  },
+  "goals": {
+    "training": { "kcal": {"min": 1750, "max": 1850}, "proteinMin": 140, "fat": {"min": 55, "max": 65}, "carbs": {"min": 160, "max": 200} },
+    "rest": { "kcal": {"min": 1500, "max": 1600}, "proteinMin": 140, "fat": {"min": 60, "max": 70}, "carbs": {"min": 100, "max": 140} }
+  }
+}
