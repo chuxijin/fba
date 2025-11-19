@@ -76,6 +76,23 @@ class Settings(BaseSettings):
         rf'^{FASTAPI_API_V1_PATH}/qbank/banks/\d+$',  # 题库详情（公开接口）
     ]
 
+    # 用户安全
+    USER_LOCK_REDIS_PREFIX: str = 'fba:user:lock'
+    USER_LOCK_THRESHOLD: int = 5  # 用户密码错误锁定阈值，0 表示禁用锁定
+    USER_LOCK_SECONDS: int = 60 * 5  # 5 分钟
+    USER_PASSWORD_EXPIRY_DAYS: int = 365  # 用户密码有效期，0 表示永不过期
+    USER_PASSWORD_REMINDER_DAYS: int = 7  # 用户密码到期提醒，0 表示不提醒
+    USER_PASSWORD_HISTORY_CHECK_COUNT: int = 3
+    USER_PASSWORD_MIN_LENGTH: int = 6
+    USER_PASSWORD_MAX_LENGTH: int = 32
+    USER_PASSWORD_REQUIRE_SPECIAL_CHAR: bool = False
+
+    # 登录
+    LOGIN_CAPTCHA_ENABLED: bool = True
+    LOGIN_CAPTCHA_REDIS_PREFIX: str = 'fba:login:captcha'
+    LOGIN_CAPTCHA_EXPIRE_SECONDS: int = 60 * 5  # 5 分钟
+    LOGIN_FAILURE_PREFIX: str = 'fba:login:failure'
+
     # JWT
     JWT_USER_REDIS_PREFIX: str = 'fba:user'
 
@@ -90,13 +107,9 @@ class Settings(BaseSettings):
     COOKIE_REFRESH_TOKEN_KEY: str = 'fba_refresh_token'
     COOKIE_REFRESH_TOKEN_EXPIRE_SECONDS: int = 60 * 60 * 24 * 7  # 7 天
 
-    # 验证码
-    CAPTCHA_LOGIN_REDIS_PREFIX: str = 'fba:login:captcha'
-    CAPTCHA_LOGIN_EXPIRE_SECONDS: int = 60 * 5  # 3 分钟
-
     # 数据权限
     DATA_PERMISSION_MODELS: dict[str, str] = {  # 允许进行数据过滤的 SQLA 模型，它必须以模块字符串的方式定义
-        '部门': 'backend.app.admin.model.Dept',
+        'Dept': 'backend.app.admin.model.Dept',
     }
     DATA_PERMISSION_COLUMN_EXCLUDE: list[str] = [  # 排除允许进行数据过滤的 SQLA 模型列
         'id',
@@ -249,10 +262,13 @@ class Settings(BaseSettings):
     OAUTH2_LINUX_DO_CLIENT_SECRET: str
 
     # 基础配置
+    OAUTH2_STATE_REDIS_PREFIX: str = 'fba:oauth2:state'
+    OAUTH2_STATE_EXPIRE_SECONDS: int = 60 * 3  # 3 分钟
     OAUTH2_GITHUB_REDIRECT_URI: str = 'http://127.0.0.1:8000/api/v1/oauth2/github/callback'
     OAUTH2_GOOGLE_REDIRECT_URI: str = 'http://127.0.0.1:8000/api/v1/oauth2/google/callback'
     OAUTH2_LINUX_DO_REDIRECT_URI: str = 'http://127.0.0.1:8000/api/v1/oauth2/linux-do/callback'
-    OAUTH2_FRONTEND_REDIRECT_URI: str = 'http://localhost:5173/oauth2/callback'
+    OAUTH2_FRONTEND_LOGIN_REDIRECT_URI: str = 'http://localhost:5173/oauth2/callback'
+    OAUTH2_FRONTEND_BINDING_REDIRECT_URI: str = 'http://localhost:5173/profile'
 
     ##################################################
     # [ Plugin ] email

@@ -20,8 +20,8 @@ class AuthSchemaBase(SchemaBase):
 class AuthLoginParam(AuthSchemaBase):
     """用户登录参数"""
 
-    uuid: str = Field(description='验证码 UUID')
-    captcha: str = Field(description='验证码')
+    uuid: str | None = Field(None, description='验证码 UUID')
+    captcha: str | None = Field(None, description='验证码')
 
 
 class AddUserParam(AuthSchemaBase):
@@ -32,6 +32,13 @@ class AddUserParam(AuthSchemaBase):
     phone: CustomPhoneNumber | None = Field(None, description='手机号码')
     dept_id: int = Field(description='部门 ID')
     roles: list[int] = Field(description='角色 ID 列表')
+
+
+class AddUserRoleParam(SchemaBase):
+    """添加用户角色"""
+
+    user_id: int = Field(description='用户 ID')
+    role_id: int = Field(description='角色 ID')
 
 
 class AddOAuth2UserParam(AuthSchemaBase):

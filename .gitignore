@@ -13,3 +13,4 @@ frontend/apps/node_modules/
 jia_app/
 app_jia/
 miniprogram/
+.claude/

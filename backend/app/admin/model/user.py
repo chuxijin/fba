@@ -1,19 +1,12 @@
-from __future__ import annotations
-
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.app.admin.model.m2m import sys_user_role
 from backend.common.model import Base, TimeZone, id_key
 from backend.database.db import uuid4_str
 from backend.utils.timezone import timezone
-
-if TYPE_CHECKING:
-    from backend.app.admin.model import Dept, Role
 
 
 class User(Base):
@@ -36,14 +29,11 @@ class User(Base):
     is_multi_login: Mapped[bool] = mapped_column(default=False, comment='是否重复登陆(0否 1是)')
     join_time: Mapped[datetime] = mapped_column(TimeZone, init=False, default_factory=timezone.now, comment='注册时间')
     last_login_time: Mapped[datetime | None] = mapped_column(
-        TimeZone, init=False, onupdate=timezone.now, comment='上次登录'
+        TimeZone, init=False, onupdate=timezone.now, comment='上次登录时间'
+    )
+    last_password_changed_time: Mapped[datetime | None] = mapped_column(
+        TimeZone, init=False, default_factory=timezone.now, comment='上次密码变更时间'
     )
 
-    # 部门用户一对多
-    dept_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger, sa.ForeignKey('sys_dept.id', ondelete='SET NULL'), default=None, comment='部门关联ID'
-    )
-    dept: Mapped[Dept | None] = relationship(init=False, back_populates='users')
-
-    # 用户角色多对多
-    roles: Mapped[list[Role]] = relationship(init=False, secondary=sys_user_role, back_populates='users')
+    # 逻辑外键
+    dept_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='部门关联ID')
