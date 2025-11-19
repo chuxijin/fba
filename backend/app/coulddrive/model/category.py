@@ -34,8 +34,12 @@ class Category(Base, UserMixin):
     parent_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey('yp_category.id', ondelete='SET NULL'), default=None, index=True, comment='父分类ID'
     )
-    parent: Mapped[Optional['Category']] = relationship(init=False, back_populates='children', remote_side=[id])
-    children: Mapped[Optional[list['Category']]] = relationship(init=False, back_populates='parent')
+    parent: Mapped[Optional['backend.app.coulddrive.model.category.Category']] = relationship(
+        init=False, back_populates='children', remote_side=[id]
+    )
+    children: Mapped[Optional[list['backend.app.coulddrive.model.category.Category']]] = relationship(
+        init=False, back_populates='parent'
+    )
     
     # 索引和约束（简化）
     __table_args__ = (

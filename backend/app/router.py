@@ -6,6 +6,8 @@ from backend.app.coulddrive.api.router import v1 as coulddrive_v1
 from backend.app.mcp.api.router import v1 as mcp_v1
 from backend.app.social.api.router import v1 as social_v1
 from backend.app.job.router import v1 as job_v1
+from backend.app.jia.api.router import v1 as jia_v1
+from backend.app.question_bank.api.router import v1 as question_bank_v1
 
 router = APIRouter()
 
@@ -15,3 +17,5 @@ router.include_router(job_v1)
 router.include_router(coulddrive_v1)
 router.include_router(mcp_v1)
 router.include_router(social_v1)
+router.include_router(jia_v1)
+router.include_router(question_bank_v1)

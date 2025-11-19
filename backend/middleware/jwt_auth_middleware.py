@@ -2,6 +2,7 @@ from typing import Any
 
 from fastapi import Request, Response
 from fastapi.security.utils import get_authorization_scheme_param
+from jose import jwt
 from starlette.authentication import AuthCredentials, AuthenticationBackend, AuthenticationError
 from starlette.requests import HTTPConnection
 
@@ -74,6 +75,26 @@ class JwtAuthMiddleware(AuthenticationBackend):
         if scheme.lower() != 'bearer':
             return None
 
+        # 先尝试解析 token，判断是否为 customer token
+        try:
+            payload = jwt.decode(token, settings.TOKEN_SECRET_KEY, algorithms=[settings.TOKEN_ALGORITHM])
+            user_type = payload.get('user_type')
+
+            # 如果是 customer token，只做基本验证，具体权限检查留给路由依赖
+            if user_type == 'customer':
+                # Customer token 已通过 JWT 解析验证（签名、过期时间等）
+                # 具体的用户信息和权限由路由的 DependsCustomerAuth 处理
+                return None
+        except jwt.ExpiredSignatureError:
+            raise _AuthenticationError(code=401, msg='Token 已过期')
+        except jwt.JWTError:
+            # 可能是 admin token，继续使用原有验证逻辑
+            pass
+        except Exception as e:
+            log.exception(f'Token 解析异常：{e}')
+            raise _AuthenticationError(code=401, msg='Token 无效')
+
+        # Admin token 验证
         try:
             user = await jwt_authentication(token)
         except TokenError as exc:

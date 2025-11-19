@@ -67,9 +67,13 @@ class Settings(BaseSettings):
     TOKEN_REFRESH_REDIS_PREFIX: str = 'fba:refresh_token'
     TOKEN_REQUEST_PATH_EXCLUDE: list[str] = [  # JWT / RBAC 路由白名单
         f'{FASTAPI_API_V1_PATH}/auth/login',
+        f'{FASTAPI_API_V1_PATH}/qbank/auth/wx-login',  # 题库微信登录
+        f'{FASTAPI_API_V1_PATH}/qbank/auth/test-login',  # 题库测试登录
+        f'{FASTAPI_API_V1_PATH}/qbank/banks',  # 题库列表（公开接口）
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$',
+        rf'^{FASTAPI_API_V1_PATH}/qbank/banks/\d+$',  # 题库详情（公开接口）
     ]
 
     # JWT
@@ -109,6 +113,7 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGINS: list[str] = [  # 末尾不带斜杠
         'http://127.0.0.1:8000',
         'http://localhost:5173',
+        'http://localhost:5174',
         'http://127.0.0.1:5500',
         'https://admin.yzxj.vip',
         'https://blog.yzxj.vip',
@@ -262,6 +267,17 @@ class Settings(BaseSettings):
     EMAIL_SSL: bool = True
     EMAIL_CAPTCHA_REDIS_PREFIX: str = 'fba:email:captcha'
     EMAIL_CAPTCHA_EXPIRE_SECONDS: int = 60 * 3  # 3 分钟
+
+    ##################################################
+    # [ App ] 题库微信小程序
+    ##################################################
+    # .env 微信小程序配置
+    WX_MINIAPP_APPID: str
+    WX_MINIAPP_SECRET: str
+
+    # .env 微信 H5 配置（可选）
+    WX_H5_APPID: str = ''
+    WX_H5_SECRET: str = ''
 
     @model_validator(mode='before')
     @classmethod

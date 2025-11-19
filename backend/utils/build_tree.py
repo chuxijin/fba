@@ -33,6 +33,10 @@ def traversal_to_tree(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     node_dict = {node['id']: node for node in nodes}
 
     for node in nodes:
+        # 移除 children 字段如果它是 None
+        if 'children' in node and node['children'] is None:
+            del node['children']
+
         parent_id = node['parent_id']
         if parent_id is None:
             tree.append(node)

@@ -26,7 +26,7 @@ from backend.database.db import create_tables
 from backend.database.redis import redis_client
 from backend.middleware.access_middleware import AccessMiddleware
 from backend.middleware.i18n_middleware import I18nMiddleware
-from backend.middleware.jwt_auth_middleware import JwtAuthMiddleware
+from backend.middleware.unified_auth_middleware import UnifiedAuthMiddleware
 from backend.middleware.opera_log_middleware import OperaLogMiddleware
 from backend.middleware.state_middleware import StateMiddleware
 from backend.plugin.tools import build_final_router
@@ -44,6 +44,12 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
     :param app: FastAPI 应用实例
     :return:
     """
+    # 注册用户加载器
+    from backend.common.security.auth_strategy import register_user_loader, AdminUserLoader, CustomerUserLoader
+
+    register_user_loader('admin', AdminUserLoader())
+    register_user_loader('customer', CustomerUserLoader())
+
     # 创建数据库表
     await create_tables()
 
@@ -144,11 +150,11 @@ def register_middleware(app: FastAPI) -> None:
     # State
     app.add_middleware(StateMiddleware)
 
-    # JWT auth
+    # Unified Auth (支持多种用户类型)
     app.add_middleware(
         AuthenticationMiddleware,
-        backend=JwtAuthMiddleware(),
-        on_error=JwtAuthMiddleware.auth_exception_handler,
+        backend=UnifiedAuthMiddleware(),
+        on_error=UnifiedAuthMiddleware.auth_exception_handler,
     )
 
     # I18n
