@@ -144,7 +144,7 @@ class AlistClient(BaseDriveClient):
 
     @property
     def drive_type(self) -> str:
-        return "alist"
+        return "AlistDrive"
 
     def login(self, cookies: str, user_id: Optional[str] = None) -> bool:
         """
@@ -349,7 +349,7 @@ class AlistClient(BaseDriveClient):
                     created_time=file_info.get("created", ""),
                     updated_time=file_info.get("modified", ""),
                     parent_id=params.file_path,
-                    drive_type="alist"
+                    drive_type="AlistDrive"
                 )
                 file_list.append(base_file_info)
             

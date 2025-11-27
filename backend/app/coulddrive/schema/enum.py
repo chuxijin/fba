@@ -2,9 +2,9 @@ from enum import Enum
 
 class DriveType(Enum):
     """支持的网盘类型枚举"""
-    BAIDU_DRIVE = "baidu"
-    QUARK_DRIVE = "quark"
-    ALIST_DRIVE = "alist"
+    BAIDU_DRIVE = "BaiduDrive"
+    QUARK_DRIVE = "QuarkDrive"
+    ALIST_DRIVE = "AlistDrive"
 
 class RecursionSpeed(Enum):
     """递归获取列表时的速度控制"""

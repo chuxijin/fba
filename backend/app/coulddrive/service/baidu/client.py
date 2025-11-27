@@ -197,7 +197,7 @@ class BaiduClient(BaseDriveClient):
 
     @property
     def drive_type(self) -> str:
-        return "baidu"
+        return "BaiduDrive"
 
     def login(self, cookies: str, user_id: Optional[int] = None) -> bool:
         """

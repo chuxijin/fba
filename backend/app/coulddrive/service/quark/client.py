@@ -198,7 +198,7 @@ class QuarkClient(BaseDriveClient):
 
     @property
     def drive_type(self) -> str:
-        return "quark"
+        return "QuarkDrive"
     
 
 
