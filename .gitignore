@@ -18,3 +18,5 @@ config.json
 dist/
 build/
 .__pycache__/
+all_in_one/
+my_app/
