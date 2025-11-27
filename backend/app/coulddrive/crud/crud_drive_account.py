@@ -26,16 +26,16 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         """
         return await self.select_model(db, pk)
 
-    async def get_by_user_id(self, db: AsyncSession, user_id: str, type: str) -> DriveAccount | None:
+    async def get_by_username(self, db: AsyncSession, username: str, type: str) -> DriveAccount | None:
         """
-        通过用户ID和类型获取网盘账户
+        通过用户名和类型获取网盘账户
 
         :param db: 数据库会话
-        :param user_id: 用户ID
+        :param username: 用户名
         :param type: 网盘类型
         :return:
         """
-        return await self.select_model_by_column(db, user_id=user_id, type=type)
+        return await self.select_model_by_column(db, username=username, type=type)
 
     async def get_list(self, type: str | None, is_valid: bool | None) -> Select:
         """
@@ -175,11 +175,11 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         return await self.update_model(db, pk, {"is_valid": is_valid})
 
     async def create_or_update(
-        self, 
-        db: AsyncSession, 
-        user_info: 'BaseUserInfo', 
-        drive_type: str, 
-        cookies: str, 
+        self,
+        db: AsyncSession,
+        user_info: 'BaseUserInfo',
+        drive_type: str,
+        cookies: str,
         current_user_id: int
     ) -> None:
         """
@@ -192,11 +192,13 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param current_user_id: 当前用户ID
         :return:
         """
-        existing_user = await self.get_by_user_id(db, user_id=user_info.user_id, type=drive_type)
+        # 改用 username + type 作为唯一标识（更稳定）
+        existing_user = await self.get_by_username(db, username=user_info.username, type=drive_type)
         
         if existing_user:
-            # 用户已存在，更新信息
+            # 用户已存在，更新信息（包括 user_id，以防它变化了）
             update_data = UpdateDriveAccountParam(
+                user_id=user_info.user_id,
                 username=user_info.username,
                 avatar_url=user_info.avatar_url,
                 quota=user_info.quota,

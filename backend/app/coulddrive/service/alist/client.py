@@ -28,7 +28,13 @@ from backend.app.coulddrive.schema.user import (
 
 from backend.app.coulddrive.service.alist.errors import AlistApiError
 from backend.app.coulddrive.service.filesync_service import ItemFilter
-from backend.app.coulddrive.service.yp_service import BaseDriveClient
+from backend.app.coulddrive.service.yp_service import (
+    BaseDriveClient,
+    ConfigItem,
+    ConfigItemType,
+    DriverRegistry,
+)
+from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.service.alist.schemas import (
     AlistFile,
     AlistQuota,
@@ -37,34 +43,93 @@ from backend.app.coulddrive.service.alist.api import AlistApi
 from backend.common.log import log
 
 
+@DriverRegistry.register(DriveType.ALIST_DRIVE)
 class AlistClient(BaseDriveClient):
     """Alist 网盘客户端
-    
+
     这是对`AlistApi`的封装。它将原始AlistApi请求的响应内容解析为一些内部数据结构。
+
+    支持的认证方式：
+    - Token 字符串（向后兼容）
+    - 配置字典 {"token": "xxx", "username": "xxx", "password": "xxx"}
     """
+
+    # ========== Alist 风格：配置项声明 ==========
+
+    @classmethod
+    def get_config_items(cls) -> List[ConfigItem]:
+        """声明 Alist 需要的配置项"""
+        return [
+            ConfigItem(
+                name="token",
+                label="Token",
+                type=ConfigItemType.STRING,
+                required=False,
+                description="Alist Token（可选，与用户名密码二选一）",
+                placeholder="alist-xxxxx"
+            ),
+            ConfigItem(
+                name="username",
+                label="用户名",
+                type=ConfigItemType.STRING,
+                required=False,
+                default="admin",
+                description="Alist 用户名（可选，默认 admin）"
+            ),
+            ConfigItem(
+                name="password",
+                label="密码",
+                type=ConfigItemType.PASSWORD,
+                required=False,
+                default="admin",
+                description="Alist 密码（可选，默认 admin）"
+            ),
+        ]
+
+    @classmethod
+    def validate_config(cls, config: Dict[str, Any]) -> Dict[str, List[str]]:
+        """验证 Alist 配置"""
+        result = {"errors": [], "warnings": []}
+
+        token = config.get("token", "")
+        username = config.get("username", "")
+        password = config.get("password", "")
+
+        # 需要至少一种认证方式
+        if not token and not (username and password):
+            result["errors"].append("需要提供 Token 或 用户名密码")
+
+        # 如果同时提供了两种方式，给出警告
+        if token and username and password:
+            result["warnings"].append("同时提供了 Token 和用户名密码，将优先使用 Token")
+
+        return result
 
     def __init__(
         self,
-        cookies: str,
+        config: Union[str, Dict[str, Any]],
         user_id: Optional[str] = None,
-        username: str = "admin",
-        password: str = "admin",
+        **kwargs
     ):
         """
-        
-        :param cookies: cookies 字符串，格式如 "Authorization: Bearer token"
+        初始化 Alist 驱动
+
+        :param config: 认证配置
+            - str: token 字符串（向后兼容）
+            - dict: 配置字典 {"token": "xxx", "username": "xxx", "password": "xxx"}
         :param user_id: 用户ID
-        :param username: 用户名，默认为 admin
-        :param password: 密码，默认为 admin
         """
-        super().__init__()
+        # 调用父类初始化（处理 config 转换）
+        super().__init__(config, **kwargs)
+
         # 初始化日志记录器
         self.logger = logging.getLogger(self.__class__.__name__)
-        
-        # 保存登录凭据
-        self._username = username
-        self._password = password
-        
+
+        # 从配置中获取认证信息
+        cookies = self.get_config_value("token", "") or self.get_config_value("cookie", "")
+        self._username = self.get_config_value("username", "admin")
+        self._password = self.get_config_value("password", "admin")
+
         # 不要先创建空的 AlistApi 实例，直接在 login 中创建
         self._alistapi: AlistApi = None
         self._is_authorized = False
@@ -79,7 +144,7 @@ class AlistClient(BaseDriveClient):
 
     @property
     def drive_type(self) -> str:
-        return "AlistDrive"
+        return "alist"
 
     def login(self, cookies: str, user_id: Optional[str] = None) -> bool:
         """
@@ -284,7 +349,7 @@ class AlistClient(BaseDriveClient):
                     created_time=file_info.get("created", ""),
                     updated_time=file_info.get("modified", ""),
                     parent_id=params.file_path,
-                    drive_type="AlistDrive"
+                    drive_type="alist"
                 )
                 file_list.append(base_file_info)
             
@@ -325,7 +390,7 @@ class AlistClient(BaseDriveClient):
                 created_time=datetime.now().isoformat(),
                 updated_time=datetime.now().isoformat(),
                 parent_id=params.parent_id,
-                drive_type="AlistDrive"
+                drive_type="alist"
             )
             
         except Exception as e:

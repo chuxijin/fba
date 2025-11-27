@@ -81,12 +81,13 @@ class CreateSyncTaskParam(SchemaBase):
 
 class UpdateSyncTaskParam(SchemaBase):
     """更新同步任务参数"""
-    
+
     status: str | None = Field(None, description="任务状态")
     err_msg: str | None = Field(None, description="错误信息")
     start_time: datetime | None = Field(None, description="开始时间")
     task_num: str | None = Field(None, description="任务统计信息")
     dura_time: int | None = Field(None, description="持续时间")
+    cancel_requested: bool | None = Field(None, description="是否请求取消")
 
     @field_validator('status')
     @classmethod
@@ -246,9 +247,9 @@ class GetSyncConfigDetail(SchemaBase):
 
 class GetSyncTaskDetail(SchemaBase):
     """同步任务详情"""
-    
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int = Field(..., description="任务ID")
     config_id: int = Field(..., description="配置ID")
     status: str = Field(..., description="任务状态")
@@ -256,6 +257,7 @@ class GetSyncTaskDetail(SchemaBase):
     start_time: datetime | None = Field(None, description="开始时间")
     task_num: str | None = Field(None, description="任务统计信息")
     dura_time: int = Field(..., description="持续时间")
+    cancel_requested: bool = Field(False, description="是否请求取消")
     created_time: datetime = Field(..., description="创建时间")
     updated_time: datetime | None = Field(None, description="更新时间")
     created_by: int = Field(..., description="创建人")
@@ -310,9 +312,9 @@ class GetSyncConfigWithRelationDetail(SchemaBase):
 
 class GetSyncTaskWithRelationDetail(SchemaBase):
     """同步任务详情含关系"""
-    
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int = Field(..., description="任务ID")
     config_id: int = Field(..., description="配置ID")
     status: str = Field(..., description="任务状态")
@@ -320,6 +322,7 @@ class GetSyncTaskWithRelationDetail(SchemaBase):
     start_time: datetime | None = Field(None, description="开始时间")
     task_num: str | None = Field(None, description="任务统计信息")
     dura_time: int = Field(..., description="持续时间")
+    cancel_requested: bool = Field(False, description="是否请求取消")
     created_time: datetime = Field(..., description="创建时间")
     updated_time: datetime | None = Field(None, description="更新时间")
     created_by: int = Field(..., description="创建人")

@@ -45,7 +45,13 @@ from backend.app.coulddrive.schema.user import (
 from backend.app.coulddrive.service.filesync_service import ItemFilter
 from backend.app.coulddrive.service.quark.api import QuarkApi
 from backend.app.coulddrive.service.quark.errors import QuarkApiError
-from backend.app.coulddrive.service.yp_service import BaseDriveClient
+from backend.app.coulddrive.service.yp_service import (
+    BaseDriveClient,
+    ConfigItem,
+    ConfigItemType,
+    DriverRegistry,
+)
+from backend.app.coulddrive.schema.enum import DriveType
 from backend.common.log import log
 
 from .schemas import (
@@ -107,29 +113,80 @@ def _parse_share_url_and_password(source_id: str) -> Tuple[str, str]:
         return pwd_id, ""
 
 
+@DriverRegistry.register(DriveType.QUARK_DRIVE)
 class QuarkClient(BaseDriveClient):
     """夸克网盘客户端
-    
+
     这是对`QuarkApi`的封装。它将原始QuarkApi请求的响应内容解析为一些内部数据结构。
+
+    支持的认证方式：
+    - Cookie 字符串（向后兼容）
+    - 配置字典 {"cookie": "__pus=xxx;__puus=xxx"}
     """
+
+    # ========== Alist 风格：配置项声明 ==========
+
+    @classmethod
+    def get_config_items(cls) -> List[ConfigItem]:
+        """声明夸克网盘需要的配置项"""
+        return [
+            ConfigItem(
+                name="cookie",
+                label="Cookie",
+                type=ConfigItemType.STRING,
+                required=True,
+                description="夸克网盘 Cookie，需包含 __pus 或 __puus",
+                placeholder="__pus=xxx;__puus=xxx"
+            ),
+        ]
+
+    @classmethod
+    def validate_config(cls, config: Dict[str, Any]) -> Dict[str, List[str]]:
+        """验证夸克网盘配置"""
+        result = {"errors": [], "warnings": []}
+
+        cookie = config.get("cookie", "")
+
+        if not cookie:
+            result["errors"].append("缺少必需参数: Cookie")
+            return result
+
+        # 检查关键字段（夸克需要 __pus 或 __puus）
+        if "__pus" not in cookie and "__puus" not in cookie:
+            result["errors"].append("Cookie 中缺少 __pus 或 __puus")
+
+        # 检查长度
+        if len(cookie) < 50:
+            result["warnings"].append("Cookie 长度似乎过短，请检查是否完整")
+
+        return result
 
     def __init__(
         self,
-        cookies: str,
+        config: Union[str, Dict[str, Any]],
         user_id: Optional[str] = None,
+        **kwargs
     ):
         """
-        
-        :param cookies: cookies 字符串，格式如 "key1=value1; key2=value2"
+        初始化夸克网盘驱动
+
+        :param config: 认证配置
+            - str: cookie 字符串（向后兼容）
+            - dict: 配置字典 {"cookie": "__pus=xxx;__puus=xxx"}
         :param user_id: 用户ID
         """
-        super().__init__()
+        # 调用父类初始化（处理 config 转换）
+        super().__init__(config, **kwargs)
+
         # 初始化日志记录器
         self.logger = logging.getLogger(self.__class__.__name__)
-        
+
         # 不要先创建空的 QuarkApi 实例，直接在 login 中创建
         self._quarkapi: QuarkApi = None
         self._is_authorized = False
+
+        # 从配置中获取 cookie
+        cookies = self.get_config_value("cookie", "")
 
         # 自动登录
         if self.login(cookies, user_id):
@@ -141,7 +198,7 @@ class QuarkClient(BaseDriveClient):
 
     @property
     def drive_type(self) -> str:
-        return "QuarkDrive"
+        return "quark"
     
 
 

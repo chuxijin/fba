@@ -34,6 +34,7 @@ from backend.utils.demo_site import demo_site
 from backend.utils.health_check import ensure_unique_route_names, http_limit_callback
 from backend.utils.openapi import simplify_operation_ids
 from backend.utils.serializers import MsgSpecJSONResponse
+from backend.utils.snowflake import snowflake
 
 
 @asynccontextmanager
@@ -63,6 +64,9 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
         http_callback=http_limit_callback,
     )
 
+    # 初始化 snowflake 节点
+    await snowflake.init()
+
     # 创建操作日志任务
     create_task(OperaLogMiddleware.consumer())
 
@@ -75,8 +79,8 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
-    # 停止任务调度器
-    await task_scheduler.stop()
+    # 释放 snowflake 节点
+    await snowflake.shutdown()
 
     # 关闭 redis 连接
     await redis_client.aclose()

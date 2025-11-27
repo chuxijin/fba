@@ -75,7 +75,8 @@ class CreateDriveAccountParam(DriveAccountBase):
 
 class UpdateDriveAccountParam(SchemaBase):
     """更新网盘账户参数"""
-    
+
+    user_id: str | None = Field(None, description="网盘用户ID")
     username: str | None = Field(None, description="用户名")
     cookies: str | None = Field(None, description="登录凭证")
     avatar_url: str | None = Field(None, description="头像URL")

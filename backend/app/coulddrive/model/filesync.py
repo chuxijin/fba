@@ -66,34 +66,35 @@ class SyncConfig(Base, UserMixin):
 
 class SyncTask(Base, UserMixin):
     """文件同步任务表"""
-    
+
     __tablename__ = "filesync_task"
-    
+
     id: Mapped[id_key] = mapped_column(init=False)
     config_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("filesync_config.id", ondelete="CASCADE"), nullable=False, index=True, comment="配置ID")
-    
+
     # 有默认值的字段
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True, comment="任务状态", init=False)
     dura_time: Mapped[int] = mapped_column(Integer, default=0, comment="持续时间", init=False)
-    
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否请求取消", init=False)
+
     # 可选字段
     err_msg: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误信息", init=False)
     start_time: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True, comment="开始时间", init=False)
     task_num: Mapped[str | None] = mapped_column(Text, nullable=True, comment="任务统计信息", init=False)
-    
+
     # 关系
     sync_config: Mapped["SyncConfig"] = relationship(
-        "SyncConfig", 
+        "SyncConfig",
         back_populates="sync_tasks",
         init=False
     )
     task_items: Mapped[list["SyncTaskItem"]] = relationship(
-        "SyncTaskItem", 
-        back_populates="sync_task", 
+        "SyncTaskItem",
+        back_populates="sync_task",
         cascade="all, delete-orphan",
         init=False
     )
-    
+
     def __repr__(self) -> str:
         return f"<SyncTask(id={self.id}, status={self.status})>"
 

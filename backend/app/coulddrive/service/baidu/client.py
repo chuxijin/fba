@@ -49,7 +49,13 @@ from backend.app.coulddrive.schema.user import (
 
 from backend.app.coulddrive.service.baidu.errors import BaiduApiError
 from backend.app.coulddrive.service.filesync_service import ItemFilter
-from backend.app.coulddrive.service.yp_service import BaseDriveClient
+from backend.app.coulddrive.service.yp_service import (
+    BaseDriveClient,
+    ConfigItem,
+    ConfigItemType,
+    DriverRegistry,
+)
+from backend.app.coulddrive.schema.enum import DriveType
 from .schemas import (
     FromTo,
     PcsFile,
@@ -103,29 +109,83 @@ def _extract_shorturl_from_url(url: str) -> str:
     raise ValueError(f"无法从分享链接中提取短链接ID: {url}")
 
 
+@DriverRegistry.register(DriveType.BAIDU_DRIVE)
 class BaiduClient(BaseDriveClient):
-    """百度网盘 PCS API
+    """百度网盘 PCS API - Alist 风格驱动
 
     这是对`BaiduPCS`的封装。它将原始BaiduPCS请求的响应内容解析为一些内部数据结构。
+
+    支持的认证方式：
+    - Cookie 字符串（向后兼容）
+    - 配置字典 {"cookie": "BDUSS=xxx;STOKEN=xxx"}
     """
+
+    # ========== Alist 风格：配置项声明 ==========
+
+    @classmethod
+    def get_config_items(cls) -> List[ConfigItem]:
+        """声明百度网盘需要的配置项"""
+        return [
+            ConfigItem(
+                name="cookie",
+                label="Cookie",
+                type=ConfigItemType.STRING,
+                required=True,
+                description="百度网盘 Cookie，需包含 BDUSS 和 STOKEN",
+                placeholder="BDUSS=xxx;STOKEN=xxx"
+            ),
+        ]
+
+    @classmethod
+    def validate_config(cls, config: Dict[str, Any]) -> Dict[str, List[str]]:
+        """验证百度网盘配置"""
+        result = {"errors": [], "warnings": []}
+
+        cookie = config.get("cookie", "")
+
+        if not cookie:
+            result["errors"].append("缺少必需参数: Cookie")
+            return result
+
+        # 检查关键字段
+        if "BDUSS" not in cookie:
+            result["errors"].append("Cookie 中缺少 BDUSS")
+
+        if "STOKEN" not in cookie:
+            result["warnings"].append("建议提供 STOKEN 以获得完整功能")
+
+        # 检查长度
+        if len(cookie) < 50:
+            result["warnings"].append("Cookie 长度似乎过短，请检查是否完整")
+
+        return result
 
     def __init__(
         self,
-        cookies: str,
+        config: Union[str, Dict[str, Any]],
         user_id: Optional[int] = None,
+        **kwargs
     ):
         """
-        
-        :param cookies: cookies 字符串，格式如 "BDUSS=xxx; STOKEN=xxx; PTOKEN=xxx"
+        初始化百度网盘驱动
+
+        :param config: 认证配置
+            - str: cookie 字符串（向后兼容）
+            - dict: 配置字典 {"cookie": "BDUSS=xxx;STOKEN=xxx"}
         :param user_id: 用户ID
         """
-        super().__init__()
+        # 调用父类初始化（处理 config 转换）
+        super().__init__(config, **kwargs)
+
         # 初始化日志记录器
         self.logger = logging.getLogger(self.__class__.__name__)
-        
+
         # 不要先创建空的 BaiduApi 实例，直接在 login 中创建
         self._baidupcs: BaiduApi = None
         self._is_authorized = False
+
+        # 从配置中获取 cookie
+        cookies = self.get_config_value("cookie", "")
 
         # 自动登录
         if self.login(cookies, user_id):
@@ -137,7 +197,7 @@ class BaiduClient(BaseDriveClient):
 
     @property
     def drive_type(self) -> str:
-        return "BaiduDrive"
+        return "baidu"
 
     def login(self, cookies: str, user_id: Optional[int] = None) -> bool:
         """

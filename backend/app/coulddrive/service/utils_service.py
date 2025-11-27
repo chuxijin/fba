@@ -205,15 +205,15 @@ def calu_md5(buf: Union[str, bytes], encoding="utf-8") -> str:
 def normalize_path(path: str) -> str:
     """
     规范化文件路径
-    
+
     处理重复的斜杠，确保路径格式一致
-    
+
     参数:
         path (str): 原始路径
-        
+
     返回:
         str: 规范化后的路径
-        
+
     示例:
         >>> normalize_path("//folder//subfolder/file.txt")
         '/folder/subfolder/file.txt'
@@ -222,13 +222,118 @@ def normalize_path(path: str) -> str:
     """
     # 替换连续的斜杠为单个斜杠
     normalized = re.sub(r'/{2,}', '/', path)
-    
+
     # 确保以/开头
     if not normalized.startswith('/'):
         normalized = '/' + normalized
-        
+
     # 去除结尾的/（除非是根目录）
     if normalized.endswith('/') and len(normalized) > 1:
         normalized = normalized[:-1]
-        
+
     return normalized
+
+
+# ==================== 路径处理工具函数 ====================
+
+def join_path(base_path: str, *parts: str, is_dir: bool = False) -> str:
+    """
+    安全拼接路径
+
+    :param base_path: 基础路径
+    :param parts: 路径组件
+    :param is_dir: 是否是目录路径（目录路径以/结尾）
+    :return: 拼接后的路径
+    """
+    if not base_path:
+        base_path = "/"
+
+    # 移除基础路径末尾的斜杠
+    result = base_path.rstrip('/')
+
+    # 拼接所有部分
+    for part in parts:
+        if part:
+            part = part.strip('/')
+            if part:
+                result = result + '/' + part
+
+    # 如果是目录，确保以斜杠结尾
+    if is_dir and not result.endswith('/'):
+        result = result + '/'
+
+    # 确保路径以/开头（除非为空）
+    if result and not result.startswith('/'):
+        result = '/' + result
+
+    return result if result else '/'
+
+
+def ensure_dir_path(path: str) -> str:
+    """
+    确保路径以/结尾（目录格式）
+
+    :param path: 原始路径
+    :return: 以/结尾的目录路径
+    """
+    if not path:
+        return '/'
+
+    path = path.rstrip('/')
+    return path + '/'
+
+
+def get_parent_path(path: str) -> str:
+    """
+    获取父路径
+
+    :param path: 文件或目录路径
+    :return: 父路径
+    """
+    if not path or path == '/':
+        return '/'
+
+    path = path.rstrip('/')
+
+    if '/' not in path:
+        return ''
+
+    parent = path.rsplit('/', 1)[0]
+    return parent if parent else '/'
+
+
+def get_filename(path: str) -> str:
+    """
+    从路径中提取文件名
+
+    :param path: 文件路径
+    :return: 文件名
+    """
+    if not path or path == '/':
+        return ''
+
+    path = path.rstrip('/')
+
+    if '/' not in path:
+        return path
+
+    return path.rsplit('/', 1)[-1]
+
+
+def build_full_path(parent_path: str, filename: str) -> str:
+    """
+    构建完整文件路径
+
+    :param parent_path: 父目录路径
+    :param filename: 文件名
+    :return: 完整路径
+    """
+    if not filename:
+        return parent_path
+
+    parent = parent_path.rstrip('/') if parent_path else ''
+
+    if not parent:
+        return '/' + filename
+
+    return parent + '/' + filename

@@ -7,14 +7,13 @@ Flet 应用打包脚本
 import os
 import subprocess
 import sys
-
 # 项目配置
 PROJECT_CONFIG = {
     'main_file': 'my_app/main.py',
     'project_name': 'bili_manager',
-    'product_name': 'B站账号管理器',
+    'product_name': 'BiliManager',  # 避免中文，打包后可以手动改名
     'org': 'com.bili.manager',
-    'description': 'B站账号自动化管理工具',
+    'description': 'Bilibili Account Manager',  # 避免中文
     'version': '1.0.0',
     'company': 'BiliManager',
     # 可选：图标路径（需要自己准备）
@@ -50,14 +49,34 @@ def print_menu():
 
 
 def check_flutter():
-    """检查 Flutter 是否安装"""
+    """检查 Flutter 是否安装（支持 fvm）"""
+    # 先检查 fvm flutter
+    try:
+        result = subprocess.run(['fvm', 'flutter', '--version'], capture_output=True, text=True)
+        if result.returncode == 0:
+            return 'fvm'
+    except FileNotFoundError:
+        pass
+
+    # 再检查直接安装的 flutter
     try:
         result = subprocess.run(['flutter', '--version'], capture_output=True, text=True)
         if result.returncode == 0:
-            return True
+            return 'direct'
     except FileNotFoundError:
         pass
-    return False
+
+    return None
+
+
+def get_flutter_cmd():
+    """获取 Flutter 命令前缀"""
+    flutter_type = check_flutter()
+    if flutter_type == 'fvm':
+        return ['fvm', 'flutter']
+    elif flutter_type == 'direct':
+        return ['flutter']
+    return None
 
 
 def check_pyinstaller():
@@ -121,13 +140,18 @@ def build_android_apk():
     print('📱 开始打包 Android APK...')
     print('=' * 60)
 
-    if not check_flutter():
+    flutter_type = check_flutter()
+    if not flutter_type:
         print('❌ 未安装 Flutter SDK！')
         print('请访问 https://flutter.dev/docs/get-started/install 安装')
         return False
 
+    if flutter_type == 'fvm':
+        print('✅ 检测到 FVM，使用 fvm flutter')
+
     cmd = [
-        'flet', 'build', 'apk', PROJECT_CONFIG['main_file'],
+        'flet', 'build', 'apk',
+        '--module-name', 'my_app.main',  # 使用 Python 模块路径，不是文件路径
         '--project', PROJECT_CONFIG['project_name'],
         '--product', PROJECT_CONFIG['product_name'],
         '--org', PROJECT_CONFIG['org'],
@@ -137,8 +161,22 @@ def build_android_apk():
         '--splash-dark-color', PROJECT_CONFIG['splash_dark_color'],
     ]
 
+    # 如果使用 fvm，需要设置环境变量让 flet 使用 fvm 的 flutter
+    env = os.environ.copy()
+    if flutter_type == 'fvm':
+        # 获取 fvm flutter 路径
+        result = subprocess.run(['fvm', 'which'], capture_output=True, text=True, encoding='utf-8', errors='ignore')
+        if result.returncode == 0:
+            fvm_flutter_path = result.stdout.strip()
+            flutter_dir = os.path.dirname(os.path.dirname(fvm_flutter_path))
+            env['FLUTTER_ROOT'] = flutter_dir
+            print(f'📂 Flutter 路径: {flutter_dir}')
+
+    # 设置输出编码为 UTF-8
+    env['PYTHONIOENCODING'] = 'utf-8'
+
     print(f'执行命令: {" ".join(cmd)}')
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=env, encoding='utf-8', errors='ignore')
 
     if result.returncode == 0:
         print('\n✅ Android APK 打包成功！')
@@ -155,13 +193,18 @@ def build_android_aab():
     print('📱 开始打包 Android AAB (Google Play)...')
     print('=' * 60)
 
-    if not check_flutter():
+    flutter_type = check_flutter()
+    if not flutter_type:
         print('❌ 未安装 Flutter SDK！')
         print('请访问 https://flutter.dev/docs/get-started/install 安装')
         return False
 
+    if flutter_type == 'fvm':
+        print('✅ 检测到 FVM，使用 fvm flutter')
+
     cmd = [
-        'flet', 'build', 'aab', PROJECT_CONFIG['main_file'],
+        'flet', 'build', 'aab',
+        '--module-name', 'my_app.main',  # 使用 Python 模块路径
         '--project', PROJECT_CONFIG['project_name'],
         '--product', PROJECT_CONFIG['product_name'],
         '--org', PROJECT_CONFIG['org'],
@@ -171,8 +214,19 @@ def build_android_aab():
         '--splash-dark-color', PROJECT_CONFIG['splash_dark_color'],
     ]
 
+    # 如果使用 fvm，设置环境变量
+    env = os.environ.copy()
+    if flutter_type == 'fvm':
+        result = subprocess.run(['fvm', 'which'], capture_output=True, text=True, encoding='utf-8', errors='ignore')
+        if result.returncode == 0:
+            fvm_flutter_path = result.stdout.strip()
+            flutter_dir = os.path.dirname(os.path.dirname(fvm_flutter_path))
+            env['FLUTTER_ROOT'] = flutter_dir
+
+    env['PYTHONIOENCODING'] = 'utf-8'
+
     print(f'执行命令: {" ".join(cmd)}')
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=env, encoding='utf-8', errors='ignore')
 
     if result.returncode == 0:
         print('\n✅ Android AAB 打包成功！')
@@ -193,13 +247,18 @@ def build_ios():
         print('❌ iOS 打包需要在 macOS 上进行！')
         return False
 
-    if not check_flutter():
+    flutter_type = check_flutter()
+    if not flutter_type:
         print('❌ 未安装 Flutter SDK！')
         print('请访问 https://flutter.dev/docs/get-started/install 安装')
         return False
 
+    if flutter_type == 'fvm':
+        print('✅ 检测到 FVM，使用 fvm flutter')
+
     cmd = [
-        'flet', 'build', 'ipa', PROJECT_CONFIG['main_file'],
+        'flet', 'build', 'ipa',
+        '--module-name', 'my_app.main',  # 使用 Python 模块路径
         '--project', PROJECT_CONFIG['project_name'],
         '--product', PROJECT_CONFIG['product_name'],
         '--org', PROJECT_CONFIG['org'],
@@ -207,8 +266,19 @@ def build_ios():
         '--build-version', PROJECT_CONFIG['version'],
     ]
 
+    # 如果使用 fvm，设置环境变量
+    env = os.environ.copy()
+    if flutter_type == 'fvm':
+        result = subprocess.run(['fvm', 'which'], capture_output=True, text=True, encoding='utf-8', errors='ignore')
+        if result.returncode == 0:
+            fvm_flutter_path = result.stdout.strip()
+            flutter_dir = os.path.dirname(os.path.dirname(fvm_flutter_path))
+            env['FLUTTER_ROOT'] = flutter_dir
+
+    env['PYTHONIOENCODING'] = 'utf-8'
+
     print(f'执行命令: {" ".join(cmd)}')
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=env, encoding='utf-8', errors='ignore')
 
     if result.returncode == 0:
         print('\n✅ iOS IPA 打包成功！')
@@ -225,18 +295,34 @@ def build_web():
     print('🌐 开始打包 Web 应用...')
     print('=' * 60)
 
-    if not check_flutter():
+    flutter_type = check_flutter()
+    if not flutter_type:
         print('❌ 未安装 Flutter SDK！')
         print('请访问 https://flutter.dev/docs/get-started/install 安装')
         return False
 
+    if flutter_type == 'fvm':
+        print('✅ 检测到 FVM，使用 fvm flutter')
+
     cmd = [
-        'flet', 'build', 'web', PROJECT_CONFIG['main_file'],
+        'flet', 'build', 'web',
+        '--module-name', 'my_app.main',  # 使用 Python 模块路径
         '--project', PROJECT_CONFIG['project_name'],
     ]
 
+    # 如果使用 fvm，设置环境变量
+    env = os.environ.copy()
+    if flutter_type == 'fvm':
+        result = subprocess.run(['fvm', 'which'], capture_output=True, text=True, encoding='utf-8', errors='ignore')
+        if result.returncode == 0:
+            fvm_flutter_path = result.stdout.strip()
+            flutter_dir = os.path.dirname(os.path.dirname(fvm_flutter_path))
+            env['FLUTTER_ROOT'] = flutter_dir
+
+    env['PYTHONIOENCODING'] = 'utf-8'
+
     print(f'执行命令: {" ".join(cmd)}')
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=env, encoding='utf-8', errors='ignore')
 
     if result.returncode == 0:
         print('\n✅ Web 应用打包成功！')

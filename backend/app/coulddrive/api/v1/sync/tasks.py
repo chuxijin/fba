@@ -213,6 +213,69 @@ async def get_sync_task_items(
         page_data = paging_list_data(task_items, page_params)
         
         return response_base.success(data=page_data)
-        
+
     except Exception as e:
         return response_base.fail(res=ResponseModel(code=500, msg=f"获取同步任务项列表失败: {str(e)}"))
+
+
+@router.post(
+    '/task/{task_id}/cancel',
+    summary='取消同步任务',
+    description='请求取消正在运行的同步任务',
+    response_model=ResponseModel,
+    dependencies=[DependsJwtAuth]
+)
+async def cancel_sync_task(
+    task_id: Annotated[int, Path(description="同步任务ID")],
+    db: CurrentSession
+) -> ResponseModel:
+    """
+    取消同步任务
+
+    :param task_id: 同步任务ID
+    :param db: 数据库会话
+    :return: 取消结果
+    """
+    try:
+        # 获取任务
+        from backend.app.coulddrive.crud.crud_filesync import sync_task_dao
+        sync_task = await sync_task_dao.get(db, task_id)
+
+        if not sync_task:
+            return response_base.fail(res=ResponseModel(code=404, msg=f"同步任务 {task_id} 不存在"))
+
+        # 检查任务状态
+        if sync_task.status not in ["running", "pending"]:
+            return response_base.fail(
+                res=ResponseModel(code=400, msg=f"任务状态为 '{sync_task.status}'，只能取消运行中或待处理的任务")
+            )
+
+        # 检查是否已经请求取消
+        if sync_task.cancel_requested:
+            return response_base.success(
+                data={
+                    "task_id": task_id,
+                    "message": "取消请求已发送，任务正在停止中",
+                    "status": sync_task.status
+                }
+            )
+
+        # 设置取消标志
+        from backend.app.coulddrive.schema.filesync import UpdateSyncTaskParam
+        update_params = UpdateSyncTaskParam(
+            cancel_requested=True,
+            start_time=sync_task.start_time if isinstance(sync_task.start_time, __import__('datetime').datetime) else None
+        )
+        await sync_task_dao.update(db, db_obj=sync_task, obj_in=update_params)
+        await db.commit()
+
+        return response_base.success(
+            data={
+                "task_id": task_id,
+                "message": "取消请求已发送，任务将在下一个检查点停止",
+                "status": sync_task.status
+            }
+        )
+
+    except Exception as e:
+        return response_base.fail(res=ResponseModel(code=500, msg=f"取消同步任务失败: {str(e)}"))

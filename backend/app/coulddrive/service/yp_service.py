@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-文件名: drivebase_service.py
-描述: 网盘基础类定义，提供网盘操作的抽象接口和通用实现
+网盘统一服务 - Alist 风格架构
+
+架构特点：
+1. 驱动注册表机制 - 零修改扩展新网盘
+2. 多认证方式支持 - Cookie、OAuth、官方 API 等
+3. 驱动自描述配置 - 前端可动态生成表单
+4. 完全向后兼容 - 支持现有 Cookie 方式
+
 作者: PanMaster团队
-创建日期: 2023-04-01
-最后修改: 2024-04-24
-版本: 2.0.0
+版本: 3.0.0 (Alist 风格重构)
 """
 
+import hashlib
+import json
 import time
-from typing import Any, Dict, List, Optional, Union
-from datetime import datetime, timedelta
+from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Type, Union
 
-from backend.app.coulddrive.schema.enum import RecursionSpeed, DriveType
+from pydantic import BaseModel
+
+from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     BaseShareInfo,
@@ -26,34 +35,153 @@ from backend.app.coulddrive.schema.file import (
     MoveParam,
     RelationshipParam,
     RemoveParam,
+    RenameParam,
     ShareParam,
     TransferParam,
     UserInfoParam,
-    RenameParam,
 )
 from backend.app.coulddrive.schema.user import BaseUserInfo, RelationshipItem
 
 
-class BaseDriveClient:
+# ============================================================
+# 第一部分：配置项定义（学习 Alist Items）
+# ============================================================
+
+class ConfigItemType:
+    """配置项类型常量"""
+
+    STRING = "string"
+    SELECT = "select"
+    BOOL = "bool"
+    NUMBER = "number"
+    PASSWORD = "password"
+
+
+class ConfigItem(BaseModel):
     """
-    网盘客户端基础类
-    
-    具体的网盘客户端实现应该继承此类
+    驱动配置项定义 - Alist 风格
+
+    用于驱动声明需要的配置参数，前端可根据此动态生成表单
     """
 
-    def __init__(self, *args, **kwargs):
+    name: str
+    label: str
+    type: str = ConfigItemType.STRING
+    required: bool = True
+    default: Optional[Any] = None
+    options: Optional[List[str]] = None
+    description: Optional[str] = None
+    placeholder: Optional[str] = None
+
+
+# ============================================================
+# 第二部分：驱动注册表（学习 Alist RegisterDriver）
+# ============================================================
+
+class DriverRegistry:
+    """
+    驱动注册表 - Alist 核心机制
+
+    功能：
+    1. 自动注册驱动类
+    2. 根据 drive_type 获取驱动类
+    3. 零修改扩展新网盘
+
+    使用方式：
+        @DriverRegistry.register(DriveType.BAIDU_DRIVE)
+        class BaiduClient(BaseDriveClient):
+            pass
+    """
+
+    _drivers: Dict[DriveType, Type['BaseDriveClient']] = {}
+
+    @classmethod
+    def register(cls, drive_type: DriveType):
         """
-        初始化网盘客户端基类
-        :param args: 位置参数
-        :param kwargs: 关键字参数
+        装饰器：自动注册驱动
+
+        :param drive_type: 驱动类型枚举
         """
+        def decorator(driver_class: Type['BaseDriveClient']):
+            cls._drivers[drive_type] = driver_class
+            import logging
+            logging.getLogger(__name__).info(
+                f"✅ 已注册驱动: {drive_type.value} -> {driver_class.__name__}"
+            )
+            return driver_class
+
+        return decorator
+
+    @classmethod
+    def get_driver_class(cls, drive_type: DriveType) -> Optional[Type['BaseDriveClient']]:
+        """
+        根据驱动类型获取驱动类
+
+        :param drive_type: 驱动类型
+        :return: 驱动类，如果未注册则返回 None
+        """
+        return cls._drivers.get(drive_type)
+
+    @classmethod
+    def get_all_drivers(cls) -> Dict[DriveType, Type['BaseDriveClient']]:
+        """获取所有已注册的驱动"""
+        return cls._drivers.copy()
+
+
+# ============================================================
+# 第三部分：驱动基类（学习 Alist Driver Interface）
+# ============================================================
+
+class BaseDriveClient(ABC):
+    """
+    网盘驱动基类 - Alist 风格
+
+    特点：
+    1. ABC 抽象基类，强制子类实现关键方法
+    2. 支持多种认证方式（Cookie、OAuth等）
+    3. 驱动自描述配置（get_config_items）
+    4. 向后兼容 Cookie 字符串
+
+    认证方式：
+    - 传入 str：Cookie 字符串（向后兼容）
+    - 传入 dict：配置字典（支持多种认证）
+    """
+
+    def __init__(self, config: Union[str, Dict[str, Any]], **kwargs):
+        """
+        初始化驱动
+
+        :param config: 认证配置
+            - str: cookie 字符串（向后兼容）
+            - dict: 配置字典 {"refresh_token": "xxx", ...}
+        """
+        # 向后兼容：自动转换 cookie 字符串为配置字典
+        if isinstance(config, str):
+            self.config = self._convert_cookie_to_config(config)
+        else:
+            self.config = config
+
         self._is_authorized = False
         self._last_used = datetime.now()
 
+    def _convert_cookie_to_config(self, cookies: str) -> Dict[str, Any]:
+        """
+        将 cookie 字符串转换为配置字典（向后兼容）
+
+        子类可以重写这个方法来自定义转换逻辑
+
+        :param cookies: cookie 字符串
+        :return: 配置字典
+        """
+        return {"cookie": cookies}
+
+    # ========== 驱动属性 ==========
+
     @property
+    @abstractmethod
     def drive_type(self) -> str:
-        """网盘类型"""
-        return "unknown"
+        """驱动类型标识"""
+        pass
 
     @property
     def last_used(self) -> datetime:
@@ -64,432 +192,311 @@ class BaseDriveClient:
         """更新最后使用时间"""
         self._last_used = datetime.now()
 
-    def login(self, *args: Any, **kwargs: Any) -> bool:
+    # ========== 配置相关（Alist 风格）==========
+
+    @classmethod
+    @abstractmethod
+    def get_config_items(cls) -> List[ConfigItem]:
         """
-        登录网盘
-        :param args: 位置参数
-        :param kwargs: 关键字参数
-        :return: 登录是否成功
+        声明驱动需要的配置项 - Alist Items() 机制
+
+        每个驱动自己声明需要什么配置，前端可根据此动态生成表单
+
+        示例：
+        百度网盘（Cookie 方式）：
+            return [
+                ConfigItem(name="cookie", label="Cookie", required=True),
+            ]
+
+        阿里云盘（官方 API 方式）：
+            return [
+                ConfigItem(name="refresh_token", label="刷新令牌", required=True),
+                ConfigItem(name="client_id", label="客户端ID", required=False),
+            ]
         """
-        return False
-    
-    async def get_user_info(self, *args: Any, **kwargs: Any) -> dict:
+        pass
+
+    @classmethod
+    def validate_config(cls, config: Dict[str, Any]) -> Dict[str, List[str]]:
         """
-        获取用户信息
-        :param args: 位置参数
-        :param kwargs: 关键字参数
-        :return: 用户信息字典
+        验证配置（基于 get_config_items）
+
+        自动根据 get_config_items() 验证配置
+        子类可以重写进行额外验证
+
+        :param config: 配置字典
+        :return: {"errors": [], "warnings": []}
         """
+        result = {"errors": [], "warnings": []}
+
+        config_items = cls.get_config_items()
+
+        # 检查必需字段
+        for item in config_items:
+            if item.required and not config.get(item.name):
+                result["errors"].append(f"缺少必需参数: {item.label or item.name}")
+
+        return result
+
+    def get_config_value(self, key: str, default: Any = None) -> Any:
+        """
+        获取配置值
+
+        :param key: 配置键名
+        :param default: 默认值
+        :return: 配置值
+        """
+        return self.config.get(key, default)
+
+    # ========== 抽象方法：驱动必须实现 ==========
+
+    @abstractmethod
+    async def get_user_info(self, params: UserInfoParam, **kwargs) -> BaseUserInfo:
+        """获取用户信息"""
+        pass
+
+    @abstractmethod
+    async def get_disk_list(self, params: ListFilesParam, **kwargs) -> List[BaseFileInfo]:
+        """列出文件"""
+        pass
+
+    @abstractmethod
+    async def mkdir(self, params: MkdirParam, **kwargs) -> BaseFileInfo:
+        """创建目录"""
+        pass
+
+    @abstractmethod
+    async def remove(self, params: RemoveParam, **kwargs) -> bool:
+        """删除文件"""
+        pass
+
+    @abstractmethod
+    async def rename(self, params: RenameParam, **kwargs) -> bool:
+        """重命名"""
+        pass
+
+    @abstractmethod
+    async def move(self, params: MoveParam, **kwargs) -> bool:
+        """移动"""
+        pass
+
+    @abstractmethod
+    async def copy(self, params: CopyParam, **kwargs) -> bool:
+        """复制"""
+        pass
+
+    # ========== 可选方法（子类可选实现）==========
+
+    async def get_quota(self, params: Any, **kwargs) -> dict:
+        """获取网盘空间使用情况（可选实现）"""
         return {}
 
-    async def get_quota(self, *args: Any, **kwargs: Any) -> dict:
-        """
-        获取网盘空间使用情况
-
-        Args:
-            args: 位置参数
-            kwargs: 关键字参数
-
-        Returns:
-            dict: 包含总空间、已用空间等信息的字典
-        """
-        return {}
-    
-    async def get_relationship_list(self, params: RelationshipParam, **kwargs: Any) -> List[Any]:
-        """
-        获取网盘关系列表
-        
-        Args:
-            params (RelationshipParam): 关系查询参数
-            **kwargs: 关键字参数
-            
-        Returns:
-            List[Any]: 关系列表，具体类型取决于 relationship_type
-        """
-        return []
-        
-    #--------------------------------------------------
-    # 文件和目录管理
-    #--------------------------------------------------
-
-    async def mkdir(self, params: MkdirParam, **kwargs: Any) -> BaseFileInfo:
-        """创建目录（占位默认实现）"""
-        return BaseFileInfo(
-            file_id="",
-            file_name=params.file_name,
-            file_path=params.file_path,
-            file_size=0,
-            is_folder=True,
-            parent_id=params.parent_id or "",
-            created_at="",
-            updated_at="",
-        )
-
-    async def exist(self, fid: str, *args: Any, **kwargs: Any) -> bool:
-        """
-        检查文件或目录是否存在
-        :param fid: 文件或目录ID
-        :param args: 位置参数
-        :param kwargs: 关键字参数
-        :return: 是否存在
-        """
-        return False
-
-    async def remove(
-        self,
-        params: RemoveParam,
-        **kwargs: Any,
-    ) -> bool:
-        """
-        删除文件或目录
-        
-        Args:
-            file_paths: 要删除的文件或目录的路径，可以是单个路径字符串或路径列表
-            file_ids: 要删除的文件或目录的ID，可以是单个ID字符串或ID列表。如果提供，将优先使用ID进行删除
-            parent_id: 父目录ID（可选）
-            file_name: 文件/目录名称（可选）
-            *args: 位置参数
-            **kwargs: 关键字参数
-            
-        Returns:
-            bool: 删除是否成功
-            
-        Raises:
-            NotImplementedError: 子类必须实现此方法
-        """
-        return False
-
-    async def move(self, params: 'MoveParam', **kwargs: Any) -> bool:
-        """
-        移动文件或目录
-        
-        :param params: 移动参数
-        :param kwargs: 其他关键字参数
-        :return: 移动是否成功
-        """
-        return False
-
-    async def copy(self, params: 'CopyParam', **kwargs: Any) -> bool:
-        """
-        复制文件或目录
-        
-        :param params: 复制参数
-        :param kwargs: 其他关键字参数
-        :return: 复制是否成功
-        """
-        return False
-
-    async def get_disk_list(self, params: ListFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
-        """
-        获取目录下的文件和目录列表
-        
-        :param params: 文件列表查询参数
-        :param kwargs: 其他关键字参数
-        """
-        return []
-    
-    async def get_share_list(self, params: ListShareFilesParam, **kwargs: Any) -> List[BaseFileInfo]:
-        """
-        获取分享来源的文件列表
-        
-        :param params: 分享文件列表查询参数
-        :param kwargs: 其他关键字参数
-        """
-        return []
-    
-    async def get_share_info(self, params: ListShareInfoParam, **kwargs: Any) -> List[BaseShareInfo]:
-        """
-        获取分享详情列表
-        
-        :param params: 分享文件列表查询参数
-        :param kwargs: 其他关键字参数
-        """
+    async def get_share_list(self, params: ListShareFilesParam, **kwargs) -> List[BaseFileInfo]:
+        """获取分享文件列表（可选实现）"""
         return []
 
-    async def get_item_info(self, fid: str, *args: Any, **kwargs: Any) -> Optional[BaseFileInfo]:
-        """获取文件或目录的详细信息"""
+    async def get_share_info(self, params: ListShareInfoParam, **kwargs) -> List[BaseShareInfo]:
+        """获取分享详情列表（可选实现）"""
+        return []
+
+    async def create_share(self, params: ShareParam, **kwargs) -> BaseShareInfo:
+        """创建分享链接（可选实现）"""
+        raise NotImplementedError(f"{self.__class__.__name__} 不支持创建分享")
+
+    async def cancel_share(self, params: CancelShareParam, **kwargs) -> bool:
+        """取消分享链接（可选实现）"""
+        raise NotImplementedError(f"{self.__class__.__name__} 不支持取消分享")
+
+    async def transfer(self, params: TransferParam, **kwargs) -> bool:
+        """转存文件（可选实现）"""
+        raise NotImplementedError(f"{self.__class__.__name__} 不支持转存")
+
+    async def get_relationship_list(self, params: RelationshipParam, **kwargs) -> List[RelationshipItem]:
+        """获取关系列表（可选实现）"""
+        return []
+
+    async def exist(self, fid: str, **kwargs) -> bool:
+        """检查文件是否存在（可选实现）"""
+        return False
+
+    async def get_item_info(self, fid: str, **kwargs) -> Optional[BaseFileInfo]:
+        """获取文件详细信息（可选实现）"""
         return None
-        
-    async def rename(self, params: RenameParam, **kwargs: Any) -> bool:
-        """重命名文件或目录"""
-        raise NotImplementedError("子类必须实现 rename 方法")
-        
-    async def create_share(self, params: 'ShareParam', **kwargs: Any) -> BaseShareInfo:
-        """创建分享链接"""
-        return BaseShareInfo(
-            title="",
-            share_id="",
-            pwd_id="",
-            url="",
-            password="",
-            expired_type=0,
-            view_count=0,
-            expired_at=None,
-            expired_left=None,
-            audit_status=0,
-            status=1,
-            file_id=None,
-            file_only_num=None,
-            file_size=None,
-            path_info=None
-        )
 
-    async def cancel_share(self, params: 'CancelShareParam', **kwargs: Any) -> bool:
-        """取消分享链接"""
-        return False
-
-    async def transfer(self, params: TransferParam, **kwargs: Any) -> bool:
-        """从各种来源传输文件到自己的网盘"""
-        return False
-    
-    async def search(self, keyword: str, fid: Optional[str] = None, file_type: Optional[str] = None, *args: Any, **kwargs: Any) -> List[BaseFileInfo]:
-        """搜索文件或目录"""
-        return []
-        
-    async def get_recycle_list(self, *args: Any, **kwargs: Any) -> List[BaseFileInfo]:
-        """获取回收站文件列表"""
+    async def search(self, keyword: str, fid: Optional[str] = None, file_type: Optional[str] = None, **kwargs) -> List[BaseFileInfo]:
+        """搜索文件（可选实现）"""
         return []
 
-    async def restore(self, fid: str, *args: Any, **kwargs: Any) -> bool:
-        """从回收站恢复文件"""
+    async def get_recycle_list(self, **kwargs) -> List[BaseFileInfo]:
+        """获取回收站列表（可选实现）"""
+        return []
+
+    async def restore(self, fid: str, **kwargs) -> bool:
+        """从回收站恢复（可选实现）"""
         return False
 
-    async def clear_recycle(self, *args: Any, **kwargs: Any) -> bool:
-        """清空回收站"""
+    async def clear_recycle(self, **kwargs) -> bool:
+        """清空回收站（可选实现）"""
         return False
 
+
+# ============================================================
+# 第四部分：驱动管理器（学习 Alist FS 层）
+# ============================================================
 
 class BaseDrive:
     """
-    智能网盘客户端管理器
-    
-    提供统一的网盘操作接口，自动管理客户端实例的创建、缓存和清理
+    驱动管理器 - Alist FS 层
+
+    职责：
+    1. 管理驱动实例的生命周期
+    2. 提供统一调用接口（call_method）
+    3. 实现客户端缓存
+    4. 支持多种认证方式
     """
-    
+
     def __init__(self, cleanup_interval: int = 3600):
         """
-        初始化智能网盘管理器
-        
-        :param cleanup_interval: 清理过期客户端的间隔（秒），默认3600秒（1小时）
+        初始化驱动管理器
+
+        :param cleanup_interval: 清理过期客户端的间隔（秒）
         """
         self._clients: Dict[str, BaseDriveClient] = {}
         self._last_cleanup = time.time()
         self._cleanup_interval = cleanup_interval
-        # 初始化日志记录器
+
         import logging
         self.logger = logging.getLogger(self.__class__.__name__)
-    
-    def _get_cache_key(self, drive_type: DriveType, x_token: str) -> str:
+
+    def _get_cache_key(self, drive_type: DriveType, auth_data: Union[str, Dict[str, Any]]) -> str:
         """
-        生成缓存键
-        
-        Args:
-            drive_type: 网盘类型
-            x_token: 认证令牌
-            
-        Returns:
-            str: 缓存键
+        生成缓存键 - 支持多种认证方式
+
+        :param drive_type: 驱动类型
+        :param auth_data: 认证数据（str 或 dict）
+        :return: 缓存键
         """
-        return f"{drive_type.value}:{hash(x_token)}"
-    
+        # 统一转换为字符串进行哈希
+        if isinstance(auth_data, str):
+            data_str = auth_data
+        else:
+            # 字典转 JSON 字符串（排序键保证一致性）
+            data_str = json.dumps(auth_data, sort_keys=True)
+
+        # 使用 SHA256 而不是 hash()，更安全
+        data_hash = hashlib.sha256(data_str.encode()).hexdigest()[:16]
+        return f"{drive_type.value}:{data_hash}"
+
     def _cleanup_expired_clients(self, max_idle_time: int = 1800):
         """
         清理过期的客户端
-        
-        :param max_idle_time: 最大空闲时间（秒），默认30分钟
+
+        :param max_idle_time: 最大空闲时间（秒），默认 30 分钟
         """
-        now = time.time()  # 使用 float 时间戳而不是 datetime
-        
-        # 检查是否需要执行清理
+        now = time.time()
+
         if (now - self._last_cleanup) < self._cleanup_interval:
             return
-        
+
         expired_keys = []
         for key, client in self._clients.items():
             if client.last_used:
-                # 将 client.last_used (datetime) 转换为时间戳进行比较
                 last_used_timestamp = client.last_used.timestamp()
                 if (now - last_used_timestamp) > max_idle_time:
                     expired_keys.append(key)
-        
-        # 移除过期的客户端
+
         for key in expired_keys:
             self.logger.info(f"清理过期客户端: {key}")
             del self._clients[key]
-        
+
         self._last_cleanup = now
-    
-    def _get_or_create_client(self, drive_type: DriveType, x_token: str) -> Optional[BaseDriveClient]:
+
+    def _get_or_create_client(
+        self,
+        drive_type: DriveType,
+        auth_data: Union[str, Dict[str, Any]]
+    ) -> Optional[BaseDriveClient]:
         """
-        获取或创建网盘客户端
-        
-        Args:
-            drive_type: 网盘类型
-            x_token: 认证令牌
-            
-        Returns:
-            Optional[BaseDriveClient]: 网盘客户端实例
+        获取或创建驱动实例 - 使用注册表
+
+        :param drive_type: 驱动类型
+        :param auth_data: 认证数据
+            - str: cookie 字符串（向后兼容）
+            - dict: 配置字典（支持多种认证）
+        :return: 驱动实例
         """
-        # 定期清理过期客户端
+        # 清理过期客户端
         self._cleanup_expired_clients()
-        
-        cache_key = self._get_cache_key(drive_type, x_token)
-        
+
+        cache_key = self._get_cache_key(drive_type, auth_data)
+
         # 尝试从缓存获取
         if cache_key in self._clients:
             client = self._clients[cache_key]
             client.update_last_used()
             return client
-        
-        # 创建新客户端
-        client = self._create_client(drive_type, x_token)
-        if client:
+
+        # ========== 关键：使用注册表创建 ==========
+        driver_class = DriverRegistry.get_driver_class(drive_type)
+        if not driver_class:
+            self.logger.error(f"未注册的驱动类型: {drive_type}")
+            return None
+
+        try:
+            # 创建新实例（智能处理 str 或 dict）
+            client = driver_class(config=auth_data)
             self._clients[cache_key] = client
-        
-        return client
-    
-    def _create_client(self, drive_type: DriveType, x_token: str) -> Optional[BaseDriveClient]:
-        """
-        创建具体的网盘客户端
-        
-        Args:
-            drive_type: 网盘类型
-            x_token: 认证令牌
-            
-        Returns:
-            Optional[BaseDriveClient]: 网盘客户端实例
-        """
-        try:
-            if drive_type in [DriveType.BAIDU, DriveType.BAIDU_DRIVE]:
-                return self._create_baidu_client(x_token)
-            elif drive_type == DriveType.QUARK_DRIVE:
-                return self._create_quark_client(x_token)
-            elif drive_type == DriveType.ALIST_DRIVE:
-                return self._create_alist_client(x_token)
-            else:
-                return None
+            return client
         except Exception as e:
             from backend.common.log import log
-            log.error(f"创建网盘客户端失败: {e}")
+            log.error(f"创建驱动实例失败: {e}", exc_info=True)
             return None
 
-    def _create_baidu_client(self, x_token: str) -> Optional[BaseDriveClient]:
-        """创建百度网盘客户端"""
-        try:
-            from .baidu.client import BaiduClient
-            return BaiduClient(cookies=x_token)
-        except Exception as e:
-            from backend.common.log import log
-            log.error(f"创建百度网盘客户端失败: {e}")
-            return None
+    # ========== 统一调用接口（Alist 风格）==========
 
-    def _create_quark_client(self, x_token: str) -> Optional[BaseDriveClient]:
-        """创建夸克网盘客户端"""
-        try:
-            from .quark.client import QuarkClient
-            return QuarkClient(cookies=x_token)
-        except Exception as e:
-            from backend.common.log import log
-            log.error(f"创建夸克网盘客户端失败: {e}", exc_info=True)
-            return None
-
-    def _create_alist_client(self, x_token: str) -> Optional[BaseDriveClient]:
-        """创建 Alist 网盘客户端"""
-        try:
-            from .alist.client import AlistClient
-            return AlistClient(cookies=x_token)
-        except Exception as e:
-            from backend.common.log import log
-            log.error(f"创建 Alist 网盘客户端失败: {e}", exc_info=True)
-            return None
-    
-    # 旧的具体创建函数已移除，统一通过注册表构造
-    
-    async def call_method(self, x_token: str, drive_type: Union[str, DriveType], method_name: str, params: Any, **kwargs) -> Any:
+    async def call_method(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        drive_type: Union[str, DriveType],
+        method_name: str,
+        params: Any,
+        **kwargs
+    ) -> Any:
         """
-        统一的方法调用接口
-        
-        :param x_token: 认证令牌
-        :param drive_type: 网盘类型（字符串或枚举）
-        :param method_name: 要调用的方法名
+        统一方法调用接口 - Alist FS 层风格
+
+        这是唯一对外的调用入口！
+
+        :param auth_data: 认证数据
+            - 旧方式：x_token (cookie 字符串)
+            - 新方式：配置字典 {"refresh_token": "xxx", ...}
+        :param drive_type: 驱动类型（字符串或枚举）
+        :param method_name: 方法名（如 "get_disk_list"）
         :param params: 参数对象
-        :param kwargs: 额外的关键字参数
+        :param kwargs: 额外参数
         :return: 方法调用结果
         """
-        # 如果是枚举类型，转换为字符串
-        if isinstance(drive_type, DriveType):
-            drive_type_enum = drive_type
-        else:
-            drive_type_enum = DriveType(drive_type)
-        
-        # 获取或创建客户端
-        client = self._get_or_create_client(
-            drive_type=drive_type_enum,
-            x_token=x_token
-        )
-        
+        # 类型转换
+        if isinstance(drive_type, str):
+            drive_type = DriveType(drive_type)
+
+        # 获取客户端
+        client = self._get_or_create_client(drive_type, auth_data)
         if not client:
-            raise ValueError(f"无法创建网盘客户端: {drive_type}")
-        
+            raise ValueError(f"无法创建驱动客户端: {drive_type}")
+
         # 检查方法是否存在
         method = getattr(client, method_name, None)
         if method is None:
-            raise AttributeError(f"客户端不支持方法: {method_name}")
+            raise AttributeError(f"驱动 {client.__class__.__name__} 不支持方法: {method_name}")
+
+        # 调用方法
         return await method(params, **kwargs)
-    
-    # 便捷方法（恢复）
-    async def get_disk_list(self, x_token: str, params: 'ListFilesParam', **kwargs) -> List[BaseFileInfo]:
-        return await self.call_method(x_token, params.drive_type, "get_disk_list", params, **kwargs)
 
-    async def get_user_info(self, x_token: str, params: 'UserInfoParam', **kwargs) -> BaseUserInfo:
-        return await self.call_method(x_token, params.drive_type, "get_user_info", params, **kwargs)
+    # ========== 工具方法 ==========
 
-    async def get_quota(self, x_token: str, params: 'ListFilesParam', **kwargs) -> dict:
-        return await self.call_method(x_token, params.drive_type, "get_quota", params, **kwargs)
-
-    async def get_share_list(self, x_token: str, params: 'ListShareFilesParam', **kwargs) -> List[BaseFileInfo]:
-        return await self.call_method(x_token, params.drive_type, "get_share_list", params, **kwargs)
-
-    async def get_share_info(self, x_token: str, params: 'ListShareInfoParam', **kwargs) -> List[BaseShareInfo]:
-        return await self.call_method(x_token, params.drive_type, "get_share_info", params, **kwargs)
-
-    async def create_mkdir(self, x_token: str, params: 'MkdirParam', **kwargs) -> BaseFileInfo:
-        return await self.call_method(x_token, params.drive_type, "mkdir", params, **kwargs)
-
-    async def remove_files(self, x_token: str, params: 'RemoveParam', **kwargs) -> bool:
-        return await self.call_method(x_token, params.drive_type, "remove", params, **kwargs)
-
-    async def transfer_files(self, x_token: str, params: 'TransferParam', **kwargs) -> bool:
-        return await self.call_method(x_token, params.drive_type, "transfer", params, **kwargs)
-
-    async def get_relationship_list(self, x_token: str, params: 'RelationshipParam', **kwargs) -> List[RelationshipItem]:
-        return await self.call_method(x_token, params.drive_type, "get_relationship_list", params, **kwargs)
-
-    async def create_share(self, x_token: str, params: 'ShareParam', **kwargs) -> BaseShareInfo:
-        return await self.call_method(x_token, params.drive_type, "create_share", params, **kwargs)
-
-    async def cancel_share(self, x_token: str, params: 'CancelShareParam', **kwargs) -> bool:
-        return await self.call_method(x_token, params.drive_type, "cancel_share", params, **kwargs)
-    
-    async def rename_files(self, x_token: str, params: 'RenameParam', **kwargs) -> bool:
-        """重命名文件或目录"""
-        return await self.call_method(x_token, params.drive_type, "rename", params, **kwargs)
-    
-    async def move_files(self, x_token: str, params: 'MoveParam', **kwargs) -> bool:
-        """移动文件或目录"""
-        return await self.call_method(x_token, params.drive_type, "move", params, **kwargs)
-    
-    async def copy_files(self, x_token: str, params: 'CopyParam', **kwargs) -> bool:
-        """复制文件或目录"""
-        return await self.call_method(x_token, params.drive_type, "copy", params, **kwargs)
-    
     def get_client_status(self) -> Dict[str, Dict[str, Any]]:
-        """
-        获取所有客户端状态
-        
-        Returns:
-            Dict[str, Dict[str, Any]]: 客户端状态信息
-        """
+        """获取所有客户端状态"""
         status = {}
         for cache_key, client in self._clients.items():
             status[cache_key] = {
@@ -498,55 +505,149 @@ class BaseDrive:
                 "class_name": client.__class__.__name__
             }
         return status
-    
+
     def clear_all_clients(self) -> None:
         """清除所有缓存的客户端"""
         self._clients.clear()
 
+    # ========== 便捷方法（向后兼容）==========
 
-# 全局智能网盘管理器实例
+    async def get_disk_list(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: ListFilesParam,
+        **kwargs
+    ) -> List[BaseFileInfo]:
+        """获取文件列表"""
+        return await self.call_method(auth_data, params.drive_type, "get_disk_list", params, **kwargs)
+
+    async def get_share_list(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: ListShareFilesParam,
+        **kwargs
+    ) -> List[BaseFileInfo]:
+        """获取分享文件列表"""
+        return await self.call_method(auth_data, params.drive_type, "get_share_list", params, **kwargs)
+
+    async def get_share_info(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: ListShareInfoParam,
+        **kwargs
+    ) -> Union[List[BaseShareInfo], Dict[str, Any]]:
+        """获取分享详情"""
+        return await self.call_method(auth_data, params.drive_type, "get_share_info", params, **kwargs)
+
+    async def create_mkdir(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: MkdirParam,
+        **kwargs
+    ) -> BaseFileInfo:
+        """创建目录"""
+        return await self.call_method(auth_data, params.drive_type, "mkdir", params, **kwargs)
+
+    async def rename_files(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: RenameParam,
+        **kwargs
+    ) -> bool:
+        """重命名文件"""
+        return await self.call_method(auth_data, params.drive_type, "rename", params, **kwargs)
+
+    async def move_files(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: MoveParam,
+        **kwargs
+    ) -> bool:
+        """移动文件"""
+        return await self.call_method(auth_data, params.drive_type, "move", params, **kwargs)
+
+    async def copy_files(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: CopyParam,
+        **kwargs
+    ) -> bool:
+        """复制文件"""
+        return await self.call_method(auth_data, params.drive_type, "copy", params, **kwargs)
+
+    async def remove_files(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: RemoveParam,
+        **kwargs
+    ) -> bool:
+        """删除文件"""
+        return await self.call_method(auth_data, params.drive_type, "remove", params, **kwargs)
+
+    async def transfer_files(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: TransferParam,
+        **kwargs
+    ) -> bool:
+        """转存文件"""
+        return await self.call_method(auth_data, params.drive_type, "transfer", params, **kwargs)
+
+    async def create_share(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: ShareParam,
+        **kwargs
+    ) -> BaseShareInfo:
+        """创建分享"""
+        return await self.call_method(auth_data, params.drive_type, "create_share", params, **kwargs)
+
+    async def cancel_share(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: CancelShareParam,
+        **kwargs
+    ) -> bool:
+        """取消分享"""
+        return await self.call_method(auth_data, params.drive_type, "cancel_share", params, **kwargs)
+
+    async def get_user_info(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: UserInfoParam,
+        **kwargs
+    ) -> BaseUserInfo:
+        """获取用户信息"""
+        return await self.call_method(auth_data, params.drive_type, "get_user_info", params, **kwargs)
+
+    async def get_relationship_list(
+        self,
+        auth_data: Union[str, Dict[str, Any]],
+        params: RelationshipParam,
+        **kwargs
+    ) -> List[RelationshipItem]:
+        """获取关系列表"""
+        return await self.call_method(auth_data, params.drive_type, "get_relationship_list", params, **kwargs)
+
+
+# ============================================================
+# 全局实例
+# ============================================================
+
 drive_manager = BaseDrive()
 
 
 def get_drive_manager() -> BaseDrive:
-    """获取全局网盘管理器实例"""
+    """获取全局驱动管理器实例"""
     return drive_manager
 
-def validate_drive_config(drive_type: DriveType, config: Dict[str, Any]) -> Dict[str, List[str]]:
-    """
-    验证网盘配置参数
-    
-    Args:
-        drive_type: 网盘类型
-        config: 配置参数
-        
-    Returns:
-        Dict[str, List[str]]: 验证结果，包含 'errors' 和 'warnings' 键
-    """
-    result = {"errors": [], "warnings": []}
-    
-    if drive_type in [DriveType.BAIDU, DriveType.BAIDU_DRIVE]:
-        # 检查必需参数
-        if not config.get("bduss"):
-            result["errors"].append("缺少必需参数: bduss")
-        
-        # 检查可选但推荐的参数
-        if not config.get("stoken"):
-            result["warnings"].append("建议提供 stoken 参数以获得完整功能")
-        
-        # 检查参数格式
-        bduss = config.get("bduss")
-        if bduss and len(bduss) < 10:
-            result["warnings"].append("bduss 长度似乎过短，请检查是否正确")
-    
-    elif drive_type == DriveType.QUARK_DRIVE:
-        # 检查必需参数
-        if not config.get("cookie"):
-            result["errors"].append("缺少必需参数: cookie")
-        
-        # 检查参数格式
-        cookie = config.get("cookie")
-        if cookie and not any(key in cookie for key in ["__pus", "__puus"]):
-            result["warnings"].append("cookie 中可能缺少关键认证信息，请检查是否包含 __pus 或 __puus")
-    
-    return result
+
+# ============================================================
+# 驱动自动注册（导入驱动模块触发装饰器）
+# ============================================================
+
+# 导入所有驱动模块，触发 @DriverRegistry.register() 装饰器
+# 这些导入必须放在 drive_manager 实例创建之后
+from backend.app.coulddrive.service.baidu.client import BaiduClient  # noqa: F401, E402
+from backend.app.coulddrive.service.quark.client import QuarkClient  # noqa: F401, E402
+from backend.app.coulddrive.service.alist.client import AlistClient  # noqa: F401, E402
