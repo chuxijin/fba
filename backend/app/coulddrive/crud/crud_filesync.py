@@ -20,6 +20,16 @@ from backend.app.coulddrive.schema.filesync import (
 
 
 class CRUDSyncConfig(CRUDPlus[SyncConfig]):
+    async def get(self, db: AsyncSession, pk: int) -> SyncConfig | None:
+        """
+        获取同步配置详情
+
+        :param db: 数据库会话
+        :param pk: 配置 ID
+        :return: 同步配置对象
+        """
+        return await self.select_model(db, pk)
+
     async def create(self, db: AsyncSession, *, obj_in: CreateSyncConfigParam, current_user_id: int) -> SyncConfig:
         """
         创建同步配置
@@ -198,6 +208,16 @@ class CRUDSyncConfig(CRUDPlus[SyncConfig]):
 
 
 class CRUDSyncTask(CRUDPlus[SyncTask]):
+    async def get(self, db: AsyncSession, pk: int) -> SyncTask | None:
+        """
+        获取同步任务详情
+
+        :param db: 数据库会话
+        :param pk: 任务 ID
+        :return: 同步任务对象
+        """
+        return await self.select_model(db, pk)
+
     async def create(self, db: AsyncSession, *, obj_in: CreateSyncTaskParam, current_user_id: int = 1) -> SyncTask:
         """
         创建同步任务
@@ -302,6 +322,16 @@ class CRUDSyncTask(CRUDPlus[SyncTask]):
 
 
 class CRUDSyncTaskItem(CRUDPlus[SyncTaskItem]):
+    async def get(self, db: AsyncSession, pk: int) -> SyncTaskItem | None:
+        """
+        获取同步任务项详情
+
+        :param db: 数据库会话
+        :param pk: 任务项 ID
+        :return: 同步任务项对象
+        """
+        return await self.select_model(db, pk)
+
     async def create(self, db: AsyncSession, *, obj_in: CreateSyncTaskItemParam) -> SyncTaskItem:
         """
         创建同步任务项
