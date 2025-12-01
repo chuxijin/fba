@@ -115,7 +115,7 @@ def parse_user_agent_info(request: Request) -> UserAgentInfo:
     :param request: FastAPI 请求对象
     :return:
     """
-    user_agent = request.headers.get('User-Agent')
+    user_agent = request.headers.get('User-Agent') or 'Unknown'
     user_agent_ = parse(user_agent)
     os = user_agent_.get_os()
     browser = user_agent_.get_browser()
