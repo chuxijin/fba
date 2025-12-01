@@ -10,6 +10,7 @@ from sqlalchemy_crud_plus import CRUDPlus
 from backend.common.log import log
 from backend.common.exception.errors import CustomError
 from backend.common.response.response_code import CustomErrorCode
+from backend.utils.timezone import timezone
 
 
 class CRUDFilesyncLock(CRUDPlus[FileSyncLock]):
@@ -84,7 +85,7 @@ class CRUDFilesyncLock(CRUDPlus[FileSyncLock]):
         尝试在事务中原子地获取文件同步锁。
         如果锁不存在，则创建；如果锁已过期，则抢占；否则等待。
         """
-        current_time = datetime.now()
+        current_time = timezone.now()
         new_expires_at = current_time + timedelta(seconds=timeout_seconds)
 
         try:
