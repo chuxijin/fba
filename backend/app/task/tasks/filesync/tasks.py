@@ -10,6 +10,7 @@ from backend.app.coulddrive.crud.crud_filesync import sync_config_dao
 from backend.app.coulddrive.service.filesync_service import file_sync_service
 from backend.app.task.celery import celery_app
 from backend.database.db import async_db_session
+from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,9 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
             # 获取所有启用的同步配置
             enabled_configs = await sync_config_dao.get_enabled_configs(db)
             result["checked_configs"] = len(enabled_configs)
-            
-            current_time = datetime.now()
-            
+
+            current_time = timezone.now()
+
             for config in enabled_configs:
                 try:
                     # 检查是否有cron表达式
@@ -248,7 +249,7 @@ async def _get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
                     # 计算下次执行时间
                     if config_info["is_valid_cron"]:
                         try:
-                            cron = croniter(config.cron, datetime.now())
+                            cron = croniter(config.cron, timezone.now())
                             next_run = cron.get_next(datetime)
                             config_info["next_run"] = next_run.isoformat()
                         except Exception:

@@ -26,6 +26,11 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'backend.app.task.tasks.db_log.tasks.delete_db_login_log',
         'schedule': TzAwareCrontab('0', '0', day_of_month='15'),
     },
+    # 清理 Celery 任务结果 - 每天凌晨3点执行
+    '清理 Celery 任务结果': {
+        'task': 'backend.app.task.tasks.db_log.tasks.delete_celery_task_results',
+        'schedule': TzAwareCrontab('0', '3'),  # 每天凌晨3点
+    },
     # 文件同步定时任务检查 - 每5分钟执行一次
     '文件同步定时任务检查': {
         'task': 'check_and_execute_filesync_cron_tasks',

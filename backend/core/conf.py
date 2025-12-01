@@ -304,6 +304,14 @@ class Settings(BaseSettings):
     WX_H5_APPID: str = ''
     WX_H5_SECRET: str = ''
 
+    ##################################################
+    # OpenAI 向量化服务
+    ##################################################
+    # .env OpenAI API 配置
+    OPENAI_API_KEY: str
+    OPENAI_API_BASE: str
+    OPENAI_EMBEDDING_MODEL: str = 'text-embedding-3-small'
+
     @model_validator(mode='before')
     @classmethod
     def check_env(cls, values: Any) -> Any:
