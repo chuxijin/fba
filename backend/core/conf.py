@@ -308,8 +308,8 @@ class Settings(BaseSettings):
     # OpenAI 向量化服务
     ##################################################
     # .env OpenAI API 配置
-    OPENAI_API_KEY: str
-    OPENAI_API_BASE: str
+    OPENAI_API_KEY: str = ''
+    OPENAI_API_BASE: str = ''
     OPENAI_EMBEDDING_MODEL: str = 'text-embedding-3-small'
 
     @model_validator(mode='before')

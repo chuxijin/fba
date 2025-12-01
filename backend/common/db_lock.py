@@ -10,6 +10,7 @@ from backend.app.coulddrive.model.filesync_lock import FileSyncLock
 from backend.common.exception.errors import CustomError
 from backend.common.response.response_code import CustomErrorCode
 from backend.common.log import log
+from backend.utils.timezone import timezone
 
 
 class DatabaseMutex:
@@ -37,10 +38,10 @@ class DatabaseMutex:
 
     async def __aenter__(self) -> Self:
         """进入上下文，尝试获取锁"""
-        start_time = datetime.now()
+        start_time = timezone.now()
         log.info(f"尝试获取数据库锁: {self.lock_key}, 持有者: {self.owner_id}")
 
-        while (datetime.now() - start_time).total_seconds() < self.max_wait_seconds:
+        while (timezone.now() - start_time).total_seconds() < self.max_wait_seconds:
             async with self.db_session_factory() as db:
                 try:
                     acquired_lock = await crud_filesync_lock.acquire_lock_transaction(
@@ -116,7 +117,7 @@ class DatabaseMutex:
                         current_lock_record = await crud_filesync_lock.get_by_key(db, self.lock_key)
                         if current_lock_record and current_lock_record.owner_id == self.owner_id:
                             # 只有当锁仍然存在且由当前实例持有者持有，才进行续租
-                            new_expires_at = datetime.now() + timedelta(seconds=self.timeout_seconds)
+                            new_expires_at = timezone.now() + timedelta(seconds=self.timeout_seconds)
                             await crud_filesync_lock.update_lock(db, current_lock_record, self.owner_id, new_expires_at)
                             self.lock_record = current_lock_record # 更新内部引用
                             log.debug(f"数据库锁 {self.lock_key} 续租成功，新到期时间: {new_expires_at}")
