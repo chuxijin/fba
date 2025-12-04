@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated, Any, Dict, List
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
 
 from backend.app.coulddrive.schema.file import (
@@ -21,8 +21,8 @@ from backend.app.coulddrive.schema.file import (
     RenameParam,
     BatchRenameParam # 导入批量重命名参数
 )
-from backend.app.coulddrive.service.fileoprate_service import FileOperateService # 导入新的服务
-from backend.app.coulddrive.service.yp_service import get_drive_manager
+from backend.app.coulddrive.service.fileoprate_service import FileOperateService
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.common.pagination import DependsPagination, PageData, paging_list_data, _CustomPageParams
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.response.response_code import CustomResponse
@@ -41,30 +41,38 @@ async def get_file_list(
     request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
     params: Annotated[ListFilesParam, Depends()],
-    page_params: Annotated[_CustomPageParams, DependsPagination]
+    page_params: Annotated[_CustomPageParams, DependsPagination],
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID（内部调用必传）")] = None
 ) -> ResponseSchemaModel[PageData[BaseFileInfo]]:
-    """获取文件列表，支持智能缓存"""
-    drive_manager = get_drive_manager()
-    
-    # 从x-token(cookies)获取网盘账户ID
-    drive_account_id = None
+    """
+    获取文件列表，支持智能缓存
+
+    两种调用方式：
+    1. 内部调用：传 drive_account_id，自动校验所有权
+    2. 外部调试：不传 drive_account_id，直接用 x_token
+    """
     try:
-        from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
-        # x-token就是cookies，直接通过cookies获取对应的网盘账户ID
-        drive_account_id = await drive_account_dao.get_id_by_cookies(db, x_token)
-    except Exception as e:
-        # 如果获取账户ID失败，不影响正常功能，只是不使用缓存
-        pass
-    
-    # 调用drive_manager时传递额外参数
-    file_list = await drive_manager.get_disk_list(
-        x_token, 
-        params,
-        db=db,
-        drive_account_id=drive_account_id
-    )
-    page_data = paging_list_data(file_list, page_params)
-    return response_base.success(data=page_data)
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        file_list = await service.get_disk_list(
+            params=params,
+            db=db,
+            drive_account_id=drive_account_id
+        )
+
+        page_data = paging_list_data(file_list, page_params)
+        return response_base.success(data=page_data)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.get(
@@ -79,30 +87,32 @@ async def get_share_file_list(
     request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
     params: Annotated[ListShareFilesParam, Depends()],
-    page_params: Annotated[_CustomPageParams, DependsPagination]
+    page_params: Annotated[_CustomPageParams, DependsPagination],
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID（内部调用必传）")] = None
 ) -> ResponseSchemaModel[PageData[BaseFileInfo]]:
     """获取分享文件列表，支持智能缓存"""
-    drive_manager = get_drive_manager()
-    
-    # 从x-token(cookies)获取网盘账户ID
-    drive_account_id = None
     try:
-        from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
-        # x-token就是cookies，直接通过cookies获取对应的网盘账户ID
-        drive_account_id = await drive_account_dao.get_id_by_cookies(db, x_token)
-    except Exception as e:
-        # 如果获取账户ID失败，不影响正常功能，只是不使用缓存
-        pass
-    
-    # 调用drive_manager时传递额外参数
-    file_list = await drive_manager.get_share_list(
-        x_token, 
-        params,
-        db=db,
-        drive_account_id=drive_account_id
-    )
-    page_data = paging_list_data(file_list, page_params)
-    return response_base.success(data=page_data)
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        file_list = await service.get_share_list(
+            params=params,
+            db=db,
+            drive_account_id=drive_account_id
+        )
+
+        page_data = paging_list_data(file_list, page_params)
+        return response_base.success(data=page_data)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -113,12 +123,28 @@ async def get_share_file_list(
     dependencies=[DependsJwtAuth]
 )
 async def create_folder(
+    db: CurrentSession,
+    request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: MkdirParam
+    params: MkdirParam,
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[BaseFileInfo]:
-    drive_manager = get_drive_manager()
-    folder_info = await drive_manager.create_mkdir(x_token, params)
-    return response_base.success(data=folder_info)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        folder_info = await service.mkdir(params=params)
+        return response_base.success(data=folder_info)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -129,12 +155,28 @@ async def create_folder(
     dependencies=[DependsJwtAuth]
 )
 async def rename_file(
+    db: CurrentSession,
+    request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: RenameParam
+    params: RenameParam,
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[bool]:
-    drive_manager = get_drive_manager()
-    result = await drive_manager.rename_files(x_token, params)
-    return response_base.success(data=result)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        result = await service.rename(params=params)
+        return response_base.success(data=result)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -145,12 +187,28 @@ async def rename_file(
     dependencies=[DependsJwtAuth]
 )
 async def move_files(
+    db: CurrentSession,
+    request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: MoveParam
+    params: MoveParam,
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[bool]:
-    drive_manager = get_drive_manager()
-    result = await drive_manager.move_files(x_token, params)
-    return response_base.success(data=result)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        result = await service.move(params=params)
+        return response_base.success(data=result)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -161,12 +219,28 @@ async def move_files(
     dependencies=[DependsJwtAuth]
 )
 async def copy_files(
+    db: CurrentSession,
+    request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: CopyParam
+    params: CopyParam,
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[bool]:
-    drive_manager = get_drive_manager()
-    result = await drive_manager.copy_files(x_token, params)
-    return response_base.success(data=result)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        result = await service.copy(params=params)
+        return response_base.success(data=result)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.delete(
@@ -177,12 +251,28 @@ async def copy_files(
     dependencies=[DependsJwtAuth]
 )
 async def remove_files(
+    db: CurrentSession,
+    request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: RemoveParam
+    params: RemoveParam,
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[bool]:
-    drive_manager = get_drive_manager()
-    result = await drive_manager.remove_files(x_token, params)
-    return response_base.success(data=result)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        result = await service.remove(params=params)
+        return response_base.success(data=result)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -193,12 +283,28 @@ async def remove_files(
     dependencies=[DependsJwtAuth]
 )
 async def transfer_files(
+    db: CurrentSession,
+    request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: TransferParam
+    params: TransferParam,
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[bool]:
-    drive_manager = get_drive_manager()
-    result = await drive_manager.transfer_files(x_token, params)
-    return response_base.success(data=result)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        result = await service.transfer_files(params=params)
+        return response_base.success(data=result)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -309,29 +415,42 @@ async def get_share_info(
     db: CurrentSession,
     request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: Annotated[ListShareInfoParam, Depends()]
+    params: Annotated[ListShareInfoParam, Depends()],
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[List[BaseShareInfo]]:
     """
     获取分享详情信息
-    
+
     :param db: 数据库会话
     :param request: 请求对象
     :param x_token: 认证令牌
     :param params: 分享详情查询参数
+    :param drive_account_id: 网盘账户ID
     :return: 分享详情信息列表
     """
-    drive_manager = get_drive_manager()
-    
-    # 调用drive_manager获取分享信息
-    share_info_result = await drive_manager.get_share_info(x_token, params)
-    
-    # 如果返回的是包含分页信息的字典，提取列表部分
-    if isinstance(share_info_result, dict) and 'list' in share_info_result:
-        share_info_list = share_info_result['list']
-    else:
-        share_info_list = share_info_result
-    
-    return response_base.success(data=share_info_list)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        share_info_result = await service.get_share_info(params=params)
+
+        # 如果返回的是包含分页信息的字典，提取列表部分
+        if isinstance(share_info_result, dict) and 'list' in share_info_result:
+            share_info_list = share_info_result['list']
+        else:
+            share_info_list = share_info_result
+
+        return response_base.success(data=share_info_list)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -342,19 +461,38 @@ async def get_share_info(
     dependencies=[DependsJwtAuth]
 )
 async def create_share(
+    db: CurrentSession,
+    request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: ShareParam
+    params: ShareParam,
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[BaseShareInfo]:
     """
     创建分享链接
-    
+
+    :param db: 数据库会话
+    :param request: 请求对象
     :param x_token: 认证令牌
     :param params: 分享参数
+    :param drive_account_id: 网盘账户ID
     :return: 分享信息
     """
-    drive_manager = get_drive_manager()
-    share_info = await drive_manager.create_share(x_token, params)
-    return response_base.success(data=share_info)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        share_info = await service.create_share(params=params)
+        return response_base.success(data=share_info)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))
 
 
 @router.delete(
@@ -365,16 +503,35 @@ async def create_share(
     dependencies=[DependsJwtAuth]
 )
 async def cancel_share(
+    db: CurrentSession,
+    request: Request,
     x_token: Annotated[str, Header(description="认证令牌")],
-    params: CancelShareParam
+    params: CancelShareParam,
+    drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
 ) -> ResponseSchemaModel[bool]:
     """
     取消分享链接
-    
+
+    :param db: 数据库会话
+    :param request: 请求对象
     :param x_token: 认证令牌
     :param params: 取消分享参数
+    :param drive_account_id: 网盘账户ID
     :return: 是否成功取消
     """
-    drive_manager = get_drive_manager()
-    result = await drive_manager.cancel_share(x_token, params)
-    return response_base.success(data=result)
+    try:
+        service = CouldDriveService.create_from_request(
+            db=db,
+            request=request,
+            x_token=x_token,
+            drive_type=params.drive_type,
+            drive_account_id=drive_account_id
+        )
+
+        result = await service.cancel_share(params=params)
+        return response_base.success(data=result)
+
+    except PermissionError as e:
+        return response_base.fail(res=CustomResponse(403, str(e)))
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(404, str(e)))

@@ -111,16 +111,25 @@ class PageData(_PageDetails, Generic[SchemaT]):
     items: Sequence[SchemaT]
 
 
-async def paging_data(db: AsyncSession, select: Select, **kwargs) -> dict[str, Any]:
+async def paging_data(db: AsyncSession, select: Select, schema_cls=None, **kwargs) -> dict[str, Any]:
     """
     基于 SQLAlchemy 创建分页数据
 
     :param db: 数据库会话
     :param select: SQL 查询语句
+    :param schema_cls: 可选的 Pydantic Schema 类，用于转换 ORM 对象，避免懒加载问题
     :param kwargs: 更多 fastapi-pagination apaginate 参数
     :return:
     """
     paginated_data: _CustomPage = await apaginate(db, select, **kwargs)
+
+    # 如果提供了 schema_cls，立即在异步上下文中转换 ORM 对象为 Schema
+    # 这样可以避免在 model_dump() 时触发 SQLAlchemy 的懒加载
+    if schema_cls:
+        paginated_data.items = [
+            schema_cls.model_validate(item) for item in paginated_data.items
+        ]
+
     page_data = paginated_data.model_dump()
     return page_data
 

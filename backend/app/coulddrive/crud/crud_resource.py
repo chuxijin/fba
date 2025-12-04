@@ -3,19 +3,21 @@
 from typing import Sequence, Tuple
 from datetime import datetime, timedelta, time
 
-from sqlalchemy import Select, and_, desc, select, func, or_, case
+from sqlalchemy import Select, and_, desc, select, func, or_, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import noload
+from sqlalchemy.orm import noload, defer
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.resource import Resource, ResourceViewHistory
 from backend.app.coulddrive.schema.resource import (
-    CreateResourceParam, 
+    CreateResourceParam,
     UpdateResourceParam,
     GetResourceListParam,
     CreateResourceViewHistoryParam,
     GetResourceViewHistoryListParam
 )
+from backend.app.coulddrive.service.vector_service import get_vector_service
+from backend.common.log import log
 from backend.utils.timezone import timezone
 
 
@@ -62,7 +64,7 @@ class CRUDResource(CRUDPlus[Resource]):
         stmt = select(self.model).order_by(desc(self.model.created_time))
 
         filters = []
-        
+
         if params.domain is not None:
             filters.append(self.model.domain == params.domain)
         if params.subject is not None:
@@ -79,7 +81,7 @@ class CRUDResource(CRUDPlus[Resource]):
             filters.append(self.model.user_id == params.user_id)
         if params.is_deleted is not None:
             filters.append(self.model.is_deleted == params.is_deleted)
-        
+
         # 关键词搜索
         if params.keyword:
             keyword_filter = or_(
@@ -91,9 +93,9 @@ class CRUDResource(CRUDPlus[Resource]):
         if filters:
             stmt = stmt.where(and_(*filters))
 
-        # 避免加载关联数据，防止懒加载导致的异步问题
+        # 不加载关联对象和 deferred 字段
         stmt = stmt.options(noload(Resource.user), noload(Resource.view_history))
-        
+
         return stmt
 
     async def get_all(self, db: AsyncSession) -> Sequence[Resource]:
@@ -502,6 +504,183 @@ class CRUDResource(CRUDPlus[Resource]):
         )
         result = await db.execute(stmt)
         return result.scalar() or 0
+
+    async def vector_search(
+        self,
+        db: AsyncSession,
+        query_text: str,
+        limit: int = 20,
+        similarity_threshold: float = 0.7,
+        subject: str | None = None
+    ) -> list[tuple[Resource, float]]:
+        """
+        向量搜索资源
+
+        :param db: 数据库会话
+        :param query_text: 搜索查询文本（在资源介绍和描述中搜索）
+        :param limit: 返回结果数量限制
+        :param similarity_threshold: 相似度阈值 (0-1)，只返回大于此阈值的结果
+        :param subject: 科目过滤
+        :return: (资源对象, 相似度分数) 列表，按相似度降序排列
+        """
+        # 将查询文本转换为向量
+        vector_service = get_vector_service()
+        query_vector = await vector_service.encode(query_text)
+
+        # 使用 pgvector 的余弦距离运算符 (<=>)
+        # 余弦距离: 0 表示完全相同，2 表示完全相反
+        # 我们将其转换为相似度分数: 1 - (距离 / 2)
+        distance_expr = text("content_vector <=> :query_vector")
+
+        # 构建过滤条件
+        filters = [
+            self.model.is_deleted == False,
+            self.model.status == 1,
+            self.model.content_vector.isnot(None)
+        ]
+
+        # 只保留科目过滤
+        if subject is not None:
+            filters.append(self.model.subject == subject)
+
+        stmt = (
+            select(
+                self.model,
+                text("(1 - (content_vector <=> :query_vector) / 2) AS similarity")
+            )
+            .where(and_(*filters))
+            .order_by(distance_expr)
+            .limit(limit)
+            .params(query_vector=str(query_vector))
+        )
+
+        result = await db.execute(stmt)
+        rows = result.all()
+
+        # 过滤低于相似度阈值的结果
+        filtered_results = [
+            (row[0], float(row[1]))
+            for row in rows
+            if float(row[1]) >= similarity_threshold
+        ]
+
+        return filtered_results
+
+    async def update_resource_vector(self, db: AsyncSession, resource_id: int) -> bool:
+        """
+        更新单个资源的向量
+
+        :param db: 数据库会话
+        :param resource_id: 资源ID
+        :return: 是否更新成功
+        """
+        # 获取资源
+        resource = await self.get(db, resource_id)
+        if not resource:
+            log.warning(f"资源 {resource_id} 不存在")
+            return False
+
+        # 转换为字典格式（只包含向量化需要的字段）
+        resource_data = {
+            "id": resource.id,
+            "description": resource.description,
+            "resource_intro": resource.resource_intro,
+        }
+
+        # 生成向量
+        vector_service = get_vector_service()
+        vector = await vector_service.encode_resource(resource_data)
+
+        # 更新向量
+        await self.update_model_by_column(
+            db,
+            {"content_vector": vector},
+            id=resource_id
+        )
+        await db.commit()
+
+        log.info(f"成功更新资源 {resource_id} 的向量")
+        return True
+
+    async def batch_update_vectors(self, db: AsyncSession, batch_size: int = 50) -> int:
+        """
+        批量更新所有资源的向量
+
+        :param db: 数据库会话
+        :param batch_size: 每批次处理数量
+        :return: 成功更新的数量
+        """
+        # 获取所有需要向量化的资源（未删除且向量为空）
+        stmt = select(self.model).where(
+            and_(
+                self.model.is_deleted == False,
+                self.model.content_vector.is_(None)
+            )
+        )
+        result = await db.execute(stmt)
+        resources = result.scalars().all()
+
+        if not resources:
+            log.info("没有需要向量化的资源")
+            return 0
+
+        total_count = len(resources)
+        log.info(f"开始批量向量化 {total_count} 个资源")
+
+        success_count = 0
+        vector_service = get_vector_service()
+
+        for i in range(0, total_count, batch_size):
+            batch = resources[i : i + batch_size]
+
+            # 准备批量数据（只提取向量化需要的字段）
+            batch_data = []
+            for resource in batch:
+                resource_data = {
+                    "id": resource.id,
+                    "description": resource.description,
+                    "resource_intro": resource.resource_intro,
+                }
+                batch_data.append(resource_data)
+
+            # 批量生成向量
+            try:
+                texts = []
+                for data in batch_data:
+                    # 只使用核心内容字段（与 encode_resource 逻辑一致）
+                    text_parts = []
+
+                    # 1. 资源介绍（最重要）
+                    if data.get("resource_intro"):
+                        text_parts.append(data["resource_intro"])
+
+                    # 2. 描述（次要）
+                    if data.get("description"):
+                        text_parts.append(data["description"])
+
+                    texts.append("\n".join(text_parts))
+
+                vectors = await vector_service.batch_encode(texts, batch_size=batch_size)
+
+                # 批量更新
+                for resource, vector in zip(batch, vectors):
+                    await self.update_model_by_column(
+                        db,
+                        {"content_vector": vector},
+                        id=resource.id
+                    )
+                    success_count += 1
+
+                await db.commit()
+                log.info(f"批量向量化进度: {min(i + batch_size, total_count)}/{total_count}")
+
+            except Exception as e:
+                log.error(f"批量向量化失败 (批次 {i // batch_size + 1}): {e}")
+                await db.rollback()
+                continue
+
+        log.info(f"批量向量化完成，成功: {success_count}/{total_count}")
+        return success_count
 
 
 class CRUDResourceViewHistory(CRUDPlus[ResourceViewHistory]):

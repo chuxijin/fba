@@ -8,7 +8,7 @@ from typing import Dict, Any, List
 
 from backend.app.coulddrive.crud.crud_resource import resource_dao
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
-from backend.app.coulddrive.service.yp_service import get_drive_manager
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.schema.file import ShareParam, ListShareInfoParam
 from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.task.celery import celery_app
@@ -21,20 +21,29 @@ logger = logging.getLogger(__name__)
 async def check_and_refresh_expiring_resources() -> Dict[str, Any]:
     """
     检查即将过期的资源并重新分享
-    
+
     扫描yp_resource表中以下两种情况的记录：
     1. 距离过期时间小于24小时的资源
     2. 已经过期的资源
-    
+
     重新创建分享链接并更新数据库
-    
+
     :return: 执行结果统计
     """
     try:
-        result = await _check_and_refresh_expiring_resources()
-        logger.info(f"资源过期检查完成: 检查{result['checked_resources']}个，刷新{result['refreshed_resources']}个")
-        return result
-            
+        async with async_db_session() as db:
+            from backend.app.coulddrive.service.resource_service import resource_service
+
+            result = await resource_service.refresh_expiring_resources(
+                db=db,
+                hours=24,
+                expired_type=7,
+                include_expired=True
+            )
+
+            logger.info(f"资源过期检查完成: 检查{result['checked_resources']}个，刷新{result['refreshed_resources']}个")
+            return result
+
     except Exception as e:
         logger.error(f"资源过期检查失败: {str(e)}")
         return {
@@ -46,235 +55,6 @@ async def check_and_refresh_expiring_resources() -> Dict[str, Any]:
             "error": str(e)
         }
 
-
-async def _check_and_refresh_expiring_resources() -> Dict[str, Any]:
-    """
-    检查即将过期的资源并重新分享的异步实现
-    
-    处理两种情况：
-    1. 24小时内即将过期的资源
-    2. 已经过期的资源
-    
-    :return: 执行结果统计
-    """
-    result = {
-        "checked_resources": 0,
-        "refreshed_resources": 0,
-        "failed_resources": 0,
-        "skipped_resources": 0,
-        "refresh_details": []
-    }
-    
-    try:
-        async with async_db_session() as db:
-            current_time = datetime.now()
-            
-            # 1. 获取24小时内即将过期的资源
-            expiring_threshold_24h = current_time + timedelta(hours=24)
-            expiring_resources_24h = await resource_dao.get_expiring_resources(
-                db,
-                current_time=current_time,
-                expiring_threshold=expiring_threshold_24h,
-            )
-            
-            # 2. 获取已经过期的资源（过期时间小于等于当前时间）
-            expired_resources = await resource_dao.get_expired_resources(
-                db,
-                current_time=current_time
-            )
-            
-            # 合并所有需要处理的资源
-            all_resources = []
-            
-            # 添加24小时内即将过期的资源
-            for resource in expiring_resources_24h:
-                if getattr(resource, 'is_temp_file', 0) == 2:
-                    resource.expiry_category = "24h_expiring"
-                    all_resources.append(resource)
-            
-            # 添加已经过期的资源
-            for resource in expired_resources:
-                if getattr(resource, 'is_temp_file', 0) == 2:
-                    resource.expiry_category = "expired"
-                    all_resources.append(resource)
-            
-            # 按过期时间排序，优先处理已过期的资源
-            all_resources.sort(key=lambda x: (x.expired_at or datetime.max, getattr(x, 'expiry_category', '')))
-            
-            result["checked_resources"] = len(all_resources)
-            
-            drive_manager = get_drive_manager()
-            
-            for resource in all_resources:
-                try:
-                    # 跳过已删除或停用的资源
-                    if resource.is_deleted or resource.status != 1:
-                        result["skipped_resources"] += 1
-                        result["refresh_details"].append({
-                            "resource_id": resource.id,
-                            "status": "skipped",
-                            "reason": "资源已删除或停用",
-                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
-                        })
-                        continue
-                    
-                    # 跳过永久分享的资源（expired_type = 0）或非定时刷新模式
-                    if resource.expired_type == 0 or resource.is_temp_file != 2:
-                        result["skipped_resources"] += 1
-                        result["refresh_details"].append({
-                            "resource_id": resource.id,
-                            "status": "skipped",
-                            "reason": "非定时刷新模式或永久分享",
-                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
-                        })
-                        continue
-                    
-                    # 获取用户网盘账户信息
-                    drive_account = await drive_account_dao.get(db, resource.user_id)
-                    if not drive_account or not drive_account.is_valid:
-                        result["failed_resources"] += 1
-                        result["refresh_details"].append({
-                            "resource_id": resource.id,
-                            "status": "failed",
-                            "reason": "网盘账户不存在或无效",
-                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
-                        })
-                        continue
-                    
-                    # 检查 cookies 是否存在
-                    if not drive_account.cookies:
-                        result["failed_resources"] += 1
-                        result["refresh_details"].append({
-                            "resource_id": resource.id,
-                            "status": "failed",
-                            "reason": "网盘账户缺少认证信息",
-                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
-                        })
-                        continue
-                    
-                    # 需要重新分享，但需要文件ID
-                    if not resource.file_id:
-                        result["failed_resources"] += 1
-                        result["refresh_details"].append({
-                            "resource_id": resource.id,
-                            "status": "failed",
-                            "reason": "缺少文件ID，无法重新分享",
-                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
-                        })
-                        continue
-                    
-                    # 根据过期类别设置不同的过期时间
-                    expiry_category = getattr(resource, 'expiry_category', '24h_expiring')
-                    if expiry_category == "expired":
-                        # 已过期的资源，创建7天分享
-                        expired_type = 7
-                        log_message = "已过期资源重新分享"
-                    else:
-                        # 24小时内即将过期的资源，创建7天分享
-                        expired_type = 7
-                        log_message = "即将过期资源刷新"
-                    
-                    # 创建新的分享
-                    share_params = ShareParam(
-                        drive_type=DriveType(drive_account.type),
-                        file_name=resource.title or resource.main_name,
-                        file_ids=[resource.file_id],
-                        expired_type=expired_type,
-                        password=resource.extract_code
-                    )
-                    
-                    # 调用分享服务
-                    new_share_info = await drive_manager.create_share(
-                        drive_account.cookies,
-                        share_params
-                    )
-                    
-                    # 更新资源信息
-                    from backend.app.coulddrive.schema.resource import UpdateResourceParam, CreateResourceViewHistoryParam
-                    from backend.app.coulddrive.crud.crud_resource import resource_view_history_dao
-                    
-                    # 创建更新参数，只设置需要更新的字段
-                    update_data = {
-                        "url": new_share_info.url,
-                        "share_id": new_share_info.share_id,
-                        "pwd_id": new_share_info.pwd_id,
-                        "expired_at": new_share_info.expired_at,
-                        "expired_left": new_share_info.expired_left,
-                        "expired_type": new_share_info.expired_type,
-                        "extract_code": resource.extract_code or "",
-                        "view_count": 0
-                    }
-                    update_params = UpdateResourceParam(**update_data)
-                    
-                    # 更新数据库
-                    await resource_dao.update(db, resource.id, update_params)
-                    
-                    # 记录初始浏览量历史
-                    if new_share_info.pwd_id:
-                        try:
-                            history_param = CreateResourceViewHistoryParam(
-                                pwd_id=new_share_info.pwd_id,
-                                view_count=0
-                            )
-                            await resource_view_history_dao.create(db, history_param)
-                        except Exception as e:
-                            # 记录浏览量历史失败不影响资源刷新
-                            logger.error(f"记录浏览量历史失败: {str(e)}")
-                            pass
-                    
-                    result["refreshed_resources"] += 1
-                    result["refresh_details"].append({
-                        "resource_id": resource.id,
-                        "resource_title": resource.title or resource.main_name,
-                        "status": "success",
-                        "old_url": resource.url,
-                        "new_url": new_share_info.url,
-                        "new_expired_at": new_share_info.expired_at.isoformat() if new_share_info.expired_at else None,
-                        "expiry_category": expiry_category,
-                        "log_message": log_message
-                    })
-                    
-                    logger.info(f"{resource.title or resource.main_name} {log_message}成功")
-                    
-                    # 添加随机间隔时间，避免频繁请求
-                    wait_time = random.randint(5, 10)
-                    await asyncio.sleep(wait_time)
-                
-                except Exception as e:
-                    logger.error(f"刷新资源 {resource.id} 分享链接时发生错误: {str(e)}")
-                    result["failed_resources"] += 1
-                    result["refresh_details"].append({
-                        "resource_id": resource.id,
-                        "resource_title": resource.title or resource.main_name,
-                        "status": "error",
-                        "error": str(e),
-                        "expiry_category": getattr(resource, 'expiry_category', 'unknown')
-                    })
-    
-    except Exception as e:
-        logger.error(f"检查资源过期时发生错误: {str(e)}")
-        result["error"] = str(e)
-    
-    return result
-
-
-@celery_app.task(name='refresh_resource_share_by_id')
-async def refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
-    """
-    根据资源ID刷新单个资源的分享链接
-    
-    :param resource_id: 资源ID
-    :return: 执行结果
-    """
-    try:
-        return await _refresh_resource_share_by_id(resource_id)
-    except Exception as e:
-        logger.error(f"刷新资源 {resource_id} 分享链接失败: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "resource_id": resource_id
-        }
 
 
 @celery_app.task(name='refresh_resources_with_update_mode')
@@ -311,7 +91,7 @@ async def refresh_resources_with_update_mode() -> Dict[str, Any]:
                         continue
 
                     # 复用服务层的刷新逻辑（等价于 @resource.py 的 refresh_share_info）
-                    await resource_service.refresh_share_info(db, res.id, updated_by=res.updated_by or res.created_by)
+                    await resource_service.refresh_share_info(db=db, resource_id=res.id, updated_by=res.updated_by or res.created_by)
                     summary["refreshed_resources"] += 1
                     summary["details"].append({
                         "resource_id": res.id,
@@ -341,12 +121,19 @@ async def refresh_resources_with_update_mode() -> Dict[str, Any]:
 async def refresh_subject_mode2_to_permanent(subject: str) -> Dict[str, Any]:
     """
     将指定科目下临时处理模式为 2 的资源刷新为永久分享链接
-    
+
     :param subject: 科目
     :return: 执行结果统计
     """
     try:
-        return await _refresh_subject_mode2_to_permanent(subject)
+        async with async_db_session() as db:
+            from backend.app.coulddrive.service.resource_service import resource_service
+
+            return await resource_service.refresh_to_permanent(
+                db=db,
+                subject=subject
+            )
+
     except Exception as e:
         logger.error(f"按科目刷新永久链接失败: {str(e)}")
         return {
@@ -360,291 +147,11 @@ async def refresh_subject_mode2_to_permanent(subject: str) -> Dict[str, Any]:
         }
 
 
-async def _refresh_subject_mode2_to_permanent(subject: str) -> Dict[str, Any]:
-    """
-    将指定科目下临时处理模式为 2 的资源刷新为永久分享链接的异步实现
-    
-    :param subject: 科目
-    :return: 执行结果统计
-    """
-    summary: Dict[str, Any] = {
-        "subject": subject,
-        "checked_resources": 0,
-        "refreshed_resources": 0,
-        "failed_resources": 0,
-        "skipped_resources": 0,
-        "details": [],
-    }
-
-    try:
-        async with async_db_session() as db:
-            # 取出临时模式为 2 的资源，再根据 subject 过滤
-            resources = await resource_dao.get_resources_by_temp_mode(db, temp_mode=2)
-            filtered_resources = [r for r in resources if r.subject == subject]
-            summary["checked_resources"] = len(filtered_resources)
-
-            if not filtered_resources:
-                return summary
-
-            drive_manager = get_drive_manager()
-
-            for res in filtered_resources:
-                try:
-                    # 跳过已删除或停用
-                    if res.is_deleted or res.status != 1:
-                        summary["skipped_resources"] += 1
-                        summary["details"].append({
-                            "resource_id": res.id,
-                            "status": "skipped",
-                            "reason": "资源已删除或停用",
-                        })
-                        continue
-
-                    # 账户检查
-                    drive_account = await drive_account_dao.get(db, res.user_id)
-                    if not drive_account or not drive_account.is_valid:
-                        summary["failed_resources"] += 1
-                        summary["details"].append({
-                            "resource_id": res.id,
-                            "status": "failed",
-                            "reason": "网盘账户不存在或无效",
-                        })
-                        continue
-
-                    if not drive_account.cookies:
-                        summary["failed_resources"] += 1
-                        summary["details"].append({
-                            "resource_id": res.id,
-                            "status": "failed",
-                            "reason": "网盘账户缺少认证信息",
-                        })
-                        continue
-
-                    # 必须有文件 ID
-                    if not res.file_id:
-                        summary["failed_resources"] += 1
-                        summary["details"].append({
-                            "resource_id": res.id,
-                            "status": "failed",
-                            "reason": "缺少文件ID，无法创建永久分享",
-                        })
-                        continue
-
-                    # 创建永久分享
-                    share_params = ShareParam(
-                        drive_type=DriveType(drive_account.type),
-                        file_name=res.title or res.main_name,
-                        file_ids=[res.file_id],
-                        expired_type=0,  # 永久
-                        password=res.extract_code,
-                    )
-
-                    new_share_info = await drive_manager.create_share(
-                        drive_account.cookies,
-                        share_params,
-                    )
-
-                    # 组装更新字段：设为永久，并清空临时模式
-                    from backend.app.coulddrive.schema.resource import UpdateResourceParam, CreateResourceViewHistoryParam
-                    from backend.app.coulddrive.crud.crud_resource import resource_view_history_dao
-
-                    update_data = {
-                        "url": new_share_info.url,
-                        "share_id": new_share_info.share_id,
-                        "pwd_id": new_share_info.pwd_id,
-                        "expired_at": new_share_info.expired_at,
-                        "expired_left": new_share_info.expired_left,
-                        "expired_type": 0,
-                        "extract_code": res.extract_code or "",
-                        "view_count": 0,
-                        "is_temp_file": 0,
-                    }
-                    update_params = UpdateResourceParam(**update_data)
-
-                    await resource_dao.update(db, res.id, update_params)
-
-                    # 记录初始浏览量历史（可选）
-                    if new_share_info.pwd_id:
-                        try:
-                            history_param = CreateResourceViewHistoryParam(
-                                pwd_id=new_share_info.pwd_id,
-                                view_count=0,
-                            )
-                            await resource_view_history_dao.create(db, history_param)
-                        except Exception as e:  # noqa: F841
-                            logger.error("记录浏览量历史失败")
-
-                    summary["refreshed_resources"] += 1
-                    summary["details"].append({
-                        "resource_id": res.id,
-                        "resource_title": res.title or res.main_name,
-                        "status": "success",
-                        "old_url": res.url,
-                        "new_url": new_share_info.url,
-                        "new_expired_at": new_share_info.expired_at.isoformat() if new_share_info.expired_at else None,
-                    })
-
-                    # 随机间隔，避免频繁请求
-                    wait_time = random.randint(3, 6)
-                    await asyncio.sleep(wait_time)
-
-                except Exception as e:
-                    logger.error(f"资源 {res.id} 刷新永久链接失败: {str(e)}")
-                    summary["failed_resources"] += 1
-                    summary["details"].append({
-                        "resource_id": res.id,
-                        "resource_title": res.title or res.main_name,
-                        "status": "error",
-                        "error": str(e),
-                    })
-
-    except Exception as e:
-        logger.error(f"按科目刷新永久链接任务异常: {str(e)}")
-        summary["error"] = str(e)
-
-    return summary
-
-
-async def _refresh_resource_share_by_id(resource_id: int) -> Dict[str, Any]:
-    """
-    根据资源ID刷新单个资源的分享链接的异步实现
-    
-    :param resource_id: 资源ID
-    :return: 执行结果
-    """
-    try:
-        async with async_db_session() as db:
-            # 获取资源信息
-            resource = await resource_dao.get(db, resource_id)
-            if not resource:
-                return {
-                    "success": False,
-                    "error": "资源不存在",
-                    "resource_id": resource_id
-                }
-            
-            # 检查资源状态
-            if resource.is_deleted or resource.status != 1:
-                return {
-                    "success": False,
-                    "error": "资源已删除或停用",
-                    "resource_id": resource_id
-                }
-            
-            # 获取用户网盘账户信息
-            drive_account = await drive_account_dao.get(db, resource.user_id)
-            if not drive_account or not drive_account.is_valid:
-                return {
-                    "success": False,
-                    "error": "网盘账户不存在或无效",
-                    "resource_id": resource_id
-                }
-            
-            # 检查 cookies 是否存在
-            if not drive_account.cookies:
-                return {
-                    "success": False,
-                    "error": "网盘账户缺少认证信息",
-                    "resource_id": resource_id
-                }
-            
-            # 检查是否有文件ID
-            if not resource.file_id:
-                return {
-                    "success": False,
-                    "error": "缺少文件ID，无法重新分享",
-                    "resource_id": resource_id
-                }
-            
-            # 创建新的分享，默认7天过期
-            drive_manager = get_drive_manager()
-            share_params = ShareParam(
-                drive_type=DriveType(drive_account.type),
-                file_name=resource.title or resource.main_name,
-                file_ids=[resource.file_id],
-                expired_type=7,  # 默认创建7天的分享
-                password=resource.extract_code
-            )
-            
-            # 调用分享服务
-            new_share_info = await drive_manager.create_share(
-                drive_account.cookies,
-                share_params
-            )
-            
-            # 更新资源信息
-            from backend.app.coulddrive.schema.resource import UpdateResourceParam, CreateResourceViewHistoryParam
-            from backend.app.coulddrive.crud.crud_resource import resource_view_history_dao
-            
-            # 创建更新参数，只设置需要更新的字段
-            update_data = {
-                "url": new_share_info.url,
-                "share_id": new_share_info.share_id,
-                "pwd_id": new_share_info.pwd_id,
-                "expired_at": new_share_info.expired_at,
-                "expired_left": new_share_info.expired_left,
-                "expired_type": new_share_info.expired_type,
-                "extract_code": resource.extract_code or "",
-                "view_count": 0
-            }
-            update_params = UpdateResourceParam(**update_data)
-            
-            # 更新数据库
-            await resource_dao.update(db, resource_id, update_params)
-            
-            # 记录初始浏览量历史
-            if new_share_info.pwd_id:
-                try:
-                    history_param = CreateResourceViewHistoryParam(
-                        pwd_id=new_share_info.pwd_id,
-                        view_count=0
-                    )
-                    await resource_view_history_dao.create(db, history_param)
-                except Exception as e:
-                    # 记录浏览量历史失败不影响资源刷新
-                    logger.error(f"记录浏览量历史失败: {str(e)}")
-                    pass
-            
-            logger.info(f"{resource.title or resource.main_name} 刷新成功")
-            
-            return {
-                "success": True,
-                "resource_id": resource_id,
-                "resource_title": resource.title or resource.main_name,
-                "old_url": resource.url,
-                "new_url": new_share_info.url,
-                "new_expired_at": new_share_info.expired_at.isoformat() if new_share_info.expired_at else None
-            }
-    
-    except Exception as e:
-        error_msg = f"刷新资源 {resource_id} 分享链接时发生错误: {str(e)}"
-        logger.error(error_msg)
-        return {
-            "success": False,
-            "error": error_msg,
-            "resource_id": resource_id
-        }
-
-
 @celery_app.task(name='get_expiring_resources')
 async def get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
     """
     获取即将过期的资源列表
-    
-    :param hours: 过期时间阈值（小时）
-    :return: 即将过期的资源列表
-    """
-    try:
-        return await _get_expiring_resources(hours)
-    except Exception as e:
-        logger.error(f"获取即将过期的资源列表失败: {str(e)}")
-        return []
 
-
-async def _get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
-    """
-    获取即将过期的资源列表的异步实现
-    
     :param hours: 过期时间阈值（小时）
     :return: 即将过期的资源列表
     """
@@ -652,13 +159,13 @@ async def _get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
         async with async_db_session() as db:
             current_time = datetime.now()
             expiring_threshold = current_time + timedelta(hours=hours)
-            
+
             expiring_resources = await resource_dao.get_expiring_resources(
-                db, 
+                db,
                 current_time=current_time,
                 expiring_threshold=expiring_threshold
             )
-            
+
             result = []
             for resource in expiring_resources:
                 result.append({
@@ -673,9 +180,9 @@ async def _get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
                     "status": resource.status,
                     "is_deleted": resource.is_deleted
                 })
-            
+
             return result
-    
+
     except Exception as e:
         logger.error(f"获取即将过期的资源列表时发生错误: {str(e)}")
         return []
@@ -726,9 +233,7 @@ async def _cleanup_expired_local_shares() -> Dict[str, Any]:
             drive_accounts = await drive_account_dao.get_list_with_pagination(db, is_valid=True)
             
             result["checked_accounts"] = len(drive_accounts)
-            
-            drive_manager = get_drive_manager()
-            
+
             for account in drive_accounts:
                 try:
                     # 跳过无效账户
@@ -740,9 +245,12 @@ async def _cleanup_expired_local_shares() -> Dict[str, Any]:
                             "reason": "账户无效或缺少认证信息"
                         })
                         continue
-                    
+
                     logger.info(f"开始检查账户 {account.id} ({account.type}) 的本地分享")
-                    
+
+                    # 直接使用外部模式创建服务实例（避免重复查询数据库）
+                    service = CouldDriveService(auth_data=account.cookies, drive_type=DriveType(account.type))
+
                     # 获取该账户的所有本地分享（自动翻页）
                     all_expired_shares = []
                     page = 1
@@ -762,12 +270,9 @@ async def _cleanup_expired_local_shares() -> Dict[str, Any]:
                                 order_field="created_at",
                                 order_type="desc"
                             )
-                            
+
                             # 获取分享信息
-                            share_info_response = await drive_manager.get_share_info(
-                                account.cookies, 
-                                share_info_params
-                            )
+                            share_info_response = await service.get_share_info(params=share_info_params)
                             
                             # 处理返回的字典格式，提取实际的分享列表
                             if isinstance(share_info_response, dict) and 'list' in share_info_response:
@@ -813,44 +318,77 @@ async def _cleanup_expired_local_shares() -> Dict[str, Any]:
                         except Exception as e:
                             logger.error(f"获取账户 {account.id} 第{page}页分享信息失败: {str(e)}")
                             break
-                    
-                    # 如果有过期的分享，批量取消
+
+                    # 如果有过期的分享，分批取消（每批最多40个）
                     if all_expired_shares:
                         try:
                             from backend.app.coulddrive.schema.file import CancelShareParam
-                            
-                            cancel_params = CancelShareParam(
-                                drive_type=DriveType(account.type),
-                                shareid_list=all_expired_shares
-                            )
-                            
-                            # 批量取消分享
-                            success = await drive_manager.cancel_share(
-                                account.cookies,
-                                cancel_params
-                            )
-                            
-                            if success:
-                                result["cleaned_shares"] += len(all_expired_shares)
+
+                            # 分批处理，每批40个
+                            batch_size = 40
+                            total_shares = len(all_expired_shares)
+                            successful_batches = 0
+                            failed_batches = 0
+                            total_cleaned = 0
+
+                            logger.info(f"账户 {account.id} 共有 {total_shares} 个过期分享，将分 {(total_shares + batch_size - 1) // batch_size} 批处理")
+
+                            for i in range(0, total_shares, batch_size):
+                                batch_shares = all_expired_shares[i:i + batch_size]
+                                batch_num = (i // batch_size) + 1
+
+                                try:
+                                    cancel_params = CancelShareParam(
+                                        drive_type=DriveType(account.type),
+                                        shareid_list=batch_shares
+                                    )
+
+                                    # 批量取消分享
+                                    success = await service.cancel_share(params=cancel_params)
+
+                                    if success:
+                                        successful_batches += 1
+                                        total_cleaned += len(batch_shares)
+                                        logger.info(f"账户 {account.id} 第{batch_num}批成功清理 {len(batch_shares)} 个过期分享")
+                                    else:
+                                        failed_batches += 1
+                                        logger.error(f"账户 {account.id} 第{batch_num}批取消分享失败")
+
+                                    # 批次间隔3-5秒
+                                    if i + batch_size < total_shares:
+                                        wait_time = random.randint(3, 5)
+                                        logger.debug(f"批次间隔���等待{wait_time}秒...")
+                                        await asyncio.sleep(wait_time)
+
+                                except Exception as e:
+                                    failed_batches += 1
+                                    logger.error(f"账户 {account.id} 第{batch_num}批取消分享时发生错误: {str(e)}")
+
+                            # 记录清理结果
+                            if total_cleaned > 0:
+                                result["cleaned_shares"] += total_cleaned
                                 result["cleanup_details"].append({
                                     "account_id": account.id,
                                     "account_type": account.type,
                                     "status": "success",
-                                    "cleaned_count": len(all_expired_shares),
-                                    "share_ids": all_expired_shares
+                                    "cleaned_count": total_cleaned,
+                                    "total_count": total_shares,
+                                    "successful_batches": successful_batches,
+                                    "failed_batches": failed_batches
                                 })
-                                logger.info(f"账户 {account.id} 成功清理 {len(all_expired_shares)} 个过期分享")
-                            else:
+                                logger.info(f"账户 {account.id} 成功清理 {total_cleaned}/{total_shares} 个过期分享")
+
+                            if failed_batches > 0 and total_cleaned == 0:
                                 result["failed_accounts"] += 1
                                 result["cleanup_details"].append({
                                     "account_id": account.id,
                                     "account_type": account.type,
                                     "status": "failed",
-                                    "reason": "取消分享API调用失败",
-                                    "expired_count": len(all_expired_shares)
+                                    "reason": "所有批次取消分享均失败",
+                                    "expired_count": total_shares,
+                                    "failed_batches": failed_batches
                                 })
-                                logger.error(f"账户 {account.id} 取消分享失败")
-                        
+
                         except Exception as e:
                             result["failed_accounts"] += 1
                             result["cleanup_details"].append({

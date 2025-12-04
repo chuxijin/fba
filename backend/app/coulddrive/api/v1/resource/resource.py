@@ -20,7 +20,10 @@ from backend.app.coulddrive.schema.resource import (
     ResourceListItem,
     UpdateResourceUserParam,
     OverallStatisticsTrendResponse,
-    GetOverallStatisticsTrendParam
+    GetOverallStatisticsTrendParam,
+    VectorSearchResultItem,
+    VectorSearchKnowledgeResultItem,
+    BatchDeleteResourceParam
 )
 from backend.app.coulddrive.schema.enum import (
     ResourceDomain,
@@ -31,6 +34,7 @@ from backend.app.coulddrive.schema.enum import (
 )
 from backend.app.coulddrive.service.resource_service import resource_service, resource_view_history_service
 from backend.common.pagination import DependsPagination
+from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
@@ -99,13 +103,13 @@ async def get_resource_list(
 ) -> ResponseModel:
     """
     获取资源列表
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param params: 查询参数
     :return: 资源列表
     """
-    page_data = await resource_service.get_resource_list(db, params)
+    page_data = await resource_service.get_list(db=db, params=params)
     return response_base.success(data=page_data)
 
 
@@ -122,13 +126,13 @@ async def get_resource_statistics(
 ) -> ResponseSchemaModel[ResourceStatistics]:
     """
     获取资源统计信息
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param user_id: 用户ID
     :return: 资源统计信息
     """
-    stats = await resource_service.get_resource_statistics(db, user_id)
+    stats = await resource_service.get_statistics(db=db, user_id=user_id)
     return response_base.success(data=stats)
 
 
@@ -145,13 +149,13 @@ async def get_overall_statistics_trend(
 ) -> ResponseSchemaModel[OverallStatisticsTrendResponse]:
     """
     获取整体资源统计趋势
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param params: 查询参数
     :return: 整体统计趋势数据
     """
-    trend_data = await resource_service.get_overall_statistics_trend(db, params)
+    trend_data = await resource_service.get_overall_statistics_trend(db=db, params=params)
     return response_base.success(data=trend_data)
 
 
@@ -168,13 +172,13 @@ async def get_resource_view_trend(
 ) -> ResponseSchemaModel[ResourceViewTrendResponse]:
     """
     获取资源浏览量趋势
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param params: 查询参数
     :return: 浏览量趋势数据
     """
-    trend_data = await resource_view_history_service.get_view_trend(db, params)
+    trend_data = await resource_view_history_service.get_view_trend(db=db, params=params)
     return response_base.success(data=trend_data)
 
 
@@ -182,18 +186,104 @@ async def get_resource_view_trend(
 async def create_resource(
     request: Request,
     db: CurrentSession,
-    params: CreateResourceParam
+    params: CreateResourceParam,
+    auto_vectorize: Annotated[bool, Query(description='是否自动向量化资源')] = False
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     创建资源
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param params: 创建参数
+    :param auto_vectorize: 是否自动向量化资源
     :return: 资源详情
     """
-    resource = await resource_service.create_resource(db, params, request.user.id)
+    resource = await resource_service.create(db=db, obj=params, created_by=request.user.id, auto_vectorize=auto_vectorize)
     return response_base.success(data=resource)
+
+
+@router.get(
+    '/vector-search',
+    summary='向量搜索资源',
+    response_model=ResponseSchemaModel[list],
+    dependencies=[DependsJwtAuth]
+)
+async def vector_search_resources(
+    request: Request,
+    db: CurrentSession,
+    query: Annotated[str, Query(description='搜索查询文本', min_length=1)],
+    subject: Annotated[str | None, Query(description='科目过滤')] = None,
+    limit: Annotated[int, Query(description='返回结果数量', ge=1, le=100)] = 20,
+    similarity_threshold: Annotated[float, Query(description='相似度阈值 (0-1)', ge=0, le=1)] = 0.7,
+    include_content: Annotated[bool, Query(description='是否包含完整内容（供AI知识库调用时设为true）')] = False,
+) -> ResponseSchemaModel[list]:
+    """
+    向量搜索资源
+
+    支持两种模式：
+    1. 搜索框模式（include_content=false）：返回资源基础信息，适合前端展示
+    2. AI知识库模式（include_content=true）：返回完整内容，供AI理解和生成答案
+
+    支持按科目过滤搜索结果，query 会在资源介绍和描述中进行语义搜索
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param query: 搜索查询文本（在资源介绍和描述中搜索）
+    :param subject: 科目过滤
+    :param limit: 返回结果数量限制
+    :param similarity_threshold: 相似度阈值
+    :param include_content: 是否包含完整内容（AI知识库模式）
+    :return: 搜索结果列表
+    """
+    results = await resource_service.vector_search(
+        db=db,
+        query_text=query,
+        limit=limit,
+        similarity_threshold=similarity_threshold,
+        include_content=include_content,
+        subject=subject,
+    )
+    return response_base.success(data=results)
+
+
+@router.post(
+    '/vectorize',
+    summary='向量化资源（支持单个或批量）',
+    response_model=ResponseModel,
+    dependencies=[DependsJwtAuth]
+)
+async def vectorize_resources(
+    request: Request,
+    db: CurrentSession,
+    resource_id: Annotated[int | None, Query(description='单个资源ID')] = None,
+    batch_size: Annotated[int, Query(description='批量处理时的每批次数量', ge=1, le=200)] = 50
+) -> ResponseModel:
+    """
+    向量化资源
+
+    两种模式：
+    1. 单个向量化：传入 resource_id 参数
+    2. 批量向量化：不传 resource_id，自动处理所有未向量化的资源
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param resource_id: 单个资源ID（可选）
+    :param batch_size: 批量处理时的每批次数量
+    :return: 向量化结果
+    """
+    if resource_id:
+        # 单个向量化
+        success = await resource_service.update_vector(db=db, pk=resource_id)
+        if success:
+            return response_base.success(res=CustomResponse(code=200, msg='资源向量化成功'))
+        return response_base.fail(res=CustomResponse(code=400, msg='资源向量化失败'))
+    else:
+        # 批量向量化
+        count = await resource_service.batch_update_vectors(db=db, batch_size=batch_size)
+        return response_base.success(
+            res=CustomResponse(code=200, msg=f'成功向量化 {count} 个资源'),
+            data={'count': count}
+        )
 
 
 @router.get(
@@ -209,13 +299,13 @@ async def get_resource_detail(
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     获取资源详情
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param resource_id: 资源ID
     :return: 资源详情
     """
-    resource = await resource_service.get_resource_detail(db, resource_id)
+    resource = await resource_service.get(db=db, pk=resource_id)
     return response_base.success(data=resource)
 
 
@@ -234,7 +324,7 @@ async def update_resource(
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     更新资源
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param resource_id: 资源ID
@@ -244,7 +334,7 @@ async def update_resource(
     """
     # 将用户输入参数转换为完整的更新参数
     update_param = UpdateResourceParam(**obj.model_dump(exclude_unset=True))
-    resource = await resource_service.update_resource(db, resource_id, update_param, request.user.id, auto_refresh)
+    resource = await resource_service.update(db=db, pk=resource_id, obj=update_param, updated_by=request.user.id, auto_refresh=auto_refresh)
     return response_base.success(data=resource)
 
 
@@ -261,37 +351,37 @@ async def refresh_resource_share_info(
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     刷新资源分享信息
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param resource_id: 资源ID
     :return: 更新后的资源详情
     """
-    resource = await resource_service.refresh_share_info(db, resource_id, request.user.id)
+    resource = await resource_service.refresh_share_info(db=db, resource_id=resource_id, updated_by=request.user.id)
     return response_base.success(data=resource)
 
 
 @router.delete(
-    '/{resource_id}',
-    summary='删除资源',
+    '',
+    summary='删除资源（支持批量）',
     response_model=ResponseModel,
     dependencies=[DependsJwtAuth]
 )
-async def delete_resource(
+async def delete_resources(
     request: Request,
     db: CurrentSession,
-    resource_id: Annotated[int, Path(description='资源ID')]
+    params: BatchDeleteResourceParam
 ) -> ResponseModel:
     """
-    删除资源
-    
+    删除资源（支持单个或批量）
+
     :param request: 请求对象
     :param db: 数据库会话
-    :param resource_id: 资源ID
+    :param params: 删除参数（包含资源ID列表）
     :return: 删除结果
     """
-    await resource_service.delete_resource(db, resource_id, request.user.id)
-    return response_base.success()
+    count = await resource_service.delete(db=db, ids=params.ids, deleted_by=request.user.id)
+    return response_base.success(data={'count': count}, msg=f'成功删除 {count} 个资源')
 
 
 # 浏览量历史记录相关接口
@@ -369,11 +459,11 @@ async def update_resource_view_count(
     return response_base.success()
 
 
-@router.delete('/view-history/clean', summary='清理旧的浏览量历史记录', dependencies=[DependsJwtAuth])
+@router.delete('/view-histories', summary='清理旧的浏览量历史记录', dependencies=[DependsJwtAuth])
 async def clean_old_view_history(
     db: CurrentSession,
     days: Annotated[int, Query(description='保留天数')] = 30
 ) -> ResponseModel:
     """清理旧的浏览量历史记录"""
     count = await run_in_threadpool(resource_view_history_service.clean_old_view_history, db, days)
-    return await response_base.success(msg=f'清理完成，删除了 {count} 条记录') 
+    return response_base.success(data={'count': count}) 

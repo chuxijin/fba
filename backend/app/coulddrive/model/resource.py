@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Numeric, String, Text, Integer, Date, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 from backend.common.model import Base, UserMixin, id_key
 from backend.utils.timezone import timezone
@@ -40,6 +41,7 @@ class Resource(Base, UserMixin):
     resource_intro: Mapped[str | None] = mapped_column(Text, default=None, comment='资源介绍')
     resource_image: Mapped[str | None] = mapped_column(String(500), default=None, comment='资源图片')
     content: Mapped[str | None] = mapped_column(Text, default=None, comment='内容')
+    content_vector: Mapped[list[float] | None] = mapped_column(Vector(1536), default=None, deferred=True, comment='内容向量(1536维，默认不加载)')
     remark: Mapped[str | None] = mapped_column(Text, default=None, comment='备注')
     share_id: Mapped[str | None] = mapped_column(String(200), default=None, comment='分享ID')
     pwd_id: Mapped[str | None] = mapped_column(String(100), default=None, comment='密码ID')

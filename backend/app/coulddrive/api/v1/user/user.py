@@ -15,7 +15,7 @@ from backend.app.coulddrive.schema.file import (
     UserInfoParam
 )
 from backend.app.coulddrive.schema.user import BaseUserInfo, RelationshipItem, GetUserListParam, CoulddriveDriveAccountDetail, CreateDriveAccountParam, UpdateDriveAccountParam
-from backend.app.coulddrive.service.yp_service import get_drive_manager
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.common.pagination import DependsPagination, PageData, paging_list_data, _CustomPageParams
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -35,8 +35,8 @@ async def get_user_info(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: Annotated[UserInfoParam, Depends()],
 ) -> ResponseSchemaModel[BaseUserInfo]:
-    drive_manager = get_drive_manager()
-    user_info = await drive_manager.get_user_info(x_token, params)
+    service = CouldDriveService(auth_data=x_token, drive_type=params.drive_type)
+    user_info = await service.get_user_info(params=params)
     return response_base.success(data=user_info)
 
 @router.get(
@@ -51,8 +51,8 @@ async def get_relationship_list(
     params: Annotated[RelationshipParam, Depends()],
     page_params: Annotated[_CustomPageParams, DependsPagination]
 ) -> ResponseSchemaModel[PageData[RelationshipItem]]:
-    drive_manager = get_drive_manager()
-    relationship_list = await drive_manager.get_relationship_list(x_token, params)
+    service = CouldDriveService(auth_data=x_token, drive_type=params.drive_type)
+    relationship_list = await service.call_method("get_relationship_list", params)
     page_data = paging_list_data(relationship_list, page_params)
     return response_base.success(data=page_data)
 
@@ -175,19 +175,19 @@ async def refresh_user_info(
     try:
         # 构造参数
         params = UserInfoParam(drive_type=user_account.type)
-        
+
         # 从网盘API获取最新用户信息
-        drive_manager = get_drive_manager()
-        user_info = await drive_manager.get_user_info(user_account.cookies, params)
-        
+        service = CouldDriveService(auth_data=user_account.cookies, drive_type=user_account.type)
+        user_info = await service.get_user_info(params=params)
+
         # 更新数据库中的用户信息
         drive_type_str = user_account.type
         await drive_account_dao.create_or_update(
             db, user_info, drive_type_str, user_account.cookies, request.user.id
         )
-        
+
         return response_base.success(data=user_info)
-        
+
     except Exception as e:
         # 如果刷新失败，可能是认证信息过期，标记账户为无效
         await drive_account_dao.update_validity(db, user_id, False)

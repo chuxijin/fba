@@ -113,7 +113,7 @@ class UpdateResourceParam(SchemaBase):
 
 class UpdateResourceUserParam(SchemaBase):
     """用户更新资源参数（Swagger 显示用）"""
-    
+
     # 用户可以修改的基本信息字段
     domain: Optional[str] = Field(None, description="领域")
     subject: Optional[str] = Field(None, description="科目")
@@ -130,6 +130,12 @@ class UpdateResourceUserParam(SchemaBase):
     suggested_price: Optional[Decimal] = Field(None, description="建议价格")
     sort: Optional[int] = Field(None, description="排序")
     remark: Optional[str] = Field(None, description="备注")
+
+
+class BatchDeleteResourceParam(SchemaBase):
+    """批量删除资源参数"""
+
+    ids: List[int] = Field(..., description="资源ID列表", min_length=1)
 
 
 class GetResourceDetail(ResourceBase):
@@ -162,15 +168,17 @@ class GetResourceListParam(SchemaBase):
 
 class ResourceListItem(SchemaBase):
     """资源列表项"""
-    
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int = Field(..., description="主键ID")
     domain: str = Field(..., description="领域")
     subject: str = Field(..., description="科目")
     main_name: str = Field(..., description="主要名字")
     title: Optional[str] = Field(None, description="标题")
     resource_type: str = Field(..., description="资源类型")
+    description: Optional[str] = Field(None, description="描述")
+    resource_intro: Optional[str] = Field(None, description="资源介绍")
     url_type: DriveType = Field(..., description="链接类型")
     url: str = Field(..., description="链接")
     price: Optional[Decimal] = Field(None, description="价格")
@@ -184,6 +192,44 @@ class ResourceListItem(SchemaBase):
     remark: Optional[str] = Field(None, description="备注")
     created_time: datetime = Field(..., description="创建时间")
     updated_time: Optional[datetime] = Field(None, description="更新时间")
+
+
+class ResourceKnowledgeItem(SchemaBase):
+    """资源知识库项（供AI调用，包含完整内容）"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(..., description="主键ID")
+    domain: str = Field(..., description="领域")
+    subject: str = Field(..., description="科目")
+    main_name: str = Field(..., description="主要名字")
+    title: Optional[str] = Field(None, description="标题")
+    resource_type: str = Field(..., description="资源类型")
+    description: Optional[str] = Field(None, description="描述")
+    resource_intro: Optional[str] = Field(None, description="资源介绍")
+    content: Optional[str] = Field(None, description="完整内容")
+    url_type: DriveType = Field(..., description="链接类型")
+    url: str = Field(..., description="链接")
+    extract_code: Optional[str] = Field(None, description="提取码")
+    price: Optional[Decimal] = Field(None, description="价格")
+    suggested_price: Optional[Decimal] = Field(None, description="建议价格")
+    view_count: int = Field(0, description="浏览量")
+    created_time: datetime = Field(..., description="创建时间")
+    updated_time: Optional[datetime] = Field(None, description="更新时间")
+
+
+class VectorSearchResultItem(SchemaBase):
+    """向量搜索结果项（用于搜索框）"""
+
+    resource: ResourceListItem = Field(..., description="资源信息")
+    similarity: float = Field(..., description="相似度分数 (0-1)")
+
+
+class VectorSearchKnowledgeResultItem(SchemaBase):
+    """向量搜索结果项（供AI知识库调用）"""
+
+    resource: ResourceKnowledgeItem = Field(..., description="资源详细信息（含完整内容）")
+    similarity: float = Field(..., description="相似度分数 (0-1)")
 
 
 class ResourceStatistics(SchemaBase):

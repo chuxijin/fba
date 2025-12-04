@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Sequence
-from datetime import datetime
+import asyncio
+import random
+from typing import Sequence, Dict, Any
+from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,52 +28,57 @@ from backend.app.coulddrive.schema.resource import (
     GetResourceViewTrendParam,
     OverallStatisticsTrendResponse,
     OverallStatisticsTrendData,
-    GetOverallStatisticsTrendParam
+    GetOverallStatisticsTrendParam,
+    ResourceKnowledgeItem,
+    VectorSearchResultItem,
+    VectorSearchKnowledgeResultItem
 )
-from backend.app.coulddrive.schema.file import ListShareInfoParam
-from backend.app.coulddrive.service.yp_service import get_drive_manager
+from backend.app.coulddrive.schema.file import ListShareInfoParam, ShareParam
+from backend.app.coulddrive.schema.enum import DriveType
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.common.exception.errors import NotFoundError, ForbiddenError
 from backend.common.pagination import paging_data, paging_list_data, _CustomPageParams
+from backend.utils.sensitive_words import contains_sensitive_words
 
 
 class ResourceService:
     """资源服务类"""
 
     @staticmethod
-    async def get_resource_detail(db: AsyncSession, resource_id: int) -> GetResourceDetail:
+    async def get(*, db: AsyncSession, pk: int) -> GetResourceDetail:
         """
         获取资源详情
 
         :param db: 数据库会话
-        :param resource_id: 资源ID
+        :param pk: 资源 ID
         :return:
         """
-        resource = await resource_dao.get(db, resource_id)
+        resource = await resource_dao.get(db, pk)
         if not resource:
             raise NotFoundError(msg="资源不存在")
         return GetResourceDetail.model_validate(resource)
 
     @staticmethod
-    async def get_resource(db: AsyncSession, resource_id: int) -> Resource:
+    async def get_model(*, db: AsyncSession, pk: int) -> Resource:
         """
-        获取资源详情
+        获取资源模型对象
 
         :param db: 数据库会话
-        :param resource_id: 资源ID
+        :param pk: 资源 ID
         :return:
         """
-        resource = await resource_dao.get(db, resource_id)
+        resource = await resource_dao.get(db, pk)
         if not resource:
             raise NotFoundError(msg="资源不存在")
         return resource
 
     @staticmethod
-    async def get_resource_by_pwd_id(db: AsyncSession, pwd_id: str) -> Resource:
+    async def get_by_pwd_id(*, db: AsyncSession, pwd_id: str) -> Resource:
         """
-        通过密码ID获取资源详情
+        通过密码 ID 获取资源
 
         :param db: 数据库会话
-        :param pwd_id: 密码ID
+        :param pwd_id: 密码 ID
         :return:
         """
         resource = await resource_dao.get_by_pwd_id(db, pwd_id)
@@ -80,12 +87,12 @@ class ResourceService:
         return resource
 
     @staticmethod
-    async def get_resource_by_share_id(db: AsyncSession, share_id: str) -> Resource:
+    async def get_by_share_id(*, db: AsyncSession, share_id: str) -> Resource:
         """
-        通过分享ID获取资源详情
+        通过分享 ID 获取资源
 
         :param db: 数据库会话
-        :param share_id: 分享ID
+        :param share_id: 分享 ID
         :return:
         """
         resource = await resource_dao.get_by_share_id(db, share_id)
@@ -94,10 +101,11 @@ class ResourceService:
         return resource
 
     @staticmethod
-    async def get_resource_list(
-        db: AsyncSession, 
+    async def get_list(
+        *,
+        db: AsyncSession,
         params: GetResourceListParam
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         获取资源列表
 
@@ -106,16 +114,24 @@ class ResourceService:
         :return:
         """
         stmt = await resource_dao.get_list(params)
-        return await paging_data(db, stmt)
+        # 传入 ResourceListItem 类，让 paging_data 在序列化前转换 ORM 对象
+        return await paging_data(db, stmt, schema_cls=ResourceListItem)
 
     @staticmethod
-    async def create_resource(db: AsyncSession, obj: CreateResourceParam, created_by: int) -> GetResourceDetail:
+    async def create(
+        *,
+        db: AsyncSession,
+        obj: CreateResourceParam,
+        created_by: int,
+        auto_vectorize: bool = False
+    ) -> GetResourceDetail:
         """
         创建资源
 
         :param db: 数据库会话
         :param obj: 创建参数
-        :param created_by: 创建者ID
+        :param created_by: 创建者 ID
+        :param auto_vectorize: 是否自动向量化
         :return:
         """
         # 检查用户是否存在
@@ -124,25 +140,24 @@ class ResourceService:
             raise NotFoundError(msg="网盘用户不存在")
 
         try:
-            # 调用 yp_service 获取分享信息
-            drive_manager = get_drive_manager()
+            # 直接使用外部模式创建服务实例（避免重复查询数据库）
+            service = CouldDriveService(auth_data=user.cookies, drive_type=DriveType(user.type))
+
+            # 获取分享信息参数
             share_info_params = ListShareInfoParam(
-                drive_type=user.type,
+                drive_type=DriveType(user.type),
                 source_type="link",
                 source_id=obj.url,
                 page=1,
                 size=1
             )
-            
+
             # 获取分享信息
-            share_info_list = await drive_manager.get_share_info(
-                user.cookies, 
-                share_info_params
-            )
-            
+            share_info_list = await service.get_share_info(params=share_info_params)
+
             # 如果获取到分享信息，使用第一个
             share_info = share_info_list[0] if share_info_list else None
-            
+
         except Exception as e:
             # 如果获取分享信息失败，使用默认值
             share_info = None
@@ -207,8 +222,8 @@ class ResourceService:
                 updated_resource = await resource_dao.get(db, existing_resource.id)
                 
                 # 如果浏览量有变化且有pwd_id，记录浏览量历史
-                if (updated_resource.pwd_id and 
-                    'view_count' in update_data and 
+                if (updated_resource.pwd_id and
+                    'view_count' in update_data and
                     update_data['view_count'] != existing_resource.view_count):
                     try:
                         history_param = CreateResourceViewHistoryParam(
@@ -219,7 +234,15 @@ class ResourceService:
                     except Exception as e:
                         # 记录浏览量历史失败不影响资源创建
                         pass
-                
+
+                # 自动向量化（如果启用）
+                if auto_vectorize:
+                    try:
+                        await resource_dao.update_resource_vector(db, updated_resource.id)
+                    except Exception as e:
+                        # 向量化失败不影响资源创建
+                        pass
+
                 return GetResourceDetail.model_validate(updated_resource)
 
         # 检查分享ID是否已存在，如果存在则更新现有记录
@@ -248,8 +271,8 @@ class ResourceService:
                 updated_resource = await resource_dao.get(db, existing_resource.id)
                 
                 # 如果浏览量有变化且有pwd_id，记录浏览量历史
-                if (updated_resource.pwd_id and 
-                    'view_count' in update_data and 
+                if (updated_resource.pwd_id and
+                    'view_count' in update_data and
                     update_data['view_count'] != existing_resource.view_count):
                     try:
                         history_param = CreateResourceViewHistoryParam(
@@ -260,7 +283,15 @@ class ResourceService:
                     except Exception as e:
                         # 记录浏览量历史失败不影响资源创建
                         pass
-                
+
+                # 自动向量化（如果启用）
+                if auto_vectorize:
+                    try:
+                        await resource_dao.update_resource_vector(db, updated_resource.id)
+                    except Exception as e:
+                        # 向量化失败不影响资源创建
+                        pass
+
                 return GetResourceDetail.model_validate(updated_resource)
 
         # 创建新的资源记录
@@ -280,14 +311,23 @@ class ResourceService:
             except Exception as e:
                 # 记录浏览量历史失败不影响资源创建
                 pass
-        
+
+        # 自动向量化（如果启用）
+        if auto_vectorize:
+            try:
+                await resource_dao.update_resource_vector(db, resource.id)
+            except Exception as e:
+                # 向量化失败不影响资源创建
+                pass
+
         return GetResourceDetail.model_validate(resource)
 
     @staticmethod
-    async def update_resource(
-        db: AsyncSession, 
-        resource_id: int, 
-        obj: UpdateResourceParam, 
+    async def update(
+        *,
+        db: AsyncSession,
+        pk: int,
+        obj: UpdateResourceParam,
         updated_by: int,
         auto_refresh: bool = False
     ) -> GetResourceDetail:
@@ -295,14 +335,14 @@ class ResourceService:
         更新资源
 
         :param db: 数据库会话
-        :param resource_id: 资源ID
+        :param pk: 资源ID
         :param obj: 更新参数
         :param updated_by: 更新者ID
         :param auto_refresh: 是否自动刷新分享信息
         :return:
         """
         # 检查资源是否存在
-        resource = await resource_dao.get(db, resource_id)
+        resource = await resource_dao.get(db, pk)
         if not resource:
             raise NotFoundError(msg="资源不存在")
 
@@ -316,22 +356,21 @@ class ResourceService:
                 # 获取用户信息
                 user = await drive_account_dao.get(db, resource.user_id)
                 if user:
-                    # 调用 yp_service 获取最新分享信息
-                    drive_manager = get_drive_manager()
+                    # 直接使用外部模式创建服务实例（避免重复查询数据库）
+                    service = CouldDriveService(auth_data=user.cookies, drive_type=DriveType(user.type))
+
+                    # 获取分享信息参数
                     share_info_params = ListShareInfoParam(
-                        drive_type=user.type,
+                        drive_type=DriveType(user.type),
                         source_type="link",
                         source_id=resource.url,
                         page=1,
                         size=1
                     )
-                    
+
                     # 获取分享信息
-                    share_info_list = await drive_manager.get_share_info(
-                        user.cookies, 
-                        share_info_params
-                    )
-                    
+                    share_info_list = await service.get_share_info(params=share_info_params)
+
                     # 如果获取到分享信息，更新相关字段
                     if share_info_list:
                         share_info = share_info_list[0]
@@ -348,17 +387,17 @@ class ResourceService:
                         for field in share_fields:
                             if field in share_data:
                                 update_data[field] = share_data[field]
-                        
+
             except Exception as e:
                 # 如果获取分享信息失败，继续执行更新操作
                 pass
 
         # 执行更新
         update_param = UpdateResourceParam(**update_data)
-        await resource_dao.update(db, resource_id, update_param, updated_by)
-        
+        await resource_dao.update(db, pk, update_param, updated_by)
+
         # 重新获取更新后的资源
-        updated_resource = await resource_dao.get(db, resource_id)
+        updated_resource = await resource_dao.get(db, pk)
         if not updated_resource:
             raise NotFoundError(msg="更新后获取资源失败")
         
@@ -397,22 +436,21 @@ class ResourceService:
         user = await drive_account_dao.get(db, resource.user_id)
         if not user:
             raise NotFoundError(msg="关联的网盘用户不存在")
-        
-        # 调用网盘API获取分享信息
-        drive_manager = get_drive_manager()
+
+        # 直接使用外部模式创建服务实例（避免重复查询数据库）
+        service = CouldDriveService(auth_data=user.cookies, drive_type=DriveType(user.type))
+
+        # 获取分享信息参数
         share_info_params = ListShareInfoParam(
-            drive_type=user.type,
+            drive_type=DriveType(user.type),
             source_type="link",
             source_id=resource.url,
             page=1,
             size=1
         )
-        
+
         # 获取分享信息
-        share_info_list = await drive_manager.get_share_info(
-            user.cookies, 
-            share_info_params
-        )
+        share_info_list = await service.get_share_info(params=share_info_params)
         
         if not share_info_list:
             raise NotFoundError(msg="未获取到分享信息")
@@ -465,82 +503,74 @@ class ResourceService:
         return GetResourceDetail.model_validate(updated_resource)
 
     @staticmethod
-    async def delete_resource(db: AsyncSession, resource_id: int, deleted_by: int) -> None:
+    async def delete(
+        *,
+        db: AsyncSession,
+        ids: list[int],
+        deleted_by: int
+    ) -> int:
         """
-        删除资源
+        批量删除资源（软删除）
 
         :param db: 数据库会话
-        :param resource_id: 资源ID
+        :param ids: 资源ID列表
         :param deleted_by: 删除者ID
-        :return:
-        """
-        resource = await ResourceService.get_resource(db, resource_id)
-        
-        count = await resource_dao.delete(db, [resource_id])
-        if count == 0:
-            raise NotFoundError(msg="删除失败，资源不存在")
-
-    @staticmethod
-    async def delete_resources(db: AsyncSession, resource_ids: list[int]) -> None:
-        """
-        批量删除资源
-
-        :param db: 数据库会话
-        :param resource_ids: 资源ID列表
-        :return:
+        :return: 删除数量
         """
         # 检查资源是否存在
-        for resource_id in resource_ids:
-            await ResourceService.get_resource(db, resource_id)
-        
-        count = await resource_dao.delete(db, resource_ids)
+        for pk in ids:
+            await ResourceService.get_model(db=db, pk=pk)
+
+        count = await resource_dao.soft_delete(db, ids)
         if count == 0:
             raise NotFoundError(msg="删除失败，资源不存在")
 
+        return count
+
     @staticmethod
-    async def soft_delete_resource(db: AsyncSession, resource_id: int) -> None:
+    async def soft_delete_resource(*, db: AsyncSession, pk: int) -> None:
         """
         软删除资源
 
         :param db: 数据库会话
-        :param resource_id: 资源ID
+        :param pk: 资源 ID
         :return:
         """
-        resource = await ResourceService.get_resource(db, resource_id)
-        
-        count = await resource_dao.soft_delete(db, [resource_id])
+        resource = await ResourceService.get_model(db=db, pk=pk)
+
+        count = await resource_dao.soft_delete(db, [pk])
         if count == 0:
             raise NotFoundError(msg="删除失败，资源不存在")
 
     @staticmethod
-    async def soft_delete_resources(db: AsyncSession, resource_ids: list[int]) -> None:
+    async def soft_delete_resources(*, db: AsyncSession, pks: list[int]) -> None:
         """
         批量软删除资源
 
         :param db: 数据库会话
-        :param resource_ids: 资源ID列表
+        :param pks: 资源 ID 列表
         :return:
         """
         # 检查资源是否存在
-        for resource_id in resource_ids:
-            await ResourceService.get_resource(db, resource_id)
-        
-        count = await resource_dao.soft_delete(db, resource_ids)
+        for pk in pks:
+            await ResourceService.get_model(db=db, pk=pk)
+
+        count = await resource_dao.soft_delete(db, pks)
         if count == 0:
             raise NotFoundError(msg="删除失败，资源不存在")
 
     @staticmethod
-    async def update_resource_view_count(db: AsyncSession, pwd_id: str, increment: int = 1) -> None:
+    async def update_view_count(*, db: AsyncSession, pwd_id: str, increment: int = 1) -> None:
         """
         更新资源浏览量
 
         :param db: 数据库会话
-        :param pwd_id: 密码ID
+        :param pwd_id: 密码 ID
         :param increment: 增量
         :return:
         """
-        resource = await ResourceService.get_resource_by_pwd_id(db, pwd_id)
-        
+        resource = await ResourceService.get_by_pwd_id(db=db, pwd_id=pwd_id)
+
         count = await resource_dao.update_view_count(db, pwd_id, increment)
         if count == 0:
             raise NotFoundError(msg="更新失败，资源不存在")
@@ -553,56 +583,56 @@ class ResourceService:
         await resource_view_history_dao.create(db, history_param)
 
     @staticmethod
-    async def update_resource_audit_status(db: AsyncSession, resource_id: int, audit_status: int) -> None:
+    async def update_audit_status(*, db: AsyncSession, pk: int, audit_status: int) -> None:
         """
         更新资源审核状态
 
         :param db: 数据库会话
-        :param resource_id: 资源ID
+        :param pk: 资源 ID
         :param audit_status: 审核状态
         :return:
         """
-        resource = await ResourceService.get_resource(db, resource_id)
-        
-        count = await resource_dao.update_audit_status(db, resource_id, audit_status)
+        resource = await ResourceService.get_model(db=db, pk=pk)
+
+        count = await resource_dao.update_audit_status(db, pk, audit_status)
         if count == 0:
             raise NotFoundError(msg="更新失败，资源不存在")
 
     @staticmethod
-    async def update_resource_status(db: AsyncSession, resource_id: int, status: int) -> None:
+    async def update_status(*, db: AsyncSession, pk: int, status: int) -> None:
         """
         更新资源状态
 
         :param db: 数据库会话
-        :param resource_id: 资源ID
+        :param pk: 资源 ID
         :param status: 状态
         :return:
         """
-        resource = await ResourceService.get_resource(db, resource_id)
-        
-        count = await resource_dao.update_status(db, resource_id, status)
+        resource = await ResourceService.get_model(db=db, pk=pk)
+
+        count = await resource_dao.update_status(db, pk, status)
         if count == 0:
             raise NotFoundError(msg="更新失败，资源不存在")
 
     @staticmethod
-    async def get_resource_statistics(db: AsyncSession, user_id: int | None = None) -> ResourceStatistics:
+    async def get_statistics(*, db: AsyncSession, user_id: int | None = None) -> ResourceStatistics:
         """
         获取资源统计信息
 
         :param db: 数据库会话
-        :param user_id: 用户ID
+        :param user_id: 用户 ID
         :return:
         """
         stats = await resource_dao.get_statistics(db, user_id)
         return ResourceStatistics(**stats)
 
     @staticmethod
-    async def get_resources_by_user_id(db: AsyncSession, user_id: int) -> Sequence[Resource]:
+    async def get_by_user_id(*, db: AsyncSession, user_id: int) -> Sequence[Resource]:
         """
-        通过用户ID获取资源列表
+        通过用户 ID 获取资源列表
 
         :param db: 数据库会话
-        :param user_id: 用户ID
+        :param user_id: 用户 ID
         :return:
         """
         # 检查用户是否存在
@@ -614,11 +644,12 @@ class ResourceService:
 
     @staticmethod
     async def get_overall_statistics_trend(
-        db: AsyncSession, 
+        *,
+        db: AsyncSession,
         params: GetOverallStatisticsTrendParam
     ) -> OverallStatisticsTrendResponse:
         """
-        获取整体资源统计趋势
+        获取整体统计趋势
 
         :param db: 数据库会话
         :param params: 查询参数
@@ -685,39 +716,454 @@ class ResourceService:
             summary=summary
         )
 
+    @staticmethod
+    async def refresh_by_id(
+        *,
+        db: AsyncSession,
+        pk: int,
+        expired_type: int = 7,
+        updated_by: int | None = None,
+        set_permanent: bool = False
+    ) -> Dict[str, Any]:
+        """
+        刷新资源分享链接
+
+        :param db: 数据库会话
+        :param pk: 资源 ID
+        :param expired_type: 新分享的过期天数，默认 7 天，0 表示永久
+        :param updated_by: 更新者 ID
+        :param set_permanent: 是否设为永久并清空临时模式
+        :return: 执行结果
+        """
+        try:
+            # 获取资源信息
+            resource = await resource_dao.get(db, pk)
+            if not resource:
+                return {
+                    "success": False,
+                    "error": "资源不存在",
+                    "resource_id": pk
+                }
+
+            # 检查资源状态
+            if resource.is_deleted or resource.status != 1:
+                return {
+                    "success": False,
+                    "error": "资源已删除或停用",
+                    "resource_id": pk
+                }
+
+            # 获取用户网盘账户信息
+            drive_account = await drive_account_dao.get(db, resource.user_id)
+            if not drive_account or not drive_account.is_valid:
+                return {
+                    "success": False,
+                    "error": "网盘账户不存在或无效",
+                    "resource_id": pk
+                }
+
+            # 检查 cookies 是否存在
+            if not drive_account.cookies:
+                return {
+                    "success": False,
+                    "error": "网盘账户缺少认证信息",
+                    "resource_id": pk
+                }
+
+            # 检查是否有文件ID
+            if not resource.file_id:
+                return {
+                    "success": False,
+                    "error": "缺少文件ID，无法重新分享",
+                    "resource_id": pk
+                }
+
+            # 直接使用外部模式创建服务实例（避免重复查询数据库）
+            service = CouldDriveService(auth_data=drive_account.cookies, drive_type=DriveType(drive_account.type))
+
+            # 创建新的分享参数
+            share_params = ShareParam(
+                drive_type=DriveType(drive_account.type),
+                file_name=resource.title or resource.main_name,
+                file_ids=[resource.file_id],
+                expired_type=expired_type,
+                password=resource.extract_code
+            )
+
+            # 调用分享服务
+            new_share_info = await service.create_share(params=share_params)
+
+            # 创建更新参数，只设置需要更新的字段
+            update_data = {
+                "url": new_share_info.url,
+                "share_id": new_share_info.share_id,
+                "pwd_id": new_share_info.pwd_id,
+                "expired_at": new_share_info.expired_at,
+                "expired_left": new_share_info.expired_left,
+                "expired_type": new_share_info.expired_type,
+                "extract_code": resource.extract_code or "",
+                "view_count": 0
+            }
+
+            # 如果需要设为永久模式，清空临时文件标记
+            if set_permanent:
+                update_data["is_temp_file"] = 0
+
+            update_params = UpdateResourceParam(**update_data)
+
+            # 更新数据库
+            await resource_dao.update(db, pk, update_params, updated_by)
+
+            # 记录初始浏览量历史
+            if new_share_info.pwd_id:
+                try:
+                    history_param = CreateResourceViewHistoryParam(
+                        pwd_id=new_share_info.pwd_id,
+                        view_count=0
+                    )
+                    await resource_view_history_dao.create(db, history_param)
+                except Exception:
+                    # 记录浏览量历史失败不影响资源刷新
+                    pass
+
+            return {
+                "success": True,
+                "resource_id": pk,
+                "resource_title": resource.title or resource.main_name,
+                "old_url": resource.url,
+                "new_url": new_share_info.url,
+                "new_expired_at": new_share_info.expired_at.isoformat() if new_share_info.expired_at else None
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "resource_id": pk
+            }
+
+    @staticmethod
+    async def refresh_to_permanent(
+        *,
+        db: AsyncSession,
+        subject: str,
+        updated_by: int | None = None
+    ) -> Dict[str, Any]:
+        """
+        刷新科目资源为永久链接
+
+        :param db: 数据库会话
+        :param subject: 科目
+        :param updated_by: 更新者 ID
+        :return: 执行结果统计
+        """
+        summary: Dict[str, Any] = {
+            "subject": subject,
+            "checked_resources": 0,
+            "refreshed_resources": 0,
+            "failed_resources": 0,
+            "skipped_resources": 0,
+            "details": [],
+        }
+
+        try:
+            # 取出临时模式为 2 的资源，再根据 subject 过滤
+            resources = await resource_dao.get_resources_by_temp_mode(db, temp_mode=2)
+            filtered_resources = [r for r in resources if r.subject == subject]
+            summary["checked_resources"] = len(filtered_resources)
+
+            if not filtered_resources:
+                return summary
+
+            for res in filtered_resources:
+                try:
+                    # 跳过已删除或停用
+                    if res.is_deleted or res.status != 1:
+                        summary["skipped_resources"] += 1
+                        summary["details"].append({
+                            "resource_id": res.id,
+                            "status": "skipped",
+                            "reason": "资源已删除或停用",
+                        })
+                        continue
+
+                    # 调用单资源刷新方法，设为永久
+                    refresh_result = await ResourceService.refresh_by_id(
+                        db=db,
+                        pk=res.id,
+                        expired_type=0,  # 永久分享
+                        set_permanent=True,  # 清空临时模式
+                        updated_by=updated_by
+                    )
+
+                    if refresh_result.get("success"):
+                        summary["refreshed_resources"] += 1
+                        summary["details"].append({
+                            "resource_id": res.id,
+                            "resource_title": refresh_result.get("resource_title"),
+                            "status": "success",
+                            "old_url": refresh_result.get("old_url"),
+                            "new_url": refresh_result.get("new_url"),
+                            "new_expired_at": refresh_result.get("new_expired_at"),
+                        })
+                    else:
+                        summary["failed_resources"] += 1
+                        summary["details"].append({
+                            "resource_id": res.id,
+                            "resource_title": res.title or res.main_name,
+                            "status": "failed",
+                            "reason": refresh_result.get("error"),
+                        })
+
+                    # 随机间隔，避免频繁请求
+                    wait_time = random.randint(3, 6)
+                    await asyncio.sleep(wait_time)
+
+                except Exception as e:
+                    summary["failed_resources"] += 1
+                    summary["details"].append({
+                        "resource_id": res.id,
+                        "resource_title": res.title or res.main_name,
+                        "status": "error",
+                        "error": str(e),
+                    })
+
+        except Exception as e:
+            summary["error"] = str(e)
+
+        return summary
+
+    @staticmethod
+    async def refresh_expiring_resources(
+        *,
+        db: AsyncSession,
+        hours: int = 24,
+        expired_type: int = 7,
+        updated_by: int | None = None,
+        include_expired: bool = True
+    ) -> Dict[str, Any]:
+        """
+        刷新即将过期资源
+
+        :param db: 数据库会话
+        :param hours: 过期时间阈值（小时）
+        :param expired_type: 重新创建分享的过期天数
+        :param updated_by: 更新者 ID
+        :param include_expired: 是否包含已过期的资源
+        :return: 执行结果统计
+        """
+        result = {
+            "checked_resources": 0,
+            "refreshed_resources": 0,
+            "failed_resources": 0,
+            "skipped_resources": 0,
+            "refresh_details": []
+        }
+
+        try:
+            current_time = datetime.now()
+
+            # 1. 获取24小时内即将过期的资源
+            expiring_threshold = current_time + timedelta(hours=hours)
+            expiring_resources = await resource_dao.get_expiring_resources(
+                db,
+                current_time=current_time,
+                expiring_threshold=expiring_threshold,
+            )
+
+            # 2. 获取已经过期的资源（如果需要）
+            expired_resources = []
+            if include_expired:
+                expired_resources = await resource_dao.get_expired_resources(
+                    db,
+                    current_time=current_time
+                )
+
+            # 合并所有需要处理的资源
+            all_resources = []
+
+            # 添加24小时内即将过期的资源
+            for resource in expiring_resources:
+                if getattr(resource, 'is_temp_file', 0) == 2:
+                    resource.expiry_category = "24h_expiring"
+                    all_resources.append(resource)
+
+            # 添加已经过期的资源
+            for resource in expired_resources:
+                if getattr(resource, 'is_temp_file', 0) == 2:
+                    resource.expiry_category = "expired"
+                    all_resources.append(resource)
+
+            # 按过期时间排序，优先处理已过期的资源
+            all_resources.sort(key=lambda x: (x.expired_at or datetime.max, getattr(x, 'expiry_category', '')))
+
+            result["checked_resources"] = len(all_resources)
+
+            for resource in all_resources:
+                try:
+                    # 跳过永久分享的资源（expired_type = 0）或非定时刷新模式
+                    if resource.expired_type == 0 or resource.is_temp_file != 2:
+                        result["skipped_resources"] += 1
+                        result["refresh_details"].append({
+                            "resource_id": resource.id,
+                            "status": "skipped",
+                            "reason": "非定时刷新模式或永久分享",
+                            "expiry_category": getattr(resource, 'expiry_category', 'unknown')
+                        })
+                        continue
+
+                    # 调用单资源刷新方法
+                    expiry_category = getattr(resource, 'expiry_category', '24h_expiring')
+                    refresh_result = await ResourceService.refresh_by_id(
+                        db=db,
+                        pk=resource.id,
+                        expired_type=expired_type,
+                        updated_by=updated_by
+                    )
+
+                    if refresh_result.get("success"):
+                        result["refreshed_resources"] += 1
+                        log_message = "已过期资源重新分享" if expiry_category == "expired" else "即将过期资源刷新"
+                        result["refresh_details"].append({
+                            "resource_id": resource.id,
+                            "resource_title": refresh_result.get("resource_title"),
+                            "status": "success",
+                            "old_url": refresh_result.get("old_url"),
+                            "new_url": refresh_result.get("new_url"),
+                            "new_expired_at": refresh_result.get("new_expired_at"),
+                            "expiry_category": expiry_category,
+                            "log_message": log_message
+                        })
+                    else:
+                        result["failed_resources"] += 1
+                        result["refresh_details"].append({
+                            "resource_id": resource.id,
+                            "resource_title": resource.title or resource.main_name,
+                            "status": "failed",
+                            "reason": refresh_result.get("error"),
+                            "expiry_category": expiry_category
+                        })
+
+                    # 添加随机间隔时间，避免频繁请求
+                    wait_time = random.randint(5, 10)
+                    await asyncio.sleep(wait_time)
+
+                except Exception as e:
+                    result["failed_resources"] += 1
+                    result["refresh_details"].append({
+                        "resource_id": resource.id,
+                        "resource_title": resource.title or resource.main_name,
+                        "status": "error",
+                        "error": str(e),
+                        "expiry_category": getattr(resource, 'expiry_category', 'unknown')
+                    })
+
+        except Exception as e:
+            result["error"] = str(e)
+
+        return result
+
+    @staticmethod
+    async def vector_search(
+        *,
+        db: AsyncSession,
+        query_text: str,
+        limit: int = 20,
+        similarity_threshold: float = 0.7,
+        include_content: bool = False,
+        subject: str | None = None
+    ) -> list[dict]:
+        """
+        向量搜索资源
+
+        :param db: 数据库会话
+        :param query_text: 搜索查询文本（在资源介绍和描述中搜索）
+        :param limit: 返回结果数量限制
+        :param similarity_threshold: 相似度阈值
+        :param include_content: 是否包含完整内容
+        :param subject: 科目过滤
+        :return: 搜索结果列表
+        """
+        results = await resource_dao.vector_search(
+            db,
+            query_text,
+            limit,
+            similarity_threshold,
+            subject=subject
+        )
+
+        # 根据 include_content 参数返回不同格式
+        if include_content:
+            # AI知识库模式：返回完整内容
+            return [
+                {
+                    "resource": ResourceKnowledgeItem.model_validate(resource),
+                    "similarity": similarity,
+                    "has_sensitive_words": contains_sensitive_words(resource.resource_intro)
+                }
+                for resource, similarity in results
+            ]
+        else:
+            # 搜索框模式：返回基础信息
+            return [
+                {
+                    "resource": ResourceListItem.model_validate(resource),
+                    "similarity": similarity,
+                    "has_sensitive_words": contains_sensitive_words(resource.resource_intro)
+                }
+                for resource, similarity in results
+            ]
+
+    @staticmethod
+    async def update_vector(*, db: AsyncSession, pk: int) -> bool:
+        """
+        更新单个资源的向量
+
+        :param db: 数据库会话
+        :param pk: 资源 ID
+        :return: 是否更新成功
+        """
+        return await resource_dao.update_resource_vector(db, pk)
+
+    @staticmethod
+    async def batch_update_vectors(*, db: AsyncSession, batch_size: int = 50) -> int:
+        """
+        批量更新所有资源的向量
+
+        :param db: 数据库会话
+        :param batch_size: 每批次处理数量
+        :return: 成功更新的数量
+        """
+        return await resource_dao.batch_update_vectors(db, batch_size)
+
 
 class ResourceViewHistoryService:
     """资源浏览量历史记录服务类"""
 
     @staticmethod
-    async def create_view_history(db: AsyncSession, params: CreateResourceViewHistoryParam) -> GetResourceViewHistoryDetail:
-        """
-        创建浏览量历史记录
-
-        :param db: 数据库会话
-        :param params: 创建参数
-        :return:
-        """
+    async def create(*, db: AsyncSession, params: CreateResourceViewHistoryParam) -> GetResourceViewHistoryDetail:
+        """创建浏览量历史记录"""
         history = await resource_view_history_dao.create(db, params)
         return GetResourceViewHistoryDetail.model_validate(history)
 
     @staticmethod
-    async def get_view_history(db: AsyncSession, history_id: int) -> ResourceViewHistory:
+    async def get(*, db: AsyncSession, pk: int) -> ResourceViewHistory:
         """
         获取浏览量历史记录详情
 
         :param db: 数据库会话
-        :param history_id: 历史记录ID
+        :param pk: 历史记录 ID
         :return:
         """
-        history = await resource_view_history_dao.get(db, history_id)
+        history = await resource_view_history_dao.get(db, pk)
         if not history:
             raise NotFoundError(msg="浏览量历史记录不存在")
         return history
 
     @staticmethod
-    async def get_view_history_list(
-        db: AsyncSession, 
+    async def get_list(
+        *,
+        db: AsyncSession,
         params: GetResourceViewHistoryListParam
     ) -> dict:
         """
@@ -731,22 +1177,23 @@ class ResourceViewHistoryService:
         return await paging_data(db, stmt)
 
     @staticmethod
-    async def get_view_history_by_pwd_id(db: AsyncSession, pwd_id: str) -> Sequence[ResourceViewHistory]:
+    async def get_by_pwd_id(*, db: AsyncSession, pwd_id: str) -> Sequence[ResourceViewHistory]:
         """
-        通过密码ID获取浏览量历史记录
+        通过密码 ID 获取浏览量历史记录
 
         :param db: 数据库会话
-        :param pwd_id: 密码ID
+        :param pwd_id: 密码 ID
         :return:
         """
         # 检查资源是否存在
-        await ResourceService.get_resource_by_pwd_id(db, pwd_id)
-        
+        await ResourceService.get_by_pwd_id(db=db, pwd_id=pwd_id)
+
         return await resource_view_history_dao.get_by_pwd_id(db, pwd_id)
 
     @staticmethod
     async def get_view_trend(
-        db: AsyncSession, 
+        *,
+        db: AsyncSession,
         params: GetResourceViewTrendParam
     ) -> ResourceViewTrendResponse:
         """
@@ -757,13 +1204,13 @@ class ResourceViewHistoryService:
         :return:
         """
         # 检查资源是否存在
-        resource = await ResourceService.get_resource_by_pwd_id(db, params.pwd_id)
-        
+        resource = await ResourceService.get_by_pwd_id(db=db, pwd_id=params.pwd_id)
+
         # 获取趋势数据
         trend_records = await resource_view_history_dao.get_trend_data(
             db, params.pwd_id, params.start_time, params.end_time
         )
-        
+
         trend_data = [
             ResourceViewTrendData(
                 record_time=record.record_time,
@@ -771,7 +1218,7 @@ class ResourceViewHistoryService:
             )
             for record in trend_records
         ]
-        
+
         return ResourceViewTrendResponse(
             pwd_id=params.pwd_id,
             current_view_count=resource.view_count,
@@ -780,7 +1227,8 @@ class ResourceViewHistoryService:
 
     @staticmethod
     async def update_view_count(
-        db: AsyncSession, 
+        *,
+        db: AsyncSession,
         params: UpdateResourceViewCountParam
     ) -> None:
         """
@@ -791,8 +1239,8 @@ class ResourceViewHistoryService:
         :return:
         """
         # 检查资源是否存在
-        resource = await ResourceService.get_resource_by_pwd_id(db, params.pwd_id)
-        
+        resource = await ResourceService.get_by_pwd_id(db=db, pwd_id=params.pwd_id)
+
         # 更新浏览量
         count = await resource_dao.update_view_count(db, params.pwd_id, params.view_count - resource.view_count)
         if count == 0:
@@ -806,7 +1254,7 @@ class ResourceViewHistoryService:
         await resource_view_history_dao.create(db, history_param)
 
     @staticmethod
-    async def clean_old_view_history(db: AsyncSession, days: int = 30) -> int:
+    async def clean_old(*, db: AsyncSession, days: int = 30) -> int:
         """
         清理旧的浏览量历史记录
 

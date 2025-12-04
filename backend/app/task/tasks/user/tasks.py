@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
-from backend.app.coulddrive.service.yp_service import get_drive_manager
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.schema.file import UserInfoParam
 from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.user import UpdateDriveAccountParam
@@ -64,9 +64,7 @@ async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
             valid_accounts = await drive_account_dao.get_list_with_pagination(db, is_valid=True)
             
             result["checked_users"] = len(valid_accounts)
-            
-            drive_manager = get_drive_manager()
-            
+
             for account in valid_accounts:
                 try:
                     # 跳过无效账户或缺少认证信息的账户
@@ -81,19 +79,19 @@ async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
                             "reason": "账户无效或缺少认证信息"
                         })
                         continue
-                    
+
                     logger.info(f"开始刷新用户 {account.username} ({account.type}) 的信息")
-                    
+
+                    # 直接使用外部模式创建服务实例（避免重复查询数据库）
+                    service = CouldDriveService(auth_data=account.cookies, drive_type=DriveType(account.type))
+
                     # 构建用户信息查询参数
                     user_info_params = UserInfoParam(
                         drive_type=DriveType(account.type)
                     )
-                    
+
                     # 获取最新的用户信息
-                    updated_user_info = await drive_manager.get_user_info(
-                        account.cookies, 
-                        user_info_params
-                    )
+                    updated_user_info = await service.get_user_info(params=user_info_params)
                     
                     # 准备更新数据
                     update_data = UpdateDriveAccountParam(

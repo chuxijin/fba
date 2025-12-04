@@ -19,36 +19,10 @@ logger = logging.getLogger(__name__)
 async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
     """
     检查并执行文件同步定时任务
-    
+
     扫描所有启用的同步配置，检查其cron字段，
     如果到了执行时间则触发同步任务
-    
-    :return: 执行结果统计
-    """
-    try:
-        result = await _check_and_execute_filesync_cron_tasks()
-        # logger.info(f"定时任务检查完成: 检查 {result['checked_configs']} 个配置，"
-        #            f"执行 {result['executed_tasks']} 个，"
-        #            f"失败 {result['failed_tasks']} 个，"
-        #            f"跳过 {result['skipped_tasks']} 个")
-        return result
-            
-    except Exception as e:
-        logger.error(f"定时任务检查失败: {str(e)}")
-        return {
-            "checked_configs": 0,
-            "executed_tasks": 0,
-            "failed_tasks": 0,
-            "skipped_tasks": 0,
-            "execution_details": [],
-            "error": str(e)
-        }
 
-
-async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
-    """
-    检查并执行文件同步定时任务的异步实现
-    
     :return: 执行结果统计
     """
     result = {
@@ -58,10 +32,10 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
         "skipped_tasks": 0,
         "execution_details": []
     }
-    
+
     # 用于收集详细信息的临时列表
     temp_details = []
-    
+
     try:
         async with async_db_session() as db:
             # 获取所有启用的同步配置
@@ -81,8 +55,8 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                             "reason": "没有设置cron表达式"
                         })
                         continue
-                    
-                    # 检查任务是否过期 
+
+                    # 检查任务是否过期
                     end_time = datetime.fromisoformat(str(config.end_time)) if config.end_time else None
                     if end_time and current_time > end_time:
                         result["skipped_tasks"] += 1
@@ -92,7 +66,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                             "reason": "任务已过期"
                         })
                         continue
-                    
+
                     # 验证cron表达式
                     if not _is_valid_cron_expression(config.cron):
                         result["failed_tasks"] += 1
@@ -102,10 +76,10 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                             "reason": "cron表达式无效"
                         })
                         continue
-                    
+
                     # 检查是否到了执行时间
                     should_execute = _should_execute_now(config.cron, config.last_sync, current_time)
-                    
+
                     if not should_execute:
                         result["skipped_tasks"] += 1
                         temp_details.append({
@@ -114,12 +88,10 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                             "reason": "未到执行时间"
                         })
                         continue
-                    
-                    # logger.info(f"执行配置 {config.id} ({config.remark}) 的同步任务")
-                    
+
                     # 执行同步任务
                     sync_result = await file_sync_service.execute_sync_by_config_id(config.id, db)
-                    
+
                     if sync_result.get("success"):
                         result["executed_tasks"] += 1
                         temp_details.append({
@@ -139,7 +111,7 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                             "task_id": sync_result.get("task_id")
                         })
                         logger.error(f"配置 {config.id} 同步任务执行失败: {sync_result.get('error')}")
-                
+
                 except Exception as e:
                     logger.error(f"处理配置 {config.id} 时发生错误: {str(e)}")
                     result["failed_tasks"] += 1
@@ -148,55 +120,34 @@ async def _check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                         "status": "error",
                         "error": str(e)
                     })
-    
+
     except Exception as e:
         logger.error(f"检查文件同步定时任务时发生错误: {str(e)}")
         result["error"] = str(e)
-    
+
     # 合并相同状态和原因的配置
     result["execution_details"] = _merge_execution_details(temp_details)
-    
+
     return result
 
 
 @celery_app.task(name='execute_filesync_task_by_config_id')
-def execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
+async def execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
     """
     根据配置ID执行单个文件同步任务
-    
-    :param config_id: 同步配置ID
-    :return: 执行结果
-    """
-    import asyncio
-    try:
-        return asyncio.run(_execute_filesync_task_by_config_id(config_id))
-    except Exception as e:
-        logger.error(f"执行配置 {config_id} 同步任务失败: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "config_id": config_id
-        }
 
-
-async def _execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
-    """
-    根据配置ID执行单个文件同步任务的异步实现
-    
     :param config_id: 同步配置ID
     :return: 执行结果
     """
     try:
         async with async_db_session() as db:
             result = await file_sync_service.execute_sync_by_config_id(config_id, db)
-            
-            if result.get("success"):
-                pass
-            else:
+
+            if not result.get("success"):
                 logger.error(f"配置 {config_id} 同步任务执行失败: {result.get('error')}")
-            
+
             return result
-    
+
     except Exception as e:
         error_msg = f"执行配置 {config_id} 同步任务时发生错误: {str(e)}"
         logger.error(error_msg)
@@ -211,26 +162,13 @@ async def _execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
 async def get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
     """
     获取所有设置了cron表达式的同步配置
-    
-    :return: 配置列表
-    """
-    try:
-        return await _get_filesync_configs_with_cron()
-    except Exception as e:
-        logger.error(f"获取cron配置列表失败: {str(e)}")
-        return []
 
-
-async def _get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
-    """
-    获取所有设置了cron表达式的同步配置的异步实现
-    
     :return: 配置列表
     """
     try:
         async with async_db_session() as db:
             enabled_configs = await sync_config_dao.get_enabled_configs(db)
-            
+
             configs_with_cron = []
             for config in enabled_configs:
                 if config.cron:
@@ -245,7 +183,7 @@ async def _get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
                         "type": config.type,
                         "is_valid_cron": _is_valid_cron_expression(config.cron)
                     }
-                    
+
                     # 计算下次执行时间
                     if config_info["is_valid_cron"]:
                         try:
@@ -256,11 +194,11 @@ async def _get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
                             config_info["next_run"] = None
                     else:
                         config_info["next_run"] = None
-                    
+
                     configs_with_cron.append(config_info)
-            
+
             return configs_with_cron
-    
+
     except Exception as e:
         logger.error(f"获取cron配置时发生错误: {str(e)}")
         return []

@@ -18,7 +18,7 @@ from backend.app.mcp.schema.resource import CreateMcpSearchLogParam
 from backend.app.mcp.crud.crud_search_log import mcp_search_log_dao
 from backend.app.mcp.crud.crud_config import mcp_config_dao
 from backend.app.coulddrive.schema.enum import DriveType
-from backend.app.coulddrive.service.yp_service import get_drive_manager
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.schema.file import ListFilesParam, ListShareFilesParam, TransferParam, ShareParam
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.database.db import async_db_session
@@ -256,19 +256,14 @@ async def _save_quark_and_share(account_id: int, target_folder_id: str, share_ur
             account = await drive_account_dao.get(db, account_id)
             if not account or not account.cookies or account.type != DriveType.QUARK_DRIVE.value:
                 return None
-        drive_manager = get_drive_manager()
         list_params = ListShareFilesParam(
             drive_type=DriveType.QUARK_DRIVE.value,
             source_type="link",
             source_id=share_url,
             file_path="/",
         )
-        files = await drive_manager.call_method(
-            x_token=account.cookies,
-            drive_type=DriveType.QUARK_DRIVE,
-            method_name="get_share_list",
-            params=list_params,
-        )
+        service = CouldDriveService(auth_data=account.cookies, drive_type=DriveType.QUARK_DRIVE)
+        files = await service.get_share_list(params=list_params)
         if not files:
             return None
         stoken = files[0].file_ext.get("stoken", "") if hasattr(files[0], "file_ext") else ""
@@ -294,15 +289,10 @@ async def _save_quark_and_share(account_id: int, target_folder_id: str, share_ur
                 "retry_interval": 2,
             },
         )
-        ok = await drive_manager.call_method(
-            x_token=account.cookies,
-            drive_type=DriveType.QUARK_DRIVE,
-            method_name="transfer",
-            params=transfer_params,
-        )
+        ok = await service.transfer_files(params=transfer_params)
         if not ok:
             return None
-        client = drive_manager._get_or_create_client(DriveType.QUARK_DRIVE, account.cookies)
+        client = service._client
         if not client:
             return None
         api = getattr(client, "_quarkapi", None)
@@ -325,12 +315,7 @@ async def _save_quark_and_share(account_id: int, target_folder_id: str, share_ur
             expired_type=1,
             password=None,
         )
-        share_info = await drive_manager.call_method(
-            x_token=account.cookies,
-            drive_type=DriveType.QUARK_DRIVE,
-            method_name="create_share",
-            params=share_params,
-        )
+        share_info = await service.create_share(params=share_params)
         if not share_info or not getattr(share_info, "url", None):
             return None
         remark = getattr(share_info, "title", "mcp-share")
@@ -347,10 +332,7 @@ async def _save_baidu_and_share(account_id: int, target_folder_path: str, share_
             if not account or not account.cookies or account.type != DriveType.BAIDU_DRIVE.value:
                 return None
 
-        drive_manager = get_drive_manager()
-        baidu_client = drive_manager._get_or_create_client(DriveType.BAIDU_DRIVE, account.cookies)
-        if not baidu_client:
-            return None
+        service = CouldDriveService(auth_data=account.cookies, drive_type=DriveType.BAIDU_DRIVE)
 
         # 预处理 share_url，移除其中的 pwd 参数，确保只通过 `password` 显式传递密码
         parsed_url = urlparse(share_url)
@@ -359,9 +341,9 @@ async def _save_baidu_and_share(account_id: int, target_folder_path: str, share_
             del query_params['pwd']
         clean_query = urlencode(query_params, doseq=True)
         clean_share_url = parsed_url._replace(query=clean_query).geturl()
-        
+
         print(f"[MCP] Cleaned share URL: {clean_share_url}")
-        
+
         # 1. 获取分享文件列表
         list_params = ListShareFilesParam(
             drive_type=DriveType.BAIDU_DRIVE.value,
@@ -370,14 +352,8 @@ async def _save_baidu_and_share(account_id: int, target_folder_path: str, share_
             file_path="/",
         )
         # 移除 list_params.ext = {"password": password}，因为 ListShareFilesParam 没有 ext 字段
-        
-        files = await drive_manager.call_method(
-            x_token=account.cookies,
-            drive_type=DriveType.BAIDU_DRIVE,
-            method_name="get_share_list",
-            params=list_params,
-            password=password # 将密码作为关键字参数直接传递给 get_share_list
-        )
+
+        files = await service.get_share_list(params=list_params, password=password)
         if not files:
             print("[MCP] Baidu share list empty or failed to retrieve.")
             return None
@@ -408,15 +384,7 @@ async def _save_baidu_and_share(account_id: int, target_folder_path: str, share_
 
         print(f"[MCP] Initiating Baidu transfer to {target_folder_path} for fs_ids: {fs_ids}")
         try:
-            transfer_success = await drive_manager.call_method(
-                x_token=account.cookies,
-                drive_type=DriveType.BAIDU_DRIVE,
-                method_name="transfer",
-                params=transfer_params,
-                # 链接转存时，这里不需要传递 from_uk 和 msg_id
-                # from_uk=from_uk, 
-                # msg_id=msg_id
-            )
+            transfer_success = await service.transfer_files(params=transfer_params)
         except Exception as e:
             print(f"[MCP] Baidu transfer failed: {e}")
             return None
@@ -427,12 +395,7 @@ async def _save_baidu_and_share(account_id: int, target_folder_path: str, share_
             drive_type=DriveType.BAIDU_DRIVE.value,
             file_path=target_folder_path, # Corrected from target_folder_id
         )
-        transferred_files_in_target = await drive_manager.call_method(
-            x_token=account.cookies,
-            drive_type=DriveType.BAIDU_DRIVE,
-            method_name="get_disk_list", # 使用 get_disk_list 获取本地文件列表
-            params=list_target_params,
-        )
+        transferred_files_in_target = await service.get_disk_list(params=list_target_params)
 
         if not transferred_files_in_target:
             print("[MCP] Failed to list transferred files in target folder.")
@@ -459,12 +422,7 @@ async def _save_baidu_and_share(account_id: int, target_folder_path: str, share_
             expired_type=1, # 默认 1 天有效期
             password="zyas", # 系统生成的百度分享提取码固定为 "zyas"
         )
-        share_info = await drive_manager.call_method(
-            x_token=account.cookies,
-            drive_type=DriveType.BAIDU_DRIVE,
-            method_name="create_share",
-            params=share_params,
-        )
+        share_info = await service.create_share(params=share_params)
 
         if not share_info or not getattr(share_info, "url", None):
             print("[MCP] Baidu create share failed.")

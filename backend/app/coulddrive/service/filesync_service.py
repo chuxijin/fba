@@ -11,6 +11,7 @@ from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.coulddrive.schema.enum import DriveType, RecursionSpeed, SyncMethod
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.service.rule_template_service import (
     ItemFilter,
     parse_exclusion_rules,
@@ -69,8 +70,6 @@ class FileSyncService:
     
     def __init__(self):
         """初始化同步服务"""
-        from backend.app.coulddrive.service.yp_service import get_drive_manager
-        self.drive_manager = get_drive_manager()
         self.logger = log
 
     async def execute_sync_by_config_id(self, config_id: int, db: AsyncSession) -> Dict[str, Any]:
@@ -337,9 +336,11 @@ class FileSyncService:
         transferred_files_info = stats_from_sync.get("transferred_files_info", [])
         self.logger.info(f"[任务{task_id}] 待重命名文件数量: {len(transferred_files_info)}")
 
+        # 创建服务实例用于重命名
+        service = CouldDriveService(auth_data=drive_account.cookies, drive_type=DriveType(drive_account.type))
+
         await self.rename_files(
-            x_token=drive_account.cookies,
-            drive_type=DriveType(drive_account.type),
+            service=service,
             transferred_files_info=transferred_files_info,
             rename_rules=rename_rules,
             task_id=task_id,
@@ -577,8 +578,7 @@ class FileSyncService:
     
     async def rename_file_item(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         file_info: Dict[str, Any],
         task_id: Optional[int],
         db: Optional[AsyncSession] = None,
@@ -597,6 +597,9 @@ class FileSyncService:
             return True
 
         try:
+            # 获取驱动类型
+            drive_type = await service.get_drive_type()
+
             rename_params = RenameParam(
                 drive_type=drive_type,
                 file_id=file_id if file_id else None,
@@ -607,7 +610,7 @@ class FileSyncService:
                 new_name=new_name
             )
 
-            renamed_file_info = await self.drive_manager.rename_files(x_token, rename_params, **kwargs)
+            renamed_file_info = await service.rename(params=rename_params)
 
             if renamed_file_info:
                 self.logger.info(f"[任务{task_id}] 文件重命名成功: '{original_name}' -> '{new_name}'")
@@ -673,7 +676,10 @@ class FileSyncService:
             Dict[str, Any]: 同步结果统计
         """
         start_perform_sync_time = time.time()
-        
+
+        # 创建统一的服务实例，在整个同步过程中复用
+        service = CouldDriveService(auth_data=x_token, drive_type=drive_type)
+
         # 解析过滤器
         item_filter = parse_exclusion_rules(exclude_rules) if exclude_rules else None
         
@@ -698,14 +704,14 @@ class FileSyncService:
             if sync_method == "overwrite":
                 self.logger.info(f"[任务{task_id}] 采用覆盖同步模式")
                 await self._handle_overwrite_sync(
-                    x_token, drive_type, source_definition, target_definition,
+                    service, source_definition, target_definition,
                     recursion_speed, item_filter, stats, task_id, db, account_key=account_key
                 )
                 self.logger.info(f"[任务{task_id}] 覆盖同步逻辑执行完成")
             else:
                 self.logger.info(f"[任务{task_id}] 采用增量/完全同步模式")
                 await self.sync_with_have(
-                    x_token, drive_type, source_definition, target_definition,
+                    service, source_definition, target_definition,
                     source_definition.file_path, target_definition.file_path, target_definition.file_id,
                     sync_method, recursion_speed, item_filter, 0, max_depth, stats, task_id, db, account_key=account_key
                 )
@@ -733,8 +739,7 @@ class FileSyncService:
     
     async def sync_with_have(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         source_definition: ShareSourceDefinition,
         target_definition: DiskTargetDefinition,
         source_path: str,
@@ -776,11 +781,11 @@ class FileSyncService:
         try:
             # 获取源文件和目标文件映射（文件名 -> 文件大小）
             source_file_map = await self.list_dir(
-                source_path, True, item_filter, True, x_token, drive_type, source_definition, task_id=task_id, db=db, account_key=account_key
+                service, source_path, True, item_filter, True, source_definition, task_id=task_id, db=db, account_key=account_key
             )
-            
+
             target_file_map = await self.list_dir(
-                target_path, False, item_filter, False, x_token, drive_type, target_definition, target_id, task_id, db, account_key=account_key
+                service, target_path, False, item_filter, False, target_definition, target_id, task_id, db, account_key=account_key
             )
             
         except Exception as e:
@@ -822,7 +827,7 @@ class FileSyncService:
                 # 目标目录没有这个目录
                 if source_filename not in target_file_map:
                     await self.sync_without_have(
-                        x_token, drive_type, source_definition, target_definition,
+                        service, source_definition, target_definition,
                         source_sub_path, target_sub_path, target_id,  # 传递当前目录的target_id作为父目录ID
                         sync_method, recursion_speed, item_filter, current_depth + 1, max_depth, stats, task_id, db, account_key=account_key
                     )
@@ -830,7 +835,7 @@ class FileSyncService:
                 else:
                     target_sub_file_id = target_file_map.get(source_filename, {}).get("file_id", "")
                     await self.sync_with_have(
-                        x_token, drive_type, source_definition, target_definition,
+                        service, source_definition, target_definition,
                         source_sub_path, target_sub_path, target_sub_file_id,
                         sync_method, recursion_speed, item_filter, current_depth + 1, max_depth, stats, task_id, db, account_key=account_key
                     )
@@ -919,7 +924,7 @@ class FileSyncService:
             # self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件")
             transfer_start_time = time.time()
             transfer_result = await self.transfer_files(
-                x_token, drive_type, source_definition, target_definition,
+                service, source_definition, target_definition,
                 files_to_transfer,
                 recursion_speed, stats, task_id, db, account_key=account_key,
                 current_target_id=target_id
@@ -953,7 +958,7 @@ class FileSyncService:
                 # self.logger.info(f"[任务{task_id or 'unknown'}] 完全同步模式，需要删除 {len(files_to_delete)} 个多余文件")
                 delete_start_time = time.time()
                 await self.delete_files(
-                    x_token, drive_type, target_definition, files_to_delete,
+                    service, target_definition, files_to_delete,
                     recursion_speed, stats, task_id, db, account_key=account_key
                 )
                 # self.logger.info(f"[任务{task_id or 'unknown'}] 批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
@@ -963,8 +968,7 @@ class FileSyncService:
 
     async def sync_without_have(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         source_definition: ShareSourceDefinition,
         target_definition: DiskTargetDefinition,
         source_path: str,
@@ -1005,9 +1009,9 @@ class FileSyncService:
         # 创建目标目录
         dir_name = target_path.rstrip('/').split('/')[-1]
         create_dir_start_time = time.time()
-        
+
         created_dir_info = await self.create_directory(
-            x_token, drive_type, target_definition, dir_name, task_id, db, account_key=account_key,
+            service, target_definition, dir_name, task_id, db, account_key=account_key,
             parent_id=target_id or target_definition.file_id  # 如果target_id为None，使用target_definition.file_id
         )
         
@@ -1019,8 +1023,8 @@ class FileSyncService:
             try:
                 parent_id_for_search = target_id or target_definition.file_id
                 existing_files = await self.list_dir(
-                    target_definition.file_path, False, None, False,
-                    x_token, drive_type, target_definition, parent_id_for_search,
+                    service, target_definition.file_path, False, None, False,
+                    target_definition, parent_id_for_search,
                     task_id, db, account_key=account_key
                 )
                 
@@ -1076,7 +1080,7 @@ class FileSyncService:
         try:
             # 获取源目录文件列表
             source_file_map = await self.list_dir(
-                source_path, True, item_filter, True, x_token, drive_type, source_definition, task_id=task_id, db=db, account_key=account_key
+                service, source_path, True, item_filter, True, source_definition, task_id=task_id, db=db, account_key=account_key
             )
         except Exception as e:
             error_msg = f"扫描源目录失败: {source_path}, 错误: {str(e)}"
@@ -1096,9 +1100,9 @@ class FileSyncService:
                 source_sub_path = join_path(source_path, dir_name, is_dir=True)
                 target_sub_path = join_path(target_path, dir_name, is_dir=True)
                 
-                
+
                 await self.sync_without_have(
-                    x_token, drive_type, source_definition, target_definition,
+                    service, source_definition, target_definition,
                     source_sub_path, target_sub_path, created_dir_info.file_id,  # 使用当前创建的目录ID作为父目录ID
                     sync_method, recursion_speed, item_filter, current_depth + 1, max_depth, stats, task_id, db, account_key=account_key
                 )
@@ -1129,9 +1133,9 @@ class FileSyncService:
         if files_to_transfer:
             # self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存当前目录 {len(files_to_transfer)} 个文件")
             transfer_start_time = time.time()
-            
+
             transfer_result = await self.transfer_files(
-                x_token, drive_type, source_definition, target_definition,
+                service, source_definition, target_definition,
                 files_to_transfer,
                 recursion_speed, stats, task_id, db, account_key=account_key,
                 current_target_id=target_definition.file_id  # 使用新创建的目录ID
@@ -1147,12 +1151,11 @@ class FileSyncService:
 
     async def list_dir(
         self,
+        service: CouldDriveService,
         path: str,
         first_dst: bool,
         item_filter: Optional[ItemFilter],
         is_src: bool,
-        x_token: str,
-        drive_type: DriveType,
         definition,
         target_id: Optional[str] = None,
         task_id: Optional[int] = None,
@@ -1161,43 +1164,46 @@ class FileSyncService:
     ) -> Dict[str, Dict[str, Any]]:
         """
         列出目录 - 对应alist的listDir
-        
+
         Args:
+            service: 网盘服务实例
             path: 目录路径
             first_dst: 是否是第一个目标目录
             item_filter: 过滤器
             is_src: 是否是源目录
-            x_token: 认证令牌
-            drive_type: 网盘类型
             definition: 目录定义
             target_id: 目标ID
             task_id: 任务ID
             db: 数据库会话
-            
+
         Returns:
             Dict[str, Dict[str, Any]]: 文件映射 {文件名: {file_size: 大小, file_id: ID, msg_id: 消息ID, from_uk: 分享者UK}}
         """
         start_list_dir_time = time.time()
-        
+
         try:
-            
+            # 获取驱动类型
+            drive_type = await service.get_drive_type()
+
             if is_src:
                 # 获取源文件列表
                 from backend.app.coulddrive.schema.file import ListShareFilesParam
+
                 params = ListShareFilesParam(
-                drive_type=drive_type,
+                    drive_type=drive_type,
                     source_type=definition.source_type,
                     source_id=definition.source_id,
                     file_path=path
                 )
-                
-                files = await self.drive_manager.get_share_list(x_token, params, db=db, **kwargs)
-                
+
+                files = await service.get_share_list(params=params, db=db, **kwargs)
+
             else:
                 # 获取目标文件列表
                 from backend.app.coulddrive.schema.file import ListFilesParam
+
                 params = ListFilesParam(
-                drive_type=drive_type,
+                    drive_type=drive_type,
                     file_path=path,
                     file_id=target_id or "",
                     desc=False,
@@ -1205,8 +1211,8 @@ class FileSyncService:
                     time=False,
                     size_sort=False
                 )
-                
-                files = await self.drive_manager.get_disk_list(x_token, params, db=db, **kwargs)
+
+                files = await service.get_disk_list(params=params, db=db, **kwargs)
                 
             # 构建文件映射 {文件名: {file_size: 大小, file_id: ID, 扩展信息}}
             file_map = {}
@@ -1241,8 +1247,7 @@ class FileSyncService:
     
     async def transfer_files(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         source_definition: ShareSourceDefinition,
         target_definition: DiskTargetDefinition,
         files: List[Dict[str, Any]],
@@ -1258,6 +1263,7 @@ class FileSyncService:
         批量转存文件 - 构建正确的扩展参数对应关系
 
         Args:
+            service: 网盘服务实例
             files: 文件列表，格式：[{"file_name": "xxx", "file_size": 123, "source_path": "xxx", "target_path": "xxx", "file_id": "xxx", "share_fid_token": "xxx", ...}]
         """
         if not files:
@@ -1272,6 +1278,9 @@ class FileSyncService:
         
         
         try:
+            # 获取驱动类型
+            drive_type = await service.get_drive_type()
+
             # 提取文件ID列表
             file_ids = []
             for i, file_info in enumerate(files):
@@ -1288,12 +1297,12 @@ class FileSyncService:
                         stats["pending_task_items"].append(task_item) # 添加到待记录列表
                     return False
                 file_ids.append(file_id)
-            
-            
+
+
             # 构建扩展参数：基础参数 + 文件特定参数
             ext_params = dict(source_definition.ext_params) if source_definition.ext_params else {}
-            
-            
+
+
             # 为每个文件构建扩展信息，确保每个文件都有各自的扩展参数
             files_ext_info = []
             for i, file_info in enumerate(files):
@@ -1301,32 +1310,32 @@ class FileSyncService:
                     'file_id': file_info.get('file_id'),
                     'file_ext': {}
                 }
-                
+
                 # 提取文件级别的扩展参数
                 for key, value in file_info.items():
                     if key not in ["file_size", "file_id"]:
                         file_ext_info['file_ext'][key] = value
-                
+
                 files_ext_info.append(file_ext_info)
-            
+
             # 将文件扩展信息添加到参数中
             ext_params['files_ext_info'] = files_ext_info
-            
+
             # 如果第一个文件有扩展参数，也合并其基础信息（保持向后兼容）
             if files:
                 first_file = files[0]
                 for key, value in first_file.items():
                     if key not in ["file_name", "file_size", "source_path", "target_path", "file_id"]:
                         ext_params[key] = value
-            
-            
+
+
             # 构建转存参数
             from backend.app.coulddrive.schema.file import TransferParam
             first_file = files[0] if files else {}
-            
+
             # 使用当前目标目录ID，如果没有提供则使用根目录ID
             actual_target_id = current_target_id or target_definition.file_id
-            
+
             params = TransferParam(
                 drive_type=drive_type,
                 source_type=source_definition.source_type,
@@ -1337,10 +1346,11 @@ class FileSyncService:
                 file_ids=file_ids,
                 ext=ext_params
             )
-            
-            
+
+
             self.logger.info(f"[任务{task_id}] 执行文件转存（已由上层获取账户锁）")
-            transfer_result = await self.drive_manager.transfer_files(x_token, params, **kwargs)
+            transfer_result = await service.transfer_files(params=params)
+
             self.logger.info(f"[任务{task_id}] 转存API调用结果: {transfer_result}")
             # 写后安静期，等待上游平台落盘/索引收敛
             await asyncio.sleep(2)
@@ -1366,8 +1376,8 @@ class FileSyncService:
                 actual_target_path_for_scan = first_file.get("target_path", target_definition.file_path)
                 
                 current_target_file_map = await self.list_dir(
-                    actual_target_path_for_scan, False, None, False,
-                    x_token, drive_type, target_definition, actual_target_id_for_scan,
+                    service, actual_target_path_for_scan, False, None, False,
+                    target_definition, actual_target_id_for_scan,
                     task_id, db, account_key=account_key # 这里需要 db, account_key
                 )
                 
@@ -1433,8 +1443,7 @@ class FileSyncService:
     
     async def delete_files(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         target_definition: DiskTargetDefinition,
         files: List[Dict[str, Any]],
         recursion_speed: RecursionSpeed,
@@ -1448,6 +1457,7 @@ class FileSyncService:
         批量删除文件 - 保持技术优势
 
         Args:
+            service: 网盘服务实例
             files: 文件列表，格式：[{"file_name": "xxx", "file_size": 123, "target_path": "xxx"}]
         """
         if not files:
@@ -1461,9 +1471,12 @@ class FileSyncService:
                 return False
             
         try:
+            # 获取驱动类型
+            drive_type = await service.get_drive_type()
+
             # 批量删除文件
             from backend.app.coulddrive.schema.file import RemoveParam
-            
+
             # 构建正确的文件路径和ID
             file_paths = []
             file_ids = []
@@ -1483,9 +1496,9 @@ class FileSyncService:
                 parent_id=target_definition.file_id,
                 file_name=None  # 批量删除时不需要单个文件名
             )
-            
+
             self.logger.info(f"[任务{task_id}] 执行文件删除（已由上层获取账户锁）")
-            result = await self.drive_manager.remove_files(x_token, params, db=db, **kwargs)
+            result = await service.remove(params=params)
             
             if result:
                 stats["files_deleted"] += len(files)
@@ -1543,8 +1556,7 @@ class FileSyncService:
     
     async def create_directory(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         target_definition: DiskTargetDefinition,
         dir_name: str,
         task_id: Optional[int],
@@ -1555,19 +1567,23 @@ class FileSyncService:
     ) -> Optional[BaseFileInfo]:
         """
         创建目录
-        
+
         Args:
+            service: 网盘服务实例
             dir_name: 目录名
-            
+
         Returns:
             BaseFileInfo: 创建的目录信息，失败时返回None
         """
-        try:      
+        try:
+            # 获取驱动类型
+            drive_type = await service.get_drive_type()
+
             # 创建目录
             from backend.app.coulddrive.schema.file import MkdirParam
             # 使用提供的父目录ID，如果没有提供则使用根目录ID
             actual_parent_id = parent_id or target_definition.file_id
-            
+
             params = MkdirParam(
                 drive_type=drive_type,
                 file_path=target_definition.file_path,
@@ -1575,7 +1591,8 @@ class FileSyncService:
                 parent_id=actual_parent_id,
                 return_if_exist=True
             )
-            result = await self.drive_manager.create_mkdir(x_token, params, db=db, **kwargs)
+
+            result = await service.mkdir(params=params)
             
             # create_mkdir返回BaseFileInfo对象，如果成功创建则有file_id
             if result is not None and result.file_id is not None:
@@ -1591,8 +1608,7 @@ class FileSyncService:
 
     async def rename_files(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         transferred_files_info: List[Dict[str, Any]],
         rename_rules: Optional[List[RenameRule]],
         task_id: Optional[int],
@@ -1603,10 +1619,9 @@ class FileSyncService:
         """
         在同步完成后执行文件重命名操作
         它会遍历所有成功转存的文件，对它们应用重命名规则，并执行实际的重命名操作。
-        
+
         Args:
-            x_token: 认证令牌
-            drive_type: 网盘类型
+            service: 网盘服务实例
             transferred_files_info: 成功转存的文件信息列表
             rename_rules: 重命名规则列表
             task_id: 任务ID
@@ -1628,12 +1643,12 @@ class FileSyncService:
                 # 存储原始名称用于任务记录
                 renamed_info["original_name"] = file_info.get("file_name", "")
                 files_to_rename.append(renamed_info)
-        
+
         # 异步并行执行重命名操作
         if files_to_rename:
             self.logger.info(f"[任务{task_id}] 发现 {len(files_to_rename)} 个文件需要重命名")
             rename_tasks = [
-                self.rename_file_item(x_token, drive_type, file_info, task_id, db, account_key=account_key)
+                self.rename_file_item(service, file_info, task_id, db, account_key=account_key)
                 for file_info in files_to_rename
             ]
             await asyncio.gather(*rename_tasks)
@@ -1701,8 +1716,7 @@ class FileSyncService:
     
     async def _handle_overwrite_sync(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         source_definition: ShareSourceDefinition,
         target_definition: DiskTargetDefinition,
         recursion_speed: RecursionSpeed,
@@ -1722,8 +1736,8 @@ class FileSyncService:
             # 1. 获取目标目录所有文件
             self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始扫描目标目录进行删除前准备")
             target_file_map = await self.list_dir(
-                target_definition.file_path, False, item_filter, False, 
-                x_token, drive_type, target_definition, target_definition.file_id, task_id, db, account_key=account_key
+                service, target_definition.file_path, False, item_filter, False,
+                target_definition, target_definition.file_id, task_id, db, account_key=account_key
             )
             self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：目标目录扫描完成，耗时: {time.time() - start_overwrite_sync_time:.2f}秒，找到 {len(target_file_map)} 个文件/目录")
             
@@ -1740,7 +1754,7 @@ class FileSyncService:
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始批量删除 {len(files_to_delete)} 个文件/目录")
                 delete_start_time = time.time()
                 await self.delete_files(
-                    x_token, drive_type, target_definition, files_to_delete,
+                    service, target_definition, files_to_delete,
                     recursion_speed, stats, task_id, db, account_key=account_key
                 )
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
@@ -1751,8 +1765,8 @@ class FileSyncService:
             # 3. 一次性转存整个源目录的所有内容
             self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始扫描源目录进行转存准备")
             source_file_map = await self.list_dir(
-                source_definition.file_path, True, item_filter, True, 
-                x_token, drive_type, source_definition, task_id=task_id, db=db, account_key=account_key
+                service, source_definition.file_path, True, item_filter, True,
+                source_definition, task_id=task_id, db=db, account_key=account_key
             )
             self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：源目录扫描完成，耗时: {time.time() - start_overwrite_sync_time:.2f}秒，找到 {len(source_file_map)} 个文件/目录")
             
@@ -1780,7 +1794,7 @@ class FileSyncService:
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始批量转存 {len(all_files_to_transfer)} 个项目")
                 transfer_start_time = time.time()
                 transfer_result = await self.transfer_files(
-                    x_token, drive_type, source_definition, target_definition,
+                    service, source_definition, target_definition,
                     all_files_to_transfer, recursion_speed, stats, task_id, db, account_key=account_key
                     # 覆盖同步不需要传递 current_target_id，使用根目录ID
                 )

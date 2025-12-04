@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict
@@ -25,34 +24,14 @@ async def delete_db_opera_log() -> str:
 @shared_task
 async def delete_db_login_log() -> str:
     """自动删除数据库登录日志"""
-    await login_log_service.delete_all()
-    return 'Success'
+    async with async_db_session.begin() as db:
+        await login_log_service.delete_all(db=db)
+        return 'Success'
 
 
 @shared_task
-def delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
+async def delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
     """删除30天以外的文件同步数据（包括任务和任务项）"""
-    try:
-        # 使用 asyncio.run 在同步环境中执行异步函数
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(_delete_filesync_data_older_than_30_days())
-            return result
-        finally:
-            loop.close()
-    except Exception as e:
-        logger.error(f"删除30天以外的文件同步数据失败: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "deleted_count": 0,
-            "message": f"删除失败: {str(e)}"
-        }
-
-
-async def _delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
-    """删除30天以外的文件同步数据的异步实现"""
     try:
         async with async_db_session() as db:
             # 直接调用 sync_task_service 的删除方法
@@ -71,33 +50,9 @@ async def _delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
 
 
 @shared_task
-def delete_celery_task_results() -> Dict[str, Any]:
+async def delete_celery_task_results() -> Dict[str, Any]:
     """
     删除 30 天以外的 Celery 任务结果
-
-    :return: 删除结果统计
-    """
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(_delete_celery_task_results())
-            return result
-        finally:
-            loop.close()
-    except Exception as e:
-        logger.error(f"删除 Celery 任务结果失败: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "deleted_count": 0,
-            "message": f"删除失败: {str(e)}"
-        }
-
-
-async def _delete_celery_task_results() -> Dict[str, Any]:
-    """
-    删除 30 天以外的 Celery 任务结果的异步实现
 
     :return: 删除结果统计
     """

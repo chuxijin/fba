@@ -21,7 +21,7 @@ from backend.app.coulddrive.service.rule_template_service import (
     RenameRule,
     parse_rename_rules,
 )
-from backend.app.coulddrive.service.yp_service import get_drive_manager
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.service.utils_service import (
     get_parent_path,
     get_filename,
@@ -36,7 +36,6 @@ class FileOperateService:
     """文件操作服务"""
 
     def __init__(self):
-        self.drive_manager = get_drive_manager()
         self.batch_rename_progress: Dict[str, Dict[str, Any]] = {}
 
     # ========== 公开方法 ==========
@@ -84,9 +83,12 @@ class FileOperateService:
 
         logger.info(f"{task_label} 使用账户ID: {account_key}")
 
+        # 创建统一的服务实例，在整个批量重命名过程中复用
+        service = CouldDriveService(auth_data=x_token, drive_type=params.drive_type)
+
         # 收集文件
         await self._send_progress(progress_callback, "开始收集文件列表...", 0, len(params.file_infos))
-        all_items = await self._collect_items(x_token, params, task_label, stats, progress_callback)
+        all_items = await self._collect_items(service, params, task_label, stats, progress_callback)
 
         # 过滤文件
         filtered_items = self._filter_by_scope(all_items, params.target_scope)
@@ -105,7 +107,7 @@ class FileOperateService:
 
         # 执行重命名
         await self._execute_renames(
-            x_token, params.drive_type, items_to_rename, rename_rules,
+            service, items_to_rename, rename_rules,
             task_id, db, account_key, stats, progress_callback
         )
 
@@ -189,7 +191,7 @@ class FileOperateService:
 
     async def _collect_items(
         self,
-        x_token: str,
+        service: CouldDriveService,
         params: BatchRenameParam,
         task_label: str,
         stats: Dict[str, Any],
@@ -211,7 +213,7 @@ class FileOperateService:
                 )
                 try:
                     folder_items = await self._list_recursive(
-                        x_token, params.drive_type, file_info.file_id, file_info.file_path
+                        service, file_info.file_id, file_info.file_path
                     )
                     all_items.extend(folder_items)
                 except Exception as e:
@@ -223,8 +225,7 @@ class FileOperateService:
 
     async def _list_recursive(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         parent_id: str,
         parent_path: str
     ) -> List[Dict[str, Any]]:
@@ -232,7 +233,7 @@ class FileOperateService:
         all_items = []
 
         list_params = ListFilesParam(
-            drive_type=drive_type,
+            drive_type=service._client.drive_type if hasattr(service._client, 'drive_type') else DriveType.QUARK_DRIVE,
             file_id=parent_id,
             file_path=parent_path,
             page=1,
@@ -240,8 +241,7 @@ class FileOperateService:
         )
 
         try:
-            result = await self.drive_manager.get_disk_list(x_token, list_params)
-            file_list = result.data if hasattr(result, "data") else result
+            file_list = await service.get_disk_list(params=list_params)
 
             for item in file_list:
                 all_items.append(item.model_dump())
@@ -249,7 +249,7 @@ class FileOperateService:
                 if item.is_folder:
                     await asyncio.sleep(2.5)
                     sub_items = await self._list_recursive(
-                        x_token, drive_type, item.file_id, item.file_path
+                        service, item.file_id, item.file_path
                     )
                     all_items.extend(sub_items)
 
@@ -319,8 +319,7 @@ class FileOperateService:
 
     async def _execute_renames(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         items: List[Dict],
         rules: List[RenameRule],
         task_id: Optional[int],
@@ -347,7 +346,7 @@ class FileOperateService:
                     current_file=item["file_name"]
                 )
 
-                await self._do_rename(x_token, drive_type, item, rules, task_id, db, account_key, stats)
+                await self._do_rename(service, item, rules, task_id, db, account_key, stats)
                 await asyncio.sleep(3.5)
 
         tasks = [rename_with_limit(item, i) for i, item in enumerate(items)]
@@ -355,8 +354,7 @@ class FileOperateService:
 
     async def _do_rename(
         self,
-        x_token: str,
-        drive_type: DriveType,
+        service: CouldDriveService,
         item: Dict,
         rules: List[RenameRule],
         task_id: Optional[int],
@@ -370,7 +368,7 @@ class FileOperateService:
         new_name, new_path = self._apply_rules(item, rules)
 
         rename_params = RenameParam(
-            drive_type=drive_type,
+            drive_type=service._client.drive_type if hasattr(service._client, 'drive_type') else DriveType.QUARK_DRIVE,
             file_id=item["file_id"],
             file_path=original_path,
             new_name=new_name,
@@ -380,9 +378,9 @@ class FileOperateService:
         )
 
         try:
-            success = await self.drive_manager.rename_files(x_token, rename_params, db=db, account_key=account_key)
+            result = await service.rename(params=rename_params)
 
-            if success:
+            if result:
                 stats["renamed_success"] += 1
                 status, err_msg = "success", None
             else:

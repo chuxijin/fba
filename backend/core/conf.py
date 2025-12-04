@@ -312,6 +312,20 @@ class Settings(BaseSettings):
     OPENAI_API_BASE: str = ''
     OPENAI_EMBEDDING_MODEL: str = 'text-embedding-3-small'
 
+    ##################################################
+    # 敏感词过滤
+    ##################################################
+    # 敏感词列表（用于过滤资源介绍等内容）
+    SENSITIVE_WORDS: list[str] = [
+        # 示例敏感词，请根据实际需求添加
+        '政治敏感词',
+        '色情',
+        '赌博',
+        '暴力',
+        '违法',
+        # 添加更多敏感词...
+    ]
+
     @model_validator(mode='before')
     @classmethod
     def check_env(cls, values: Any) -> Any:
