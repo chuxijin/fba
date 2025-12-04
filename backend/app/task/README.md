@@ -30,7 +30,8 @@ Task 模块基于 Celery 实现异步任务处理，支持定时任务、队列�
 
 ## 手动触发清理任务
 
-### API 接口
+1. 在 `backend/app/task/tasks` 目录下新建 python 包目录
+2. 在新建目录下，务必添加 `tasks.py` 文件，并在此文件中编写相关任务代码
 
 - `POST /api/v1/task/filesync/cleanup/expired-data` - 手动清理过期文件同步数据
 
