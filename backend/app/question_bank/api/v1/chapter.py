@@ -36,6 +36,26 @@ async def get_chapter(
 
 
 @router.get(
+    '/tree/customer',
+    summary='获取章节树（客户端）',
+    name='qbank_get_chapter_tree_customer',
+)
+async def get_chapter_tree_customer(
+    db: CurrentSession,
+    bank_id: Annotated[int, Query(description='题库 ID')],
+) -> ResponseSchemaModel[list[GetChapterTree]]:
+    """
+    👤 客户端接口 - 查看题库章节树（公开）
+
+    :param db: 数据库会话
+    :param bank_id: 题库 ID
+    :return: 章节树列表
+    """
+    tree = await chapter_service.get_tree(db=db, bank_id=bank_id)
+    return response_base.success(data=tree)
+
+
+@router.get(
     '',
     summary='获取章节树',
     name='qbank_get_chapter_tree',

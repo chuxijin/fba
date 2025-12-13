@@ -97,8 +97,38 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param remark: 备注
         :return:
         """
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from backend.app.question_bank.model import Question
+
+        # 查询题目及其关联的题库、章节信息（用于填充冗余字段）
+        stmt = (
+            select(Question)
+            .options(
+                selectinload(Question.bank),
+                selectinload(Question.chapter)
+            )
+            .where(Question.id == question_id)
+        )
+        result = await db.execute(stmt)
+        question = result.scalar_one_or_none()
+
+        if not question:
+            raise ValueError(f'题目 ID {question_id} 不存在')
+
+        # 创建收藏，填充冗余字段
         new_favorite = self.model(
-            user_id=user_id, question_id=question_id, folder_name=folder_name, tags=tags, remark=remark
+            user_id=user_id,
+            question_id=question_id,
+            folder_name=folder_name,
+            tags=tags,
+            remark=remark,
+            created_by=user_id,
+            # 冗余字段（收藏时快照）
+            bank_id=question.bank_id,
+            bank_name=question.bank.name if question.bank else None,
+            chapter_id=question.chapter_id,
+            chapter_name=question.chapter.name if question.chapter else None,
         )
         db.add(new_favorite)
         await db.flush()
@@ -217,9 +247,11 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param is_pinned: 是否置顶
         :return:
         """
+        # 单表查询（使用冗余字段），不 JOIN question 表
+        # 题目详细信息由刷题页面按需查询（WHERE id IN (...)）
         filters = {}
 
-        if user_id:
+        if user_id is not None:
             filters['user_id'] = user_id
         if folder_name:
             filters['folder_name'] = folder_name

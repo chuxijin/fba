@@ -1,0 +1,356 @@
+/**
+ * SCSS Mixins - 可复用的样式逻辑
+ *
+ * 提供常用的布局、文本、交互效果等 Mixin
+ * 使用方法：@include mixin-name(参数);
+ */
+
+@import './design-tokens.scss';
+
+/* ============ 布局 Mixins ============ */
+
+/**
+ * Flex 布局 - 水平居中
+ */
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/**
+ * Flex 布局 - 水平两端对齐
+ */
+@mixin flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/**
+ * Flex 布局 - 垂直布局
+ */
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+/**
+ * Flex 布局 - 完全自定义
+ * @param $align - align-items 值
+ * @param $justify - justify-content 值
+ * @param $direction - flex-direction 值（默认 row）
+ */
+@mixin flex($align: center, $justify: flex-start, $direction: row) {
+  display: flex;
+  flex-direction: $direction;
+  align-items: $align;
+  justify-content: $justify;
+}
+
+/**
+ * Grid 布局 - 等宽列
+ * @param $columns - 列数
+ * @param $gap - 间距
+ */
+@mixin grid-equal($columns: 2, $gap: $gap-base) {
+  display: grid;
+  grid-template-columns: repeat($columns, 1fr);
+  gap: $gap;
+}
+
+/**
+ * 绝对定位居中
+ */
+@mixin absolute-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ============ 文本 Mixins ============ */
+
+/**
+ * 单行文本截断
+ */
+@mixin text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/**
+ * 多行文本截断
+ * @param $lines - 显示行数
+ */
+@mixin text-line-clamp($lines: 2) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: $lines;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+/**
+ * 文本样式快速设置
+ * @param $size - 字体大小
+ * @param $weight - 字体粗细
+ * @param $color - 文本颜色
+ * @param $line-height - 行高（可选）
+ */
+@mixin text($size, $weight: $font-weight-normal, $color: $color-text-primary, $line-height: null) {
+  font-size: $size;
+  font-weight: $weight;
+  color: $color;
+  @if $line-height {
+    line-height: $line-height;
+  }
+}
+
+/* ============ 外观 Mixins ============ */
+
+/**
+ * 卡片样式 - 符合设计规范
+ * @param $padding - 内边距（默认 32rpx）
+ * @param $radius - 圆角（默认 32rpx）
+ * @param $shadow - 是否显示阴影（默认 true）
+ */
+@mixin card($padding: $padding-base, $radius: $radius-lg, $shadow: true) {
+  background-color: $color-bg-card;
+  border-radius: $radius;
+  padding: $padding;
+  @if $shadow {
+    box-shadow: $shadow-primary-strong;
+  }
+}
+
+/**
+ * 按钮基础样式 - 符合设计规范（最小点击区域 88rpx）
+ * @param $height - 按钮高度（默认 96rpx，超过最小点击区域）
+ * @param $radius - 圆角（默认 28rpx）
+ */
+@mixin button-base($height: 96rpx, $radius: 28rpx) {
+  height: $height;
+  line-height: $height;
+  border-radius: $radius;
+  text-align: center;
+  transition: all $duration-base $ease-out;
+
+  &:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+}
+
+/**
+ * 主按钮样式
+ */
+@mixin button-primary {
+  @include button-base;
+  background: $gradient-primary;
+  color: #ffffff;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+  box-shadow: $shadow-primary;
+}
+
+/**
+ * 次要按钮样式
+ */
+@mixin button-secondary {
+  @include button-base;
+  background-color: $color-bg-hover;
+  color: $color-primary;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  border: 2rpx solid $color-border;
+}
+
+/**
+ * 圆形头像
+ * @param $size - 头像尺寸
+ */
+@mixin avatar($size: 72rpx) {
+  width: $size;
+  height: $size;
+  border-radius: $radius-full;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* ============ 交互效果 Mixins ============ */
+
+/**
+ * 点击反馈效果
+ * @param $scale - 缩放比例（默认 0.98）
+ */
+@mixin tap-feedback($scale: 0.98) {
+  transition: transform $duration-base $ease-out, opacity $duration-base $ease-out;
+  cursor: pointer;
+
+  &:active {
+    transform: scale($scale);
+    opacity: 0.9;
+  }
+}
+
+/**
+ * 悬停效果（仅适用于 H5）
+ */
+@mixin hover-lift {
+  transition: transform $duration-base $ease-out, box-shadow $duration-base $ease-out;
+
+  &:hover {
+    transform: translateY(-4rpx);
+    box-shadow: $shadow-lg;
+  }
+}
+
+/**
+ * 渐变背景动画
+ */
+@mixin animated-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+/* ============ 响应式 Mixins ============ */
+
+/**
+ * 小屏幕（手机）
+ * @content - 小屏幕样式
+ */
+@mixin mobile {
+  @media (max-width: 750rpx) {
+    @content;
+  }
+}
+
+/**
+ * 大屏幕（平板及以上）
+ * @content - 大屏幕样式
+ */
+@mixin tablet-up {
+  @media (min-width: 751rpx) {
+    @content;
+  }
+}
+
+/* ============ 工具 Mixins ============ */
+
+/**
+ * 清除浮动
+ */
+@mixin clearfix {
+  &::after {
+    content: '';
+    display: table;
+    clear: both;
+  }
+}
+
+/**
+ * 隐藏滚动条
+ */
+@mixin hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+
+  &::-webkit-scrollbar {
+    display: none; /* Chrome Safari */
+  }
+}
+
+/**
+ * 安全区域适配（iPhone X 等）
+ * @param $property - CSS 属性名
+ * @param $value - 基础值
+ * @param $env - 环境变量名（safe-area-inset-bottom 等）
+ */
+@mixin safe-area($property, $value, $env) {
+  #{$property}: $value;
+  #{$property}: calc(#{$value} + constant(#{$env}));
+  #{$property}: calc(#{$value} + env(#{$env}));
+}
+
+/**
+ * 毛玻璃效果
+ * @param $blur - 模糊程度
+ * @param $opacity - 透明度
+ */
+@mixin glass-effect($blur: 20rpx, $opacity: 0.8) {
+  backdrop-filter: blur($blur);
+  background-color: rgba(255, 255, 255, $opacity);
+}
+
+/**
+ * 渐变文字
+ * @param $gradient - 渐变色
+ */
+@mixin gradient-text($gradient: $gradient-primary) {
+  background: $gradient;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============ 动画关键帧 ============ */
+
+/**
+ * 渐变背景移动动画
+ */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/**
+ * 淡入动画
+ */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/**
+ * 从下方滑入
+ */
+@keyframes slide-up {
+  from {
+    transform: translateY(40rpx);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/**
+ * 缩放弹出
+ */
+@keyframes scale-pop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from fastapi import APIRouter
+
+from backend.app.question_bank.crud.crud_membership import membership_dao
+from backend.app.question_bank.crud.crud_user import user_account_dao
+from backend.app.question_bank.schema.customer import GetCustomerInfo, UpdateProfileParam
+from backend.app.question_bank.security import DependsCustomerAuth
+from backend.common.response.response_code import CustomResponse
+from backend.common.response.response_schema import ResponseSchemaModel, response_base
+from backend.common.security.auth_strategy import AuthUser
+from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.utils.timezone import timezone
+
+router = APIRouter()
+
+
+@router.get('/me', summary='获取当前用户信息')
+async def get_current_user_info(
+    db: CurrentSession, current_user: AuthUser = DependsCustomerAuth
+) -> ResponseSchemaModel[GetCustomerInfo]:
+    """
+    获取当前用户信息（含会员权益）
+
+    :return: 用户信息 + 会员权益列表
+    """
+    try:
+        # 获取用户基础信息
+        user = await user_account_dao.get(db, current_user.user_id)
+        if not user:
+            return response_base.fail(res=CustomResponse(code=404, msg='用户不存在'))
+
+        # 获取用户所有有效的会员权益
+        now = timezone.now()
+        memberships = await membership_dao.get_user_active_memberships(db=db, user_id=current_user.user_id)
+
+        # 组装返回数据
+        membership_list = []
+        for m in memberships:
+            try:
+                remaining_days = (m.end_time - now).days
+                membership_list.append({
+                    'category': m.category,
+                    'res_type': m.res_type,
+                    'res_id': m.res_id,
+                    'end_time': m.end_time.isoformat(),
+                    'remaining_days': max(0, remaining_days),
+                })
+            except Exception as e:
+                # 单个会员权益错误不影响整体
+                print(f'[Customer API] 处理会员权益失败: {e}')
+                continue
+
+        data = GetCustomerInfo(
+            id=user.id,
+            username=user.username,
+            nickname=user.nickname or '微信用户',  # 确保昵称不为空
+            avatar=user.avatar,
+            is_vip=user.is_vip,
+            memberships=membership_list,
+        )
+
+        return response_base.success(data=data)
+    except Exception as e:
+        print(f'[Customer API] 获取用户信息失败: {e}')
+        import traceback
+        traceback.print_exc()
+        return response_base.fail(res=CustomResponse(code=500, msg=f'获取用户信息失败: {str(e)}'))
+
+
+@router.put('/profile', summary='更新用户资料')
+async def update_profile(
+    db: CurrentSessionTransaction, obj: UpdateProfileParam, current_user: AuthUser = DependsCustomerAuth
+) -> ResponseSchemaModel:
+    """更新用户资料（昵称、头像等）"""
+    try:
+        user = await user_account_dao.get(db, current_user.user_id)
+        if not user:
+            return response_base.fail(res=CustomResponse(code=404, msg='用户不存在'))
+
+        # 更新昵称
+        if obj.nickname is not None:
+            await user_account_dao.update_nickname(db, current_user.user_id, obj.nickname)
+            print(f'[Customer API] 用户 {current_user.user_id} 更新昵称: {obj.nickname}')
+
+        # 更新头像
+        if obj.avatar is not None:
+            await user_account_dao.update_avatar(db, current_user.user_id, obj.avatar)
+            print(f'[Customer API] 用户 {current_user.user_id} 更新头像: {obj.avatar}')
+
+        return response_base.success(data={'msg': '资料更新成功'})
+    except Exception as e:
+        print(f'[Customer API] 更新用户资料失败: {e}')
+        import traceback
+        traceback.print_exc()
+        return response_base.fail(res=CustomResponse(code=500, msg=f'更新资料失败: {str(e)}'))

@@ -442,5 +442,28 @@ class QuestionFavorite(Base, UserMixin):
     # ============ 备注（可选） ============
     remark: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='备注')
 
+    # ============ 冗余字段（收藏时快照，提升查询性能） ============
+    # 原则：只冗余"稳定且不易变"的字段（题库、章节名称），题目信息通过 JOIN 获取
+    bank_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        default=None,
+        comment='题库 ID（冗余字段）',
+    )
+    bank_name: Mapped[str | None] = mapped_column(
+        sa.String(200),
+        default=None,
+        comment='题库名称（冗余字段，收藏时快照）',
+    )
+    chapter_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        default=None,
+        comment='章节 ID（冗余字段）',
+    )
+    chapter_name: Mapped[str | None] = mapped_column(
+        sa.String(200),
+        default=None,
+        comment='章节名称（冗余字段，收藏时快照）',
+    )
+
 
 

@@ -20,6 +20,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, TimeZone, UserMixin, id_key
+from backend.utils.timezone import timezone
 
 if TYPE_CHECKING:
     from .question import Question
@@ -92,6 +93,13 @@ class PracticeSession(Base, UserMixin):
     wrong_count: Mapped[int] = mapped_column(default=0, comment='答错数量')
     accuracy_rate: Mapped[Decimal] = mapped_column(
         sa.Numeric(5, 2), default=Decimal('0'), comment='正确率（百分比 0-100）'
+    )
+
+    # ============ 练习名称（冗余字段，优化查询性能） ============
+    practice_name: Mapped[str | None] = mapped_column(
+        sa.String(255),
+        default=None,
+        comment='练习名称（创建会话时从题库/章节获取，避免 JOIN 查询）',
     )
 
     # ============ 分数（考试模式） ============
@@ -193,7 +201,12 @@ class PracticeRecord(Base, UserMixin):
     chapter_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='章节 ID（冗余）')
 
     # ============ 时间 ============
-    created_time: Mapped[datetime] = mapped_column(TimeZone, init=False, comment='答题时间')
+    created_time: Mapped[datetime] = mapped_column(
+        TimeZone,
+        init=False,
+        default_factory=timezone.now,
+        comment='答题时间',
+    )
 
     # ============ 关系 ============
     user: Mapped['UserAccount'] = relationship(init=False, back_populates='practice_records', lazy='noload')

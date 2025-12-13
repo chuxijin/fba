@@ -30,7 +30,7 @@ class QuestionFavoriteSchemaBase(SchemaBase):
 class CreateQuestionFavoriteParam(QuestionFavoriteSchemaBase):
     """创建收藏参数"""
 
-    user_id: int = Field(description='用户 ID')
+    pass
 
 
 class UpdateQuestionFavoriteParam(SchemaBase):
@@ -54,7 +54,7 @@ class GetQuestionFavoriteDetail(QuestionFavoriteSchemaBase):
 
 
 class GetQuestionFavoriteListItem(SchemaBase):
-    """收藏列表项"""
+    """收藏列表项（用于分组统计，不包含题目详细信息）"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -64,12 +64,12 @@ class GetQuestionFavoriteListItem(SchemaBase):
     tags: list[str] | None = Field(None, description='自定义标签')
     is_pinned: bool = Field(description='是否置顶')
     created_time: datetime = Field(description='收藏时间')
-    # 扁平化字段，方便前端显示
-    question_stem: str | None = Field(None, description='题目题干')
-    question_type: str | None = Field(None, description='题型')
-    question_difficulty: str | None = Field(None, description='难度')
-    bank_name: str | None = Field(None, description='题库名称')
-    chapter_name: str | None = Field(None, description='章节名称')
+
+    # 冗余字段（收藏时快照，用于分组统计）
+    bank_id: int | None = Field(None, description='题库 ID（冗余）')
+    bank_name: str | None = Field(None, description='题库名称（冗余）')
+    chapter_id: int | None = Field(None, description='章节 ID（冗余）')
+    chapter_name: str | None = Field(None, description='章节名称（冗余）')
 
 
 class SetFavoritePinParam(SchemaBase):

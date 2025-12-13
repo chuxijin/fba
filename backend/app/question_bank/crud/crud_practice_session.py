@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -156,18 +157,28 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param status: 状态
         :return:
         """
-        filters = {}
+        stmt = select(PracticeSession).order_by(PracticeSession.start_time.desc())
 
         if user_id:
-            filters['user_id'] = user_id
+            stmt = stmt.where(PracticeSession.user_id == user_id)
         if session_type:
-            filters['session_type'] = session_type
+            stmt = stmt.where(PracticeSession.session_type == session_type)
         if bank_id:
-            filters['bank_id'] = bank_id
+            stmt = stmt.where(PracticeSession.bank_id == bank_id)
         if status:
-            filters['status'] = status
+            stmt = stmt.where(PracticeSession.status == status)
 
-        return await self.select_order('start_time', 'desc', **filters)
+        return stmt
+
+    async def delete(self, db: AsyncSession, session_id: int) -> int:
+        """
+        删除练习会话（级联删除关联的答题记录）
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :return:
+        """
+        return await self.delete_model(db, session_id)
 
 
 practice_session_dao: CRUDPracticeSession = CRUDPracticeSession(PracticeSession)

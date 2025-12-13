@@ -62,6 +62,36 @@ class CRUDQuestion(CRUDPlus[Question]):
         result = await db.execute(stmt)
         return result.unique().scalars().first()
 
+    async def get_by_ids(self, db: AsyncSession, ids: list[int], include_analysis: bool = False) -> Sequence[Question]:
+        """
+        批量获取题目列表（按 ID 列表顺序返回）
+
+        :param db: 数据库会话
+        :param ids: 题目 ID 列表
+        :param include_analysis: 是否加载解析数据（答案）
+        :return:
+        """
+        if not ids:
+            return []
+
+        # 构建基础查询选项
+        options_list = [
+            joinedload(Question.bank),
+            joinedload(Question.chapter),
+        ]
+
+        # 🔥 根据参数决定是否加载解析
+        if include_analysis:
+            options_list.append(selectinload(Question.analysis))
+
+        stmt = select(Question).where(Question.id.in_(ids)).options(*options_list)
+
+        result = await db.execute(stmt)
+        questions_map = {q.id: q for q in result.unique().scalars().all()}
+
+        # 按 ids 顺序返回
+        return [questions_map[id] for id in ids if id in questions_map]
+
     async def get_select(
         self,
         bank_id: int | None = None,

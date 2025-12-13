@@ -59,6 +59,7 @@ class QuestionService:
     async def get_list(
         *,
         db: AsyncSession,
+        ids: list[int] | None = None,
         bank_id: int | None = None,
         chapter_id: int | None = None,
         type: str | None = None,
@@ -68,11 +69,13 @@ class QuestionService:
         keyword: str | None = None,
         page: int | None = None,
         size: int | None = None,
+        include_analysis: bool = False,
     ) -> Sequence[Question] | dict[str, Any]:
         """
-        获取题目列表（不含答案）
+        获取题目列表
 
         :param db: 数据库会话
+        :param ids: 题目 ID 列表（批量查询）
         :param bank_id: 题库 ID
         :param chapter_id: 章节 ID
         :param type: 题型
@@ -82,8 +85,14 @@ class QuestionService:
         :param keyword: 关键字搜索
         :param page: 页码
         :param size: 每页数量
+        :param include_analysis: 是否包含解析（答案）
         :return:
         """
+        # 按 ids 批量查询（优先级最高）
+        if ids:
+            questions = await question_dao.get_by_ids(db, ids, include_analysis=include_analysis)
+            return questions
+
         # 如果提供了分页参数，使用优化的分页查询
         if page is not None and size is not None:
             # 获取查询语句

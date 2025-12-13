@@ -13,6 +13,7 @@ from backend.app.question_bank.schema.question import (
     GetQuestionDetail,
     GetQuestionListItem,
     GetQuestionStatisticsDetail,
+    GetQuestionWithAnswer,
     UpdateQuestionAnalysisParam,
     UpdateQuestionParam,
 )
@@ -55,7 +56,7 @@ async def get_question(
 
 @router.get(
     '',
-    summary='获取题目列表（不含答案）',
+    summary='获取题目列表',
     name='qbank_get_question_list',
     dependencies=[DependsCurrentUser, DependsPagination],
 )
@@ -63,6 +64,7 @@ async def get_question_list(
     request: Request,
     db: CurrentSession,
     user_info: tuple = DependsCurrentUser,
+    ids: Annotated[str | None, Query(description='题目 ID 列表（逗号分隔）')] = None,
     bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
     chapter_id: Annotated[int | None, Query(description='章节 ID')] = None,
     type: Annotated[str | None, Query(description='题型')] = None,
@@ -72,17 +74,25 @@ async def get_question_list(
     keyword: Annotated[str | None, Query(description='关键字搜索')] = None,
     page: Annotated[int | None, Query(description='页码', ge=1)] = None,
     size: Annotated[int | None, Query(description='每页数量', ge=1, le=100)] = None,
-) -> ResponseSchemaModel[PageData[GetQuestionListItem] | list[GetQuestionListItem]]:
+    include_answer: Annotated[bool, Query(description='是否包含答案（用于查看历史记录）')] = False,
+) -> ResponseSchemaModel[PageData[GetQuestionListItem] | list[GetQuestionListItem] | list[GetQuestionWithAnswer]]:
     """
-    获取题目列表（不含答案）
+    获取题目列表
 
     - 👤 客户：需要会员权限验证，不支持分页
     - 🔐 管理员：无需会员验证，支持分页
+    - 支持通过 ids 参数批量获取指定题目
+    - include_answer=True 时返回答案和解析（用于查看历史记录）
     """
     user_type, customer = user_info
 
-    # 客户需要验证会员权限
-    if user_type == 'customer':
+    # 解析 ids 参数
+    question_ids = None
+    if ids:
+        question_ids = [int(id.strip()) for id in ids.split(',') if id.strip()]
+
+    # 客户需要验证会员权限（按 ids 查询时跳过权限验证）
+    if user_type == 'customer' and not question_ids:
         if bank_id:
             await membership_service.verify_bank_list_access(db=db, user_id=customer.user_id, bank_id=bank_id)
         elif chapter_id:
@@ -91,6 +101,7 @@ async def get_question_list(
     # 管理员支持分页，客户不支持
     data = await question_service.get_list(
         db=db,
+        ids=question_ids,
         bank_id=bank_id,
         chapter_id=chapter_id,
         type=type,
@@ -100,7 +111,29 @@ async def get_question_list(
         keyword=keyword,
         page=page if user_type == 'admin' else None,
         size=size if user_type == 'admin' else None,
+        include_analysis=include_answer,  # 🔥 传递参数到 service
     )
+
+    # 🔥 如果需要包含答案，转换为包含答案的 Schema
+    if include_answer and question_ids:
+        from backend.app.question_bank.schema.question import GetQuestionWithAnswer
+
+        questions_list = data if isinstance(data, list) else data.get('items', [])
+
+        # 构造包含答案的返回数据
+        result_with_answer = []
+        for q in questions_list:
+            q_dict = q if isinstance(q, dict) else q.model_dump()
+
+            # 从关联的 analysis 中提取答案和解析
+            if hasattr(q, 'analysis') and q.analysis:
+                q_dict['answer_data'] = q.analysis.answer_data
+                q_dict['analysis_content'] = q.analysis.content
+
+            result_with_answer.append(GetQuestionWithAnswer(**q_dict))
+
+        return response_base.success(data=result_with_answer)
+
     return response_base.success(data=data)
 
 

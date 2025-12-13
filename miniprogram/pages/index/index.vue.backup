@@ -1,0 +1,727 @@
+<template>
+  <view class="home-page">
+    <!-- 广告横幅 - 图片轮播 -->
+    <view class="banner-section">
+      <up-swiper
+        :list="bannerList"
+        :autoplay="true"
+        :interval="4000"
+        :circular="true"
+        indicator-mode="dot"
+        height="340"
+        @click="handleBannerClick"
+      ></up-swiper>
+    </view>
+
+    <!-- 通知栏 -->
+    <view class="notice-section">
+      <u-notice-bar
+        text="欢迎使用刷题小程序，祝您学习愉快！ 新增考研政治题库，快来刷题吧～ 每日坚持刷题，考试必过！"
+        mode="link"
+        direction="row"
+        :speed="80"
+        icon="volume"
+        color="#92400e"
+        bgColor="#fffbeb"
+        fontSize="28"
+        @click="handleNoticeClick"
+      ></u-notice-bar>
+    </view>
+
+    <!-- 学习数据卡片 -->
+    <view class="stats-card">
+      <view class="stats-grid">
+        <view class="stat-item" @tap="handleStatClick('checkin')">
+          <view class="stat-icon">🔥</view>
+          <view class="stat-info">
+            <text class="stat-value">{{ studyStats.checkinDays }}</text>
+            <text class="stat-label">连续打卡</text>
+          </view>
+        </view>
+        <view class="stat-divider"></view>
+        <view class="stat-item" @tap="handleStatClick('practice')">
+          <view class="stat-icon">📝</view>
+          <view class="stat-info">
+            <text class="stat-value">{{ studyStats.weeklyQuestions }}</text>
+            <text class="stat-label">本周刷题</text>
+          </view>
+        </view>
+        <view class="stat-divider"></view>
+        <view class="stat-item" @tap="handleStatClick('rank')">
+          <view class="stat-icon">🏆</view>
+          <view class="stat-info">
+            <text class="stat-value">{{ studyStats.rank }}%</text>
+            <text class="stat-label">击败用户</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 功能入口卡片 -->
+    <view class="quick-entry-card">
+      <view class="quick-entry-grid">
+        <view
+          v-for="(entry, index) in quickEntries"
+          :key="index"
+          class="quick-entry-item"
+          @tap="handleEntryClick(entry)"
+        >
+          <view class="entry-icon">
+            <text>{{ entry.icon }}</text>
+          </view>
+          <text class="entry-label">{{ entry.label }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 每日一练卡片 -->
+    <view class="daily-practice-card">
+      <view class="daily-header">
+        <view class="daily-title-wrapper">
+          <text class="daily-icon">📝</text>
+          <view class="daily-title-info">
+            <text class="daily-title">每日一练</text>
+            <text class="daily-subtitle">{{ dailyPractice.category }}</text>
+          </view>
+        </view>
+        <view class="daily-status">
+          <text v-if="dailyPractice.completed" class="status-done">已完成</text>
+          <text v-else class="status-todo">{{ dailyPractice.remaining }}题待做</text>
+        </view>
+      </view>
+      <view class="daily-progress">
+        <view class="progress-bar">
+          <view class="progress-fill" :style="{ width: dailyPractice.progress + '%' }"></view>
+        </view>
+        <text class="progress-text">{{ dailyPractice.done }}/{{ dailyPractice.total }}</text>
+      </view>
+      <view class="daily-footer">
+        <text class="daily-desc">{{ dailyPractice.desc }}</text>
+        <view class="daily-action" @tap="handleDailyPractice">
+          <text>{{ dailyPractice.completed ? '再来一组' : '立即开始' }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 热门必刷 -->
+    <view class="hot-section">
+      <view class="section-header">
+        <view class="header-left">
+          <text class="section-icon">🔥</text>
+          <text class="section-title">热门必刷</text>
+        </view>
+        <view class="header-right" @tap="handleMoreHot">
+          <text class="more-text">更多</text>
+          <text class="more-arrow">›</text>
+        </view>
+      </view>
+      <scroll-view class="hot-scroll" scroll-x :show-scrollbar="false">
+        <view class="hot-list">
+          <view
+            v-for="(item, index) in hotBanks"
+            :key="index"
+            class="hot-item"
+            @tap="handleHotBankClick(item)"
+          >
+            <view class="hot-badge" v-if="item.badge">
+              <text>{{ item.badge }}</text>
+            </view>
+            <view class="hot-item-header">
+              <text class="hot-item-title">{{ item.name }}</text>
+            </view>
+            <view class="hot-item-stats">
+              <view class="stat-row">
+                <text class="stat-icon">📚</text>
+                <text class="stat-text">{{ item.questionCount }} 题</text>
+              </view>
+              <view class="stat-row">
+                <text class="stat-icon">👥</text>
+                <text class="stat-text">{{ item.practiceCount }} 人在刷</text>
+              </view>
+            </view>
+            <view class="hot-item-footer">
+              <text class="hot-tag">{{ item.tag }}</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+
+declare const uni: any
+
+// 快捷入口数据
+interface QuickEntryItem {
+  icon: string
+  label: string
+  action: string
+}
+
+// 学习数据
+interface StudyStats {
+  checkinDays: number
+  weeklyQuestions: string
+  rank: number
+}
+
+// 每日一练数据
+interface DailyPractice {
+  category: string
+  total: number
+  done: number
+  remaining: number
+  progress: number
+  completed: boolean
+  desc: string
+}
+
+// 热门题库数据
+interface HotBankItem {
+  id: number
+  name: string
+  questionCount: number
+  practiceCount: string
+  tag: string
+  badge?: string
+}
+
+// 横幅数据（UView Plus swiper 需要数组格式）
+const bannerList = ref<string[]>([
+  '/static/images/banner1.png'
+])
+
+// 通知数据（UView Plus notice-bar 接受字符串数组）
+const noticeList = ref<string[]>([
+  '欢迎使用刷题小程序，祝您学习愉快！',
+  '新增考研政治题库，快来刷题吧～',
+  '每日坚持刷题，考试必过！'
+])
+
+// 快捷入口数据
+const quickEntries = ref<QuickEntryItem[]>([
+  { icon: '⚡', label: '快速激活', action: 'activate' },
+  { icon: '📖', label: '题库介绍', action: 'intro' },
+  { icon: '📝', label: '激活步骤', action: 'steps' },
+  { icon: '📚', label: '全部题库', action: 'all' }
+])
+
+// 学习数据（模拟数据）
+const studyStats = ref<StudyStats>({
+  checkinDays: 7,
+  weeklyQuestions: '128/500',
+  rank: 68
+})
+
+// 每日一练数据（模拟数据）
+const dailyPractice = ref<DailyPractice>({
+  category: '公安法律',
+  total: 10,
+  done: 3,
+  remaining: 7,
+  progress: 30,
+  completed: false,
+  desc: '坚持每日一练，养成良好学习习惯'
+})
+
+// 热门题库数据（模拟数据）
+const hotBanks = ref<HotBankItem[]>([
+  {
+    id: 1,
+    name: '2026国考公安专业知识',
+    questionCount: 1280,
+    practiceCount: '2.3万',
+    tag: '必考',
+    badge: 'HOT'
+  },
+  {
+    id: 2,
+    name: '考研政治核心考点',
+    questionCount: 850,
+    practiceCount: '1.8万',
+    tag: '高频',
+  },
+  {
+    id: 3,
+    name: '公务员行测题库',
+    questionCount: 2500,
+    practiceCount: '5.6万',
+    tag: '热门',
+    badge: 'NEW'
+  },
+  {
+    id: 4,
+    name: '事业单位综合知识',
+    questionCount: 960,
+    practiceCount: '1.2万',
+    tag: '推荐',
+  }
+])
+
+/**
+ * 横幅点击
+ *
+ * :param index: 横幅索引
+ */
+function handleBannerClick(index: number) {
+  console.log('点击横幅:', index)
+  // 可以根据 index 跳转到不同页面
+}
+
+/**
+ * 通知栏点击
+ *
+ * :param index: 通知索引
+ */
+function handleNoticeClick(index: number) {
+  console.log('点击通知:', index)
+  uni.showToast({
+    title: `查看通知 ${index + 1}`,
+    icon: 'none'
+  })
+}
+
+/**
+ * 快捷入口点击
+ *
+ * :param entry: 入口项
+ */
+function handleEntryClick(entry: QuickEntryItem) {
+  switch (entry.action) {
+    case 'activate':
+      uni.showToast({ title: '快速激活', icon: 'none' })
+      break
+    case 'intro':
+      uni.showToast({ title: '题库介绍', icon: 'none' })
+      break
+    case 'steps':
+      uni.showToast({ title: '激活步骤', icon: 'none' })
+      break
+    case 'all':
+      uni.switchTab({ url: '/pages/practice/index' })
+      break
+  }
+}
+
+/**
+ * 学习数据点击
+ *
+ * :param type: 数据类型
+ */
+function handleStatClick(type: string) {
+  switch (type) {
+    case 'checkin':
+      uni.showToast({ title: '打卡日历', icon: 'none' })
+      break
+    case 'practice':
+      uni.showToast({ title: '学习报告', icon: 'none' })
+      break
+    case 'rank':
+      uni.showToast({ title: '排行榜', icon: 'none' })
+      break
+  }
+}
+
+/**
+ * 每日一练点击
+ */
+function handleDailyPractice() {
+  uni.showToast({
+    title: '开始每日一练',
+    icon: 'none'
+  })
+}
+
+/**
+ * 热门题库点击
+ *
+ * :param item: 题库项
+ */
+function handleHotBankClick(item: HotBankItem) {
+  uni.navigateTo({
+    url: `/pages/practice/list?bankId=${item.id}`
+  })
+}
+
+/**
+ * 查看更多热门题库
+ */
+function handleMoreHot() {
+  uni.switchTab({
+    url: '/pages/practice/index'
+  })
+}
+</script>
+
+<style scoped lang="scss">
+@import '@/styles/design-tokens.scss';
+
+.home-page {
+  padding: 32rpx;
+  background: $color-bg-page;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* ============ 广告横幅 ============ */
+
+.banner-section {
+  width: 100%;
+  margin-bottom: 24rpx;
+}
+
+/* ============ 通知栏 ============ */
+
+.notice-section {
+  margin-bottom: 24rpx;
+}
+
+/* ============ 学习数据卡片 ============ */
+
+.stats-card {
+  margin-top: 24rpx;
+  padding: 32rpx 24rpx;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border-radius: $radius-lg;
+  box-shadow: $shadow-primary;
+}
+
+.stats-grid {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  flex: 1;
+}
+
+.stat-icon {
+  font-size: 48rpx;
+  margin-bottom: 8rpx;
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.stat-value {
+  font-size: $font-size-2xl;
+  font-weight: $font-weight-bold;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: $font-size-xs;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.stat-divider {
+  width: 2rpx;
+  height: 80rpx;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ============ 快捷入口卡片 ============ */
+
+.quick-entry-card {
+  margin-top: 24rpx;
+  padding: 32rpx 24rpx;
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-sm;
+}
+
+.quick-entry-grid {
+  display: flex;
+  justify-content: space-between;
+}
+
+.quick-entry-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  flex: 1;
+}
+
+.entry-icon {
+  width: 80rpx;
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $color-bg-page;
+  border-radius: $radius-base;
+
+  text {
+    font-size: 40rpx;
+  }
+}
+
+.entry-label {
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  font-weight: $font-weight-medium;
+}
+
+/* ============ 每日一练卡片 ============ */
+
+.daily-practice-card {
+  margin-top: 24rpx;
+  padding: 32rpx;
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-sm;
+}
+
+.daily-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.daily-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.daily-icon {
+  font-size: 48rpx;
+}
+
+.daily-title-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.daily-title {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.daily-subtitle {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+}
+
+.daily-status {
+  .status-done {
+    padding: 8rpx 20rpx;
+    background: $color-success-soft;
+    color: $color-success;
+    font-size: $font-size-sm;
+    border-radius: $radius-sm;
+    font-weight: $font-weight-medium;
+  }
+
+  .status-todo {
+    padding: 8rpx 20rpx;
+    background: $color-warning-soft;
+    color: $color-warning;
+    font-size: $font-size-sm;
+    border-radius: $radius-sm;
+    font-weight: $font-weight-medium;
+  }
+}
+
+.daily-progress {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 16rpx;
+  background: $color-bg-page;
+  border-radius: $radius-full;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, $color-primary-light 0%, $color-primary 100%);
+  border-radius: $radius-full;
+  transition: width $duration-base $ease-out;
+}
+
+.progress-text {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+  font-weight: $font-weight-medium;
+  white-space: nowrap;
+}
+
+.daily-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.daily-desc {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.daily-action {
+  padding: 16rpx 32rpx;
+  background: $color-primary;
+  border-radius: $radius-sm;
+
+  text {
+    font-size: $font-size-sm;
+    color: #ffffff;
+    font-weight: $font-weight-medium;
+  }
+}
+
+/* ============ 热门必刷 ============ */
+
+.hot-section {
+  margin-top: 24rpx;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.section-icon {
+  font-size: 36rpx;
+}
+
+.section-title {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.more-text {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+}
+
+.more-arrow {
+  font-size: 32rpx;
+  color: $color-text-secondary;
+  font-weight: $font-weight-light;
+}
+
+.hot-scroll {
+  white-space: nowrap;
+}
+
+.hot-list {
+  display: inline-flex;
+  gap: 24rpx;
+}
+
+.hot-item {
+  position: relative;
+  width: 280rpx;
+  padding: 32rpx;
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-sm;
+  display: inline-block;
+}
+
+.hot-badge {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  padding: 8rpx 16rpx;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+  border-radius: $radius-xs;
+
+  text {
+    font-size: $font-size-xs;
+    color: #ffffff;
+    font-weight: $font-weight-bold;
+  }
+}
+
+.hot-item-header {
+  margin-bottom: 24rpx;
+}
+
+.hot-item-title {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  line-height: $line-height-tight;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.hot-item-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.stat-icon {
+  font-size: 28rpx;
+}
+
+.stat-text {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+}
+
+.hot-item-footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.hot-tag {
+  padding: 8rpx 16rpx;
+  background: $color-primary-lighter;
+  color: $color-primary-dark;
+  font-size: $font-size-xs;
+  border-radius: $radius-xs;
+  font-weight: $font-weight-medium;
+}
+</style>

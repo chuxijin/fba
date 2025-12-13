@@ -1,0 +1,114 @@
+{
+	"easycom": {
+		"autoscan": true,
+		"custom": {
+			"^z-(.*)": "@zebra-ui/swiper/components/z-$1/z-$1.vue",
+			"^u-(.*)": "uview-plus/components/u-$1/u-$1.vue",
+			"^up-(.*)": "uview-plus/components/u-$1/u-$1.vue",
+			"^mp-html$": "mp-html/dist/uni-app/components/mp-html/mp-html.vue"
+		}
+	},
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "首页"
+			}
+		},
+		{
+			"path": "pages/practice/index",
+			"style": {
+				"navigationBarTitleText": "练习中心"
+			}
+		},
+		{
+			"path": "pages/study/index",
+			"style": {
+				"navigationBarTitleText": "学习中心"
+			}
+		},
+		{
+			"path": "pages/mine/index",
+			"style": {
+				"navigationBarTitleText": "个人中心"
+			}
+		},
+		{
+			"path": "pages/practice/bank-detail",
+			"style": {
+				"navigationBarTitleText": "题库详情"
+			}
+		},
+		{
+			"path": "pages/practice/detail",
+			"style": {
+				"navigationBarTitleText": "刷题",
+				"disableScroll": true
+			}
+		},
+		{
+			"path": "pages/practice/ResultSummary",
+			"style": {
+				"navigationBarTitleText": "答题结果",
+				"disableScroll": true
+			}
+		},
+		{
+			"path": "pages/profile/index",
+			"style": {
+				"navigationBarTitleText": "个人资料"
+			}
+		},
+		{
+			"path": "pages/mine/favorite",
+			"style": {
+				"navigationBarTitleText": "我的收藏"
+			}
+		},
+		{
+			"path": "pages/mine/practice-history",
+			"style": {
+				"navigationBarTitleText": "练习历史"
+			}
+		}
+	],
+	"tabBar": {
+		"color": "#6b7280",
+		"selectedColor": "#22c55e",
+		"backgroundColor": "#ffffff",
+		"borderStyle": "white",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "首页",
+				"iconPath": "static/tabbar/home.png",
+				"selectedIconPath": "static/tabbar/home-active.png"
+			},
+			{
+				"pagePath": "pages/practice/index",
+				"text": "练习",
+				"iconPath": "static/tabbar/practice.png",
+				"selectedIconPath": "static/tabbar/practice-active.png"
+			},
+			{
+				"pagePath": "pages/study/index",
+				"text": "学习",
+				"iconPath": "static/tabbar/study.png",
+				"selectedIconPath": "static/tabbar/study-active.png"
+			},
+			{
+				"pagePath": "pages/mine/index",
+				"text": "我的",
+				"iconPath": "static/tabbar/mine.png",
+				"selectedIconPath": "static/tabbar/mine-active.png"
+			}
+		]
+	},
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "刷题助手",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F5F7FA"
+	},
+	"uniIdRouter": {}
+}

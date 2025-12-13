@@ -1,0 +1,15 @@
+/**
+ * 设计系统主入口文件
+ *
+ * 集中导入所有设计系统文件
+ * 在需要使用设计系统的地方导入此文件：@import '@/styles/index.scss';
+ */
+
+/* 1. 设计 Token（颜色、间距、字体等变量） */
+@import './design-tokens.scss';
+
+/* 2. Mixins（可复用的样式逻辑） */
+@import './mixins.scss';
+
+/* 3. Utilities（工具类） */
+@import './utilities.scss';

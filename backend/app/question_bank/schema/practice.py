@@ -32,7 +32,7 @@ class PracticeSessionSchemaBase(SchemaBase):
 class CreatePracticeSessionParam(PracticeSessionSchemaBase):
     """创建练习会话参数"""
 
-    user_id: int = Field(description='用户 ID')
+    pass
 
 
 class GetPracticeSessionDetail(PracticeSessionSchemaBase):
@@ -62,12 +62,17 @@ class GetPracticeSessionListItem(SchemaBase):
 
     id: int = Field(description='会话 ID')
     session_type: str = Field(description='练习类型')
+    bank_id: int | None = Field(None, description='题库 ID')
+    practice_name: str | None = Field(None, description='练习名称')
     total_count: int = Field(description='题目总数')
     completed_count: int = Field(description='已完成数量')
+    correct_count: int = Field(description='答对数量')
+    wrong_count: int = Field(description='答错数量')
     accuracy_rate: Decimal = Field(description='正确率（%）')
     total_time: int = Field(description='总用时（秒）')
     status: str = Field(description='状态')
     start_time: datetime = Field(description='开始时间')
+    updated_time: datetime = Field(description='更新时间')
 
 
 class UpdatePracticeSessionParam(SchemaBase):
@@ -82,7 +87,6 @@ class UpdatePracticeSessionParam(SchemaBase):
 class SubmitPracticeSessionParam(SchemaBase):
     """提交练习会话参数"""
 
-    session_id: int = Field(description='会话 ID')
     score: Decimal | None = Field(None, description='得分（考试模式）')
 
 
@@ -101,7 +105,6 @@ class PracticeRecordSchemaBase(SchemaBase):
 class CreatePracticeRecordParam(PracticeRecordSchemaBase):
     """创建答题记录参数"""
 
-    user_id: int = Field(description='用户 ID')
     session_id: int = Field(description='会话 ID')
     bank_id: int = Field(description='题库 ID')
     chapter_id: int | None = Field(None, description='章节 ID')
@@ -172,3 +175,40 @@ class QuestionTypeStatistics(SchemaBase):
     count: int = Field(description='做题数')
     correct_count: int = Field(description='答对数')
     accuracy_rate: Decimal = Field(description='正确率（%）')
+
+
+# ============ 结算页面数据 Schema ============
+
+
+class AnswerCardItem(SchemaBase):
+    """答题卡项"""
+
+    index: int = Field(description='题目序号（从 0 开始）')
+    question_id: int = Field(description='题目 ID')
+    status: str = Field(description='状态: correct/wrong/unanswered')
+
+
+class SessionSummaryData(SchemaBase):
+    """练习会话结算数据"""
+
+    # 会话基本信息
+    session_id: int = Field(description='会话 ID')
+    bank_id: int | None = Field(None, description='题库 ID')
+    practice_name: str | None = Field(None, description='练习名称')
+    session_type: str = Field(description='练习类型')
+
+    # 统计数据
+    total_count: int = Field(description='题目总数')
+    completed_count: int = Field(description='已完成数量')
+    correct_count: int = Field(description='答对数量')
+    wrong_count: int = Field(description='答错数量')
+    unanswered_count: int = Field(description='未答题数')
+    accuracy_rate: Decimal = Field(description='正确率（%）')
+    total_time: int = Field(description='总用时（秒）')
+    status: str = Field(description='状态')
+
+    # 答题卡数据
+    answer_items: list[AnswerCardItem] = Field(description='答题卡列表')
+
+    # 错题 ID 列表（用于"仅看错题"功能）
+    wrong_question_ids: list[int] = Field(description='错题 ID 列表')

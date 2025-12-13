@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
@@ -89,6 +90,18 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         for record_dict in records:
             new_record = self.model(**record_dict)
             db.add(new_record)
+
+    async def delete_by_session(self, db: AsyncSession, session_id: int) -> int:
+        """
+        删除会话的所有答题记录
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :return: 删除的记录数
+        """
+        stmt = delete(PracticeRecord).where(PracticeRecord.session_id == session_id)
+        result = await db.execute(stmt)
+        return result.rowcount
 
     async def get_user_question_history(self, db: AsyncSession, user_id: int, question_id: int) -> list[PracticeRecord]:
         """

@@ -61,6 +61,13 @@ class GetQuestionListItem(SchemaBase):
     chapter_name: str | None = Field(None, description='章节名称')
 
 
+class GetQuestionWithAnswer(GetQuestionListItem):
+    """题目列表项（含答案和解析）- 用于查看历史记录"""
+
+    answer_data: dict | None = Field(None, description='答案数据 {"correct": ["A", "B"]}')
+    analysis_content: str | None = Field(None, description='解析内容')
+
+
 class GetQuestionDetail(QuestionSchemaBase):
     """题目详情（管理员接口，包含答案和解析）"""
 
