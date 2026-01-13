@@ -1,10 +1,12 @@
 import os
+import urllib.parse
 
 import celery
 import celery_aio_pool
 import sys
 
 from backend.app.task.tasks.beat import LOCAL_BEAT_SCHEDULE
+from backend.common.enums import DataBaseType
 from backend.core.conf import settings
 from backend.core.path_conf import BASE_PATH
 
@@ -27,12 +29,12 @@ def init_celery() -> celery.Celery:
     celery.app.trace.build_tracer = celery_aio_pool.build_async_tracer
     celery.app.trace.reset_worker_optimizations()
 
-    broker_url = f'amqp://{settings.CELERY_RABBITMQ_USERNAME}:{settings.CELERY_RABBITMQ_PASSWORD}@{settings.CELERY_RABBITMQ_HOST}:{settings.CELERY_RABBITMQ_PORT}/{settings.CELERY_RABBITMQ_VHOST}'
+    broker_url = f'amqp://{settings.CELERY_RABBITMQ_USERNAME}:{urllib.parse.quote(settings.CELERY_RABBITMQ_PASSWORD)}@{settings.CELERY_RABBITMQ_HOST}:{settings.CELERY_RABBITMQ_PORT}/{settings.CELERY_RABBITMQ_VHOST}'
     if settings.CELERY_BROKER == 'redis':
-        broker_url = f'redis://:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.CELERY_BROKER_REDIS_DATABASE}'
+        broker_url = f'redis://:{urllib.parse.quote(settings.REDIS_PASSWORD)}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.CELERY_BROKER_REDIS_DATABASE}'
 
-    result_backend = f'db+postgresql+psycopg://{settings.DATABASE_USER}:{settings.DATABASE_PASSWORD}@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_SCHEMA}'
-    if settings.DATABASE_TYPE == 'mysql':
+    result_backend = f'db+postgresql+psycopg://{settings.DATABASE_USER}:{urllib.parse.quote(settings.DATABASE_PASSWORD)}@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_SCHEMA}'
+    if DataBaseType.mysql == settings.DATABASE_TYPE:
         result_backend = result_backend.replace('postgresql+psycopg', 'mysql+pymysql')
 
     # https://docs.celeryq.dev/en/stable/userguide/configuration.html
@@ -51,6 +53,8 @@ def init_celery() -> celery.Celery:
         task_track_started=True,
         enable_utc=False,
         timezone=settings.DATETIME_TIMEZONE,
+        worker_send_task_events=True,
+        task_send_sent_event=True,
     )
 
     # 在 Celery 中设置此参数无效

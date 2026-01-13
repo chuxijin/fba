@@ -1,6 +1,6 @@
 import sqlalchemy as sa
 
-from backend.utils.import_parse import get_all_models
+from backend.utils.dynamic_import import get_all_models
 
 # import all models for auto create db tables
 for cls in get_all_models():
@@ -14,4 +14,4 @@ for cls in get_all_models():
             globals()[class_name] = cls
 
 
-__version__ = '1.11.2'
+__version__ = '1.12.0'
