@@ -46,6 +46,24 @@ class CRUDChapter(CRUDPlus[QuestionChapter]):
         """
         return await self.select_models(db, parent_id=parent_id)
 
+    async def get_by_name(
+        self,
+        db: AsyncSession,
+        bank_id: int,
+        name: str,
+        parent_id: int | None = None,
+    ) -> QuestionChapter | None:
+        """
+        根据名称获取章节
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :param name: 章节名称
+        :param parent_id: 父级章节 ID（None 表示一级章节）
+        :return:
+        """
+        return await self.select_model_by_column(db, bank_id=bank_id, name=name, parent_id=parent_id)
+
     async def create(self, db: AsyncSession, obj: CreateChapterParam) -> None:
         """
         创建章节

@@ -206,9 +206,9 @@ async def submit_answer(
             question_id=answer_item.question_id,
         )
 
-    # 调用服务层批量判分
+    # 调用服务层批量判分（传递 user_id 以支持错题本自动写入）
     from backend.app.question_bank.service.question_service import question_service
-    result = await question_service.batch_submit_answer(db=db, obj=obj)
+    result = await question_service.batch_submit_answer(db=db, obj=obj, user_id=current_user.user_id)
 
     return response_base.success(data=result)
 

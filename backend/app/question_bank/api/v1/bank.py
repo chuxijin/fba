@@ -4,7 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from backend.app.question_bank.schema.bank import CreateBankParam, DeleteBankParam, GetBankDetail, UpdateBankParam
+from backend.app.question_bank.schema.bank import (
+    CreateBankParam,
+    DeleteBankParam,
+    GetBankDetail,
+    GetBankDetailWithChapters,
+    UpdateBankParam,
+)
 from backend.app.question_bank.service.bank_service import bank_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.permission import RequestPermission
@@ -14,11 +20,20 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
+@router.get('/recommend', summary='获取推荐题库', name='qbank_get_recommend_banks')
+async def get_recommend_banks(
+    db: CurrentSession,
+) -> ResponseSchemaModel[list[GetBankDetail]]:
+    """🌍 公开接口 - 获取全局热门推荐题库（最近7天做题最多的前5个）"""
+    data = await bank_service.get_recommend_banks(db=db)
+    return response_base.success(data=data)
+
+
 @router.get('/{pk}', summary='获取题库详情', name='qbank_get_bank')
 async def get_bank(
     db: CurrentSession, pk: Annotated[int, Path(description='题库 ID')]
-) -> ResponseSchemaModel[GetBankDetail]:
-    """🌍 公开接口 - 任何人都可以查看题库详情"""
+) -> ResponseSchemaModel[GetBankDetailWithChapters]:
+    """🌍 公开接口 - 任何人都可以查看题库详情（含章节树）"""
     data = await bank_service.get(db=db, pk=pk)
     return response_base.success(data=data)
 

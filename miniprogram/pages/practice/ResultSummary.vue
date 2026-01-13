@@ -4,13 +4,21 @@
       <!-- 头部统计 -->
       <view class="result-header">
         <view class="result-score">
-          <view class="result-score__circle">
-            <view class="result-score__progress" :style="progressStyle"></view>
-            <view class="result-score__inner">
-              <text class="result-score__value">{{ accuracy }}%</text>
-              <text class="result-score__label">本次正确率</text>
+          <!-- 圆形进度条 -->
+          <l-progress-circle
+            index="result"
+            :percent="accuracy"
+            :strokeWidth="10"
+            bg-color="#e5e7eb"
+            progress-color="#3b82f6"
+            width="280rpx"
+            height="140rpx"
+          >
+            <view class="circle-progress__inner">
+              <text class="circle-progress__value">{{ accuracy }}%</text>
+              <text class="circle-progress__label">正确率</text>
             </view>
-          </view>
+          </l-progress-circle>
         </view>
 
         <view class="result-meta">
@@ -20,7 +28,7 @@
           </view>
           <view class="result-meta__item">
             <text class="result-meta__icon">⏱</text>
-            <text class="result-meta__text">用时 {{ duration }}</text>
+            <text class="result-meta__text">{{ duration }}</text>
           </view>
         </view>
       </view>
@@ -68,14 +76,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import AnswerSheetGrid from './modules/AnswerSheetGrid.vue'
-import * as practiceApi from '../../api/business/practice'
-import type { SessionSummaryData } from '../../api/business/practice'
+import LProgressCircle from '@/components/myUI/l-progress-circle/components/l-progress-circle/l-progress-circle.vue'
+import { getSessionReport, getSessionSolution, type SessionReport, type SessionSolution } from '../../api/business/practice'
+import { formatDuration } from '../../utils/format'
 
 declare const uni: any
 
 interface AnswerItem {
   index: number
-  question_id?: number
+  questionId?: number  // 统一使用驼峰命名
   status: 'correct' | 'wrong' | 'unanswered'
 }
 
@@ -92,23 +101,11 @@ const sessionId = ref<number | null>(null)  // 🔥 添加 sessionId
 const bankId = ref<number | null>(null)
 const practiceMode = ref<string>('practice')
 const wrongQuestions = ref<number[]>([])
+const solutionData = ref<SessionSolution | null>(null)  // 🔥 存储解析数据
 
 const accuracy = computed(() => {
   if (totalCount.value === 0) return 0
   return Math.round((correctCount.value / totalCount.value) * 100)
-})
-
-const progressStyle = computed(() => {
-  const percentage = totalCount.value > 0 ? (correctCount.value / totalCount.value) * 100 : 0
-  const degree = (percentage / 100) * 360
-  return {
-    background: `conic-gradient(
-      #3b82f6 0deg,
-      #3b82f6 ${degree}deg,
-      rgba(148, 163, 184, 0.15) ${degree}deg,
-      rgba(148, 163, 184, 0.15) 360deg
-    )`
-  }
 })
 
 function handleSelectItem(index: number) {
@@ -197,123 +194,84 @@ function handleViewWrong() {
 }
 
 onMounted(() => {
-  // 从 URL 参数获取 sessionId（查看历史记录时）
+  // 从 URL 参数获取 sessionId
   const pages = getCurrentPages()
   const currentPage = pages[pages.length - 1]
   const options = (currentPage as any).options || {}
-  const sessionId = options.sessionId
+  const urlSessionId = options.sessionId
 
-  if (sessionId) {
-    // 从 API 加载历史数据
-    loadSessionData(parseInt(sessionId))
+  if (urlSessionId) {
+    loadSessionReport(parseInt(urlSessionId))
   } else {
-    // 从 storage 读取刚完成的练习数据
-    loadStorageData()
+    uni.showToast({ title: '缺少会话参数', icon: 'none' })
+    setTimeout(() => uni.navigateBack(), 1500)
   }
 })
 
 /**
- * 从 API 加载历史会话数据
+ * 从 API 加载会话报告和解析数据
  */
-async function loadSessionData(loadSessionId: number) {
+async function loadSessionReport(loadSessionId: number) {
   try {
-    console.log('📦 从 API 加载会话数据, sessionId:', loadSessionId)
+    uni.showLoading({ title: '加载中...', mask: true })
 
-    const data: SessionSummaryData = await practiceApi.getSessionSummary(loadSessionId)
-    console.log('✅ 会话数据加载成功:', data)
+    // 🔥 优先使用缓存的 solution 数据（提交时已预取）
+    let cachedSolution = uni.getStorageSync('practice-solution')
+    let solutionResult: any = null
 
-    // 🔥 保存 sessionId
+    if (cachedSolution && cachedSolution.session_id === loadSessionId) {
+      console.log('[结算页] 使用缓存的 solution 数据')
+      solutionResult = cachedSolution
+    } else {
+      console.log('[结算页] 缓存未命中，请求 solution 数据')
+      solutionResult = await getSessionSolution(loadSessionId)
+      // 缓存新获取的数据
+      uni.setStorageSync('practice-solution', solutionResult)
+    }
+
+    // 🔥 并行请求 report 数据（report 数据较小，每次请求）
+    const reportData = await getSessionReport(loadSessionId)
+
+    // 保存 sessionId
     sessionId.value = loadSessionId
 
-    // 设置数据
-    practiceName.value = data.practice_name || '练习'
-    totalCount.value = data.total_count
-    correctCount.value = data.correct_count
-    wrongCount.value = data.wrong_count
-    unansweredCount.value = data.unanswered_count
-    duration.value = formatDuration(data.total_time)
-    answerItems.value = data.answer_items
-    bankId.value = data.bank_id || null
-    practiceMode.value = data.session_type
-    wrongQuestions.value = data.wrong_question_ids
+    // 填充报告数据
+    practiceName.value = reportData.practice_name || '练习'
+    totalCount.value = reportData.total_count
+    correctCount.value = reportData.correct_count
+    wrongCount.value = reportData.wrong_count
+    unansweredCount.value = reportData.unanswered_count
+    duration.value = formatDuration(reportData.total_time)
 
-    // 🔥 优化：缓存结算数据，供刷题页使用（减少 API 请求）
-    uni.setStorageSync('history-session-summary', {
-      sessionId: loadSessionId,
-      bankId: data.bank_id,
-      practiceName: data.practice_name,
-      questionIds: data.answer_items.map(item => item.question_id),
-      answerItems: data.answer_items,
-      wrongQuestionIds: data.wrong_question_ids,
-      timestamp: Date.now()
-    })
+    // 转换 answer_items 为驼峰命名
+    answerItems.value = reportData.answer_items.map(item => ({
+      index: item.index,
+      questionId: item.question_id,
+      status: item.status
+    }))
+
+    bankId.value = reportData.bank_id || null
+    practiceMode.value = reportData.session_type
+    wrongQuestions.value = reportData.wrong_question_ids
+
+    // 🔥 保存解析数据
+    solutionData.value = solutionResult
+
+    // 🔥 缓存解析数据到 storage，供 detail 页面使用
+    uni.setStorageSync('practice-solution', solutionResult)
+
+    uni.hideLoading()
   } catch (error: any) {
-    console.error('❌ 加载会话数据失败:', error)
+    uni.hideLoading()
+    console.error('❌ 加载会话报告失败:', error)
     uni.showToast({
-      title: '加载失败: ' + (error.message || '未知错误'),
+      title: '加载失败',
       icon: 'none',
       duration: 2000
     })
-    setTimeout(() => {
-      uni.navigateBack()
-    }, 2000)
+    setTimeout(() => uni.navigateBack(), 2000)
   }
-}
-
-/**
- * 从 storage 加载刚完成的练习数据
- */
-function loadStorageData() {
-  // 从存储中读取结算数据
-  const resultData = uni.getStorageSync('practice-result')
-  console.log('📦 结算数据:', resultData)
-
-  if (resultData) {
-    practiceName.value = resultData.practiceName || ''
-    totalCount.value = resultData.totalCount || 0
-    correctCount.value = resultData.correctCount || 0
-    wrongCount.value = resultData.wrongCount || 0
-    unansweredCount.value = resultData.unansweredCount || 0
-    duration.value = resultData.duration || '0分0秒'
-    answerItems.value = resultData.answerItems || []
-    bankId.value = resultData.bankId || null
-    practiceMode.value = resultData.mode || 'practice'
-    wrongQuestions.value = resultData.wrongQuestions || []
-
-    console.log('✅ 数据加载成功 - bankId:', bankId.value, 'mode:', practiceMode.value)
-
-    // 读取后清除数据
-    uni.removeStorageSync('practice-result')
-  } else {
-    console.error('❌ 没有找到结算数据')
-    // 如果没有数据，返回上一页
-    uni.showToast({
-      title: '数据加载失败',
-      icon: 'none'
-    })
-    setTimeout(() => {
-      uni.navigateBack()
-    }, 1500)
-  }
-}
-
-/**
- * 格式化时长
- */
-function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${seconds}秒`
-  }
-  const minutes = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  if (minutes < 60) {
-    return secs > 0 ? `${minutes}分${secs}秒` : `${minutes}分钟`
-  }
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`
-}
-</script>
+}</script>
 
 <style scoped lang="scss">
 .result-page {
@@ -323,17 +281,16 @@ function formatDuration(seconds: number): string {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  overflow: hidden;  /* 🔥 防止页面整体滚动 */
 }
 
 .result-content {
   flex: 1;
   width: 100%;
+  height: 0;  /* 🔥 配合 flex: 1 确保正确的高度计算 */
   padding: 40rpx 32rpx;
-  padding-bottom: 144rpx;
+  padding-bottom: calc(144rpx + env(safe-area-inset-bottom));  /* 🔥 为底部按钮留出足够空间 */
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 32rpx;
 }
 
 /* ============ 头部统计 ============ */
@@ -342,6 +299,7 @@ function formatDuration(seconds: number): string {
   border-radius: 24rpx;
   padding: 40rpx 32rpx;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.05);
+  margin-bottom: 32rpx;
 }
 
 .result-score {
@@ -350,64 +308,46 @@ function formatDuration(seconds: number): string {
   margin-bottom: 40rpx;
 }
 
-.result-score__circle {
-  position: relative;
-  width: 320rpx;
-  height: 320rpx;
-}
-
-.result-score__progress {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  transform: rotate(-90deg);
-  filter: drop-shadow(0 4rpx 16rpx rgba(59, 130, 246, 0.25));
-}
-
-.result-score__inner {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+/* 圆形进度条内容 */
+.circle-progress__inner {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 240rpx;
-  height: 240rpx;
-  background: var(--color-bg-card);
-  border-radius: 50%;
 }
 
-.result-score__value {
-  font-size: 88rpx;
+.circle-progress__value {
+  font-size: 44rpx;
   font-weight: 700;
   color: #3b82f6;
   line-height: 1;
-  margin-bottom: 12rpx;
+  margin-bottom: 4rpx;
 }
 
-.result-score__label {
-  font-size: 26rpx;
+.circle-progress__label {
+  font-size: 22rpx;
   color: var(--color-text-secondary);
 }
 
 .result-meta {
   display: flex;
-  flex-direction: column;
-  gap: 20rpx;
+  flex-direction: row;
+  justify-content: space-between;
 }
 
 .result-meta__item {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  padding: 20rpx 24rpx;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 20rpx 16rpx;
   background: var(--color-bg-elevated);
   border-radius: 16rpx;
+}
+
+.result-meta__item:first-child {
+  margin-right: 16rpx;
 }
 
 .result-meta__icon {
@@ -428,6 +368,7 @@ function formatDuration(seconds: number): string {
   border-radius: 24rpx;
   padding: 40rpx 20rpx;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.05);
+  margin-bottom: 32rpx;
 }
 
 .result-stats__item {

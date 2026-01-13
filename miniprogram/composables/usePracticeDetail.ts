@@ -4,7 +4,7 @@
  * 整合题目加载、答题判断、会话管理、收藏等功能
  */
 import { ref, computed } from 'vue'
-import { authApi, bankApi, questionApiV2, practiceApi, favoriteApi, setToken } from '@/api'
+import { authApi, questionApiV2, practiceApi, favoriteApi, noteApi, setToken } from '@/api'
 import { adaptQuestionList, adaptListToComponentFormat } from '../utils/question-adapter-v2'
 import type { BaseQuestion, PracticeMode } from '../components/business/question-map'
 import type { AnswerRecord } from './useAnswerSheet'
@@ -33,6 +33,10 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
   const questionMarkedWrong = ref<Map<number, boolean>>(new Map())
   const questionNotes = ref<Map<number, string>>(new Map())
 
+  // ============ 笔记状态 ============
+  const questionNoteIds = ref<Map<number, number>>(new Map())
+  const questionNoteIsPublic = ref<Map<number, boolean>>(new Map())
+
   // ============ 题目计时 ============
   const questionStartTime = ref<Map<number, number>>(new Map())
   const questionStartPausedDuration = ref<Map<number, number>>(new Map())
@@ -57,21 +61,49 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
     }
   }
 
-  // ============ 收藏管理 ============
+  // ============ 收藏与笔记管理 ============
+  /**
+   * 初始化收藏状态和笔记数据（并行调用）
+   */
   async function initializeFavoriteStatus() {
     if (allQuestions.value.length === 0) return
 
     try {
       const questionIds = allQuestions.value.map(q => Number(q.id))
-      const statusMap = await favoriteApi.checkFavorited(questionIds)
 
+      // 🔥 并行调用收藏和笔记两个接口
+      const [favoriteStatusMap, noteDataMap] = await Promise.all([
+        favoriteApi.checkFavorited(questionIds),
+        noteApi.batchGetMyNotes(questionIds)
+      ])
+
+      // 清空旧数据
       questionCollected.value.clear()
+      questionNoteIds.value.clear()
+      questionNotes.value.clear()
+      questionNoteIsPublic.value.clear()
+
+      // 设置收藏状态和笔记数据
       allQuestions.value.forEach((q, index) => {
-        const isFavorited = statusMap[Number(q.id)] || false
-        questionCollected.value.set(index + 1, isFavorited)
+        const questionId = Number(q.id)
+        const questionIndex = index + 1
+
+        // 收藏状态
+        const isFavorited = favoriteStatusMap[questionId] || false
+        questionCollected.value.set(questionIndex, isFavorited)
+
+        // 笔记数据
+        const noteData = noteDataMap[questionId]
+        if (noteData) {
+          questionNoteIds.value.set(questionIndex, noteData.id)
+          questionNotes.value.set(questionIndex, noteData.content)
+          questionNoteIsPublic.value.set(questionIndex, noteData.is_public)
+        }
       })
+
+      console.log('[初始化] 收藏状态和笔记数据加载完成')
     } catch (error) {
-      console.error('[收藏状态] 初始化失败:', error)
+      console.error('[初始化] 收藏状态和笔记加载失败:', error)
     }
   }
 
@@ -84,26 +116,13 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
     const currentCollected = questionCollected.value.get(questionIndex) || false
 
     try {
-      uni.showLoading({
-        title: currentCollected ? '取消收藏中...' : '收藏中...',
-        mask: true
-      })
-
       const result = await favoriteApi.toggleFavorite(Number(questionId))
-      uni.hideLoading()
 
       const newCollected = result.action === 'add'
       questionCollected.value.set(questionIndex, newCollected)
 
-      uni.showToast({
-        title: result.action === 'add' ? '已收藏' : '取消收藏',
-        icon: 'success',
-        duration: 1500
-      })
-
       return true
     } catch (error) {
-      uni.hideLoading()
       console.error('[收藏操作] 失败:', error)
       uni.showToast({ title: '操作失败，请重试', icon: 'none', duration: 2000 })
       return false
@@ -111,6 +130,136 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
   }
 
   // ============ 会话管理 ============
+
+  /**
+   * 开始新的练习（核心链路）
+   *
+   * 流程：创建会话 → 会话返回题目列表 → 直接使用
+   *
+   * :param params: 创建会话参数
+   */
+  async function startPractice(params: {
+    session_type: practiceApi.SessionType
+    bank_id?: number
+    chapter_id?: number
+    limit?: number
+    shuffle?: boolean
+    includeAnswer?: boolean  // 🔥 是否包含答案和解析（背题模式）
+  }): Promise<boolean> {
+    try {
+      loading.value = true
+
+      if (!await ensureLoggedIn()) return false
+
+      // 创建会话（后端直接返回题目列表）
+      const session = await practiceApi.createSession({
+        session_type: params.session_type,
+        bank_id: params.bank_id,
+        chapter_id: params.chapter_id,
+        limit: params.limit,
+        shuffle: params.shuffle
+      })
+
+      currentSessionId.value = session.id
+      currentBankId.value = session.bank_id || null
+      practiceName.value = (session as any).practice_name || '练习'
+
+      // 直接使用会话返回的题目列表
+      const questions = (session as any).questions || []
+
+      if (!questions.length) {
+        uni.showToast({ title: '该练习没有题目', icon: 'none', duration: 2000 })
+        setTimeout(() => uni.navigateBack(), 2000)
+        return false
+      }
+
+      // 🔥 转换题目格式（背题模式包含解析）
+      const includeAnalysis = params.includeAnswer || false
+      const frontendQuestions = adaptQuestionList(questions, includeAnalysis)
+      allQuestions.value = adaptListToComponentFormat(frontendQuestions)
+
+      // 初始化计时器和收藏状态
+      options.onTimerReset?.()
+      resetQuestionTiming()
+      await initializeFavoriteStatus()
+
+      return true
+    } catch (error) {
+      console.error('[开始练习] 失败:', error)
+      uni.showToast({ title: '开始练习失败', icon: 'none', duration: 2000 })
+      setTimeout(() => uni.navigateBack(), 2000)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * 加载背题模式题目（不创建会话，直接获取带答案的题目列表）
+   *
+   * :param params: 加载参数
+   */
+  async function loadMemorizeQuestions(params: {
+    bank_id?: number
+    chapter_id?: number
+    bank_name?: string  // 可选的题库名称
+  }): Promise<boolean> {
+    try {
+      loading.value = true
+
+      if (!await ensureLoggedIn()) return false
+
+      // 设置题库信息
+      if (params.bank_id) {
+        currentBankId.value = params.bank_id
+        practiceName.value = params.bank_name || '背题模式'
+      }
+
+      // 🔥 调用 queryQuestions API，传递 bank_id/chapter_id 和 include_answer=true
+      const queryParams: any = {
+        include_answer: true
+      }
+
+      if (params.bank_id) {
+        queryParams.bank_id = params.bank_id
+      }
+
+      if (params.chapter_id) {
+        queryParams.chapter_id = params.chapter_id
+      }
+
+      // 调用题目查询 API（include_answer=true）
+      const questions = await questionApiV2.queryQuestions(queryParams)
+
+      if (!questions || questions.length === 0) {
+        uni.showToast({ title: '没有可用的题目', icon: 'none', duration: 2000 })
+        setTimeout(() => uni.navigateBack(), 2000)
+        return false
+      }
+
+      // 转换题目格式（包含解析）
+      const frontendQuestions = adaptQuestionList(questions as any, true)
+      allQuestions.value = adaptListToComponentFormat(frontendQuestions)
+
+      // 初始化计时器和收藏状态
+      options.onTimerReset?.()
+      resetQuestionTiming()
+      await initializeFavoriteStatus()
+
+      // 🔥 背题模式不创建会话（无需提交）
+      currentSessionId.value = null
+
+      return true
+    } catch (error) {
+      console.error('[背题模式] 加载失败:', error)
+      uni.showToast({ title: '加载题目失败', icon: 'none', duration: 2000 })
+      setTimeout(() => uni.navigateBack(), 2000)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function createPracticeSession(
     bankId: number | null,
     chapterId: number | null,
@@ -152,9 +301,7 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
   }
 
   /**
-   * 保存答题记录并更新会话统计
-   *
-   * 注意：答题时创建临时记录，提交时会删除旧记录并批量创建最终记录
+   * 保存答题记录
    *
    * :param record: 答题记录
    * :param viewMode: 查看模式（非 null 时不保存）
@@ -163,39 +310,36 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
     if (!currentSessionId.value || viewMode !== null) return
 
     try {
-      // 创建答题记录（临时，提交时会被删除并重新创建）
-      await practiceApi.createRecord({
+      await practiceApi.createRecords({
         session_id: currentSessionId.value,
-        bank_id: currentBankId.value || 0,
-        question_id: Number(record.questionId),
-        user_answer: record.answer,
-        is_correct: record.isCorrect,
-        answer_time: record.answerTime || 0
-      })
-
-      // 更新会话统计
-      const stats = calculateCurrentStats()
-      await practiceApi.updateSession(currentSessionId.value, {
-        completed_count: stats.completedCount,
-        correct_count: stats.correctCount,
-        wrong_count: stats.wrongCount,
-        total_time: stats.totalTime
+        records: [{
+          question_id: Number(record.questionId),
+          user_answer: record.answer,
+          // 🔥 不传 is_correct，submit 时后端统一判题
+          answer_time: record.answerTime || 0
+        }]
       })
     } catch (error) {
       console.error('[答题记录] 保存失败:', error)
+      // 给用户明确的错误提示
+      uni.showToast({
+        title: '答题记录保存失败，请检查网络',
+        icon: 'none',
+        duration: 2000
+      })
     }
   }
 
+  /**
+   * 保存当前进度（只保存 total_time，统计数据在提交时计算）
+   */
   async function saveCurrentProgress() {
     if (!currentSessionId.value) return
 
     try {
-      const stats = calculateCurrentStats()
+      const totalTime = options.getElapsedSeconds?.() || 0
       await practiceApi.updateSession(currentSessionId.value, {
-        completed_count: stats.completedCount,
-        correct_count: stats.correctCount,
-        wrong_count: stats.wrongCount,
-        total_time: stats.totalTime
+        total_time: totalTime
       })
     } catch (error) {
       console.error('[答题页] 保存进度失败:', error)
@@ -270,45 +414,7 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
     }
   }
 
-  // ============ 题目加载 ============
-  async function loadQuestions(bankId: number): Promise<boolean> {
-    try {
-      loading.value = true
-      currentBankId.value = bankId
-
-      if (!await ensureLoggedIn()) return false
-
-      const bankInfo = await bankApi.getBankDetail(bankId)
-      practiceName.value = bankInfo.name
-
-      const questionList = await questionApiV2.getBankPracticeQuestions(bankId)
-
-      if (!questionList?.length) {
-        uni.showToast({ title: '该题库暂无题目', icon: 'none', duration: 2000 })
-        setTimeout(() => uni.navigateBack(), 2000)
-        return false
-      }
-
-      const frontendQuestions = adaptQuestionList(questionList as any, false)
-      allQuestions.value = adaptListToComponentFormat(frontendQuestions)
-
-      options.onTimerReset?.()
-      resetQuestionTiming()
-
-      await createPracticeSession(bankId, null, 'bank', allQuestions.value.length)
-      await initializeFavoriteStatus()
-
-      return true
-    } catch (error) {
-      console.error('加载题目失败:', error)
-      uni.showToast({ title: '加载题目失败', icon: 'none', duration: 2000 })
-      setTimeout(() => uni.navigateBack(), 2000)
-      return false
-    } finally {
-      loading.value = false
-    }
-  }
-
+  // ============ 历史会话加载 ============
   async function loadHistorySession(
     sessionId: number,
     viewModeParam?: string,
@@ -318,54 +424,30 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
       loading.value = true
       currentSessionId.value = sessionId
 
-      const cachedSummary = uni.getStorageSync('history-session-summary')
-      const CACHE_TTL = 5 * 60 * 1000
+      // 🔥 直接从 API 加载会话详情（包含题目和答案解析）
+      const session = await practiceApi.getSession(sessionId)
+      currentBankId.value = session.bank_id || null
+      const questionIds = session.question_ids || []
+      const questions = (session as any).questions || []
 
-      let questionIds: number[]
-      let practiceNameStr: string | null = null
-      let answerItemsFromCache: any[] = []
-
-      if (cachedSummary?.sessionId === sessionId && (Date.now() - cachedSummary.timestamp) < CACHE_TTL) {
-        questionIds = cachedSummary.questionIds
-        practiceNameStr = cachedSummary.practiceName
-        currentBankId.value = cachedSummary.bankId || null
-        answerItemsFromCache = cachedSummary.answerItems || []
-      } else {
-        const session = await practiceApi.getSession(sessionId)
-        currentBankId.value = session.bank_id || null
-        questionIds = session.question_ids || []
-        practiceNameStr = session.practice_name || '练习'
-      }
-
-      if (!questionIds?.length) {
+      if (!questions.length) {
         uni.showToast({ title: '该会话没有题目数据', icon: 'none', duration: 2000 })
         setTimeout(() => uni.navigateBack(), 2000)
         return null
       }
 
-      const questionList = await questionApiV2.getQuestions({ ids: questionIds.join(',') })
-      const frontendQuestions = adaptQuestionList(questionList as any, false)
+      // 🔥 直接使用会话返回的题目列表（含答案解析）
+      const frontendQuestions = adaptQuestionList(questions as any, true)
       allQuestions.value = adaptListToComponentFormat(frontendQuestions)
-      practiceName.value = practiceNameStr || '练习'
+      practiceName.value = session.practice_name || '练习'
 
-      let records: any[]
-      if (answerItemsFromCache.length > 0) {
-        records = answerItemsFromCache.map(item => ({
-          question_id: item.question_id,
-          is_correct: item.status === 'correct',
-          user_answer: '',
-          answer_time: 0
-        }))
-      } else {
-        records = await practiceApi.getSessionRecords(sessionId)
-      }
-
+      const records = await practiceApi.getSessionRecords(sessionId)
       restoreAnswerRecords(records, questionIds)
       await initializeFavoriteStatus()
 
       return {
         viewMode: viewModeParam === 'wrong' ? 'wrong' : 'all',
-        startIndex: gotoIndex ? Number(gotoIndex) : 1  // gotoIndex 已经是 1-based，不需要 +1
+        startIndex: gotoIndex ? Number(gotoIndex) : 1
       }
     } catch (error) {
       console.error('[查看历史] 加载失败:', error)
@@ -382,18 +464,20 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
       loading.value = true
       currentSessionId.value = sessionId
 
+      // 🔥 获取会话详情（包含题目和答案解析）
       const session = await practiceApi.getSession(sessionId)
       currentBankId.value = session.bank_id || null
       const questionIds = session.question_ids || []
+      const questions = (session as any).questions || []
 
-      if (!questionIds?.length) {
+      if (!questions.length) {
         uni.showToast({ title: '该会话没有题目数据', icon: 'none', duration: 2000 })
         setTimeout(() => uni.navigateBack(), 2000)
         return null
       }
 
-      const questionList = await questionApiV2.getQuestions({ ids: questionIds.join(',') })
-      const frontendQuestions = adaptQuestionList(questionList as any, false)
+      // 🔥 直接使用会话返回的题目列表（含答案解析）
+      const frontendQuestions = adaptQuestionList(questions as any, true)
       allQuestions.value = adaptListToComponentFormat(frontendQuestions)
       practiceName.value = session.practice_name || '练习'
 
@@ -470,6 +554,43 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
     }
   }
 
+  async function loadWrongQuestions(questionIds: number[], bankName?: string): Promise<boolean> {
+    try {
+      loading.value = true
+
+      if (!await ensureLoggedIn()) return false
+
+      practiceName.value = decodeURIComponent(bankName || '我的错题')
+
+      const questionPromises = questionIds.map(id => questionApiV2.getQuestionDetail(id))
+      const questionList = await Promise.all(questionPromises)
+
+      if (!questionList?.length) {
+        uni.showToast({ title: '没有找到错题', icon: 'none', duration: 2000 })
+        setTimeout(() => uni.navigateBack(), 2000)
+        return false
+      }
+
+      const frontendQuestions = adaptQuestionList(questionList as any, true)
+      allQuestions.value = adaptListToComponentFormat(frontendQuestions)
+
+      options.onTimerReset?.()
+      resetQuestionTiming()
+
+      // 错题模式：批量查询收藏状态
+      await initializeFavoriteStatus()
+
+      return true
+    } catch (error) {
+      console.error('[错题模式] 加载题目失败:', error)
+      uni.showToast({ title: '加载错题失败', icon: 'none', duration: 2000 })
+      setTimeout(() => uni.navigateBack(), 2000)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
   // ============ 辅助函数 ============
   function restoreAnswerRecords(records: any[], questionIds: number[]) {
     const recordMap = new Map<number, any>()
@@ -481,10 +602,11 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
       if (record) {
         answerRecords.value.set(index + 1, {
           questionId: String(questionId),
-          answer: typeof record.user_answer === 'string' ? record.user_answer : record.user_answer.join(','),
+          answer: record.user_answer,  // 🔥 直接使用原始格式（字符串或数组）
           isCorrect: record.is_correct,
           score: record.is_correct ? 1 : 0,
-          answerTime: record.answer_time || 0
+          answerTime: record.answer_time || 0,
+          submitted: true  // 历史记录和继续答题的记录都是已提交的
         })
       }
     })
@@ -517,6 +639,8 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
     questionCollected,
     questionMarkedWrong,
     questionNotes,
+    questionNoteIds,
+    questionNoteIsPublic,
     questionStartTime,
     questionStartPausedDuration,
 
@@ -525,6 +649,7 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
     toggleCollect,
 
     // 会话
+    startPractice,
     createPracticeSession,
     calculateCurrentStats,
     saveAnswerRecord,
@@ -537,10 +662,11 @@ export function usePracticeDetail(options: PracticeDetailOptions = {}) {
     calculateResult,
 
     // 加载
-    loadQuestions,
     loadHistorySession,
     resumeInProgressSession,
     loadFavoriteQuestions,
+    loadWrongQuestions,
+    loadMemorizeQuestions,  // 🔥 背题模式加载
 
     // 辅助
     reset,

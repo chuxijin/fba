@@ -2,33 +2,38 @@
 // import { autoLogin } from '@/utils/auto-login'
 // import { autoLoginConfig } from '@/config/dev'
 import { useUserStore } from '@/stores/user'
+import { useSystemInfo } from '@/composables/useSystemInfo'
+import { collectDeviceInfo } from '@/utils/device-helper'
+import deviceApi from '@/api/system/device'
 
 const THEME_STORAGE_KEY = 'app-theme'
 const DEFAULT_THEME = 'light'
 
 export default {
+	data() {
+		return {
+			isFirstShow: true  // 标记是否首次 onShow
+		}
+	},
 	async onLaunch() {
 		console.log('=== 应用启动 ===')
+
+		// 🔥 初始化系统信息（统一获取，避免各页面重复调用 deprecated API）
+		const { initSystemInfo, systemInfo } = useSystemInfo()
+		initSystemInfo()
+
+		// 🔥 输出系统信息数据，方便调试
+		console.log('=== 系统信息详情 ===')
+		console.log('📱 窗口信息 (getWindowInfo):', systemInfo.value?.windowInfo)
+		console.log('📱 设备信息 (getDeviceInfo):', systemInfo.value?.deviceInfo)
+		console.log('📱 应用基础信息 (getAppBaseInfo):', systemInfo.value?.appBaseInfo)
+		console.log('📱 系统设置 (getSystemSetting):', systemInfo.value?.systemSetting)
+		console.log('📱 应用授权设置 (getAppAuthorizeSetting):', systemInfo.value?.appAuthorizeSetting)
+		console.log('===================')
 
 		// 应用主题
 		const storedTheme = uni.getStorageSync(THEME_STORAGE_KEY) || DEFAULT_THEME
 		this.applyTheme(storedTheme)
-
-		// ❌ 开发环境自动登录（已禁用，使用真实微信登录）
-		// try {
-		// 	const loginSuccess = await autoLogin({
-		// 		enabled: autoLoginConfig.enabled,
-		// 		username: autoLoginConfig.defaultAccount.username,
-		// 		nickname: autoLoginConfig.defaultAccount.nickname,
-		// 		showToast: autoLoginConfig.showToast
-		// 	})
-
-		// 	if (loginSuccess) {
-		// 		console.log('[App] 自动登录成功')
-		// 	}
-		// } catch (error) {
-		// 	console.error('[App] 自动登录失败:', error)
-		// }
 
 		// ✅ 提前加载用户信息（不阻塞页面）
 		const token = uni.getStorageSync('access_token')
@@ -37,6 +42,9 @@ export default {
 			userStore.fetchUserInfo().catch(err => {
 				console.error('[App] 加载用户信息失败:', err)
 			})
+
+			// ✅ 更新设备信息
+			this.updateDeviceStatus()
 		}
 
 		console.log('=== 应用启动完成 ===')
@@ -44,11 +52,20 @@ export default {
 	onShow() {
 		console.log('App Show')
 
-		// ✅ App从后台恢复时，检查缓存是否过期
+		// ✅ 跳过首次 onShow（onLaunch 已处理）
+		if (this.isFirstShow) {
+			this.isFirstShow = false
+			return
+		}
+
 		const token = uni.getStorageSync('access_token')
 		if (token) {
+			// ✅ App 从后台恢复时，刷新用户信息
 			const userStore = useUserStore()
-			userStore.fetchUserInfo()  // 自动判断缓存
+			userStore.fetchUserInfo()
+
+			// ✅ 更新设备信息（在线状态、最后登录时间等）
+			this.updateDeviceStatus()
 		}
 	},
 	onHide() {
@@ -59,6 +76,20 @@ export default {
 			uni.setStorageSync(THEME_STORAGE_KEY, theme)
 			if (typeof document !== 'undefined' && document.body) {
 				document.body.setAttribute('data-theme', theme)
+			}
+		},
+		async updateDeviceStatus() {
+			try {
+				const deviceInfo = collectDeviceInfo()
+				await deviceApi.updateDeviceInfo({
+					device_id: deviceInfo.device_id,
+					device_model: deviceInfo.device_model,
+					os_version: deviceInfo.os_version,
+					app_version: deviceInfo.app_version,
+				})
+				console.log('[App] 设备信息已更新')
+			} catch (error) {
+				console.error('[App] 更新设备信息失败:', error)
 			}
 		}
 	}

@@ -66,6 +66,7 @@ dependencies = [
     "apscheduler>=3.11.1",
     "openai>=1.57.4",
     "pgvector>=0.3.6",
+    "playwright>=1.40.0",
 ]
 
 [dependency-groups]
@@ -88,6 +89,11 @@ default-groups = ["dev", "lint"]
 [[tool.uv.index]]
 name = "aliyun"
 url = "https://mirrors.aliyun.com/pypi/simple"
+
+[tool.uv.workspace]
+members = [
+    "100_Work101_ProgramProjQBT",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend"]

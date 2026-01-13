@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.page-wrapper {
+    width: 100%;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+    <div class="container error-container">
+        <div class="error-icon">😔</div>
+        <p class="error-msg">{{ message }}</p>
+    </div>
+</div>
+{% endblock %}

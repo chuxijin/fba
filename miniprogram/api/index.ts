@@ -18,6 +18,7 @@ export * as questionApi from './business/question'
 export * as questionApiV2 from './business/question-v2'
 export * as practiceApi from './business/practice'
 export * as favoriteApi from './business/favorite'
+export * as noteApi from './business/note'
 
 // 导出系统 API
 export * as authApi from './system/auth'

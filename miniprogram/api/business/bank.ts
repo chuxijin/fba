@@ -6,6 +6,24 @@ import { get } from '../request'
 
 /** ==================== 类型定义 ==================== */
 
+/** 章节树节点 */
+export interface ChapterTreeNode {
+  /** 章节 ID */
+  id: number
+  /** 章节名称 */
+  name: string
+  /** 章节描述 */
+  desc?: string | null
+  /** 题目数量 */
+  q_count: number
+  /** 排序值 */
+  sort_order: number
+  /** 是否试用章节 */
+  is_trial: boolean
+  /** 子章节列表 */
+  children?: ChapterTreeNode[]
+}
+
 /** 题库详情 */
 export interface BankDetail {
   /** 题库 ID */
@@ -40,6 +58,8 @@ export interface BankDetail {
   updated_time: string | null
   /** 子题库列表（树形结构） */
   children?: BankDetail[]
+  /** 章节树（含章节树时返回） */
+  chapters?: ChapterTreeNode[]
 }
 
 /** 获取题库列表参数 */
@@ -80,8 +100,22 @@ export function getBankList(params?: GetBankListParams) {
   })
 }
 
+/**
+ * 获取推荐题库（全局热门）
+ *
+ * 返回最近7天全站做题最多的前5个题库
+ *
+ * :return:
+ */
+export function getRecommendBanks() {
+  return get<BankDetail[]>('/qbank/banks/recommend', undefined, {
+    needToken: false,
+  })
+}
+
 /** 导出为默认对象 */
 export default {
   getBankDetail,
   getBankList,
+  getRecommendBanks,
 }

@@ -103,6 +103,7 @@ import type { BaseQuestion, PracticeMode } from '../../components/business/quest
 import { adaptQuestionList, adaptListToComponentFormat } from '../../utils/question-adapter-v2'
 import { authApi, bankApi, questionApiV2, setToken } from '@/api'
 import type { FrontendQuestion } from '@/api/types/question-v2'
+import { formatDuration as formatDurationUtil } from '../../utils/format'
 
 declare const uni: any
 
@@ -329,12 +330,10 @@ const answerSheetItems = computed<AnswerSheetItem[]>(() => {
 })
 
 // ============ 辅助函数 ============
-// 计算时长文本
+// 计算时长文本（毫秒转为可读格式）
 function formatDuration(milliseconds: number): string {
-  const totalSeconds = Math.floor(milliseconds / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}分${seconds}秒`
+  const seconds = Math.floor(milliseconds / 1000)
+  return formatDurationUtil(seconds)
 }
 
 // 构建答题结果项
@@ -342,13 +341,18 @@ function buildAnswerItems(questionCount: number) {
   return Array.from({ length: questionCount }, (_, idx) => {
     const index = idx + 1
     const record = answerRecords.value.get(index)
+    const question = allQuestions.value[idx]
 
     let status: 'correct' | 'wrong' | 'unanswered' = 'unanswered'
     if (record) {
       status = record.isCorrect ? 'correct' : 'wrong'
     }
 
-    return { index, status }
+    return {
+      index,
+      questionId: question?.id ? parseInt(question.id) : 0,  // 添加 questionId
+      status
+    }
   })
 }
 
@@ -680,11 +684,6 @@ function handleNextQuestion() {
 function toggleCollect() {
   const currentCollected = questionCollected.value.get(currentOriginalIndex.value) || false
   questionCollected.value.set(currentOriginalIndex.value, !currentCollected)
-
-  uni.showToast({
-    title: !currentCollected ? '已收藏' : '取消收藏',
-    icon: 'none'
-  })
 }
 
 function toggleWrongBook() {

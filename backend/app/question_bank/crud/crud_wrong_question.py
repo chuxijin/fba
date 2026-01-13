@@ -74,6 +74,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             correct_count=0,
             first_wrong_time=wrong_time,
             last_wrong_time=wrong_time,
+            created_by=user_id,
         )
         db.add(new_wrong)
         await db.flush()

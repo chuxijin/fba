@@ -6,26 +6,63 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
 
 from backend.app.question_bank.schema.question import (
+    BatchImportParam,
+    BatchImportResult,
     CreateQuestionAnalysisParam,
     CreateQuestionParam,
     DeleteQuestionParam,
     GetQuestionAnalysisDetail,
     GetQuestionDetail,
     GetQuestionListItem,
+    GetQuestionSolution,
     GetQuestionStatisticsDetail,
     GetQuestionWithAnswer,
     UpdateQuestionAnalysisParam,
     UpdateQuestionParam,
 )
-from backend.app.question_bank.security import DependsCurrentUser
+from backend.app.question_bank.schema.note import GetQuestionNoteDetail
+from backend.app.question_bank.security import DependsCurrentUser, DependsCustomerAuth
+from backend.common.security.auth_strategy import AuthUser
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.question_service import question_service
+from backend.app.question_bank.service.favorite_service import favorite_service
+from backend.app.question_bank.service.note_service import note_service
 from backend.common.pagination import DependsPagination, PageData
+from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
+
+
+# ============ 批量查询接口（必须在 /{pk} 之前）============
+
+
+@router.get('/favorites', summary='批量查询收藏状态', name='qbank_batch_check_favorites')
+async def batch_check_favorites(
+    db: CurrentSession,
+    question_ids: Annotated[str, Query(description='题目 ID 列表，逗号分隔')],
+    current_user: AuthUser = DependsCustomerAuth,
+) -> ResponseSchemaModel[dict[int, bool]]:
+    """批量查询题目的收藏状态"""
+    status_map = await favorite_service.batch_check_favorites_from_string(
+        db=db, user_id=current_user.user_id, question_ids_str=question_ids
+    )
+    return response_base.success(data=status_map)
+
+
+@router.get('/notes', summary='批量查询笔记', name='qbank_batch_get_notes')
+async def batch_get_notes(
+    db: CurrentSession,
+    question_ids: Annotated[str, Query(description='题目 ID 列表，逗号分隔')],
+    current_user: AuthUser = DependsCustomerAuth,
+) -> ResponseSchemaModel[dict[int, GetQuestionNoteDetail | None]]:
+    """批量查询题目的笔记"""
+    note_map = await note_service.batch_get_notes_from_string(
+        db=db, user_id=current_user.user_id, question_ids_str=question_ids
+    )
+    return response_base.success(data=note_map)
 
 
 # ============ 题目相关接口 ============
@@ -123,14 +160,16 @@ async def get_question_list(
         # 构造包含答案的返回数据
         result_with_answer = []
         for q in questions_list:
-            q_dict = q if isinstance(q, dict) else q.model_dump()
-
-            # 从关联的 analysis 中提取答案和解析
+            # 🔥 优雅方案：动态添加字段到 ORM 对象，利用 from_attributes=True
             if hasattr(q, 'analysis') and q.analysis:
-                q_dict['answer_data'] = q.analysis.answer_data
-                q_dict['analysis_content'] = q.analysis.content
+                q.answer_data = q.analysis.answer_data
+                q.analysis_content = q.analysis.content
+            else:
+                q.answer_data = None
+                q.analysis_content = None
 
-            result_with_answer.append(GetQuestionWithAnswer(**q_dict))
+            # Pydantic 自动从 ORM 对象属性中读取数据
+            result_with_answer.append(GetQuestionWithAnswer.model_validate(q))
 
         return response_base.success(data=result_with_answer)
 
@@ -216,6 +255,29 @@ async def get_question_analysis(
     return response_base.success(data=data)
 
 
+@router.get(
+    '/{pk}/solution',
+    summary='获取题目答案和解析（练题模式专用）',
+    name='qbank_get_question_solution',
+    dependencies=[DependsCurrentUser],
+)
+async def get_question_solution(
+    request: Request,
+    db: CurrentSession,
+    pk: Annotated[int, Path(description='题目 ID')],
+    user_answer: Annotated[str | None, Query(description='用户答案（用于判题）')] = None,
+) -> ResponseSchemaModel[GetQuestionSolution]:
+    """
+    获取题目答案和解析（练题模式专用）
+
+    :param pk: 题目 ID
+    :param user_answer: 用户答案（可选，传入时会返回判题结果）
+    :return: 答案和解析数据
+    """
+    data = await question_service.get_solution(db=db, question_id=pk, user_answer=user_answer)
+    return response_base.success(data=data)
+
+
 @router.post(
     '/{pk}/analysis',
     summary='创建题目解析',
@@ -231,7 +293,7 @@ async def create_question_analysis(
     """🔐 管理员接口 - 创建题目解析"""
     # 确保路径参数和请求体中的 question_id 一致
     if obj.question_id != pk:
-        return response_base.fail(msg='题目 ID 不匹配')
+        return response_base.fail(res=CustomResponse(code=400, msg='题目 ID 不匹配'))
 
     await question_service.create_analysis(db=db, obj=obj, user_id=request.user.id)
     return response_base.success()
@@ -298,3 +360,27 @@ async def get_question_statistics(
     """
     data = await question_service.get_statistics(db=db, question_id=pk)
     return response_base.success(data=data)
+
+
+# ============ 批量导入相关接口 ============
+
+
+@router.post('/import', summary='批量导入题目', name='qbank_batch_import_questions', dependencies=[DependsRBAC])
+async def batch_import_questions(
+    request: Request,
+    db: CurrentSessionTransaction,
+    obj: BatchImportParam,
+) -> ResponseSchemaModel[BatchImportResult]:
+    """
+    🔐 管理员接口 - 批量导入题目（从 CSV）
+
+    - 支持中文题型和难度
+    - 自动创建章节（一级/二级目录）
+    - 同时创建题目和解析记录
+    - 返回详细的导入结果
+    """
+    data = await question_service.batch_import(db=db, obj=obj, user_id=request.user.id)
+    return response_base.success(data=data)
+
+
+

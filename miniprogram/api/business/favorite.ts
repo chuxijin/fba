@@ -132,11 +132,12 @@ export function getFavoriteDetail(favoriteId: number): Promise<FavoriteItem> {
 
 /**
  * 检查题目收藏状态（统一接口）
+ *
  * @param questionIds 题目 ID 数组（单个或多个）
  * @returns 映射表 {questionId: isFavorited}
  */
 export function checkFavorited(questionIds: number[]): Promise<Record<number, boolean>> {
-  return post('/qbank/favorites/questions/check', questionIds)
+  return get('/qbank/questions/favorites', { question_ids: questionIds.join(',') })
 }
 
 /**
@@ -189,36 +190,30 @@ export function getFavoriteStatistics(): Promise<FavoriteStatistics> {
 }
 
 /**
- * 智能收藏/取消收藏
+ * 智能收藏/取消收藏 (优化版)
  *
- * 自动判断题目是否已收藏，如果已收藏则取消收藏，否则创建收藏
+ * 自动判断题目是否已收藏,如果已收藏则取消收藏,否则创建收藏
+ *
+ * ✅ 性能优化：取消收藏只需1次API调用（通过 question_id 直接删除）
  */
 export async function toggleFavorite(
   questionId: number,
   folderName?: string
-): Promise<{ action: 'add' | 'remove', favoriteId?: number }> {
+): Promise<{ action: 'add' | 'remove' }> {
   // 批量检查收藏状态（传入单个 ID 的数组）
   const statusMap = await checkFavorited([questionId])
   const isFavorited = statusMap[questionId] || false
 
   if (isFavorited) {
-    // 已收藏，需要找到收藏 ID 并删除
-    const list = await getFavoriteList({ size: 1000 })
-    const favorite = list.items.find(item => item.question_id === questionId)
-
-    if (favorite) {
-      await deleteFavorite(favorite.id)
-      return { action: 'remove', favoriteId: favorite.id }
-    }
-
-    // 理论上不应该走到这里
-    throw new Error('收藏记录不存在')
+    // 已收藏 → 直接通过 question_id 删除 ✅ 只需1次调用
+    await del(`/qbank/favorites/questions/${questionId}`)
+    return { action: 'remove' }
   } else {
-    // 未收藏，创建新收藏
-    const newFavorite = await createFavorite({
+    // 未收藏 → 创建新收藏
+    await createFavorite({
       question_id: questionId,
       folder_name: folderName
     })
-    return { action: 'add', favoriteId: newFavorite.id }
+    return { action: 'add' }
   }
 }

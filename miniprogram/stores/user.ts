@@ -42,10 +42,13 @@ export const useUserStore = defineStore('user', () => {
       memberships.value = data.memberships || []
       lastFetchTime.value = now
     } catch (error: any) {
-      console.error('[用户Store] 获取用户信息失败:', error)
-      // 401 token过期，清除登录态
+      // 401 是正常情况（token 过期或无效），静默失败不打印错误
       if (error.code === 401 || error.statusCode === 401) {
+        console.log('[用户Store] Token 已失效，清除登录态')
         logout()
+      } else {
+        // 其他错误才打印
+        console.error('[用户Store] 获取用户信息失败:', error)
       }
     }
   }

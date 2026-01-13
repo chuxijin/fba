@@ -33,9 +33,10 @@
               :question="item.question"
               :mode="mode"
               :value="getQuestionAnswer(item.originalIndex)"
-              :analysis-visible="showAnalysis"
+              :analysis-visible="shouldShowAnalysis(item.originalIndex)"
               :is-collected="questionCollected.get(item.originalIndex) || false"
-              :should-show-confirm="getShouldShowConfirm(item.question) && !showAnalysis"
+              :should-show-confirm="getShouldShowConfirm(item.question) && !shouldShowAnalysis(item.originalIndex)"
+              :correct-answer="questionSolutions.get(item.originalIndex)?.correct_answer || item.question.answer"
               :loading="false"
               @select="(value: string) => handleSelect(item.originalIndex, value)"
               @confirm="handleConfirm"
@@ -43,25 +44,31 @@
             />
 
             <!-- 解析面板 -->
+            <!-- 🔥 性能优化：只渲染当前题和前后各2题的解析面板 -->
             <AnalysisPanel
-              v-if="showAnalysis && (viewMode !== null || answerRecords.has(item.originalIndex))"
+              v-if="shouldShowAnalysis(item.originalIndex) && answerRecords.has(item.originalIndex) && Math.abs(index - (currentStep - 1)) <= 2"
               :question="item.question"
               :user-answer="getQuestionAnswer(item.originalIndex)"
               :is-correct="answerRecords.get(item.originalIndex)?.isCorrect || false"
               :answer-time="answerRecords.get(item.originalIndex)?.answerTime || 0"
               :total-attempts="0"
-              :correct-rate="0"
-              :common-mistakes="[]"
-              :analysis="item.question.analysis"
+              :correct-rate="getCorrectRate(item.originalIndex)"
+              :common-mistakes="getCommonMistakes(item.originalIndex)"
+              :analysis="questionSolutions.get(item.originalIndex)?.analysis || item.question.analysis"
+              :correct-answer="questionSolutions.get(item.originalIndex)?.correct_answer || item.question.answer"
               :similar-questions="[]"
               :is-collected="questionCollected.get(item.originalIndex) || false"
               :is-marked-wrong="questionMarkedWrong.get(item.originalIndex) || false"
               :note-text="questionNotes.get(item.originalIndex) || ''"
+              :note-is-public="questionNoteIsPublic.get(item.originalIndex) || false"
+              :public-notes="questionPublicNotes.get(item.originalIndex) || []"
               @toggle-collect="toggleCollect"
               @toggle-wrong-book="toggleWrongBook"
               @add-to-set="handleAddToSet"
               @update-note="handleUpdateNote"
               @go-to-question="handleGoToSimilarQuestion"
+              @load-public-notes="handleLoadPublicNotes"
+              @vote-note="handleVoteNote"
             />
           </view>
         </swiper-item>
@@ -76,7 +83,7 @@
       :items="answerSheetItems"
       :total-count="totalSteps"
       :is-dark="isDarkMode"
-      :show-submit="mode === 'practice'"
+      :show-submit="mode !== 'memorize'"
       @close="closeAnswerSheet"
       @select-item="handleSelectSheetItem"
       @submit="handleSubmitAll"
@@ -105,14 +112,18 @@ import AnalysisPanel from '../../components/business/AnalysisPanel.vue'
 import QuestionSkeleton from '../../components/business/QuestionSkeleton.vue'
 import type { BaseQuestion, PracticeMode } from '../../components/business/question-map'
 import { adaptQuestionList, adaptListToComponentFormat } from '../../utils/question-adapter-v2'
-import { questionApiV2, practiceApi, authApi, bankApi, favoriteApi, setToken } from '@/api'
+import { questionApiV2, practiceApi, authApi, bankApi, chapterApi, favoriteApi, noteApi, setToken } from '@/api'
+import type { QuestionSolution } from '@/api/types/question-v2'
 import {
   useTimer,
   useAnswerSheet,
   usePracticeDetail,
+  useSystemInfo,
   type AnswerSheetItem,
   type AnswerRecord
 } from '@/composables'
+import { formatDuration as formatDurationUtil } from '../../utils/format'
+import { usePracticeStore } from '../../stores/practice'
 
 declare const uni: any
 
@@ -123,6 +134,8 @@ declare const document: Document & {
 // ============ Composables 初始化 ============
 const timer = useTimer()
 const answerSheet = useAnswerSheet()
+const { calculateSwiperHeight } = useSystemInfo()
+const practiceStore = usePracticeStore()
 
 const practice = usePracticeDetail({
   onTimerReset: () => timer.reset(),
@@ -141,6 +154,8 @@ const {
   questionCollected,
   questionMarkedWrong,
   questionNotes,
+  questionNoteIds,
+  questionNoteIsPublic,
   questionStartTime,
   questionStartPausedDuration,
 } = practice
@@ -152,11 +167,20 @@ const isSheetVisible = answerSheet.isVisible
 const swiperHeight = ref('500px')
 const currentStep = ref(1)
 const totalSteps = computed(() => displayQuestions.value.length)
+const currentCatId = ref<number | null>(null)  // 当前题库的分类 ID（用于刷新统计）
+
+// ============ 笔记状态（公开笔记单独维护） ============
+const currentUserId = ref<number | null>(null)  // 当前用户 ID
+const questionPublicNotes = ref<Map<number, any[]>>(new Map())  // 公开笔记映射（questionIndex -> PublicNote[]）
 
 // 当 loading 变为 false 时重新计算高度
 watch(loading, (newVal) => {
   if (!newVal) {
-    setTimeout(() => calculateSwiperHeight(), 50)
+    setTimeout(() => {
+      calculateSwiperHeight('.swiper-container', (height) => {
+        swiperHeight.value = height
+      })
+    }, 50)
   }
 })
 
@@ -166,13 +190,25 @@ const currentAnswer = ref('')
 const viewMode = ref<'all' | 'wrong' | null>(null)
 const originalMode = ref<PracticeMode>('practice')
 
-// 是否显示解析
-const showAnalysis = computed(() => {
+// 🔥 练题模式：存储每道题的 solution 数据（correct_answer + analysis）
+const questionSolutions = ref<Map<number, QuestionSolution>>(new Map())
+
+// 是否显示解析（改为函数，基于每个题目的状态判断）
+function shouldShowAnalysis(questionIndex: number): boolean {
+  // 背题模式：始终显示
   if (mode.value === 'memorize') return true
+
+  // 查看模式：始终显示
   if (viewMode.value !== null) return true
-  if (mode.value === 'exercise') return hasAnswered.value
+
+  // 练题模式：检查该题是否已提交
+  if (mode.value === 'exercise') {
+    const record = answerRecords.value.get(questionIndex)
+    return record ? (record.submitted ?? true) : false
+  }
+
   return false
-})
+}
 
 // 结果数据
 const resultData = ref({
@@ -245,7 +281,13 @@ const currentOriginalIndex = computed(() => {
 
 // 获取指定题目的答案
 function getQuestionAnswer(questionIndex: number): string {
-  return answerRecords.value.get(questionIndex)?.answer || ''
+  const answer = answerRecords.value.get(questionIndex)?.answer
+  if (!answer) return ''
+  // 🔥 如果是数组（多选题），转换为逗号分隔的字符串
+  if (Array.isArray(answer)) {
+    return answer.join(',')
+  }
+  return answer
 }
 
 // 判断指定题目是否应该显示确定按钮
@@ -255,23 +297,43 @@ function getShouldShowConfirm(question: BaseQuestion | undefined): boolean {
   // 背题模式：不显示按钮
   if (mode.value === 'memorize') return false
 
-  // 练题模式：始终显示按钮（所有题型）
-  if (mode.value === 'exercise') return true
+  // 单选题和判断题：任何模式下都不显示按钮（自动提交）
+  const isAutoSubmitType = question.type === 'single' || question.type === 'judgement'
+  if (isAutoSubmitType) return false
 
-  // 刷题模式：只有多选题和填空题显示按钮（单选和判断题自动提交）
-  if (mode.value === 'practice') {
-    const isAutoSubmitType = question.type === 'single' || question.type === 'judgement'
-    return !isAutoSubmitType
-  }
-
+  // 其他题型：练题模式和刷题模式都显示按钮
   return true
 }
 
 // ============ 解析面板数据 ============
-// 当前题目是否已答题（用于练题模式判断是否显示解析）
-const hasAnswered = computed(() => {
-  return answerRecords.value.has(currentOriginalIndex.value)
-})
+
+/**
+ * 获取指定题目的全站正确率
+ */
+function getCorrectRate(questionIndex: number): number {
+  const solution = questionSolutions.value.get(questionIndex)
+  return solution?.correct_rate ? Number(solution.correct_rate) : 0
+}
+
+/**
+ * 获取指定题目的易错项（返回错选最多的选项，最多3个）
+ */
+function getCommonMistakes(questionIndex: number): Array<{ option: string; description: string }> {
+  const solution = questionSolutions.value.get(questionIndex)
+  if (!solution?.wrong_option_stats) return []
+
+  // 将对象转换为数组并按错误次数排序，取前3个
+  const mistakes = Object.entries(solution.wrong_option_stats)
+    .map(([option, count]) => ({ option, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)  // 最多显示前3个错选最多的选项
+
+  // 🔥 只返回选项字母，不显示人数
+  return mistakes.map(m => ({
+    option: m.option,
+    description: ''
+  }))
+}
 
 // ============ 答题卡相关 ============
 // 答题卡状态完全由 answerRecords 计算得出，无需单独维护
@@ -301,12 +363,10 @@ const answerSheetItems = computed<AnswerSheetItem[]>(() => {
 })
 
 // ============ 辅助函数 ============
-// 计算时长文本
+// 计算时长文本（毫秒转为可读格式）
 function formatDuration(milliseconds: number): string {
-  const totalSeconds = Math.floor(milliseconds / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}分${seconds}秒`
+  const seconds = Math.floor(milliseconds / 1000)
+  return formatDurationUtil(seconds)
 }
 
 // 构建答题结果项
@@ -314,13 +374,18 @@ function buildAnswerItems(questionCount: number) {
   return Array.from({ length: questionCount }, (_, idx) => {
     const index = idx + 1
     const record = answerRecords.value.get(index)
+    const question = allQuestions.value[idx]
 
     let status: 'correct' | 'wrong' | 'unanswered' = 'unanswered'
     if (record) {
       status = record.isCorrect ? 'correct' : 'wrong'
     }
 
-    return { index, status }
+    return {
+      index,
+      questionId: question?.id ? parseInt(question.id) : 0,  // 添加 questionId
+      status
+    }
   })
 }
 
@@ -369,7 +434,8 @@ function handleSelect(questionIndex: number, value: string) {
       questionId: allQuestions.value[questionIndex - 1]?.id || '',
       answer: value,
       isCorrect: false,
-      score: 0
+      score: 0,
+      submitted: false  // 标记为未提交（输入中状态）
     })
   }
 
@@ -378,13 +444,14 @@ function handleSelect(questionIndex: number, value: string) {
     currentAnswer.value = value
   }
 
+  // 背题模式：不自动提交
   if (mode.value === 'memorize') return
 
-  // 刷题模式下，单选题和判断题选中后立即提交
+  // 单选题和判断题：选中后立即提交（刷题和练题模式）
   const currentQuestion = allQuestions.value[questionIndex - 1]
   const isAutoSubmitType = currentQuestion?.type === 'single' || currentQuestion?.type === 'judgement'
 
-  if (mode.value === 'practice' && questionIndex === currentOriginalIndex.value && isAutoSubmitType) {
+  if (questionIndex === currentOriginalIndex.value && isAutoSubmitType) {
     handleConfirm()
   }
 }
@@ -398,7 +465,7 @@ function handleConfirm() {
     return
   }
 
-  const isCorrect = practice.checkAnswer(currentAnswer.value, question.value.answer)
+  // 🔥 修改：不判题，只记录答案和答题时长
   const questionScore = 1
 
   // 计算答题时长（扣除暂停时间）
@@ -408,17 +475,34 @@ function handleConfirm() {
   const actualElapsed = Date.now() - questionStartTimeValue - (currentPausedTotal - questionStartPausedValue)
   const answerTime = Math.floor(actualElapsed / 1000)
 
+  // 🔥 根据题型格式化答案（多选题需要转换为数组）
+  let formattedAnswer: string | string[]
+  if (question.value.type === 'multiple') {
+    // 多选题：将逗号分隔的字符串转换为数组
+    formattedAnswer = currentAnswer.value.split(',').filter(v => v.trim())
+  } else {
+    // 其他题型：保持字符串格式
+    formattedAnswer = currentAnswer.value
+  }
+
+  // 🔥 练题模式：先设置 submitted=false，等获取 solution 后再设置为 true
   const record: AnswerRecord = {
     questionId: question.value.id,
-    answer: currentAnswer.value,
-    isCorrect,
-    score: isCorrect ? questionScore : 0,
-    answerTime
+    answer: formattedAnswer,
+    isCorrect: false,  // 临时值，submit 时后端会判题
+    score: 0,  // 临时值
+    answerTime,
+    submitted: mode.value !== 'exercise'  // 练题模式先设为 false
   }
   answerRecords.value.set(currentOriginalIndex.value, record)
 
-  // 🔥 实时保存答题记录到后端
+  // 🔥 实时保存答题记录到后端（不传 is_correct）
   practice.saveAnswerRecord(record, viewMode.value)
+
+  // 🔥 练题模式：调用 solution API 获取解析
+  if (mode.value === 'exercise') {
+    fetchQuestionSolution(parseInt(question.value.id))
+  }
 
   if (mode.value === 'practice') {
     setTimeout(() => {
@@ -429,6 +513,49 @@ function handleConfirm() {
         openAnswerSheet()
       }
     }, 300)
+  }
+}
+
+/**
+ * 获取题目答案和解析（练题模式专用）
+ *
+ * :param questionId: 题目 ID
+ */
+async function fetchQuestionSolution(questionId: number) {
+  try {
+    const record = answerRecords.value.get(currentOriginalIndex.value)
+    if (!record) return
+
+    // 🔥 将用户答案转换为字符串格式（传给后端）
+    const userAnswerStr = Array.isArray(record.answer)
+      ? JSON.stringify(record.answer)
+      : record.answer
+
+    // 🔥 调用 solution API，传入用户答案，后端判题并返回结果
+    const solution = await questionApiV2.getQuestionSolution(questionId, userAnswerStr)
+
+    // 存储 solution 数据到 Map 中（使用题号索引，与 answerRecords 保持一致）
+    questionSolutions.value.set(currentOriginalIndex.value, solution)
+
+    // 🔥 使用后端判题结果，更新 answerRecord（创建新对象以触发 Vue 响应式）
+    if (solution.is_correct !== undefined && solution.is_correct !== null) {
+      answerRecords.value.set(currentOriginalIndex.value, {
+        ...record,
+        isCorrect: solution.is_correct,
+        score: solution.is_correct ? 1 : 0,
+        submitted: true  // 🔥 获取到 solution 后才设置为已提交
+      })
+    }
+  } catch (error) {
+    console.error('[练题模式] 获取 solution 失败:', error)
+    // 🔥 获取失败时也要设置为已提交，否则解析面板不会显示
+    const record = answerRecords.value.get(currentOriginalIndex.value)
+    if (record) {
+      answerRecords.value.set(currentOriginalIndex.value, {
+        ...record,
+        submitted: true
+      })
+    }
   }
 }
 
@@ -486,209 +613,213 @@ async function ensureLoggedIn(): Promise<boolean> {
   }
 }
 
-// ============ 加载题目 ============
-async function loadQuestions(bankId: number) {
+// ============ 用户信息加载 ============
+async function loadCurrentUser(): Promise<void> {
   try {
-    loading.value = true
-
-    const loggedIn = await ensureLoggedIn()
-    if (!loggedIn) {
-      return
-    }
-
-    const bankInfo = await bankApi.getBankDetail(bankId)
-    practiceName.value = bankInfo.name
-
-    // 使用新的 v2 API 获取刷题题目列表（不含答案）
-    const questionList = await questionApiV2.getBankPracticeQuestions(bankId)
-
-    if (!questionList || questionList.length === 0) {
-      uni.showToast({
-        title: '该题库暂无题目',
-        icon: 'none',
-        duration: 2000
-      })
-      setTimeout(() => {
-        uni.navigateBack()
-      }, 2000)
-      return
-    }
-
-    try {
-      // 两步转换：后端数据 → FrontendQuestion → BaseQuestion（组件格式）
-      const frontendQuestions = adaptQuestionList(questionList as any, false)
-      allQuestions.value = adaptListToComponentFormat(frontendQuestions)
-
-      // 重要：重置当前步骤为 1，确保 swiper 从第一题开始
-      currentStep.value = 1
-    } catch (adaptError) {
-      console.error('❌ 题目数据适配失败:', adaptError)
-      uni.showToast({
-        title: '题目数据格式错误',
-        icon: 'none',
-        duration: 2000
-      })
-      setTimeout(() => {
-        uni.navigateBack()
-      }, 2000)
-      return
-    }
-
-    // 重置开始时间和计时器状态
-    timer.reset()
-
-    // 记录第一题的开始时间和暂停累计时长
-    questionStartTime.value.clear()
-    questionStartPausedDuration.value.clear()
-    questionStartTime.value.set(1, Date.now())
-    questionStartPausedDuration.value.set(1, 0)
-
-    // 创建练习会话（记录本次练习）
-    await practice.createPracticeSession(bankId, null, 'bank', allQuestions.value.length)
-
-    // 批量查询收藏状态并初始化
-    await practice.initializeFavoriteStatus()
+    const userInfo = await authApi.getCurrentUser()
+    // UserInfo.id 是 string，需要转换为 number
+    currentUserId.value = parseInt(userInfo.id)
   } catch (error) {
-    console.error('加载题目失败:', error)
+    console.error('[加载用户信息失败]:', error)
+  }
+}
+
+// ============ 公开笔记加载 ============
+
+/**
+ * 🔥 加载公开笔记（用户点击公开笔记 tab 时调用）
+ */
+async function handleLoadPublicNotes(): Promise<void> {
+  const currentQuestion = allQuestions.value[currentOriginalIndex.value - 1]
+  if (!currentQuestion?.id) {
+    console.error('[加载公开笔记] 题目ID不存在')
+    return
+  }
+
+  const questionId = parseInt(currentQuestion.id)
+
+  try {
+    // 加载公开笔记（包含精选和非精选）
+    const publicNotes = await noteApi.getPublicNotes(questionId, undefined)
+    if (publicNotes && publicNotes.length > 0) {
+      // 转换为 AnalysisPanel 需要的格式（包含 id 和 avatar）
+      const formattedNotes = publicNotes.map(note => ({
+        id: note.id,  // 🔥 笔记 ID（用于点赞）
+        author: note.user_nickname || '匿名用户',
+        avatar: note.user_avatar || undefined,  // 🔥 用户头像
+        time: new Date(note.updated_time).toLocaleDateString(),
+        content: note.content,
+        likes: note.like_count,
+        userVoted: undefined  // 🔥 TODO: 加载用户投票状态
+      }))
+      questionPublicNotes.value.set(currentOriginalIndex.value, formattedNotes)
+    } else {
+      // 清空公开笔记（避免显示旧数据）
+      questionPublicNotes.value.set(currentOriginalIndex.value, [])
+    }
+  } catch (error) {
+    console.error('[加载公开笔记失败]:', error)
     uni.showToast({
-      title: '加载题目失败',
+      title: '加载公开笔记失败',
       icon: 'none',
       duration: 2000
     })
-    setTimeout(() => {
-      uni.navigateBack()
-    }, 2000)
-  } finally {
-    loading.value = false
   }
+}
+
+/**
+ * 🔥 处理笔记点赞
+ *
+ * :param noteId: 笔记 ID
+ * :param voteValue: 投票值（1=点赞，null=取消点赞）
+ */
+async function handleVoteNote(noteId: number, voteValue: 1 | -1 | null): Promise<void> {
+  try {
+    if (voteValue === null) {
+      // 取消点赞
+      await noteApi.cancelVote(noteId)
+      uni.showToast({
+        title: '已取消点赞',
+        icon: 'none',
+        duration: 1500
+      })
+    } else {
+      // 点赞
+      await noteApi.voteNote(noteId, voteValue)
+      uni.showToast({
+        title: '点赞成功',
+        icon: 'success',
+        duration: 1500
+      })
+    }
+
+    // 🔥 刷新公开笔记列表（更新点赞数）
+    await handleLoadPublicNotes()
+  } catch (error) {
+    console.error('[笔记点赞失败]:', error)
+    uni.showToast({
+      title: '操作失败，请重试',
+      icon: 'none',
+      duration: 2000
+    })
+  }
+}
+
+// ============ 加载题目 ============
+async function loadQuestions(bankId: number, chapterId?: number) {
+  // 🔥 背题模式：不创建会话，直接加载带答案的题目
+  if (mode.value === 'memorize') {
+    const success = await practice.loadMemorizeQuestions({
+      bank_id: bankId,
+      chapter_id: chapterId
+    })
+    if (success) {
+      currentStep.value = 1
+      // 🔥 背题模式也需要启动计时器
+      timer.start()
+    }
+    return
+  }
+
+  // 🔥 刷题/练题模式：创建会话
+  const success = await practice.startPractice({
+    session_type: chapterId ? 'chapter' : 'bank',
+    bank_id: bankId,
+    chapter_id: chapterId
+  })
+
+  if (success) {
+    // 重置当前步骤为 1，确保 swiper 从第一题开始
+    currentStep.value = 1
+    // 🔥 新练习：启动计时器（从 0 开始）
+    timer.start()
+  }
+}
+
+/**
+ * 将 solution 数据的选项列表转换为 session 数据的选项字典
+ *
+ * @param optionsList solution 格式：[{code: 'A', content: '...'}, ...]
+ * @return session 格式：{A: {code: 'A', content: '...'}, ...}
+ */
+function convertOptionsListToDict(optionsList: any[]): Record<string, any> {
+  const dict: Record<string, any> = {}
+  optionsList.forEach((option) => {
+    if (option.code) {
+      dict[option.code] = option
+    }
+  })
+  return dict
 }
 
 /**
  * 加载历史会话（查看历史记录时使用）
  *
- * @param sessionId 会话 ID
- * @param viewModeParam 查看模式
- * @param gotoIndex 跳转到的题目索引
+ * :param sessionId: 会话 ID
+ * :param viewModeParam: 查看模式
+ * :param gotoIndex: 跳转到的题目索引
  */
 async function loadHistorySession(sessionId: number, viewModeParam?: string, gotoIndex?: string) {
   try {
     loading.value = true
     currentSessionId.value = sessionId
 
-    // 优化：尝试从 storage 读取缓存数据
-    const cachedSummary = uni.getStorageSync('history-session-summary')
-    const CACHE_TTL = 5 * 60 * 1000  // 5分钟缓存
+    // 🔥 优先使用缓存的解析数据（从 ResultSummary 页面缓存）
+    let cachedSolution = uni.getStorageSync('practice-solution')
+    let solutionData: any = null
 
-    let session: any
-    let questionIds: number[]
-    let practiceNameStr: string | null = null
-    let answerItemsFromCache: any[] = []
-
-    if (cachedSummary
-        && cachedSummary.sessionId === sessionId
-        && (Date.now() - cachedSummary.timestamp) < CACHE_TTL) {
-      // 使用缓存数据
-      questionIds = cachedSummary.questionIds
-      practiceNameStr = cachedSummary.practiceName
-      currentBankId.value = cachedSummary.bankId || null
-      answerItemsFromCache = cachedSummary.answerItems || []
-
-      session = {
-        id: sessionId,
-        bank_id: cachedSummary.bankId,
-        question_ids: questionIds
-      }
+    if (cachedSolution && cachedSolution.session_id === sessionId) {
+      // 使用缓存的解析数据
+      console.log('[查看历史] 使用缓存的解析数据')
+      solutionData = cachedSolution
+      // 清除缓存（一次性使用）
+      uni.removeStorageSync('practice-solution')
     } else {
-      // 从 API 加载
-      session = await practiceApi.getSession(sessionId)
-      currentBankId.value = session.bank_id || null
-      questionIds = session.question_ids || []
-      practiceNameStr = session.practice_name || '练习'
+      // 没有缓存，调用 getSolution API 获取
+      console.log('[查看历史] 调用 getSolution API 获取解析数据')
+      solutionData = await practiceApi.getSessionSolution(sessionId)
     }
 
-    // 检查 question_ids
-    if (!questionIds || questionIds.length === 0) {
+    const questions = solutionData.questions || []
+
+    // 检查题目数据
+    if (!questions.length) {
       uni.showToast({ title: '该会话没有题目数据', icon: 'none', duration: 2000 })
       setTimeout(() => uni.navigateBack(), 2000)
       return
     }
 
-    // 优先从 storage 读取题目数据（包含答案和解析）
-    const savedQuestions = uni.getStorageSync('practice-questions')
-    const savedBankName = uni.getStorageSync('practice-bank-name')
+    // 🔥 将 solution 格式转换为内部标准格式（QuestionWithAnswer）
+    const adaptedQuestions = questions.map((q: any) => ({
+      id: q.question_id,
+      stem: q.content,  // solution 用 content
+      type: q.type,
+      options_data: q.options ? convertOptionsListToDict(q.options) : null,  // list → dict
+      answer_data: q.correct_answer ? { correct: q.correct_answer } : null,
+      analysis_content: q.analysis,
+      // 保留用户答案信息
+      user_answer: q.user_answer,
+      is_correct: q.is_correct,
+      answer_time: q.answer_time || 0
+    }))
 
-    if (savedQuestions && Array.isArray(savedQuestions) && savedQuestions.length > 0) {
-      // 使用缓存的题目数据（已包含答案和解析）
-      allQuestions.value = savedQuestions
-      practiceName.value = savedBankName || practiceNameStr || '练习'
-    } else {
-      // 🔥 缓存不可用，从 API 获取题目（含答案和解析）
-      const questionList = await questionApiV2.getQuestions({
-        ids: questionIds.join(','),
-        include_answer: true  // ✅ 关键：请求包含答案和解析
-      })
-
-      console.log('[查看历史] API返回的题目数据（前3题）:', questionList.slice(0, 3).map(q => ({
-        id: q.id,
-        has_answer_data: !!q.answer_data,
-        has_analysis_content: !!q.analysis_content,
-        answer_data: q.answer_data,
-        analysis_content: q.analysis_content ? q.analysis_content.substring(0, 50) + '...' : null
-      })))
-
-      // 🔥 重要：API 返回的题目顺序可能与 questionIds 不一致，需要重新排序
-      const questionMap = new Map()
-      questionList.forEach(q => {
-        questionMap.set(q.id, q)
-      })
-
-      const orderedQuestionList = questionIds.map(id => questionMap.get(id)).filter(Boolean)
-
-      // 转换题目格式（API已返回答案，标记为包含解析）
-      const frontendQuestions = adaptQuestionList(orderedQuestionList as any, true)
-
-      console.log('[查看历史] 适配后的题目数据（前3题）:', frontendQuestions.slice(0, 3).map(q => ({
-        id: q.id,
-        has_answer: !!q.answer,
-        has_analysis: !!q.analysis,
-        answer: q.answer,
-        analysis: q.analysis ? q.analysis.substring(0, 50) + '...' : null
-      })))
-
-      allQuestions.value = adaptListToComponentFormat(frontendQuestions)
-
-      console.log('[查看历史] 最终题目数据（前3题）:', allQuestions.value.slice(0, 3).map(q => ({
-        id: q.id,
-        has_answer: !!q.answer,
-        has_analysis: !!q.analysis,
-        answer: q.answer,
-        analysis: typeof q.analysis === 'string' ? q.analysis.substring(0, 50) + '...' : q.analysis
-      })))
-
-      practiceName.value = practiceNameStr || '练习'
+    // 转换为前端格式
+    const frontendQuestions = adaptQuestionList(adaptedQuestions as any, true)
+    allQuestions.value = adaptListToComponentFormat(frontendQuestions)
+    if (!practiceName.value || practiceName.value === '加载中...') {
+      practiceName.value = '练习'
     }
 
-    // 获取答题记录（直接从 API 获取，不使用缓存）
-    // 缓存中的 user_answer 字段不完整，必须从 API 获取完整数据
-    const records = await practiceApi.getSessionRecords(sessionId)
-
-    // 构建 question_id -> record 的映射
-    const recordMap = new Map()
-    records.forEach(record => {
-      recordMap.set(record.question_id, record)
-    })
-
-    // 恢复答题记录到 answerRecords
+    // 🔥 从 solution 数据恢复答题记录
     answerRecords.value.clear()
-    questionIds.forEach((questionId, index) => {
-      const record = recordMap.get(questionId)
-      if (record) {
+    questions.forEach((q: any, index: number) => {
+      if (q.user_answer !== null && q.user_answer !== undefined) {
         answerRecords.value.set(index + 1, {
-          questionId: String(questionId),
-          answer: typeof record.user_answer === 'string' ? record.user_answer : record.user_answer.join(','),
-          isCorrect: record.is_correct,
-          score: record.is_correct ? 1 : 0,
-          answerTime: record.answer_time || 0
+          questionId: String(q.question_id),
+          answer: typeof q.user_answer === 'string' ? q.user_answer : q.user_answer.join(','),
+          isCorrect: q.is_correct ?? false,
+          score: q.is_correct ? 1 : 0,
+          answerTime: q.answer_time || 0
         })
       }
     })
@@ -729,36 +860,21 @@ async function resumeInProgressSession(sessionId: number) {
     loading.value = true
     currentSessionId.value = sessionId
 
-    // 获取会话详情
+    // 🔥 获取会话详情（包含题目和答案解析）
     const session = await practiceApi.getSession(sessionId)
     currentBankId.value = session.bank_id || null
     const questionIds = session.question_ids || []
-    const completedCount = session.completed_count || 0
+    const questions = (session as any).questions || []
 
-    if (!questionIds || questionIds.length === 0) {
+    if (!questions.length) {
       uni.showToast({ title: '该会话没有题目数据', icon: 'none', duration: 2000 })
       setTimeout(() => uni.navigateBack(), 2000)
       return
     }
 
-    // 批量查询题目详情
-    const questionList = await questionApiV2.getQuestions({ ids: questionIds.join(',') })
-
-    // 🔥 重要：API 返回的题目顺序可能与 questionIds 不一致，需要重新排序
-    // 创建 question_id -> question 的映射
-    const questionMap = new Map()
-    questionList.forEach(q => {
-      questionMap.set(q.id, q)
-    })
-
-    // 按照 questionIds 的顺序重新排列题目
-    const orderedQuestionList = questionIds.map(id => questionMap.get(id)).filter(Boolean)
-
-    // 转换题目格式（继续答题时需要包含答案和解析，用于已答题目的展示）
-    const frontendQuestions = adaptQuestionList(orderedQuestionList as any, true)
+    // 🔥 直接使用会话返回的题目列表（已按 question_ids 顺序排列，含答案解析）
+    const frontendQuestions = adaptQuestionList(questions as any, true)
     allQuestions.value = adaptListToComponentFormat(frontendQuestions)
-
-    // 设置题库名称
     practiceName.value = session.practice_name || '练习'
 
     // 获取已有的答题记录
@@ -785,8 +901,8 @@ async function resumeInProgressSession(sessionId: number) {
       }
     })
 
-    // 设置为练习模式（可以继续答题）
-    mode.value = 'practice'
+    // 🔥 保持用户设置的做题模式（不强制设置为 practice）
+    // mode.value 已经在 onMounted 初期根据 URL 参数或本地存储设置过了
     viewMode.value = null
 
     // 跳转到第一道未答题目
@@ -802,6 +918,9 @@ async function resumeInProgressSession(sessionId: number) {
     // 恢复计时器（从上次累计时间继续）
     const previousTotalTime = session.total_time || 0
     timer.reset(previousTotalTime)
+
+    // 🔥 重要：恢复时间后立即启动计时器
+    timer.start()
 
     // 记录当前题目的开始时间
     questionStartTime.value.clear()
@@ -884,6 +1003,9 @@ async function loadFavoriteQuestions(questionIds: number[], bankName?: string) {
 
     // 重置开始时间和计时器状态
     timer.reset()
+
+    // 🔥 收藏模式：启动计时器
+    timer.start()
 
     // 记录第一题的开始时间
     questionStartTime.value.clear()
@@ -992,8 +1114,48 @@ function handleAddToSet() {
   })
 }
 
-function handleUpdateNote(note: string) {
-  questionNotes.value.set(currentOriginalIndex.value, note)
+async function handleUpdateNote(data: { note: string; isPublic: boolean }) {
+  // 先更新本地状态
+  questionNotes.value.set(currentOriginalIndex.value, data.note)
+
+  // 如果笔记为空，不保存到后端
+  if (!data.note.trim()) {
+    return
+  }
+
+  // 获取当前题目ID
+  const currentQuestion = allQuestions.value[currentOriginalIndex.value - 1]
+  if (!currentQuestion?.id) {
+    console.error('[保存笔记] 题目ID不存在')
+    return
+  }
+
+  const questionId = parseInt(currentQuestion.id)
+
+  try {
+    // 调用 API 创建或更新笔记（不需要传 userId，后端会自动从 token 中获取）
+    const savedNote = await noteApi.createOrUpdateMyNote(
+      questionId,
+      data.note,
+      data.isPublic
+    )
+
+    // 保存笔记ID，方便后续更新
+    questionNoteIds.value.set(currentOriginalIndex.value, savedNote.id)
+
+    uni.showToast({
+      title: '笔记已保存',
+      icon: 'success',
+      duration: 1500
+    })
+  } catch (error) {
+    console.error('[保存笔记失败]:', error)
+    uni.showToast({
+      title: '保存失败，请重试',
+      icon: 'none',
+      duration: 2000
+    })
+  }
 }
 
 function handleGoToSimilarQuestion(questionId: string) {
@@ -1055,128 +1217,42 @@ function handleCancelSubmit() {
 async function submitAnswers() {
   closeAnswerSheet()
 
+  if (!currentSessionId.value) {
+    uni.showToast({ title: '会话不存在', icon: 'none' })
+    return
+  }
+
   try {
-    uni.showLoading({
-      title: '提交中...',
-      mask: true
-    })
+    uni.showLoading({ title: '提交中...', mask: true })
 
-    // 构建提交参数（符合新后端格式）
-    const answerItems = Array.from(answerRecords.value.entries()).map(([index, record]) => ({
-      question_id: Number(record.questionId),
-      user_answer: record.answer,
-      answer_time: record.answerTime || 0
-    }))
+    // 🔥 并行提交会话 + 预取 solution 数据（用于结算页和查看解析）
+    const [_, solutionData] = await Promise.all([
+      practiceApi.submitSession(currentSessionId.value, {
+        total_time: timer.getElapsedSeconds()
+      }),
+      practiceApi.getSessionSolution(currentSessionId.value)
+    ])
 
-    // 调用新的批量提交 API（请求包含解析内容）
-    const result = await questionApiV2.submitAnswers({
-      answers: answerItems,
-      include_analysis: true
-    })
+    // 🔥 缓存 solution 数据，供 ResultSummary 和后续的查看解析使用
+    uni.setStorageSync('practice-solution', solutionData)
+
+    // 🔥 提交成功后，刷新练习中心的统计数据（静默刷新，不阻塞跳转）
+    if (currentCatId.value !== null) {
+      practiceStore.refreshStatistics(currentCatId.value).catch(err => {
+        console.warn('[答题页] 刷新统计失败（不影响跳转）:', err)
+      })
+    }
 
     uni.hideLoading()
 
-    // 更新答题记录（使用服务器判分结果）
-    result.results.forEach((item) => {
-      // 找到对应的题目索引
-      const questionIndex = allQuestions.value.findIndex(q => String(q.id) === String(item.question_id))
-      if (questionIndex !== -1) {
-        const index = questionIndex + 1
-        const existingRecord = answerRecords.value.get(index)
-        if (existingRecord) {
-          existingRecord.isCorrect = item.is_correct
-          existingRecord.score = item.score
-        }
-
-        // 将解析数据添加到题目中（转换为字符串格式）
-        const question = allQuestions.value[questionIndex] as any
-        if (item.analysis_content) {
-          question.analysis = item.analysis_content  // 直接使用字符串
-          // 提取正确答案（从 dict 中提取 correct 字段）
-          if (!question.answer) {
-            // correct_answer 格式为 {correct: "A"} 或 {correct: ["A", "C"]}
-            if (typeof item.correct_answer === 'object' && item.correct_answer !== null) {
-              question.answer = (item.correct_answer as any).correct
-            } else {
-              question.answer = item.correct_answer
-            }
-          }
-        }
-      }
-    })
-
-    // 更新结果数据（使用服务器统计结果）
-    resultData.value = {
-      score: result.total_score,
-      totalCount: result.total_questions,
-      correctCount: result.correct_count,
-      wrongCount: result.wrong_count,
-      wrongQuestions: result.results
-        .map((item, idx) => (!item.is_correct ? idx + 1 : -1))
-        .filter(idx => idx !== -1)
-    }
-
-    // 保存练习记录到后端（降级处理：失败不影响查看结算页）
-    if (currentSessionId.value) {
-      try {
-        // 构建答题记录列表（使用更新后的判分结果）
-        const records = Array.from(answerRecords.value.entries()).map(([index, record]) => ({
-          question_id: Number(record.questionId),
-          user_answer: record.answer,
-          is_correct: record.isCorrect,
-          answer_time: record.answerTime || 0
-        }))
-
-        // 批量创建答题记录
-        await practiceApi.batchCreateRecords({
-          session_id: currentSessionId.value,
-          records
-        })
-
-        // 🔥 更新会话统计数据（正确数、错误数等）
-        await practiceApi.updateSession(currentSessionId.value, {
-          completed_count: result.total_questions,
-          correct_count: result.correct_count,
-          wrong_count: result.wrong_count,
-          total_time: timer.getElapsedSeconds()
-        })
-
-        // 提交练习会话（标记为已完成）
-        await practiceApi.submitSession(currentSessionId.value, {
-          score: result.total_score
-        })
-      } catch (error) {
-        console.error('[练习会话] 保存记录失败:', error)
-        // 不阻断用户流程，继续跳转到结算页
-      }
-    }
-
-    // 保存答题记录到 storage（用于返回时恢复）
-    const answersArray = Array.from(answerRecords.value.entries()).map(([index, record]) => ({
-      index,
-      ...record
-    }))
-    uni.setStorageSync('practice-answers', answersArray)
-
-    // 保存题目数据到 storage（避免查看解析时重新请求）
-    uni.setStorageSync('practice-questions', allQuestions.value)
-    uni.setStorageSync('practice-bank-name', practiceName.value)
-
-    // 保存数据到存储
-    uni.setStorageSync('practice-result', prepareResultData())
-
-    // 跳转到结算页面（使用 redirectTo 替换当前页面）
+    // 跳转到结算页面（传递 sessionId，结算页通过 API 获取数据）
     uni.redirectTo({
-      url: '/pages/practice/ResultSummary'
+      url: `/pages/practice/ResultSummary?sessionId=${currentSessionId.value}`
     })
   } catch (error) {
     uni.hideLoading()
     console.error('提交答案失败:', error)
-    uni.showToast({
-      title: '提交失败，请重试',
-      icon: 'none',
-      duration: 2000
-    })
+    uni.showToast({ title: '提交失败，请重试', icon: 'none', duration: 2000 })
   }
 }
 
@@ -1202,19 +1278,8 @@ function handleBackFromView() {
 }
 
 // ============ 动态高度计算 ============
-function calculateSwiperHeight() {
-  uni.getSystemInfo({
-    success: (res) => {
-      const query = uni.createSelectorQuery()
-      query.select('.swiper-container').boundingClientRect((rect: any) => {
-        if (rect) {
-          const calculatedHeight = res.windowHeight - rect.top
-          swiperHeight.value = `${calculatedHeight}px`
-        }
-      }).exec()
-    }
-  })
-}
+// 使用 composable 统一管理系统信息
+// calculateSwiperHeight 已在上方从 useSystemInfo 导入
 
 // ============ 主题相关 ============
 function syncTheme() {
@@ -1232,26 +1297,51 @@ function syncTheme() {
 let themeObserver: MutationObserver | null = null
 
 onMounted(async () => {
-  // 启动计时器
-  timer.start()
+  // 🔥 不要在这里启动计时器，应该在各个场景加载完成后再启动
+
+  // 🔥 加载当前用户信息（用于笔记功能）
+  loadCurrentUser().catch(err => {
+    console.warn('[页面加载时获取用户信息失败]:', err)
+  })
 
   // 计算 swiper 高度
   setTimeout(() => {
-    calculateSwiperHeight()
+    calculateSwiperHeight('.swiper-container', (height) => {
+      swiperHeight.value = height
+    })
   }, 100)
 
   const pages = getCurrentPages()
   const currentPage = pages[pages.length - 1] as any
   const bankId = currentPage?.options?.bankId
+  const chapterId = currentPage?.options?.chapterId
   const modeParam = currentPage?.options?.mode
   const viewModeParam = currentPage?.options?.viewMode
   const gotoIndex = currentPage?.options?.gotoIndex
   const urlSessionId = currentPage?.options?.sessionId  // 获取 sessionId 参数
   const resumeParam = currentPage?.options?.resume  // 获取 resume 参数
+  const catId = currentPage?.options?.catId  // 获取分类 ID 参数
+
+  // 🔥 保存分类 ID（用于答题完成后刷新统计）
+  if (catId) {
+    currentCatId.value = Number(catId)
+  }
 
   if (modeParam && ['practice', 'exercise', 'memorize'].includes(modeParam)) {
     mode.value = modeParam as PracticeMode
+    console.log('[做题页面] 使用 URL 参数指定的做题模式:', modeParam)
+  } else {
+    // 如果 URL 没有指定模式，从本地存储读取用户设置的默认模式
+    const savedMode = uni.getStorageSync('practice_mode') as PracticeMode
+    console.log('[做题页面] 从本地存储读取到的模式:', savedMode)
+    if (savedMode && ['practice', 'exercise', 'memorize'].includes(savedMode)) {
+      mode.value = savedMode
+      console.log('[做题页面] ✅ 使用用户设置的默认做题模式:', savedMode)
+    } else {
+      console.log('[做题页面] ⚠️ 本地存储没有有效模式，使用默认值: practice')
+    }
   }
+  console.log('[做题页面] 最终使用的做题模式:', mode.value)
 
   // 🔥 如果有 sessionId，根据 resume 参数决定是继续答题还是查看历史
   if (urlSessionId) {
@@ -1283,18 +1373,29 @@ onMounted(async () => {
         viewMode.value = 'all'
         mode.value = 'exercise'
       } else if (viewModeParam === 'wrong') {
+        // 从结算页查看本次练习的错题
         originalMode.value = mode.value
         viewMode.value = 'wrong'
         mode.value = 'exercise'
       } else if (viewModeParam === 'favorite') {
-        // 从收藏页面进入：加载收藏的题目
-        // 注意：不设置 viewMode，让用户按正常学习模式学习（根据 mode 决定是否显示答案）
-        // 默认使用练题模式（答题后显示解析）
+        // 从收藏页面进入：使用练题模式（答题后立即显示解析）
+        mode.value = 'exercise'
 
         // 从 storage 读取收藏的题目ID列表
         const favoriteQuestionIds = uni.getStorageSync('favorite-question-ids')
         if (favoriteQuestionIds && favoriteQuestionIds.length > 0) {
-          await loadFavoriteQuestions(favoriteQuestionIds, currentPage?.options?.bankName)
+          await practice.loadFavoriteQuestions(favoriteQuestionIds, currentPage?.options?.bankName)
+          loading.value = false
+          return
+        }
+      } else if (viewModeParam === 'wrong-practice') {
+        // 从错题本页面进入：使用练题模式（答题后立即显示解析）
+        mode.value = 'exercise'
+
+        // 从 storage 读取错题的题目ID列表
+        const wrongQuestionIds = uni.getStorageSync('wrong-question-ids')
+        if (wrongQuestionIds && wrongQuestionIds.length > 0) {
+          await practice.loadWrongQuestions(wrongQuestionIds, currentPage?.options?.bankName)
           loading.value = false
           return
         }
@@ -1316,7 +1417,8 @@ onMounted(async () => {
               answer: item.answer,
               isCorrect: item.isCorrect,
               score: item.score,
-              answerTime: item.answerTime
+              answerTime: item.answerTime,
+              submitted: item.submitted ?? true  // 兼容旧数据，默认为已提交
             })
           })
         }
@@ -1332,11 +1434,11 @@ onMounted(async () => {
         loading.value = false
       } else {
         // 如果没有缓存数据，还是要加载（会在loadQuestions中设置loading=false）
-        await loadQuestions(Number(bankId))
+        await loadQuestions(Number(bankId), chapterId ? Number(chapterId) : undefined)
       }
     } else {
       // 正常进入刷题：加载题目数据
-      await loadQuestions(Number(bankId))
+      await loadQuestions(Number(bankId), chapterId ? Number(chapterId) : undefined)
     }
   } else {
     uni.showToast({

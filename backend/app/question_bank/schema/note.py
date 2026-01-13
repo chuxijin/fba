@@ -29,8 +29,6 @@ class QuestionNoteSchemaBase(SchemaBase):
 class CreateQuestionNoteParam(QuestionNoteSchemaBase):
     """创建笔记参数"""
 
-    user_id: int = Field(description='用户 ID')
-
 
 class UpdateQuestionNoteParam(SchemaBase):
     """更新笔记参数"""

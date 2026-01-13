@@ -2,6 +2,7 @@ from collections import defaultdict, namedtuple
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, TypeVar
+import json as stdlib_json
 
 from fastapi.encoders import decimal_encoder
 from msgspec import json
@@ -16,11 +17,16 @@ R = TypeVar('R', bound=RowData)
 
 class MsgSpecJSONResponse(JSONResponse):
     """
-    使用高性能的 msgspec 库将数据序列化为 JSON 的响应类
+    使用高性能的 msgspec 库将数据序列化为 JSON 的响应类（支持中文字符不转义）
     """
 
     def render(self, content: Any) -> bytes:
-        return json.encode(content)
+        # 使用标准库 json 并禁用 ASCII 转义，确保中文字符正常显示
+        return stdlib_json.dumps(
+            content,
+            ensure_ascii=False,  # 不转义 Unicode 字符，保留中文
+            default=str,  # 处理无法序列化的类型（如 Decimal、datetime）
+        ).encode('utf-8')
 
 
 def select_columns_serialize(row: R) -> dict[str, Any]:

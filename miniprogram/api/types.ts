@@ -25,6 +25,8 @@ export interface RequestConfig {
   showLoading?: boolean
   /** loading 提示文字 */
   loadingText?: string
+  /** 是否静默失败（401/403 等错误不显示提示，适用于可选登录的接口） */
+  silent?: boolean
 }
 
 /** 后端统一响应格式 */

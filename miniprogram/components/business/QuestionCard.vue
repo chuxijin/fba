@@ -12,7 +12,7 @@
       </view>
 
       <!-- 题干 -->
-      <up-markdown class="question-card__stem" :content="question.stem || ''"></up-markdown>
+      <mp-html class="question-card__stem" :content="question.stem || ''"></mp-html>
 
       <!-- 选择题（单选/多选/判断） -->
       <view v-if="isChoiceType" class="choice-question">
@@ -30,7 +30,7 @@
             >
               <text class="option-item__letter">{{ option.value }}</text>
             </view>
-            <up-markdown class="option-item__content" :content="option.text || ''"></up-markdown>
+            <mp-html class="option-item__content" :content="option.text || ''"></mp-html>
           </view>
         </view>
       </view>
@@ -61,15 +61,6 @@
           确定
         </view>
       </view>
-
-      <!-- 解析 -->
-      <view
-        v-if="showAnalysisContent && question.analysis"
-        class="question-analysis"
-      >
-        <view class="question-analysis__title">📖 解析</view>
-        <up-markdown class="question-analysis__content" :content="question.analysis || ''"></up-markdown>
-      </view>
     </template>
   </view>
 </template>
@@ -89,6 +80,7 @@ interface QuestionCardProps {
   loading?: boolean
   isCollected?: boolean
   shouldShowConfirm?: boolean
+  correctAnswer?: string | string[]  // 🔥 正确答案（练题模式从 solution API 获取）
 }
 
 const props = withDefaults(defineProps<QuestionCardProps>(), {
@@ -156,17 +148,11 @@ const fillValues = computed<string[]>(() => {
 
 // ============ 正确答案集合 ============
 const correctSet = computed<Set<string>>(() => {
-  if (!props.question) return new Set<string>()
-
-  const answers = props.question.answer
+  // 🔥 优先使用传入的 correctAnswer（练题模式从 solution API 获取）
+  const answers = props.correctAnswer || props.question?.answer
   if (!answers) return new Set<string>()
   if (Array.isArray(answers)) return new Set(answers)
   return new Set([answers])
-})
-
-// ============ 解析显示 ============
-const showAnalysisContent = computed(() => {
-  return props.mode === 'memorize' || (props.mode === 'exercise' && props.analysisVisible)
 })
 
 // ============ 选项样式 ============
@@ -274,7 +260,7 @@ function handleFillInput(index: number, event: any) {
   line-height: 1.6;
 }
 
-/* 控制 up-markdown 内部间距 */
+/* 控制富文本内部间距 */
 .question-card__stem :deep(p) {
   margin: 0;
   padding: 0;
@@ -282,6 +268,23 @@ function handleFillInput(index: number, event: any) {
 
 .question-card__stem :deep(p + p) {
   margin-top: 8rpx;
+}
+
+/* mp-html 图片样式 */
+.question-card__stem :deep(img) {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 12rpx 0;
+  border-radius: 8rpx;
+}
+
+.option-item__content :deep(img) {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 8rpx 0;
+  border-radius: 6rpx;
 }
 
 /* ============ 选择题样式 ============ */
@@ -353,27 +356,5 @@ function handleFillInput(index: number, event: any) {
   box-shadow: none;
   opacity: 0.6;
   pointer-events: none;
-}
-
-/* ============ 解析 ============ */
-.question-analysis {
-  margin-top: 24rpx;
-  padding: 24rpx;
-  background: rgba(59, 130, 246, 0.05);
-  border-left: 4rpx solid #3b82f6;
-  border-radius: 12rpx;
-}
-
-.question-analysis__title {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #3b82f6;
-  margin-bottom: 12rpx;
-}
-
-.question-analysis__content {
-  font-size: 26rpx;
-  color: var(--color-text-secondary);
-  line-height: 1.6;
 }
 </style>

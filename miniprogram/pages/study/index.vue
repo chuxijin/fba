@@ -34,6 +34,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted } from 'vue'
+import { useSystemInfo } from '@/composables/useSystemInfo'
 import MaterialsTab from './modules/MaterialsTab.vue'
 import KnowledgeTab from './modules/KnowledgeTab.vue'
 
@@ -58,6 +59,9 @@ const activeTabIndex = ref(0)
 // Swiper 动态高度
 const swiperHeight = ref('500px')
 
+// 使用系统信息
+const { calculateSwiperHeight } = useSystemInfo()
+
 /**
  * Tab 切换
  *
@@ -79,17 +83,8 @@ function handleSwiperChange(e: any) {
  */
 onMounted(() => {
   nextTick(() => {
-    uni.getSystemInfo({
-      success: (res: any) => {
-        const query = uni.createSelectorQuery()
-        query.select('.content-swiper').boundingClientRect()
-        query.exec((result: any) => {
-          if (result && result[0]) {
-            const calculatedHeight = res.windowHeight - result[0].top
-            swiperHeight.value = `${calculatedHeight}px`
-          }
-        })
-      }
+    calculateSwiperHeight('.content-swiper', (height) => {
+      swiperHeight.value = height
     })
   })
 })

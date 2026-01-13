@@ -6,6 +6,7 @@
 import type {
   QuestionDetail,
   QuestionListItem,
+  QuestionWithAnswer,
   FrontendQuestion,
   FrontendQuestionOption,
   QuestionType,
@@ -40,12 +41,12 @@ function convertOptionsData(
 /**
  * 将后端题目详情转换为前端格式
  *
- * @param backendQuestion 后端题目数据
+ * @param backendQuestion 后端题目数据（QuestionDetail 或 QuestionWithAnswer）
  * @param includeAnswer 是否包含答案（默认 false）
  * @return 前端题目格式
  */
 export function adaptQuestionDetail(
-  backendQuestion: QuestionDetail,
+  backendQuestion: QuestionDetail | QuestionWithAnswer,
   includeAnswer = false
 ): FrontendQuestion {
   const frontendQuestion: FrontendQuestion = {
@@ -57,22 +58,31 @@ export function adaptQuestionDetail(
     knowledge_point: backendQuestion.knowledge_point || undefined,
   }
 
+  // 🔥 支持两种格式的答案数据
+  let correctAnswer: string | string[] | undefined
+  let analysisContent: string | undefined
+
+  if (includeAnswer) {
+    // 格式1：嵌套格式（QuestionDetail）
+    if ('analysis' in backendQuestion && backendQuestion.analysis) {
+      correctAnswer = backendQuestion.analysis.answer_data.correct as string | string[]
+      analysisContent = backendQuestion.analysis.content
+    }
+    // 格式2：扁平格式（QuestionWithAnswer）
+    else if ('answer_data' in backendQuestion && backendQuestion.answer_data) {
+      correctAnswer = backendQuestion.answer_data.correct as string | string[]
+      analysisContent = (backendQuestion as QuestionWithAnswer).analysis_content || undefined
+    }
+  }
+
   // 处理选择题和判断题的选项
   if (backendQuestion.type === 'single' || backendQuestion.type === 'multiple') {
-    const correctAnswer = includeAnswer && backendQuestion.analysis
-      ? backendQuestion.analysis.answer_data.correct
-      : undefined
-
     frontendQuestion.options = convertOptionsData(
       backendQuestion.options_data,
-      correctAnswer as string | string[]
+      correctAnswer
     )
   } else if (backendQuestion.type === 'judgement') {
     // 判断题固定选项
-    const correctAnswer = includeAnswer && backendQuestion.analysis
-      ? backendQuestion.analysis.answer_data.correct
-      : undefined
-
     frontendQuestion.options = [
       {
         label: 'A',
@@ -88,17 +98,15 @@ export function adaptQuestionDetail(
   }
 
   // 包含答案和解析
-  if (includeAnswer && backendQuestion.analysis) {
-    const answerData = backendQuestion.analysis.answer_data
-
+  if (includeAnswer && correctAnswer && analysisContent) {
     frontendQuestion.analysis = {
-      correct_answer: answerData.correct as string | string[],
-      content: backendQuestion.analysis.content,
+      correct_answer: correctAnswer,
+      content: analysisContent,
     }
 
     // 简答题的关键词
-    if (backendQuestion.type === 'shortAnswer' && typeof answerData.correct === 'object') {
-      frontendQuestion.analysis.keywords = (answerData.correct as any).keywords
+    if (backendQuestion.type === 'shortAnswer' && typeof correctAnswer === 'object') {
+      frontendQuestion.analysis.keywords = (correctAnswer as any).keywords
     }
   }
 
@@ -108,12 +116,12 @@ export function adaptQuestionDetail(
 /**
  * 批量转换题目列表
  *
- * @param backendQuestions 后端题目列表
+ * @param backendQuestions 后端题目列表（QuestionDetail 或 QuestionWithAnswer）
  * @param includeAnswer 是否包含答案
  * @return 前端题目列表
  */
 export function adaptQuestionList(
-  backendQuestions: QuestionDetail[],
+  backendQuestions: (QuestionDetail | QuestionWithAnswer)[],
   includeAnswer = false
 ): FrontendQuestion[] {
   return backendQuestions.map((q) => adaptQuestionDetail(q, includeAnswer))

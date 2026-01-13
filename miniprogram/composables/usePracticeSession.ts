@@ -9,7 +9,7 @@ import type { SessionType, SessionDetail } from '@/api/business/practice'
 
 export interface AnswerRecord {
   questionId: string
-  answer: string
+  answer: string | string[]
   isCorrect: boolean
   score: number
   answerTime?: number
@@ -88,13 +88,14 @@ export function usePracticeSession() {
     if (!sessionId.value) return false
 
     try {
-      await practiceApi.createRecord({
+      await practiceApi.createRecords({
         session_id: sessionId.value,
-        bank_id: bankId.value || 0,
-        question_id: Number(record.questionId),
-        user_answer: record.answer,
-        is_correct: record.isCorrect,
-        answer_time: record.answerTime || 0,
+        records: [{
+          question_id: Number(record.questionId),
+          user_answer: record.answer,
+          is_correct: record.isCorrect,
+          answer_time: record.answerTime || 0,
+        }]
       })
       return true
     } catch (error) {

@@ -322,6 +322,16 @@ function handleFunctionClick(item: MenuItem) {
     return
   }
 
+  // 特殊处理：我的错题
+  if (item.id === 'wrong-book') {
+    if (!isLoggedIn.value) {
+      triggerLogin()
+      return
+    }
+    uni.navigateTo({ url: '/pages/mine/wrong-question' })
+    return
+  }
+
   if (item.needLogin && !isLoggedIn.value) {
     triggerLogin()
     return
@@ -332,6 +342,12 @@ function handleFunctionClick(item: MenuItem) {
 function handleServiceClick(item: MenuItem) {
   // 客服按钮使用微信原生能力，不需要处理点击
   if (item.id === 'customer-service') {
+    return
+  }
+
+  // 特殊处理：设置
+  if (item.id === 'settings') {
+    uni.navigateTo({ url: '/pages/settings/index' })
     return
   }
 

@@ -1,7 +1,25 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import { defineStore } from 'pinia'
 import type { BaseQuestion } from '../components/practice/question-map'
+import type { UserStatistics, BankProgressItem } from '@/api/business/practice'
+import * as practiceApi from '@/api/business/practice'
+
+/**
+ * 缓存配置
+ */
+const CACHE_CONFIG = {
+  defaultTTL: 5 * 60 * 1000,       // 默认缓存 5 分钟
+  maxTTL: 30 * 60 * 1000,          // 最大缓存 30 分钟
+  minRefreshInterval: 3000,         // 最小刷新间隔 3 秒（防抖）
+}
+
+/**
+ * 缓存元数据
+ */
+interface CacheMetadata {
+  data: UserStatistics
+  timestamp: number  // 缓存时间戳
+  ttl: number        // 有效期（毫秒）
+}
 
 /**
  * 答题记录
@@ -54,7 +72,12 @@ export const usePracticeStore = defineStore('practice', {
 
     // UI状态
     loadingState: 'idle' as 'idle' | 'loading' | 'success' | 'error',
-    errorMessage: ''
+    errorMessage: '',
+
+    // 用户学习统计（按分类缓存，key: catId，0 表示全部）
+    statisticsByCategory: new Map<number, CacheMetadata>(),
+    statisticsLoading: false,
+    lastRefreshTime: 0  // 最后一次刷新时间（用于防抖）
   }),
 
   getters: {
@@ -90,6 +113,38 @@ export const usePracticeStore = defineStore('practice', {
      */
     isReviewMode(): boolean {
       return this.reviewMode !== null
+    },
+
+    /**
+     * 题库进度 Map（方便快速查找）
+     *
+     * :param catId: 分类 ID（可选，默认返回所有分类的数据）
+     */
+    bankProgressMap(): (catId?: number) => Map<number, BankProgressItem> {
+      return (catId?: number) => {
+        const map = new Map<number, BankProgressItem>()
+
+        // 如果指定了分类，只返回该分类的数据
+        if (catId !== undefined) {
+          const cacheEntry = this.statisticsByCategory.get(catId || 0)
+          if (cacheEntry?.data?.banks) {
+            cacheEntry.data.banks.forEach(bank => {
+              map.set(bank.bank_id, bank)
+            })
+          }
+          return map
+        }
+
+        // 否则返回所有分类的数据
+        this.statisticsByCategory.forEach(cacheEntry => {
+          if (cacheEntry?.data?.banks) {
+            cacheEntry.data.banks.forEach(bank => {
+              map.set(bank.bank_id, bank)
+            })
+          }
+        })
+        return map
+      }
     }
   },
 
@@ -223,6 +278,149 @@ export const usePracticeStore = defineStore('practice', {
     setLoadingState(state: 'idle' | 'loading' | 'success' | 'error', errorMessage = '') {
       this.loadingState = state
       this.errorMessage = errorMessage
+    },
+
+    /**
+     * 检查缓存是否过期
+     *
+     * :param catId: 分类 ID（可选，0 或 undefined 表示全部）
+     * :return: true 表示缓存过期或不存在
+     */
+    isCacheExpired(catId?: number): boolean {
+      const cacheKey = catId || 0
+      const cacheEntry = this.statisticsByCategory.get(cacheKey)
+
+      if (!cacheEntry) return true
+
+      const now = Date.now()
+      const age = now - cacheEntry.timestamp
+      return age > cacheEntry.ttl
+    },
+
+    /**
+     * 加载用户学习统计（按分类缓存，带时效检测）
+     *
+     * :param catId: 分类 ID（可选，0 或 undefined 表示全部）
+     * :param forceRefresh: 是否强制刷新（忽略缓存）
+     */
+    async loadUserStatistics(catId?: number, forceRefresh = false) {
+      const cacheKey = catId || 0
+
+      // 防抖：避免短时间内重复请求
+      const now = Date.now()
+      if (!forceRefresh && (now - this.lastRefreshTime) < CACHE_CONFIG.minRefreshInterval) {
+        console.log('[PracticeStore] 刷新间隔过短，跳过请求')
+        return this.statisticsByCategory.get(cacheKey)?.data
+      }
+
+      // 如果已有该分类的数据且未过期且不强制刷新，直接返回
+      if (!forceRefresh && !this.isCacheExpired(catId)) {
+        console.log('[PracticeStore] 缓存未过期，直接返回')
+        return this.statisticsByCategory.get(cacheKey)?.data
+      }
+
+      // 避免并发请求
+      if (this.statisticsLoading) {
+        console.log('[PracticeStore] 正在加载中，跳过重复请求')
+        return this.statisticsByCategory.get(cacheKey)?.data
+      }
+
+      try {
+        this.statisticsLoading = true
+        this.lastRefreshTime = now
+
+        // 根据 catId 加载对应分类的统计数据
+        const params = catId && catId !== 0 ? { cat_id: catId } : undefined
+        const data = await practiceApi.getUserStatistics(params)
+
+        // 缓存到 Map，带时间戳和 TTL
+        const cacheEntry: CacheMetadata = {
+          data,
+          timestamp: Date.now(),
+          ttl: CACHE_CONFIG.defaultTTL
+        }
+        this.statisticsByCategory.set(cacheKey, cacheEntry)
+
+        console.log('[PracticeStore] 用户统计数据加载成功:', {
+          catId: cacheKey,
+          banksCount: data.banks.length,
+          cached: true,
+          expiresIn: CACHE_CONFIG.defaultTTL / 1000 + '秒'
+        })
+        return data
+      } catch (error: any) {
+        // 401 是正常情况（未登录），静默失败不打印错误
+        if (error.code === 401 || error.statusCode === 401) {
+          console.log('[PracticeStore] 未登录，无法获取学习统计')
+        } else {
+          // 其他错误才打印
+          console.error('[PracticeStore] 加载用户统计失败:', error)
+        }
+        return null
+      } finally {
+        this.statisticsLoading = false
+      }
+    },
+
+    /**
+     * 获取指定题库的统计数据
+     *
+     * :param bankId: 题库 ID
+     * :return: 题库统计数据
+     */
+    getBankStatistics(bankId: number): practiceApi.BankStatistics {
+      // 从所有分类的缓存中查找该题库
+      const allProgress = this.bankProgressMap()
+      const bankProgress = allProgress.get(bankId)
+
+      if (!bankProgress) {
+        return {
+          bank_id: bankId,
+          total_questions: 0,
+          practiced_count: 0,
+          correct_count: 0,
+          accuracy_rate: 0,
+          total_time: 0,
+          chapter_statistics: []
+        }
+      }
+
+      return {
+        bank_id: bankProgress.bank_id,
+        total_questions: bankProgress.total_count,
+        practiced_count: bankProgress.practiced_count,
+        correct_count: bankProgress.correct_count,
+        accuracy_rate: bankProgress.accuracy_rate,
+        total_time: bankProgress.total_time,
+        chapter_statistics: bankProgress.chapters.map(ch => ({
+          chapter_id: ch.chapter_id,
+          chapter_name: ch.chapter_name,
+          total_questions: ch.total_count,
+          practiced_count: ch.practiced_count,
+          correct_count: ch.correct_count,
+          accuracy_rate: ch.accuracy_rate
+        }))
+      }
+    },
+
+    /**
+     * 刷新指定分类的统计数据（答题完成后调用）
+     *
+     * :param catId: 分类 ID（可选）
+     */
+    async refreshStatistics(catId?: number) {
+      console.log('[PracticeStore] 刷新统计数据, catId:', catId)
+
+      if (catId !== undefined) {
+        // 刷新指定分类
+        return this.loadUserStatistics(catId, true)
+      }
+
+      // 刷新所有已加载的分类
+      const refreshPromises = Array.from(this.statisticsByCategory.keys()).map(key =>
+        this.loadUserStatistics(key, true)
+      )
+      await Promise.all(refreshPromises)
     }
   },
 

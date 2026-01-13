@@ -61,4 +61,9 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'backend.app.task.tasks.db_log.tasks.delete_filesync_data_older_than_30_days',
         'schedule': TzAwareCrontab('0', '2'),  # 每天凌晨2点
     },
+    # 更新用户每日排名 - 每天凌晨0:05执行
+    '更新用户每日排名': {
+        'task': 'update_daily_user_ranks',
+        'schedule': TzAwareCrontab('5', '0'),  # 每天凌晨0:05
+    },
 }

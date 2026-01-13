@@ -15,10 +15,11 @@ export interface AnswerSheetItem {
 
 export interface AnswerRecord {
   questionId: string
-  answer: string
+  answer: string | string[]
   isCorrect: boolean
   score: number
   answerTime?: number
+  submitted?: boolean  // 是否已提交判分（用于区分"已输入"和"已判分"）
 }
 
 export function useAnswerSheet() {

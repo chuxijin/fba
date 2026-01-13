@@ -79,6 +79,17 @@ export interface QuestionListItem {
   chapter_name?: string | null
 }
 
+/** 题目列表项（含答案和解析） - 用于查看历史记录 */
+export interface QuestionWithAnswer extends QuestionListItem {
+  /** 答案数据 */
+  answer_data: {
+    /** 正确答案 */
+    correct: string | string[]
+  } | null
+  /** 解析内容 */
+  analysis_content: string | null
+}
+
 /** 题目详情（管理员接口，包含答案） */
 export interface QuestionDetail {
   /** 题目 ID */
@@ -147,6 +158,20 @@ export interface QuestionAnalysisDetail {
   created_time: string
   /** 更新时间 */
   updated_time: string | null
+}
+
+/** 题目答案和解析（练题模式专用） */
+export interface QuestionSolution {
+  /** 正确答案 */
+  correct_answer: string | string[]
+  /** 解析内容（富文本） */
+  analysis: string
+  /** 是否正确（传入 user_answer 时返回） */
+  is_correct?: boolean
+  /** 全站正确率（百分比） */
+  correct_rate?: number
+  /** 错误选项统计 */
+  wrong_option_stats?: Record<string, number>
 }
 
 /** 题目答案项（批量提交） */

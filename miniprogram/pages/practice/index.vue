@@ -37,7 +37,13 @@
       @change="handleSwiperChange"
     >
       <swiper-item v-for="(tab, index) in customTabs" :key="tab.id">
-        <scroll-view class="main-content" scroll-y>
+        <scroll-view
+          class="main-content"
+          scroll-y
+          refresher-enabled
+          :refresher-triggered="refreshing"
+          @refresherrefresh="handleRefresh"
+        >
           <!-- 学习进度列表 -->
           <view class="progress-section">
             <view v-if="loadingBanks" class="progress-loading">
@@ -96,23 +102,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, computed } from 'vue'
+import { ref, nextTick, onMounted, computed, watch } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import categoryApi, { type CategoryDetail } from '@/api/business/category'
 import bankApi, { type BankDetail } from '@/api/business/bank'
+import type { BankProgressItem } from '@/api/business/practice'
 import BankCard from '../../components/business/BankCard.vue'
 import TabManager from '../../components/business/TabManager.vue'
 import SearchPanel from '../../components/business/SearchPanel.vue'
 import { useCustomTabs } from '../../composables/useCustomTabs'
+import { useSystemInfo } from '../../composables/useSystemInfo'
 import { useUserStore } from '../../stores/user'
+import { usePracticeStore } from '../../stores/practice'
 
 declare const uni: any
 
 const userStore = useUserStore()
+const practiceStore = usePracticeStore()
 
 // 进度题库数据（扩展自 BankDetail）
 interface ProgressBank extends BankDetail {
-  // 学习进度（已完成题目数）
+  // 学习进度（已练习题目数，包含未判题）
   progress: number
+  // 已判题题目数（is_correct 不为空）
+  completed_count?: number
   // 正确率
   accuracy: number
   // 练习人数（显示用）
@@ -122,6 +135,9 @@ interface ProgressBank extends BankDetail {
   accessReason: string
   endTime?: string
   remainingDays?: number
+  // 未完成会话相关（来自用户统计 API）
+  inProgressSessionId?: number | null
+  inProgressCount?: number
 }
 
 // 状态数据
@@ -130,12 +146,16 @@ const tabScrollLeft = ref(0)
 const showTabManager = ref(false)
 const showSearch = ref(false)
 const searchKeyword = ref('')
+const refreshing = ref(false)  // 下拉刷新状态
 
 // ✅ Swiper 动态高度
 const swiperHeight = ref('500px')
 
 // 使用自定义 Tab
 const { tabs: customTabs } = useCustomTabs()
+
+// 使用系统信息（统一管理）
+const { calculateSwiperHeight } = useSystemInfo()
 
 // UView Tabs 需要的数据格式
 const tabList = computed(() => customTabs.value.map(tab => ({ name: tab.name })))
@@ -181,6 +201,22 @@ async function loadCategories() {
 }
 
 /**
+ * 加载用户学习统计数据（使用 Store 管理，按分类缓存）
+ *
+ * :param catId: 分类 ID（可选，筛选指定分类下的题库）
+ * :param forceRefresh: 是否强制刷新
+ */
+async function loadUserStatistics(catId?: number, forceRefresh = false) {
+  try {
+    await practiceStore.loadUserStatistics(catId, forceRefresh)
+    console.log('[练习页面] 用户统计数据加载成功, cat_id:', catId)
+  } catch (error) {
+    console.error('[练习页面] 加载用户统计失败:', error)
+    // 统计数据加载失败不影响页面显示，静默失败
+  }
+}
+
+/**
  * 加载题库数据
  */
 async function loadBanks() {
@@ -188,23 +224,50 @@ async function loadBanks() {
     loadingBanks.value = true
     const data = await bankApi.getBankList({ status: 1 })
 
+    // 获取当前分类的进度映射
+    const currentCatId = getCurrentCategoryId()
+    const progressMap = practiceStore.bankProgressMap(currentCatId)
+
     // 扁平化树形结构：将父题库和子题库都提取出来
     const flattenedBanks: ProgressBank[] = []
 
     data.forEach(bank => {
       // ✅ 使用 userStore 计算权限
       const access = userStore.checkBankAccess(bank.id, bank.cat_id, bank.scope)
+      // ✅ 从用户统计数据获取进度
+      const progressItem = progressMap.get(bank.id)
+
+      // 🔍 调试日志：输出权限判断结果
+      console.log(`[练习页面] 题库权限判断: ${bank.name}`, {
+        bankId: bank.id,
+        catId: bank.cat_id,
+        scope: bank.scope,
+        scopeDesc: bank.scope === 1 ? '免费' : '付费',
+        hasAccess: access.hasAccess,
+        reason: access.reason,
+        reasonDesc: {
+          'free': '✅ 免费题库',
+          'vip_all': '✅ 全站会员',
+          'vip_category': '✅ 分类会员',
+          'purchased': '✅ 单独购买',
+          'need_login': '🔒 需要登录',
+          'need_purchase': '🔒 需要购买'
+        }[access.reason]
+      })
 
       // 添加父题库
       flattenedBanks.push({
         ...bank,
-        progress: 0,  // TODO: 从用户学习记录API获取
-        accuracy: 0,  // TODO: 从用户学习记录API获取
+        progress: progressItem?.practiced_count || 0,
+        completed_count: progressItem?.completed_count || 0,
+        accuracy: progressItem?.accuracy_rate || 0,
         practiceCount: formatPracticeCount(bank.buy_count),
         hasAccess: access.hasAccess,
         accessReason: access.reason,
         endTime: access.endTime,
-        remainingDays: access.remainingDays
+        remainingDays: access.remainingDays,
+        inProgressSessionId: progressItem?.in_progress_session_id || null,
+        inProgressCount: progressItem?.in_progress_count || 0
       })
 
       // 添加子题库（如果有）
@@ -215,15 +278,20 @@ async function loadBanks() {
             childBank.cat_id,
             childBank.scope
           )
+          const childProgressItem = progressMap.get(childBank.id)
+
           flattenedBanks.push({
             ...childBank,
-            progress: 0,
-            accuracy: 0,
+            progress: childProgressItem?.practiced_count || 0,
+            completed_count: childProgressItem?.completed_count || 0,
+            accuracy: childProgressItem?.accuracy_rate || 0,
             practiceCount: formatPracticeCount(childBank.buy_count),
             hasAccess: childAccess.hasAccess,
             accessReason: childAccess.reason,
             endTime: childAccess.endTime,
-            remainingDays: childAccess.remainingDays
+            remainingDays: childAccess.remainingDays,
+            inProgressSessionId: childProgressItem?.in_progress_session_id || null,
+            inProgressCount: childProgressItem?.in_progress_count || 0
           })
         })
       }
@@ -283,16 +351,6 @@ function getTabBanks(tabIndex: number): ProgressBank[] {
   // 指定分类 + 全部题库
   const categoryBanks = allBanks.value.filter(bank => bank.cat_id === tab.categoryId)
   return categoryBanks.filter(bank => bank.parent_id !== null)
-}
-
-/**
- * 获取当前 Tab 的题库列表
- *
- * :param catId: 分类 ID（保留兼容性）
- * :return: 题库列表
- */
-function getCategoryBanks(catId?: number): ProgressBank[] {
-  return getTabBanks(activeTab.value)
 }
 
 /**
@@ -403,6 +461,9 @@ function handleBankClick(bank: ProgressBank) {
 
 /**
  * 快速开始 - 直接进入刷题页
+ *
+ * 使用已加载的用户统计数据判断是否有未完成会话
+ * 避免额外的 API 请求
  */
 function handleQuickStart(bank: ProgressBank) {
   if (!bank.hasAccess) {
@@ -413,8 +474,113 @@ function handleQuickStart(bank: ProgressBank) {
     return
   }
 
-  uni.navigateTo({ url: `/pages/practice/detail?bankId=${bank.id}&mode=practice` })
+  // ✅ 直接使用已加载的统计数据判断
+  if (bank.inProgressSessionId) {
+    // 有进行中的会话，继续答题
+    uni.navigateTo({
+      url: `/pages/practice/detail?sessionId=${bank.inProgressSessionId}&resume=true&catId=${bank.cat_id}`
+    })
+  } else {
+    // 没有进行中的会话，开始新练习
+    uni.navigateTo({
+      url: `/pages/practice/detail?bankId=${bank.id}&catId=${bank.cat_id}`
+    })
+  }
 }
+
+/**
+ * 获取当前 Tab 的分类 ID
+ */
+function getCurrentCategoryId(): number {
+  const tab = customTabs.value[activeTab.value]
+  return tab?.categoryId || 0
+}
+
+/**
+ * 更新题库的进度数据
+ *
+ * 当用户统计数据更新后，刷新 allBanks 中的进度信息
+ */
+function updateBankProgress() {
+  // 获取当前分类的进度数据
+  const currentCatId = getCurrentCategoryId()
+  const progressMap = practiceStore.bankProgressMap(currentCatId)
+
+  allBanks.value = allBanks.value.map(bank => {
+    const progressItem = progressMap.get(bank.id)
+    return {
+      ...bank,
+      progress: progressItem?.practiced_count || 0,
+      completed_count: progressItem?.completed_count || 0,
+      accuracy: progressItem?.accuracy_rate || 0,
+      inProgressSessionId: progressItem?.in_progress_session_id || null,
+      inProgressCount: progressItem?.in_progress_count || 0
+    }
+  })
+}
+
+/**
+ * 下拉刷新处理
+ */
+async function handleRefresh() {
+  console.log('[练习页面] 用户触发下拉刷新')
+  refreshing.value = true
+
+  try {
+    const catId = getCurrentCategoryId()
+
+    // 强制刷新当前分类的统计数据
+    await practiceStore.refreshStatistics(catId)
+
+    // 更新题库的进度数据
+    updateBankProgress()
+
+    uni.showToast({
+      title: '刷新成功',
+      icon: 'success',
+      duration: 1500
+    })
+  } catch (error) {
+    console.error('[练习页面] 刷新失败:', error)
+    uni.showToast({
+      title: '刷新失败',
+      icon: 'none',
+      duration: 1500
+    })
+  } finally {
+    // 延迟结束刷新状态，确保动画完成
+    setTimeout(() => {
+      refreshing.value = false
+    }, 500)
+  }
+}
+
+// Tab 切换防抖定时器
+let tabChangeDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * 监听 Tab 切换
+ *
+ * 当用户切换 Tab 时，加载对应分类的统计数据（带缓存，不会重复请求）
+ */
+watch(activeTab, (newTab, oldTab) => {
+  // 清除之前的定时器
+  if (tabChangeDebounceTimer) {
+    clearTimeout(tabChangeDebounceTimer)
+  }
+
+  // 防抖处理：300ms 后加载新分类的统计数据
+  tabChangeDebounceTimer = setTimeout(async () => {
+    const catId = getCurrentCategoryId()
+    console.log('[练习页面] Tab 切换:', oldTab, '->', newTab, ', cat_id:', catId)
+
+    // 加载该分类的统计数据（如果已缓存则直接返回）
+    await loadUserStatistics(catId)
+
+    // 更新题库的进度数据
+    updateBankProgress()
+  }, 300)
+})
 
 /**
  * 组件挂载时加载数据
@@ -422,36 +588,52 @@ function handleQuickStart(bank: ProgressBank) {
 onMounted(async () => {
   console.log('[练习页面] 组件挂载，开始加载数据')
 
-  // ✅ 并行加载分类、题库和用户信息
+  // ✅ 第一阶段：并行加载分类和用户信息
   await Promise.all([
     loadCategories(),
-    loadBanks(),
     userStore.fetchUserInfo()  // 带缓存，可能不发请求
   ])
+
+  // ✅ 第二阶段：加载用户统计（根据初始 Tab 的分类 ID，带缓存）
+  const initialCatId = getCurrentCategoryId()
+  await loadUserStatistics(initialCatId)
+
+  // ✅ 第三阶段：加载题库（依赖 bankProgressMap，需要在统计数据加载后）
+  await loadBanks()
 
   console.log('[练习页面] 数据加载完成')
   console.log('- 分类数量:', categories.value.length)
   console.log('- Tab数量:', customTabs.value.length)
   console.log('- 题库数量:', allBanks.value.length)
+  console.log('- 已缓存的分类数:', practiceStore.statisticsByCategory.size)
+  console.log('- 当前分类有进度的题库数:', practiceStore.bankProgressMap(initialCatId).size)
 
   // ✅ 动态计算 Swiper 高度
   nextTick(() => {
-    uni.getSystemInfo({
-      success: (res: any) => {
-        const query = uni.createSelectorQuery()
-        query.select('.content-swiper').boundingClientRect()
-        query.exec((result: any) => {
-          if (result && result[0]) {
-            const calculatedHeight = res.windowHeight - result[0].top
-            swiperHeight.value = `${calculatedHeight}px`
-            console.log('[练习页面] Swiper 高度计算完成:', swiperHeight.value)
-            console.log('  - 窗口高度:', res.windowHeight)
-            console.log('  - Swiper距顶部:', result[0].top)
-          }
-        })
-      }
+    calculateSwiperHeight('.content-swiper', (height) => {
+      swiperHeight.value = height
+      console.log('[练习页面] Swiper 高度计算完成:', swiperHeight.value)
     })
   })
+})
+
+/**
+ * 页面显示时检查缓存并刷新（从答题页返回时触发）
+ */
+onShow(() => {
+  console.log('[练习页面] onShow 触发')
+
+  const catId = getCurrentCategoryId()
+
+  // 检查缓存是否过期（过期则静默刷新）
+  if (practiceStore.isCacheExpired(catId)) {
+    console.log('[练习页面] 缓存已过期，静默刷新')
+    practiceStore.loadUserStatistics(catId, true).then(() => {
+      updateBankProgress()
+    })
+  } else {
+    console.log('[练习页面] 缓存未过期，跳过刷新')
+  }
 })
 </script>
 

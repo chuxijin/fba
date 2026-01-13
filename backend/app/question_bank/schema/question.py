@@ -273,3 +273,63 @@ class UpdateQuestionStatisticsParam(SchemaBase):
     wrong_option: str | None = Field(None, description='错误选项')
     collect_delta: int | None = Field(None, description='收藏数变化 (+1/-1)')
     note_delta: int | None = Field(None, description='笔记数变化 (+1/-1)')
+
+
+class GetQuestionSolution(SchemaBase):
+    """题目答案和解析（用于练题模式）"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    correct_answer: str | list[str] = Field(description='正确答案')
+    analysis: str = Field(description='解析内容')
+    is_correct: bool | None = Field(None, description='是否正确（传入 user_answer 时返回）')
+    # 🔥 统计数据（全站正确率和易错项）
+    correct_rate: Decimal = Field(default=Decimal('0'), description='全站正确率（百分比）')
+    wrong_option_stats: dict | None = Field(None, description='错误选项统计: {"B": 1250, "D": 850}')
+
+
+# ============ CSV 批量导入 Schema ============
+
+
+class QuestionImportRow(SchemaBase):
+    """单条题目导入数据"""
+
+    ID: int | str | None = Field(None, description='序号（可选，仅用于排序）')
+    题目: str = Field(description='题干内容')
+    题型: str = Field(description='题型: 单选/多选/判断/填空/简答')
+    分数: int | None = Field(default=1, description='分值')
+    难度: str | None = Field(default='中等', description='难度: 简单/中等/困难')
+    选项A: str | None = Field(None, description='选项 A')
+    选项B: str | None = Field(None, description='选项 B')
+    选项C: str | None = Field(None, description='选项 C')
+    选项D: str | None = Field(None, description='选项 D')
+    答案: str = Field(description='正确答案（如：A 或 A,B 或 答案文本）')
+    解析: str | None = Field(None, description='解析内容')
+    一级目录: str | None = Field(None, description='一级章节名称')
+    二级目录: str | None = Field(None, description='二级章节名称')
+
+
+class BatchImportParam(SchemaBase):
+    """批量导入题目参数"""
+
+    bank_id: int = Field(description='题库 ID')
+    questions: list[QuestionImportRow] = Field(description='题目列表')
+
+
+class ImportResultItem(SchemaBase):
+    """单条导入结果"""
+
+    row_number: int = Field(description='行号（CSV 中的行）')
+    success: bool = Field(description='是否成功')
+    question_id: int | None = Field(None, description='题目 ID（成功时返回）')
+    error_message: str | None = Field(None, description='错误信息（失败时返回）')
+
+
+class BatchImportResult(SchemaBase):
+    """批量导入结果"""
+
+    total: int = Field(description='总数')
+    success_count: int = Field(description='成功数')
+    fail_count: int = Field(description='失败数')
+    details: list[ImportResultItem] = Field(description='详情列表')
+

@@ -12,58 +12,75 @@
         <image class="cover-image" :src="bank.cover_url" mode="aspectFill" />
       </view>
 
-      <!-- 基础信息（一行） -->
-      <view class="info-header">
+      <!-- 基础信息 + 学习进度 -->
+      <view class="section info-section">
         <text class="bank-title">{{ bank.name }}</text>
+
+        <!-- 第一行：题目数量 + 已完成 + 练习人数 -->
         <view class="meta-row">
-          <view class="meta-item">
-            <text class="meta-icon">📖</text>
-            <text class="meta-text">{{ bank.q_count }}题</text>
+          <view class="meta-group">
+            <view class="meta-item">
+              <text class="meta-icon">📖</text>
+              <text class="meta-text">{{ bank.q_count }}题</text>
+            </view>
+            <text class="meta-divider">|</text>
+            <text class="meta-text-highlight">已完成 {{ progress }} 题</text>
           </view>
           <view class="meta-item">
             <text class="meta-icon">👥</text>
             <text class="meta-text">{{ practiceCount }}人在刷</text>
           </view>
         </view>
-      </view>
 
-      <!-- 学习进度 -->
-      <view class="progress-section">
+        <!-- 第二行：学习进度 + 百分比 + 正确率 -->
         <view class="progress-header">
-          <text class="progress-title">学习进度</text>
-          <text class="progress-percent">{{ progressPercent }}%</text>
+          <view class="progress-title-group">
+            <text class="progress-title">学习进度</text>
+            <text class="progress-percent">{{ progressPercent }}%</text>
+          </view>
+          <text v-if="progress > 0" class="accuracy-text">正确率 {{ accuracy }}%</text>
         </view>
+
+        <!-- 进度条 -->
         <view class="progress-bar">
           <view class="progress-fill" :style="{ width: progressPercent + '%' }"></view>
         </view>
-        <view class="progress-stats">
-          <text class="stats-text">已完成 {{ progress }} 题</text>
-          <text v-if="progress > 0" class="stats-text">正确率 {{ accuracy }}%</text>
-        </view>
       </view>
 
-      <!-- 功能按钮区（5个） -->
-      <view class="action-grid">
-        <view class="action-btn" @tap="handleRandomPractice">
-          <text class="action-icon">🎲</text>
-          <text class="action-text">随机练习</text>
-        </view>
-        <view class="action-btn" @tap="handleHistory">
-          <text class="action-icon">📜</text>
-          <text class="action-text">练习历史</text>
-        </view>
-        <view class="action-btn" @tap="handleWrongQuestions">
-          <text class="action-icon">❌</text>
-          <text class="action-text">错题集</text>
-        </view>
-        <view class="action-btn" @tap="handleFavorites">
-          <text class="action-icon">⭐</text>
-          <text class="action-text">我的收藏</text>
-        </view>
-        <view class="action-btn" @tap="handleNotes">
-          <text class="action-icon">📝</text>
-          <text class="action-text">我的笔记</text>
-        </view>
+      <!-- 快捷功能 -->
+      <view class="section action-section">
+        <u-grid :col="5" :border="false">
+          <u-grid-item @click="handleRandomPractice">
+            <view class="action-content">
+              <text class="action-icon">🎲</text>
+              <text class="action-label">随机练习</text>
+            </view>
+          </u-grid-item>
+          <u-grid-item @click="handleHistory">
+            <view class="action-content">
+              <text class="action-icon">📜</text>
+              <text class="action-label">练习历史</text>
+            </view>
+          </u-grid-item>
+          <u-grid-item @click="handleWrongQuestions">
+            <view class="action-content">
+              <text class="action-icon">❌</text>
+              <text class="action-label">错题集</text>
+            </view>
+          </u-grid-item>
+          <u-grid-item @click="handleFavorites">
+            <view class="action-content">
+              <text class="action-icon">⭐</text>
+              <text class="action-label">我的收藏</text>
+            </view>
+          </u-grid-item>
+          <u-grid-item @click="handleNotes">
+            <view class="action-content">
+              <text class="action-icon">📝</text>
+              <text class="action-label">我的笔记</text>
+            </view>
+          </u-grid-item>
+        </u-grid>
       </view>
 
       <!-- 公告通知栏 -->
@@ -80,40 +97,136 @@
       </view>
 
       <!-- 章节列表 -->
-      <view class="chapter-section">
+      <view class="section chapter-section">
         <view class="section-header">
           <text class="section-title">章节练习</text>
         </view>
 
-        <view v-if="loadingChapters" class="chapter-loading">
-          <text>加载章节中...</text>
-        </view>
-
-        <view v-else-if="chapters.length === 0" class="chapter-empty">
+        <view v-if="chapters.length === 0" class="chapter-empty">
           <text>暂无章节</text>
         </view>
 
+        <!-- 多层级：显示 Tab + 子章节 -->
+        <view v-else-if="isMultiLevel" class="chapter-multi-level">
+          <!-- 🔥 添加 v-if 保护 + key 强制重渲染，避免 rect undefined 错误 -->
+          <u-tabs
+            v-if="topLevelTabs.length > 0"
+            :key="'tabs-' + topLevelTabs.length"
+            :list="topLevelTabs"
+            :current="currentTabIndex"
+            @change="handleTabChange"
+            lineColor="#3b82f6"
+            :activeStyle="{
+              color: '#3b82f6',
+              fontWeight: 'bold',
+              fontSize: '30rpx'
+            }"
+            :inactiveStyle="{
+              color: '#6b7280',
+              fontSize: '28rpx'
+            }"
+          ></u-tabs>
+
+          <view class="chapter-list">
+            <view
+              v-for="chapter in currentTabChildren"
+              :key="chapter.id"
+              class="chapter-item"
+              @tap="handleChapterClick(chapter)"
+            >
+              <view class="chapter-main">
+                <!-- 第一行：章节名称 + 所有统计信息 -->
+                <view class="chapter-info-row">
+                  <text class="chapter-name">{{ chapter.name }}</text>
+                  <text v-if="chapter.is_trial" class="trial-badge">试用</text>
+                  <text class="stats-divider">·</text>
+                  <text class="chapter-count">{{ chapter.q_count }}题</text>
+                  <text class="stats-divider">·</text>
+                  <text class="chapter-progress">
+                    已练{{ getChapterProgress(chapter.id) }}题({{ getChapterProgressPercent(chapter.id) }}%)
+                  </text>
+                  <template v-if="getChapterProgress(chapter.id) > 0">
+                    <text class="stats-divider">·</text>
+                    <text class="chapter-accuracy">
+                      正确率{{ getChapterAccuracy(chapter.id) }}%
+                    </text>
+                  </template>
+                </view>
+                <!-- 第二行：进度条 -->
+                <view class="chapter-progress-bar">
+                  <view
+                    class="chapter-progress-fill"
+                    :style="{ width: getChapterProgressPercent(chapter.id) + '%' }"
+                  ></view>
+                </view>
+              </view>
+              <!-- 右侧图标：锁或箭头 -->
+              <view class="chapter-arrow">
+                <up-icon
+                  v-if="!chapter.is_trial && !hasAccess"
+                  name="lock-fill"
+                  size="16"
+                  color="#9ca3af"
+                ></up-icon>
+                <up-icon
+                  v-else
+                  name="arrow-right"
+                  size="16"
+                  color="#d1d5db"
+                ></up-icon>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 单层级：直接显示章节列表 -->
         <view v-else class="chapter-list">
           <view
-            v-for="chapter in chapters"
+            v-for="chapter in flattenChapters"
             :key="chapter.id"
             class="chapter-item"
             @tap="handleChapterClick(chapter)"
           >
             <view class="chapter-main">
-              <view class="chapter-title-row">
+              <!-- 第一行：章节名称 + 所有统计信息 -->
+              <view class="chapter-info-row">
                 <text class="chapter-name">{{ chapter.name }}</text>
                 <text v-if="chapter.is_trial" class="trial-badge">试用</text>
-              </view>
-              <view class="chapter-stats">
+                <text class="stats-divider">·</text>
                 <text class="chapter-count">{{ chapter.q_count }}题</text>
-                <text v-if="getChapterProgress(chapter.id) > 0" class="chapter-accuracy">
-                  正确率 {{ getChapterAccuracy(chapter.id) }}%
+                <text class="stats-divider">·</text>
+                <text class="chapter-progress">
+                  已练{{ getChapterProgress(chapter.id) }}题({{ getChapterProgressPercent(chapter.id) }}%)
                 </text>
+                <template v-if="getChapterProgress(chapter.id) > 0">
+                  <text class="stats-divider">·</text>
+                  <text class="chapter-accuracy">
+                    正确率{{ getChapterAccuracy(chapter.id) }}%
+                  </text>
+                </template>
+              </view>
+              <!-- 第二行：进度条 -->
+              <view class="chapter-progress-bar">
+                <view
+                  class="chapter-progress-fill"
+                  :style="{ width: getChapterProgressPercent(chapter.id) + '%' }"
+                ></view>
               </view>
             </view>
+            <!-- 右侧图标：锁或箭头 -->
             <view class="chapter-arrow">
-              <text>›</text>
+              <up-icon
+                v-if="!chapter.is_trial && !hasAccess"
+                name="lock-fill"
+                size="16"
+                color="#9ca3af"
+              ></up-icon>
+              <up-icon
+                v-else
+                name="arrow-right"
+                size="16"
+                color="#d1d5db"
+              ></up-icon>
             </view>
           </view>
         </view>
@@ -124,31 +237,92 @@
     <view v-else class="error-container">
       <text>加载失败</text>
     </view>
+
+    <!-- 登录模态框 -->
+    <LoginModal v-model:visible="showLoginModal" @success="handleLoginSuccess" />
   </view>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import bankApi, { type BankDetail } from '@/api/business/bank'
-import chapterApi, { type ChapterDetail } from '@/api/business/chapter'
+import bankApi, { type BankDetail, type ChapterTreeNode } from '@/api/business/bank'
+import * as practiceApi from '@/api/business/practice'
+import type { BankStatistics } from '@/api/business/practice'
 import { useUserStore } from '@/stores/user'
+import { usePracticeStore } from '@/stores/practice'
+import LoginModal from '@/components/auth/LoginModal.vue'
 
 declare const uni: any
 
 const userStore = useUserStore()
+const practiceStore = usePracticeStore()
 
 const loading = ref(true)
-const loadingChapters = ref(false)
 const bank = ref<BankDetail | null>(null)
-const chapters = ref<ChapterDetail[]>([])
-const progress = ref(0)  // TODO: 从用户学习记录API获取
-const accuracy = ref(0)  // TODO: 从用户学习记录API获取
+const chapters = ref<ChapterTreeNode[]>([])
+const bankStatistics = ref<BankStatistics | null>(null)
+const currentTabIndex = ref(0)  // 当前选中的顶级章节 tab 索引
+const showLoginModal = ref(false)  // 登录模态框显示状态
 
 // 公告数据（TODO: 从API获取）
 const announcements = ref([
   { content: '新增100道精选习题，快来挑战吧！' },
   { content: '学习打卡活动进行中，每日刷题赢奖励' },
 ])
+
+/**
+ * 判断是否为多层级结构
+ */
+const isMultiLevel = computed(() => {
+  return chapters.value.some(chapter =>
+    chapter.children && chapter.children.length > 0
+  )
+})
+
+/**
+ * 顶级章节列表（API 返回的就是树形结构，直接使用）
+ */
+const topLevelChapters = computed(() => {
+  return chapters.value
+})
+
+/**
+ * 转换为 u-tabs 组件需要的格式
+ */
+const topLevelTabs = computed(() => {
+  return topLevelChapters.value.map(chapter => ({
+    name: chapter.name,
+    id: chapter.id
+  }))
+})
+
+/**
+ * 当前选中 tab 的子章节
+ */
+const currentTabChildren = computed(() => {
+  const currentChapter = topLevelChapters.value[currentTabIndex.value]
+  if (!currentChapter) {
+    return []
+  }
+  return currentChapter.children || []
+})
+
+/**
+ * 扁平化所有章节（用于单层级显示）
+ */
+const flattenChapters = computed(() => {
+  const result: ChapterTreeNode[] = []
+  const flatten = (chapterList: ChapterTreeNode[]) => {
+    chapterList.forEach(chapter => {
+      result.push(chapter)
+      if (chapter.children && chapter.children.length > 0) {
+        flatten(chapter.children)
+      }
+    })
+  }
+  flatten(chapters.value)
+  return result
+})
 
 const hasAccess = computed(() => {
   if (!bank.value) return false
@@ -167,7 +341,22 @@ const practiceCount = computed(() => {
 
 const progressPercent = computed(() => {
   if (!bank.value || bank.value.q_count === 0) return 0
-  return Math.round((progress.value / bank.value.q_count) * 100)
+  const practicedCount = bankStatistics.value?.practiced_count || 0
+  return Math.round((practicedCount / bank.value.q_count) * 100)
+})
+
+/**
+ * 已完成题目数
+ */
+const progress = computed(() => {
+  return bankStatistics.value?.practiced_count || 0
+})
+
+/**
+ * 总体正确率
+ */
+const accuracy = computed(() => {
+  return bankStatistics.value?.accuracy_rate || 0
 })
 
 /**
@@ -178,17 +367,54 @@ const announcementText = computed(() => {
 })
 
 /**
- * 获取章节进度（TODO: 从API获取）
+ * 获取章节进度
+ *
+ * :param chapterId: 章节 ID
+ * :return: 已练习题数
  */
 function getChapterProgress(chapterId: number): number {
-  return 0
+  if (!bankStatistics.value) return 0
+  const chapterStat = bankStatistics.value.chapter_statistics.find(
+    stat => stat.chapter_id === chapterId
+  )
+  return chapterStat?.practiced_count || 0
 }
 
 /**
- * 获取章节正确率（TODO: 从API获取）
+ * 获取章节正确率
+ *
+ * :param chapterId: 章节 ID
+ * :return: 正确率（0-100）
  */
 function getChapterAccuracy(chapterId: number): number {
-  return 0
+  if (!bankStatistics.value) return 0
+  const chapterStat = bankStatistics.value.chapter_statistics.find(
+    stat => stat.chapter_id === chapterId
+  )
+  return chapterStat?.accuracy_rate || 0
+}
+
+/**
+ * 获取章节进度百分比
+ *
+ * :param chapterId: 章节 ID
+ * :return: 进度百分比（0-100）
+ */
+function getChapterProgressPercent(chapterId: number): number {
+  const chapter = flattenChapters.value.find(ch => ch.id === chapterId)
+  if (!chapter || chapter.q_count === 0) return 0
+
+  const practiced = getChapterProgress(chapterId)
+  return Math.round((practiced / chapter.q_count) * 100)
+}
+
+/**
+ * 切换顶级章节 Tab
+ *
+ * :param item: uView Plus tabs 传递的对象 { index, name }
+ */
+function handleTabChange(item: { index: number; name: string }) {
+  currentTabIndex.value = item.index
 }
 
 /**
@@ -198,12 +424,18 @@ function handleRandomPractice() {
   if (!bank.value) return
 
   if (!hasAccess.value) {
-    uni.showToast({ title: '暂无权限', icon: 'none' })
+    // 区分未登录和已登录无权限
+    if (!userStore.isLoggedIn) {
+      // 打开登录模态框
+      showLoginModal.value = true
+    } else {
+      uni.showToast({ title: '需要购买后才能练习', icon: 'none', duration: 2000 })
+    }
     return
   }
 
   uni.navigateTo({
-    url: `/pages/practice/detail?bankId=${bank.value.id}&mode=practice&random=true`
+    url: `/pages/practice/detail?bankId=${bank.value.id}&catId=${bank.value.cat_id}&random=true`
   })
 }
 
@@ -220,8 +452,14 @@ function handleHistory() {
 function handleWrongQuestions() {
   if (!bank.value) return
 
+  // 错题集需要登录
+  if (!userStore.isLoggedIn) {
+    showLoginModal.value = true
+    return
+  }
+
   uni.navigateTo({
-    url: `/pages/practice/detail?bankId=${bank.value.id}&mode=practice&viewMode=wrong`
+    url: `/pages/practice/detail?bankId=${bank.value.id}&viewMode=wrong`
   })
 }
 
@@ -241,40 +479,85 @@ function handleNotes() {
 
 /**
  * 章节点击
+ * 检查是否有进行中的会话，有则继续，没有则开始新练习
  */
-function handleChapterClick(chapter: ChapterDetail) {
-  // 试用章节直接进入
-  if (chapter.is_trial) {
-    uni.navigateTo({
-      url: `/pages/practice/detail?chapterId=${chapter.id}&mode=practice`
+async function handleChapterClick(chapter: ChapterTreeNode) {
+  if (!bank.value) return
+
+  // 检查权限（试用章节除外）
+  if (!chapter.is_trial && !hasAccess.value) {
+    // 区分未登录和已登录无权限两种情况
+    if (!userStore.isLoggedIn) {
+      // 未登录：打开登录模态框
+      showLoginModal.value = true
+    } else {
+      // 已登录但无权限：TODO
+      uni.showToast({ title: '需要购买后才能练习', icon: 'none', duration: 2000 })
+    }
+    return
+  }
+
+  const bankId = bank.value.id
+  const chapterId = chapter.id
+  const catId = bank.value.cat_id
+
+  try {
+    // 检查是否有进行中的会话
+    const latestSession = await practiceApi.getLatestSession({
+      bank_id: bankId,
+      chapter_id: chapterId
     })
-    return
+
+    if (latestSession && latestSession.status === 'in_progress') {
+      // 有进行中的会话，继续答题
+      uni.navigateTo({
+        url: `/pages/practice/detail?sessionId=${latestSession.id}&resume=true&catId=${catId}`
+      })
+    } else {
+      // 没有进行中的会话，开始新练习
+      uni.navigateTo({
+        url: `/pages/practice/detail?bankId=${bankId}&chapterId=${chapterId}&catId=${catId}`
+      })
+    }
+  } catch {
+    // 获取会话失败（可能是没有会话），直接开始新练习
+    uni.navigateTo({
+      url: `/pages/practice/detail?bankId=${bankId}&chapterId=${chapterId}&catId=${catId}`
+    })
+  }
+}
+
+/**
+ * 登录成功回调
+ */
+async function handleLoginSuccess() {
+  console.log('[题库详情] 登录成功，刷新用户信息和统计数据')
+
+  // 刷新用户信息
+  await userStore.fetchUserInfo(true)
+
+  // 刷新题库统计数据
+  if (bank.value) {
+    await loadBankStatistics(bank.value.id)
   }
 
-  // 检查权限
-  if (!hasAccess.value) {
-    uni.showToast({ title: '暂无权限', icon: 'none' })
-    return
-  }
-
-  uni.navigateTo({
-    url: `/pages/practice/detail?chapterId=${chapter.id}&mode=practice`
+  uni.showToast({
+    title: '登录成功',
+    icon: 'success',
+    duration: 1500
   })
 }
 
 /**
- * 加载题库详情
+ * 加载题库详情（含章节树）
  */
 async function loadBankDetail(bankId: number) {
   try {
     loading.value = true
     const data = await bankApi.getBankDetail(bankId)
     bank.value = data
-
-    // TODO: 加载用户学习进度
-    // const userProgress = await userApi.getBankProgress(bankId)
-    // progress.value = userProgress.completed_count
-    // accuracy.value = userProgress.accuracy
+    // 章节树直接从题库详情中获取
+    chapters.value = data.chapters || []
   } catch (error) {
     console.error('[题库详情] 加载失败:', error)
     uni.showToast({ title: '加载失败', icon: 'none' })
@@ -284,17 +567,27 @@ async function loadBankDetail(bankId: number) {
 }
 
 /**
- * 加载章节列表
+ * 加载题库统计数据（从 Store 读取，避免重复请求）
  */
-async function loadChapters(bankId: number) {
+async function loadBankStatistics(bankId: number) {
   try {
-    loadingChapters.value = true
-    const data = await chapterApi.getChapterTree(bankId)
-    chapters.value = data
+    // 尝试加载用户统计（未登录时会静默失败）
+    await practiceStore.loadUserStatistics()
+
+    // 从 Store 获取指定题库的统计（未登录时返回空对象）
+    bankStatistics.value = practiceStore.getBankStatistics(bankId)
   } catch (error) {
-    console.error('[章节列表] 加载失败:', error)
-  } finally {
-    loadingChapters.value = false
+    console.error('[题库统计] 加载失败:', error)
+    // 统计数据加载失败时，设置为空对象
+    bankStatistics.value = {
+      bank_id: bankId,
+      total_questions: 0,
+      practiced_count: 0,
+      correct_count: 0,
+      accuracy_rate: 0,
+      total_time: 0,
+      chapter_statistics: []
+    }
   }
 }
 
@@ -312,24 +605,26 @@ onMounted(() => {
     return
   }
 
-  // 并行加载题库和章节
+  // 并行加载题库（含章节）和统计数据
   Promise.all([
     loadBankDetail(bankId),
-    loadChapters(bankId)
+    loadBankStatistics(bankId)
   ])
 })
 </script>
 
 <style scoped lang="scss">
 @import '@/styles/design-tokens.scss';
+@import '@/styles/mixins.scss';
 
 .bank-detail-page {
   min-height: 100vh;
-  background: $color-bg-page;
+  background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
 }
 
 .detail-content {
   height: 100vh;
+  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
 }
 
 .loading-container,
@@ -361,25 +656,40 @@ onMounted(() => {
   height: 100%;
 }
 
-/* ============ 基础信息 ============ */
-.info-header {
+/* ============ 统一的 Section 样式 ============ */
+.section {
+  margin: 0 32rpx 24rpx;
+  background: #ffffff;
+  border-radius: $radius-lg;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.06);
+}
+
+/* 章节卡片需要 overflow hidden，其他不需要 */
+.chapter-section {
+  overflow: hidden;
+}
+
+/* ============ 基础信息 + 学习进度 ============ */
+.info-section {
   padding: 32rpx;
-  background: $color-bg-card;
 }
 
 .bank-title {
+  @include text($font-size-2xl, $font-weight-bold, $color-text-primary);
   display: block;
-  font-size: $font-size-2xl;
-  font-weight: $font-weight-bold;
-  color: $color-text-primary;
-  margin-bottom: 16rpx;
+  margin-bottom: 20rpx;
   line-height: $line-height-tight;
 }
 
 .meta-row {
+  @include flex-between;
+  margin-bottom: 24rpx;
+}
+
+.meta-group {
   display: flex;
   align-items: center;
-  gap: 32rpx;
+  gap: 12rpx;
 }
 
 .meta-item {
@@ -393,34 +703,39 @@ onMounted(() => {
 }
 
 .meta-text {
-  font-size: $font-size-base;
-  color: $color-text-secondary;
+  @include text($font-size-base, $font-weight-normal, $color-text-secondary);
 }
 
-/* ============ 学习进度 ============ */
-.progress-section {
-  padding: 32rpx;
-  background: $color-bg-card;
-  margin-top: 16rpx;
+.meta-divider {
+  @include text($font-size-base, $font-weight-normal, $color-text-muted);
+  margin: 0 4rpx;
+}
+
+.meta-text-highlight {
+  @include text($font-size-base, $font-weight-semibold, $color-primary);
 }
 
 .progress-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  @include flex-between;
   margin-bottom: 16rpx;
 }
 
+.progress-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+}
+
 .progress-title {
-  font-size: $font-size-base;
-  font-weight: $font-weight-semibold;
-  color: $color-text-primary;
+  @include text($font-size-base, $font-weight-semibold, $color-text-primary);
 }
 
 .progress-percent {
-  font-size: $font-size-xl;
-  font-weight: $font-weight-bold;
-  color: $color-primary;
+  @include text($font-size-xl, $font-weight-bold, $color-primary);
+}
+
+.accuracy-text {
+  @include text($font-size-sm, $font-weight-normal, $color-success);
 }
 
 .progress-bar {
@@ -428,7 +743,6 @@ onMounted(() => {
   background: $color-bg-page;
   border-radius: $radius-full;
   overflow: hidden;
-  margin-bottom: 16rpx;
 }
 
 .progress-fill {
@@ -438,65 +752,46 @@ onMounted(() => {
   transition: width $duration-base $ease-out;
 }
 
-.progress-stats {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+/* ============ 快捷功能 ============ */
+.action-section {
+  padding: 16rpx 0;
 
-.stats-text {
-  font-size: $font-size-sm;
-  color: $color-text-secondary;
-}
-
-/* ============ 功能按钮区 ============ */
-.action-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 16rpx;
-  padding: 32rpx;
-  background: $color-bg-card;
-  margin-top: 16rpx;
-}
-
-.action-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  padding: 20rpx 0;
-  border-radius: $radius-base;
-  background: $color-bg-page;
-  transition: all 0.2s ease;
-
-  &:active {
-    transform: scale(0.95);
-    background: rgba(59, 130, 246, 0.1);
+  ::v-deep .u-grid {
+    background: transparent;
   }
+
+  ::v-deep .u-grid-item {
+    padding: 0;
+  }
+}
+
+.action-content {
+  @include flex-column;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 0;
+  @include tap-feedback;
 }
 
 .action-icon {
   font-size: 48rpx;
 }
 
-.action-text {
-  font-size: 20rpx;
-  color: $color-text-secondary;
+.action-label {
+  @include text($font-size-xs, $font-weight-normal, $color-text-secondary);
+  text-align: center;
   white-space: nowrap;
 }
 
 /* ============ 公告轮播 ============ */
 .announcement-section {
   padding: 0 32rpx;
-  margin-top: 16rpx;
+  margin-bottom: 24rpx;
 }
 
 /* ============ 章节列表 ============ */
 .chapter-section {
   padding: 32rpx;
-  background: $color-bg-card;
-  margin-top: 16rpx;
 }
 
 .section-header {
@@ -504,19 +799,22 @@ onMounted(() => {
 }
 
 .section-title {
-  font-size: $font-size-lg;
-  font-weight: $font-weight-semibold;
-  color: $color-text-primary;
+  @include text($font-size-lg, $font-weight-semibold, $color-text-primary);
 }
 
-.chapter-loading,
+/* ============ 多层级布局 ============ */
+.chapter-multi-level {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
 .chapter-empty {
   padding: 80rpx 0;
   text-align: center;
 
   text {
-    font-size: $font-size-base;
-    color: $color-text-muted;
+    @include text($font-size-base, $font-weight-normal, $color-text-muted);
   }
 }
 
@@ -527,37 +825,29 @@ onMounted(() => {
 }
 
 .chapter-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 24rpx;
+  @include flex-between;
+  @include tap-feedback;
+  padding: 20rpx 24rpx;
   background: $color-bg-page;
   border-radius: $radius-base;
-  transition: all 0.2s ease;
-
-  &:active {
-    transform: scale(0.98);
-    background: rgba(59, 130, 246, 0.05);
-  }
 }
 
 .chapter-main {
+  @include flex-column;
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
+  gap: 8rpx;
 }
 
-.chapter-title-row {
+/* 章节信息行：名称 + 所有统计信息 */
+.chapter-info-row {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 8rpx;
+  flex-wrap: wrap;
 }
 
 .chapter-name {
-  font-size: $font-size-base;
-  font-weight: $font-weight-medium;
-  color: $color-text-primary;
+  @include text($font-size-base, $font-weight-medium, $color-text-primary);
 }
 
 .trial-badge {
@@ -569,28 +859,40 @@ onMounted(() => {
   border-radius: 8rpx;
 }
 
-.chapter-stats {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
+.chapter-count {
+  @include text($font-size-sm, $font-weight-normal, $color-text-secondary);
 }
 
-.chapter-count,
+.stats-divider {
+  @include text($font-size-sm, $font-weight-normal, $color-text-muted);
+}
+
+.chapter-progress {
+  @include text($font-size-sm, $font-weight-medium, $color-primary);
+}
+
 .chapter-accuracy {
-  font-size: $font-size-sm;
-  color: $color-text-secondary;
+  @include text($font-size-sm, $font-weight-normal, $color-success);
+}
+
+/* 章节进度条 */
+.chapter-progress-bar {
+  margin-top: 8rpx;
+  height: 12rpx;
+  background: #e5e7eb;  /* 更明显的灰色背景 */
+  border-radius: $radius-full;
+  overflow: hidden;
+}
+
+.chapter-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, $color-primary-light 0%, $color-primary 100%);
+  border-radius: $radius-full;
+  transition: width $duration-base $ease-out;
 }
 
 .chapter-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  text {
-    font-size: 56rpx;
-    color: $color-text-muted;
-    font-weight: $font-weight-light;
-    line-height: 1;
-  }
+  @include flex-center;
+  margin-left: 16rpx;
 }
 </style>

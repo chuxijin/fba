@@ -154,13 +154,23 @@ class CRUDActcodeUsageDao(CRUDPlus[ActcodeUsage]):
         创建使用记录
 
         :param db: 数据库会话
-        :param obj: 兑换参数
+        :param obj: 兑换参数（Pydantic模型）
         :param code_id: 激活码 ID
         :return:
         """
-        dict_obj = obj.model_dump()
-        dict_obj['code_id'] = code_id
-        await self.create_model(db, dict_obj, commit=False)
+        from backend.app.actcode.model import ActcodeUsage
+
+        # 直接创建 ORM 对象（used_time 会自动设置为当前时间）
+        usage_record = ActcodeUsage(
+            code_id=code_id,
+            app_id=obj.app_id,
+            user_id=obj.user_id,
+            ip_address=obj.ip_address,
+            device_info=obj.device_info,
+        )
+
+        db.add(usage_record)
+        # 不提交，由外部控制事务
 
     async def check_user_used(self, db: AsyncSession, code_id: int, user_id: str) -> bool:
         """

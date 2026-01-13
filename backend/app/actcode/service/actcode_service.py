@@ -227,6 +227,48 @@ class ActcodeService:
         return await paging_data(db, code_select)
 
     @staticmethod
+    async def query_code_info(*, db: AsyncSession, code: str, app_id: str) -> RedeemCodeResult:
+        """
+        查询激活码信息（不实际激活）
+
+        :param db: 数据库会话
+        :param code: 激活码
+        :param app_id: 应用ID
+        :return: 激活码信息
+        """
+        actcode = await actcode_dao.get_by_code(db, code)
+        if not actcode:
+            return RedeemCodeResult(success=False, reward_type='', reward_data={}, message='激活码不存在')
+
+        if actcode.status == 2:
+            return RedeemCodeResult(success=False, reward_type='', reward_data={}, message='激活码已过期')
+
+        batch = await actcode_batch_dao.select_model(db, actcode.batch_id)
+        if not batch:
+            return RedeemCodeResult(success=False, reward_type='', reward_data={}, message='批次不存在')
+
+        if batch.app_id != app_id:
+            return RedeemCodeResult(success=False, reward_type='', reward_data={}, message='激活码不属于当前应用')
+
+        if batch.status == 0:
+            return RedeemCodeResult(success=False, reward_type='', reward_data={}, message='批次已停用')
+
+        now = timezone.now()
+        if batch.valid_from and now < batch.valid_from:
+            return RedeemCodeResult(success=False, reward_type='', reward_data={}, message='激活码未到使用时间')
+
+        if batch.valid_to and now > batch.valid_to:
+            return RedeemCodeResult(success=False, reward_type='', reward_data={}, message='激活码已过期')
+
+        if actcode.used_count >= batch.max_use_per_code:
+            return RedeemCodeResult(success=False, reward_type='', reward_data={}, message='激活码已达最大使用次数')
+
+        # 返回激活码信息，但不实际激活
+        return RedeemCodeResult(
+            success=True, reward_type=batch.reward_type, reward_data=batch.reward_data, message='激活码有效'
+        )
+
+    @staticmethod
     async def redeem_code(*, db: AsyncSession, obj: RedeemCodeParam) -> RedeemCodeResult:
         """
         兑换激活码

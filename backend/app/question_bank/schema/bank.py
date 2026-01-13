@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import ConfigDict, Field
 
@@ -33,6 +34,12 @@ class GetBankDetail(BankSchemaBase):
     buy_count: int = Field(description='购买数量')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
+
+
+class GetBankDetailWithChapters(GetBankDetail):
+    """题库详情（含章节树）"""
+
+    chapters: list[dict[str, Any]] = Field(default_factory=list, description='章节树')
 
 
 class GetBankWithRelationDetail(GetBankDetail):

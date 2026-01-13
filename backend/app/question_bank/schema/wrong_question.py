@@ -57,8 +57,12 @@ class GetWrongQuestionListItem(SchemaBase):
     # 扁平化字段，方便前端显示
     question_stem: str | None = Field(None, description='题目题干')
     question_type: str | None = Field(None, description='题型')
+    bank_id: int | None = Field(None, description='题库 ID')
     bank_name: str | None = Field(None, description='题库名称')
+    chapter_id: int | None = Field(None, description='章节 ID')
     chapter_name: str | None = Field(None, description='章节名称')
+    cat_id: int | None = Field(None, description='分类 ID')
+    cat_name: str | None = Field(None, description='分类名称')
 
 
 class SetWrongQuestionPinParam(SchemaBase):

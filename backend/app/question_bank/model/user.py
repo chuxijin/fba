@@ -14,6 +14,7 @@ from backend.utils.timezone import timezone
 
 if TYPE_CHECKING:
     from .practice import PracticeRecord, PracticeSession, WrongQuestionBook
+    from .statistics import UserCheckIn
 
 
 class UserAccount(Base):
@@ -82,6 +83,7 @@ class UserAccount(Base):
     practice_sessions: Mapped[list['PracticeSession']] = relationship(init=False, back_populates='user', lazy='noload')
     practice_records: Mapped[list['PracticeRecord']] = relationship(init=False, back_populates='user', lazy='noload')
     wrong_questions: Mapped[list['WrongQuestionBook']] = relationship(init=False, back_populates='user', lazy='noload')
+    check_ins: Mapped[list['UserCheckIn']] = relationship(init=False, back_populates='user', lazy='noload')
 
 
 class UserContactAddress(Base):

@@ -27,8 +27,11 @@ export interface CreateSessionParams {
   session_type: SessionType
   bank_id?: number
   chapter_id?: number
+  exam_id?: number
   question_ids?: number[]
-  total_count: number
+  total_count?: number  // 可选，后端自动计算
+  limit?: number  // 题目数量限制（用于随机出题）
+  shuffle?: boolean  // 是否随机顺序
   exam_config?: {
     time_limit?: number
     show_answer?: boolean
@@ -87,12 +90,13 @@ export interface AnswerCardItem {
   index: number
   question_id: number
   status: 'correct' | 'wrong' | 'unanswered'
+  answer_time: number
 }
 
 /**
- * 会话结算数据
+ * 会话答题报告
  */
-export interface SessionSummaryData {
+export interface SessionReport {
   session_id: number
   bank_id?: number
   practice_name?: string
@@ -110,6 +114,29 @@ export interface SessionSummaryData {
 }
 
 /**
+ * 题目解析项
+ */
+export interface QuestionSolution {
+  question_id: number
+  content: string
+  type: string
+  options?: Record<string, any>[]
+  correct_answer: string | string[]
+  analysis?: string
+  user_answer?: string | string[]
+  is_correct?: boolean
+  answer_time?: number  // 答题用时（秒）
+}
+
+/**
+ * 会话答案解析
+ */
+export interface SessionSolution {
+  session_id: number
+  questions: QuestionSolution[]
+}
+
+/**
  * 更新会话统计参数
  */
 export interface UpdateSessionParams {
@@ -123,7 +150,7 @@ export interface UpdateSessionParams {
  * 提交会话参数
  */
 export interface SubmitSessionParams {
-  score?: number
+  total_time: number
 }
 
 /**
@@ -251,21 +278,10 @@ export function deleteSession(sessionId: number): Promise<void> {
 // ============ 答题记录 API ============
 
 /**
- * 创建单条答题记录
+ * 创建答题记录（支持单条或批量）
  */
-export function createRecord(data: RecordParams & {
-  session_id: number
-  bank_id: number
-  chapter_id?: number
-}): Promise<RecordDetail> {
+export function createRecords(data: BatchCreateRecordsParams): Promise<void> {
   return post('/qbank/sessions/records', data)
-}
-
-/**
- * 批量创建答题记录
- */
-export function batchCreateRecords(data: BatchCreateRecordsParams): Promise<void> {
-  return post('/qbank/sessions/records/batch', data)
 }
 
 /**
@@ -295,8 +311,151 @@ export function getSessionRecords(sessionId: number): Promise<RecordDetail[]> {
 }
 
 /**
- * 获取会话结算数据（用于结算页面）
+ * 获取会话答题报告（用于结算页面）
  */
-export function getSessionSummary(sessionId: number): Promise<SessionSummaryData> {
-  return get(`/qbank/sessions/${sessionId}/summary`)
+export function getSessionReport(sessionId: number): Promise<SessionReport> {
+  return get(`/qbank/sessions/${sessionId}/report`)
+}
+
+/**
+ * 获取会话答案解析
+ */
+export function getSessionSolution(sessionId: number): Promise<SessionSolution> {
+  return get(`/qbank/sessions/${sessionId}/solution`)
+}
+
+// ============ 用户学习统计（练习中心用）============
+
+/**
+ * 章节学习进度项
+ */
+export interface ChapterProgressItem {
+  chapter_id: number
+  chapter_name: string
+  total_count: number
+  practiced_count: number  // 已练习题数（包含未判题）
+  completed_count: number  // 已判题题数（is_correct 不为空）
+  correct_count: number
+  accuracy_rate: number  // 正确率（基于已判题题目）
+}
+
+/**
+ * 题库学习进度项
+ */
+export interface BankProgressItem {
+  bank_id: number
+  practiced_count: number  // 已练习题数（包含未判题，去重）
+  completed_count: number  // 已判题题数（is_correct 不为空，去重）
+  total_count: number
+  correct_count: number
+  accuracy_rate: number  // 正确率（基于已判题题目）
+  total_time: number
+  in_progress_session_id: number | null
+  in_progress_count: number
+  chapters: ChapterProgressItem[]
+}
+
+/**
+ * 用户学习汇总
+ */
+export interface UserStatisticsSummary {
+  total_practiced: number
+  total_correct: number
+  total_time: number
+  bank_count: number
+}
+
+/**
+ * 用户学习统计
+ */
+export interface UserStatistics {
+  banks: BankProgressItem[]
+  summary: UserStatisticsSummary
+}
+
+/**
+ * 获取用户学习统计
+ *
+ * 用于练习中心页面显示各题库进度和判断是否有未完成会话
+ * 支持按分类筛选，返回章节级别的学习进度
+ */
+export function getUserStatistics(params?: {
+  cat_id?: number
+}): Promise<UserStatistics> {
+  return get('/qbank/sessions/user/statistics', params, {
+    needToken: true,
+    silent: true, // 静默失败，未登录时显示上锁状态
+  })
+}
+
+// ============ 题库学习统计（题库详情页用）============
+
+/**
+ * 章节统计项（用于题库详情页）
+ */
+export interface ChapterStatisticsItem {
+  chapter_id: number
+  chapter_name: string
+  total_questions: number
+  practiced_count: number
+  correct_count: number
+  accuracy_rate: number
+}
+
+/**
+ * 题库统计（用于题库详情页）
+ */
+export interface BankStatistics {
+  bank_id: number
+  total_questions: number
+  practiced_count: number
+  correct_count: number
+  accuracy_rate: number
+  total_time: number
+  chapter_statistics: ChapterStatisticsItem[]
+}
+
+/**
+ * 获取单个题库的学习统计
+ *
+ * 从 getUserStatistics 返回的数据中提取指定题库的统计
+ * 如果未找到该题库的统计，返回空数据
+ *
+ * :param bankId: 题库 ID
+ * :return: 题库统计数据
+ */
+export async function getBankStatistics(bankId: number): Promise<BankStatistics> {
+  const userStats = await getUserStatistics()
+  const bankProgress = userStats.banks.find(b => b.bank_id === bankId)
+
+  if (!bankProgress) {
+    // 返回空统计
+    return {
+      bank_id: bankId,
+      total_questions: 0,
+      practiced_count: 0,
+      correct_count: 0,
+      accuracy_rate: 0,
+      total_time: 0,
+      chapter_statistics: []
+    }
+  }
+
+  // 转换 BankProgressItem -> BankStatistics
+  return {
+    bank_id: bankProgress.bank_id,
+    total_questions: bankProgress.total_count,
+    practiced_count: bankProgress.practiced_count,
+    correct_count: bankProgress.correct_count,
+    accuracy_rate: bankProgress.accuracy_rate,
+    total_time: bankProgress.total_time,
+    chapter_statistics: bankProgress.chapters.map(ch => ({
+      chapter_id: ch.chapter_id,
+      chapter_name: ch.chapter_name,
+      total_questions: ch.total_count,
+      practiced_count: ch.practiced_count,
+      correct_count: ch.correct_count,
+      accuracy_rate: ch.accuracy_rate
+    }))
+  }
 }

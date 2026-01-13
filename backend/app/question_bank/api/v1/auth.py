@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from backend.app.question_bank.crud.crud_user import user_account_dao
 from backend.app.question_bank.schema.auth import (
@@ -19,12 +19,17 @@ router = APIRouter()
 
 
 @router.post('/wx-login', summary='微信登录', name='qbank_wx_login')
-async def wx_login(db: CurrentSessionTransaction, obj: WxLoginParam) -> ResponseSchemaModel[WxLoginResponse]:
+async def wx_login(
+    request: Request, db: CurrentSessionTransaction, obj: WxLoginParam
+) -> ResponseSchemaModel[WxLoginResponse]:
     """
     微信登录
 
-    支持小程序和 H5 平台，支持手机号绑定
+    支持小程序和 H5 平台，支持手机号绑定和设备信息记录
     """
+    # 获取客户端 IP
+    client_ip = request.client.host if request.client else None
+
     access_token, user = await auth_service.wx_login(
         db=db,
         code=obj.code,
@@ -33,6 +38,12 @@ async def wx_login(db: CurrentSessionTransaction, obj: WxLoginParam) -> Response
         avatar=obj.avatar,
         encrypted_data=obj.encrypted_data,
         iv=obj.iv,
+        device_id=obj.device_id,
+        device_model=obj.device_model,
+        os_version=obj.os_version,
+        app_version=obj.app_version,
+        push_token=obj.push_token,
+        client_ip=client_ip,
     )
 
     user_info = GetUserAccountDetail.model_validate(user)

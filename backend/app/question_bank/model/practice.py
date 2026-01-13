@@ -193,11 +193,13 @@ class PracticeRecord(Base, UserMixin):
         - 简答: "文本答案"
         """,
     )
-    is_correct: Mapped[bool] = mapped_column(comment='是否正确')
-    answer_time: Mapped[int] = mapped_column(comment='本题用时（秒）')
 
     # ============ 冗余字段（提高查询性能） ============
     bank_id: Mapped[int] = mapped_column(sa.BigInteger, comment='题库 ID（冗余）')
+
+    # ============ 判题结果和用时（有默认值，必须在无默认值字段后面） ============
+    is_correct: Mapped[bool | None] = mapped_column(default=None, comment='是否正确（答题时为空，提交时由后端统一判题）')
+    answer_time: Mapped[int] = mapped_column(default=0, comment='本题用时（秒）')
     chapter_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='章节 ID（冗余）')
 
     # ============ 时间 ============

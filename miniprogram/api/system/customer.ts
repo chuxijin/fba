@@ -33,6 +33,7 @@ export interface UserInfo {
 export function getCurrentUser() {
   return get<UserInfo>('/qbank/customer/me', undefined, {
     needToken: true,
+    silent: true, // 静默失败，未登录时不显示错误提示
   })
 }
 

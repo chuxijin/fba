@@ -90,6 +90,7 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         for record_dict in records:
             new_record = self.model(**record_dict)
             db.add(new_record)
+        await db.flush()
 
     async def delete_by_session(self, db: AsyncSession, session_id: int) -> int:
         """
@@ -115,6 +116,17 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         stmt = await self.select_order('created_time', 'desc', user_id=user_id, question_id=question_id)
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+    async def update_is_correct(self, db: AsyncSession, record_id: int, is_correct: bool) -> int:
+        """
+        更新答题记录的判题结果
+
+        :param db: 数据库会话
+        :param record_id: 记录 ID
+        :param is_correct: 是否正确
+        :return:
+        """
+        return await self.update_model(db, record_id, {'is_correct': is_correct})
 
     async def get_select(
         self,

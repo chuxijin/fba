@@ -41,23 +41,23 @@ export function formatDate(date: string | number, format = 'YYYY-MM-DD HH:mm:ss'
 }
 
 /**
- * 格式化时间间隔（倒计时）
+ * 格式化时长（秒数转为可读格式）
  *
- * @param milliseconds 毫秒数
+ * @param seconds 秒数
  * @return 格式化后的字符串
  */
-export function formatDuration(milliseconds: number): string {
-  const seconds = Math.floor(milliseconds / 1000)
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}秒`
+  }
   const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  if (minutes < 60) {
+    return secs > 0 ? `${minutes}分${secs}秒` : `${minutes}分钟`
+  }
   const hours = Math.floor(minutes / 60)
-
-  if (hours > 0) {
-    return `${hours}小时${minutes % 60}分钟`
-  }
-  if (minutes > 0) {
-    return `${minutes}分钟${seconds % 60}秒`
-  }
-  return `${seconds}秒`
+  const mins = minutes % 60
+  return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`
 }
 
 /**

@@ -115,7 +115,19 @@ function request<T = any>(options: RequestConfig): Promise<T> {
     needToken = true,
     showLoading: enableLoading = false,
     loadingText = '加载中...',
+    silent = false,
   } = options
+
+  // ✅ 防护 1：请求前置检查 - 如果需要 token 但没有 token，直接返回错误
+  if (needToken) {
+    const token = getToken()
+    if (!token) {
+      const error = new Error('未登录')
+      ;(error as any).code = 401
+      ;(error as any).silent = true // 标记为静默失败，不显示提示
+      return Promise.reject(error)
+    }
+  }
 
   // 显示 Loading
   if (enableLoading) {
@@ -152,10 +164,29 @@ function request<T = any>(options: RequestConfig): Promise<T> {
           hideLoading()
         }
 
-        // 检查 HTTP 状态码
+        // ✅ 防护 2：401/403 静默失败 - 对可选登录的接口不显示错误提示
+        if (res.statusCode === 401 || res.statusCode === 403) {
+          if (!silent) {
+            const errorMsg = `请求失败: ${res.statusCode}`
+            showError(errorMsg)
+          }
+          // 401 需要清除 token
+          if (res.statusCode === 401) {
+            clearToken()
+          }
+          const error = new Error(`请求失败: ${res.statusCode}`)
+          ;(error as any).code = res.statusCode
+          ;(error as any).statusCode = res.statusCode
+          reject(error)
+          return
+        }
+
+        // 检查其他 HTTP 状态码
         if (res.statusCode !== 200) {
           const errorMsg = `请求失败: ${res.statusCode}`
-          showError(errorMsg)
+          if (!silent) {
+            showError(errorMsg)
+          }
           reject(new Error(errorMsg))
           return
         }
@@ -168,7 +199,9 @@ function request<T = any>(options: RequestConfig): Promise<T> {
           resolve(response.data)
         } else {
           // 业务错误处理
-          handleBusinessError(response.code, response.msg)
+          if (!silent) {
+            handleBusinessError(response.code, response.msg)
+          }
           reject(new Error(response.msg))
         }
       },
@@ -179,7 +212,9 @@ function request<T = any>(options: RequestConfig): Promise<T> {
         }
 
         // 网络错误处理
-        handleNetworkError(error)
+        if (!silent) {
+          handleNetworkError(error)
+        }
         reject(error)
       },
     })

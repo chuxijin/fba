@@ -2,17 +2,27 @@
 	"easycom": {
 		"autoscan": true,
 		"custom": {
+			"^myui-(.*)": "@/components/myUI/myui-$1/myui-$1.vue",
 			"^z-(.*)": "@zebra-ui/swiper/components/z-$1/z-$1.vue",
 			"^u-(.*)": "uview-plus/components/u-$1/u-$1.vue",
 			"^up-(.*)": "uview-plus/components/u-$1/u-$1.vue",
-			"^mp-html$": "mp-html/dist/uni-app/components/mp-html/mp-html.vue"
+			"^mp-html$": "mp-html/dist/uni-app/components/mp-html/mp-html.vue",
+			"^uni-(.*)": "@/uni_modules/uni-$1/components/uni-$1/uni-$1.vue"
 		}
 	},
 	"pages": [
+		// #ifdef MP-WEIXIN
 		{
 			"path": "pages/index/index",
 			"style": {
-				"navigationBarTitleText": "首页"
+				"navigationBarTitleText": "首页",
+				"enablePullDownRefresh": true
+			}
+		},
+		{
+			"path": "pages/rank/index",
+			"style": {
+				"navigationBarTitleText": "排行榜"
 			}
 		},
 		{
@@ -70,8 +80,117 @@
 			"style": {
 				"navigationBarTitleText": "练习历史"
 			}
+		},
+		{
+			"path": "pages/mine/wrong-question",
+			"style": {
+				"navigationBarTitleText": "我的错题"
+			}
+		},
+		{
+			"path": "pages/settings/index",
+			"style": {
+				"navigationBarTitleText": "设置"
+			}
+		},
+		{
+			"path": "pages/activate/index",
+			"style": {
+				"navigationBarTitleText": "快速激活"
+			}
+		},
+		// #endif
+		// #ifdef H5
+		{
+			"path": "pageH5/index/index",
+			"style": {
+				"navigationBarTitleText": "首页",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pageH5/rank/index",
+			"style": {
+				"navigationBarTitleText": "排行榜"
+			}
+		},
+		{
+			"path": "pageH5/practice/index",
+			"style": {
+				"navigationBarTitleText": "练习中心"
+			}
+		},
+		{
+			"path": "pageH5/study/index",
+			"style": {
+				"navigationBarTitleText": "学习中心"
+			}
+		},
+		{
+			"path": "pageH5/mine/index",
+			"style": {
+				"navigationBarTitleText": "个人中心"
+			}
+		},
+		{
+			"path": "pageH5/practice/bank-detail",
+			"style": {
+				"navigationBarTitleText": "题库详情"
+			}
+		},
+		{
+			"path": "pageH5/practice/detail",
+			"style": {
+				"navigationBarTitleText": "刷题",
+				"disableScroll": true
+			}
+		},
+		{
+			"path": "pageH5/practice/ResultSummary",
+			"style": {
+				"navigationBarTitleText": "答题结果",
+				"disableScroll": true
+			}
+		},
+		{
+			"path": "pageH5/profile/index",
+			"style": {
+				"navigationBarTitleText": "个人资料"
+			}
+		},
+		{
+			"path": "pageH5/mine/favorite",
+			"style": {
+				"navigationBarTitleText": "我的收藏"
+			}
+		},
+		{
+			"path": "pageH5/mine/practice-history",
+			"style": {
+				"navigationBarTitleText": "练习历史"
+			}
+		},
+		{
+			"path": "pageH5/mine/wrong-question",
+			"style": {
+				"navigationBarTitleText": "我的错题"
+			}
+		},
+		{
+			"path": "pageH5/settings/index",
+			"style": {
+				"navigationBarTitleText": "设置"
+			}
+		},
+		{
+			"path": "pageH5/activate/index",
+			"style": {
+				"navigationBarTitleText": "快速激活"
+			}
 		}
+		// #endif
 	],
+	// #ifdef MP-WEIXIN
 	"tabBar": {
 		"color": "#6b7280",
 		"selectedColor": "#22c55e",
@@ -104,6 +223,41 @@
 			}
 		]
 	},
+	// #endif
+	// #ifdef H5
+	"tabBar": {
+		"color": "#6b7280",
+		"selectedColor": "#22c55e",
+		"backgroundColor": "#ffffff",
+		"borderStyle": "white",
+		"list": [
+			{
+				"pagePath": "pageH5/index/index",
+				"text": "首页",
+				"iconPath": "static/tabbar/home.png",
+				"selectedIconPath": "static/tabbar/home-active.png"
+			},
+			{
+				"pagePath": "pageH5/practice/index",
+				"text": "练习",
+				"iconPath": "static/tabbar/practice.png",
+				"selectedIconPath": "static/tabbar/practice-active.png"
+			},
+			{
+				"pagePath": "pageH5/study/index",
+				"text": "学习",
+				"iconPath": "static/tabbar/study.png",
+				"selectedIconPath": "static/tabbar/study-active.png"
+			},
+			{
+				"pagePath": "pageH5/mine/index",
+				"text": "我的",
+				"iconPath": "static/tabbar/mine.png",
+				"selectedIconPath": "static/tabbar/mine-active.png"
+			}
+		]
+	},
+	// #endif
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
 		"navigationBarTitleText": "刷题助手",

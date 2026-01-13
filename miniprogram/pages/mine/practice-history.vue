@@ -28,69 +28,47 @@
               class="history-card"
               @tap.stop="() => handleCardClick(session)"
             >
-              <!-- 卡片头部 -->
-              <view class="card-header">
-                <view class="header-left">
+              <!-- 第一行：名称 + 时间 -->
+              <view class="card-row">
+                <view class="row-left">
                   <text class="session-type-icon">{{ getTypeIcon(session.session_type) }}</text>
                   <text class="session-title">{{ getTitle(session) }}</text>
-                </view>
-                <view class="header-right">
-                  <text class="session-time">{{ formatTime(session.updated_time) }}</text>
-                </view>
-              </view>
-
-              <!-- 卡片内容 -->
-              <view class="card-content">
-                <!-- 未完成状态 -->
-                <view v-if="session.status === 'in_progress'" class="status-row">
                   <up-tag
+                    v-if="session.status === 'in_progress'"
                     text="未完成"
                     type="warning"
                     plain
                     size="mini"
+                    class="status-tag"
                   />
-                  <text class="progress-text">已答 {{ session.completed_count }}/{{ session.total_count }} 题</text>
-                </view>
-
-                <!-- 已放弃状态 -->
-                <view v-else-if="session.status === 'abandoned'" class="status-row">
                   <up-tag
+                    v-else-if="session.status === 'abandoned'"
                     text="已放弃"
                     type="info"
                     plain
                     size="mini"
+                    class="status-tag"
                   />
-                  <text class="progress-text">已答 {{ session.completed_count }}/{{ session.total_count }} 题</text>
                 </view>
-
-                <!-- 已完成状态 -->
-                <view v-else class="stats-row">
-                  <view class="stat-item">
-                    <text class="stat-label">总题数</text>
-                    <text class="stat-value">{{ session.total_count }}</text>
-                  </view>
-                  <view class="stat-divider" />
-                  <view class="stat-item">
-                    <text class="stat-label">正确</text>
-                    <text class="stat-value correct">{{ session.correct_count }}</text>
-                  </view>
-                  <view class="stat-divider" />
-                  <view class="stat-item">
-                    <text class="stat-label">错误</text>
-                    <text class="stat-value wrong">{{ session.wrong_count }}</text>
-                  </view>
-                  <view class="stat-divider" />
-                  <view class="stat-item">
-                    <text class="stat-label">正确率</text>
-                    <text class="stat-value accuracy">{{ session.accuracy_rate }}%</text>
-                  </view>
-                </view>
+                <text class="session-time">{{ formatTimeWithMinute(session.updated_time) }}</text>
               </view>
 
-              <!-- 卡片底部 -->
-              <view v-if="session.total_time > 0" class="card-footer">
-                <text class="footer-icon">⏱</text>
-                <text class="footer-text">用时 {{ formatDuration(session.total_time) }}</text>
+              <!-- 第二行：答题情况 + 用时 -->
+              <view class="card-row card-row--secondary">
+                <view class="row-left">
+                  <text class="stat-text">
+                    <text class="stat-correct">{{ session.correct_count }}</text>
+                    <text class="stat-separator">/</text>
+                    <text class="stat-total">{{ session.total_count }}</text>
+                    <text class="stat-label">题</text>
+                    <text v-if="session.status === 'completed'" class="stat-accuracy">
+                      · {{ session.accuracy_rate }}%
+                    </text>
+                  </text>
+                </view>
+                <text v-if="session.total_time > 0" class="duration-text">
+                  ⏱ {{ formatDuration(session.total_time) }}
+                </text>
               </view>
             </view>
           </up-swipe-action-item>
@@ -128,6 +106,7 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import * as practiceApi from '../../api/business/practice'
 import type { SessionListItem } from '../../api/business/practice'
+import { formatDuration } from '../../utils/format'
 
 declare const uni: any
 
@@ -293,9 +272,9 @@ function getTitle(session: SessionListItem): string {
 }
 
 /**
- * 格式化时间
+ * 格式化时间（精确到分钟）
  */
-function formatTime(timeStr: string): string {
+function formatTimeWithMinute(timeStr: string): string {
   try {
     // iOS 兼容性：将 "2025-12-11 19:34:10" 转换为 "2025-12-11T19:34:10"
     const isoTimeStr = timeStr.replace(' ', 'T')
@@ -307,47 +286,33 @@ function formatTime(timeStr: string): string {
     }
 
     const now = new Date()
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    const timepart = `${hours}:${minutes}`
 
     // 今天
     if (date.toDateString() === now.toDateString()) {
-      return `今天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+      return `今天 ${timepart}`
     }
 
     // 昨天
     const yesterday = new Date(now)
     yesterday.setDate(yesterday.getDate() - 1)
     if (date.toDateString() === yesterday.toDateString()) {
-      return `昨天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+      return `昨天 ${timepart}`
     }
 
     // 本年
     if (date.getFullYear() === now.getFullYear()) {
-      return `${date.getMonth() + 1}月${date.getDate()}日`
+      return `${date.getMonth() + 1}-${date.getDate()} ${timepart}`
     }
 
     // 其他年份
-    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
   } catch (error) {
     console.error('[时间格式化] 失败:', error, timeStr)
     return timeStr
   }
-}
-
-/**
- * 格式化时长
- */
-function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${seconds}秒`
-  }
-  const minutes = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  if (minutes < 60) {
-    return secs > 0 ? `${minutes}分${secs}秒` : `${minutes}分钟`
-  }
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`
 }
 
 /**
@@ -524,146 +489,112 @@ async function deleteSession(session: SessionListItem) {
 
 /* ============ 历史记录列表 ============ */
 .history-list {
-  padding: 24rpx;
+  padding: 20rpx;
   display: flex;
   flex-direction: column;
-  gap: 24rpx;
+  gap: 16rpx;
 }
 
 /* ============ 历史卡片 ============ */
 .history-card {
   background: var(--color-bg-card);
-  border-radius: 24rpx;
-  padding: 32rpx;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.05);
+  border-radius: 16rpx;
+  padding: 24rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
   transition: all 0.2s ease;
 }
 
 .history-card:active {
   transform: scale(0.98);
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+  background: var(--color-bg-elevated);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
-/* 卡片头部 */
-.card-header {
+/* 卡片行 */
+.card-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24rpx;
 }
 
-.header-left {
+.card-row--secondary {
+  margin-top: 12rpx;
+}
+
+.row-left {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 8rpx;
   flex: 1;
   min-width: 0;
 }
 
+/* 类型图标 */
 .session-type-icon {
-  font-size: 36rpx;
+  font-size: 32rpx;
   flex-shrink: 0;
 }
 
+/* 标题 */
 .session-title {
-  font-size: 32rpx;
-  font-weight: 700;
+  font-size: 28rpx;
+  font-weight: 600;
   color: var(--color-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.header-right {
+/* 状态标签 */
+.status-tag {
+  flex-shrink: 0;
+  margin-left: 8rpx;
+}
+
+/* 时间 */
+.session-time {
+  font-size: 24rpx;
+  color: var(--color-text-tertiary);
   flex-shrink: 0;
   margin-left: 16rpx;
 }
 
-.session-time {
-  font-size: 24rpx;
-  color: var(--color-text-tertiary);
-}
-
-/* 卡片内容 */
-.card-content {
-  margin-bottom: 20rpx;
-}
-
-/* 状态行（未完成/已放弃） */
-.status-row {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.progress-text {
+/* 统计文本 */
+.stat-text {
   font-size: 26rpx;
   color: var(--color-text-secondary);
 }
 
-/* 统计行（已完成） */
-.stats-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  padding: 20rpx 0;
-  background: var(--color-bg-elevated);
-  border-radius: 16rpx;
+.stat-correct {
+  color: #10b981;
+  font-weight: 600;
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8rpx;
-  flex: 1;
+.stat-separator {
+  color: var(--color-text-tertiary);
+  margin: 0 2rpx;
+}
+
+.stat-total {
+  color: var(--color-text-secondary);
 }
 
 .stat-label {
-  font-size: 22rpx;
   color: var(--color-text-tertiary);
+  margin-left: 4rpx;
 }
 
-.stat-value {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.stat-value.correct {
-  color: #10b981;
-}
-
-.stat-value.wrong {
-  color: #ef4444;
-}
-
-.stat-value.accuracy {
+.stat-accuracy {
   color: #3b82f6;
+  font-weight: 500;
 }
 
-.stat-divider {
-  width: 2rpx;
-  height: 40rpx;
-  background: var(--color-border);
-}
-
-/* 卡片底部 */
-.card-footer {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  padding-top: 20rpx;
-  border-top: 2rpx solid var(--color-border);
-}
-
-.footer-icon {
+/* 用时文本 */
+.duration-text {
   font-size: 24rpx;
-}
-
-.footer-text {
-  font-size: 24rpx;
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
 }
 
 /* ============ 加载更多 ============ */
@@ -705,11 +636,12 @@ async function deleteSession(session: SessionListItem) {
 /* ============ 深色模式适配 ============ */
 @media (prefers-color-scheme: dark) {
   .history-card {
-    box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.2);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.3);
   }
 
   .history-card:active {
-    box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.12);
   }
 }
 </style>

@@ -3,8 +3,10 @@
 """题库模型导出"""
 
 from .bank import QuestionBank
+from .banner import Banner
 from .category import ExamCategory
 from .chapter import QuestionChapter
+from .notice import Notice
 from .practice import PracticeRecord, PracticeSession, WrongQuestionBook
 from .question import (
     Question,
@@ -14,6 +16,7 @@ from .question import (
     QuestionStatistics,
     UserNoteVote,
 )
+from .statistics import UserCheckIn, UserDailyRank
 from .user import (
     SpreadRelation,
     UserAccount,
@@ -46,4 +49,8 @@ __all__ = [
     'SpreadRelation',
     'UserCommission',
     'UserBlacklist',
+    'UserCheckIn',
+    'UserDailyRank',
+    'Banner',
+    'Notice',
 ]

@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+:root {
+    --kf-accent: #eb2f96;
+    --kf-accent-bg: #fff0f6;
+    --kf-qrcode-bg: #fce4ec;
+    --safe-tip-bg: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="dark"] {
+    --kf-accent: #f759ab;
+    --kf-accent-bg: #3d2a3a;
+    --kf-qrcode-bg: #3d2a3a;
+    --safe-tip-bg: rgba(45, 45, 74, 0.9);
+}
+
+.page-wrapper {
+    width: 100%;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.safe-tip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: var(--safe-tip-bg);
+    color: #52c41a;
+    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    margin-bottom: 16px;
+}
+
+.safe-tip::before {
+    content: "✓";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    background: #52c41a;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 10px;
+}
+
+.container {
+    background: var(--container-bg);
+}
+
+.header h1::before {
+    content: "💬 ";
+}
+
+.qrcode-wrapper {
+    background: var(--kf-qrcode-bg);
+}
+
+.remark {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 12px;
+    padding: 0 10px;
+    line-height: 1.5;
+}
+
+.wechat-id {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--kf-accent-bg);
+    padding: 10px 16px;
+    border-radius: 8px;
+    margin-top: 16px;
+}
+
+.wechat-id .label {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.wechat-id .value {
+    color: var(--kf-accent);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.copy-btn {
+    background: var(--kf-accent);
+    color: #fff;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.copy-btn:active {
+    opacity: 0.8;
+}
+
+.copy-btn.copied {
+    background: #52c41a;
+}
+
+.online-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    margin-top: 12px;
+}
+
+.online-status.online {
+    background: rgba(82, 196, 26, 0.15);
+    color: #52c41a;
+}
+
+.online-status.offline {
+    background: rgba(153, 153, 153, 0.15);
+    color: var(--text-muted);
+}
+
+.online-status::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.online-status.online::before {
+    background: #52c41a;
+    box-shadow: 0 0 6px rgba(82, 196, 26, 0.6);
+}
+
+.online-status.offline::before {
+    background: #999;
+}
+
+.offline-msg {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    padding: 0 10px;
+}
+
+.toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+.toast.show {
+    opacity: 1;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+    <div class="safe-tip">二维码已通过安全验证，可以放心扫码</div>
+
+    <div class="container">
+        <div class="header">
+            <h1>{{ title }}</h1>
+            <p>长按识别二维码添加客服</p>
+        </div>
+
+        <div class="qrcode-wrapper">
+            <img src="{{ qrcode }}" alt="客服二维码" id="qrcode">
+        </div>
+
+        <p class="tips">
+            <strong>长按图片</strong> 识别二维码即可添加客服咨询
+        </p>
+
+        <span class="online-status {{ 'online' if is_online else 'offline' }}">
+            {{ status_text }}
+        </span>
+        {% if not is_online and offline_msg %}
+        <p class="offline-msg">{{ offline_msg }}</p>
+        {% endif %}
+
+        {% if leader %}
+        <div class="wechat-id">
+            <span class="label">微信号：</span>
+            <span class="value" id="wechatId">{{ leader }}</span>
+            <button class="copy-btn" onclick="copyWechatId()">复制</button>
+        </div>
+        {% endif %}
+
+        {% if remark %}
+        <p class="remark">{{ remark }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block script %}
+<script>
+    function showToast(msg) {
+        var toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(function() {
+            toast.classList.remove('show');
+        }, 1500);
+    }
+
+    function copyWechatId() {
+        var wechatId = document.getElementById('wechatId').textContent;
+        var btn = document.querySelector('.copy-btn');
+
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(wechatId).then(function() {
+                btn.textContent = '已复制';
+                btn.classList.add('copied');
+                showToast('微信号已复制');
+                setTimeout(function() {
+                    btn.textContent = '复制';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        } else {
+            var input = document.createElement('input');
+            input.value = wechatId;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            showToast('微信号已复制');
+            setTimeout(function() {
+                btn.textContent = '复制';
+                btn.classList.remove('copied');
+            }, 2000);
+        }
+    }
+
+    var startTime = 0;
+    var qrcode = document.getElementById('qrcode');
+
+    qrcode.addEventListener('touchstart', function() {
+        startTime = Date.now();
+    });
+
+    qrcode.addEventListener('touchend', function() {
+        if (Date.now() - startTime > 500) {
+            fetch('{{ longpress_url }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({item_id: {{ item_id }}})
+            }).catch(function() {});
+        }
+    });
+</script>
+{% endblock %}

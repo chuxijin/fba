@@ -37,15 +37,15 @@
         <!-- 进度条和百分比（同一行） -->
         <view class="bank-progress">
           <view class="progress-bar">
-            <u-line-progress
-              :percentage="progressPercent"
-              activeColor="#3b82f6"
-              inactiveColor="#e5e7eb"
-              :showText="false"
-              :height="8"
-            />
+            <!-- 🔥 双层进度条：底层灰色（临时进度），上层彩色（正式进度） -->
+            <view class="progress-bg">
+              <!-- 临时进度（已做题，包含未判题） -->
+              <view class="progress-practiced" :style="{ width: practicedPercent + '%' }"></view>
+              <!-- 正式进度（已判题） -->
+              <view class="progress-completed" :style="{ width: completedPercent + '%' }"></view>
+            </view>
           </view>
-          <text class="progress-percent">{{ progressPercent }}%</text>
+          <text class="progress-percent">{{ completedPercent }}%</text>
         </view>
 
         <!-- 底部：左侧统计信息 + 右侧按钮 -->
@@ -55,8 +55,8 @@
             <!-- 上：题数 + 正确率 -->
             <view class="bank-stats">
               <text class="bank-count">共 {{ bank.q_count }} 题</text>
-              <text v-if="bank.progress > 0" class="stats-divider">|</text>
-              <text v-if="bank.progress > 0" class="accuracy-info">正确率 {{ bank.accuracy }}%</text>
+              <text v-if="bank.accuracy > 0" class="stats-divider">|</text>
+              <text v-if="bank.accuracy > 0" class="accuracy-info">正确率 {{ bank.accuracy }}%</text>
             </view>
             <!-- 下：在刷人数 -->
             <view class="practice-count">
@@ -65,13 +65,13 @@
             </view>
           </view>
 
-          <!-- 右侧：快速开始按钮 -->
+          <!-- 右侧:快速开始按钮 -->
           <u-button
-            text="快速开始"
+            :text="quickStartButtonText"
             size="small"
-            type="success"
+            :type="quickStartButtonType"
             :customStyle="{ width: '140rpx', flexShrink: 0 }"
-            @click.stop="handleQuickStart"
+            @click="handleQuickStart($event)"
           />
         </view>
       </view>
@@ -89,13 +89,17 @@ import { computed } from 'vue'
 import type { BankDetail } from '@/api/business/bank'
 
 interface ProgressBank extends BankDetail {
-  progress: number
+  progress: number  // 已练习题数（practiced_count，包含未判题）
+  completed_count?: number  // 已判题题数（is_correct 不为空）
   accuracy: number
   practiceCount: string
   hasAccess: boolean
   accessReason: string
   endTime?: string
   remainingDays?: number
+  // 未完成会话相关（来自用户统计 API）
+  inProgressSessionId?: number | null
+  inProgressCount?: number
 }
 
 interface Props {
@@ -123,12 +127,34 @@ const BANK_STATUS_TEXT = {
 } as const
 
 /**
- * 计算进度百分比
+ * 计算临时进度百分比（包含未判题的题目）
  */
-const progressPercent = computed(() => {
+const practicedPercent = computed(() => {
   return props.bank.q_count === 0
     ? 0
     : Math.round((props.bank.progress / props.bank.q_count) * 100)
+})
+
+/**
+ * 计算正式进度百分比（只统计已判题的题目）
+ */
+const completedPercent = computed(() => {
+  if (!props.bank.completed_count || props.bank.q_count === 0) return 0
+  return Math.round((props.bank.completed_count / props.bank.q_count) * 100)
+})
+
+/**
+ * 计算快速开始按钮文字
+ */
+const quickStartButtonText = computed(() => {
+  return props.bank.inProgressSessionId ? '继续上次' : '快速开始'
+})
+
+/**
+ * 计算快速开始按钮类型
+ */
+const quickStartButtonType = computed(() => {
+  return props.bank.inProgressSessionId ? 'warning' : 'success'
 })
 
 /**
@@ -203,9 +229,15 @@ function handleCardClick() {
 }
 
 /**
- * 快速开始点击
+ * 快速开始点击（阻止事件冒泡）
+ *
+ * 注意：u-button 的 @click.stop 可能无法阻止原生事件冒泡
+ * 因此在这里手动阻止
+ *
+ * :param e: 原生事件对象
  */
-function handleQuickStart() {
+function handleQuickStart(e?: Event) {
+  e?.stopPropagation?.()
   emit('quickStart', props.bank)
 }
 </script>
@@ -338,11 +370,44 @@ function handleQuickStart() {
   flex: 1;
 }
 
+/* 🔥 双层进度条容器 */
+.progress-bg {
+  position: relative;
+  width: 100%;
+  height: 12rpx;
+  background: #f0f0f0;  /* 使用明确的灰色，确保可见 */
+  border-radius: 6rpx;
+  overflow: hidden;
+}
+
+/* 🔥 临时进度（灰色底层，包含未判题） */
+.progress-practiced {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #d0d0d0;  /* 使用更明显的灰色 */
+  border-radius: 6rpx;
+  transition: width 0.3s ease;
+}
+
+/* 🔥 正式进度（彩色上层，只含已判题） */
+.progress-completed {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);  /* 绿色渐变 */
+  border-radius: 6rpx;
+  transition: width 0.3s ease;
+  box-shadow: 0 2rpx 8rpx rgba(34, 197, 94, 0.3);
+}
+
 .progress-percent {
   flex-shrink: 0;
   font-size: 24rpx;
-  font-weight: $font-weight-semibold;
-  color: $color-primary;
+  font-weight: 600;
+  color: #22c55e;  /* 主题绿色 */
 }
 
 /* 题库底部：左右布局 */
@@ -377,6 +442,19 @@ function handleQuickStart() {
 .stats-divider {
   font-size: $font-size-sm;
   color: $color-border;
+}
+
+.stats-text {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+  white-space: nowrap;
+}
+
+.stats-highlight {
+  font-size: $font-size-sm;
+  color: $color-primary;
+  font-weight: $font-weight-medium;
+  white-space: nowrap;
 }
 
 .accuracy-info {
