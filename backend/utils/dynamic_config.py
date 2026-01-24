@@ -125,3 +125,26 @@ async def load_email_config(db: AsyncSession) -> None:
             settings.EMAIL_USERNAME = str(configs[username_key])
         if configs.get(password_key):
             settings.EMAIL_PASSWORD = str(configs[password_key])
+
+
+async def load_task_config(db: AsyncSession) -> None:
+    """
+    获取任务配置
+
+    :param db: 数据库会话
+    :return:
+    """
+    if not await check_sys_config_table_exists():
+        return
+
+    from backend.plugin.config.crud.crud_config import config_dao
+    from backend.plugin.config.enums import ConfigType
+
+    dynamic_config = await config_dao.get_all(db, ConfigType.task)
+
+    if dynamic_config:
+        task_notify_email_key = 'TASK_NOTIFY_EMAIL'
+
+        configs = {dc['key']: dc['value'] for dc in select_list_serialize(dynamic_config)}
+        if configs.get(task_notify_email_key):
+            settings.TASK_NOTIFY_EMAIL = str(configs[task_notify_email_key])

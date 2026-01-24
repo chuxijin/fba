@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""资料 API"""
+from typing import Annotated
+
+from fastapi import APIRouter, Query
+
+from backend.common.pagination import DependsPagination, PageData, paging_data
+from backend.common.response.response_schema import ResponseModel, response_base
+from backend.common.security.jwt import DependsJwtAuth
+from backend.database.db import CurrentSession
+from backend.app.gongkao.schema.resource import (
+    CreateResourceParam,
+    UpdateResourceParam,
+    GetResourceDetail,
+    GetResourceListParams,
+)
+from backend.app.gongkao.service.resource_service import resource_service
+
+router = APIRouter()
+
+
+@router.get('', summary='获取资料列表', name='get_gk_resource_list', dependencies=[DependsPagination])
+async def get_gk_resource_list(
+    db: CurrentSession,
+    title: Annotated[str | None, Query(description='标题')] = None,
+    category: Annotated[str | None, Query(description='分类')] = None,
+    file_type: Annotated[str | None, Query(description='文件类型')] = None,
+) -> ResponseModel:
+    """获取资料列表（公开）"""
+    stmt = await resource_service.get_list(
+        db,
+        title=title,
+        category=category,
+        file_type=file_type,
+        status=True,  # 只返回已启用的
+    )
+    page_data = await paging_data(db, stmt, schema_cls=GetResourceDetail)
+    return response_base.success(data=page_data)
+
+
+@router.get('/{pk}', summary='获取资料详情', name='get_gk_resource_detail')
+async def get_gk_resource_detail(pk: int, db: CurrentSession) -> ResponseModel:
+    """获取资料详情（公开）"""
+    resource = await resource_service.get(db, pk)
+    if not resource:
+        return response_base.fail(msg='资料不存在')
+    return response_base.success(data=GetResourceDetail.model_validate(resource))
+
+
+@router.post('/{pk}/view', summary='增加查看次数', name='increment_gk_resource_view_count')
+async def increment_gk_resource_view_count(pk: int, db: CurrentSession) -> ResponseModel:
+    """增加资料查看次数"""
+    count = await resource_service.increment_view(db, pk)
+    return response_base.success(data={'view_count': count})
+
+
+@router.post('', summary='创建资料', dependencies=[DependsJwtAuth], name='create_gk_resource')
+async def create_gk_resource(obj_in: CreateResourceParam, db: CurrentSession) -> ResponseModel:
+    """创建资料（需登录）"""
+    resource = await resource_service.create(db, obj_in)
+    return response_base.success(data=GetResourceDetail.model_validate(resource))
+
+
+@router.put('/{pk}', summary='更新资料', dependencies=[DependsJwtAuth], name='update_gk_resource')
+async def update_gk_resource(pk: int, obj_in: UpdateResourceParam, db: CurrentSession) -> ResponseModel:
+    """更新资料（需登录）"""
+    count = await resource_service.update(db, pk, obj_in)
+    if count == 0:
+        return response_base.fail(msg='资料不存在')
+    return response_base.success()
+
+
+@router.delete('/{pk}', summary='删除资料', dependencies=[DependsJwtAuth], name='delete_gk_resource')
+async def delete_gk_resource(pk: int, db: CurrentSession) -> ResponseModel:
+    """删除资料（需登录）"""
+    count = await resource_service.delete(db, pk)
+    if count == 0:
+        return response_base.fail(msg='资料不存在')
+    return response_base.success()

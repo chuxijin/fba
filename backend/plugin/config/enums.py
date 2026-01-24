@@ -7,3 +7,4 @@ class ConfigType(StrEnum):
     email = 'EMAIL'
     user_security = 'USER_SECURITY'
     login = 'LOGIN'
+    task = 'Task'

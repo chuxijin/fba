@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
+from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -32,18 +33,16 @@ class CRUDCiyu(CRUDPlus[GkCiyu]):
         """
         return await self.select_model_by_column(db, word=word)
 
-    async def get_list(
+    async def get_select(
         self,
-        db: AsyncSession,
         word: str | None = None,
         category: str | None = None,
         emotion: str | None = None,
         frequency: int | None = None,
-    ) -> Sequence[GkCiyu]:
+    ) -> Select:
         """
-        获取词语列表
+        获取词语列表查询表达式
 
-        :param db: 数据库会话
         :param word: 词语
         :param category: 分类
         :param emotion: 感情色彩
@@ -52,14 +51,14 @@ class CRUDCiyu(CRUDPlus[GkCiyu]):
         """
         filters = {}
         if word is not None:
-            filters['word__like'] = f'%{word}%'
+            filters['word__like'] = f'{word}%'
         if category is not None:
             filters['category'] = category
         if emotion is not None:
             filters['emotion'] = emotion
         if frequency is not None:
             filters['frequency'] = frequency
-        return await self.select_models_order(db, 'id', 'desc', **filters)
+        return await self.select_order('id', 'desc', **filters)
 
     async def create(self, db: AsyncSession, obj: CreateCiyuParam, created_by: int) -> GkCiyu:
         """
@@ -96,6 +95,29 @@ class CRUDCiyu(CRUDPlus[GkCiyu]):
         :return:
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=pks)
+
+    async def increment_view_count(self, db: AsyncSession, pk: int) -> int:
+        """
+        增加阅读量
+
+        :param db: 数据库会话
+        :param pk: 主键 ID
+        :return:
+        """
+        ciyu = await self.get(db, pk)
+        if ciyu:
+            return await self.update_model(db, pk, {'view_count': ciyu.view_count + 1})
+        return 0
+
+    async def get_hot(self, db: AsyncSession, limit: int = 10) -> Sequence[GkCiyu]:
+        """
+        获取热门词语（按 view_count 降序排列）
+
+        :param db: 数据库会话
+        :param limit: 返回数量
+        :return:
+        """
+        return await self.select_models_order(db, 'view_count', 'desc', limit=limit)
 
 
 ciyu_dao: CRUDCiyu = CRUDCiyu(GkCiyu)

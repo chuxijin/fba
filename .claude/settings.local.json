@@ -49,7 +49,16 @@
       "Bash(git commit:*)",
       "Bash(taskkill:*)",
       "WebFetch(domain:uview-plus.jiangruyi.com)",
-      "Bash(cmd /c \"del D:\\100-Work\\101_Programming\\Projs\\01.python_projs\\fastapi_best_architecture\\miniprogram\\utils\\markdown.js\")"
+      "Bash(cmd /c \"del D:\\100-Work\\101_Programming\\Projs\\01.python_projs\\fastapi_best_architecture\\miniprogram\\utils\\markdown.js\")",
+      "Bash(cmd /c \"if not exist miniprogram\\pages\\rank\\components mkdir miniprogram\\pages\\rank\\components\")",
+      "Bash(git clone:*)",
+      "Bash(cmd /c:*)",
+      "mcp__labeveryday-mcp_pdf_reader__read_pdf_with_ocr",
+      "mcp__labeveryday-mcp_pdf_reader__extract_pdf_images",
+      "mcp__labeveryday-mcp_pdf_reader__ocr_pdf_pages",
+      "mcp__excel-csv__write_file",
+      "Bash(python -m py_compile:*)",
+      "WebFetch(domain:open.agiso.com)"
     ],
     "deny": [],
     "ask": []

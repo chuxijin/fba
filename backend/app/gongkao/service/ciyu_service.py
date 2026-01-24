@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from backend.app.gongkao.schema.ciyu import (
     UpdateCiyuParam,
 )
 from backend.common.exception import errors
+from backend.common.pagination import paging_data
 
 
 class CiyuService:
@@ -33,21 +34,21 @@ class CiyuService:
         return ciyu
 
     @staticmethod
-    async def get_list(*, db: AsyncSession, params: CiyuParam) -> Sequence[GkCiyu]:
+    async def get_list(*, db: AsyncSession, params: CiyuParam) -> dict[str, Any]:
         """
-        获取词语列表
+        获取词语列表（分页）
 
         :param db: 数据库会话
         :param params: 查询参数
         :return:
         """
-        return await ciyu_dao.get_list(
-            db,
+        ciyu_select = await ciyu_dao.get_select(
             word=params.word,
             category=params.category,
             emotion=params.emotion,
             frequency=params.frequency,
         )
+        return await paging_data(db, ciyu_select)
 
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateCiyuParam, created_by: int) -> GkCiyu:
@@ -94,6 +95,31 @@ class CiyuService:
         :return:
         """
         return await ciyu_dao.delete(db, obj.ids)
+
+    @staticmethod
+    async def increment_view(*, db: AsyncSession, pk: int) -> int:
+        """
+        增加阅读量
+
+        :param db: 数据库会话
+        :param pk: 词语 ID
+        :return:
+        """
+        ciyu = await ciyu_dao.get(db, pk)
+        if not ciyu:
+            raise errors.NotFoundError(msg='词语不存在')
+        return await ciyu_dao.increment_view_count(db, pk)
+
+    @staticmethod
+    async def get_hot(*, db: AsyncSession, limit: int = 10) -> list:
+        """
+        获取热门词语
+
+        :param db: 数据库会话
+        :param limit: 返回数量
+        :return:
+        """
+        return await ciyu_dao.get_hot(db, limit)
 
 
 ciyu_service: CiyuService = CiyuService()

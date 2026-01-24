@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Request
 
 from backend.app.gongkao.schema.shizhen import (
     CreateShizhenParam,
@@ -12,6 +12,7 @@ from backend.app.gongkao.schema.shizhen import (
     UpdateShizhenParam,
 )
 from backend.app.gongkao.service.shizhen_service import shizhen_service
+from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
@@ -30,12 +31,16 @@ async def get_shizhen(
     return response_base.success(data=data)
 
 
-@router.get('', summary='获取时政列表')
+@router.get(
+    '',
+    summary='获取时政列表',
+    dependencies=[DependsPagination],
+)
 async def get_shizhen_list(
     db: CurrentSession,
     daily_date: Annotated[str | None, Query(description='日期')] = None,
-) -> ResponseSchemaModel[list[GetShizhenDetail]]:
-    """获取时政列表"""
+) -> ResponseSchemaModel[PageData[GetShizhenDetail]]:
+    """获取时政列表（分页）"""
     from datetime import date as date_type
 
     params = ShizhenParam(
@@ -54,12 +59,12 @@ async def get_shizhen_list(
     ],
 )
 async def create_shizhen(
+    request: Request,
     db: CurrentSessionTransaction,
     obj: CreateShizhenParam,
-    user_id: Annotated[int, DependsJwtAuth],
 ) -> ResponseModel:
     """创建时政"""
-    await shizhen_service.create(db=db, obj=obj, created_by=user_id)
+    await shizhen_service.create(db=db, obj=obj, created_by=request.user.id)
     return response_base.success()
 
 
@@ -72,13 +77,13 @@ async def create_shizhen(
     ],
 )
 async def update_shizhen(
+    request: Request,
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='时政 ID')],
     obj: UpdateShizhenParam,
-    user_id: Annotated[int, DependsJwtAuth],
 ) -> ResponseModel:
     """更新时政"""
-    count = await shizhen_service.update(db=db, pk=pk, obj=obj, updated_by=user_id)
+    count = await shizhen_service.update(db=db, pk=pk, obj=obj, updated_by=request.user.id)
     if count > 0:
         return response_base.success()
     return response_base.fail()

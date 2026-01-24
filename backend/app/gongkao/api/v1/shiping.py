@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import Response
 
 from backend.app.gongkao.schema.shiping import (
@@ -13,6 +13,7 @@ from backend.app.gongkao.schema.shiping import (
     UpdateShipingParam,
 )
 from backend.app.gongkao.service import shiping_service, pdf_service
+from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
@@ -31,7 +32,11 @@ async def get_shiping(
     return response_base.success(data=data)
 
 
-@router.get('', summary='获取时评列表')
+@router.get(
+    '',
+    summary='获取时评列表',
+    dependencies=[DependsPagination],
+)
 async def get_shiping_list(
     db: CurrentSession,
     title: Annotated[str | None, Query(description='标题')] = None,
@@ -39,8 +44,8 @@ async def get_shiping_list(
     author: Annotated[str | None, Query(description='作者')] = None,
     keywords: Annotated[str | None, Query(description='关键词')] = None,
     daily_date: Annotated[str | None, Query(description='每日时间')] = None,
-) -> ResponseSchemaModel[list[GetShipingDetail]]:
-    """获取时评列表"""
+) -> ResponseSchemaModel[PageData[GetShipingDetail]]:
+    """获取时评列表（分页）"""
     from datetime import date as date_type
 
     params = ShipingParam(
@@ -63,12 +68,12 @@ async def get_shiping_list(
     ],
 )
 async def create_shiping(
+    request: Request,
     db: CurrentSessionTransaction,
     obj: CreateShipingParam,
-    user_id: Annotated[int, DependsJwtAuth],
 ) -> ResponseModel:
     """创建时评"""
-    await shiping_service.create(db=db, obj=obj, created_by=user_id)
+    await shiping_service.create(db=db, obj=obj, created_by=request.user.id)
     return response_base.success()
 
 
@@ -81,13 +86,13 @@ async def create_shiping(
     ],
 )
 async def update_shiping(
+    request: Request,
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='时评 ID')],
     obj: UpdateShipingParam,
-    user_id: Annotated[int, DependsJwtAuth],
 ) -> ResponseModel:
     """更新时评"""
-    count = await shiping_service.update(db=db, pk=pk, obj=obj, updated_by=user_id)
+    count = await shiping_service.update(db=db, pk=pk, obj=obj, updated_by=request.user.id)
     if count > 0:
         return response_base.success()
     return response_base.fail()

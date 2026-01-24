@@ -266,3 +266,5 @@ async def jwt_authentication(token: str) -> GetUserInfoWithRelationDetail:
 
 # 超级管理员鉴权依赖注入
 DependsSuperUser = Depends(superuser_verify)
+
+

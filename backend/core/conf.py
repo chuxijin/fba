@@ -82,6 +82,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/qbank/auth/wx-login',  # 题库微信登录
         f'{FASTAPI_API_V1_PATH}/qbank/auth/test-login',  # 题库测试登录
         f'{FASTAPI_API_V1_PATH}/qbank/banks',  # 题库列表（公开接口）
+        f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',  # 百度网盘 OAuth 回调
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$',
@@ -134,8 +135,10 @@ class Settings(BaseSettings):
     # CORS
     CORS_ALLOWED_ORIGINS: list[str] = [  # 末尾不带斜杠
         'http://127.0.0.1:8000',
+        'http://localhost:8080',
         'http://localhost:5173',
         'http://localhost:5174',
+        'http://localhost:5175',
         'http://127.0.0.1:5500',
         'https://admin.yzxj.vip',
         'https://blog.yzxj.vip',
@@ -205,6 +208,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/auth/login/swagger',
         f'{FASTAPI_API_V1_PATH}/oauth2/github/callback',
         f'{FASTAPI_API_V1_PATH}/oauth2/google/callback',
+        f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',
     ]
     OPERA_LOG_REDACT_KEYS: list[str] = [
         'password',
@@ -291,6 +295,12 @@ class Settings(BaseSettings):
     EMAIL_CAPTCHA_EXPIRE_SECONDS: int = 60 * 3  # 3 分钟
 
     ##################################################
+    # [ Plugin ] task
+    ##################################################
+    # 任务通知
+    TASK_NOTIFY_EMAIL: str | None = None
+
+    ##################################################
     # [ App ] 题库微信小程序
     ##################################################
     # .env 微信小程序配置
@@ -322,6 +332,21 @@ class Settings(BaseSettings):
         '违法',
         # 添加更多敏感词...
     ]
+
+    ##################################################
+    # [ Plugin ] agiso
+    ##################################################
+    # .env 阿奇索配置
+    AGISO_APP_SECRET: str = ''
+
+    ##################################################
+    # [ Plugin ] baidupan 百度网盘开放平台
+    ##################################################
+    # .env 百度网盘配置
+    BAIDUPAN_APP_KEY: str = ''  # 应用 AppKey
+    BAIDUPAN_SECRET_KEY: str = ''  # 应用 SecretKey
+    BAIDUPAN_SIGN_KEY: str = ''  # 应用 SignKey（用于接口签名）
+    BAIDUPAN_REDIRECT_URI: str = ''  # OAuth 回调地址
 
     @model_validator(mode='before')
     @classmethod

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from backend.app.gongkao.schema.shiping import (
     UpdateShipingParam,
 )
 from backend.common.exception import errors
+from backend.common.pagination import paging_data
 
 
 class ShipingService:
@@ -33,22 +34,22 @@ class ShipingService:
         return shiping
 
     @staticmethod
-    async def get_list(*, db: AsyncSession, params: ShipingParam) -> Sequence[GkShiping]:
+    async def get_list(*, db: AsyncSession, params: ShipingParam) -> dict[str, Any]:
         """
-        获取时评列表
+        获取时评列表（分页）
 
         :param db: 数据库会话
         :param params: 查询参数
         :return:
         """
-        return await shiping_dao.get_list(
-            db,
+        shiping_select = await shiping_dao.get_select(
             title=params.title,
             source=params.source,
             author=params.author,
             keywords=params.keywords,
             daily_date=params.daily_date,
         )
+        return await paging_data(db, shiping_select)
 
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateShipingParam, created_by: int) -> GkShiping:

@@ -43,19 +43,17 @@ class CRUDShiping(CRUDPlus[GkShiping]):
         """
         return await self.select_models(db, daily_date=daily_date)
 
-    async def get_list(
+    async def get_select(
         self,
-        db: AsyncSession,
         title: str | None = None,
         source: str | None = None,
         author: str | None = None,
         keywords: str | None = None,
         daily_date: date | None = None,
-    ) -> Sequence[GkShiping]:
+    ) -> 'Select':
         """
-        获取时评列表
+        获取时评列表查询表达式
 
-        :param db: 数据库会话
         :param title: 标题
         :param source: 来源
         :param author: 作者
@@ -74,7 +72,7 @@ class CRUDShiping(CRUDPlus[GkShiping]):
             filters['keywords__like'] = f'%{keywords}%'
         if daily_date is not None:
             filters['daily_date'] = daily_date
-        return await self.select_models_order(db, 'daily_date', 'desc', **filters)
+        return await self.select_order('daily_date', 'desc', **filters)
 
     async def create(self, db: AsyncSession, obj: CreateShipingParam, created_by: int) -> GkShiping:
         """

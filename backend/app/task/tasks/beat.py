@@ -66,4 +66,9 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'update_daily_user_ranks',
         'schedule': TzAwareCrontab('5', '0'),  # 每天凌晨0:05
     },
+    # 同步每日时政新闻 - 每天早上8点执行
+    '同步每日时政新闻': {
+        'task': 'backend.app.task.tasks.gongkao.tasks.sync_daily_news_to_shizhen',
+        'schedule': TzAwareCrontab('0', '8'),  # 每天早上8点
+    },
 }

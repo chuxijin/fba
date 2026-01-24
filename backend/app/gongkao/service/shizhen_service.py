@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from backend.app.gongkao.schema.shizhen import (
     UpdateShizhenParam,
 )
 from backend.common.exception import errors
+from backend.common.pagination import paging_data
 
 
 class ShizhenService:
@@ -33,15 +34,16 @@ class ShizhenService:
         return shizhen
 
     @staticmethod
-    async def get_list(*, db: AsyncSession, params: ShizhenParam) -> Sequence[GkShizhen]:
+    async def get_list(*, db: AsyncSession, params: ShizhenParam) -> dict[str, Any]:
         """
-        获取时政列表
+        获取时政列表（分页）
 
         :param db: 数据库会话
         :param params: 查询参数
         :return:
         """
-        return await shizhen_dao.get_list(db, daily_date=params.daily_date)
+        shizhen_select = await shizhen_dao.get_select(daily_date=params.daily_date)
+        return await paging_data(db, shizhen_select)
 
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateShizhenParam, created_by: int) -> GkShizhen:

@@ -64,6 +64,7 @@ class GetCiyuDetail(CiyuSchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='词语 ID')
+    view_count: int = Field(description='阅读量')
     created_by: int = Field(description='创建者')
     updated_by: int | None = Field(None, description='修改者')
     created_time: datetime = Field(description='创建时间')

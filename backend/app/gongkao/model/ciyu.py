@@ -12,7 +12,11 @@ class GkCiyu(Base, UserMixin):
     __tablename__ = 'gk_ciyu'
 
     id: Mapped[id_key] = mapped_column(init=False)
+
+    # 基础信息（必填字段）
     word: Mapped[str] = mapped_column(sa.String(64), index=True, comment='词语')
+
+    # 基础信息（可选字段）
     meaning: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='释义')
     pinyin: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='拼音')
     synonym: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='近义词')
@@ -23,3 +27,6 @@ class GkCiyu(Base, UserMixin):
     emotion: Mapped[str | None] = mapped_column(sa.String(16), default=None, comment='感情色彩')
     confusion: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='易混辨析')
     frequency: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='考频')
+
+    # 统计信息
+    view_count: Mapped[int] = mapped_column(default=0, comment='阅读量')

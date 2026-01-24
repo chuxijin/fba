@@ -33,18 +33,17 @@ class CRUDShizhen(CRUDPlus[GkShizhen]):
         """
         return await self.select_model_by_column(db, daily_date=daily_date)
 
-    async def get_list(self, db: AsyncSession, daily_date: date | None = None) -> Sequence[GkShizhen]:
+    async def get_select(self, daily_date: date | None = None) -> 'Select':
         """
-        获取时政列表
+        获取时政列表查询表达式
 
-        :param db: 数据库会话
         :param daily_date: 日期
         :return:
         """
         filters = {}
         if daily_date is not None:
             filters['daily_date'] = daily_date
-        return await self.select_models_order(db, 'daily_date', 'desc', **filters)
+        return await self.select_order('daily_date', 'desc', **filters)
 
     async def create(self, db: AsyncSession, obj: CreateShizhenParam, created_by: int) -> GkShizhen:
         """
