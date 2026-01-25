@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 # 项目路径
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
-VENV_DIR="$BACKEND_DIR/.venv"
+VENV_DIR="$PROJECT_DIR/.venv"
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}       FBA 部署脚本开始执行${NC}"
