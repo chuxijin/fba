@@ -184,5 +184,171 @@ class BaiduPanOAuthService:
             scope=data['scope'],
         )
 
+    @staticmethod
+    def generate_result_html(
+        success: bool,
+        title: str,
+        data: OAuthTokenResponse | None = None,
+        error: str | None = None,
+    ) -> str:
+        """
+        生成 OAuth 回调结果 HTML 页面
+
+        :param success: 是否成功
+        :param title: 页面标题
+        :param data: 成功时的 Token 数据
+        :param error: 失败时的错误信息
+        :return:
+        """
+        if success and data:
+            token_info = f"""
+            <div class="token-card">
+                <div class="token-item">
+                    <label>Access Token</label>
+                    <div class="token-value" id="access_token">{data.access_token}</div>
+                    <button onclick="copyToken('access_token')">复制</button>
+                </div>
+                <div class="token-item">
+                    <label>Refresh Token</label>
+                    <div class="token-value" id="refresh_token">{data.refresh_token}</div>
+                    <button onclick="copyToken('refresh_token')">复制</button>
+                </div>
+                <div class="token-item">
+                    <label>有效期</label>
+                    <div class="token-value">{data.expires_in} 秒 ({data.expires_in // 86400} 天)</div>
+                </div>
+                <div class="token-item">
+                    <label>权限范围</label>
+                    <div class="token-value">{data.scope}</div>
+                </div>
+            </div>
+            """
+            status_icon = "✅"
+            status_class = "success"
+        else:
+            token_info = f"""
+            <div class="error-card">
+                <p>{error or '未知错误'}</p>
+            </div>
+            """
+            status_icon = "❌"
+            status_class = "error"
+
+        return f"""
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>{title}</title>
+            <style>
+                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                }}
+                .container {{
+                    background: white;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    padding: 40px;
+                    max-width: 600px;
+                    width: 100%;
+                }}
+                .header {{ text-align: center; margin-bottom: 30px; }}
+                .header h1 {{ font-size: 24px; color: #333; margin-bottom: 10px; }}
+                .status {{ font-size: 48px; margin-bottom: 10px; }}
+                .status.success {{ color: #10b981; }}
+                .status.error {{ color: #ef4444; }}
+                .token-card {{ background: #f8fafc; border-radius: 12px; padding: 20px; }}
+                .token-item {{
+                    margin-bottom: 20px;
+                    padding-bottom: 20px;
+                    border-bottom: 1px solid #e2e8f0;
+                }}
+                .token-item:last-child {{ margin-bottom: 0; padding-bottom: 0; border-bottom: none; }}
+                .token-item label {{
+                    display: block;
+                    font-size: 12px;
+                    color: #64748b;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    margin-bottom: 8px;
+                }}
+                .token-value {{
+                    font-family: 'Monaco', 'Menlo', monospace;
+                    font-size: 13px;
+                    color: #334155;
+                    word-break: break-all;
+                    background: #fff;
+                    padding: 12px;
+                    border-radius: 8px;
+                    border: 1px solid #e2e8f0;
+                    margin-bottom: 8px;
+                }}
+                button {{
+                    background: #3b82f6;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    transition: background 0.2s;
+                }}
+                button:hover {{ background: #2563eb; }}
+                button:active {{ transform: scale(0.98); }}
+                .error-card {{
+                    background: #fef2f2;
+                    border: 1px solid #fecaca;
+                    border-radius: 12px;
+                    padding: 20px;
+                    color: #dc2626;
+                }}
+                .footer {{ text-align: center; margin-top: 30px; color: #94a3b8; font-size: 14px; }}
+                .toast {{
+                    position: fixed;
+                    bottom: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #1e293b;
+                    color: white;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    opacity: 0;
+                    transition: opacity 0.3s;
+                }}
+                .toast.show {{ opacity: 1; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <div class="status {status_class}">{status_icon}</div>
+                    <h1>{title}</h1>
+                </div>
+                {token_info}
+                <div class="footer">百度网盘 OAuth 授权服务</div>
+            </div>
+            <div class="toast" id="toast">已复制到剪贴板</div>
+            <script>
+                function copyToken(elementId) {{
+                    const text = document.getElementById(elementId).innerText;
+                    navigator.clipboard.writeText(text).then(() => {{
+                        const toast = document.getElementById('toast');
+                        toast.classList.add('show');
+                        setTimeout(() => toast.classList.remove('show'), 2000);
+                    }});
+                }}
+            </script>
+        </body>
+        </html>
+        """
+
 
 baidupan_oauth_service = BaiduPanOAuthService()

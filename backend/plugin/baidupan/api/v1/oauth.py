@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Query
+from fastapi.responses import HTMLResponse
 
 from backend.common.response.response_schema import ResponseModel, response_base
 from backend.plugin.baidupan.schema.oauth import (
@@ -27,26 +28,31 @@ async def baidupan_get_authorize_url(request: OAuthAuthorizeRequest) -> Response
     return response_base.success(data=result)
 
 
-@router.get('/callback', summary='OAuth 回调')
+@router.get('/callback', summary='OAuth 回调（可视化）', response_class=HTMLResponse)
 async def baidupan_oauth_callback(
     code: Annotated[str, Query(description='授权码')],
     state: Annotated[str | None, Query(description='状态参数')] = None,
-) -> ResponseModel:
+) -> HTMLResponse:
     """
-    处理百度网盘 OAuth 回调，用授权码换取 access_token
+    处理百度网盘 OAuth 回调，返回可视化页面
 
     :param code: 授权码
     :param state: 状态参数
     :return:
     """
-    result = await baidupan_oauth_service.handle_callback(code=code, state=state)
-    return response_base.success(data=result)
+    try:
+        result = await baidupan_oauth_service.handle_callback(code=code, state=state)
+        html = baidupan_oauth_service.generate_result_html(success=True, title='授权成功', data=result)
+    except Exception as e:
+        html = baidupan_oauth_service.generate_result_html(success=False, title='授权失败', error=str(e))
+
+    return HTMLResponse(content=html)
 
 
-@router.post('/callback', summary='OAuth 回调（POST）')
+@router.post('/callback', summary='OAuth 回调（API）')
 async def baidupan_oauth_callback_post(request: OAuthCallbackRequest) -> ResponseModel:
     """
-    处理百度网盘 OAuth 回调（POST 方式）
+    处理百度网盘 OAuth 回调（POST 方式，返回 JSON）
 
     :param request: 回调请求参数
     :return:

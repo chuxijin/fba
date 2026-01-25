@@ -42,7 +42,7 @@ from backend.app.coulddrive.schema.user import (
     GetUserFriendDetail,
     GetUserGroupDetail,
 )
-from backend.app.coulddrive.service.filesync_service import ItemFilter
+from backend.app.coulddrive.service.rule_template_service import ItemFilter
 from backend.app.coulddrive.service.quark.api import QuarkApi
 from backend.app.coulddrive.service.quark.errors import QuarkApiError
 from backend.app.coulddrive.service.coulddrive_service import (
