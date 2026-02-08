@@ -1,0 +1,11 @@
+[plugin]
+summary = '访问统计'
+version = '1.0.0'
+description = '网站访问统计，记录PV/UV等数据'
+author = 'gongkao'
+
+[app]
+# 应用级插件配置：指定 api/router.py 中要把哪个路由变量注入到系统
+router = ['v1']
+
+# [api.visit] 配置块对于应用级插件不再需要，路由前缀在 router.py 中控制

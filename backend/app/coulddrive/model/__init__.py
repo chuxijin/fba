@@ -9,7 +9,9 @@ from .user import DriveAccount
 from .filesync import SyncConfig, SyncTask, SyncTaskItem
 from .rule_template import RuleTemplate
 from .resource import Resource, ResourceViewHistory
-from .category import Category
+
+# 注意：Category 已迁移到 backend.app.admin.model.category
+# 使用时请导入：from backend.app.admin.model.category import Category
 
 __all__ = [
     "DriveAccount",
@@ -19,5 +21,5 @@ __all__ = [
     "RuleTemplate",
     "Resource",
     "ResourceViewHistory",
-    "Category"
 ]
+

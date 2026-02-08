@@ -13,26 +13,31 @@ from backend.common.model import Base, TimeZone, UniversalText, id_key
 from backend.utils.timezone import timezone
 
 if TYPE_CHECKING:
+    from backend.app.admin.model import User
     from .practice import PracticeRecord, PracticeSession, WrongQuestionBook
     from .statistics import UserCheckIn
 
 
 class UserAccount(Base):
-    """用户账户表"""
+    """C端用户账户扩展表（关联 sys_user）"""
 
     __tablename__ = 'study_user_account'
 
     id: Mapped[id_key] = mapped_column(init=False)
-    username: Mapped[str] = mapped_column(sa.String(64), unique=True, index=True, comment='用户名')
-    nickname: Mapped[str] = mapped_column(sa.String(64), comment='昵称')
+    user_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('sys_user.id', ondelete='CASCADE'),
+        unique=True,
+        index=True,
+        comment='关联系统用户 ID',
+    )
+    # 微信相关
     union_id: Mapped[str | None] = mapped_column(
         sa.String(128), default=None, unique=True, index=True, comment='微信 UnionID'
     )
     open_id: Mapped[str | None] = mapped_column(sa.String(128), default=None, index=True, comment='微信 OpenID')
     session_key: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='微信 SessionKey')
-    avatar: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='头像')
-    phone: Mapped[str | None] = mapped_column(sa.String(256), default=None, index=True, comment='手机号（加密）')
-    email: Mapped[str | None] = mapped_column(sa.String(256), default=None, index=True, comment='邮箱')
+    # 用户画像
     real_name: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='真实姓名（加密）')
     id_card: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='身份证号（加密）')
     gender: Mapped[int | None] = mapped_column(default=None, comment='性别（0 未知 1 男 2 女）')
@@ -46,14 +51,13 @@ class UserAccount(Base):
     graduation_year: Mapped[int | None] = mapped_column(default=None, comment='毕业年份')
     target_exam: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='目标考试')
     identity: Mapped[str | None] = mapped_column(sa.String(32), default=None, comment='身份')
-    status: Mapped[int] = mapped_column(default=1, index=True, comment='状态（0 停用 1 正常）')
-    is_vip: Mapped[bool] = mapped_column(default=False, comment='是否 VIP')
+    # 渠道信息
     register_channel: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='注册渠道')
     channel_source: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='渠道来源')
     medium: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='媒介')
     campaign: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='活动标识')
     referrer_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, index=True, comment='推荐人 ID')
-    first_visit_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='首访时间')
+    # 偏好设置
     message_push_settings: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='消息推送设置 JSON')
     study_preference_settings: Mapped[str | None] = mapped_column(
         UniversalText, default=None, comment='刷题偏好设置 JSON'
@@ -62,28 +66,30 @@ class UserAccount(Base):
     theme: Mapped[str] = mapped_column(sa.String(32), default='light', comment='主题')
     language: Mapped[str] = mapped_column(sa.String(16), default='zh_CN', comment='语言')
     profile_completion: Mapped[int] = mapped_column(default=0, comment='资料完成度（0-100）')
-    register_time: Mapped[datetime] = mapped_column(TimeZone, init=False, default_factory=timezone.now, comment='注册时间')
-    last_login_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近登录时间')
     last_active_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近活跃时间')
 
-    addresses: Mapped[list[UserContactAddress]] = relationship(init=False, back_populates='user')
-    memberships: Mapped[list[UserMembership]] = relationship(init=False, back_populates='user')
-    devices: Mapped[list[UserDevice]] = relationship(init=False, back_populates='user')
-    growth_points: Mapped[UserGrowthPoints | None] = relationship(init=False, back_populates='user', uselist=False)
+    # 关联系统用户
+    user: Mapped['User'] = relationship(init=False, lazy='joined')
+
+    # 扩展关系
+    addresses: Mapped[list[UserContactAddress]] = relationship(init=False, back_populates='account')
+    memberships: Mapped[list[UserMembership]] = relationship(init=False, back_populates='account')
+    devices: Mapped[list[UserDevice]] = relationship(init=False, back_populates='account')
+    growth_points: Mapped[UserGrowthPoints | None] = relationship(init=False, back_populates='account', uselist=False)
     children_relations: Mapped[list[SpreadRelation]] = relationship(
-        init=False, back_populates='parent_user', foreign_keys='SpreadRelation.parent_user_id'
+        init=False, back_populates='parent_account', foreign_keys='SpreadRelation.parent_user_id'
     )
     parent_relations: Mapped[list[SpreadRelation]] = relationship(
-        init=False, back_populates='child_user', foreign_keys='SpreadRelation.child_user_id'
+        init=False, back_populates='child_account', foreign_keys='SpreadRelation.child_user_id'
     )
-    commission: Mapped[UserCommission | None] = relationship(init=False, back_populates='user', uselist=False)
-    blacklist_records: Mapped[list[UserBlacklist]] = relationship(init=False, back_populates='user')
+    commission: Mapped[UserCommission | None] = relationship(init=False, back_populates='account', uselist=False)
+    blacklist_records: Mapped[list[UserBlacklist]] = relationship(init=False, back_populates='account')
 
     # ============ 练习刷题关系 ============
-    practice_sessions: Mapped[list['PracticeSession']] = relationship(init=False, back_populates='user', lazy='noload')
-    practice_records: Mapped[list['PracticeRecord']] = relationship(init=False, back_populates='user', lazy='noload')
-    wrong_questions: Mapped[list['WrongQuestionBook']] = relationship(init=False, back_populates='user', lazy='noload')
-    check_ins: Mapped[list['UserCheckIn']] = relationship(init=False, back_populates='user', lazy='noload')
+    practice_sessions: Mapped[list['PracticeSession']] = relationship(init=False, back_populates='account', lazy='noload')
+    practice_records: Mapped[list['PracticeRecord']] = relationship(init=False, back_populates='account', lazy='noload')
+    wrong_questions: Mapped[list['WrongQuestionBook']] = relationship(init=False, back_populates='account', lazy='noload')
+    check_ins: Mapped[list['UserCheckIn']] = relationship(init=False, back_populates='account', lazy='noload')
 
 
 class UserContactAddress(Base):
@@ -104,7 +110,7 @@ class UserContactAddress(Base):
     is_default: Mapped[bool] = mapped_column(default=False, comment='是否默认地址')
     address_label: Mapped[str | None] = mapped_column(sa.String(32), default=None, comment='地址标签')
 
-    user: Mapped[UserAccount] = relationship(init=False, back_populates='addresses')
+    account: Mapped[UserAccount] = relationship(init=False, back_populates='addresses')
 
 
 class UserMembership(Base):
@@ -134,7 +140,7 @@ class UserMembership(Base):
     auto_renew: Mapped[bool] = mapped_column(default=False, comment='自动续费')
     extra: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='扩展数据 JSON')
 
-    user: Mapped[UserAccount] = relationship(init=False, back_populates='memberships')
+    account: Mapped[UserAccount] = relationship(init=False, back_populates='memberships')
 
 
 class UserDevice(Base):
@@ -157,7 +163,7 @@ class UserDevice(Base):
     last_city: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='最近城市')
     is_online: Mapped[bool] = mapped_column(default=False, comment='是否在线')
 
-    user: Mapped[UserAccount] = relationship(init=False, back_populates='devices')
+    account: Mapped[UserAccount] = relationship(init=False, back_populates='devices')
 
 
 class UserGrowthPoints(Base):
@@ -179,7 +185,7 @@ class UserGrowthPoints(Base):
     total_experience: Mapped[int] = mapped_column(default=0, comment='累计经验值')
     last_task_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近任务时间')
 
-    user: Mapped[UserAccount] = relationship(init=False, back_populates='growth_points')
+    account: Mapped[UserAccount] = relationship(init=False, back_populates='growth_points')
 
 
 class SpreadRelation(Base):
@@ -198,10 +204,10 @@ class SpreadRelation(Base):
     node_depth: Mapped[int] = mapped_column(default=1, comment='推广层级深度')
     bind_time: Mapped[datetime] = mapped_column(TimeZone, init=False, default_factory=timezone.now, comment='绑定时间')
 
-    parent_user: Mapped[UserAccount] = relationship(
+    parent_account: Mapped[UserAccount] = relationship(
         init=False, back_populates='children_relations', foreign_keys=[parent_user_id]
     )
-    child_user: Mapped[UserAccount] = relationship(
+    child_account: Mapped[UserAccount] = relationship(
         init=False, back_populates='parent_relations', foreign_keys=[child_user_id]
     )
 
@@ -226,7 +232,7 @@ class UserCommission(Base):
     last_commission_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近佣金时间')
     withdrawal_records: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='提现记录 JSON')
 
-    user: Mapped[UserAccount] = relationship(init=False, back_populates='commission')
+    account: Mapped[UserAccount] = relationship(init=False, back_populates='commission')
 
 
 class UserBlacklist(Base):
@@ -246,4 +252,4 @@ class UserBlacklist(Base):
     remark: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='备注')
     status: Mapped[int] = mapped_column(default=1, index=True, comment='状态（0 已解除 1 封禁中）')
 
-    user: Mapped[UserAccount] = relationship(init=False, back_populates='blacklist_records')
+    account: Mapped[UserAccount] = relationship(init=False, back_populates='blacklist_records')

@@ -33,19 +33,12 @@ from backend.app.coulddrive.schema.resource import (
     ResourceStatistics,
 )
 
-from backend.app.coulddrive.schema.category import (
-    CategoryBase,
+# 分类使用 admin 的 schema
+from backend.app.admin.schema.category import (
     CreateCategoryParam,
     UpdateCategoryParam,
     GetCategoryDetail,
-    GetCategoryListParam,
-    CategoryListItem,
-    CategoryTreeNode,
-    GetCategoryTreeParam,
-    CategoryOption,
-    GetCategoryOptionsParam,
-    CategoryStatistics,
-    BatchUpdateCategoryStatusParam,
-    BatchDeleteCategoryParam,
-    MoveCategoryParam,
+    GetCategoryTree,
+    DeleteCategoryParam,
 )
+

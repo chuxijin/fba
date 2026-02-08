@@ -176,6 +176,8 @@ class QuestionService:
             is_active=is_active,
             review_status=review_status,
             keyword=keyword,
+            include_analysis=include_analysis,
+            include_materials=True,  # 默认加载材料，确保前端能获取到
         )
         return questions
 
@@ -198,22 +200,28 @@ class QuestionService:
             if not chapter:
                 raise errors.NotFoundError(msg='章节不存在')
 
-        # 提取解析数据
-        analysis_data = obj.analysis
+        # Call DAO to create question (handles material_ids internally)
+        question = await question_dao.create(db, obj, user_id)
 
-        # 创建题目（排除 analysis 字段）
-        question_dict = obj.model_dump(exclude={'analysis'})
-        question_dict['created_by'] = user_id
-        question = Question(**question_dict)
-        db.add(question)
-        await db.flush()
-
-        # 如果提供了解析数据，同时创建解析
-        if analysis_data:
+        # 处理多版本解析（新格式，优先）
+        if obj.analyses:
+            for idx, analysis_item in enumerate(obj.analyses):
+                analysis_param = CreateQuestionAnalysisParam(
+                    question_id=question.id,
+                    answer_data=analysis_item.get('answer_data', {}),
+                    content=analysis_item.get('content', ''),
+                    type=analysis_item.get('type', 'official'),
+                    is_default=analysis_item.get('is_default', idx == 0),  # 第一个默认
+                )
+                await question_analysis_dao.create(db, analysis_param, user_id)
+        # 兼容旧格式（单条解析）
+        elif obj.analysis:
             analysis_param = CreateQuestionAnalysisParam(
                 question_id=question.id,
-                answer_data=analysis_data.get('answer_data', {}),
-                content=analysis_data.get('content', ''),
+                answer_data=obj.analysis.get('answer_data', {}),
+                content=obj.analysis.get('content', ''),
+                type=obj.analysis.get('type', 'official'),
+                is_default=True,
             )
             await question_analysis_dao.create(db, analysis_param, user_id)
 
@@ -243,22 +251,36 @@ class QuestionService:
             if not chapter:
                 raise errors.NotFoundError(msg='章节不存在')
 
-        # 提取解析数据
-        analysis_data = obj.analysis
+        # Call DAO to update question (handles material_ids internally)
+        count = await question_dao.update(db, pk, obj, user_id)
 
-        # 更新题目（排除 analysis 字段）
-        update_dict = obj.model_dump(exclude={'analysis'})
-        update_dict['updated_by'] = user_id
-        count = await question_dao.update_model(db, pk, update_dict)
-
-        # 如果提供了解析数据，同时更新或创建解析
-        if analysis_data:
+        # 处理多版本解析（新格式，优先）
+        if obj.analyses is not None:
+            # 删除该题目的所有现有解析
+            await db.execute(
+                select(QuestionAnalysis).where(QuestionAnalysis.question_id == pk)
+            )
+            await question_analysis_dao.delete_model_by_column(db, allow_multiple=True, question_id=pk)
+            
+            # 创建新的解析记录
+            for idx, analysis_item in enumerate(obj.analyses):
+                create_param = CreateQuestionAnalysisParam(
+                    question_id=pk,
+                    answer_data=analysis_item.get('answer_data', {}),
+                    content=analysis_item.get('content', ''),
+                    type=analysis_item.get('type', 'official'),
+                    is_default=analysis_item.get('is_default', idx == 0),
+                )
+                await question_analysis_dao.create(db, create_param, user_id)
+        # 兼容旧格式（单条解析）
+        elif obj.analysis:
             existing_analysis = await question_analysis_dao.get_by_question_id(db, pk)
             if existing_analysis:
                 # 更新现有解析
                 update_analysis_dict = {
-                    'answer_data': analysis_data.get('answer_data', {}),
-                    'content': analysis_data.get('content', ''),
+                    'answer_data': obj.analysis.get('answer_data', {}),
+                    'content': obj.analysis.get('content', ''),
+                    'type': obj.analysis.get('type', 'official'),
                     'updated_by': user_id,
                 }
                 await question_analysis_dao.update_model_by_column(db, update_analysis_dict, question_id=pk)
@@ -266,8 +288,10 @@ class QuestionService:
                 # 创建新解析
                 create_param = CreateQuestionAnalysisParam(
                     question_id=pk,
-                    answer_data=analysis_data.get('answer_data', {}),
-                    content=analysis_data.get('content', ''),
+                    answer_data=obj.analysis.get('answer_data', {}),
+                    content=obj.analysis.get('content', ''),
+                    type=obj.analysis.get('type', 'official'),
+                    is_default=True,
                 )
                 await question_analysis_dao.create(db, create_param, user_id)
 

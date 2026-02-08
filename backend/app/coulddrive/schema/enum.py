@@ -5,6 +5,7 @@ class DriveType(Enum):
     BAIDU_DRIVE = "BaiduDrive"
     QUARK_DRIVE = "QuarkDrive"
     ALIST_DRIVE = "AlistDrive"
+    LOCAL_FILE = "LocalFile"
 
 class RecursionSpeed(Enum):
     """递归获取列表时的速度控制"""
@@ -41,39 +42,3 @@ class ResourceType(Enum):
     NOTE = "笔记"
     SOFTWARE = "软件"
     EXAM_PAPER = "真题"
-
-class ResourceDomain(Enum):
-    """资源领域枚举"""
-    EDUCATION = "教育"
-    TECHNOLOGY = "科技"
-    ENTERTAINMENT = "影视"
-
-class EducationSubject(Enum):
-    """教育领域科目枚举"""
-    POSTGRADUATE_ENGLISH = "26考研英语"
-    POSTGRADUATE_MATH = "26考研数学"
-    POSTGRADUATE_POLITICS = "26考研政治"
-    POSTGRADUATE_UNIFIED = "26考研统考"
-    POSTGRADUATE_NON_UNIFIED = "26考研非统考"
-
-class TechnologySubject(Enum):
-    """科技领域科目枚举"""
-    PROGRAMMING = "编程开发"
-    ARTIFICIAL_INTELLIGENCE = "人工智能"
-    DATA_SCIENCE = "数据科学"
-    CYBERSECURITY = "网络安全"
-    CLOUD_COMPUTING = "云计算"
-
-class EntertainmentSubject(Enum):
-    """影视领域科目枚举"""
-    MOVIE = "电影"
-    SHORT_DRAMA = "短剧"
-    TV_SERIES = "电视剧"
-    VARIETY_SHOW = "综艺"
-
-# 领域和科目的映射关系
-DOMAIN_SUBJECT_MAPPING = {
-    ResourceDomain.EDUCATION.value: [subject.value for subject in EducationSubject],
-    ResourceDomain.TECHNOLOGY.value: [subject.value for subject in TechnologySubject],
-    ResourceDomain.ENTERTAINMENT.value: [subject.value for subject in EntertainmentSubject],
-}

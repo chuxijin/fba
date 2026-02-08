@@ -71,4 +71,9 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'backend.app.task.tasks.gongkao.tasks.sync_daily_news_to_shizhen',
         'schedule': TzAwareCrontab('0', '8'),  # 每天早上8点
     },
+    # 更新物品状态 - 每小时执行
+    '更新物品状态': {
+        'task': 'update_jia_item_status',
+        'schedule': TzAwareCrontab('0'),  # 每小时整点
+    },
 }

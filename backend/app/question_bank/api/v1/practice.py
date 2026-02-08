@@ -11,7 +11,7 @@
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Path, Query
+from fastapi import APIRouter, Body, Path, Query, Request
 
 from backend.app.question_bank.schema.question import (
     BatchSubmitAnswerParam,
@@ -25,7 +25,9 @@ from backend.app.question_bank.service.membership_service import membership_serv
 from backend.app.question_bank.service.practice_service import practice_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.auth_strategy import AuthUser
+from backend.common.security.permission import verify_permission
 from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.common.exception import errors
 
 router = APIRouter()
 
@@ -33,6 +35,7 @@ router = APIRouter()
 @router.get('/questions', summary='获取练习题目列表', name='practice_get_questions')
 async def get_practice_questions(
     db: CurrentSession,
+    request: Request,
     current_user: AuthUser = DependsCustomerAuth,
     bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
     chapter_id: Annotated[int | None, Query(description='章节 ID')] = None,
@@ -40,11 +43,21 @@ async def get_practice_questions(
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
     """
-    👤 客户端刷题接口 - 获取可练习的题目列表（不含答案）
+    客户端刷题接口 - 获取可练习的题目列表（不含答案）
 
     支持按题库、章节、题型、难度筛选题目
     只返回已启用且审核通过的题目
     """
+    # 0. RBAC 角色权限校验 (按科目/题库区分)
+    if bank_id:
+        # 构造权限标识: "practice:bank:{bank_id}" (建议配合前端传参或数据库字段优化)
+        # 例如: practice:bank:1 代表行测题库权限
+        perm_key = f"practice:bank:{bank_id}"
+        if not await verify_permission(request, perm_key):
+             # 如果用户没有对应角色的权限，抛出禁止访问异常
+             # 提示：请确保后台角色已分配该权限标识
+             raise errors.ForbiddenError(msg=f'您没有该题库的刷题权限(需权限: {perm_key})')
+
     # 验证会员权限
     if bank_id:
         await membership_service.verify_bank_list_access(db=db, user_id=current_user.user_id, bank_id=bank_id)
@@ -80,7 +93,7 @@ async def get_bank_questions(
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
     """
-    👤 客户端刷题接口 - 获取指定题库的题目列表（不含答案）
+    客户端刷题接口 - 获取指定题库的题目列表（不含答案）
 
     快捷接口，等同于 GET /practice/questions?bank_id={bank_id}
     """
@@ -114,7 +127,7 @@ async def get_chapter_questions(
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
     """
-    👤 客户端刷题接口 - 获取指定章节的题目列表（不含答案）
+    客户端刷题接口 - 获取指定章节的题目列表（不含答案）
 
     快捷接口，等同于 GET /practice/questions?chapter_id={chapter_id}
     """
@@ -146,7 +159,7 @@ async def get_question(
     current_user: AuthUser = DependsCustomerAuth,
 ) -> ResponseSchemaModel[GetQuestionDetail]:
     """
-    👤 客户端刷题接口 - 获取题目详情用于练习（不含答案）
+    客户端刷题接口 - 获取题目详情用于练习（不含答案）
 
     用于开始做题前查看题目内容
     """
@@ -163,7 +176,7 @@ async def get_analysis(
     current_user: AuthUser = DependsCustomerAuth,
 ) -> ResponseSchemaModel[GetQuestionAnalysisDetail]:
     """
-    👤 客户端刷题接口 - 查看题目解析（含答案）
+    客户端刷题接口 - 查看题目解析（含答案）
 
     通常在提交答案后查看
     会自动增加解析的查看次数
@@ -181,7 +194,7 @@ async def submit_answer(
     current_user: AuthUser = DependsCustomerAuth,
 ) -> ResponseSchemaModel[BatchSubmitAnswerResult]:
     """
-    👤 客户端刷题接口 - 批量提交答案并获得判分结果（适合考试/试卷场景）
+    客户端刷题接口 - 批量提交答案并获得判分结果（适合考试/试卷场景）
 
     一次性提交多道题的答案，返回整体统计和每道题的结果
 

@@ -6,12 +6,12 @@ from backend.app.question_bank.api.v1.activation import router as activation_rou
 from backend.app.question_bank.api.v1.auth import router as auth_router
 from backend.app.question_bank.api.v1.bank import router as bank_router
 from backend.app.question_bank.api.v1.banner import router as banner_router
-from backend.app.question_bank.api.v1.category import router as category_router
 from backend.app.question_bank.api.v1.chapter import router as chapter_router
 from backend.app.question_bank.api.v1.customer import router as customer_router
 from backend.app.question_bank.api.v1.device import router as device_router
 from backend.app.question_bank.api.v1.favorite import router as favorite_router
 from backend.app.question_bank.api.v1.home import router as home_router
+from backend.app.question_bank.api.v1.material import router as material_router
 from backend.app.question_bank.api.v1.membership import router as membership_router
 from backend.app.question_bank.api.v1.note import router as note_router
 from backend.app.question_bank.api.v1.notice import router as notice_router
@@ -31,9 +31,9 @@ router.include_router(device_router, prefix='/device', tags=['设备管理'])
 router.include_router(home_router, prefix='/home', tags=['首页'])
 router.include_router(banner_router, prefix='/banners', tags=['轮播图'])
 router.include_router(notice_router, prefix='/notices', tags=['通知栏'])
-router.include_router(category_router, prefix='/categories', tags=['题库分类'])
 router.include_router(bank_router, prefix='/banks', tags=['题库'])
 router.include_router(chapter_router, prefix='/chapters', tags=['题库章节'])
+router.include_router(material_router, prefix='/materials', tags=['题目材料'])
 router.include_router(question_router, prefix='/questions', tags=['题目'])
 router.include_router(membership_router, prefix='/memberships', tags=['会员权益'])
 router.include_router(activation_router, tags=['激活码'])

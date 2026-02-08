@@ -5,6 +5,7 @@
 """
 import json
 import logging
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -15,9 +16,6 @@ from backend.app.gongkao.crud.crud_shizhen import shizhen_dao
 from backend.app.gongkao.schema.shizhen import CreateShizhenParam
 from backend.core.conf import settings
 from backend.database.db import async_db_session
-from backend.plugin.ai.crud.crud_model import ai_model_dao
-from backend.plugin.ai.schema.chat import AIChat
-from backend.plugin.ai.service.chat_service import ai_chat_service
 from backend.plugin.email.utils.send import send_email
 from backend.utils.dynamic_config import load_task_config
 
@@ -26,7 +24,6 @@ logger = logging.getLogger(__name__)
 # 外部新闻API配置
 NEWS_API_URL = 'https://saduck.top/api/news/getNewsList'
 NEWS_API_TIMEOUT = 30  # 请求超时时间（秒）
-AI_MODEL_NAME = 'gpt-4o'
 
 
 async def send_task_notification(db, subject: str, content: str) -> None:
@@ -55,66 +52,147 @@ async def send_task_notification(db, subject: str, content: str) -> None:
         logger.error(f'发送任务通知邮件失败: {str(e)}')
 
 
-async def process_content_with_ai(db, intro: str) -> dict[str, str]:
+def process_news_content(intro: str, daily_date: date) -> dict[str, str]:
     """
-    使用 AI 规整内容并提取摘要
+    处理新闻内容，生成 original 和 summary
 
-    :param db: 数据库会话
-    :param intro: 原始内容
+    :param intro: API 返回的原始 HTML 内容
+    :param daily_date: 新闻日期
     :return: {'original': str, 'summary': str}
     """
     if not intro:
         return {'original': '', 'summary': ''}
 
-    # 查找模型
-    models = await ai_model_dao.select_models(db, model_id=AI_MODEL_NAME)
-    if not models:
-        logger.error(f'未找到 AI 模型: {AI_MODEL_NAME}')
-        # 发送通知邮件（AI 模型配置问题）
-        await send_task_notification(
-            db,
-            subject='【公考任务警告】AI 模型未找到',
-            content=f'任务执行时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n警告信息: 未找到配置的 AI 模型 "{AI_MODEL_NAME}"，请检查 AI 模型配置。\n\n降级处理: 使用原始内容，摘要截取前 100 字符。',
-        )
-        # AI 不可用时，直接返回原内容，摘要为空或截取
-        return {'original': intro, 'summary': intro[:100]}
-    
-    model_conf = models[0]
+    # 处理 original：清理转义符，标准化 HTML 格式
+    original = _process_original(intro)
 
-    prompt = f"""
-你是一个专业的新闻编辑。请将以下 HTML 格式的新闻内容进行规整，并提取核心摘要。
-要求：
-1. 'original' 字段：保留重要信息（包括 <mark> 标签中的重点），去除无用的 HTML 标签样式，整理为易读的文本或精简 HTML。
-2. 'summary' 字段：提取不超过 300 字的核心摘要。
-3. 请严格返回合法的 JSON 格式，不要包含 Markdown 代码块标记（如 ```json）。
+    # 处理 summary：提取标题生成目录
+    summary = _process_summary(intro, daily_date)
 
-内容如下：
-{intro}
-"""
+    return {'original': original, 'summary': summary}
 
-    try:
-        chat_param = AIChat(
-            provider_id=model_conf.provider_id,
-            model_id=AI_MODEL_NAME,
-            user_prompt=prompt,
-            temperature=0.3, # 降低随机性
-            parallel_tool_calls=None, # 部分模型/渠道不支持此参数
-        )
-        
-        response_text = await ai_chat_service.invoke(db=db, chat=chat_param)
-        
-        # 清理可能存在的代码块标记
-        cleaned_text = response_text.replace('```json', '').replace('```', '').strip()
-        
-        result = json.loads(cleaned_text)
-        return {
-            'original': result.get('original', intro),
-            'summary': result.get('summary', ''),
-        }
-    except Exception as e:
-        logger.error(f'AI 处理内容失败: {str(e)}')
-        # 降级处理
-        return {'original': intro, 'summary': intro[:100]}
+
+def _process_original(intro: str) -> str:
+    """
+    处理原始内容为标准化 HTML
+
+    :param intro: API 返回的原始 HTML
+    :return: 标准化后的 HTML
+    """
+    # 去除转义换行符
+    content = intro.replace('\\r\\n', '').replace('\\n', '').replace('\\r', '')
+
+    # 去除 <mark> 标签，保留内容
+    content = re.sub(r'<mark>(.*?)</mark>', r'\1', content)
+
+    # 将 <p> 标签替换为带样式的版本
+    content = re.sub(r'<p[^>]*>', '<p style="text-align: justify;">', content)
+
+    return content
+
+
+def _process_summary(intro: str, daily_date: date) -> str:
+    """
+    从新闻内容中提取标题生成摘要目录
+
+    :param intro: API 返回的原始 HTML
+    :param daily_date: 新闻日期
+    :return: 摘要 HTML
+    """
+    # 提取所有标题（<strong>标签中的内容）
+    titles = re.findall(r'<strong>(\d+\..*?)</strong>', intro)
+
+    if not titles:
+        return ''
+
+    # 摘要样式模板
+    line_style = 'style="line-height: 1;"'
+    color_style = 'style="color: rgb(248, 136, 37);"'
+
+    summary_lines = []
+    current_news_index = 0  # 跟踪当前处理的新闻索引
+
+    for title in titles:
+        # 清理标题中的多余空白
+        title = title.strip()
+
+        # 检查是否是联播快讯（国内联播快讯 或 国际联播快讯）
+        if '联播快讯' in title:
+            # 添加主标题
+            summary_lines.append(
+                f'<p {line_style}><span {color_style}>{title}：</span></p>'
+            )
+            current_news_index = int(re.match(r'(\d+)', title).group(1))
+
+            # 提取该联播快讯下的子标题
+            sub_titles = _extract_sub_titles(intro, current_news_index)
+            for idx, sub_title in enumerate(sub_titles, 1):
+                summary_lines.append(
+                    f'<p {line_style}><span {color_style}>（{idx}）{sub_title}；</span></p>'
+                )
+        else:
+            # 普通新闻标题
+            summary_lines.append(
+                f'<p {line_style}><span {color_style}>{title}；</span></p>'
+            )
+
+    # 添加节目信息
+    date_str = daily_date.strftime('%Y%m%d')
+    summary_lines.append(
+        f'<p {line_style}><span {color_style}>（《新闻联播》 {date_str} 19:00）</span></p>'
+    )
+
+    return ''.join(summary_lines)
+
+
+def _extract_sub_titles(intro: str, news_index: int) -> list[str]:
+    """
+    提取联播快讯下的子标题（从 <mark> 标签中提取）
+
+    :param intro: 原始 HTML 内容
+    :param news_index: 联播快讯的编号（如 9 或 14）
+    :return: 子标题列表
+    """
+    # 查找从当前联播快讯到下一个主新闻之间的内容
+    # 使用更宽松的匹配模式
+    pattern = rf'<strong>\s*{news_index}\s*[\.．].*?联播快讯.*?</strong>(.*?)(?=<strong>\s*\d+\s*[\.．]|$)'
+    match = re.search(pattern, intro, re.DOTALL)
+
+    if not match:
+        # 备用模式：只查找联播快讯后的内容
+        pattern2 = rf'{news_index}\s*[\.．].*?联播快讯.*?</strong>(.*?)(?=<strong>|$)'
+        match = re.search(pattern2, intro, re.DOTALL)
+
+    if not match:
+        return []
+
+    section = match.group(1) if match.lastindex else match.group(0)
+
+    # 提取 <mark> 标签中的内容作为子标题
+    sub_titles = re.findall(r'<mark[^>]*>(.*?)</mark>', section, re.DOTALL)
+
+    # 清理子标题中的 HTML 标签和空白
+    cleaned_titles = []
+    for title in sub_titles:
+        # 去除内部 HTML 标签
+        clean = re.sub(r'<[^>]+>', '', title).strip()
+        if clean:
+            cleaned_titles.append(clean)
+
+    # 如果没有 mark 标签，尝试从段落中提取标题
+    if not cleaned_titles:
+        # 查找紧跟在"央视网消息"段落后的短标题段落
+        paragraphs = re.findall(r'<p[^>]*>([^<]*?)</p>', section)
+        for p in paragraphs:
+            text = p.strip()
+            # 跳过空段落和包含"央视网消息"的段落
+            if not text or '央视网消息' in text:
+                continue
+            # 短句作为子标题（通常是简短的新闻标题）
+            if len(text) < 60 and not text.endswith('。'):
+                cleaned_titles.append(text)
+
+    return cleaned_titles
 
 
 async def fetch_news_list(page_num: int = 1, page_size: int = 10) -> dict[str, Any] | None:
@@ -151,7 +229,7 @@ async def fetch_news_list(page_num: int = 1, page_size: int = 10) -> dict[str, A
         return None
 
 
-@shared_task(name='sync_daily_news_to_shizhen')
+@shared_task(name='backend.app.task.tasks.gongkao.tasks.sync_daily_news_to_shizhen')
 async def sync_daily_news_to_shizhen() -> dict[str, Any]:
     """
     每日定时获取新闻并同步到gk_shizhen表
@@ -237,15 +315,15 @@ async def sync_daily_news_to_shizhen() -> dict[str, Any]:
                         result['skipped_count'] += 1
                         continue
 
-                    # 使用 AI 处理内容
+                    # 处理新闻内容（纯代码处理，不调用 AI）
                     intro = record.get('intro', '')
-                    ai_result = await process_content_with_ai(db, intro)
+                    processed = process_news_content(intro, daily_date)
 
                     # 创建新记录
                     create_param = CreateShizhenParam(
                         daily_date=daily_date,
-                        original=ai_result['original'],
-                        summary=ai_result['summary'],
+                        original=processed['original'],
+                        summary=processed['summary'],
                     )
 
                     await shizhen_dao.create(db, create_param, created_by=1)  # 系统用户ID为1

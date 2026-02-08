@@ -61,11 +61,7 @@ class GetQuestionListItem(SchemaBase):
     chapter_name: str | None = Field(None, description='章节名称')
 
 
-class GetQuestionWithAnswer(GetQuestionListItem):
-    """题目列表项（含答案和解析）- 用于查看历史记录"""
 
-    answer_data: dict | None = Field(None, description='答案数据 {"correct": ["A", "B"]}')
-    analysis_content: str | None = Field(None, description='解析内容')
 
 
 class GetQuestionDetail(QuestionSchemaBase):
@@ -81,6 +77,8 @@ class GetQuestionDetail(QuestionSchemaBase):
     updated_time: datetime | None = Field(None, description='更新时间')
     # 关联的解析数据（包含答案和解析内容）
     analysis: 'QuestionAnalysisSimple | None' = Field(None, description='题目解析（包含答案）')
+    # 关联的材料 ID 列表
+    material_ids: list[int] | None = Field(None, description='关联材料 ID 列表')
 
 
 class GetQuestionWithRelations(GetQuestionDetail):
@@ -115,7 +113,9 @@ class CreateQuestionParam(SchemaBase):
     source: str | None = Field(None, description='来源')
     year: int | None = Field(None, description='年份')
     usage: str = Field(default='all', description='用途: all/exam/practice')
-    analysis: dict | None = Field(None, description='题目解析数据（可选，包含 answer_data 和 content）')
+    analysis: dict | None = Field(None, description='题目解析数据（单条，包含 answer_data 和 content，向下兼容）')
+    analyses: list[dict] | None = Field(None, description='多版本解析列表（每个元素包含 type, answer_data, content, is_default）')
+    material_ids: list[int] | None = Field(None, description='关联材料 ID 列表')
 
 
 class UpdateQuestionParam(SchemaBase):
@@ -133,7 +133,9 @@ class UpdateQuestionParam(SchemaBase):
     year: int | None = Field(None, description='年份')
     usage: str = Field(description='用途')
     is_active: bool = Field(description='是否启用')
-    analysis: dict | None = Field(None, description='题目解析数据（可选，包含 answer_data 和 content）')
+    analysis: dict | None = Field(None, description='题目解析数据（单条，向下兼容）')
+    analyses: list[dict] | None = Field(None, description='多版本解析列表')
+    material_ids: list[int] | None = Field(None, description='关联材料 ID 列表')
 
 
 class QuestionQueryParam(SchemaBase):
@@ -192,12 +194,33 @@ class GetQuestionAnalysisDetail(QuestionAnalysisSchemaBase):
     unhelpful_count: int = Field(description='无帮助次数')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
+    type: str = Field(default='official', description='解析类型')
+
+
+class GetQuestionWithAnswer(GetQuestionListItem):
+    """题目列表项（含答案和解析）- 用于查看历史记录"""
+
+    answer_data: dict | None = Field(None, description='答案数据 {"correct": ["A", "B"]}')
+    analysis_content: str | None = Field(None, description='解析内容')
+    materials: list[dict] | None = Field(None, description='关联材料')
+    analyses: list[GetQuestionAnalysisDetail] | None = Field(None, description='所有解析列表')
 
 
 class CreateQuestionAnalysisParam(QuestionAnalysisSchemaBase):
     """创建题目解析参数"""
 
     question_id: int = Field(description='题目 ID')
+    type: str = Field(default='official', description='解析类型/来源机构')
+    is_default: bool = Field(default=False, description='是否默认展示')
+
+
+class AnalysisVersionItem(SchemaBase):
+    """单个解析版本（用于批量创建）"""
+    
+    type: str = Field(description='解析类型/来源机构，如: 华图, 粉笔, 官方')
+    answer_data: dict = Field(description='答案数据 {\"correct\": \"...\"} ')
+    content: str = Field(description='解析内容')
+    is_default: bool = Field(default=False, description='是否默认展示')
 
 
 class UpdateQuestionAnalysisParam(QuestionAnalysisSchemaBase):

@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.crud.crud_bank import bank_dao
-from backend.app.question_bank.crud.crud_category import category_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.model.bank import QuestionBank
 from backend.app.question_bank.model.practice import PracticeSession
 from backend.app.question_bank.schema.bank import (
     CreateBankParam,
     DeleteBankParam,
-    GetBankDetail,
     GetBankDetailWithChapters,
     UpdateBankParam,
 )
@@ -57,6 +56,8 @@ class BankService:
         status: int | None = None,
         scope: int | None = None,
         keyword: str | None = None,
+        type: int | None = None,
+        parent_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         获取题库树形列表
@@ -66,10 +67,25 @@ class BankService:
         :param status: 题库状态
         :param scope: 可见范围
         :param keyword: 关键字搜索
+        :param type: 类型 (10=题库, 20=合集)
+        :param parent_id: 父级ID
         :return:
         """
-        bank_select = await bank_dao.get_all(db, cat_id, status, scope, keyword)
+        bank_select = await bank_dao.get_all(db, cat_id, status, scope, keyword, type, parent_id)
         tree_data = get_tree_data(bank_select, sort_key='id')
+        
+        # 对于 type=20 的合集，动态计算子题库数量
+        if type == 20 or (type is None and parent_id is None and not keyword):
+            # 获取所有合集的ID
+            collection_ids = [item['id'] for item in tree_data if item.get('type') == 20]
+            if collection_ids:
+                # 统计每个合集包含的子题库数量
+                child_counts = await bank_dao.count_children_by_parent_ids(db, collection_ids)
+                # 更新 q_count 字段
+                for item in tree_data:
+                    if item.get('type') == 20 and item['id'] in child_counts:
+                        item['q_count'] = child_counts[item['id']]
+        
         return tree_data
 
     @staticmethod

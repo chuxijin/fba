@@ -45,15 +45,20 @@ class CRUDQuestion(CRUDPlus[GkQuestion]):
             filters['type'] = question_type
         if category_id is not None:
             filters['category_id'] = category_id
-        if material_id is not None:
-            filters['material_id'] = material_id
         if year is not None:
             filters['year'] = year
         if source is not None:
             filters['source__like'] = f'%{source}%'
         if status is not None:
             filters['status'] = status
-        return await self.select_order('sort_order', 'asc', **filters)
+
+        stmt = await self.select_order('sort_order', 'asc', **filters)
+
+        # JSON 数组包含查询
+        if material_id is not None:
+            stmt = stmt.where(func.json_contains(self.model.material_ids, str(material_id)))
+
+        return stmt
 
     async def create(self, db: AsyncSession, obj: CreateQuestionParam, created_by: int) -> GkQuestion:
         """创建题目"""

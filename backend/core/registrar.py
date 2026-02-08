@@ -79,6 +79,11 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
     register_all_tasks()
     await task_scheduler.start()
 
+    # 初始化 Firebase 推送服务
+    from backend.app.jia.service.push_service import push_service
+
+    push_service.initialize()
+
     yield
 
     # 释放 snowflake 节点

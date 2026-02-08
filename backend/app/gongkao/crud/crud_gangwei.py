@@ -23,29 +23,6 @@ class CRUDGangwei(CRUDPlus[GkGangwei]):
         """
         return await self.select_model(db, pk)
 
-    async def get_by_unique_key(
-        self,
-        db: AsyncSession,
-        year: int,
-        org_region: str,
-        position_code: str,
-    ) -> GkGangwei | None:
-        """
-        通过联合唯一键获取岗位
-
-        :param db: 数据库会话
-        :param year: 年度
-        :param org_region: 单位所属地区
-        :param position_code: 职位代码
-        :return:
-        """
-        return await self.select_model_by_column(
-            db,
-            year=year,
-            org_region=org_region,
-            position_code=position_code,
-        )
-
     def _build_query(self, params: GangweiParam) -> Select:
         """
         构建查询条件
@@ -57,10 +34,12 @@ class CRUDGangwei(CRUDPlus[GkGangwei]):
 
         if params.year is not None:
             stmt = stmt.where(self.model.year == params.year)
-        if params.org_name is not None:
-            stmt = stmt.where(self.model.org_name.contains(params.org_name))
-        if params.org_region is not None:
-            stmt = stmt.where(self.model.org_region.contains(params.org_region))
+        if params.exam_type is not None:
+            stmt = stmt.where(self.model.exam_type == params.exam_type)
+        if params.region is not None:
+            stmt = stmt.where(self.model.region.contains(params.region))
+        if params.dept_name is not None:
+            stmt = stmt.where(self.model.dept_name.contains(params.dept_name))
         if params.position_name is not None:
             stmt = stmt.where(self.model.position_name.contains(params.position_name))
         if params.position_code is not None:
@@ -162,6 +141,118 @@ class CRUDGangwei(CRUDPlus[GkGangwei]):
         :return:
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=pks)
+
+    async def get_existing_keys(
+        self,
+        db: AsyncSession,
+        year: int,
+        keys: list[tuple[str | None, str | None, str | None]],
+    ) -> set[tuple[str | None, str | None, str | None]]:
+        """
+        批量检查已存在的记录（按年度+职位代码+职位名称+部门名称）
+
+        :param db: 数据库会话
+        :param year: 年度
+        :param keys: (position_code, position_name, dept_name) 元组列表
+        :return:
+        """
+        if not keys:
+            return set()
+
+        from sqlalchemy import and_, or_
+
+        # 构建查询条件
+        stmt = (
+            select(
+                self.model.position_code,
+                self.model.position_name,
+                self.model.dept_name,
+            )
+            .where(self.model.year == year)
+            .where(
+                or_(
+                    *[
+                        and_(
+                            self.model.position_code == code,
+                            self.model.position_name == name,
+                            self.model.dept_name == dept,
+                        )
+                        for code, name, dept in keys
+                    ]
+                )
+            )
+        )
+        result = await db.execute(stmt)
+        return {(row[0], row[1], row[2]) for row in result.all()}
+
+    async def find_by_match_key(
+        self,
+        db: AsyncSession,
+        year: int,
+        position_code: str | None,
+        position_name: str | None,
+        dept_name: str | None,
+    ) -> tuple[GkGangwei | None, int]:
+        """
+        根据匹配条件查找岗位
+
+        :param db: 数据库会话
+        :param year: 年度
+        :param position_code: 职位代码
+        :param position_name: 职位名称
+        :param dept_name: 部门名称
+        :return: (岗位对象, 匹配数量)
+        """
+        from sqlalchemy import and_, func
+
+        # 构建匹配条件
+        conditions = [
+            self.model.year == year,
+            self.model.position_name == position_name,
+            self.model.dept_name == dept_name,
+        ]
+        # 职位代码如果有值才加入匹配条件
+        if position_code:
+            conditions.append(self.model.position_code == position_code)
+
+        # 先查询匹配数量
+        count_stmt = select(func.count()).select_from(self.model).where(and_(*conditions))
+        count_result = await db.execute(count_stmt)
+        match_count = count_result.scalar() or 0
+
+        if match_count == 0:
+            return None, 0
+
+        # 查询第一条匹配记录
+        stmt = select(self.model).where(and_(*conditions)).limit(1)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none(), match_count
+
+    async def update_scores(
+        self,
+        db: AsyncSession,
+        pk: int,
+        score_data: dict,
+        updated_by: int,
+    ) -> int:
+        """
+        更新岗位分数字段
+
+        :param db: 数据库会话
+        :param pk: 岗位 ID
+        :param score_data: 分数数据字典
+        :param updated_by: 修改者 ID
+        :return:
+        """
+        from sqlalchemy import update
+
+        stmt = (
+            update(self.model)
+            .where(self.model.id == pk)
+            .values(**score_data, updated_by=updated_by)
+        )
+        result = await db.execute(stmt)
+        return result.rowcount
 
 
 gangwei_dao: CRUDGangwei = CRUDGangwei(GkGangwei)

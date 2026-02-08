@@ -136,7 +136,7 @@ class PracticeSession(Base, UserMixin):
     )
 
     # ============ 关系 ============
-    user: Mapped['UserAccount'] = relationship(init=False, back_populates='practice_sessions', lazy='noload')
+    account: Mapped['UserAccount'] = relationship(init=False, back_populates='practice_sessions', lazy='noload')
     records: Mapped[list['PracticeRecord']] = relationship(
         init=False,
         back_populates='session',
@@ -211,7 +211,7 @@ class PracticeRecord(Base, UserMixin):
     )
 
     # ============ 关系 ============
-    user: Mapped['UserAccount'] = relationship(init=False, back_populates='practice_records', lazy='noload')
+    account: Mapped['UserAccount'] = relationship(init=False, back_populates='practice_records', lazy='noload')
     session: Mapped['PracticeSession'] = relationship(init=False, back_populates='records', lazy='noload')
     question: Mapped['Question'] = relationship(init=False, lazy='noload')
 
@@ -267,5 +267,5 @@ class WrongQuestionBook(Base, UserMixin):
     pinned_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='置顶时间')
 
     # ============ 关系 ============
-    user: Mapped['UserAccount'] = relationship(init=False, back_populates='wrong_questions', lazy='noload')
+    account: Mapped['UserAccount'] = relationship(init=False, back_populates='wrong_questions', lazy='noload')
     question: Mapped['Question'] = relationship(init=False, lazy='joined')

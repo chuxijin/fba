@@ -14,7 +14,7 @@ class GkResource(Base):
 
     id: Mapped[id_key] = mapped_column(init=False)
     title: Mapped[str] = mapped_column(sa.String(255), comment='标题')
-    category: Mapped[str] = mapped_column(sa.String(50), index=True, comment='分类：行测/申论/面试/备考')
+    category_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='分类ID（关联 sys_category）')
     description: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='描述')
     file_path: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='本地文件路径')
     link: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='外部链接')

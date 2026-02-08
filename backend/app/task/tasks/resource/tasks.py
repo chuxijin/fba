@@ -117,12 +117,12 @@ async def refresh_resources_with_update_mode() -> Dict[str, Any]:
     return summary
 
 
-@celery_app.task(name='refresh_subject_mode2_to_permanent')
-async def refresh_subject_mode2_to_permanent(subject: str) -> Dict[str, Any]:
+@celery_app.task(name='refresh_category_mode2_to_permanent')
+async def refresh_category_mode2_to_permanent(category_id: int) -> Dict[str, Any]:
     """
-    将指定科目下临时处理模式为 2 的资源刷新为永久分享链接
+    将指定分类下临时处理模式为 2 的资源刷新为永久分享链接
 
-    :param subject: 科目
+    :param category_id: 分类ID
     :return: 执行结果统计
     """
     try:
@@ -131,11 +131,11 @@ async def refresh_subject_mode2_to_permanent(subject: str) -> Dict[str, Any]:
 
             return await resource_service.refresh_to_permanent(
                 db=db,
-                subject=subject
+                category_id=category_id
             )
 
     except Exception as e:
-        logger.error(f"按科目刷新永久链接失败: {str(e)}")
+        logger.error(f"按分类刷新永久链接失败: {str(e)}")
         return {
             "checked_resources": 0,
             "refreshed_resources": 0,
@@ -143,7 +143,7 @@ async def refresh_subject_mode2_to_permanent(subject: str) -> Dict[str, Any]:
             "skipped_resources": 0,
             "details": [],
             "error": str(e),
-            "subject": subject,
+            "category_id": category_id,
         }
 
 

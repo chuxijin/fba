@@ -5,10 +5,11 @@ from datetime import datetime, timedelta, time
 
 from sqlalchemy import Select, and_, desc, select, func, or_, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import noload, defer
+from sqlalchemy.orm import noload, defer, joinedload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.resource import Resource, ResourceViewHistory
+from backend.app.admin.model.category import Category
 from backend.app.coulddrive.schema.resource import (
     CreateResourceParam,
     UpdateResourceParam,
@@ -25,14 +26,10 @@ class CRUDResource(CRUDPlus[Resource]):
     """资源数据库操作类"""
 
     async def get(self, db: AsyncSession, pk: int) -> Resource | None:
-        """
-        获取资源详情
-
-        :param db: 数据库会话
-        :param pk: 资源 ID
-        :return:
-        """
-        return await self.select_model(db, pk)
+        """获取资源详情"""
+        stmt = select(self.model).where(self.model.id == pk).options(joinedload(self.model.category))
+        result = await db.execute(stmt)
+        return result.scalars().first()
 
     async def get_by_pwd_id(self, db: AsyncSession, pwd_id: str) -> Resource | None:
         """
@@ -61,22 +58,25 @@ class CRUDResource(CRUDPlus[Resource]):
         :param params: 查询参数
         :return:
         """
-        stmt = select(self.model).order_by(desc(self.model.created_time))
+        stmt = (
+            select(self.model)
+            .outerjoin(Category, self.model.category_id == Category.id)
+            .options(joinedload(self.model.category))
+            .order_by(desc(self.model.created_time))
+        )
 
         filters = []
 
-        if params.domain is not None:
-            filters.append(self.model.domain == params.domain)
-        if params.subject is not None:
-            filters.append(self.model.subject == params.subject)
+        if params.category_id is not None:
+            filters.append(self.model.category_id == params.category_id)
         if params.resource_type is not None:
             filters.append(self.model.resource_type == params.resource_type)
         if params.url_type is not None:
             filters.append(self.model.url_type == params.url_type)
         if params.status is not None:
             filters.append(self.model.status == params.status)
-        if params.audit_status is not None:
-            filters.append(self.model.audit_status == params.audit_status)
+        if params.expired_type is not None:
+            filters.append(self.model.expired_type == params.expired_type)
         if params.user_id is not None:
             filters.append(self.model.user_id == params.user_id)
         if params.is_deleted is not None:
@@ -511,7 +511,7 @@ class CRUDResource(CRUDPlus[Resource]):
         query_text: str,
         limit: int = 20,
         similarity_threshold: float = 0.7,
-        subject: str | None = None
+        category_id: int | None = None
     ) -> list[tuple[Resource, float]]:
         """
         向量搜索资源
@@ -520,7 +520,7 @@ class CRUDResource(CRUDPlus[Resource]):
         :param query_text: 搜索查询文本（在资源介绍和描述中搜索）
         :param limit: 返回结果数量限制
         :param similarity_threshold: 相似度阈值 (0-1)，只返回大于此阈值的结果
-        :param subject: 科目过滤
+        :param category_id: 分类过滤
         :return: (资源对象, 相似度分数) 列表，按相似度降序排列
         """
         # 将查询文本转换为向量
@@ -539,9 +539,9 @@ class CRUDResource(CRUDPlus[Resource]):
             self.model.content_vector.isnot(None)
         ]
 
-        # 只保留科目过滤
-        if subject is not None:
-            filters.append(self.model.subject == subject)
+        # 只保留分类过滤
+        if category_id is not None:
+            filters.append(self.model.category_id == category_id)
 
         stmt = (
             select(

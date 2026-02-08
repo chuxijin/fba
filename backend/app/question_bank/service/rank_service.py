@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.model import User
 from backend.app.question_bank.crud.crud_check_in import check_in_dao
 from backend.app.question_bank.crud.crud_daily_rank import daily_rank_dao
 from backend.app.question_bank.model import PracticeRecord, UserAccount, UserCheckIn
@@ -126,12 +127,13 @@ class RankService:
         stmt = (
             select(
                 UserAccount.id.label('user_id'),
-                UserAccount.nickname,
-                UserAccount.avatar,
+                User.nickname,
+                User.avatar,
                 func.count(PracticeRecord.id).label('practice_count'),
             )
+            .join(User, User.id == UserAccount.user_id)
             .outerjoin(PracticeRecord, PracticeRecord.user_id == UserAccount.id)
-            .group_by(UserAccount.id, UserAccount.nickname, UserAccount.avatar)
+            .group_by(UserAccount.id, User.nickname, User.avatar)
             .order_by(func.count(PracticeRecord.id).desc())
             .limit(limit)
         )
@@ -173,13 +175,14 @@ class RankService:
         stmt = (
             select(
                 UserAccount.id.label('user_id'),
-                UserAccount.nickname,
-                UserAccount.avatar,
+                User.nickname,
+                User.avatar,
                 func.count(PracticeRecord.id).label('total_count'),
                 func.sum(func.cast(PracticeRecord.is_correct, sa.Integer)).label('correct_count'),
             )
+            .join(User, User.id == UserAccount.user_id)
             .outerjoin(PracticeRecord, PracticeRecord.user_id == UserAccount.id)
-            .group_by(UserAccount.id, UserAccount.nickname, UserAccount.avatar)
+            .group_by(UserAccount.id, User.nickname, User.avatar)
             .having(func.count(PracticeRecord.id) >= 10)
             .limit(limit * 2)
         )
@@ -234,7 +237,10 @@ class RankService:
         db: AsyncSession, current_user_id: int, limit: int
     ) -> RankListData:
         """获取坚持天数（连续打卡）排行榜"""
-        all_users_stmt = select(UserAccount.id, UserAccount.nickname, UserAccount.avatar)
+        all_users_stmt = (
+            select(UserAccount.id, User.nickname, User.avatar)
+            .join(User, User.id == UserAccount.user_id)
+        )
         users_result = await db.execute(all_users_stmt)
         all_users = users_result.all()
 

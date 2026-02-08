@@ -53,6 +53,20 @@ class CRUDUser(CRUDPlus[User]):
         """
         return await self.select_model_by_column(db, username=username)
 
+    async def get_by_username_or_email(self, db: AsyncSession, account: str) -> User | None:
+        """
+        通过用户名或邮箱获取用户
+
+        :param db: 数据库会话
+        :param account: 用户名或邮箱
+        :return:
+        """
+        from sqlalchemy import or_
+
+        stmt = select(self.model).where(or_(self.model.username == account, self.model.email == account))
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
     async def get_by_nickname(self, db: AsyncSession, nickname: str) -> User | None:
         """
         通过昵称获取用户

@@ -17,6 +17,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import Question, QuestionAnalysis, QuestionStatistics
+from backend.app.question_bank.model.question import QuestionMaterial
 from backend.app.question_bank.schema.question import (
     CreateQuestionAnalysisParam,
     CreateQuestionParam,
@@ -56,11 +57,16 @@ class CRUDQuestion(CRUDPlus[Question]):
             .options(
                 joinedload(Question.bank),
                 joinedload(Question.chapter),
-                selectinload(Question.analysis),
+                selectinload(Question.analyses),
             )
         )
         result = await db.execute(stmt)
-        return result.unique().scalars().first()
+        question = result.unique().scalars().first()
+        # 兼容性处理：将 analyses 的第一个元素赋值给 analysis 属性，以满足 Schema 定义
+        if question and question.analyses:
+            # 动态赋值，不影响数据库
+            setattr(question, 'analysis', question.analyses[0])
+        return question
 
     async def get_by_ids(self, db: AsyncSession, ids: list[int], include_analysis: bool = False) -> Sequence[Question]:
         """
@@ -82,7 +88,7 @@ class CRUDQuestion(CRUDPlus[Question]):
 
         # 🔥 根据参数决定是否加载解析
         if include_analysis:
-            options_list.append(selectinload(Question.analysis))
+            options_list.append(selectinload(Question.analyses))
 
         stmt = select(Question).where(Question.id.in_(ids)).options(*options_list)
 
@@ -148,6 +154,8 @@ class CRUDQuestion(CRUDPlus[Question]):
         is_active: bool | None = None,
         review_status: int | None = None,
         keyword: str | None = None,
+        include_analysis: bool = False,
+        include_materials: bool = False,
     ) -> Sequence[Question]:
         """
         获取所有题目
@@ -160,13 +168,23 @@ class CRUDQuestion(CRUDPlus[Question]):
         :param is_active: 是否启用
         :param review_status: 审核状态
         :param keyword: 关键字搜索
+        :param include_analysis: 是否包含解析
+        :param include_materials: 是否包含材料
         :return:
         """
-        # 直接构建查询语句，使用 joinedload 预加载关系
-        stmt = select(Question).options(
+        # 构建查询选项
+        options_list = [
             joinedload(Question.bank),
             joinedload(Question.chapter)
-        )
+        ]
+
+        if include_analysis:
+            options_list.append(selectinload(Question.analyses))
+        
+        if include_materials:
+            options_list.append(selectinload(Question.materials))
+
+        stmt = select(Question).options(*options_list)
 
         if bank_id is not None:
             stmt = stmt.where(Question.bank_id == bank_id)
@@ -186,7 +204,15 @@ class CRUDQuestion(CRUDPlus[Question]):
         stmt = stmt.order_by(Question.created_time.desc())
 
         result = await db.execute(stmt)
-        return result.unique().scalars().all()
+        questions = result.unique().scalars().all()
+
+        # 兼容性处理：如果有加载解析，将 analyses[0] 赋值给 analysis
+        if include_analysis:
+            for q in questions:
+                if q.analyses:
+                    setattr(q, 'analysis', q.analyses[0])
+        
+        return questions
 
     async def create(self, db: AsyncSession, obj: CreateQuestionParam, user_id: int) -> Question:
         """
@@ -198,10 +224,20 @@ class CRUDQuestion(CRUDPlus[Question]):
         :return:
         """
         obj_dict = obj.model_dump()
+        material_ids = obj_dict.pop('material_ids', None)
+        obj_dict.pop('analysis', None)
         obj_dict['created_by'] = user_id
 
         question = Question(**obj_dict)
         db.add(question)
+
+        # 处理材料关联
+        if material_ids:
+            stmt = select(QuestionMaterial).where(QuestionMaterial.id.in_(material_ids))
+            result = await db.execute(stmt)
+            materials = result.scalars().all()
+            question.materials = list(materials)
+
         await db.flush()
 
         return question
@@ -219,9 +255,24 @@ class CRUDQuestion(CRUDPlus[Question]):
         :return:
         """
         obj_dict = obj.model_dump()
+        material_ids = obj_dict.pop('material_ids', None)
+        obj_dict.pop('analysis', None)
         obj_dict['updated_by'] = user_id
 
-        return await self.update_model(db, question_id, obj_dict)
+        count = await self.update_model(db, question_id, obj_dict)
+
+        # 如果提供了 material_ids（包括空列表），则更新关联
+        if material_ids is not None:
+            question = await self.get(db, question_id)
+            if question:
+                # 需先加载或确保 materials 可访问，selectinload 应该自动处理，这里直接赋值
+                stmt = select(QuestionMaterial).where(QuestionMaterial.id.in_(material_ids))
+                result = await db.execute(stmt)
+                materials = result.scalars().all()
+                question.materials = list(materials)
+                await db.flush()
+
+        return count
 
     async def delete(self, db: AsyncSession, question_ids: list[int]) -> int:
         """

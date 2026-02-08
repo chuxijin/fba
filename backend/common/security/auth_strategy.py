@@ -122,7 +122,6 @@ class CustomerUserLoader(UserLoader):
             username=user.username,
             extra={
                 'nickname': user.nickname,
-                'is_vip': user.is_vip,
                 'open_id': user.open_id,
             },
         )

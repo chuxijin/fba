@@ -39,6 +39,8 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         status: int | None = None,
         scope: int | None = None,
         keyword: str | None = None,
+        type: int | None = None,
+        parent_id: int | None = None,
     ) -> Sequence[QuestionBank]:
         """
         获取所有题库
@@ -60,6 +62,10 @@ class CRUDBank(CRUDPlus[QuestionBank]):
             filters['scope'] = scope
         if keyword is not None:
             filters['name__like'] = f'%{keyword}%'
+        if type is not None:
+            filters['type'] = type
+        if parent_id is not None:
+            filters['parent_id'] = parent_id
 
         return await self.select_models_order(db, 'created_time', 'desc', **filters)
 
@@ -93,6 +99,33 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         :return:
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=bank_ids)
+
+    async def count_children_by_parent_ids(
+        self, db: AsyncSession, parent_ids: list[int]
+    ) -> dict[int, int]:
+        """
+        统计每个父级题库的子题库数量
+
+        :param db: 数据库会话
+        :param parent_ids: 父级题库 ID 列表
+        :return: {parent_id: child_count} 映射
+        """
+        from sqlalchemy import func, select
+        
+        stmt = (
+            select(
+                QuestionBank.parent_id,
+                func.count(QuestionBank.id).label('child_count')
+            )
+            .where(QuestionBank.parent_id.in_(parent_ids))
+            .where(QuestionBank.status == 1)  # 只统计启用的子题库
+            .group_by(QuestionBank.parent_id)
+        )
+        
+        result = await db.execute(stmt)
+        rows = result.all()
+        
+        return {row.parent_id: row.child_count for row in rows}
 
 
 bank_dao: CRUDBank = CRUDBank(QuestionBank)

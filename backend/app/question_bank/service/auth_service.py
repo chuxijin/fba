@@ -128,10 +128,10 @@ class AuthService:
             # 如果前端提供了新的昵称或头像，则更新（仅当用户主动选择时才更新）
             if nickname and nickname != '微信用户':
                 await user_account_dao.update_nickname(db, user.id, nickname)
-                user.nickname = nickname
+                user.user.nickname = nickname
             if avatar:
                 await user_account_dao.update_avatar(db, user.id, avatar)
-                user.avatar = avatar
+                user.user.avatar = avatar
         else:
             user = await user_account_dao.create_wx_user(
                 db=db,
@@ -169,7 +169,7 @@ class AuthService:
             user_id=user.id,
             user_type='customer',
             multi_login=True,
-            nickname=user.nickname,
+            nickname=user.user.nickname,
             openid=openid,
         )
 
@@ -185,7 +185,20 @@ class AuthService:
         :param nickname: 昵称
         :return:
         """
-        user = await user_account_dao.select_model_by_column(db, username=username)
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from backend.app.admin.model import User
+
+        # 通过 sys_user.username 查找关联的 UserAccount
+        stmt = (
+            select(UserAccount)
+            .join(User, User.id == UserAccount.user_id)
+            .where(User.username == username)
+            .options(selectinload(UserAccount.user))
+        )
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
 
         if not user:
             openid = f'test_openid_{username}'
@@ -197,7 +210,7 @@ class AuthService:
                 nickname=nickname,
                 avatar=None,
                 platform='test',
-                username=username,  # 传入固定的 username
+                username=username,
             )
         else:
             openid = user.open_id or f'test_openid_{username}'
@@ -207,7 +220,7 @@ class AuthService:
             user_id=user.id,
             user_type='customer',
             multi_login=True,
-            nickname=user.nickname,
+            nickname=user.user.nickname,
             openid=openid,
         )
 

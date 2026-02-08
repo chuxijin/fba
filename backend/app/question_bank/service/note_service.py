@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.question_bank.crud.crud_question_note import question_note_dao, user_note_vote_dao
 from backend.app.question_bank.model import QuestionNote, UserAccount, UserNoteVote
@@ -73,7 +74,7 @@ class NoteService:
             return []
 
         user_ids = list({note.user_id for note in notes})
-        stmt = select(UserAccount).where(UserAccount.id.in_(user_ids))
+        stmt = select(UserAccount).where(UserAccount.id.in_(user_ids)).options(selectinload(UserAccount.user))
         result = await db.execute(stmt)
         users = {user.id: user for user in result.scalars().all()}
 
@@ -81,9 +82,9 @@ class NoteService:
         for note in notes:
             note_dict = GetQuestionNoteListItem.model_validate(note).model_dump()
             user = users.get(note.user_id)
-            if user:
-                note_dict['user_nickname'] = user.nickname
-                note_dict['user_avatar'] = user.avatar
+            if user and user.user:
+                note_dict['user_nickname'] = user.user.nickname
+                note_dict['user_avatar'] = user.user.avatar
             note_list.append(GetQuestionNoteListItem(**note_dict))
 
         return note_list

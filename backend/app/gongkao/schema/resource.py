@@ -12,7 +12,7 @@ class ResourceBase(SchemaBase):
     """资料基础"""
     title: str = Field(description='标题')
     description: str | None = Field(None, description='描述')
-    category: str = Field(description='分类：行测/申论/面试/备考')
+    category_id: int = Field(description='分类ID')
     file_path: str | None = Field(None, description='本地文件路径')
     link: str | None = Field(None, description='外部链接')
     file_type: str | None = Field(None, description='文件类型：pdf/doc/video/link')
@@ -29,7 +29,7 @@ class UpdateResourceParam(SchemaBase):
     """更新资料"""
     title: str | None = Field(None, description='标题')
     description: str | None = Field(None, description='描述')
-    category: str | None = Field(None, description='分类')
+    category_id: int | None = Field(None, description='分类ID')
     file_path: str | None = Field(None, description='本地文件路径')
     link: str | None = Field(None, description='外部链接')
     file_type: str | None = Field(None, description='文件类型')
@@ -51,6 +51,6 @@ class GetResourceDetail(ResourceBase):
 class GetResourceListParams(SchemaBase):
     """资料列表查询参数"""
     title: str | None = Field(None, description='标题')
-    category: str | None = Field(None, description='分类')
+    category_id: int | list[int] | None = Field(None, description='分类ID')
     file_type: str | None = Field(None, description='文件类型')
     status: bool | None = Field(None, description='状态')

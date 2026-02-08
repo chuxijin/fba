@@ -22,7 +22,6 @@ class GetCustomerInfo(BaseModel):
     username: str = Field(description='用户名')
     nickname: str = Field(description='昵称')
     avatar: str | None = Field(default=None, description='头像')
-    is_vip: bool = Field(description='是否VIP')
     memberships: list[MembershipInfo] = Field(default_factory=list, description='会员权益列表')
 
 

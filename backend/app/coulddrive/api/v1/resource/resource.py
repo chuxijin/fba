@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Path, Request
+from fastapi import APIRouter, Depends, Query, Path, Request, UploadFile, File
 from starlette.concurrency import run_in_threadpool
 
 from backend.app.coulddrive.schema.resource import (
@@ -26,11 +26,7 @@ from backend.app.coulddrive.schema.resource import (
     BatchDeleteResourceParam
 )
 from backend.app.coulddrive.schema.enum import (
-    ResourceDomain,
-    EducationSubject,
-    TechnologySubject,
-    EntertainmentSubject,
-    DOMAIN_SUBJECT_MAPPING
+    DriveType
 )
 from backend.app.coulddrive.service.resource_service import resource_service, resource_view_history_service
 from backend.common.pagination import DependsPagination
@@ -42,53 +38,6 @@ from backend.database.db import CurrentSession
 router = APIRouter()
 
 
-@router.get(
-    '/domain-subjects',
-    summary='获取领域和科目映射关系',
-    response_model=ResponseSchemaModel[dict],
-    dependencies=[DependsJwtAuth]
-)
-async def get_domain_subjects(
-    request: Request
-) -> ResponseSchemaModel[dict]:
-    """
-    获取领域和科目映射关系
-    
-    :param request: 请求对象
-    :return: 领域和科目映射关系
-    """
-    # 构建返回数据
-    result = {
-        'domains': [{'label': domain.value, 'value': domain.value} for domain in ResourceDomain],
-        'subjects': DOMAIN_SUBJECT_MAPPING,
-        'domain_subject_options': {
-            domain_value: [{'label': subject, 'value': subject} for subject in subjects]
-            for domain_value, subjects in DOMAIN_SUBJECT_MAPPING.items()
-        }
-    }
-    return response_base.success(data=result)
-
-
-@router.get(
-    '/subjects/{domain}',
-    summary='根据领域获取科目列表',
-    response_model=ResponseSchemaModel[list],
-    dependencies=[DependsJwtAuth]
-)
-async def get_subjects_by_domain(
-    request: Request,
-    domain: Annotated[str, Path(description='领域名称')]
-) -> ResponseSchemaModel[list]:
-    """
-    根据领域获取科目列表
-    
-    :param request: 请求对象
-    :param domain: 领域名称
-    :return: 科目列表
-    """
-    subjects = DOMAIN_SUBJECT_MAPPING.get(domain, [])
-    subject_options = [{'label': subject, 'value': subject} for subject in subjects]
-    return response_base.success(data=subject_options)
 
 
 @router.get(
@@ -212,7 +161,7 @@ async def vector_search_resources(
     request: Request,
     db: CurrentSession,
     query: Annotated[str, Query(description='搜索查询文本', min_length=1)],
-    subject: Annotated[str | None, Query(description='科目过滤')] = None,
+    category_id: Annotated[int | None, Query(description='分类过滤')] = None,
     limit: Annotated[int, Query(description='返回结果数量', ge=1, le=100)] = 20,
     similarity_threshold: Annotated[float, Query(description='相似度阈值 (0-1)', ge=0, le=1)] = 0.7,
     include_content: Annotated[bool, Query(description='是否包含完整内容（供AI知识库调用时设为true）')] = False,
@@ -229,7 +178,7 @@ async def vector_search_resources(
     :param request: 请求对象
     :param db: 数据库会话
     :param query: 搜索查询文本（在资源介绍和描述中搜索）
-    :param subject: 科目过滤
+    :param category_id: 分类过滤
     :param limit: 返回结果数量限制
     :param similarity_threshold: 相似度阈值
     :param include_content: 是否包含完整内容（AI知识库模式）
@@ -241,7 +190,7 @@ async def vector_search_resources(
         limit=limit,
         similarity_threshold=similarity_threshold,
         include_content=include_content,
-        subject=subject,
+        category_id=category_id,
     )
     return response_base.success(data=results)
 
@@ -466,4 +415,70 @@ async def clean_old_view_history(
 ) -> ResponseModel:
     """清理旧的浏览量历史记录"""
     count = await run_in_threadpool(resource_view_history_service.clean_old_view_history, db, days)
-    return response_base.success(data={'count': count}) 
+    return response_base.success(data={'count': count})
+
+
+@router.post(
+    '/upload',
+    summary='上传资源文件',
+    description='上传资源文件到服务器',
+    dependencies=[DependsJwtAuth]
+)
+async def upload_resource_file(
+    file: Annotated[UploadFile, File(description="文件")]
+) -> ResponseModel:
+    """
+    上传资源文件
+    
+    :param file: 文件对象
+    :return: 文件路径和类型
+    """
+    try:
+        from backend.core.path_conf import UPLOAD_DIR
+        import shutil
+        import os
+        from datetime import datetime
+        import uuid
+        
+        # 允许的文件类型
+        ALLOWED_EXTENSIONS = {
+            'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 
+            'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 
+            'mp4', 'mp3', 'zip', 'rar', '7z'
+        }
+        
+        filename = file.filename
+        ext = filename.split('.')[-1].lower() if '.' in filename else ''
+        
+        # 简单检查文件类型（可选）
+        # if ext not in ALLOWED_EXTENSIONS:
+        #     return response_base.fail(res=CustomResponse(code=400, msg='不支持的文件类型'))
+            
+        # 生成保存路径: uploads/resources/YYYYMMDD/uuid.ext
+        today = datetime.now().strftime('%Y%m%d')
+        save_dir = UPLOAD_DIR / 'resources' / today
+        
+        if not save_dir.exists():
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
+        base_name = filename.rsplit('.', 1)[0]
+        new_filename = f"{base_name}_{uuid.uuid4().hex[:8]}.{ext}"
+        save_path = save_dir / new_filename
+        
+        # 保存文件
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # 生成相对路径（用于前端访问）
+        # 假设静态文件挂载在 /static/upload
+        relative_path = f"/static/upload/resources/{today}/{new_filename}"
+        
+        return response_base.success(data={
+            'url': relative_path,
+            'local_path': str(save_path),
+            'filename': filename,
+            'file_type': ext
+        })
+        
+    except Exception as e:
+        return response_base.fail(res=CustomResponse(code=500, msg=f'文件上传失败: {str(e)}'))

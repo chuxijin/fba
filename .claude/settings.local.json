@@ -58,7 +58,9 @@
       "mcp__labeveryday-mcp_pdf_reader__ocr_pdf_pages",
       "mcp__excel-csv__write_file",
       "Bash(python -m py_compile:*)",
-      "WebFetch(domain:open.agiso.com)"
+      "WebFetch(domain:open.agiso.com)",
+      "Skill(fba)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "ask": []

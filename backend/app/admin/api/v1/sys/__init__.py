@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from backend.app.admin.api.v1.sys.category import router as category_router
 from backend.app.admin.api.v1.sys.data_rule import router as data_rule_router
 from backend.app.admin.api.v1.sys.data_scope import router as data_scope_router
 from backend.app.admin.api.v1.sys.dept import router as dept_router
@@ -11,6 +12,7 @@ from backend.app.admin.api.v1.sys.user import router as user_router
 
 router = APIRouter(prefix='/sys')
 
+router.include_router(category_router, prefix='/categories', tags=['系统分类'])
 router.include_router(dept_router, prefix='/depts', tags=['系统部门'])
 router.include_router(menu_router, prefix='/menus', tags=['系统菜单'])
 router.include_router(role_router, prefix='/roles', tags=['系统角色'])

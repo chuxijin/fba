@@ -361,6 +361,12 @@ class Settings(BaseSettings):
     BAIDUPAN_SIGN_KEY: str = ''  # 应用 SignKey（用于接口签名）
     BAIDUPAN_REDIRECT_URI: str = ''  # OAuth 回调地址
 
+    ##################################################
+    # [ App ] Jia 推送服务
+    ##################################################
+    # Firebase 服务账号凭证 JSON 文件路径
+    FIREBASE_CREDENTIALS_PATH: str = ''
+
     @model_validator(mode='before')
     @classmethod
     def check_env(cls, values: Any) -> Any:

@@ -21,14 +21,15 @@ class CRUDResource(CRUDPlus[GkResource]):
         db: AsyncSession,
         *,
         title: str | None = None,
-        category: str | None = None,
+        category_id: int | list[int] | None = None,
         file_type: str | None = None,
         status: bool | None = None,
     ) -> Select:
         """获取资料列表"""
         filters = {}
-        if category is not None:
-            filters['category'] = category
+        # 如果是整数，则加入精确匹配 filters；如果是列表，稍后手动处理
+        if category_id is not None and isinstance(category_id, int):
+            filters['category_id'] = category_id
         if file_type is not None:
             filters['file_type'] = file_type
         if status is not None:
@@ -39,6 +40,9 @@ class CRUDResource(CRUDPlus[GkResource]):
             'desc',
             **filters
         )
+
+        if category_id is not None and isinstance(category_id, list):
+            stmt = stmt.where(GkResource.category_id.in_(category_id))
 
         if title:
             stmt = stmt.where(GkResource.title.contains(title))
@@ -51,11 +55,11 @@ class CRUDResource(CRUDPlus[GkResource]):
 
     async def update(self, db: AsyncSession, pk: int, obj_in: UpdateResourceParam) -> int:
         """更新资料"""
-        return await self.update_model(db, pk, obj_in)
+        return await self.update_model(db, pk, obj_in, commit=True)
 
     async def delete(self, db: AsyncSession, pk: int) -> int:
         """删除资料"""
-        return await self.delete_model(db, pk)
+        return await self.delete_model(db, pk, commit=True)
 
     async def increment_view(self, db: AsyncSession, pk: int) -> int:
         """增加查看次数"""

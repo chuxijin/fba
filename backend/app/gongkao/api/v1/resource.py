@@ -3,7 +3,7 @@
 """资料 API"""
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, Query, UploadFile
 
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_schema import ResponseModel, response_base
@@ -24,14 +24,14 @@ router = APIRouter()
 async def get_gk_resource_list(
     db: CurrentSession,
     title: Annotated[str | None, Query(description='标题')] = None,
-    category: Annotated[str | None, Query(description='分类')] = None,
+    category_id: Annotated[int | None, Query(description='分类ID')] = None,
     file_type: Annotated[str | None, Query(description='文件类型')] = None,
 ) -> ResponseModel:
     """获取资料列表（公开）"""
     stmt = await resource_service.get_list(
         db,
         title=title,
-        category=category,
+        category_id=category_id,
         file_type=file_type,
         status=True,  # 只返回已启用的
     )
@@ -78,3 +78,19 @@ async def delete_gk_resource(pk: int, db: CurrentSession) -> ResponseModel:
     if count == 0:
         return response_base.fail(msg='资料不存在')
     return response_base.success()
+
+
+@router.post('/upload', summary='上传资料文件', dependencies=[DependsJwtAuth], name='upload_gk_resource_file')
+async def upload_gk_resource_file(
+    file: Annotated[UploadFile, File()],
+    category_id: Annotated[int, Query(description='分类ID')],
+    db: CurrentSession,
+) -> ResponseModel:
+    """
+    上传资料预览文件
+    
+    文件将保存到 static/gk_resource/{分类路径}/ 目录下
+    支持多级分类，后端会根据分类ID自动查找完整路径
+    """
+    result = await resource_service.upload_file(db, file, category_id)
+    return response_base.success(data=result)

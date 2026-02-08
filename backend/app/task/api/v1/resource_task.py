@@ -9,7 +9,7 @@ from backend.app.task.tasks.resource.tasks import (
     check_and_refresh_expiring_resources,
     refresh_resource_share_by_id,
     get_expiring_resources,
-    refresh_subject_mode2_to_permanent,
+    refresh_category_mode2_to_permanent,
 )
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -98,23 +98,23 @@ async def get_expiring_resources_sync(
 
 
 @router.post(
-    "/refresh-permanent/by-subject",
-    summary="按科目将临时模式为2的资源刷新为永久链接",
+    "/refresh-permanent/by-category",
+    summary="按分类将临时模式为2的资源刷新为永久链接",
     dependencies=[DependsJwtAuth],
 )
-async def trigger_refresh_subject_to_permanent(
-    subject: Annotated[str, Query(min_length=1, description="科目")],
+async def trigger_refresh_category_to_permanent(
+    category_id: Annotated[int, Query(description="分类ID")],
 ) -> ResponseSchemaModel[Dict[str, Any]]:
     """
-    按科目将 `is_temp_file=2` 的资源刷新为永久链接
+    按分类将 `is_temp_file=2` 的资源刷新为永久链接
     
-    :param subject: 科目
+    :param category_id: 分类ID
     :return:
     """
-    result = await run_in_threadpool(refresh_subject_mode2_to_permanent.delay, subject)
+    result = await run_in_threadpool(refresh_category_mode2_to_permanent.delay, category_id)
     return response_base.success(data={
         "task_id": result.id,
-        "subject": subject,
-        "message": f"科目 {subject} 的资源刷新永久链接任务已启动",
+        "category_id": category_id,
+        "message": f"分类 {category_id} 的资源刷新永久链接任务已启动",
         "status": "pending",
     })

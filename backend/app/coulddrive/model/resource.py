@@ -15,6 +15,7 @@ from backend.utils.timezone import timezone
 
 if TYPE_CHECKING:
     from backend.app.coulddrive.model.user import DriveAccount
+    from backend.app.admin.model.category import Category
 
 
 class Resource(Base, UserMixin):
@@ -25,8 +26,7 @@ class Resource(Base, UserMixin):
     id: Mapped[id_key] = mapped_column(init=False)
     
     # 必填字段
-    domain: Mapped[str] = mapped_column(String(100), comment='领域')
-    subject: Mapped[str] = mapped_column(String(100), comment='科目')
+    category_id: Mapped[int] = mapped_column(ForeignKey('sys_category.id', ondelete='CASCADE'), comment='分类ID')
     main_name: Mapped[str] = mapped_column(String(200), comment='主要名字')
     title: Mapped[str] = mapped_column(String(255), comment='标题')
     resource_type: Mapped[str] = mapped_column(String(50), comment='资源类型')
@@ -64,9 +64,23 @@ class Resource(Base, UserMixin):
     audit_status: Mapped[int] = mapped_column(default=0, comment='审核状态(0待审核 1通过 2拒绝)')
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, comment='是否删除')
     expired_type: Mapped[int] = mapped_column(default=0, comment='过期类型(0永久 1定时)')
+    
+    # 新增字段
+    local_file_path: Mapped[str | None] = mapped_column(String(500), default=None, comment='本地文件路径')
+    file_type: Mapped[str | None] = mapped_column(String(50), default=None, comment='文件类型(pdf/video/audio/doc/zip等)')
+    hot: Mapped[int] = mapped_column(Integer, default=0, comment='热度值')
+
+    @property
+    def category_name(self) -> str | None:
+        """获取分类名称"""
+        try:
+            return self.category.name if self.category else None
+        except Exception:
+            return None
 
     # 关系
     user: Mapped[DriveAccount] = relationship(init=False, back_populates='resources')
+    category: Mapped[Category] = relationship(init=False)
     view_history: Mapped[list["ResourceViewHistory"]] = relationship(
         init=False,
         back_populates="resource",

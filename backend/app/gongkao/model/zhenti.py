@@ -23,7 +23,7 @@ class GkQuestion(Base, UserMixin):
     category_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='关联分类 ID')
 
     # 基础信息（可选字段）
-    material_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, index=True, comment='关联材料 ID')
+    material_ids: Mapped[list[int] | None] = mapped_column(sa.JSON, default=None, comment='关联材料 ID 列表')
     difficulty: Mapped[Decimal | None] = mapped_column(sa.Numeric(3, 1), default=None, comment='难度')
     year: Mapped[int | None] = mapped_column(sa.Integer, default=None, index=True, comment='年份')
     source: Mapped[str | None] = mapped_column(sa.String(100), default=None, comment='来源')

@@ -53,10 +53,9 @@ async def get_current_user_info(
 
         data = GetCustomerInfo(
             id=user.id,
-            username=user.username,
-            nickname=user.nickname or '微信用户',  # 确保昵称不为空
-            avatar=user.avatar,
-            is_vip=user.is_vip,
+            username=user.user.username,
+            nickname=user.user.nickname or '微信用户',
+            avatar=user.user.avatar,
             memberships=membership_list,
         )
 

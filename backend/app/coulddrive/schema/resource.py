@@ -15,8 +15,7 @@ class ResourceBase(SchemaBase):
     """资源基础 schema"""
     
     # 用户手动填写的必填字段
-    domain: str = Field(..., description="领域")
-    subject: str = Field(..., description="科目")
+    category_id: int = Field(..., description="分类ID")
     main_name: str = Field(..., description="主要名字")
     resource_type: str = Field(..., description="资源类型")
     url: str = Field(..., description="链接")
@@ -49,14 +48,15 @@ class ResourceBase(SchemaBase):
     file_id: Optional[str] = Field(None, description="文件ID")
     content: Optional[str] = Field(None, description="内容")
     uk_uid: Optional[str] = Field(None, description="用户唯一标识")
+    local_file_path: Optional[str] = Field(None, description="本地文件路径")
+    file_type: Optional[str] = Field(None, description="文件类型")
 
 
 class CreateResourceParam(SchemaBase):
     """创建资源参数"""
     
     # 用户手动填写的必填字段
-    domain: str = Field(..., description="领域")
-    subject: str = Field(..., description="科目")
+    category_id: int = Field(..., description="分类ID")
     main_name: str = Field(..., description="主要名字")
     resource_type: str = Field(..., description="资源类型")
     url: str = Field(..., description="链接")
@@ -73,14 +73,15 @@ class CreateResourceParam(SchemaBase):
     suggested_price: Optional[Decimal] = Field(None, description="建议价格")
     sort: int = Field(0, description="排序")
     remark: Optional[str] = Field(None, description="备注")
+    local_file_path: Optional[str] = Field(None, description="本地文件路径")
+    file_type: Optional[str] = Field(None, description="文件类型")
 
 
 class UpdateResourceParam(SchemaBase):
     """更新资源参数"""
     
     # 所有字段都是可选的
-    domain: Optional[str] = Field(None, description="领域")
-    subject: Optional[str] = Field(None, description="科目")
+    category_id: Optional[int] = Field(None, description="分类ID")
     main_name: Optional[str] = Field(None, description="主要名字")
     resource_type: Optional[str] = Field(None, description="资源类型")
     description: Optional[str] = Field(None, description="描述")
@@ -109,14 +110,15 @@ class UpdateResourceParam(SchemaBase):
     file_id: Optional[str] = Field(None, description="文件ID")
     content: Optional[str] = Field(None, description="内容")
     uk_uid: Optional[str] = Field(None, description="用户唯一标识")
+    local_file_path: Optional[str] = Field(None, description="本地文件路径")
+    file_type: Optional[str] = Field(None, description="文件类型")
 
 
 class UpdateResourceUserParam(SchemaBase):
     """用户更新资源参数（Swagger 显示用）"""
 
     # 用户可以修改的基本信息字段
-    domain: Optional[str] = Field(None, description="领域")
-    subject: Optional[str] = Field(None, description="科目")
+    category_id: Optional[int] = Field(None, description="分类ID")
     main_name: Optional[str] = Field(None, description="主要名字")
     resource_type: Optional[str] = Field(None, description="资源类型")
     description: Optional[str] = Field(None, description="描述")
@@ -130,6 +132,8 @@ class UpdateResourceUserParam(SchemaBase):
     suggested_price: Optional[Decimal] = Field(None, description="建议价格")
     sort: Optional[int] = Field(None, description="排序")
     remark: Optional[str] = Field(None, description="备注")
+    local_file_path: Optional[str] = Field(None, description="本地文件路径")
+    file_type: Optional[str] = Field(None, description="文件类型")
 
 
 class BatchDeleteResourceParam(SchemaBase):
@@ -144,6 +148,8 @@ class GetResourceDetail(ResourceBase):
     model_config = ConfigDict(from_attributes=True)
     
     id: int = Field(..., description="主键ID")
+    category_id: Optional[int] = Field(None, description="分类ID")
+    category_name: Optional[str] = Field(None, description="分类名称")
     user_id: int = Field(..., description="所属用户ID")
     is_deleted: bool = Field(False, description="是否删除")
     created_by: int = Field(..., description="创建者")
@@ -155,12 +161,11 @@ class GetResourceDetail(ResourceBase):
 class GetResourceListParam(SchemaBase):
     """获取资源列表参数"""
     
-    domain: Optional[str] = Field(None, description="领域")
-    subject: Optional[str] = Field(None, description="科目")
+    category_id: Optional[int] = Field(None, description="分类ID")
     resource_type: Optional[str] = Field(None, description="资源类型")
     url_type: Optional[DriveType] = Field(None, description="链接类型")
     status: Optional[int] = Field(None, description="状态")
-    audit_status: Optional[int] = Field(None, description="审核状态")
+    expired_type: Optional[int] = Field(None, description="过期类型")
     user_id: Optional[int] = Field(None, description="所属用户ID")
     is_deleted: Optional[bool] = Field(None, description="是否删除")
     keyword: Optional[str] = Field(None, description="关键词搜索(标题、主要名字)")
@@ -172,8 +177,8 @@ class ResourceListItem(SchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="主键ID")
-    domain: str = Field(..., description="领域")
-    subject: str = Field(..., description="科目")
+    category_id: int = Field(..., description="分类ID")
+    category_name: Optional[str] = Field(None, description="分类名称")
     main_name: str = Field(..., description="主要名字")
     title: Optional[str] = Field(None, description="标题")
     resource_type: str = Field(..., description="资源类型")
@@ -189,9 +194,15 @@ class ResourceListItem(SchemaBase):
     audit_status: int = Field(0, description="审核状态(0待审核 1通过 2拒绝)")
     is_deleted: bool = Field(False, description="是否删除")
     user_id: int = Field(..., description="所属用户ID")
+    expired_at: Optional[datetime] = Field(None, description="实际过期时间")
+    expired_left: Optional[int] = Field(None, description="剩余过期天数")
+    expired_type: int = Field(0, description="过期类型(0永久 1定时)")
     remark: Optional[str] = Field(None, description="备注")
     created_time: datetime = Field(..., description="创建时间")
     updated_time: Optional[datetime] = Field(None, description="更新时间")
+    local_file_path: Optional[str] = Field(None, description="本地文件路径")
+    file_type: Optional[str] = Field(None, description="文件类型")
+    pwd_id: Optional[str] = Field(None, description="密码ID")
 
 
 class ResourceKnowledgeItem(SchemaBase):
@@ -200,8 +211,8 @@ class ResourceKnowledgeItem(SchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="主键ID")
-    domain: str = Field(..., description="领域")
-    subject: str = Field(..., description="科目")
+    category_id: int = Field(..., description="分类ID")
+    category_name: Optional[str] = Field(None, description="分类名称")
     main_name: str = Field(..., description="主要名字")
     title: Optional[str] = Field(None, description="标题")
     resource_type: str = Field(..., description="资源类型")

@@ -203,12 +203,13 @@ class ResourceService:
                 # 更新现有记录 - 只更新允许的字段
                 update_data = {}
                 allowed_update_fields = {
-                    "domain", "subject", "main_name", "resource_type", "description", 
+                    "category_id", "main_name", "resource_type", "description", 
                     "resource_intro", "resource_image", "url", "url_type", "extract_code",
                     "is_temp_file", "price", "suggested_price", "sort", "remark",
                     "title", "share_id", "pwd_id", "expired_type", "view_count",
                     "expired_at", "expired_left", "audit_status", "status",
-                    "file_only_num", "file_size", "path_info", "file_id", "content", "uk_uid"
+                    "file_only_num", "file_size", "path_info", "file_id", "content", "uk_uid",
+                    "local_file_path", "file_type"
                 }
                 
                 for field in allowed_update_fields:
@@ -252,12 +253,13 @@ class ResourceService:
                 # 更新现有记录 - 只更新允许的字段
                 update_data = {}
                 allowed_update_fields = {
-                    "domain", "subject", "main_name", "resource_type", "description", 
+                    "category_id", "main_name", "resource_type", "description", 
                     "resource_intro", "resource_image", "url", "url_type", "extract_code",
                     "is_temp_file", "price", "suggested_price", "sort", "remark",
                     "title", "share_id", "pwd_id", "expired_type", "view_count",
                     "expired_at", "expired_left", "audit_status", "status",
-                    "file_only_num", "file_size", "path_info", "file_id", "content", "uk_uid"
+                    "file_only_num", "file_size", "path_info", "file_id", "content", "uk_uid",
+                    "local_file_path", "file_type"
                 }
                 
                 for field in allowed_update_fields:
@@ -846,19 +848,19 @@ class ResourceService:
     async def refresh_to_permanent(
         *,
         db: AsyncSession,
-        subject: str,
+        category_id: int,
         updated_by: int | None = None
     ) -> Dict[str, Any]:
         """
-        刷新科目资源为永久链接
+        刷新分类资源为永久链接
 
         :param db: 数据库会话
-        :param subject: 科目
+        :param category_id: 分类ID
         :param updated_by: 更新者 ID
         :return: 执行结果统计
         """
         summary: Dict[str, Any] = {
-            "subject": subject,
+            "category_id": category_id,
             "checked_resources": 0,
             "refreshed_resources": 0,
             "failed_resources": 0,
@@ -867,9 +869,9 @@ class ResourceService:
         }
 
         try:
-            # 取出临时模式为 2 的资源，再根据 subject 过滤
+            # 取出临时模式为 2 的资源，再根据 category_id 过滤
             resources = await resource_dao.get_resources_by_temp_mode(db, temp_mode=2)
-            filtered_resources = [r for r in resources if r.subject == subject]
+            filtered_resources = [r for r in resources if r.category_id == category_id]
             summary["checked_resources"] = len(filtered_resources)
 
             if not filtered_resources:
@@ -1071,7 +1073,7 @@ class ResourceService:
         limit: int = 20,
         similarity_threshold: float = 0.7,
         include_content: bool = False,
-        subject: str | None = None
+        category_id: int | None = None
     ) -> list[dict]:
         """
         向量搜索资源
@@ -1081,7 +1083,7 @@ class ResourceService:
         :param limit: 返回结果数量限制
         :param similarity_threshold: 相似度阈值
         :param include_content: 是否包含完整内容
-        :param subject: 科目过滤
+        :param category_id: 分类过滤
         :return: 搜索结果列表
         """
         results = await resource_dao.vector_search(
@@ -1089,7 +1091,7 @@ class ResourceService:
             query_text,
             limit,
             similarity_threshold,
-            subject=subject
+            category_id=category_id
         )
 
         # 根据 include_content 参数返回不同格式

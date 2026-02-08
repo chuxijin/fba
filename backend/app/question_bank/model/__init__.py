@@ -4,7 +4,6 @@
 
 from .bank import QuestionBank
 from .banner import Banner
-from .category import ExamCategory
 from .chapter import QuestionChapter
 from .notice import Notice
 from .practice import PracticeRecord, PracticeSession, WrongQuestionBook
@@ -29,7 +28,6 @@ from .user import (
 )
 
 __all__ = [
-    'ExamCategory',
     'QuestionBank',
     'QuestionChapter',
     'Question',

@@ -25,6 +25,17 @@ if TYPE_CHECKING:
     from .chapter import QuestionChapter
 
 
+# 题目-材料关联表（多对多）
+question_material_relation = sa.Table(
+    'study_question_material_relation',
+    Base.metadata,
+    sa.Column('question_id', sa.BigInteger, sa.ForeignKey('study_question.id', ondelete='CASCADE'), primary_key=True),
+    sa.Column('material_id', sa.BigInteger, sa.ForeignKey('study_question_material.id', ondelete='CASCADE'), primary_key=True),
+    sa.Column('sort_order', sa.Integer, default=0, comment='排序'),
+    comment='题目-材料关联表'
+)
+
+
 class Question(Base, UserMixin):
     """
     题目表 - 只存储题目核心信息
@@ -37,7 +48,6 @@ class Question(Base, UserMixin):
 
     __tablename__ = 'study_question'
     __table_args__ = (
-        # 高频查询索引
         sa.Index('idx_question_bank_type_status', 'bank_id', 'type', 'review_status'),
         sa.Index('idx_question_chapter', 'chapter_id'),
         sa.Index('idx_question_active_created', 'is_active', 'created_time'),
@@ -130,17 +140,22 @@ class Question(Base, UserMixin):
         back_populates='questions',
         lazy='joined',
     )
-    analysis: Mapped['QuestionAnalysis | None'] = relationship(
+    analyses: Mapped[list['QuestionAnalysis']] = relationship(
         init=False,
         back_populates='question',
         lazy='selectin',
-        uselist=False,
     )
     statistics: Mapped['QuestionStatistics | None'] = relationship(
         init=False,
         back_populates='question',
         lazy='noload',
         uselist=False,
+    )
+    materials: Mapped[list['QuestionMaterial']] = relationship(
+        init=False,
+        secondary=question_material_relation,
+        back_populates='questions',
+        lazy='selectin',
     )
 
 
@@ -150,7 +165,7 @@ class QuestionAnalysis(Base, UserMixin):
 
     设计目标：
     - 包含答案和解析内容
-    - 支持独立缓存和更新
+    - 支持多版本解析（官方、名师、用户等）
     - 解析内容使用富文本（媒体直接嵌入）
     """
 
@@ -165,9 +180,11 @@ class QuestionAnalysis(Base, UserMixin):
     question_id: Mapped[int] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_question.id', ondelete='CASCADE'),
-        unique=True,
+        # unique=True,  # 移除唯一约束，支持多版本
         comment='题目 ID',
     )
+    
+
 
     # ============ 答案数据 (JSON) ============
     answer_data: Mapped[dict] = mapped_column(
@@ -187,6 +204,14 @@ class QuestionAnalysis(Base, UserMixin):
         comment='解析内容（富文本，包含图片/视频等媒体资源）',
     )
 
+    # ============ 解析类型 ============
+    type: Mapped[str] = mapped_column(
+        sa.String(32),
+        default='official',
+        comment='解析类型: official=官方, expert=名师, user=用户',
+    )
+    is_default: Mapped[bool] = mapped_column(default=False, comment='是否默认展示')
+
     # ============ 互动数据 ============
     view_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='查看次数')
     helpful_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='有帮助次数')
@@ -195,7 +220,7 @@ class QuestionAnalysis(Base, UserMixin):
     # ============ 关系 ============
     question: Mapped['Question'] = relationship(
         init=False,
-        back_populates='analysis',
+        back_populates='analyses',
         lazy='noload',
     )
 
@@ -466,4 +491,65 @@ class QuestionFavorite(Base, UserMixin):
     )
 
 
+class QuestionMaterial(Base, UserMixin):
+    """
+    题目材料表
 
+    设计思路：
+    - 存储阅读理解、资料分析、案例分析等题型的共享材料
+    - 一个材料可对应多道题目（一对多关系）
+    - 材料内容使用富文本，支持图片/表格等媒体
+    """
+
+    __tablename__ = 'study_question_material'
+    __table_args__ = (
+        sa.Index('idx_material_bank', 'bank_id'),
+        sa.Index('idx_material_category', 'category_id'),
+        sa.Index('idx_material_active', 'is_active'),
+        {'comment': '题目材料表'},
+    )
+
+    # ============ 基础字段 ============
+    id: Mapped[id_key] = mapped_column(init=False)
+    bank_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question_bank.id', ondelete='CASCADE'),
+        comment='题库 ID',
+    )
+
+
+    # ============ 材料内容 ============
+    title: Mapped[str] = mapped_column(
+        sa.String(255),
+        comment='材料标题',
+    )
+    content: Mapped[str] = mapped_column(
+        UniversalText,
+        comment='材料内容（富文本，支持图片/表格等媒体资源）',
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('sys_category.id', ondelete='SET NULL'),
+        default=None,
+        comment='分类 ID',
+    )
+
+    # ============ 元数据 ============
+    source: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='来源')
+    year: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='年份')
+    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序顺序')
+
+    # ============ 状态字段 ============
+    is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
+
+    # ============ 关系 ============
+    bank: Mapped['QuestionBank'] = relationship(
+        init=False,
+        lazy='joined',
+    )
+    questions: Mapped[list['Question']] = relationship(
+        init=False,
+        secondary=question_material_relation,
+        back_populates='materials',
+        lazy='noload',
+    )

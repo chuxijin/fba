@@ -172,3 +172,81 @@ class DataPermissionFilter:
 
     async def __call__(self, request: Request) -> ColumnElement[bool]:
         return filter_data_permission(request, *self.models)
+
+
+async def verify_permission(request: Request, permission: str) -> bool:
+    """
+    [扩展] 动态检查当前用户是否拥有指定权限标识
+    即访问数据的权限（不同于 filter_data_permission 的数据行过滤）
+
+    :param request: 请求对象
+    :param permission: 权限标识，如 "practice:2026:politics"
+    :return: bool
+    """
+    from backend.utils.dynamic_import import import_module_cached
+
+    # 1. 超级管理员拥有所有权限
+    if request.user.is_superuser:
+        return True
+
+    try:
+        # 2. 动态导入 RoleService 以避免循环依赖
+        # 假设 RoleService 中有 get_user_permissions 方法
+        # 如果没有，需要您在 RoleService 中实现
+        role_service_module = import_module_cached('backend.app.admin.service.role_service')
+        role_service = role_service_module.role_service
+        
+        # 获取用户拥有的所有权限标识列表
+        user_perms = await role_service.get_user_permissions(request.user.id)
+        
+        # 3. 匹配逻辑
+        if permission in user_perms:
+            return True
+            
+        # 4. 支持通配符匹配 (e.g. "practice:*")
+        for p in user_perms:
+            if p == '*:*:*' or p == '*':
+                return True
+            if p.endswith('*') and permission.startswith(p[:-1]):
+                return True
+                
+        return False
+        
+    except Exception as e:
+        import logging
+        logging.error(f"Permission verification failed: {e}")
+        return False
+
+
+class VerifyPermission:
+    """
+    [扩展] 动态权限依赖注入 (配合 Depends 使用)
+    使用方式: 
+    @router.post("/start")
+    async def start(
+        request: Request,
+        _ = Depends(VerifyPermission("practice:{category_code}")) 
+    )
+    注意：此类仅适用于能够从 request.path_params 或 query_params 简单获取参数的场景。
+    复杂场景建议直接在 Service 中调用 verify_permission()
+    """
+    def __init__(self, permission_template: str):
+        self.permission_template = permission_template
+
+    async def __call__(self, request: Request):
+        # 尝试从 path params 和 query params 中提取参数
+        params = {}
+        params.update(request.path_params)
+        params.update(request.query_params)
+        
+        # 尝试构建权限标识
+        try:
+            perm = self.permission_template.format(**params)
+        except KeyError:
+            # 如果参数不足，可能无法校验，根据策略放行或通过
+            # 这里简单处理：如果无法构建，跳过校验交由业务层处理，或报错
+            return 
+        
+        has_perm = await verify_permission(request, perm)
+        if not has_perm:
+            raise errors.ForbiddenError(msg=f"Permission denied: {perm}")

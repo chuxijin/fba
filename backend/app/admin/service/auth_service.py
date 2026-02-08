@@ -44,7 +44,7 @@ class AuthService:
         :param password: 密码
         :return:
         """
-        user = await user_dao.get_by_username(db, username)
+        user = await user_dao.get_by_username_or_email(db, username)
         if not user:
             raise errors.NotFoundError(msg='用户名或密码有误')
 

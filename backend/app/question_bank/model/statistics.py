@@ -43,7 +43,7 @@ class UserCheckIn(Base, UserMixin):
     practice_count: Mapped[int] = mapped_column(default=0, comment='当日做题数')
     practice_duration: Mapped[int] = mapped_column(default=0, comment='当日练习时长（秒）')
 
-    user: Mapped['UserAccount'] = relationship(init=False, back_populates='check_ins', lazy='noload')
+    account: Mapped['UserAccount'] = relationship(init=False, back_populates='check_ins', lazy='noload')
 
 
 class UserDailyRank(Base):

@@ -11,7 +11,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.common.model import Base, id_key
 
 if TYPE_CHECKING:
-    from .category import ExamCategory
     from .chapter import QuestionChapter
     from .question import Question
 
@@ -30,14 +29,19 @@ class QuestionBank(Base):
     id: Mapped[id_key] = mapped_column(init=False)
     cat_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_exam_category.id', ondelete='RESTRICT'),
-        comment='所属分类 ID',
+        index=True,
+        comment='所属分类 ID（关联 sys_category）',
     )
     name: Mapped[str] = mapped_column(sa.String(128), comment='题库名称')
     code: Mapped[str] = mapped_column(sa.String(32), comment='题库编码')
     desc: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='题库描述')
     cover_url: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='封面地址')
-    diff_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='难度字典 ID')
+    difficulty: Mapped[Decimal | None] = mapped_column(sa.Numeric(3, 1), default=None, comment='难度')
+    type: Mapped[int] = mapped_column(
+        sa.SmallInteger,
+        default=10,
+        comment='类型: 10=题库(含题目), 20=合集(含子题库)',
+    )
     parent_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_question_bank.id', ondelete='SET NULL'),
@@ -50,7 +54,6 @@ class QuestionBank(Base):
     total_score: Mapped[Decimal] = mapped_column(sa.Numeric(8, 2), default=Decimal('0'), comment='题库总分')
     buy_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='购买数量')
 
-    category: Mapped['ExamCategory'] = relationship(init=False, back_populates='banks', lazy='selectin')
     parent: Mapped['QuestionBank | None'] = relationship(
         init=False,
         remote_side=lambda: [QuestionBank.id],
