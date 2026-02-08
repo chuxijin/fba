@@ -13,11 +13,41 @@ from starlette.concurrency import run_in_threadpool
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.core.conf import settings
-from backend.core.path_conf import PLUGIN_DIR
+from backend.core.path_conf import ENV_FILE_PATH, PLUGIN_DIR
 from backend.database.redis import redis_client
 from backend.plugin.requirements import install_requirements_async
 from backend.utils.locks import acquire_distributed_reload_lock
 from backend.utils.pattern_validate import is_git_url
+
+
+async def _append_env_example(plugin_path: anyio.Path) -> None:
+    """
+    追加主 .env 文件
+
+    :param plugin_path: 插件目录路径
+    :return:
+    """
+    env_example_path = plugin_path / '.env.example'
+    if not await env_example_path.exists():
+        return
+
+    async with await open_file(env_example_path, mode='r', encoding='utf-8') as f:
+        env_example_content = await f.read()
+
+    if not env_example_content.strip():
+        return
+
+    env_path = anyio.Path(ENV_FILE_PATH)
+    existing_content = ''
+    if await env_path.exists():
+        async with await open_file(env_path, mode='r', encoding='utf-8') as f:
+            existing_content = await f.read()
+
+    separator = '\n' if existing_content and not existing_content.endswith('\n') else ''
+    new_content = f'{existing_content}{separator}{env_example_content}'
+
+    async with await open_file(env_path, mode='w', encoding='utf-8') as f:
+        await f.write(new_content)
 
 
 async def install_zip_plugin(file: UploadFile | str) -> str:
@@ -72,8 +102,9 @@ async def install_zip_plugin(file: UploadFile | str) -> str:
                         members.append(member)
             await run_in_threadpool(zf.extractall, full_plugin_path, members)
 
+        await _append_env_example(full_plugin_path)
         await install_requirements_async(plugin_dir_name)
-        await redis_client.set(f'{settings.PLUGIN_REDIS_PREFIX}:changed', 'ture')
+        await redis_client.set(f'{settings.PLUGIN_REDIS_PREFIX}:changed', 'true')
 
     return plugin_name
 
@@ -87,7 +118,7 @@ async def install_git_plugin(repo_url: str) -> str:
     """
     match = is_git_url(repo_url)
     if not match:
-        raise errors.RequestError(msg='Git 仓库地址格式非法')
+        raise errors.RequestError(msg='Git 仓库地址格式非法，仅支持 HTTP/HTTPS 协议')
     repo_name = match.group('repo')
     path = anyio.Path(PLUGIN_DIR / repo_name)
     if await path.exists():
@@ -100,7 +131,8 @@ async def install_git_plugin(repo_url: str) -> str:
             log.error(f'插件安装失败: {e}')
             raise errors.ServerError(msg='插件安装失败，请稍后重试') from e
 
+        await _append_env_example(path)
         await install_requirements_async(repo_name)
-        await redis_client.set(f'{settings.PLUGIN_REDIS_PREFIX}:changed', 'ture')
+        await redis_client.set(f'{settings.PLUGIN_REDIS_PREFIX}:changed', 'true')
 
     return repo_name

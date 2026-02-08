@@ -10,6 +10,7 @@ from starlette.authentication import AuthenticationError as StarletteAuthenticat
 from starlette.requests import HTTPConnection
 
 from backend.app.admin.schema.user import GetUserInfoWithRelationDetail
+from backend.common.context import ctx
 from backend.common.exception.errors import TokenError
 from backend.common.log import log
 from backend.common.security.jwt import jwt_authentication
@@ -118,6 +119,9 @@ class JwtAuthMiddleware(AuthenticationBackend):
         except Exception as e:
             log.exception(f'JWT 授权异常：{e}')
             raise AuthenticationError(code=getattr(e, 'code', 500), msg=getattr(e, 'msg', 'Internal Server Error'))
+
+        # 设置用户 ID 到上下文
+        ctx.user_id = user.id
 
         # 请注意，此返回使用非标准模式，所以在认证通过时，将丢失某些标准特性
         # 标准返回模式请查看：https://www.starlette.io/authentication/
