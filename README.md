@@ -28,7 +28,6 @@ English | [简体中文](./README.zh-CN.md)
 ## ✨ What Makes Us Special
 
 ### 🏗️ **Pseudo 3-Tier Architecture**
-Revolutionary design pattern that goes beyond traditional MVC, bringing enterprise-level scalability to Python web development.
 
 | Layer | Java | FBA |
 |-------|------|-----|
@@ -224,53 +223,3 @@ For comprehensive documentation, visit our [Official Docs](https://fastapi-pract
 ---
 
 ## 🏆 Contributors
-
-<a href="https://github.com/fastapi-practices/fastapi_best_architecture/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=fastapi-practices/fastapi_best_architecture"/>
-</a>
-
----
-
-## 🙏 Special Thanks
-
-- [FastAPI](https://fastapi.tiangolo.com/) - The foundation of our architecture
-- [Pydantic](https://docs.pydantic.dev/latest/) - Data validation & serialization
-- [SQLAlchemy](https://docs.sqlalchemy.org/en/20/) - The Python SQL toolkit
-- [Casbin](https://casbin.org/) - Authorization library
-- [Ruff](https://beta.ruff.rs/docs/) - Lightning-fast Python linter
-
----
-
-## 💬 Community
-
-Join our vibrant community:
-
-- 💬 [Discord Server](https://discord.com/invite/yNN3wTbVAC)
-- 🐛 [Issue Tracker](https://github.com/fastapi-practices/fastapi_best_architecture/issues)
-- 💡 [Feature Requests](https://github.com/fastapi-practices/fastapi_best_architecture/discussions)
-
----
-
-## ☕ Support Us
-
-If this project has helped you, consider supporting us:
-
-[:coffee: **Sponsor Us** :coffee:](https://wu-clan.github.io/sponsor/)
-
-Your support helps us maintain and improve this project!
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](https://github.com/fastapi-practices/fastapi_best_architecture/blob/master/LICENSE).
-
----
-
-<div align="center">
-
-**⭐ Star us on GitHub — it motivates us a lot!**
-
-[![Stargazers over time](https://starchart.cc/fastapi-practices/fastapi_best_architecture.svg?variant=adaptive)](https://starchart.cc/fastapi-practices/fastapi_best_architecture)
-
-</div>

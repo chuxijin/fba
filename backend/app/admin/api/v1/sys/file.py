@@ -10,6 +10,10 @@ from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, UploadFile
+from backend.utils.file_ops import upload_file, upload_file_verify
 
 router = APIRouter()
 
