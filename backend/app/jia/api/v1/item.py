@@ -16,26 +16,32 @@ router = APIRouter()
 
 @router.get(
     '',
-    summary='分页获取物品列表',
+    summary='获取物品列表',
     dependencies=[DependsJwtAuth, DependsPagination],
 )
 async def get_items_paginated(
     request: Request,
     db: CurrentSession,
-    name: Annotated[str | None, Query(description='物品名称')] = None,
+    ids: Annotated[list[int] | None, Query(description='物品 ID 列表')] = None,
+    name: Annotated[str | None, Query(description='物品名称/搜索关键词')] = None,
     category: Annotated[str | None, Query(description='分类')] = None,
     status: Annotated[str | None, Query(description='状态')] = None,
     location: Annotated[str | None, Query(description='存放位置')] = None,
-) -> ResponseSchemaModel[PageData[GetItemList]]:
+    semantic: Annotated[bool, Query(description='是否启用语义搜索（启用时忽略分页）')] = False,
+    limit: Annotated[int, Query(description='语义搜索返回数量', ge=1, le=100)] = 20,
+) -> ResponseSchemaModel[PageData[GetItemList] | list[GetItemList]]:
     """获取当前用户的物品列表"""
     user_id = request.user.id
     page_data = await item_service.get_list(
         db=db,
         user_id=user_id,
+        ids=ids,
         name=name,
         category=category,
         status=status,
         location=location,
+        semantic=semantic,
+        limit=limit,
     )
     return response_base.success(data=page_data)
 
@@ -101,27 +107,13 @@ async def update_item(
     return response_base.fail()
 
 
-@router.delete('/{pk}', summary='删除物品', dependencies=[DependsJwtAuth])
-async def delete_item(
-    request: Request,
-    db: CurrentSessionTransaction,
-    pk: Annotated[int, Path(description='物品 ID')],
-) -> ResponseModel:
-    """删除物品"""
-    user_id = request.user.id
-    count = await item_service.delete(db=db, pk=pk, user_id=user_id)
-    if count > 0:
-        return response_base.success()
-    return response_base.fail()
-
-
-@router.delete('', summary='批量删除物品', dependencies=[DependsJwtAuth])
-async def batch_delete_items(
+@router.delete('', summary='删除物品', dependencies=[DependsJwtAuth])
+async def delete_items(
     request: Request,
     db: CurrentSessionTransaction,
     pks: Annotated[list[int], Query(description='物品 ID 列表')],
 ) -> ResponseSchemaModel[int]:
-    """批量删除物品"""
+    """删除物品（支持单个和批量）"""
     user_id = request.user.id
-    count = await item_service.batch_delete(db=db, pks=pks, user_id=user_id)
+    count = await item_service.delete(db=db, pks=pks, user_id=user_id)
     return response_base.success(data=count)

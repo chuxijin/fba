@@ -17,11 +17,16 @@ from backend.utils.otel import init_resource, init_tracer
 
 @worker_process_init.connect(weak=False)
 def init_celery_worker_tracing(*args, **kwargs) -> None:
-    """初始化 Celery 追踪"""
+    """初始化 Celery Worker"""
+    # 初始化追踪
     if settings.GRAFANA_METRICS_ENABLE:
         resource = init_resource('fba_celery_worker')
         init_tracer(resource)
         CeleryInstrumentor().instrument()
+
+    # 初始化 Firebase 推送服务
+    from backend.app.jia.service.push_service import PushService
+    PushService.initialize()
 
 
 def find_task_packages() -> list[str]:

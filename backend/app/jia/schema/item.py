@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
 
@@ -57,16 +57,27 @@ class GetItemDetail(ItemSchemaBase):
     status: str = Field(description='状态')
     created_by: int = Field(description='创建者')
     updated_by: int | None = Field(None, description='修改者')
+    created_time: datetime = Field(description='创建时间')
+    updated_time: datetime | None = Field(None, description='更新时间')
 
 
 class GetItemList(SchemaBase):
     """物品列表项"""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='物品 ID')
     name: str = Field(description='物品名称')
     category: str | None = Field(None, description='分类')
     quantity: int = Field(description='当前数量')
     standard_quantity: int = Field(description='标准数量')
+    consume_days: int | None = Field(None, description='消耗周期(天)')
+    expire_date: date | None = Field(None, description='保质期')
     status: str = Field(description='状态')
     location: str | None = Field(None, description='存放位置')
-    expire_date: date | None = Field(None, description='保质期')
+    image_path: str | None = Field(None, description='图片路径')
+    price: Decimal | None = Field(None, description='价格')
+    acquired_date: str | None = Field(None, description='购入日期')
+    description: str | None = Field(None, description='描述')
+    notes: str | None = Field(None, description='备注')
+    updated_time: datetime | None = Field(None, description='更新时间')

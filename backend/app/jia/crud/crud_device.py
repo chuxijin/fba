@@ -21,6 +21,17 @@ class CRUDDevice:
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_user_and_device(
+        self, db: AsyncSession, user_id: int, device_id: str
+    ) -> JiaDevice | None:
+        """根据用户 ID 和设备 ID 获取设备"""
+        stmt = select(JiaDevice).where(
+            JiaDevice.user_id == user_id,
+            JiaDevice.device_id == device_id,
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_by_user_id(self, db: AsyncSession, user_id: int) -> list[JiaDevice]:
         """获取用户的所有设备"""
         stmt = select(JiaDevice).where(
@@ -39,12 +50,12 @@ class CRUDDevice:
     async def register(
         self, db: AsyncSession, user_id: int, obj: DeviceRegisterParam
     ) -> JiaDevice:
-        """注册设备（如果已存在则更新）"""
-        # 检查是否已存在
-        existing = await self.get_by_token(db, obj.fcm_token)
+        """注册设备（如果已存在则更新 FCM Token）"""
+        # 按 user_id + device_id 查找
+        existing = await self.get_by_user_and_device(db, user_id, obj.device_id)
         if existing:
-            # 更新现有设备
-            existing.user_id = user_id
+            # 更新现有设备的 FCM Token
+            existing.fcm_token = obj.fcm_token
             existing.device_name = obj.device_name or existing.device_name
             existing.device_type = obj.device_type or existing.device_type
             existing.is_active = True
@@ -55,6 +66,7 @@ class CRUDDevice:
         # 创建新设备
         device = JiaDevice(
             user_id=user_id,
+            device_id=obj.device_id,
             fcm_token=obj.fcm_token,
             device_name=obj.device_name,
             device_type=obj.device_type,

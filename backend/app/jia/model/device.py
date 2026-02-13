@@ -12,10 +12,14 @@ class JiaDevice(Base):
     """用户设备表 - 存储 FCM Token"""
 
     __tablename__ = 'jia_device'
+    __table_args__ = (
+        sa.UniqueConstraint('user_id', 'device_id', name='uq_user_device'),
+    )
 
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='用户 ID')
-    fcm_token: Mapped[str] = mapped_column(sa.String(512), unique=True, comment='FCM Token')
+    device_id: Mapped[str] = mapped_column(sa.String(128), index=True, comment='设备唯一标识')
+    fcm_token: Mapped[str] = mapped_column(sa.String(512), comment='FCM Token')
     device_name: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='设备名称')
     device_type: Mapped[str | None] = mapped_column(sa.String(32), default=None, comment='设备类型 (android/ios)')
     is_active: Mapped[bool] = mapped_column(default=True, comment='是否活跃')

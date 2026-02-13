@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, UserMixin, id_key
 from backend.utils.timezone import timezone
+from pgvector.sqlalchemy import Vector
 
 
 class JiaItem(Base, UserMixin):
@@ -30,6 +31,9 @@ class JiaItem(Base, UserMixin):
     disposal_method: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='处置方式')
     image_path: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='图片路径')
     notes: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='备注')
+    vector: Mapped[list[float] | None] = mapped_column(
+        Vector(1536), deferred=True, default=None, comment='向量化数据(1536维，默认不加载)'
+    )
 
     def calculate_status(self) -> str:
         """
@@ -45,9 +49,10 @@ class JiaItem(Base, UserMixin):
             if today > self.expire_date:
                 return '已过期'
 
-            # 计算保质期总长（从 updated_time 到 expire_date）
-            if self.updated_time:
-                total_days = (self.expire_date - self.updated_time.date()).days
+            # 计算保质期总长（用 updated_time 或 created_time）
+            reference_time = self.updated_time or self.created_time
+            if reference_time:
+                total_days = (self.expire_date - reference_time.date()).days
                 days_left = (self.expire_date - today).days
                 if total_days > 0 and days_left <= total_days * 0.1:
                     return '即将过期'

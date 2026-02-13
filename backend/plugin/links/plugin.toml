@@ -3,6 +3,8 @@ summary = '短网址'
 version = '0.0.1'
 description = '短网址生成与管理服务，支持访问统计和域名管理'
 author = 'fba'
+tags = ["other"]
+database = ["mysql", "postgresql"]
 
 [app]
 router = ['v1']

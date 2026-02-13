@@ -23,7 +23,7 @@ dependencies = [
   "cryptography>=46.0.4",
   "dulwich>=1.0.0",
   "fast-captcha>=0.3.2",
-  "fastapi-limiter>=0.1.6",
+  "fastapi-limiter<0.2.0",
   "fastapi-pagination>=0.15.9",
   "fastapi[standard-no-fastapi-cloud-cli]>=0.128.0",
   "flower>=2.0.1",

@@ -3,6 +3,8 @@ summary = 'Webhook事件接收器'
 version = '1.0.0'
 description = '用于接收和处理外部系统的Webhook POST事件'
 author = 'null'
+tags = ["notification"]
+database = ["mysql", "postgresql"]
 
 [app]
 extend = 'admin'

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from anyio import open_file
 from fastapi import UploadFile
 
@@ -47,16 +49,32 @@ def upload_file_verify(file: UploadFile) -> None:
             raise errors.RequestError(msg='视频超出最大限制，请重新选择')
 
 
-async def upload_file(file: UploadFile) -> str:
+async def upload_file(file: UploadFile, folder: str | None = None) -> str:
     """
     上传文件
 
     :param file: FastAPI 上传文件对象
+    :param folder: 目标文件夹
     :return:
     """
     filename = build_filename(file)
+    
+    upload_path = UPLOAD_DIR
+    relative_path = filename
+
+    if folder:
+        # 安全处理
+        safe_folder = folder.strip().replace('\\', '/').replace('..', '').strip('/')
+        if safe_folder:
+            upload_path = upload_path / safe_folder
+            relative_path = f'{safe_folder}/{filename}'
+
+    if not upload_path.exists():
+        upload_path.mkdir(parents=True, exist_ok=True)
+
     try:
-        async with await open_file(UPLOAD_DIR / filename, mode='wb') as fb:
+        path = upload_path / filename
+        async with await open_file(path, mode='wb') as fb:
             while True:
                 content = await file.read(settings.UPLOAD_READ_SIZE)
                 if not content:
@@ -65,5 +83,43 @@ async def upload_file(file: UploadFile) -> str:
     except Exception as e:
         log.error(f'上传文件 {filename} 失败：{e!s}')
         raise errors.RequestError(msg='上传文件失败')
-    await file.close()
-    return filename
+    
+    return relative_path
+
+
+def delete_file(relative_path: str | None) -> bool:
+    """
+    删除文件
+
+    :param relative_path: 相对于 UPLOAD_DIR 的文件路径
+    :return: 是否删除成功
+    """
+    if not relative_path:
+        return False
+
+    try:
+        file_path = UPLOAD_DIR / relative_path
+        if file_path.exists() and file_path.is_file():
+            file_path.unlink()
+            log.info(f'删除文件成功: {relative_path}')
+            return True
+        else:
+            log.warning(f'文件不存在: {relative_path}')
+            return False
+    except Exception as e:
+        log.error(f'删除文件 {relative_path} 失败: {e!s}')
+        return False
+
+
+def delete_files(relative_paths: list[str | None]) -> int:
+    """
+    批量删除文件
+
+    :param relative_paths: 相对路径列表
+    :return: 成功删除的文件数量
+    """
+    count = 0
+    for path in relative_paths:
+        if delete_file(path):
+            count += 1
+    return count

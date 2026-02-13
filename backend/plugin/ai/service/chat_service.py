@@ -131,7 +131,6 @@ class ChatService:
                 model_settings=ModelSettings(**model_settings),
             ),
         )
-        # Fallback extraction
         if hasattr(result, 'data'):
             return result.data
         elif hasattr(result, 'output'):
@@ -139,6 +138,95 @@ class ChatService:
         else:
              # Try to find where the content is
             return str(result)
+
+    @staticmethod
+    async def raw_chat(*, db: AsyncSession, chat: AIChat) -> dict:
+        """
+        直接调用 OpenAI 兼容接口，支持多模态和 Tool Calls
+        """
+        provider = await ai_provider_dao.get(db, chat.provider_id)
+        if not provider:
+            raise errors.NotFoundError(msg='供应商不存在')
+
+        if not provider.status:
+            raise errors.RequestError(msg='此供应商暂不可用，请更换供应商或联系系统管理员')
+
+        model = await ai_model_dao.get_by_model_and_provider(db, chat.model_id, chat.provider_id)
+        if not model:
+            raise errors.NotFoundError(msg='供应商模型不存在')
+
+        if not model.status:
+            raise errors.RequestError(msg='此模型暂不可用，请更换模型或联系系统管理员')
+            
+        from openai import AsyncOpenAI
+        
+        base_url = provider.api_host
+        if base_url:
+            base_url = f'{base_url}/v1' if not base_url.endswith('/v1') else base_url
+            
+        client = AsyncOpenAI(api_key=provider.api_key, base_url=base_url)
+        
+        # 构造 Messages
+        openai_messages = []
+        if chat.messages:
+             for m in chat.messages:
+                 # 确保 content 是 list[dict] 或 str
+                 msg_dict = m.model_dump(exclude_none=True)
+                 openai_messages.append(msg_dict)
+        else:
+             openai_messages.append({"role": "user", "content": chat.user_prompt})
+             
+        # 构造参数
+        kwargs = {
+            'model': model.model_id,
+            'messages': openai_messages,
+            'temperature': chat.temperature,
+            'max_tokens': chat.max_tokens,
+        }
+        
+        if chat.tools:
+            kwargs['tools'] = chat.tools
+            if chat.tool_choice:
+                kwargs['tool_choice'] = chat.tool_choice
+        
+        try:
+            response = await client.chat.completions.create(**kwargs)
+            return response.choices[0].message.model_dump()
+        except Exception as e:
+            raise errors.ServerError(msg=f'AI 请求失败: {str(e)}')
+
+
+    @staticmethod
+    async def embedding(*, db: AsyncSession, provider_id: int, model_id: str, text: str) -> list[float]:
+        """
+        获取文本向量
+
+        :param db: 数据库会话
+        :param provider_id: 供应商 ID
+        :param model_id: 模型 ID
+        :param text: 文本内容
+        :return:
+        """
+        provider = await ai_provider_dao.get(db, provider_id)
+        if not provider:
+            raise errors.NotFoundError(msg='供应商不存在')
+
+        if not provider.status:
+            raise errors.RequestError(msg='此供应商暂不可用，请更换供应商或联系系统管理员')
+
+        # 使用 openai 客户端获取向量
+        from openai import AsyncOpenAI
+
+        base_url = provider.api_host
+        if base_url:
+            base_url = f'{base_url}/v1' if not base_url.endswith('/v1') else base_url
+
+        try:
+            client = AsyncOpenAI(api_key=provider.api_key, base_url=base_url)
+            response = await client.embeddings.create(input=text, model=model_id)
+            return response.data[0].embedding
+        except Exception as e:
+            raise errors.ServerError(msg=f'向量化失败: {str(e)}')
 
 
 ai_chat_service: ChatService = ChatService()

@@ -3,6 +3,8 @@ summary = '访问统计'
 version = '1.0.0'
 description = '网站访问统计，记录PV/UV等数据'
 author = 'gongkao'
+tags = ["other"]
+database = ["mysql", "postgresql"]
 
 [app]
 # 应用级插件配置：指定 api/router.py 中要把哪个路由变量注入到系统

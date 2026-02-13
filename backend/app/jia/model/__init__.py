@@ -3,4 +3,8 @@
 from .device import JiaDevice
 from .item import JiaItem
 
-__all__ = ['JiaDevice', 'JiaItem']
+from .user_setting import JiaUserSetting
+
+from .copilot import JiaCopilotSession, JiaCopilotMessage
+
+__all__ = ['JiaDevice', 'JiaItem', 'JiaUserSetting', 'JiaCopilotSession', 'JiaCopilotMessage']

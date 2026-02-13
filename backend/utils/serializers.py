@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, TypeVar
 import json as stdlib_json
+import math
 
 from fastapi.encoders import decimal_encoder
 from msgspec import json
@@ -17,6 +18,19 @@ RowData = Row[Any] | RowMapping | Any
 R = TypeVar('R', bound=RowData)
 
 
+def nan_safe_encoder(obj: Any) -> Any:
+    """
+    JSON 编码器，处理 NaN、Infinity 等特殊值
+
+    :param obj: 待编码的对象
+    :return: 可 JSON 序列化的值
+    """
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+    return str(obj)
+
+
 class MsgSpecJSONResponse(JSONResponse):
     """
     使用高性能的 msgspec 库将数据序列化为 JSON 的响应类（支持中文字符不转义）
@@ -27,7 +41,8 @@ class MsgSpecJSONResponse(JSONResponse):
         return stdlib_json.dumps(
             content,
             ensure_ascii=False,  # 不转义 Unicode 字符，保留中文
-            default=str,  # 处理无法序列化的类型（如 Decimal、datetime）
+            default=nan_safe_encoder,  # 处理 NaN、Infinity 和无法序列化的类型
+            allow_nan=False,  # 禁止输出 NaN/Infinity，强制使用 default 处理
         ).encode('utf-8')
 
 

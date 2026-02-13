@@ -3,6 +3,8 @@ summary = '阿奇索发货工具集成'
 version = '1.0.0'
 description = '接收阿奇索发货工具订单推送，支持支付通知和自动发卡，实现会员权益自动兑换'
 author = 'null'
+tags = ["payment"]
+database = ["mysql", "postgresql"]
 
 [app]
 router = ['v1']

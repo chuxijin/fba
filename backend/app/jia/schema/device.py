@@ -10,6 +10,7 @@ from backend.common.schema import SchemaBase
 class DeviceRegisterParam(SchemaBase):
     """设备注册参数"""
 
+    device_id: str = Field(description='设备唯一标识')
     fcm_token: str = Field(description='FCM Token')
     device_name: str | None = Field(None, description='设备名称')
     device_type: str | None = Field(None, description='设备类型 (android/ios)')
@@ -28,6 +29,7 @@ class GetDeviceDetail(SchemaBase):
 
     id: int = Field(description='设备 ID')
     user_id: int = Field(description='用户 ID')
+    device_id: str = Field(description='设备唯一标识')
     fcm_token: str = Field(description='FCM Token')
     device_name: str | None = Field(None, description='设备名称')
     device_type: str | None = Field(None, description='设备类型')

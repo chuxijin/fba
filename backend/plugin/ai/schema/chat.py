@@ -20,9 +20,27 @@ class AIChatSchemaBase(SchemaBase):
     extra_body: object | None = Field(default=None, description='发送给模型的额外请求体')
 
 
+class AIChatMessage(SchemaBase):
+    role: str
+    content: str | list[dict] | None = None # 简单起见用 list[dict] 兼容 OpenAI 格式
+    tool_calls: list[dict] | None = None
+    tool_call_id: str | None = None
+    name: str | None = None
+
 class AIChat(AIChatSchemaBase):
     """聊天参数"""
 
     provider_id: int = Field(description='供应商 ID')
     model_id: str = Field(description='聊天模型')
-    user_prompt: str = Field(description='用户提示词')
+    user_prompt: str | None = Field(default=None, description='用户提示词 (旧)')
+    messages: list[AIChatMessage] | None = Field(default=None, description='完整消息列表 (优先)')
+    tools: list[dict] | None = Field(default=None, description='工具定义')
+    tool_choice: str | dict | None = Field(default=None, description='工具选择策略')
+
+
+class EmbeddingParam(SchemaBase):
+    """向量化参数"""
+
+    provider_id: int = Field(description='供应商 ID')
+    model_id: str = Field(description='嵌入模型')
+    text: str = Field(description='文本内容')

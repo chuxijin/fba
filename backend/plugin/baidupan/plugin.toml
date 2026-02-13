@@ -3,6 +3,8 @@ summary = '百度网盘开放平台集成'
 version = '1.0.0'
 description = '提供百度网盘 OAuth2.0 授权服务，支持授权码获取、Token 换取和刷新功能'
 author = 'null'
+tags = ["storage"]
+database = ["mysql", "postgresql"]
 
 [app]
 router = ['v1']
