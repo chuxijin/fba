@@ -61,8 +61,28 @@ class ChatResponse(BaseModel):
     session_id: int
     text: str | None = Field(default=None, description="AI 回复文本")
     meta: dict | None = Field(default=None, description="结构化数据 (如生成的计划)")
-    
+
     tool_calls: list[dict] | None = Field(default=None, description="工具调用")
-    
+
     # 方便前端展示历史
     message_id: int | None = None
+
+
+# --- 智能识别物品 Schemas ---
+
+class AnalyzeItemRequest(BaseModel):
+    image_url: str | None = Field(default=None, description="图片完整URL")
+    text: str | None = Field(default=None, description="用户语音/文字描述")
+    audio_path: str | None = Field(default=None, description="音频文件路径（用于语音识别）")
+
+
+class AnalyzeItemResponse(BaseModel):
+    name: str | None = Field(default=None, description="物品名称")
+    category: str | None = Field(default=None, description="分类")
+    description: str | None = Field(default=None, description="描述（外观、用途、使用场景）")
+    quantity: int | None = Field(default=None, description="数量")
+    standard_quantity: int | None = Field(default=None, description="标准数量（一个人建议拥有几个）")
+    consume_days: int | None = Field(default=None, description="消耗/更换周期（天）")
+    price: float | None = Field(default=None, description="市场参考价格")
+    expire_date: str | None = Field(default=None, description="保质期 (YYYY-MM-DD)")
+    notes: str | None = Field(default=None, description="备注")

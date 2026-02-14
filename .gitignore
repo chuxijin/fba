@@ -25,3 +25,5 @@ windows/
 .serena/
 .agents/
 .logs/
+*-firebase-adminsdk-*.json
+static/

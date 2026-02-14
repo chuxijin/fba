@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.jia.crud.crud_copilot import copilot_session_dao, copilot_message_dao
 from backend.app.jia.model.copilot import JiaCopilotMessage
-from backend.app.jia.schema.copilot import CreateSessionParam, ChatRequest, ChatResponse
+from backend.app.jia.schema.copilot import CreateSessionParam, ChatRequest, ChatResponse, AnalyzeItemRequest, AnalyzeItemResponse
 from backend.app.jia.service.exercise_service import exercise_service
 from backend.app.jia.service.food_service import food_service
 from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
@@ -459,6 +459,148 @@ class CopilotService:
             tool_calls=None, # We executed them
             message_id=ai_db_msg.id if 'ai_db_msg' in locals() else None
         )
+
+    async def analyze_item(self, db: AsyncSession, user_id: int, req: AnalyzeItemRequest) -> AnalyzeItemResponse:
+        """
+        智能识别物品信息（支持图片、文字描述或语音）
+        """
+        # 获取用户设置
+        from backend.app.jia.service.user_setting_service import user_setting_service
+        user_settings = await user_setting_service.get_my_settings(db=db, user_id=user_id)
+        current_provider_id = user_settings.copilot_provider or 4
+
+        # 如果有音频文件，先转文字
+        text_input = req.text
+        if req.audio_path:
+            try:
+                text_input = await self._transcribe_audio(db, current_provider_id, req.audio_path)
+            except Exception as e:
+                return AnalyzeItemResponse(name="语音识别失败", notes=str(e))
+
+        # 统一的 prompt
+        system_prompt = """你是一个专业的物品识别与生活管理助手。请根据用户提供的图片或文字描述，返回详细的 JSON 格式物品信息。
+
+**识别要求**：
+1. **name**: 准确识别物品名称，尽量具体（如"苹果 iPhone 15 Pro"而非"手机"）
+2. **category**: 分类（衣物/电子产品/书籍/厨具/家具/日用品/食品/药品/杂物）
+3. **description**: 详细描述物品的外观特征、颜色、材质、用途和使用场景
+4. **quantity**: 可见/提到的数量，默认为1
+5. **standard_quantity**: 一个普通人建议拥有的合理数量（避免冗余或缺失）
+   - 例如：牙刷建议1-2个，袜子建议10-15双，充电器建议2-3个
+6. **consume_days**: 物品的建议更换/消耗周期（天数）
+   - 例如：牙刷约90天，毛巾约180天，电子产品约1095天（3年），要根据物品的具体情况，而不是类别
+   - 食品填写保质期天数，耐用品填写建议使用寿命
+7. **price**: 如果用户提到价格就用用户的，否则给出市场参考价格（人民币）
+8. **expire_date**: 如果是食品/药品且能看到/推算日期，填写保质期（YYYY-MM-DD格式）
+9. **notes**: 其他有用信息，如保养建议、存放注意事项等
+
+请严格按以下 JSON 格式返回（不要返回其他内容）：
+{
+    "name": "物品名称",
+    "category": "分类",
+    "description": "详细描述：外观、颜色、材质、用途、使用场景",
+    "quantity": 1,
+    "standard_quantity": 1,
+    "consume_days": null,
+    "price": null,
+    "expire_date": null,
+    "notes": null
+}"""
+
+        # 根据输入类型构建消息
+        if req.image_url:
+            # 图片识别
+            user_content = [
+                {"type": "text", "text": "请识别这张图片中的物品，给出完整的信息"},
+                {"type": "image_url", "image_url": {"url": req.image_url}}
+            ]
+            if text_input:
+                # 图片 + 文字补充
+                user_content[0]["text"] = f"请识别这张图片中的物品。用户补充说明：{text_input}"
+            messages = [
+                AIChatMessage(role="system", content=system_prompt),
+                AIChatMessage(role="user", content=user_content)
+            ]
+        elif text_input:
+            # 纯文字描述
+            messages = [
+                AIChatMessage(role="system", content=system_prompt),
+                AIChatMessage(role="user", content=f"用户描述的物品：{text_input}")
+            ]
+        else:
+            return AnalyzeItemResponse(name="输入错误", notes="请提供图片、文字描述或语音")
+
+        chat_param = AIChat(
+            provider_id=current_provider_id,
+            model_id="gpt-4o-2024-11-20",
+            messages=messages,
+            temperature=0.3,
+        )
+
+        try:
+            ai_resp = await ai_chat_service.raw_chat(db=db, chat=chat_param)
+            resp_content = ai_resp.get('content', '')
+
+            # 解析 JSON
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', resp_content)
+            if json_match:
+                result = json.loads(json_match.group())
+                return AnalyzeItemResponse(
+                    name=result.get('name'),
+                    category=result.get('category'),
+                    description=result.get('description'),
+                    quantity=result.get('quantity'),
+                    standard_quantity=result.get('standard_quantity'),
+                    consume_days=result.get('consume_days'),
+                    price=result.get('price'),
+                    expire_date=result.get('expire_date'),
+                    notes=result.get('notes'),
+                )
+            else:
+                return AnalyzeItemResponse(name="未能识别", notes=resp_content)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return AnalyzeItemResponse(name="识别失败", notes=str(e))
+
+    async def _transcribe_audio(self, db: AsyncSession, provider_id: int, audio_path: str) -> str:
+        """
+        使用 Whisper 将音频转为文字
+        """
+        from openai import AsyncOpenAI
+        from backend.plugin.ai.crud.crud_provider import ai_provider_dao
+        from backend.core.conf import settings
+        import os
+
+        # 获取 provider 配置
+        provider = await ai_provider_dao.get(db, provider_id)
+        if not provider:
+            raise Exception("AI 服务商不存在")
+
+        base_url = provider.api_host
+        if base_url:
+            base_url = f'{base_url}/v1' if not base_url.endswith('/v1') else base_url
+
+        client = AsyncOpenAI(api_key=provider.api_key, base_url=base_url)
+
+        # 构建音频文件完整路径
+        upload_dir = settings.UPLOAD_DIR if hasattr(settings, 'UPLOAD_DIR') else 'static/upload'
+        full_path = os.path.join(upload_dir, audio_path)
+
+        # 读取音频文件
+        with open(full_path, 'rb') as f:
+            audio_data = f.read()
+
+        # 调用 Whisper API
+        transcript = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=("audio.m4a", audio_data, "audio/m4a"),
+            language="zh",
+        )
+
+        return transcript.text
 
 
 copilot_service = CopilotService()

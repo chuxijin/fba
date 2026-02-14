@@ -11,18 +11,18 @@ class CRUDPushLog(CRUDPlus[AgisoPushLog]):
     """推送日志 CRUD"""
 
     async def get_by_order_no(
-        self, db: AsyncSession, order_no: str, push_type: str | None = None
+        self, db: AsyncSession, order_no: str, push_type: int | None = None
     ) -> AgisoPushLog | None:
         """
         根据订单号获取推送日志
 
         :param db: 数据库会话
         :param order_no: 订单编号
-        :param push_type: 推送类型
+        :param push_type: 推送类型(aopic)
         :return:
         """
         stmt = select(self.model).where(self.model.order_no == order_no)
-        if push_type:
+        if push_type is not None:
             stmt = stmt.where(self.model.push_type == push_type)
         stmt = stmt.order_by(self.model.created_time.desc())
         result = await db.execute(stmt)
@@ -31,21 +31,21 @@ class CRUDPushLog(CRUDPlus[AgisoPushLog]):
     def get_select(
         self,
         order_no: str | None = None,
-        push_type: str | None = None,
+        push_type: int | None = None,
         process_status: int | None = None,
     ) -> Select:
         """
         获取推送日志查询
 
         :param order_no: 订单编号
-        :param push_type: 推送类型
+        :param push_type: 推送类型(aopic)
         :param process_status: 处理状态
         :return:
         """
         stmt = select(self.model)
         if order_no:
             stmt = stmt.where(self.model.order_no == order_no)
-        if push_type:
+        if push_type is not None:
             stmt = stmt.where(self.model.push_type == push_type)
         if process_status is not None:
             stmt = stmt.where(self.model.process_status == process_status)

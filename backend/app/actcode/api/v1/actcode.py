@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Form, Path, Query
 
 from backend.app.actcode.schema.actcode import (
     CreateBatchParam,
@@ -17,6 +17,7 @@ from backend.common.pagination import DependsPagination, _CustomPageParams
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
+from backend.app.actcode.service.activate_service import activate_service
 
 router = APIRouter(prefix='/actcode', tags=['激活码系统'])
 
@@ -98,3 +99,23 @@ async def get_usage_list(
     """获取使用记录列表"""
     data = await actcode_service.get_usage_list(db=db, app_id=app_id, user_id=user_id, code_id=code_id)
     return response_base.success(data=data)
+
+
+@router.post('/agiso/activate', summary='通过阿奇索订单号激活账户')
+async def activate_by_agiso_order(
+    order_no: Annotated[str, Form(description='订单号（即激活码）')],
+    username: Annotated[str, Form(description='用户名')],
+    password: Annotated[str, Form(description='密码')],
+) -> ResponseModel:
+    """
+    用户通过阿奇索订单号激活账户
+
+    无需登录，用户提交订单号、用户名、密码即可创建账户
+
+    :param order_no: 订单号
+    :param username: 用户名
+    :param password: 密码
+    :return:
+    """
+    result = await activate_service.activate_by_order(order_no, username, password)
+    return response_base.success(data=result)

@@ -452,11 +452,7 @@ def acquire_distributed_beat_lock(sender=None, **kwargs) -> None:  # noqa: ANN00
     lock = redis_client.lock(
         scheduler.lock_key,
         timeout=DEFAULT_MAX_LOCK_TIMEOUT,
-<<<<<<< HEAD
-        sleep=max(1, scheduler.max_interval),
-=======
         sleep=scheduler.max_interval,
->>>>>>> 1de4201b52eba5fa13246604ae47660567f8db14
     )
 
     run_await(lock.acquire)()
