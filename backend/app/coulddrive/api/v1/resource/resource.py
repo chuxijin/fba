@@ -63,6 +63,31 @@ async def get_resource_list(
 
 
 @router.get(
+    '/hot',
+    summary='获取热门资源列表',
+    response_model=ResponseSchemaModel[list[ResourceListItem]],
+    dependencies=[DependsPagination]
+)
+async def get_hot_resource_list(
+    request: Request,
+    db: CurrentSession,
+    category_id: Annotated[int | None, Query(description='分类ID')] = None,
+    limit: Annotated[int, Query(description='数量限制', ge=1, le=50)] = 20
+) -> ResponseSchemaModel[list[ResourceListItem]]:
+    """
+    获取热门资源列表（按热度排序）
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param category_id: 分类ID
+    :param limit: 数量限制
+    :return: 热门资源列表
+    """
+    hot_list = await resource_service.get_hot_list(db=db, category_id=category_id, limit=limit)
+    return response_base.success(data=hot_list)
+
+
+@router.get(
     '/statistics',
     summary='获取资源统计信息',
     response_model=ResponseSchemaModel[ResourceStatistics],

@@ -51,11 +51,12 @@ class CRUDResource(CRUDPlus[Resource]):
         """
         return await self.select_model_by_column(db, share_id=share_id)
 
-    async def get_list(self, params: GetResourceListParam) -> Select:
+    async def get_list(self, params: GetResourceListParam, category_ids: list[int] | None = None) -> Select:
         """
         获取资源列表查询语句
 
         :param params: 查询参数
+        :param category_ids: 分类 ID 列表（包含子分类）
         :return:
         """
         stmt = (
@@ -68,7 +69,10 @@ class CRUDResource(CRUDPlus[Resource]):
         filters = []
 
         if params.category_id is not None:
-            filters.append(self.model.category_id == params.category_id)
+            if category_ids:
+                filters.append(self.model.category_id.in_(category_ids))
+            else:
+                filters.append(self.model.category_id == params.category_id)
         if params.resource_type is not None:
             filters.append(self.model.resource_type == params.resource_type)
         if params.url_type is not None:
@@ -97,6 +101,39 @@ class CRUDResource(CRUDPlus[Resource]):
         stmt = stmt.options(noload(Resource.user), noload(Resource.view_history))
 
         return stmt
+
+    async def get_hot_list(
+        self,
+        db: AsyncSession,
+        category_ids: list[int] | None = None,
+        limit: int = 20
+    ) -> Sequence[Resource]:
+        """
+        获取热门资源列表
+
+        :param db: 数据库会话
+        :param category_ids: 分类 ID 列表（包含子分类）
+        :param limit: 数量限制
+        :return:
+        """
+        stmt = (
+            select(self.model)
+            .where(
+                and_(
+                    self.model.is_deleted == False,
+                    self.model.status == 1
+                )
+            )
+            .order_by(desc(self.model.hot))
+            .limit(limit)
+            .options(noload(Resource.user), noload(Resource.view_history))
+        )
+
+        if category_ids:
+            stmt = stmt.where(self.model.category_id.in_(category_ids))
+
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
     async def get_all(self, db: AsyncSession) -> Sequence[Resource]:
         """
@@ -511,7 +548,8 @@ class CRUDResource(CRUDPlus[Resource]):
         query_text: str,
         limit: int = 20,
         similarity_threshold: float = 0.7,
-        category_id: int | None = None
+        category_id: int | None = None,
+        category_ids: list[int] | None = None
     ) -> list[tuple[Resource, float]]:
         """
         向量搜索资源
@@ -521,6 +559,7 @@ class CRUDResource(CRUDPlus[Resource]):
         :param limit: 返回结果数量限制
         :param similarity_threshold: 相似度阈值 (0-1)，只返回大于此阈值的结果
         :param category_id: 分类过滤
+        :param category_ids: 分类 ID 列表（包含子分类）
         :return: (资源对象, 相似度分数) 列表，按相似度降序排列
         """
         # 将查询文本转换为向量
@@ -541,7 +580,10 @@ class CRUDResource(CRUDPlus[Resource]):
 
         # 只保留分类过滤
         if category_id is not None:
-            filters.append(self.model.category_id == category_id)
+            if category_ids:
+                filters.append(self.model.category_id.in_(category_ids))
+            else:
+                filters.append(self.model.category_id == category_id)
 
         stmt = (
             select(

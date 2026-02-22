@@ -19,16 +19,16 @@ export interface CustomTab {
 
 const STORAGE_KEY = 'practice-custom-tabs'
 
-// 默认 Tab 配置
+// 默认 Tab 配置（bankId=25 的合集，名称在题库加载后动态解析）
 const DEFAULT_TABS: CustomTab[] = [
   {
-    id: 'all',
-    name: '全部',
-    categoryId: 0,
-    categoryName: '全部',
-    bankId: null,
+    id: 'default-bank-25',
+    name: '题库',
+    categoryId: 20,
+    categoryName: '',
+    bankId: 25,
     bankName: null,
-    isFixed: true,
+    isFixed: false,
     order: 0
   }
 ]
@@ -118,9 +118,17 @@ async function initCustomTabs() {
       // 🔥 第一步：先同步加载本地数据（立即可用）
       const stored = uni.getStorageSync(STORAGE_KEY)
       if (stored && Array.isArray(stored) && stored.length > 0) {
-        // ✅ 本地有数据，直接使用（不从后端加载，避免覆盖）
-        customTabs.value = stored
-        console.log('[Custom Tabs] 使用本地缓存:', stored.length, '个 Tab')
+        // 🔥 迁移检查：如果本地存的是旧版「全部」tab，替换为新默认
+        const hasLegacyAllTab = stored.some((t: CustomTab) => t.id === 'all' && t.bankId === null)
+        if (hasLegacyAllTab && stored.length === 1) {
+          console.log('[Custom Tabs] 检测到旧版默认 Tab，迁移为新默认')
+          customTabs.value = [...DEFAULT_TABS]
+          saveCustomTabs()
+        } else {
+          // ✅ 本地有数据，直接使用（不从后端加载，避免覆盖）
+          customTabs.value = stored
+          console.log('[Custom Tabs] 使用本地缓存:', stored.length, '个 Tab')
+        }
       } else {
         // ✅ 本地没有数据，从后端加载
         console.log('[Custom Tabs] 本地无数据，尝试从后端加载')
@@ -202,9 +210,9 @@ export function useCustomTabs() {
     const index = customTabs.value.findIndex(t => t.id === tabId)
     if (index === -1) return false
 
-    const tab = customTabs.value[index]
-    if (tab.isFixed) {
-      console.warn('[Custom Tabs] 不能删除固定 Tab')
+    // 至少保留一个 Tab
+    if (customTabs.value.length <= 1) {
+      console.warn('[Custom Tabs] 至少保留一个 Tab')
       return false
     }
 
@@ -252,6 +260,22 @@ export function useCustomTabs() {
   }
 
   /**
+   * 更新 Tab 名称
+   *
+   * :param tabId: Tab ID
+   * :param name: 新名称
+   */
+  function updateTabName(tabId: string, name: string) {
+    const tab = customTabs.value.find(t => t.id === tabId)
+    if (!tab) return false
+
+    tab.name = name
+    tab.bankName = name
+    saveCustomTabs()
+    return true
+  }
+
+  /**
    * 手动从后端重新加载配置
    */
   async function reloadFromBackend() {
@@ -268,6 +292,7 @@ export function useCustomTabs() {
     addTab,
     removeTab,
     updateTabOrder,
+    updateTabName,
     hasTab,
     resetTabs,
     getTab,

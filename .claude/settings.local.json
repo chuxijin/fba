@@ -60,7 +60,8 @@
       "Bash(python -m py_compile:*)",
       "WebFetch(domain:open.agiso.com)",
       "Skill(fba)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:doc.sc3.ft07.com)"
     ],
     "deny": [],
     "ask": []

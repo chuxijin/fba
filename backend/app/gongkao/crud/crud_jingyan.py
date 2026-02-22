@@ -33,15 +33,15 @@ class CRUDJingyan(CRUDPlus[GkJingyan]):
         """
         return await self.select_model_by_column(db, title=title)
 
-    async def get_by_type(self, db: AsyncSession, type: str) -> Sequence[GkJingyan]:
+    async def get_by_category_id(self, db: AsyncSession, category_id: int) -> Sequence[GkJingyan]:
         """
         通过分类获取经验列表
 
         :param db: 数据库会话
-        :param type: 分类
+        :param category_id: 分类 ID
         :return:
         """
-        return await self.select_models(db, type=type)
+        return await self.select_models(db, category_id=category_id)
 
     async def get_by_daily_date(self, db: AsyncSession, daily_date: date) -> Sequence[GkJingyan]:
         """
@@ -56,7 +56,7 @@ class CRUDJingyan(CRUDPlus[GkJingyan]):
     async def get_select(
         self,
         title: str | None = None,
-        type: str | None = None,
+        category_id: int | None = None,
         author: str | None = None,
         tags: str | None = None,
         daily_date: date | None = None,
@@ -65,7 +65,7 @@ class CRUDJingyan(CRUDPlus[GkJingyan]):
         获取经验列表查询表达式
 
         :param title: 标题
-        :param type: 分类
+        :param category_id: 分类 ID
         :param author: 作者
         :param tags: 标签
         :param daily_date: 发布日期
@@ -74,8 +74,8 @@ class CRUDJingyan(CRUDPlus[GkJingyan]):
         filters = {}
         if title is not None:
             filters['title__like'] = f'%{title}%'
-        if type is not None:
-            filters['type'] = type
+        if category_id is not None:
+            filters['category_id'] = category_id
         if author is not None:
             filters['author__like'] = f'%{author}%'
         if tags is not None:

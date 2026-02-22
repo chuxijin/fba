@@ -30,13 +30,29 @@ async def upload_files(
     request: Request,
     file: Annotated[UploadFile, File()],
     folder: Annotated[str | None, Query()] = None,
-) -> ResponseSchemaModel[UploadUrl]:
+) -> ResponseSchemaModel[dict]:
     """文件上传"""
-    filename = await file_service.upload(file, folder=folder)
-    # 返回完整的 URL（包含域名和端口）
-    base_url = str(request.base_url).rstrip('/')
-    full_url = f'{base_url}/static/upload/{filename}'
-    return response_base.success(data={'url': full_url})
+    relative_path = await file_service.upload(file, folder=folder)
+    
+    # 相对路径 URL
+    url = f'/static/upload/{relative_path}'
+    
+    # 获取文件详情
+    from pathlib import Path
+    from backend.core.path_conf import UPLOAD_DIR
+    
+    full_path_obj = UPLOAD_DIR / relative_path
+    local_path = str(full_path_obj.resolve())
+    size = full_path_obj.stat().st_size
+    file_type = Path(relative_path).suffix.lstrip('.').lower()
+    
+    return response_base.success(data={
+        'url': url,
+        'local_path': local_path,
+        'file_type': file_type,
+        'size': size,
+        'filename': Path(relative_path).name
+    })
 
 
 @router.get(

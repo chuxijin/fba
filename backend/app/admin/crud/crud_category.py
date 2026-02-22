@@ -243,5 +243,32 @@ class CRUDCategory(CRUDPlus[Category]):
         result = await db.execute(stmt)
         return [row[0] for row in result.all()]
 
+    async def get_all_children_ids(self, db: AsyncSession, root_id: int) -> list[int]:
+        """
+        获取所有子孙分类ID（包含自身）
+
+        :param db: 数据库会话
+        :param root_id: 根分类 ID
+        :return:
+        """
+        # 1. 基础查询 (Anchor Member)
+        # 获取根节点
+        query = select(Category.id).where(Category.id == root_id)
+
+        # 定义递归 CTE
+        cte = query.cte('cte', recursive=True)
+
+        # 2. 递归查询 (Recursive Member)
+        # 查找所有 parent_id 为 CTE 中 ID 的节点
+        recursive_part = select(Category.id).join(cte, Category.parent_id == cte.c.id)
+
+        # 3. 组合查询
+        final_cte = cte.union_all(recursive_part)
+
+        # 4. 执行查询
+        stmt = select(final_cte.c.id)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
 
 category_dao: CRUDCategory = CRUDCategory(Category)

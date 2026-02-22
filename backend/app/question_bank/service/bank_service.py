@@ -71,7 +71,20 @@ class BankService:
         :param parent_id: 父级ID
         :return:
         """
-        bank_select = await bank_dao.get_all(db, cat_id, status, scope, keyword, type, parent_id)
+        # 如果指定了分类 ID，递归获取所有子分类 ID
+        cat_ids = None
+        if cat_id is not None:
+            cat_ids = await category_dao.get_all_children_ids(db, cat_id)
+
+        bank_select = await bank_dao.get_all(
+            db,
+            cat_ids=cat_ids,
+            status=status,
+            scope=scope,
+            keyword=keyword,
+            type=type,
+            parent_id=parent_id,
+        )
         tree_data = get_tree_data(bank_select, sort_key='id')
         
         # 对于 type=20 的合集，动态计算子题库数量

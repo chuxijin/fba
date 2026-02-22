@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import Select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -58,7 +58,7 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
 
     async def increment_used_count(self, db: AsyncSession, pk: int) -> None:
         """
-        增加已使用数量
+        增加已使用数量和总数量
 
         :param db: 数据库会话
         :param pk: 批次 ID
@@ -66,7 +66,9 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
         """
         batch = await self.select_model(db, pk)
         if batch:
-            await self.update_model(db, pk, {'used_count': batch.used_count + 1})
+            await self.update_model(
+                db, pk, {'used_count': batch.used_count + 1, 'total_count': batch.total_count + 1}
+            )
 
 
 class CRUDActcodeDao(CRUDPlus[Actcode]):
@@ -98,6 +100,26 @@ class CRUDActcodeDao(CRUDPlus[Actcode]):
         :return:
         """
         return await self.select_model_by_column(db, code__eq=code)
+
+    async def find_code_in_text(self, db: AsyncSession, text: str) -> Actcode | None:
+        """
+        从用户输入的文本中匹配已存在的激活码
+
+        用 SQL POSITION(code IN :text) 判断激活码是否包含在用户输入中
+
+        :param db: 数据库会话
+        :param text: 用户输入的原始文本
+        :return: 匹配到的激活码记录，未匹配返回 None
+        """
+        from sqlalchemy import func, literal
+
+        stmt = (
+            select(self.model)
+            .where(func.position(self.model.code.op('IN')(literal(text))) > 0)
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def bulk_create(self, db: AsyncSession, batch_id: int, codes: list[str]) -> None:
         """

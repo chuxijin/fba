@@ -17,7 +17,7 @@ class GkJingyan(Base, UserMixin):
 
     # 基础信息（必填字段）
     title: Mapped[str] = mapped_column(sa.String(256), comment='标题')
-    type: Mapped[str] = mapped_column(sa.String(50), index=True, comment='分类')
+    category_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='关联分类 ID')
     content: Mapped[str] = mapped_column(UniversalText, comment='内容')
 
     # 基础信息（可选字段）

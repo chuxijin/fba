@@ -203,6 +203,7 @@ class ResourceListItem(SchemaBase):
     local_file_path: Optional[str] = Field(None, description="本地文件路径")
     file_type: Optional[str] = Field(None, description="文件类型")
     pwd_id: Optional[str] = Field(None, description="密码ID")
+    hot: int = Field(0, description="热度值")
 
 
 class ResourceKnowledgeItem(SchemaBase):
@@ -328,4 +329,21 @@ class GetOverallStatisticsTrendParam(SchemaBase):
 class OverallStatisticsTrendResponse(SchemaBase):
     """整体统计趋势响应"""
     trend_data: List[OverallStatisticsTrendData] = Field([], description="趋势数据")
-    summary: dict = Field({}, description="汇总信息") 
+    summary: dict = Field({}, description="汇总信息")
+
+
+class GongkaoResourceResponse(SchemaBase):
+    """公考网站专用资源返回详情"""
+    
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: int = Field(..., description="主键ID")
+    title: Optional[str] = Field(None, description="标题")
+    url_type: DriveType = Field(..., description="链接类型")
+    url: str = Field(..., description="链接")
+    local_file_path: Optional[str] = Field(None, description="本地文件路径")
+    file_type: Optional[str] = Field(None, description="文件类型")
+    hot: int = Field(0, description="热度值")
+    category_id: int = Field(..., description="分类ID")
+    file_size: Optional[int] = Field(None, description="文件大小")
+    created_time: datetime = Field(..., description="创建时间") 

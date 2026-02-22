@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.coulddrive.crud.crud_resource import resource_dao, resource_view_history_dao
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
+from backend.app.admin.crud.crud_category import category_dao
 from backend.app.coulddrive.model.resource import Resource, ResourceViewHistory
 from backend.app.coulddrive.schema.resource import (
     CreateResourceParam,
@@ -101,6 +102,28 @@ class ResourceService:
         return resource
 
     @staticmethod
+    async def get_hot_list(
+        *,
+        db: AsyncSession,
+        category_id: int | None = None,
+        limit: int = 20
+    ) -> Sequence[ResourceListItem]:
+        """
+        获取热门资源列表
+
+        :param db: 数据库会话
+        :param category_id: 分类 ID
+        :param limit: 获取数量
+        :return:
+        """
+        category_ids = None
+        if category_id:
+            category_ids = await category_dao.get_all_children_ids(db, category_id)
+        
+        resources = await resource_dao.get_hot_list(db, category_ids, limit)
+        return [ResourceListItem.model_validate(r) for r in resources]
+
+    @staticmethod
     async def get_list(
         *,
         db: AsyncSession,
@@ -113,7 +136,12 @@ class ResourceService:
         :param params: 查询参数
         :return:
         """
-        stmt = await resource_dao.get_list(params)
+        # 如果提供了分类过滤，获取该分类下的所有子分类ID
+        category_ids = None
+        if params.category_id is not None:
+            category_ids = await category_dao.get_all_children_ids(db, params.category_id)
+        
+        stmt = await resource_dao.get_list(params, category_ids=category_ids)
         # 传入 ResourceListItem 类，让 paging_data 在序列化前转换 ORM 对象
         return await paging_data(db, stmt, schema_cls=ResourceListItem)
 
@@ -1086,12 +1114,18 @@ class ResourceService:
         :param category_id: 分类过滤
         :return: 搜索结果列表
         """
+        # 如果提供了分类过滤，获取该分类下的所有子分类ID
+        category_ids = None
+        if category_id is not None:
+            category_ids = await category_dao.get_all_children_ids(db, category_id)
+
         results = await resource_dao.vector_search(
             db,
             query_text,
             limit,
             similarity_threshold,
-            category_id=category_id
+            category_id=category_id,
+            category_ids=category_ids
         )
 
         # 根据 include_content 参数返回不同格式

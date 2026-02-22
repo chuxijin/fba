@@ -30,10 +30,9 @@
             v-for="tab in myTabs"
             :key="tab.id"
             class="tab-chip"
-            :class="{ 'tab-chip--fixed': tab.isFixed }"
           >
             <text class="tab-chip__name">{{ tab.name }}</text>
-            <view v-if="!tab.isFixed" class="tab-chip__remove" @tap="handleRemoveTab(tab.id)">
+            <view class="tab-chip__remove" @tap="handleRemoveTab(tab.id)">
               <text>×</text>
             </view>
           </view>
@@ -55,16 +54,6 @@
             <text class="category-name">{{ category.name }}</text>
 
             <view class="bank-list">
-              <!-- 添加整个分类 -->
-              <view
-                class="bank-item"
-                :class="{ 'bank-item--added': hasTab(category.id, null) }"
-                @tap="handleAddTab(category.id, category.name, null, null)"
-              >
-                <text class="bank-name">全部</text>
-                <text class="bank-status">{{ hasTab(category.id, null) ? '已添加' : '+' }}</text>
-              </view>
-
               <!-- 添加具体题库 -->
               <view
                 v-for="bank in category.banks"
@@ -114,11 +103,13 @@ const myTabs = computed(() => tabs.value)
  * 构建可添加的分类列表（带题库）
  */
 const availableCategories = computed(() => {
-  return props.categories.map(category => ({
-    id: category.id,
-    name: category.name,
-    banks: props.banks.filter(bank => bank.cat_id === category.id && !bank.parent_id)
-  }))
+  return props.categories
+    .map(category => ({
+      id: category.id,
+      name: category.name,
+      banks: props.banks.filter(bank => bank.cat_id === category.id && !bank.parent_id)
+    }))
+    .filter(category => category.banks.length > 0)
 })
 
 function handleClose() {
@@ -164,6 +155,14 @@ function handleAddTab(
  * 删除 Tab
  */
 function handleRemoveTab(tabId: string) {
+  if (tabs.value.length <= 1) {
+    uni.showToast({
+      title: '至少保留一个 Tab',
+      icon: 'none'
+    })
+    return
+  }
+
   const success = removeTab(tabId)
 
   if (success) {
@@ -281,18 +280,9 @@ function handleRemoveTab(tabId: string) {
   border: 2rpx solid var(--color-primary);
 }
 
-.tab-chip--fixed {
-  background: var(--color-bg-hover);
-  border-color: var(--color-border);
-}
-
 .tab-chip__name {
   font-size: 26rpx;
   color: var(--color-primary);
-}
-
-.tab-chip--fixed .tab-chip__name {
-  color: var(--color-text-secondary);
 }
 
 .tab-chip__remove {

@@ -37,8 +37,6 @@ export interface UserInfo {
   nickname: string
   /** 头像 */
   avatar?: string
-  /** 是否 VIP */
-  is_vip: boolean
 }
 
 /** 登录响应 */

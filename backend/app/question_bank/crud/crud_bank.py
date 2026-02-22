@@ -36,6 +36,7 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         self,
         db: AsyncSession,
         cat_id: int | None = None,
+        cat_ids: list[int] | None = None,
         status: int | None = None,
         scope: int | None = None,
         keyword: str | None = None,
@@ -46,15 +47,20 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         获取所有题库
 
         :param db: 数据库会话
-        :param cat_id: 分类 ID
+        :param cat_id: 分类 ID（精确匹配）
+        :param cat_ids: 分类 ID 列表（包含子分类，优先级高于 cat_id）
         :param status: 题库状态
         :param scope: 可见范围
         :param keyword: 关键字搜索
+        :param type: 类型
+        :param parent_id: 父级 ID
         :return:
         """
         filters = {}
 
-        if cat_id is not None:
+        if cat_ids is not None:
+            filters['cat_id__in'] = cat_ids
+        elif cat_id is not None:
             filters['cat_id'] = cat_id
         if status is not None:
             filters['status'] = status

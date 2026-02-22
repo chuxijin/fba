@@ -80,7 +80,6 @@
 import { ref, watch, computed } from 'vue'
 import { useUserStore } from '../../stores/user'
 import { API_BASE_URL } from '../../config/api'
-import { collectDeviceInfo } from '../../utils/device-helper'
 
 declare const uni: any
 
@@ -156,21 +155,12 @@ async function handleQuickLogin() {
   try {
     isLoading.value = true
 
-    // 收集设备信息
-    const deviceInfo = collectDeviceInfo()
-    console.log('[一键登录] 设备信息:', deviceInfo)
-
     // 使用默认信息登录（后端会自动生成默认昵称"微信用户"）
     const requestData = {
       code: props.code,
       platform: 'miniapp',
       nickname: '',  // 空字符串，后端使用默认值
       avatar: '',
-      // 设备信息
-      device_id: deviceInfo.device_id,
-      device_model: deviceInfo.device_model,
-      os_version: deviceInfo.os_version,
-      app_version: deviceInfo.app_version,
     }
 
     console.log('[一键登录] 发送数据:', requestData)

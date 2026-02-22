@@ -101,21 +101,39 @@ async def get_usage_list(
     return response_base.success(data=data)
 
 
-@router.post('/agiso/activate', summary='通过阿奇索订单号激活账户')
+@router.post('/agiso/activate', summary='通过订单号激活账户')
 async def activate_by_agiso_order(
-    order_no: Annotated[str, Form(description='订单号（即激活码）')],
+    order_input: Annotated[str, Form(description='包含订单号的文本，系统自动识别')],
     username: Annotated[str, Form(description='用户名')],
     password: Annotated[str, Form(description='密码')],
 ) -> ResponseModel:
     """
-    用户通过阿奇索订单号激活账户
+    用户通过订单号激活账户
 
-    无需登录，用户提交订单号、用户名、密码即可创建账户
+    无需登录，用户提交包含订单号的文本、用户名、密码即可创建账户
+    系统会自动从文本中识别订单号
 
-    :param order_no: 订单号
+    :param order_input: 包含订单号的文本
     :param username: 用户名
     :param password: 密码
     :return:
     """
-    result = await activate_service.activate_by_order(order_no, username, password)
+    result = await activate_service.activate_by_order(order_input, username, password)
     return response_base.success(data=result)
+
+
+@router.post('/agiso/verify', summary='验证订单号是否有效')
+async def verify_order_no(
+    order_input: Annotated[str, Form(description='包含订单号的文本，系统自动识别')],
+) -> ResponseModel:
+    """
+    验证用户输入中是否包含有效的订单号
+
+    无需登录，用于前端实时校验
+
+    :param order_input: 包含订单号的文本
+    :return:
+    """
+    result = await activate_service.verify_order(order_input)
+    return response_base.success(data=result)
+

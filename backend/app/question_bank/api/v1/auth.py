@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 from backend.app.question_bank.crud.crud_user import user_account_dao
 from backend.app.question_bank.schema.auth import (
@@ -20,16 +20,13 @@ router = APIRouter()
 
 @router.post('/wx-login', summary='微信登录', name='qbank_wx_login')
 async def wx_login(
-    request: Request, db: CurrentSessionTransaction, obj: WxLoginParam
+    db: CurrentSessionTransaction, obj: WxLoginParam
 ) -> ResponseSchemaModel[WxLoginResponse]:
     """
     微信登录
 
-    支持小程序和 H5 平台，支持手机号绑定和设备信息记录
+    支持小程序和 H5 平台，支持手机号绑定
     """
-    # 获取客户端 IP
-    client_ip = request.client.host if request.client else None
-
     access_token, user = await auth_service.wx_login(
         db=db,
         code=obj.code,
@@ -38,15 +35,17 @@ async def wx_login(
         avatar=obj.avatar,
         encrypted_data=obj.encrypted_data,
         iv=obj.iv,
-        device_id=obj.device_id,
-        device_model=obj.device_model,
-        os_version=obj.os_version,
-        app_version=obj.app_version,
-        push_token=obj.push_token,
-        client_ip=client_ip,
     )
 
-    user_info = GetUserAccountDetail.model_validate(user)
+    user_info = GetUserAccountDetail(
+        id=user.id,
+        username=user.user.username,
+        nickname=user.user.nickname or '微信用户',
+        avatar=user.user.avatar,
+        phone=user.user.phone,
+        open_id=user.open_id,
+        status=user.user.status,
+    )
 
     data = WxLoginResponse(access_token=access_token, user_info=user_info)
 
@@ -62,7 +61,15 @@ async def test_login(db: CurrentSessionTransaction, obj: TestLoginParam) -> Resp
     """
     access_token, user = await auth_service.test_login(db=db, username=obj.username, nickname=obj.nickname)
 
-    user_info = GetUserAccountDetail.model_validate(user)
+    user_info = GetUserAccountDetail(
+        id=user.id,
+        username=user.user.username,
+        nickname=user.user.nickname or '微信用户',
+        avatar=user.user.avatar,
+        phone=user.user.phone,
+        open_id=user.open_id,
+        status=user.user.status,
+    )
 
     data = WxLoginResponse(access_token=access_token, user_info=user_info)
 
@@ -85,5 +92,13 @@ async def get_current_user(
 
         raise errors.NotFoundError(msg='用户不存在')
 
-    user_info = GetUserAccountDetail.model_validate(user)
+    user_info = GetUserAccountDetail(
+        id=user.id,
+        username=user.user.username,
+        nickname=user.user.nickname or '微信用户',
+        avatar=user.user.avatar,
+        phone=user.user.phone,
+        open_id=user.open_id,
+        status=user.user.status,
+    )
     return response_base.success(data=user_info)

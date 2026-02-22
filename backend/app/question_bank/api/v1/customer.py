@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
-from backend.app.question_bank.crud.crud_membership import membership_dao
 from backend.app.question_bank.crud.crud_user import user_account_dao
 from backend.app.question_bank.schema.customer import GetCustomerInfo, UpdateProfileParam
 from backend.app.question_bank.security import DependsCustomerAuth
@@ -10,7 +9,6 @@ from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.auth_strategy import AuthUser
 from backend.database.db import CurrentSession, CurrentSessionTransaction
-from backend.utils.timezone import timezone
 
 router = APIRouter()
 
@@ -30,33 +28,12 @@ async def get_current_user_info(
         if not user:
             return response_base.fail(res=CustomResponse(code=404, msg='用户不存在'))
 
-        # 获取用户所有有效的会员权益
-        now = timezone.now()
-        memberships = await membership_dao.get_user_active_memberships(db=db, user_id=current_user.user_id)
-
-        # 组装返回数据
-        membership_list = []
-        for m in memberships:
-            try:
-                remaining_days = (m.end_time - now).days
-                membership_list.append({
-                    'category': m.category,
-                    'res_type': m.res_type,
-                    'res_id': m.res_id,
-                    'end_time': m.end_time.isoformat(),
-                    'remaining_days': max(0, remaining_days),
-                })
-            except Exception as e:
-                # 单个会员权益错误不影响整体
-                print(f'[Customer API] 处理会员权益失败: {e}')
-                continue
-
         data = GetCustomerInfo(
             id=user.id,
             username=user.user.username,
             nickname=user.user.nickname or '微信用户',
             avatar=user.user.avatar,
-            memberships=membership_list,
+            memberships=[],  # TODO: 会员权益后续补充
         )
 
         return response_base.success(data=data)
@@ -79,13 +56,11 @@ async def update_profile(
 
         # 更新昵称
         if obj.nickname is not None:
-            await user_account_dao.update_nickname(db, current_user.user_id, obj.nickname)
-            print(f'[Customer API] 用户 {current_user.user_id} 更新昵称: {obj.nickname}')
+            await user_account_dao.update_nickname(db, user.id, obj.nickname)
 
         # 更新头像
         if obj.avatar is not None:
-            await user_account_dao.update_avatar(db, current_user.user_id, obj.avatar)
-            print(f'[Customer API] 用户 {current_user.user_id} 更新头像: {obj.avatar}')
+            await user_account_dao.update_avatar(db, user.id, obj.avatar)
 
         return response_base.success(data={'msg': '资料更新成功'})
     except Exception as e:

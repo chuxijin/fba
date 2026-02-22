@@ -56,8 +56,8 @@
             <u-virtual-list
               v-else-if="getTabBanks(index).length > 5"
               :listData="getTabBanks(index)"
-              :itemHeight="224"
-              :gap="24"
+              :itemHeight="120"
+              :gap="16"
             >
               <template #default="{ item }">
                 <BankCard
@@ -85,7 +85,7 @@
     <TabManager
       :visible="showTabManager"
       :categories="flatCategories"
-      :banks="allBanks"
+      :banks="collectionBanks"
       @close="handleCloseTabManager"
       @change="handleTabListChange"
     />
@@ -152,7 +152,7 @@ const refreshing = ref(false)  // 下拉刷新状态
 const swiperHeight = ref('500px')
 
 // 使用自定义 Tab
-const { tabs: customTabs } = useCustomTabs()
+const { tabs: customTabs, updateTabName } = useCustomTabs()
 
 // 使用系统信息（统一管理）
 const { calculateSwiperHeight } = useSystemInfo()
@@ -169,16 +169,46 @@ const allBanks = ref<ProgressBank[]>([])
 const loadingCategories = ref(false)
 const loadingBanks = ref(false)
 
-// 扁平化的所有二级分类（用于构建可选项）
+// 递归扁平化所有子分类（用于构建可选项）
 const flatCategories = computed(() => {
   const result: CategoryDetail[] = []
+  function flatten(list: CategoryDetail[]) {
+    list.forEach(cat => {
+      result.push(cat)
+      if (cat.children && cat.children.length > 0) {
+        flatten(cat.children)
+      }
+    })
+  }
+  // 从顶级分类的子级开始（跳过顶级本身）
   categories.value.forEach(cat => {
     if (cat.children && cat.children.length > 0) {
-      result.push(...cat.children)
+      flatten(cat.children)
     }
   })
   return result
 })
+
+// 合集题库（type=20），用于 TabManager 让用户选择添加
+const collectionBanks = computed(() => {
+  return allBanks.value.filter(bank => bank.type === 20)
+})
+
+/**
+ * 解析 Tab 名称
+ *
+ * 遍历所有 tab，将 bankId 对应的题库名称填充到 tab.name
+ */
+function resolveTabNames() {
+  customTabs.value.forEach(tab => {
+    if (tab.bankId === null || tab.bankName) return
+
+    const bank = allBanks.value.find(b => b.id === tab.bankId)
+    if (bank) {
+      updateTabName(tab.id, bank.name)
+    }
+  })
+}
 
 /**
  * 加载分类数据
@@ -186,7 +216,7 @@ const flatCategories = computed(() => {
 async function loadCategories() {
   try {
     loadingCategories.value = true
-    const data = await categoryApi.getCategoryTree({ cat_type: 1, is_active: true })
+    const data = await categoryApi.getCategoryTree({ app_code: '考研', status: true })
     categories.value = data
     console.log('[练习页面] 分类数据加载成功:', data)
   } catch (error) {
@@ -222,7 +252,7 @@ async function loadUserStatistics(catId?: number, forceRefresh = false) {
 async function loadBanks() {
   try {
     loadingBanks.value = true
-    const data = await bankApi.getBankList({ status: 1 })
+    const data = await bankApi.getBankList({ cat_id: 20, status: 1 })
 
     // 获取当前分类的进度映射
     const currentCatId = getCurrentCategoryId()
@@ -338,19 +368,17 @@ function getTabBanks(tabIndex: number): ProgressBank[] {
   const tab = customTabs.value[tabIndex]
   if (!tab) return []
 
-  // 全部 Tab
-  if (tab.categoryId === 0 && tab.bankId === null) {
-    return allBanks.value.filter(bank => bank.parent_id !== null)
-  }
-
-  // 指定分类 + 指定题库
+  // 指定题库（合集）：显示其子题库
   if (tab.bankId !== null) {
     return allBanks.value.filter(bank => bank.parent_id === tab.bankId)
   }
 
-  // 指定分类 + 全部题库
-  const categoryBanks = allBanks.value.filter(bank => bank.cat_id === tab.categoryId)
-  return categoryBanks.filter(bank => bank.parent_id !== null)
+  // 指定分类：显示该分类下的子题库
+  if (tab.categoryId > 0) {
+    return allBanks.value.filter(bank => bank.cat_id === tab.categoryId && bank.parent_id !== null)
+  }
+
+  return allBanks.value.filter(bank => bank.parent_id !== null)
 }
 
 /**
@@ -601,6 +629,9 @@ onMounted(async () => {
   // ✅ 第三阶段：加载题库（依赖 bankProgressMap，需要在统计数据加载后）
   await loadBanks()
 
+  // ✅ 第四阶段：解析 Tab 名称（从已加载的题库数据中匹配）
+  resolveTabNames()
+
   console.log('[练习页面] 数据加载完成')
   console.log('- 分类数量:', categories.value.length)
   console.log('- Tab数量:', customTabs.value.length)
@@ -681,6 +712,9 @@ onShow(() => {
 /* ============ 学习进度列表 ============ */
 
 .progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
   padding: 32rpx;
   padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
 }

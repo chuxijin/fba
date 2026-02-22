@@ -8,3 +8,15 @@ database = ["mysql", "postgresql"]
 
 [app]
 router = ['v1']
+
+[settings]
+
+[[settings.AGISO_BATCH_RULES]]
+platform = "AldsXhs"
+keyword = "公考"
+batch_id = 5
+
+[[settings.AGISO_BATCH_RULES]]
+platform = "AldsXhs"
+keyword = "小程序"
+batch_id = 6

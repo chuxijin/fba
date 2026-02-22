@@ -1,0 +1,37 @@
+[plugin]
+summary = '多渠道通知服务'
+version = '1.0.0'
+description = '支持钉钉、邮件、Server酱、Telegram、企业微信等多渠道通知，按优先级自动降级'
+author = 'null'
+tags = ["notification"]
+database = ["mysql", "postgresql"]
+
+[app]
+router = ['v1']
+
+[settings]
+# 渠道优先级顺序（从高到低尝试，首个成功即停止）
+NOTIFY_CHANNEL_PRIORITY = ["serverchan", "smtp", "dingtalk", "telegram", "wecom"]
+NOTIFY_TIMEOUT = 10
+NOTIFY_MAX_TITLE_LENGTH = 128
+
+# 钉钉机器人
+NOTIFY_DINGTALK_ENABLED = false
+NOTIFY_DINGTALK_API_URL = "https://oapi.dingtalk.com/robot/send"
+
+# SMTP 邮件
+NOTIFY_SMTP_ENABLED = false
+NOTIFY_SMTP_HOST = "smtp.qq.com"
+NOTIFY_SMTP_PORT = 465
+NOTIFY_SMTP_SSL = true
+
+# Server 酱（使用 serverchan-sdk）
+NOTIFY_SERVERCHAN_ENABLED = true
+
+# Telegram Bot
+NOTIFY_TELEGRAM_ENABLED = false
+NOTIFY_TELEGRAM_API_URL = "https://api.telegram.org"
+
+# 企业微信机器人
+NOTIFY_WECOM_ENABLED = false
+NOTIFY_WECOM_API_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send"

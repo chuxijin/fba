@@ -17,16 +17,6 @@ export interface WxLoginParams {
   nickname?: string
   /** 头像（可选） */
   avatar?: string
-  /** 设备唯一标识 */
-  device_id?: string
-  /** 设备型号 */
-  device_model?: string
-  /** 操作系统版本 */
-  os_version?: string
-  /** App 版本 */
-  app_version?: string
-  /** 推送 Token */
-  push_token?: string
 }
 
 /** 测试登录参数 */
@@ -47,8 +37,6 @@ export interface UserInfo {
   nickname: string
   /** 头像 */
   avatar?: string
-  /** 是否 VIP */
-  is_vip: boolean
 }
 
 /** 登录响应 */

@@ -1,225 +1,212 @@
 <div align="center">
 
-<img alt="The logo includes the abstract combination of the three letters FBA, forming a lightning bolt that seems to spread out from the ground" width="320" src="https://wu-clan.github.io/picx-images-hosting/logo/fba.png">
+# 🎓 公考学习平台 · 后端服务
 
-# 🚀 FastAPI Best Architecture
+**基于 FastAPI Best Architecture 的公考备考一站式后端系统**
 
-**The Ultimate Enterprise-Grade Backend Architecture Solution**
-
-*Empowering developers with cutting-edge technology stack and best practices*
+*题库练习 · 经验分享 · 云盘资源 · 智能推送 · 激活码管理*
 
 English | [简体中文](./README.zh-CN.md)
 
-[![GitHub](https://img.shields.io/github/license/fastapi-practices/fastapi_best_architecture)](https://github.com/fastapi-practices/fastapi_best_architecture/blob/master/LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
-![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-%2300758f)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16.0%2B-%23336791)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-%23778877)
 [![Pydantic v2](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json)](https://pydantic.dev)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 ![Docker](https://img.shields.io/badge/Docker-%232496ED?logo=docker&logoColor=white)
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white)](https://discord.com/invite/yNN3wTbVAC)
-![Discord](https://img.shields.io/discord/1185035164577972344)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/fastapi-practices/fastapi_best_architecture)
+
+</div>
 
 ---
 
-## ✨ What Makes Us Special
+## 📋 Overview
 
-### 🏗️ **Pseudo 3-Tier Architecture**
+A comprehensive backend system for civil service exam preparation, built on top of FastAPI Best Architecture (FBA). It provides question bank management, cloud drive integration, activation code sales, push notification services, and more.
 
-| Layer | Java | FBA |
-|-------|------|-----|
-| 🎨 **Presentation** | Controller | API |
-| 📦 **Data Transfer** | DTO | Schema |
-| 💼 **Business Logic** | Service + Impl | Service |
-| 🗄️ **Data Access** | DAO / Mapper | CRUD |
-| 📊 **Model** | Model / Entity | Model |
+---
 
-### 🔌 **Dynamic Plugin System**
-- **ZIP Installation**: Drag & drop plugin packages
-- **Git Integration**: Install directly from repositories  
-- **Hot Reload**: Enable/disable plugins without restart
-- **Dependency Management**: Automatic requirement handling
+## 🧩 Module Architecture
 
-### ☁️ **Multi-Cloud Drive Management**
-Unified interface for managing multiple cloud storage providers:
+### 📱 Business Apps (`backend/app/`)
 
-- 🔵 **Baidu NetDisk** - Full feature support
-- 🟣 **Quark Drive** - Complete integration
-- 🟠 **Alist Drive** - Universal compatibility
-- 🔄 **Smart Sync** - Intelligent file synchronization
-- 📊 **Resource Management** - Batch operations & analytics
+| Module | Description |
+|--------|-------------|
+| `admin` | System admin: users, roles, departments, menus, RBAC |
+| `gongkao` | Civil exam content: questions, categories, expert tips |
+| `question_bank` | Question bank system: banks, questions, analysis, tags |
+| `actcode` | Activation code system: batch generation, redemption, user activation |
+| `coulddrive` | Multi-cloud drive management: Baidu, Quark, Alist |
+| `bili` | Bilibili content integration |
+| `jia` | Mobile push notification service (Firebase) |
+| `social` | Social features |
+| `job` | Job/career management |
+| `task` | Async task engine (Celery) |
+| `mcp` | MCP protocol support |
 
-### 🔐 **Enterprise Authorization System**
-- **Device Binding**: Hardware-based authorization
-- **Package Management**: Flexible pricing & discounts
-- **Redemption Codes**: Bulk generation & management
-- **Order Processing**: Complete e-commerce workflow
+### 🔌 Plugins (`backend/plugin/`)
 
-### ⚡ **High-Performance Task Engine**
-- **Celery Integration**: Distributed task processing
-- **Smart Scheduling**: Cron-based automation
-- **Real-time Monitoring**: Task status & analytics
-- **Failure Recovery**: Automatic retry mechanisms
+| Plugin | Description |
+|--------|-------------|
+| `agiso` | Agiso e-commerce: payment & delivery webhooks, order-based activation |
+| `baidupan` | Baidu NetDisk OAuth integration |
+| `oauth2` | Third-party login (GitHub, Google, LinuxDo) |
+| `ai` | AI capabilities (embeddings, vector search) |
+| `code_generator` | Automated CRUD code generation |
+| `webhook` | Generic webhook handling |
+| `visit_stats` | Visit statistics & analytics |
+| `notice` | System notification management |
+| `email` | Email service |
+| `dict` | Data dictionary management |
+| `config` | Dynamic system configuration |
+| `links` | Link management |
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Python 3.10+
-- MySQL 8.0+ / PostgreSQL 16.0+
+- PostgreSQL 16.0+
 - Redis 6.0+
 
-### Installation
+### Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/fastapi-practices/fastapi_best_architecture.git
-cd fastapi_best_architecture
+# Clone repository
+git clone <your-repo-url>
+cd fba
 
-# Setup environment
-cp .env.example .env
-# Edit .env with your configuration
+# Create virtual environment
+python -m venv .venv
+.venv/Scripts/activate  # Windows
+# source .venv/bin/activate  # Linux/macOS
 
 # Install dependencies
 pip install -r requirements.txt
 
+# Configure environment
+cp backend/.env.example backend/.env
+# Edit backend/.env with your database, Redis, and API credentials
+
 # Initialize database
+cd backend
 alembic upgrade head
 
 # Start the server
 python cli.py run
 ```
 
-### 🐳 Docker Deployment
+### 🐳 Docker
 
 ```bash
-# Quick start with docker-compose
 docker-compose up -d
 ```
 
 ---
 
-## 🌟 Core Features
+## 🔑 Key Features
 
-### 🎯 **Developer Experience**
-- **Type Safety**: Full Pydantic v2 integration
-- **Auto Documentation**: Interactive Swagger/ReDoc
-- **Code Generation**: Automated CRUD operations
-- **Hot Reload**: Lightning-fast development
+### 🎯 Question Bank System
+- Multiple question banks with independent question pools
+- Question types: single choice, multiple choice, true/false, short answer
+- Rich analysis with multiple answer versions
+- Category tree structure, tag system
+- WeChat Mini Program login & API support
 
-### 🔒 **Security First**
-- **JWT Authentication**: Stateless & scalable
-- **RBAC Authorization**: Role-based access control
-- **Data Encryption**: Multi-layer protection
-- **CORS Management**: Cross-origin security
+### 💳 Agiso E-Commerce Integration
+- **Payment Push** (`aopic=2097152`): Log buyer payment notifications
+- **Delivery Push** (`aopic=2048`): Auto-create activation codes from order numbers
+- **Deduplication**: Same order + push type = exactly one record
+- **User Activation**: `POST /api/v1/actcode/agiso/activate` — order number as activation code, auto-create user with designated role & department
 
-### 📈 **Performance Optimized**
-- **Async/Await**: Non-blocking I/O operations
-- **Connection Pooling**: Database optimization
-- **Redis Caching**: Lightning-fast responses
-- **Load Balancing**: Horizontal scalability
+### 🎫 Activation Code System
+- Batch generation with configurable code format
+- Multiple redemption modes (single/multi-use)
+- Usage tracking & audit trail
+- Order-based activation (Agiso integration)
 
-### 🛠️ **DevOps Ready**
-- **Docker Support**: Containerized deployment
-- **Health Checks**: System monitoring
-- **Logging**: Structured & searchable
-- **Metrics**: Performance analytics
+### ☁️ Cloud Drive Management
+- Unified API for Baidu NetDisk, Quark Drive, Alist
+- File listing, upload, download, batch operations
+- Resource synchronization
+
+### 🔐 Security
+- JWT authentication (stateless, scalable)
+- RBAC authorization with data scope control
+- Password security (bcrypt, expiry, history check)
+- Account locking on failed attempts
+
+### 📊 System Management
+- User, role, department, menu CRUD
+- Operation logging
+- Server & Redis monitoring
+- Celery task management
 
 ---
 
 ## 📁 Project Structure
 
 ```
-fastapi_best_architecture/
-├── 🏠 backend/                 # Core backend application
-│   ├── 📱 app/                 # Application modules
-│   │   ├── 👥 admin/           # Admin management
-│   │   ├── ☁️ coulddrive/      # Cloud drive integration
-│   │   └── ⚡ task/            # Task management
-│   ├── 🔌 plugin/              # Plugin ecosystem
-│   ├── 🛠️ common/              # Shared utilities
-│   ├── ⚙️ core/                # Core configurations
-│   └── 🗃️ database/            # Database connections
-├── 🎨 frontend/                # Modern web interface
-└── 🚀 deploy/                  # Deployment configurations
+fba/
+├── backend/
+│   ├── app/                    # Business modules
+│   │   ├── admin/              # System admin (user/role/dept/menu)
+│   │   ├── gongkao/            # Civil exam content
+│   │   ├── question_bank/      # Question bank system
+│   │   ├── actcode/            # Activation code management
+│   │   ├── coulddrive/         # Cloud drive integration
+│   │   ├── bili/               # Bilibili integration
+│   │   ├── jia/                # Firebase push notifications
+│   │   ├── social/             # Social features
+│   │   ├── job/                # Job management
+│   │   ├── task/               # Celery async tasks
+│   │   └── mcp/                # MCP protocol
+│   ├── plugin/                 # Plugin ecosystem
+│   │   ├── agiso/              # Agiso payment & delivery
+│   │   ├── baidupan/           # Baidu NetDisk OAuth
+│   │   ├── oauth2/             # Third-party auth
+│   │   ├── ai/                 # AI capabilities
+│   │   └── ...                 # More plugins
+│   ├── common/                 # Shared utilities & base classes
+│   ├── core/                   # Configuration & path management
+│   ├── database/               # Database connection & session
+│   ├── middleware/              # JWT, CORS, logging middleware
+│   └── utils/                  # Utility functions
+└── deploy/                     # Deployment configs
 ```
 
 ---
 
-## 🔧 Advanced Configuration
+## ⚙️ Environment Variables
 
-### Plugin Development
-```python
-# plugin.toml
-[plugin]
-summary = "My Awesome Plugin"
-version = "1.0.0"
-description = "Description of what this plugin does"
-author = "Your Name"
+Key `.env` configurations:
 
-[app]
-extend = "admin"  # Extend existing app
+```env
+# Database
+DATABASE_TYPE=postgresql
+DATABASE_HOST=your_host
+DATABASE_PORT=5432
+DATABASE_USER=your_user
+DATABASE_PASSWORD=your_password
 
-[api.my_feature]
-prefix = "/my-feature"
-tags = "My Feature API"
-```
+# Redis
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=your_password
 
-### Cloud Drive Integration
-```python
-from backend.app.coulddrive.service.yp_service import BaseDrive
+# JWT Token
+TOKEN_SECRET_KEY=your_secret_key
 
-# Initialize drive manager
-drive = BaseDrive()
+# Agiso
+AGISO_APP_SECRET=your_agiso_app_secret
 
-# List files from Baidu NetDisk
-files = await drive.get_disk_list(
-    x_token="your_token",
-    params=ListFilesParam(
-        drive_type="BaiduDrive",
-        file_path="/",
-        recursive=True
-    )
-)
+# WeChat Mini Program
+WX_MINIAPP_APPID=your_appid
+WX_MINIAPP_SECRET=your_secret
 ```
 
 ---
 
-## 🤝 Contributing
+## 📄 License
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Development Setup
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
-pytest
-
-# Format code
-ruff format .
-
-# Type checking
-mypy .
-```
-
----
-
-## 📚 Documentation
-
-For comprehensive documentation, visit our [Official Docs](https://fastapi-practices.github.io/fastapi_best_architecture_docs/)
-
-### Quick Links
-- 🚀 [Getting Started](https://fastapi-practices.github.io/fastapi_best_architecture_docs/getting-started/)
-- 🔌 [Plugin Development](https://fastapi-practices.github.io/fastapi_best_architecture_docs/plugins/)
-- ☁️ [Cloud Integration](https://fastapi-practices.github.io/fastapi_best_architecture_docs/cloud-drives/)
-- 🔐 [Authentication](https://fastapi-practices.github.io/fastapi_best_architecture_docs/auth/)
-
----
-
-## 🏆 Contributors
+This project is based on [FastAPI Best Architecture](https://github.com/fastapi-practices/fastapi_best_architecture) and licensed under the [MIT License](LICENSE).

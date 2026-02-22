@@ -21,7 +21,6 @@ export interface UserInfo {
   username: string
   nickname: string
   avatar?: string
-  is_vip: boolean
   memberships: UserMembership[]
 }
 

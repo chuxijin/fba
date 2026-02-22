@@ -11,7 +11,7 @@ class JingyanSchemaBase(SchemaBase):
     """经验基础"""
 
     title: str = Field(description='标题')
-    type: str = Field(description='分类')
+    category_id: int = Field(description='分类 ID')
     content: str = Field(description='内容')
     author: str | None = Field(None, description='作者')
     tags: str | None = Field(None, description='标签（逗号分隔）')
@@ -23,7 +23,7 @@ class JingyanParam(SchemaBase):
     """经验查询参数"""
 
     title: str | None = Field(None, description='标题')
-    type: str | None = Field(None, description='分类')
+    category_id: int | None = Field(None, description='分类 ID')
     author: str | None = Field(None, description='作者')
     tags: str | None = Field(None, description='标签')
     daily_date: date | None = Field(None, description='发布日期')
@@ -37,7 +37,7 @@ class UpdateJingyanParam(SchemaBase):
     """更新经验参数"""
 
     title: str | None = Field(None, description='标题')
-    type: str | None = Field(None, description='分类')
+    category_id: int | None = Field(None, description='分类 ID')
     content: str | None = Field(None, description='内容')
     author: str | None = Field(None, description='作者')
     tags: str | None = Field(None, description='标签（逗号分隔）')

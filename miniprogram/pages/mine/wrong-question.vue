@@ -295,8 +295,7 @@ onMounted(async () => {
 async function loadCategories() {
   try {
     const result = await categoryApi.getCategoryTree({
-      cat_type: 1, // 题库分类
-      is_active: true
+      status: true
     })
     categories.value = result
     console.log('[我的错题] 加载分类成功，共', categories.value.length, '个')

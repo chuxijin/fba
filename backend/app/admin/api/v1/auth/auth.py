@@ -29,7 +29,7 @@ async def login_swagger(
     '/login',
     summary='用户登录',
     description='json 格式登录, 仅支持在第三方api工具调试, 例如: postman',
-    dependencies=[Depends(RateLimiter(Rate(5, Duration.MINUTE)))],
+    dependencies=[Depends(RateLimiter(Rate(10, Duration.MINUTE)))],
 )
 async def login(
     db: CurrentSessionTransaction,

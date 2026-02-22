@@ -3,8 +3,6 @@
 // import { autoLoginConfig } from '@/config/dev'
 import { useUserStore } from '@/stores/user'
 import { useSystemInfo } from '@/composables/useSystemInfo'
-import { collectDeviceInfo } from '@/utils/device-helper'
-import deviceApi from '@/api/system/device'
 
 const THEME_STORAGE_KEY = 'app-theme'
 const DEFAULT_THEME = 'light'
@@ -42,9 +40,6 @@ export default {
 			userStore.fetchUserInfo().catch(err => {
 				console.error('[App] 加载用户信息失败:', err)
 			})
-
-			// ✅ 更新设备信息
-			this.updateDeviceStatus()
 		}
 
 		console.log('=== 应用启动完成 ===')
@@ -63,9 +58,6 @@ export default {
 			// ✅ App 从后台恢复时，刷新用户信息
 			const userStore = useUserStore()
 			userStore.fetchUserInfo()
-
-			// ✅ 更新设备信息（在线状态、最后登录时间等）
-			this.updateDeviceStatus()
 		}
 	},
 	onHide() {
@@ -76,20 +68,6 @@ export default {
 			uni.setStorageSync(THEME_STORAGE_KEY, theme)
 			if (typeof document !== 'undefined' && document.body) {
 				document.body.setAttribute('data-theme', theme)
-			}
-		},
-		async updateDeviceStatus() {
-			try {
-				const deviceInfo = collectDeviceInfo()
-				await deviceApi.updateDeviceInfo({
-					device_id: deviceInfo.device_id,
-					device_model: deviceInfo.device_model,
-					os_version: deviceInfo.os_version,
-					app_version: deviceInfo.app_version,
-				})
-				console.log('[App] 设备信息已更新')
-			} catch (error) {
-				console.error('[App] 更新设备信息失败:', error)
 			}
 		}
 	}

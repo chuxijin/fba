@@ -44,7 +44,7 @@ class JingyanService:
         """
         jingyan_select = await jingyan_dao.get_select(
             title=params.title,
-            type=params.type,
+            category_id=params.category_id,
             author=params.author,
             tags=params.tags,
             daily_date=params.daily_date,

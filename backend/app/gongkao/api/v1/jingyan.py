@@ -40,14 +40,14 @@ async def get_jingyan(
 async def get_jingyan_list(
     db: CurrentSession,
     title: Annotated[str | None, Query(description='标题')] = None,
-    type: Annotated[str | None, Query(description='分类')] = None,
+    category_id: Annotated[int | None, Query(description='分类 ID')] = None,
     author: Annotated[str | None, Query(description='作者')] = None,
     tags: Annotated[str | None, Query(description='标签')] = None,
 ) -> ResponseSchemaModel[PageData[GetJingyanDetail]]:
     """获取经验列表（分页）"""
     params = JingyanParam(
         title=title,
-        type=type,
+        category_id=category_id,
         author=author,
         tags=tags,
     )

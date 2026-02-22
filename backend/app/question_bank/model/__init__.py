@@ -16,16 +16,7 @@ from .question import (
     UserNoteVote,
 )
 from .statistics import UserCheckIn, UserDailyRank
-from .user import (
-    SpreadRelation,
-    UserAccount,
-    UserBlacklist,
-    UserCommission,
-    UserContactAddress,
-    UserDevice,
-    UserGrowthPoints,
-    UserMembership,
-)
+from .user import UserAccount
 
 __all__ = [
     'QuestionBank',
@@ -40,13 +31,6 @@ __all__ = [
     'PracticeRecord',
     'WrongQuestionBook',
     'UserAccount',
-    'UserContactAddress',
-    'UserMembership',
-    'UserDevice',
-    'UserGrowthPoints',
-    'SpreadRelation',
-    'UserCommission',
-    'UserBlacklist',
     'UserCheckIn',
     'UserDailyRank',
     'Banner',

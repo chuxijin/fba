@@ -14,11 +14,6 @@ class WxLoginParam(SchemaBase):
     avatar: str | None = Field(None, description='头像')
     encrypted_data: str | None = Field(None, description='加密的手机号数据')
     iv: str | None = Field(None, description='初始向量')
-    device_id: str | None = Field(None, description='设备唯一标识')
-    device_model: str | None = Field(None, description='设备型号')
-    os_version: str | None = Field(None, description='操作系统版本')
-    app_version: str | None = Field(None, description='App 版本')
-    push_token: str | None = Field(None, description='推送 Token')
 
 
 class GetUserAccountDetail(SchemaBase):

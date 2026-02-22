@@ -34,8 +34,8 @@ from backend.database.db import async_db_session
 
 # ==================== 配置 ====================
 API_BASE_URL = 'https://api.5202030.xyz/v1'
-API_KEY = 'sk-dJcY4QQgw0qPeu5_FrBwljmTFBewAze6PT5JycmF7uMp-WDgtfMtfgck31I'
-MODEL = 'gpt-5.1'
+API_KEY = 'sk-iNO8DjjOf9o7x6k_OPh0VQn9V1e9XjNb7A1V8alyHsq1C9hK4JCtFCVQUpA'
+MODEL = 'gpt-4o'
 BATCH_SIZE = 10
 REQUEST_TIMEOUT = 60.0
 
@@ -140,9 +140,15 @@ async def call_ai(client: httpx.AsyncClient, word: str, existing_data: dict) -> 
 
     except httpx.HTTPStatusError as e:
         print(f'❌ API 错误: {e.response.status_code}')
+        print(f'   响应内容: {e.response.text}')  # 增加这一行打印详细错误信息
         return None
     except json.JSONDecodeError as e:
         print(f'❌ JSON 解析失败: {e}')
+        # print(f'   原始内容: {data}') # 如果需要调试可以打开
+        try:
+            print(f'   响应文本: {response.text[:200]}...') # 打印前200个字符看看是啥
+        except:
+            pass
         return None
     except Exception as e:
         print(f'❌ 错误: {e}')
@@ -307,6 +313,10 @@ async def main(start_id: int = 1):
                     else:
                         error_count += 1
                         print('❌')
+                    
+                    # 速率限制：50 RPM 意味着每次请求间隔至少 1.2s
+                    # 这里设置为 1.5s 以确保安全
+                    await asyncio.sleep(1.5)
 
                 # 批次间隔
                 print(f'  📈 进度: 成功 {success_count}, 失败 {error_count}')

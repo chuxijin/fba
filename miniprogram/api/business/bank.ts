@@ -40,6 +40,8 @@ export interface BankDetail {
   cover_url: string | null
   /** 难度字典 ID */
   diff_id: number | null
+  /** 类型: 10=题库(含题目), 20=合集(含子题库) */
+  type: number
   /** 父级题库 ID */
   parent_id: number | null
   /** 题库状态 */

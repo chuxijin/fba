@@ -26,6 +26,18 @@ class CRUDUserAccount(CRUDPlus[UserAccount]):
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_sys_user_id(self, db: AsyncSession, sys_user_id: int) -> UserAccount | None:
+        """
+        通过 sys_user.id 获取用户详情
+
+        :param db: 数据库会话
+        :param sys_user_id: 系统用户 ID（sys_user.id）
+        :return:
+        """
+        stmt = select(UserAccount).where(UserAccount.user_id == sys_user_id).options(selectinload(UserAccount.user))
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_by_openid(self, db: AsyncSession, openid: str) -> UserAccount | None:
         """
         通过 OpenID 获取用户

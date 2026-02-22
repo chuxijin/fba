@@ -22,7 +22,7 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/tree', summary='获取分类树', dependencies=[DependsJwtAuth])
+@router.get('/tree', summary='获取分类树')
 async def get_sys_category_tree(
     db: CurrentSession,
     app_code: Annotated[str | None, Query(description='应用标识')] = None,

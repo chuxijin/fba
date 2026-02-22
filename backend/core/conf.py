@@ -107,6 +107,8 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/qbank/auth/test-login',  # 题库测试登录
         f'{FASTAPI_API_V1_PATH}/qbank/banks',  # 题库列表（公开接口）
         f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',  # 百度网盘 OAuth 回调
+        f'{FASTAPI_API_V1_PATH}/actcode/agiso/activate',  # 订单号激活账户
+        f'{FASTAPI_API_V1_PATH}/actcode/agiso/verify',  # 验证订单号
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$',
@@ -165,6 +167,7 @@ class Settings(BaseSettings):
         'http://localhost:5174',
         'http://localhost:5175',
         'http://127.0.0.1:5500',
+        'https://zyas.top',
         'https://admin.yzxj.vip',
         'https://blog.yzxj.vip',
         'https://static.yzxj.vip',
@@ -363,6 +366,39 @@ class Settings(BaseSettings):
     ##################################################
     # .env 阿奇索配置
     AGISO_APP_SECRET: str = ''
+    AGISO_BATCH_RULES: list[dict[str, Any]]  # 批次匹配规则 [{platform, keyword, batch_id}]
+
+    ##################################################
+    # [ Plugin ] notify 多渠道通知
+    ##################################################
+    NOTIFY_CHANNEL_PRIORITY: list[str]
+    NOTIFY_TIMEOUT: int
+    NOTIFY_MAX_TITLE_LENGTH: int
+    # 钉钉机器人
+    NOTIFY_DINGTALK_ENABLED: bool
+    NOTIFY_DINGTALK_API_URL: str
+    NOTIFY_DINGTALK_ACCESS_TOKEN: str = ''  # .env
+    NOTIFY_DINGTALK_SECRET: str = ''  # .env
+    # SMTP 邮件
+    NOTIFY_SMTP_ENABLED: bool
+    NOTIFY_SMTP_HOST: str
+    NOTIFY_SMTP_PORT: int
+    NOTIFY_SMTP_SSL: bool
+    NOTIFY_SMTP_USERNAME: str = ''  # .env
+    NOTIFY_SMTP_PASSWORD: str = ''  # .env
+    NOTIFY_SMTP_RECIPIENTS: list[str] = []  # .env
+    # Server 酱（使用 serverchan-sdk）
+    NOTIFY_SERVERCHAN_ENABLED: bool
+    NOTIFY_SERVERCHAN_SEND_KEY: str = ''  # .env
+    # Telegram Bot
+    NOTIFY_TELEGRAM_ENABLED: bool
+    NOTIFY_TELEGRAM_API_URL: str
+    NOTIFY_TELEGRAM_BOT_TOKEN: str = ''  # .env
+    NOTIFY_TELEGRAM_CHAT_ID: str = ''  # .env
+    # 企业微信机器人
+    NOTIFY_WECOM_ENABLED: bool
+    NOTIFY_WECOM_API_URL: str
+    NOTIFY_WECOM_WEBHOOK_KEY: str = ''  # .env
 
     ##################################################
     # [ Plugin ] baidupan 百度网盘开放平台
@@ -378,6 +414,11 @@ class Settings(BaseSettings):
     ##################################################
     # Firebase 服务账号凭证 JSON 文件路径
     FIREBASE_CREDENTIALS_PATH: str = ''
+
+    ##################################################
+    # [ App ] Jia 文档加密
+    ##################################################
+    DOC_ENCRYPT_SECRET_KEY: str = ''
 
     @model_validator(mode='before')
     @classmethod

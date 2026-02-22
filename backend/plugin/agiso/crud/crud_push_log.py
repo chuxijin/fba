@@ -26,7 +26,7 @@ class CRUDPushLog(CRUDPlus[AgisoPushLog]):
             stmt = stmt.where(self.model.push_type == push_type)
         stmt = stmt.order_by(self.model.created_time.desc())
         result = await db.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     def get_select(
         self,

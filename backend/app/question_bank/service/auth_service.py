@@ -3,7 +3,6 @@
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.crud.crud_device import user_device_dao
 from backend.app.question_bank.crud.crud_user import user_account_dao
 from backend.app.question_bank.model import UserAccount
 from backend.app.question_bank.utils.wx_decrypt import WXBizDataCrypt
@@ -80,12 +79,6 @@ class AuthService:
         avatar: str | None = None,
         encrypted_data: str | None = None,
         iv: str | None = None,
-        device_id: str | None = None,
-        device_model: str | None = None,
-        os_version: str | None = None,
-        app_version: str | None = None,
-        push_token: str | None = None,
-        client_ip: str | None = None,
     ) -> tuple[str, UserAccount]:
         """
         微信登录
@@ -97,12 +90,6 @@ class AuthService:
         :param avatar: 头像
         :param encrypted_data: 加密的手机号数据
         :param iv: 初始向量
-        :param device_id: 设备唯一标识
-        :param device_model: 设备型号
-        :param os_version: 操作系统版本
-        :param app_version: App 版本
-        :param push_token: 推送 Token
-        :param client_ip: 客户端 IP
         :return:
         """
         wx_data = await AuthService.get_wx_openid(code, platform)
@@ -150,19 +137,8 @@ class AuthService:
             )
             await user_account_dao.update_phone(db, user.id, phone_number)
 
-        # 写入设备信息（如果提供了 device_id）
-        if device_id:
-            await user_device_dao.create_or_update_device(
-                db=db,
-                user_id=user.id,
-                device_id=device_id,
-                platform=platform,
-                device_model=device_model,
-                os_version=os_version,
-                app_version=app_version,
-                push_token=push_token,
-                last_ip=client_ip,
-            )
+        # 重新加载用户（确保关联关系可用）
+        user = await user_account_dao.get(db, user.id)
 
         # 使用统一 token 创建
         token_result = await create_unified_token(
