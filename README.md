@@ -69,17 +69,7 @@ A comprehensive backend system for civil service exam preparation, built on top 
 - PostgreSQL 16.0+
 - Redis 6.0+
 
-### Setup
-
-```bash
-# Clone repository
-git clone <your-repo-url>
-cd fba
-
-# Create virtual environment
-python -m venv .venv
-.venv/Scripts/activate  # Windows
-# source .venv/bin/activate  # Linux/macOS
+## License
 
 # Install dependencies
 pip install -r requirements.txt

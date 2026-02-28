@@ -69,17 +69,7 @@
 - PostgreSQL 16.0+
 - Redis 6.0+
 
-### 安装部署
-
-```bash
-# 克隆仓库
-git clone <your-repo-url>
-cd fba
-
-# 创建虚拟环境
-python -m venv .venv
-.venv/Scripts/activate  # Windows
-# source .venv/bin/activate  # Linux/macOS
+## 许可证
 
 # 安装依赖
 pip install -r requirements.txt
