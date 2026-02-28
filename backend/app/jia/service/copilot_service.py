@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.jia.crud.crud_copilot import copilot_session_dao, copilot_message_dao
 from backend.app.jia.model.copilot import JiaCopilotMessage
-from backend.app.jia.schema.copilot import CreateSessionParam, ChatRequest, ChatResponse, AnalyzeItemRequest, AnalyzeItemResponse
+from backend.app.jia.schema.copilot import CreateSessionParam, ChatRequest, ChatResponse, AnalyzeItemRequest, AnalyzeItemResponse, RecognizeFormulaRequest, RecognizeFormulaResponse
 from backend.app.jia.service.exercise_service import exercise_service
 from backend.app.jia.service.food_service import food_service
 from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
@@ -564,6 +564,62 @@ class CopilotService:
             import traceback
             traceback.print_exc()
             return AnalyzeItemResponse(name="识别失败", notes=str(e))
+
+    async def recognize_formula(self, db: AsyncSession, user_id: int, req: RecognizeFormulaRequest) -> RecognizeFormulaResponse:
+        """
+        通过图片识别数学公式，返回 LaTeX
+        """
+        from backend.app.jia.service.user_setting_service import user_setting_service
+        user_settings = await user_setting_service.get_my_settings(db=db, user_id=user_id)
+        current_provider_id = user_settings.copilot_provider or 4
+
+        system_prompt = """你是一个专业的数学公式识别助手。请根据用户提供的图片，识别其中的数学公式并转换为 LaTeX 格式。
+
+**要求**：
+1. 只返回 LaTeX 公式本身，不要包含 $$ 或 $ 符号
+2. 如果图片中有多个公式，用换行分隔
+3. 确保 LaTeX 语法正确，可以被标准 LaTeX 渲染引擎解析
+4. 如果无法识别，返回空字符串
+
+请严格按以下 JSON 格式返回（不要返回其他内容）：
+{"formula": "LaTeX公式", "confidence": "high/medium/low"}"""
+
+        messages = [
+            AIChatMessage(role="system", content=system_prompt),
+            AIChatMessage(role="user", content=[
+                {"type": "text", "text": "请识别这张图片中的数学公式，转换为 LaTeX 格式"},
+                {"type": "image_url", "image_url": {"url": req.image_url}}
+            ])
+        ]
+
+        chat_param = AIChat(
+            provider_id=current_provider_id,
+            model_id="gpt-4o-2024-11-20",
+            messages=messages,
+            temperature=0.1,
+        )
+
+        try:
+            ai_resp = await ai_chat_service.raw_chat(db=db, chat=chat_param)
+            resp_content = ai_resp.get('content', '')
+
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', resp_content)
+            if json_match:
+                result = json.loads(json_match.group())
+                return RecognizeFormulaResponse(
+                    formula=result.get('formula', ''),
+                    confidence=result.get('confidence'),
+                )
+            else:
+                # 如果没有 JSON，尝试直接当作 LaTeX
+                cleaned = resp_content.strip().strip('$').strip()
+                return RecognizeFormulaResponse(formula=cleaned)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return RecognizeFormulaResponse(formula='', confidence=f'识别失败: {str(e)}')
 
     async def _transcribe_audio(self, db: AsyncSession, provider_id: int, audio_path: str) -> str:
         """

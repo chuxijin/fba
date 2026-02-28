@@ -44,3 +44,25 @@ class TaskBase(Task):
         :return:
         """
         asyncio.create_task(task_notification(msg=f'任务 {task_id} 执行失败'))
+
+        # 发送外部通知（微信/Server酱等）
+        asyncio.create_task(self._send_failure_notify(self.name, task_id, exc))
+
+    @staticmethod
+    async def _send_failure_notify(task_name: str, task_id: str, exc: Exception) -> None:
+        """发送任务失败的外部通知"""
+        try:
+            from backend.plugin.notify.service.notify_service import notify_service
+
+            await notify_service.send(
+                title=f'定时任务执行失败: {task_name}',
+                content=(
+                    f'任务ID: {task_id}\n'
+                    f'异常: {str(exc)[:500]}'
+                ),
+                options={'tags': '定时任务|执行失败'},
+                source='celery_task',
+            )
+        except Exception:
+            pass
+

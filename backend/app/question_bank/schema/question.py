@@ -36,6 +36,7 @@ class QuestionSchemaBase(SchemaBase):
     source: str | None = Field(None, description='来源')
     year: int | None = Field(None, description='年份')
     usage: str = Field(default='all', description='用途: all/exam/practice')
+    sort_order: int = Field(default=0, description='题目序号（在题库/章节内的排序）')
     is_active: bool = Field(default=True, description='是否启用')
 
 
@@ -54,6 +55,7 @@ class GetQuestionListItem(SchemaBase):
     score: Decimal = Field(description='分值')
     knowledge_point: str | None = Field(None, description='考点')
     is_active: bool = Field(description='是否启用')
+    sort_order: int = Field(default=0, description='题目序号')
     review_status: int = Field(description='审核状态')
     created_time: datetime = Field(description='创建时间')
     # 扁平化字段，方便前端直接显示
@@ -113,6 +115,7 @@ class CreateQuestionParam(SchemaBase):
     source: str | None = Field(None, description='来源')
     year: int | None = Field(None, description='年份')
     usage: str = Field(default='all', description='用途: all/exam/practice')
+    sort_order: int = Field(default=0, description='题目序号（在题库/章节内的排序）')
     analysis: dict | None = Field(None, description='题目解析数据（单条，包含 answer_data 和 content，向下兼容）')
     analyses: list[dict] | None = Field(None, description='多版本解析列表（每个元素包含 type, answer_data, content, is_default）')
     material_ids: list[int] | None = Field(None, description='关联材料 ID 列表')
@@ -133,6 +136,7 @@ class UpdateQuestionParam(SchemaBase):
     year: int | None = Field(None, description='年份')
     usage: str = Field(description='用途')
     is_active: bool = Field(description='是否启用')
+    sort_order: int = Field(default=0, description='题目序号')
     analysis: dict | None = Field(None, description='题目解析数据（单条，向下兼容）')
     analyses: list[dict] | None = Field(None, description='多版本解析列表')
     material_ids: list[int] | None = Field(None, description='关联材料 ID 列表')

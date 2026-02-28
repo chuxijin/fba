@@ -42,6 +42,7 @@ from backend.common.log import log
 from backend.common.db_lock import DatabaseMutex
 from backend.database.db import async_db_session
 from backend.app.coulddrive.service.rule_template_service import MatchTarget, RenameRule
+from backend.plugin.notify.service.notify_service import notify_service
 from backend.app.coulddrive.service.utils_service import (
     join_path,
     ensure_dir_path,
@@ -142,16 +143,45 @@ class FileSyncService:
                 )
 
                 # 处理成功结果
-                return await self._handle_sync_success(
+                result = await self._handle_sync_success(
                     db, sync_task, stats_from_sync, pending_task_items,
                     elapsed_time, task_id, config_id
                 )
+
+                # 有失败项时发送警告通知
+                error_count = len(stats_from_sync.get('errors', []))
+                if error_count > 0:
+                    await self._notify(
+                        title=f'文件同步部分失败',
+                        config=config,
+                        extra=(
+                            f'任务ID: {task_id} | 耗时: {elapsed_time}秒\n'
+                            f'转存: {stats_from_sync.get("files_transferred", 0)} 个 | 失败: {error_count} 个\n'
+                            f'首个错误: {stats_from_sync["errors"][0][:200]}'
+                        ),
+                        tags='文件同步|部分失败',
+                    )
+
+                return result
             else:
                 # 处理失败结果
-                return await self._handle_sync_failure(
+                result = await self._handle_sync_failure(
                     db, sync_task, sync_result, stats_from_sync, pending_task_items,
                     elapsed_time, task_id, config_id
                 )
+
+                # 发送同步失败通知
+                await self._notify(
+                    title=f'文件同步失败',
+                    config=config,
+                    extra=(
+                        f'任务ID: {task_id} | 耗时: {elapsed_time}秒\n'
+                        f'错误: {sync_result.get("error", "未知错误")[:300]}'
+                    ),
+                    tags='文件同步|同步失败',
+                )
+
+                return result
 
         except Exception as e:
             error_msg = f"执行同步任务时发生异常: {str(e)}"
@@ -162,6 +192,17 @@ class FileSyncService:
                 await self._update_task_on_exception(
                     db, sync_task, pending_task_items, error_msg, start_time, task_id
                 )
+
+            # 发送异常通知（最严重）
+            await self._notify(
+                title='文件同步异常',
+                config=config if 'config' in dir() else None,
+                extra=(
+                    f'任务ID: {task_id or "unknown"} | 耗时: {int(time.time() - start_time)}秒\n'
+                    f'异常: {str(e)[:300]}'
+                ),
+                tags='文件同步|异常',
+            )
 
             return {
                 "success": False,
@@ -438,6 +479,35 @@ class FileSyncService:
             await db.commit()
         except Exception as e:
             self.logger.error(f"[任务{task_id}] 更新失败状态时出错: {e}")
+
+    # ========== 私有方法：通知 ==========
+
+    async def _notify(self, *, title: str, config=None, extra: str = '', tags: str = '') -> None:
+        """
+        发送同步相关通知（失败时不抛异常）
+
+        :param title: 通知标题
+        :param config: SyncConfig 对象，用于提取备注和路径
+        :param extra: 补充内容
+        :param tags: 通知标签
+        """
+        try:
+            lines = []
+            if config:
+                if getattr(config, 'remark', None):
+                    lines.append(f'配置: {config.remark}')
+                lines.append(f'路径: {config.src_path} → {config.dst_path}')
+            if extra:
+                lines.append(extra)
+
+            await notify_service.send(
+                title=title,
+                content='\n'.join(lines),
+                options={'tags': tags} if tags else None,
+                source='filesync',
+            )
+        except Exception:
+            pass
 
     # ========== 私有方法：工具方法 ==========
 

@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import Any
 
 import httpx
-from celery import shared_task
+from backend.app.task.celery import celery_app
 
 from backend.app.gongkao.crud.crud_shizhen import shizhen_dao
 from backend.app.gongkao.schema.shizhen import CreateShizhenParam
@@ -229,7 +229,7 @@ async def fetch_news_list(page_num: int = 1, page_size: int = 10) -> dict[str, A
         return None
 
 
-@shared_task(name='backend.app.task.tasks.gongkao.tasks.sync_daily_news_to_shizhen')
+@celery_app.task(name='sync_daily_news_to_shizhen')
 async def sync_daily_news_to_shizhen() -> dict[str, Any]:
     """
     每日定时获取新闻并同步到gk_shizhen表

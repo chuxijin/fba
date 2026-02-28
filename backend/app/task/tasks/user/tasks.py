@@ -6,6 +6,7 @@ import random
 from datetime import datetime
 from typing import Dict, Any
 
+
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.schema.file import UserInfoParam
@@ -155,4 +156,13 @@ async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
         logger.error(f"刷新用户信息时发生错误: {str(e)}")
         result["error"] = str(e)
     
-    return result 
+    return result
+
+
+@celery_app.task(name='check_expired_user_roles')
+async def check_expired_user_roles() -> int:
+    """检查并处理过期的用户角色"""
+    from backend.app.admin.service.user_role_expiry_service import user_role_expiry_service
+
+    return await user_role_expiry_service.check_and_expire_roles()
+

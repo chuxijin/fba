@@ -141,7 +141,7 @@ class CRUDQuestion(CRUDPlus[Question]):
         if keyword is not None:
             stmt = stmt.where(Question.stem.like(f'%{keyword}%'))
 
-        stmt = stmt.order_by(Question.created_time.desc())
+        stmt = stmt.order_by(Question.sort_order.asc(), Question.created_time.desc())
         return stmt
 
     async def get_all(
@@ -201,7 +201,7 @@ class CRUDQuestion(CRUDPlus[Question]):
         if keyword is not None:
             stmt = stmt.where(Question.stem.like(f'%{keyword}%'))
 
-        stmt = stmt.order_by(Question.created_time.desc())
+        stmt = stmt.order_by(Question.sort_order.asc(), Question.created_time.desc())
 
         result = await db.execute(stmt)
         questions = result.unique().scalars().all()

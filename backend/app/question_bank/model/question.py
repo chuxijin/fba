@@ -49,6 +49,7 @@ class Question(Base, UserMixin):
     __tablename__ = 'study_question'
     __table_args__ = (
         sa.Index('idx_question_bank_type_status', 'bank_id', 'type', 'review_status'),
+        sa.Index('idx_question_bank_sort', 'bank_id', 'sort_order'),
         sa.Index('idx_question_chapter', 'chapter_id'),
         sa.Index('idx_question_active_created', 'is_active', 'created_time'),
         {'comment': '题目表'},
@@ -98,6 +99,11 @@ class Question(Base, UserMixin):
     )
 
     # ============ 元数据 ============
+    sort_order: Mapped[int] = mapped_column(
+        sa.Integer,
+        default=0,
+        comment='题目序号（在题库/章节内的排序）',
+    )
     difficulty: Mapped[str] = mapped_column(
         sa.String(16),
         default='medium',

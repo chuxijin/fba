@@ -82,6 +82,15 @@ class ActivateService:
             user_role_data = AddUserRoleParam(user_id=new_user.id, role_id=role_id).model_dump()
             await db.execute(insert(user_role).values(user_role_data))
 
+            # 5.1 设置角色有效期（如果批次配置了有效天数）
+            role_duration_days = reward_data.get('role_duration_days')
+            if role_duration_days:
+                from backend.app.admin.service.user_role_expiry_service import user_role_expiry_service
+
+                await user_role_expiry_service.assign_with_expiry(
+                    db, user_id=new_user.id, role_id=role_id, duration_days=role_duration_days
+                )
+
             # 6. 写入激活码使用记录
             usage_record = ActcodeUsage(
                 code_id=actcode.id,

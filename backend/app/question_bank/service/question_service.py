@@ -721,6 +721,7 @@ class QuestionService:
                     'score': score,
                     'stem': row.题目,
                     'analysis_content': row.解析 if row.解析 else '暂无解析',
+                    'sort_order': int(row.ID) if row.ID is not None else row_index,
                 })
 
             except Exception as e:
@@ -756,6 +757,7 @@ class QuestionService:
                 options_data=row_data['options_data'],
                 difficulty=row_data['difficulty'],
                 score=row_data['score'],
+                sort_order=row_data['sort_order'],
                 created_by=user_id,
             )
             db.add(question)

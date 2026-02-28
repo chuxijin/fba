@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.jia.crud import item_dao
 from backend.app.jia.model import JiaItem
 from backend.app.jia.schema import CreateItemParam, UpdateItemParam, GetItemList
-from backend.app.jia.service import push_service
+from backend.app.jia.service.push_service import push_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.pagination import paging_data

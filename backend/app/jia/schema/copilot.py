@@ -86,3 +86,14 @@ class AnalyzeItemResponse(BaseModel):
     price: float | None = Field(default=None, description="市场参考价格")
     expire_date: str | None = Field(default=None, description="保质期 (YYYY-MM-DD)")
     notes: str | None = Field(default=None, description="备注")
+
+
+# --- 公式识别 Schemas ---
+
+class RecognizeFormulaRequest(BaseModel):
+    image_url: str = Field(..., description="公式图片完整URL")
+
+
+class RecognizeFormulaResponse(BaseModel):
+    formula: str = Field(default='', description="识别出的 LaTeX 公式")
+    confidence: str | None = Field(default=None, description="置信度描述")

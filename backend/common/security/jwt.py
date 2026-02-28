@@ -214,6 +214,13 @@ async def get_current_user(db: AsyncSession, pk: int) -> User:
         role_status = [role.status for role in user.roles]
         if all(status == 0 for status in role_status):
             raise errors.AuthorizationError(msg='用户所属角色已被锁定，请联系系统管理员')
+    # 过滤已过期角色
+    if user.roles:
+        from backend.app.admin.crud.crud_user_role_expiry import user_role_expiry_dao
+
+        active_role_ids = await user_role_expiry_dao.get_active_role_ids(db, pk)
+        if active_role_ids is not None:
+            user.roles = [r for r in user.roles if r.id in active_role_ids]
     return user
 
 

@@ -19,16 +19,16 @@ LOCAL_BEAT_SCHEDULE = {
         'kwargs': {'world': '世界'},
     },
     '清理操作日志': {
-        'task': 'backend.app.task.tasks.db_log.tasks.delete_db_opera_log',
+        'task': 'delete_db_opera_log',
         'schedule': TzAwareCrontab('0', '0', day_of_week='6'),
     },
     '清理登录日志': {
-        'task': 'backend.app.task.tasks.db_log.tasks.delete_db_login_log',
+        'task': 'delete_db_login_log',
         'schedule': TzAwareCrontab('0', '0', day_of_month='15'),
     },
     # 清理 Celery 任务结果 - 每天凌晨3点执行
     '清理 Celery 任务结果': {
-        'task': 'backend.app.task.tasks.db_log.tasks.delete_celery_task_results',
+        'task': 'delete_celery_task_results',
         'schedule': TzAwareCrontab('0', '3'),  # 每天凌晨3点
     },
     # 文件同步定时任务检查 - 每5分钟执行一次
@@ -58,7 +58,7 @@ LOCAL_BEAT_SCHEDULE = {
     },
     # 清理30天以外的文件同步数据 - 每天凌晨2点执行
     '清理过期文件同步数据': {
-        'task': 'backend.app.task.tasks.db_log.tasks.delete_filesync_data_older_than_30_days',
+        'task': 'delete_filesync_data_older_than_30_days',
         'schedule': TzAwareCrontab('0', '2'),  # 每天凌晨2点
     },
     # 更新用户每日排名 - 每天凌晨0:05执行
@@ -68,12 +68,17 @@ LOCAL_BEAT_SCHEDULE = {
     },
     # 同步每日时政新闻 - 每天早上8点执行
     '同步每日时政新闻': {
-        'task': 'backend.app.task.tasks.gongkao.tasks.sync_daily_news_to_shizhen',
+        'task': 'sync_daily_news_to_shizhen',
         'schedule': TzAwareCrontab('0', '8'),  # 每天早上8点
     },
     # 更新物品状态 - 每小时执行
     '更新物品状态': {
         'task': 'update_jia_item_status',
         'schedule': TzAwareCrontab('0'),  # 每小时整点
+    },
+    # 检查过期用户角色 - 每小时执行
+    '检查过期用户角色': {
+        'task': 'check_expired_user_roles',
+        'schedule': TzAwareCrontab('30'),  # 每小时30分
     },
 }

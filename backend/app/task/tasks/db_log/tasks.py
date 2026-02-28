@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict
-from celery import shared_task
+from backend.app.task.celery import celery_app
 from sqlalchemy import delete, and_
 
 from backend.app.admin.service.login_log_service import login_log_service
@@ -13,7 +13,7 @@ from backend.database.db import async_db_session
 logger = logging.getLogger(__name__)
 
 
-@shared_task
+@celery_app.task(name='delete_db_opera_log')
 async def delete_db_opera_log() -> str:
     """自动删除数据库操作日志"""
     async with async_db_session.begin() as db:
@@ -21,7 +21,7 @@ async def delete_db_opera_log() -> str:
         return 'Success'
 
 
-@shared_task
+@celery_app.task(name='delete_db_login_log')
 async def delete_db_login_log() -> str:
     """自动删除数据库登录日志"""
     async with async_db_session.begin() as db:
@@ -29,7 +29,7 @@ async def delete_db_login_log() -> str:
         return 'Success'
 
 
-@shared_task
+@celery_app.task(name='delete_filesync_data_older_than_30_days')
 async def delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
     """删除30天以外的文件同步数据（包括任务和任务项）"""
     try:
@@ -49,7 +49,7 @@ async def delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
         }
 
 
-@shared_task
+@celery_app.task(name='delete_celery_task_results')
 async def delete_celery_task_results() -> Dict[str, Any]:
     """
     删除 30 天以外的 Celery 任务结果

@@ -126,6 +126,7 @@ class GetDocList(SchemaBase):
     word_count: int = Field(description='字数统计')
     cover_url: str | None = Field(None, description='封面图 URL')
     tags: list[str] | None = Field(None, description='标签列表')
+    content_preview: str | None = Field(None, description='内容预览（前100字）')
     updated_time: datetime | None = Field(None, description='更新时间')
 
 

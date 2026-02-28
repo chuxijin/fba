@@ -76,6 +76,27 @@ class JiaDoc(Base):
     def __repr__(self) -> str:
         return f'<JiaDoc {self.title}>'
 
+    @property
+    def content_preview(self) -> str | None:
+        """从 AppFlowy Editor JSON 提取纯文本预览（前100字）"""
+        if not self.content:
+            return None
+        try:
+            doc = self.content.get('document', {})
+            children = doc.get('children', [])
+            texts: list[str] = []
+            for node in children:
+                delta = node.get('data', {}).get('delta', [])
+                for op in delta:
+                    if isinstance(op, dict) and 'insert' in op:
+                        texts.append(op['insert'])
+                if len(''.join(texts)) >= 100:
+                    break
+            preview = ''.join(texts).strip()
+            return preview[:100] if preview else None
+        except Exception:
+            return None
+
 
 class JiaAsset(Base):
     """文档资源表 - 图片、文件、音视频等"""

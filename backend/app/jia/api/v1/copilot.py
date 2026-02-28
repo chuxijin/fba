@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.jia.service.copilot_service import copilot_service
 from backend.app.jia.crud.crud_copilot import copilot_session_dao, copilot_message_dao
-from backend.app.jia.schema.copilot import ChatRequest, ChatResponse, GetSessionListResponse, MessageSchema, AnalyzeItemRequest, AnalyzeItemResponse
+from backend.app.jia.schema.copilot import ChatRequest, ChatResponse, GetSessionListResponse, MessageSchema, AnalyzeItemRequest, AnalyzeItemResponse, RecognizeFormulaRequest, RecognizeFormulaResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import get_db
@@ -59,4 +59,15 @@ async def analyze_item(
 ):
     """通过图片或文字描述智能识别物品信息"""
     data = await copilot_service.analyze_item(db, request.user.id, req)
+    return response_base.success(data=data)
+
+
+@router.post("/recognize-formula", summary="AI识别公式", response_model=ResponseSchemaModel[RecognizeFormulaResponse], dependencies=[DependsJwtAuth])
+async def recognize_formula(
+    req: RecognizeFormulaRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """通过图片识别数学公式，返回 LaTeX"""
+    data = await copilot_service.recognize_formula(db, request.user.id, req)
     return response_base.success(data=data)
