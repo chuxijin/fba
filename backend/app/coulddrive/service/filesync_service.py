@@ -1798,20 +1798,35 @@ class FileSyncService:
         **kwargs
     ) -> None:
         """
-        处理覆盖同步：先删除目标目录所有文件，再一次性转存源目录所有内容
+        处理覆盖同步：先验证源目录可用，再删除目标目录所有文件，最后转存源目录所有内容
         """
         start_overwrite_sync_time = time.time()
         self.logger.info(f"[任务{task_id or 'unknown'}] 开始覆盖同步: 源={source_definition.file_path}, 目标={target_definition.file_path}")
         try:
-            # 1. 获取目标目录所有文件
+            # 1. 先扫描源目录，验证源目录可用（防止源异常时误删目标数据）
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始扫描源目录进行预验证")
+            source_file_map = await self.list_dir(
+                service, source_definition.file_path, True, item_filter, True,
+                source_definition, task_id=task_id, db=db, account_key=account_key
+            )
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：源目录扫描完成，耗时: {time.time() - start_overwrite_sync_time:.2f}秒，找到 {len(source_file_map)} 个文件/目录")
+
+            if not source_file_map:
+                error_msg = f"源目录为空或不存在: {source_definition.file_path}，跳过覆盖同步以保护目标数据"
+                self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
+                stats["errors"].append(error_msg)
+                self.logger.info(f"[任务{task_id or 'unknown'}] 退出 _handle_overwrite_sync (源目录异常), 耗时: {time.time() - start_overwrite_sync_time:.2f}秒")
+                return
+
+            # 2. 源目录验证通过，扫描目标目录
             self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始扫描目标目录进行删除前准备")
             target_file_map = await self.list_dir(
                 service, target_definition.file_path, False, item_filter, False,
                 target_definition, target_definition.file_id, task_id, db, account_key=account_key
             )
             self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：目标目录扫描完成，耗时: {time.time() - start_overwrite_sync_time:.2f}秒，找到 {len(target_file_map)} 个文件/目录")
-            
-            # 2. 删除目标目录所有文件
+
+            # 3. 删除目标目录所有文件
             if target_file_map:
                 files_to_delete = []
                 for file_name, file_info in target_file_map.items():
@@ -1828,55 +1843,43 @@ class FileSyncService:
                     recursion_speed, stats, task_id, db, account_key=account_key
                 )
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
-                if db: await db.commit() # 每次批量删除后提交
+                if db: await db.commit()
             else:
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：目标目录为空，无需删除。")
-            
-            # 3. 一次性转存整个源目录的所有内容
-            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始扫描源目录进行转存准备")
-            source_file_map = await self.list_dir(
-                service, source_definition.file_path, True, item_filter, True,
-                source_definition, task_id=task_id, db=db, account_key=account_key
+
+            # 4. 转存源目录所有内容（source_file_map 已在步骤 1 获取）
+            all_files_to_transfer = []
+            for file_name, file_info in source_file_map.items():
+                file_size = file_info.get("file_size", 0)
+                transfer_file_info = {
+                    "file_name": file_name,
+                    "file_size": file_size,
+                    "source_path": source_definition.file_path,
+                    "target_path": target_definition.file_path,
+                    "file_id": file_info.get("file_id", ""),
+                }
+
+                # 添加扩展信息（msg_id, from_uk 等）
+                for key, value in file_info.items():
+                    if key not in ["file_size", "file_id"]:
+                        transfer_file_info[key] = value
+
+                all_files_to_transfer.append(transfer_file_info)
+                stats["files_processed"] += 1
+
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始批量转存 {len(all_files_to_transfer)} 个项目")
+            transfer_start_time = time.time()
+            transfer_result = await self.transfer_files(
+                service, source_definition, target_definition,
+                all_files_to_transfer, recursion_speed, stats, task_id, db, account_key=account_key
             )
-            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：源目录扫描完成，耗时: {time.time() - start_overwrite_sync_time:.2f}秒，找到 {len(source_file_map)} 个文件/目录")
-            
-            if source_file_map:
-                # 构建所有文件的转存信息（包括文件和目录）
-                all_files_to_transfer = []
-                for file_name, file_info in source_file_map.items():
-                    file_size = file_info.get("file_size", 0)
-                    transfer_file_info = {
-                        "file_name": file_name,
-                        "file_size": file_size,
-                        "source_path": source_definition.file_path,
-                        "target_path": target_definition.file_path,
-                        "file_id": file_info.get("file_id", ""),
-                    }
-                    
-                    # 添加扩展信息（msg_id, from_uk等）
-                    for key, value in file_info.items():
-                        if key not in ["file_size", "file_id"]:
-                            transfer_file_info[key] = value
-                    
-                    all_files_to_transfer.append(transfer_file_info)
-                    stats["files_processed"] += 1
-                
-                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始批量转存 {len(all_files_to_transfer)} 个项目")
-                transfer_start_time = time.time()
-                transfer_result = await self.transfer_files(
-                    service, source_definition, target_definition,
-                    all_files_to_transfer, recursion_speed, stats, task_id, db, account_key=account_key
-                    # 覆盖同步不需要传递 current_target_id，使用根目录ID
-                )
-                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量转存完成，成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒")
-                
-                if not transfer_result:
-                    self.logger.warning(f"[任务{task_id or 'unknown'}] 覆盖同步批量转存失败，终止当前覆盖流程: {target_definition.file_path}")
-                    self.logger.info(f"[任务{task_id or 'unknown'}] 退出 _handle_overwrite_sync (因批量转存失败), 耗时: {time.time() - start_overwrite_sync_time:.2f}秒")
-                    return
-                if db: await db.commit() # 每次批量转存后提交
-            else:
-                self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：源目录为空，无需转存。")
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量转存完成，成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒")
+
+            if not transfer_result:
+                self.logger.warning(f"[任务{task_id or 'unknown'}] 覆盖同步批量转存失败，终止当前覆盖流程: {target_definition.file_path}")
+                self.logger.info(f"[任务{task_id or 'unknown'}] 退出 _handle_overwrite_sync (因批量转存失败), 耗时: {time.time() - start_overwrite_sync_time:.2f}秒")
+                return
+            if db: await db.commit()
                 
         except Exception as e:
             error_msg = f"覆盖同步失败: {str(e)}"
