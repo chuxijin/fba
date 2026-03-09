@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """材料服务类"""
 from collections.abc import Sequence
@@ -55,6 +55,7 @@ class MaterialService:
             'bank': {
                 'id': material.bank.id,
                 'name': material.bank.name,
+                'code': material.bank.code or '',
             } if material.bank else None,
             'question_count': question_count,
         }
@@ -203,3 +204,4 @@ class MaterialService:
 
 
 material_service: MaterialService = MaterialService()
+

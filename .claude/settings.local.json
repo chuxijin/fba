@@ -61,7 +61,10 @@
       "WebFetch(domain:open.agiso.com)",
       "Skill(fba)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:doc.sc3.ft07.com)"
+      "WebFetch(domain:doc.sc3.ft07.com)",
+      "Bash(powershell -File -:*)",
+      "Bash(powershell -NoProfile -Command \"& ''D:\\\\100_Work\\\\101_Program\\\\Proj\\\\fba\\\\.venv\\\\Scripts\\\\python.exe'' -m py_compile ''backend/app/coulddrive/service/coulddrive_service.py''\")",
+      "Bash(npx tsup:*)"
     ],
     "deny": [],
     "ask": []

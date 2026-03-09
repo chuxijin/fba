@@ -67,6 +67,12 @@ class UploadUrl:
 
 
 @dataclasses.dataclass
+class OssUploadResult:
+    url: str
+    object_key: str
+
+
+@dataclasses.dataclass
 class SnowflakeInfo:
     timestamp: int
     datetime: str

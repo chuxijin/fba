@@ -3,6 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank.crud.crud_question import question_statistics_dao
 from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
 from backend.app.question_bank.model import QuestionFavorite
 from backend.app.question_bank.schema.favorite import (
@@ -11,6 +12,7 @@ from backend.app.question_bank.schema.favorite import (
     FolderInfo,
     GetQuestionFavoriteDetail,
 )
+from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
 from backend.common.exception import errors
 
 
@@ -27,7 +29,7 @@ class FavoriteService:
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param obj: 收藏参数
-        :return: 收藏记录
+        :return:
         """
         existing = await question_favorite_dao.get_by_user_and_question(
             db=db, user_id=user_id, question_id=obj.question_id
@@ -39,9 +41,15 @@ class FavoriteService:
             db=db,
             user_id=user_id,
             question_id=obj.question_id,
+            placement_id=obj.placement_id,
             folder_name=obj.folder_name,
             tags=obj.tags,
             remark=obj.remark,
+        )
+
+        # 回写题目统计：收藏数 +1
+        await question_statistics_dao.update_stats(
+            db, obj.question_id, UpdateQuestionStatisticsParam(collect_delta=1)
         )
 
         return new_favorite
@@ -64,6 +72,13 @@ class FavoriteService:
             return 0
 
         count = await question_favorite_dao.delete(db=db, favorite_id=favorite.id)
+
+        # 回写题目统计：收藏数 -1
+        if count > 0:
+            await question_statistics_dao.update_stats(
+                db, question_id, UpdateQuestionStatisticsParam(collect_delta=-1)
+            )
+
         return count
 
     @staticmethod
@@ -147,12 +162,23 @@ class FavoriteService:
         :param user_id: 用户 ID
         :return: 删除数量
         """
+        # 先收集 question_id，用于后续统计回写
+        question_ids_to_decrement: list[int] = []
         for favorite_id in favorite_ids:
             favorite = await question_favorite_dao.get(db=db, favorite_id=favorite_id)
             if favorite and favorite.user_id != user_id:
                 raise errors.AuthorizationError(msg=f'无权操作收藏 {favorite_id}')
+            if favorite:
+                question_ids_to_decrement.append(favorite.question_id)
 
         count = await question_favorite_dao.batch_delete(db=db, favorite_ids=favorite_ids)
+
+        # 回写题目统计：每个题目收藏数 -1
+        for qid in question_ids_to_decrement:
+            await question_statistics_dao.update_stats(
+                db, qid, UpdateQuestionStatisticsParam(collect_delta=-1)
+            )
+
         return count
 
     @staticmethod

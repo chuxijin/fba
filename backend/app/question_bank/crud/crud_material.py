@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""材料数据库操作类"""
 from collections.abc import Sequence
 
 from sqlalchemy import select, func
@@ -51,7 +50,7 @@ class CRUDMaterial(CRUDPlus[QuestionMaterial]):
         :param is_active: 是否启用
         :return:
         """
-        filters = {'bank_id': bank_id}
+        filters: dict = {'bank_id': bank_id}
         if is_active is not None:
             filters['is_active'] = is_active
         return await self.select_models_order(db, 'sort_order', 'asc', **filters)
@@ -68,7 +67,7 @@ class CRUDMaterial(CRUDPlus[QuestionMaterial]):
         :param params: 查询参数
         :return:
         """
-        filters = {}
+        filters: dict = {}
         if params.bank_id:
             filters['bank_id'] = params.bank_id
         if params.category_id:
@@ -168,20 +167,21 @@ class CRUDMaterial(CRUDPlus[QuestionMaterial]):
         question_ids: list[int],
     ) -> None:
         """
-        关联题目到材料
+        批量关联题目到材料
 
         :param db: 数据库会话
         :param material_id: 材料 ID
         :param question_ids: 题目 ID 列表
         :return:
         """
-        for idx, question_id in enumerate(question_ids):
-            stmt = question_material_relation.insert().values(
-                material_id=material_id,
-                question_id=question_id,
-                sort_order=idx,
-            )
-            await db.execute(stmt)
+        if not question_ids:
+            return
+
+        values = [
+            {'material_id': material_id, 'question_id': qid, 'sort_order': idx}
+            for idx, qid in enumerate(question_ids)
+        ]
+        await db.execute(question_material_relation.insert(), values)
 
     async def unlink_questions(
         self,

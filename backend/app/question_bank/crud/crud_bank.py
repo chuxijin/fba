@@ -40,7 +40,7 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         status: int | None = None,
         scope: int | None = None,
         keyword: str | None = None,
-        type: int | None = None,
+        bank_type: int | None = None,
         parent_id: int | None = None,
     ) -> Sequence[QuestionBank]:
         """
@@ -52,7 +52,7 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         :param status: 题库状态
         :param scope: 可见范围
         :param keyword: 关键字搜索
-        :param type: 类型
+        :param bank_type: 内容类型
         :param parent_id: 父级 ID
         :return:
         """
@@ -68,33 +68,41 @@ class CRUDBank(CRUDPlus[QuestionBank]):
             filters['scope'] = scope
         if keyword is not None:
             filters['name__like'] = f'%{keyword}%'
-        if type is not None:
-            filters['type'] = type
+        if bank_type is not None:
+            filters['bank_type'] = bank_type
         if parent_id is not None:
             filters['parent_id'] = parent_id
 
         return await self.select_models_order(db, 'created_time', 'desc', **filters)
 
-    async def create(self, db: AsyncSession, obj: CreateBankParam) -> None:
+    async def create(self, db: AsyncSession, obj: CreateBankParam, *, created_by: int) -> None:
         """
         创建题库
 
         :param db: 数据库会话
         :param obj: 创建题库参数
+        :param created_by: 创建者 ID
         :return:
         """
-        await self.create_model(db, obj)
+        dict_obj = obj.model_dump()
+        dict_obj['created_by'] = created_by
+        new_bank = self.model(**dict_obj)
+        db.add(new_bank)
+        await db.flush()
 
-    async def update(self, db: AsyncSession, bank_id: int, obj: UpdateBankParam) -> int:
+    async def update(self, db: AsyncSession, bank_id: int, obj: UpdateBankParam, *, updated_by: int) -> int:
         """
         更新题库
 
         :param db: 数据库会话
         :param bank_id: 题库 ID
         :param obj: 更新题库参数
+        :param updated_by: 修改者 ID
         :return:
         """
-        return await self.update_model(db, bank_id, obj)
+        dict_obj = obj.model_dump()
+        dict_obj['updated_by'] = updated_by
+        return await self.update_model(db, bank_id, dict_obj)
 
     async def delete(self, db: AsyncSession, bank_ids: list[int]) -> int:
         """

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
@@ -48,7 +49,7 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param is_pinned: 是否置顶
         :return:
         """
-        filters = {'user_id': user_id}
+        filters: dict = {'user_id': user_id}
         if folder_name:
             filters['folder_name'] = folder_name
         if is_pinned is not None:
@@ -66,14 +67,11 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param user_id: 用户 ID
         :return:
         """
-        from sqlalchemy import select, func
-
         stmt = (
             select(QuestionFavorite.folder_name)
             .where(QuestionFavorite.user_id == user_id, QuestionFavorite.folder_name.isnot(None))
             .group_by(QuestionFavorite.folder_name)
         )
-
         result = await db.execute(stmt)
         return [row[0] for row in result.all()]
 
@@ -82,6 +80,7 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         db: AsyncSession,
         user_id: int,
         question_id: int,
+        placement_id: int | None = None,
         folder_name: str | None = None,
         tags: list[str] | None = None,
         remark: str | None = None,
@@ -92,29 +91,35 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param question_id: 题目 ID
+        :param placement_id: 挂载 ID（精确指定上下文）
         :param folder_name: 收藏夹名称
         :param tags: 标签列表
         :param remark: 备注
         :return:
         """
-        from sqlalchemy import select
-        from sqlalchemy.orm import selectinload
-        from backend.app.question_bank.model import Question
+        from backend.app.question_bank.model import Question, QuestionPlacement
 
-        # 查询题目及其关联的题库、章节信息（用于填充冗余字段）
+        # 查询题目及其挂载信息（用于填充冗余字段）
         stmt = (
             select(Question)
             .options(
-                selectinload(Question.bank),
-                selectinload(Question.chapter)
+                selectinload(Question.placements).joinedload(QuestionPlacement.bank),
+                selectinload(Question.placements).joinedload(QuestionPlacement.chapter),
             )
             .where(Question.id == question_id)
         )
         result = await db.execute(stmt)
-        question = result.scalar_one_or_none()
+        question = result.unique().scalars().first()
 
         if not question:
             raise ValueError(f'题目 ID {question_id} 不存在')
+
+        # 精确匹配 placement_id，未传则降级取第一条
+        placement = None
+        if placement_id is not None:
+            placement = next((p for p in question.placements if p.id == placement_id), None)
+        if placement is None and question.placements:
+            placement = question.placements[0]
 
         # 创建收藏，填充冗余字段
         new_favorite = self.model(
@@ -124,11 +129,11 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
             tags=tags,
             remark=remark,
             created_by=user_id,
-            # 冗余字段（收藏时快照）
-            bank_id=question.bank_id,
-            bank_name=question.bank.name if question.bank else None,
-            chapter_id=question.chapter_id,
-            chapter_name=question.chapter.name if question.chapter else None,
+            # 冗余字段（收藏时快照，来自挂载记录）
+            bank_id=placement.bank_id if placement else None,
+            bank_name=placement.bank.name if placement and placement.bank else None,
+            chapter_id=placement.chapter_id if placement else None,
+            chapter_name=placement.chapter.name if placement and placement.chapter else None,
         )
         db.add(new_favorite)
         await db.flush()
@@ -153,7 +158,7 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param remark: 备注
         :return:
         """
-        update_data = {}
+        update_data: dict = {}
         if folder_name is not None:
             update_data['folder_name'] = folder_name
         if tags is not None:
@@ -185,7 +190,7 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param is_pinned: 是否置顶
         :return:
         """
-        update_data = {'is_pinned': is_pinned}
+        update_data: dict = {'is_pinned': is_pinned}
         if is_pinned:
             update_data['pinned_time'] = datetime.now()
         else:
@@ -201,10 +206,12 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param favorite_ids: 收藏 ID 列表
         :return:
         """
-        count = 0
-        for favorite_id in favorite_ids:
-            count += await self.delete_model(db, favorite_id)
-        return count
+        if not favorite_ids:
+            return 0
+
+        stmt = delete(QuestionFavorite).where(QuestionFavorite.id.in_(favorite_ids))
+        result = await db.execute(stmt)
+        return result.rowcount
 
     async def clear_folder(self, db: AsyncSession, user_id: int, folder_name: str) -> int:
         """
@@ -215,11 +222,12 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param folder_name: 收藏夹名称
         :return:
         """
-        favorites = await self.get_by_user(db, user_id, folder_name=folder_name)
-        count = 0
-        for favorite in favorites:
-            count += await self.delete_model(db, favorite.id)
-        return count
+        stmt = delete(QuestionFavorite).where(
+            QuestionFavorite.user_id == user_id,
+            QuestionFavorite.folder_name == folder_name,
+        )
+        result = await db.execute(stmt)
+        return result.rowcount
 
     async def check_favorited(self, db: AsyncSession, user_id: int, question_id: int) -> bool:
         """
@@ -238,6 +246,8 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         user_id: int | None = None,
         folder_name: str | None = None,
         is_pinned: bool | None = None,
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
     ) -> Select:
         """
         获取收藏列表查询表达式
@@ -245,20 +255,28 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param user_id: 用户 ID
         :param folder_name: 收藏夹名称
         :param is_pinned: 是否置顶
+        :param bank_id: 题库 ID（冗余字段筛选）
+        :param chapter_id: 章节 ID（冗余字段筛选）
         :return:
         """
-        # 单表查询（使用冗余字段），不 JOIN question 表
-        # 题目详细信息由刷题页面按需查询（WHERE id IN (...)）
-        filters = {}
+        stmt = select(QuestionFavorite)
 
         if user_id is not None:
-            filters['user_id'] = user_id
+            stmt = stmt.where(QuestionFavorite.user_id == user_id)
         if folder_name:
-            filters['folder_name'] = folder_name
+            stmt = stmt.where(QuestionFavorite.folder_name == folder_name)
         if is_pinned is not None:
-            filters['is_pinned'] = is_pinned
+            stmt = stmt.where(QuestionFavorite.is_pinned == is_pinned)
+        if bank_id is not None:
+            stmt = stmt.where(QuestionFavorite.bank_id == bank_id)
+        if chapter_id is not None:
+            stmt = stmt.where(QuestionFavorite.chapter_id == chapter_id)
 
-        return await self.select_order('created_time', 'desc', **filters)
+        stmt = stmt.order_by(
+            QuestionFavorite.is_pinned.desc(),
+            QuestionFavorite.created_time.desc(),
+        )
+        return stmt
 
 
 question_favorite_dao: CRUDQuestionFavorite = CRUDQuestionFavorite(QuestionFavorite)

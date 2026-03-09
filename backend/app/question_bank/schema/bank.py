@@ -2,26 +2,28 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Literal
 
 from pydantic import ConfigDict, Field
 
+from backend.app.question_bank.schema.chapter import GetChapterTree
 from backend.common.schema import SchemaBase
 
 
 class BankSchemaBase(SchemaBase):
     """题库基础"""
 
-    cat_id: int = Field(description='所属分类 ID')
-    name: str = Field(description='题库名称')
-    code: str = Field(description='题库编码')
-    desc: str | None = Field(None, description='题库描述')
+    cat_id: int = Field(description='分类 ID')
+    name: str = Field(max_length=128, description='题库名称')
+    code: str = Field(max_length=32, description='业务编码')
+    desc: str | None = Field(None, description='描述')
     cover_url: str | None = Field(None, description='封面地址')
-    difficulty: Decimal | None = Field(None, description='难度')
-    type: int = Field(default=10, description='类型: 10=题库(含题目), 20=合集(含子题库)')
-    parent_id: int | None = Field(None, description='父级题库 ID')
-    status: int = Field(default=1, description='题库状态')
-    scope: int = Field(default=1, description='可见范围')
+    difficulty: Decimal | None = Field(None, ge=0, description='整体难度')
+    bank_type: Literal[1, 2, 3] = Field(default=1, description='内容类型: 1=题库, 2=试卷, 3=合集')
+    scene_mask: int = Field(default=1, ge=0, description='可用场景位标记: 1=练习, 2=考试, 4=模考, 8=错题重练')
+    parent_id: int | None = Field(None, description='父题库 ID')
+    status: int = Field(default=1, ge=0, description='状态')
+    scope: int = Field(default=1, ge=0, description='可见范围')
 
 
 class GetBankDetail(BankSchemaBase):
@@ -30,9 +32,11 @@ class GetBankDetail(BankSchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='题库 ID')
-    q_count: int = Field(description='题目数量')
-    total_score: Decimal = Field(description='题库总分')
+    q_count_cache: int = Field(description='缓存题量')
+    total_score_cache: Decimal = Field(description='缓存总分')
     buy_count: int = Field(description='购买数量')
+    created_by: int = Field(description='创建者')
+    updated_by: int | None = Field(None, description='修改者')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
 
@@ -40,7 +44,7 @@ class GetBankDetail(BankSchemaBase):
 class GetBankDetailWithChapters(GetBankDetail):
     """题库详情（含章节树）"""
 
-    chapters: list[dict[str, Any]] = Field(default_factory=list, description='章节树')
+    chapters: list[GetChapterTree] = Field(default_factory=list, description='章节树')
 
 
 class GetBankWithRelationDetail(GetBankDetail):
@@ -52,12 +56,15 @@ class GetBankWithRelationDetail(GetBankDetail):
 
 
 class BankParam(SchemaBase):
-    """题库参数"""
+    """题库查询参数"""
 
     cat_id: int | None = Field(None, description='分类 ID')
-    status: int | None = Field(None, description='题库状态')
-    scope: int | None = Field(None, description='可见范围')
+    status: int | None = Field(None, ge=0, description='题库状态')
+    scope: int | None = Field(None, ge=0, description='可见范围')
     keyword: str | None = Field(None, description='关键字搜索（名称/编码）')
+    bank_type: Literal[1, 2, 3] | None = Field(None, description='内容类型: 1=题库, 2=试卷, 3=合集')
+    parent_id: int | None = Field(None, description='父题库 ID')
+    scene_mask: int | None = Field(None, ge=0, description='可用场景位标记')
 
 
 class CreateBankParam(BankSchemaBase):

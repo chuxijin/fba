@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from sqlalchemy import case, func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -47,7 +47,7 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         :param is_featured: 是否只看精选
         :return:
         """
-        filters = {'question_id': question_id, 'is_public': True}
+        filters: dict = {'question_id': question_id, 'is_public': True}
         if is_featured is not None:
             filters['is_featured'] = is_featured
 
@@ -69,21 +69,19 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         await db.refresh(new_note)
         return new_note
 
-    async def update(self, db: AsyncSession, note_id: int, content: str, is_public: bool | None = None) -> int:
+    async def update(self, db: AsyncSession, note_id: int, **update_fields: object) -> int:
         """
-        更新笔记
+        更新笔记（支持局部更新）
 
         :param db: 数据库会话
         :param note_id: 笔记 ID
-        :param content: 笔记内容
-        :param is_public: 是否公开
+        :param update_fields: 要更新的字段键值对
         :return:
         """
-        update_data = {'content': content}
-        if is_public is not None:
-            update_data['is_public'] = is_public
+        if not update_fields:
+            return 0
 
-        return await self.update_model(db, note_id, update_data)
+        return await self.update_model(db, note_id, update_fields)
 
     async def delete(self, db: AsyncSession, note_id: int) -> int:
         """
@@ -97,17 +95,19 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
 
     async def increment_view(self, db: AsyncSession, note_id: int) -> int:
         """
-        增加浏览次数
+        原子增加浏览次数
 
         :param db: 数据库会话
         :param note_id: 笔记 ID
         :return:
         """
-        note = await self.select_model(db, note_id)
-        if not note:
-            return 0
-
-        return await self.update_model(db, note_id, {'view_count': note.view_count + 1})
+        stmt = (
+            sa_update(QuestionNote)
+            .where(QuestionNote.id == note_id)
+            .values(view_count=QuestionNote.view_count + 1)
+        )
+        result = await db.execute(stmt)
+        return result.rowcount
 
     async def update_vote_stats(self, db: AsyncSession, note_id: int, like_count: int, dislike_count: int) -> int:
         """
@@ -135,7 +135,7 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         """
         from datetime import datetime
 
-        update_data = {'is_featured': is_featured}
+        update_data: dict = {'is_featured': is_featured}
         if is_featured:
             update_data['featured_time'] = datetime.now()
         else:
@@ -159,18 +159,19 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         :param is_featured: 是否精选
         :return:
         """
-        filters = {}
+        stmt = select(QuestionNote)
 
-        if user_id:
-            filters['user_id'] = user_id
-        if question_id:
-            filters['question_id'] = question_id
+        if user_id is not None:
+            stmt = stmt.where(QuestionNote.user_id == user_id)
+        if question_id is not None:
+            stmt = stmt.where(QuestionNote.question_id == question_id)
         if is_public is not None:
-            filters['is_public'] = is_public
+            stmt = stmt.where(QuestionNote.is_public == is_public)
         if is_featured is not None:
-            filters['is_featured'] = is_featured
+            stmt = stmt.where(QuestionNote.is_featured == is_featured)
 
-        return await self.select_order('quality_score', 'desc', **filters)
+        stmt = stmt.order_by(QuestionNote.quality_score.desc())
+        return stmt
 
 
 class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
@@ -203,12 +204,12 @@ class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
             await self.update_model_by_column(db, {'vote_value': vote_value}, user_id=user_id, note_id=note_id)
             await db.refresh(existing_vote)
             return existing_vote
-        else:
-            new_vote = self.model(user_id=user_id, note_id=note_id, vote_value=vote_value)
-            db.add(new_vote)
-            await db.flush()
-            await db.refresh(new_vote)
-            return new_vote
+
+        new_vote = self.model(user_id=user_id, note_id=note_id, vote_value=vote_value)
+        db.add(new_vote)
+        await db.flush()
+        await db.refresh(new_vote)
+        return new_vote
 
     async def cancel_vote(self, db: AsyncSession, user_id: int, note_id: int) -> int:
         """
@@ -229,11 +230,9 @@ class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
         :param note_id: 笔记 ID
         :return: (点赞数, 点踩数)
         """
-        from sqlalchemy import func, select
-
         stmt = select(
-            func.sum(func.case((UserNoteVote.vote_value == 1, 1), else_=0)).label('like_count'),
-            func.sum(func.case((UserNoteVote.vote_value == -1, 1), else_=0)).label('dislike_count'),
+            func.sum(case((UserNoteVote.vote_value == 1, 1), else_=0)).label('like_count'),
+            func.sum(case((UserNoteVote.vote_value == -1, 1), else_=0)).label('dislike_count'),
         ).where(UserNoteVote.note_id == note_id)
 
         result = await db.execute(stmt)

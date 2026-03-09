@@ -140,9 +140,10 @@ class ChatService:
             return str(result)
 
     @staticmethod
-    async def raw_chat(*, db: AsyncSession, chat: AIChat) -> dict:
+    async def raw_chat(*, db: AsyncSession, chat: AIChat, stream: bool = False) -> dict:
         """
         直接调用 OpenAI 兼容接口，支持多模态和 Tool Calls
+        如果设置 stream=True，将会以流式发送请求并在内部拼接完整响应，主要用于防止通过 Cloudflare 等代理网关时的 524 超时错误。
         """
         provider = await ai_provider_dao.get(db, chat.provider_id)
         if not provider:
@@ -171,7 +172,7 @@ class ChatService:
         if chat.messages:
              for m in chat.messages:
                  # 确保 content 是 list[dict] 或 str
-                 msg_dict = m.model_dump(exclude_none=True)
+                 msg_dict = m.model_dump(exclude_none=True) # type: ignore
                  openai_messages.append(msg_dict)
         else:
              openai_messages.append({"role": "user", "content": chat.user_prompt})
@@ -189,11 +190,31 @@ class ChatService:
             if chat.tool_choice:
                 kwargs['tool_choice'] = chat.tool_choice
         
-        try:
-            response = await client.chat.completions.create(**kwargs)
-            return response.choices[0].message.model_dump()
-        except Exception as e:
-            raise errors.ServerError(msg=f'AI 请求失败: {str(e)}')
+        if stream:
+            kwargs['stream'] = True
+            try:
+                response_stream = await client.chat.completions.create(**kwargs)
+                full_content = ""
+                role = "assistant"
+                
+                async for chunk in response_stream:
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        full_content += delta.content
+                    if delta.role:
+                        role = delta.role
+                        
+                return {"role": role, "content": full_content}
+            except Exception as e:
+                raise errors.ServerError(msg=f'AI 请求失败(内部拼接流式返回): {str(e)}')
+        else:
+            try:
+                response = await client.chat.completions.create(**kwargs)
+                return response.choices[0].message.model_dump()
+            except Exception as e:
+                raise errors.ServerError(msg=f'AI 请求失败: {str(e)}')
 
 
     @staticmethod

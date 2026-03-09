@@ -1,0 +1,16 @@
+[plugin]
+summary = '题本渲染'
+version = '0.1.0'
+description = '用于创建题本渲染任务并对接外部 LaTeX 渲染执行器。'
+author = 'Codex'
+tags = ['other', 'task']
+database = ['mysql', 'postgresql']
+
+[app]
+router = ['v1']
+
+[settings]
+RENDER_BOOK_ENABLED = true
+RENDER_BOOK_STORAGE_ROOT = 'data/render_book'
+RENDER_BOOK_EXECUTOR_MODE = 'external'
+RENDER_BOOK_EXECUTOR_URL = 'http://127.0.0.1:8010'

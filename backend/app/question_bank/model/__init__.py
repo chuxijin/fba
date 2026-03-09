@@ -6,12 +6,17 @@ from .bank import QuestionBank
 from .banner import Banner
 from .chapter import QuestionChapter
 from .notice import Notice
-from .practice import PracticeRecord, PracticeSession, WrongQuestionBook
+from .practice import PracticeRecord, PracticeSession, SessionQuestion, WrongQuestionBook
 from .question import (
+    OptionContent,
     Question,
     QuestionAnalysis,
     QuestionFavorite,
+    QuestionMaterial,
     QuestionNote,
+    QuestionOption,
+    QuestionOptionStats,
+    QuestionPlacement,
     QuestionStatistics,
     UserNoteVote,
 )
@@ -22,12 +27,17 @@ __all__ = [
     'QuestionBank',
     'QuestionChapter',
     'Question',
+    'OptionContent',
+    'QuestionOption',
+    'QuestionOptionStats',
     'QuestionAnalysis',
     'QuestionStatistics',
     'QuestionNote',
     'UserNoteVote',
     'QuestionFavorite',
+    'QuestionPlacement',
     'PracticeSession',
+    'SessionQuestion',
     'PracticeRecord',
     'WrongQuestionBook',
     'UserAccount',

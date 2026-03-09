@@ -1,0 +1,68 @@
+{
+  "name": "@fba/api-sdk",
+  "version": "0.1.0",
+  "description": "FBA Question Bank API SDK - Web / Mini-program / App unified interface layer",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./client": {
+      "import": {
+        "types": "./dist/client/index.d.ts",
+        "default": "./dist/client/index.js"
+      },
+      "require": {
+        "types": "./dist/client/index.d.cts",
+        "default": "./dist/client/index.cjs"
+      }
+    },
+    "./modules": {
+      "import": {
+        "types": "./dist/modules/index.d.ts",
+        "default": "./dist/modules/index.js"
+      },
+      "require": {
+        "types": "./dist/modules/index.d.cts",
+        "default": "./dist/modules/index.cjs"
+      }
+    },
+    "./types": {
+      "import": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/types/index.js"
+      },
+      "require": {
+        "types": "./dist/types/index.d.cts",
+        "default": "./dist/types/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "generate": "tsx scripts/generate-types.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.6.1",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {},
+  "license": "MIT"
+}

@@ -7,7 +7,6 @@ from backend.app.question_bank.api.v1.auth import router as auth_router
 from backend.app.question_bank.api.v1.bank import router as bank_router
 from backend.app.question_bank.api.v1.banner import router as banner_router
 from backend.app.question_bank.api.v1.chapter import router as chapter_router
-from backend.app.question_bank.api.v1.customer import router as customer_router
 from backend.app.question_bank.api.v1.favorite import router as favorite_router
 from backend.app.question_bank.api.v1.home import router as home_router
 from backend.app.question_bank.api.v1.material import router as material_router
@@ -17,13 +16,13 @@ from backend.app.question_bank.api.v1.practice import router as practice_router
 from backend.app.question_bank.api.v1.question import router as question_router
 from backend.app.question_bank.api.v1.session import router as session_router
 from backend.app.question_bank.api.v1.upload import router as upload_router
+from backend.app.question_bank.api.v1.parse import router as parse_router
 from backend.app.question_bank.api.v1.user_settings import router as user_settings_router
 from backend.app.question_bank.api.v1.wrong_question import router as wrong_question_router
 
 router = APIRouter(prefix='/qbank')
 
 router.include_router(auth_router, prefix='/auth', tags=['认证'])
-router.include_router(customer_router, prefix='/customer', tags=['用户'])
 router.include_router(user_settings_router, prefix='/settings', tags=['用户设置'])
 router.include_router(home_router, prefix='/home', tags=['首页'])
 router.include_router(banner_router, prefix='/banners', tags=['轮播图'])
@@ -39,3 +38,4 @@ router.include_router(wrong_question_router, prefix='/wrong-questions', tags=['�
 router.include_router(note_router, prefix='/notes', tags=['笔记'])
 router.include_router(favorite_router, prefix='/favorites', tags=['收藏'])
 router.include_router(upload_router, prefix='/upload', tags=['文件上传'])
+router.include_router(parse_router, prefix='/parse', tags=['文档提取'])

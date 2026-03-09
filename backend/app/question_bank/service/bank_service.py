@@ -56,7 +56,7 @@ class BankService:
         status: int | None = None,
         scope: int | None = None,
         keyword: str | None = None,
-        type: int | None = None,
+        bank_type: int | None = None,
         parent_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """
@@ -67,8 +67,8 @@ class BankService:
         :param status: 题库状态
         :param scope: 可见范围
         :param keyword: 关键字搜索
-        :param type: 类型 (10=题库, 20=合集)
-        :param parent_id: 父级ID
+        :param bank_type: 内容类型 (1=题库, 2=试卷, 3=合集)
+        :param parent_id: 父级 ID
         :return:
         """
         # 如果指定了分类 ID，递归获取所有子分类 ID
@@ -82,22 +82,22 @@ class BankService:
             status=status,
             scope=scope,
             keyword=keyword,
-            type=type,
+            bank_type=bank_type,
             parent_id=parent_id,
         )
         tree_data = get_tree_data(bank_select, sort_key='id')
-        
-        # 对于 type=20 的合集，动态计算子题库数量
-        if type == 20 or (type is None and parent_id is None and not keyword):
-            # 获取所有合集的ID
-            collection_ids = [item['id'] for item in tree_data if item.get('type') == 20]
+
+        # 对于合集类型，动态计算子题库数量
+        if bank_type == 3 or (bank_type is None and parent_id is None and not keyword):
+            # 获取所有合集的 ID
+            collection_ids = [item['id'] for item in tree_data if item.get('bank_type') == 3]
             if collection_ids:
                 # 统计每个合集包含的子题库数量
                 child_counts = await bank_dao.count_children_by_parent_ids(db, collection_ids)
-                # 更新 q_count 字段
+                # 更新 q_count_cache 字段
                 for item in tree_data:
-                    if item.get('type') == 20 and item['id'] in child_counts:
-                        item['q_count'] = child_counts[item['id']]
+                    if item.get('bank_type') == 3 and item['id'] in child_counts:
+                        item['q_count_cache'] = child_counts[item['id']]
         
         return tree_data
 
@@ -137,12 +137,13 @@ class BankService:
         return result.scalars().all()
 
     @staticmethod
-    async def create(*, db: AsyncSession, obj: CreateBankParam) -> None:
+    async def create(*, db: AsyncSession, obj: CreateBankParam, created_by: int) -> None:
         """
         创建题库
 
         :param db: 数据库会话
         :param obj: 创建题库参数
+        :param created_by: 创建者 ID
         :return:
         """
         bank = await bank_dao.get_by_code(db, obj.code)
@@ -151,16 +152,17 @@ class BankService:
         category = await category_dao.get(db, obj.cat_id)
         if not category:
             raise errors.NotFoundError(msg='所属分类不存在')
-        await bank_dao.create(db, obj)
+        await bank_dao.create(db, obj, created_by=created_by)
 
     @staticmethod
-    async def update(*, db: AsyncSession, pk: int, obj: UpdateBankParam) -> int:
+    async def update(*, db: AsyncSession, pk: int, obj: UpdateBankParam, updated_by: int) -> int:
         """
         更新题库
 
         :param db: 数据库会话
         :param pk: 题库 ID
         :param obj: 更新题库参数
+        :param updated_by: 修改者 ID
         :return:
         """
         bank = await bank_dao.get(db, pk)
@@ -171,7 +173,7 @@ class BankService:
         category = await category_dao.get(db, obj.cat_id)
         if not category:
             raise errors.NotFoundError(msg='所属分类不存在')
-        count = await bank_dao.update(db, pk, obj)
+        count = await bank_dao.update(db, pk, obj, updated_by=updated_by)
         return count
 
     @staticmethod

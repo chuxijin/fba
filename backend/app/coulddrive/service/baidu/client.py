@@ -53,6 +53,7 @@ from backend.app.coulddrive.service.coulddrive_service import (
     BaseDriveClient,
     ConfigItem,
     ConfigItemType,
+    DriveAuthError,
     DriverRegistry,
 )
 from backend.app.coulddrive.schema.enum import DriveType
@@ -119,6 +120,9 @@ class BaiduClient(BaseDriveClient):
     - Cookie 字符串（向后兼容）
     - 配置字典 {"cookie": "BDUSS=xxx;STOKEN=xxx"}
     """
+
+    # 百度认证相关错误码
+    AUTH_ERROR_CODES: set[int] = {-4, -5, -6, -11, 3, 31041, 31042, 31044, 31045}
 
     # ========== Alist 风格：配置项声明 ==========
 
@@ -335,6 +339,8 @@ class BaiduClient(BaseDriveClient):
                 self.logger.error(f"获取用户信息失败: {error_msg}")
                 return BaseUserInfo(user_id='0', username='未知用户', avatar_url='', is_vip=False, is_supervip=False)
         except Exception as e:
+            if self._is_auth_error(e):
+                raise DriveAuthError(str(e), drive_type=self.drive_type) from e
             self.logger.error(f"获取用户信息时发生错误: {e}")
             return BaseUserInfo(user_id='0', username='未知用户', avatar_url='', is_vip=False, is_supervip=False)
 
@@ -414,6 +420,8 @@ class BaiduClient(BaseDriveClient):
                     
                     page += 1
                 except Exception as e:
+                    if self._is_auth_error(e):
+                        raise DriveAuthError(str(e), drive_type=self.drive_type) from e
                     self.logger.error(f"获取第{page}页数据失败 '{target_file_path}': {e}")
                     break
             
@@ -423,6 +431,8 @@ class BaiduClient(BaseDriveClient):
             items_raw = await fetch_all_pages_from_api(
                 file_path, desc=desc, name=name, time=time, size=size
             )
+        except DriveAuthError:
+            raise
         except Exception as e:
             self.logger.error(f"Error listing path '{file_path}': {e}")
             return []
@@ -1592,9 +1602,15 @@ class BaiduClient(BaseDriveClient):
                 return {"errno": -1, "error_msg": f"不支持的分享来源类型: {source_type}"}
                 
         except BaiduApiError as e:
+            if self._is_auth_error(e):
+                raise DriveAuthError(str(e), drive_type=self.drive_type) from e
             self.logger.error(f"获取分享信息时发生百度API错误: {e}")
             return {"errno": -1, "error_msg": f"API错误: {str(e)}"}
+        except DriveAuthError:
+            raise
         except Exception as e:
+            if self._is_auth_error(e):
+                raise DriveAuthError(str(e), drive_type=self.drive_type) from e
             self.logger.error(f"获取分享信息时发生未知错误: {e}")
             return {"errno": -1, "error_msg": f"未知错误: {str(e)}"}
         
@@ -1818,6 +1834,10 @@ class BaiduClient(BaseDriveClient):
             share_ids = [int(sid) for sid in params.shareid_list]
             await self._baidupcs.cancel_shared(*share_ids)
             return True
+        except DriveAuthError:
+            raise
         except Exception as e:
+            if self._is_auth_error(e):
+                raise DriveAuthError(str(e), drive_type=self.drive_type) from e
             self.logger.error(f"取消分享时发生错误: {e}")
             return False

@@ -119,3 +119,20 @@ async def load_task_config(db: AsyncSession) -> None:
         'TASK_NOTIFY_EMAIL': str,
     }
     await _load_config(db, ConfigType.task, mapping, 'TASK_CONFIG_STATUS')
+
+
+async def load_storage_config(db: AsyncSession) -> None:
+    """
+    获取云存储配置
+
+    :param db: 数据库会话
+    :return:
+    """
+    mapping = {
+        'STORAGE_PROVIDER': str,
+        'STORAGE_KEY_PREFIX': str,
+        'STORAGE_USE_SIGNED_URL': _to_bool,
+        'STORAGE_SIGNED_URL_EXPIRE_SECONDS': int,
+        'STORAGE_OBJECT_EXPIRE_DAYS': int,
+    }
+    await _load_config(db, ConfigType.storage, mapping, 'STORAGE_CONFIG_STATUS')

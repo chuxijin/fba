@@ -4,13 +4,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.question_bank.crud.crud_question import question_statistics_dao
 from backend.app.question_bank.crud.crud_question_note import question_note_dao, user_note_vote_dao
 from backend.app.question_bank.model import QuestionNote, UserAccount, UserNoteVote
 from backend.app.question_bank.schema.note import (
     CreateQuestionNoteParam,
     GetQuestionNoteListItem,
     NoteVoteStatistics,
+    UpdateQuestionNoteParam,
 )
+from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
 from backend.common.exception import errors
 
 
@@ -32,6 +35,12 @@ class NoteService:
         note_dict['created_by'] = user_id
 
         new_note = await question_note_dao.create(db=db, obj_dict=note_dict)
+
+        # 回写题目统计：笔记数 +1
+        await question_statistics_dao.update_stats(
+            db, obj.question_id, UpdateQuestionStatisticsParam(note_delta=1)
+        )
+
         return new_note
 
     @staticmethod
@@ -91,17 +100,16 @@ class NoteService:
 
     @staticmethod
     async def update_note(
-        *, db: AsyncSession, note_id: int, user_id: int, content: str, is_public: bool
+        *, db: AsyncSession, note_id: int, user_id: int, obj: UpdateQuestionNoteParam
     ) -> int:
         """
-        更新笔记内容和公开状态
+        更新笔记（支持局部更新）
 
         :param db: 数据库会话
         :param note_id: 笔记 ID
         :param user_id: 用户 ID
-        :param content: 笔记内容
-        :param is_public: 是否公开
-        :return: 更新数量
+        :param obj: 更新参数
+        :return:
         """
         note = await question_note_dao.get(db=db, note_id=note_id)
         if not note:
@@ -109,7 +117,11 @@ class NoteService:
         if note.user_id != user_id:
             raise errors.AuthorizationError(msg='无权操作此笔记')
 
-        count = await question_note_dao.update(db=db, note_id=note_id, content=content, is_public=is_public)
+        update_data = obj.model_dump(exclude_none=True)
+        if not update_data:
+            return 0
+
+        count = await question_note_dao.update(db=db, note_id=note_id, **update_data)
         return count
 
     @staticmethod
@@ -129,6 +141,13 @@ class NoteService:
             raise errors.AuthorizationError(msg='无权操作此笔记')
 
         count = await question_note_dao.delete(db=db, note_id=note_id)
+
+        # 回写题目统计：笔记数 -1
+        if count > 0:
+            await question_statistics_dao.update_stats(
+                db, note.question_id, UpdateQuestionStatisticsParam(note_delta=-1)
+            )
+
         return count
 
     @staticmethod
@@ -146,9 +165,6 @@ class NoteService:
             raise errors.NotFoundError(msg='笔记不存在')
         if not note.is_public:
             raise errors.ForbiddenError(msg='不能对私密笔记投票')
-
-        if vote_value not in [1, -1]:
-            raise errors.BadRequestError(msg='投票值必须是 1（点赞）或 -1（点踩）')
 
         await user_note_vote_dao.vote(db=db, user_id=user_id, note_id=note_id, vote_value=vote_value)
 

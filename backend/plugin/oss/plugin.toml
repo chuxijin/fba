@@ -1,0 +1,27 @@
+[plugin]
+summary = 'OSS'
+version = '0.0.6'
+description = '云存储上传插件'
+author = 'wu-clan'
+tags = ['storage']
+database = ['mysql', 'postgresql']
+
+[app]
+router = ['v1']
+
+[settings]
+# 运行时默认 provider（可被 sys_config 覆盖）：aliyun_oss / qiniu_kodo
+STORAGE_PROVIDER = 'aliyun_oss'
+# 对象 key 前缀（可被 sys_config 覆盖）
+STORAGE_KEY_PREFIX = ''
+# 是否返回签名 URL（可被 sys_config 覆盖）
+STORAGE_USE_SIGNED_URL = false
+# 签名 URL 过期秒数（可被 sys_config 覆盖）
+STORAGE_SIGNED_URL_EXPIRE_SECONDS = 300
+# 对象过期天数（0 表示不设置，当前七牛支持）
+STORAGE_OBJECT_EXPIRE_DAYS = 0
+
+OSS_BUCKET_NAME = 'fba-test'
+OSS_ENDPOINT = 'https://oss-cn-hangzhou.aliyuncs.com'
+OSS_USE_SIGNED_URL = true
+OSS_SIGNED_URL_EXPIRE_SECONDS = 300

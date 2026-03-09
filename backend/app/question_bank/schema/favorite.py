@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-收藏相关 Schema
-
-设计原则：
-- 支持收藏夹分组（类似 LeetCode）
-- 支持自定义标签
-- 支持置顶功能
-"""
 from datetime import datetime
 
 from pydantic import ConfigDict, Field
@@ -19,26 +11,25 @@ from backend.common.schema import SchemaBase
 
 
 class QuestionFavoriteSchemaBase(SchemaBase):
-    """题目收藏基础 Schema"""
+    """题目收藏基础"""
 
     question_id: int = Field(description='题目 ID')
-    folder_name: str | None = Field(None, description='收藏夹名称')
-    tags: list[str] | None = Field(None, description='自定义标签')
-    remark: str | None = Field(None, description='备注')
+    placement_id: int | None = Field(None, description='挂载 ID（明确收藏的题库/章节上下文）')
+    folder_name: str | None = Field(None, max_length=100, description='收藏夹名称')
+    tags: list[str] | None = Field(None, max_items=20, description='自定义标签')
+    remark: str | None = Field(None, max_length=500, description='备注')
 
 
 class CreateQuestionFavoriteParam(QuestionFavoriteSchemaBase):
     """创建收藏参数"""
 
-    pass
-
 
 class UpdateQuestionFavoriteParam(SchemaBase):
     """更新收藏参数"""
 
-    folder_name: str | None = Field(None, description='收藏夹名称')
-    tags: list[str] | None = Field(None, description='自定义标签')
-    remark: str | None = Field(None, description='备注')
+    folder_name: str | None = Field(None, max_length=100, description='收藏夹名称')
+    tags: list[str] | None = Field(None, max_items=20, description='自定义标签')
+    remark: str | None = Field(None, max_length=500, description='备注')
 
 
 class GetQuestionFavoriteDetail(QuestionFavoriteSchemaBase):
@@ -52,20 +43,27 @@ class GetQuestionFavoriteDetail(QuestionFavoriteSchemaBase):
     pinned_time: datetime | None = Field(None, description='置顶时间')
     created_time: datetime = Field(description='收藏时间')
 
+    # 冗余字段（收藏时快照）
+    bank_id: int | None = Field(None, description='题库 ID（冗余）')
+    bank_name: str | None = Field(None, description='题库名称（冗余）')
+    chapter_id: int | None = Field(None, description='章节 ID（冗余）')
+    chapter_name: str | None = Field(None, description='章节名称（冗余）')
+
 
 class GetQuestionFavoriteListItem(SchemaBase):
-    """收藏列表项（用于分组统计，不包含题目详细信息）"""
+    """收藏列表项"""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='收藏 ID')
     question_id: int = Field(description='题目 ID')
+    placement_id: int | None = Field(None, description='挂载 ID')
     folder_name: str | None = Field(None, description='收藏夹名称')
     tags: list[str] | None = Field(None, description='自定义标签')
     is_pinned: bool = Field(description='是否置顶')
     created_time: datetime = Field(description='收藏时间')
 
-    # 冗余字段（收藏时快照，用于分组统计）
+    # 冗余字段（收藏时快照）
     bank_id: int | None = Field(None, description='题库 ID（冗余）')
     bank_name: str | None = Field(None, description='题库名称（冗余）')
     chapter_id: int | None = Field(None, description='章节 ID（冗余）')
@@ -88,7 +86,7 @@ class BatchDeleteFavoritesParam(SchemaBase):
 class ClearFolderParam(SchemaBase):
     """清空收藏夹参数"""
 
-    folder_name: str = Field(description='收藏夹名称')
+    folder_name: str = Field(max_length=100, description='收藏夹名称')
 
 
 class FolderInfo(SchemaBase):

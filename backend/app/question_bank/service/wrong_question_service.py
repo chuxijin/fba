@@ -19,7 +19,7 @@ class WrongQuestionService:
         :param db: 数据库会话
         :param wrong_id: 错题 ID
         :param user_id: 用户 ID
-        :return: 错题记录
+        :return:
         """
         wrong = await wrong_question_dao.get(db=db, wrong_id=wrong_id)
         if not wrong:
@@ -38,7 +38,7 @@ class WrongQuestionService:
         :param wrong_id: 错题 ID
         :param user_id: 用户 ID
         :param is_pinned: 是否置顶
-        :return: 更新数量
+        :return:
         """
         wrong = await wrong_question_dao.get(db=db, wrong_id=wrong_id)
         if not wrong:
@@ -57,7 +57,7 @@ class WrongQuestionService:
         :param db: 数据库会话
         :param wrong_id: 错题 ID
         :param user_id: 用户 ID
-        :return: 删除数量
+        :return:
         """
         wrong = await wrong_question_dao.get(db=db, wrong_id=wrong_id)
         if not wrong:
@@ -76,15 +76,13 @@ class WrongQuestionService:
         :param db: 数据库会话
         :param wrong_ids: 错题 ID 列表
         :param user_id: 用户 ID
-        :return: 删除数量
+        :return:
         """
-        # 验证所有错题是否属于当前用户
         for wrong_id in wrong_ids:
             wrong = await wrong_question_dao.get(db=db, wrong_id=wrong_id)
             if wrong and wrong.user_id != user_id:
                 raise errors.ForbiddenError(msg=f'无权操作错题 {wrong_id}')
 
-        # 批量删除
         count = 0
         for wrong_id in wrong_ids:
             count += await wrong_question_dao.delete(db=db, wrong_id=wrong_id)
@@ -98,7 +96,7 @@ class WrongQuestionService:
 
         :param db: 数据库会话
         :param user_id: 用户 ID
-        :return: 删除数量
+        :return:
         """
         count = await wrong_question_dao.clear_mastered(db=db, user_id=user_id)
         return count
@@ -106,27 +104,22 @@ class WrongQuestionService:
     @staticmethod
     async def get_statistics(*, db: AsyncSession, user_id: int) -> WrongQuestionStatistics:
         """
-        获取用户的错题本统计数据
+        获取用户的错题本统计数据（走 DAO SQL 聚合，避免全量加载）
 
         :param db: 数据库会话
         :param user_id: 用户 ID
-        :return: 错题本统计
+        :return:
         """
-        all_wrongs = await wrong_question_dao.get_by_user(db=db, user_id=user_id)
+        stats = await wrong_question_dao.get_statistics(db=db, user_id=user_id)
 
-        total_count = len(all_wrongs)
-        mastered_count = sum(1 for w in all_wrongs if w.is_mastered)
-        unmastered_count = total_count - mastered_count
-        avg_wrong_count = sum(w.wrong_count for w in all_wrongs) / total_count if total_count > 0 else 0
-
-        stats = WrongQuestionStatistics(
-            total_count=total_count,
-            mastered_count=mastered_count,
-            unmastered_count=unmastered_count,
-            avg_wrong_count=round(avg_wrong_count, 2),
+        return WrongQuestionStatistics(
+            total_count=stats['total'],
+            mastered_count=stats['mastered'],
+            unmastered_count=stats['unmastered'],
+            pinned_count=stats['pinned'],
+            avg_wrong_count=stats['avg_wrong_count'],
+            avg_correct_streak=stats['avg_correct_streak'],
         )
-
-        return stats
 
 
 wrong_question_service = WrongQuestionService()

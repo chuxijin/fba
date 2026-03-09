@@ -963,7 +963,213 @@ class FileSyncService:
             "stats": stats,
             "error": stats["errors"][0] if stats["errors"] else None
         }
-    
+
+    async def _process_source_folder(
+        self,
+        service: CouldDriveService,
+        source_definition: ShareSourceDefinition,
+        target_definition: DiskTargetDefinition,
+        source_filename: str,
+        source_path: str,
+        target_path: str,
+        target_id: str | None,
+        target_file_map: dict[str, Any],
+        sync_method: str,
+        recursion_speed: RecursionSpeed,
+        item_filter: ItemFilter | None,
+        current_depth: int,
+        max_depth: int,
+        stats: dict[str, Any],
+        task_id: int | None,
+        db: AsyncSession | None,
+        processed_target_signatures: set[tuple[str, int]],
+        account_key: str | None = None,
+    ) -> None:
+        """
+        处理源目录中的子目录 - 递归进入子目录同步
+
+        :param service: 网盘服务实例
+        :param source_definition: 源定义
+        :param target_definition: 目标定义
+        :param source_filename: 源目录名（带尾部 /）
+        :param source_path: 源父目录路径
+        :param target_path: 目标父目录路径
+        :param target_id: 目标父目录 ID
+        :param target_file_map: 目标目录文件映射
+        :param sync_method: 同步方式
+        :param recursion_speed: 递归速度
+        :param item_filter: 过滤器
+        :param current_depth: 当前递归深度
+        :param max_depth: 最大递归深度
+        :param stats: 同步统计信息字典
+        :param task_id: 任务 ID
+        :param db: 数据库会话
+        :param processed_target_signatures: 已处理目标文件签名集合
+        :param account_key: 账户锁键
+        :return:
+        """
+        dir_name = source_filename.rstrip('/')
+        source_sub_path = join_path(source_path, dir_name, is_dir=True)
+        target_sub_path = join_path(target_path, dir_name, is_dir=True)
+
+        if source_filename not in target_file_map:
+            # 目标目录没有这个目录，全量同步
+            await self.sync_without_have(
+                service, source_definition, target_definition,
+                source_sub_path, target_sub_path, target_id,
+                sync_method, recursion_speed, item_filter,
+                current_depth + 1, max_depth, stats, task_id, db,
+                account_key=account_key,
+            )
+        else:
+            # 目标目录有这个目录，继续递归
+            target_sub_file_id = target_file_map.get(source_filename, {}).get("file_id", "")
+            await self.sync_with_have(
+                service, source_definition, target_definition,
+                source_sub_path, target_sub_path, target_sub_file_id,
+                sync_method, recursion_speed, item_filter,
+                current_depth + 1, max_depth, stats, task_id, db,
+                account_key=account_key,
+            )
+
+        # 标记目录为已处理（仅当目标中已存在时）
+        if source_filename in target_file_map:
+            processed_target_signatures.add((source_filename, 0))
+
+    def _match_source_file(
+        self,
+        source_filename: str,
+        source_size: int,
+        source_file_info: dict[str, Any],
+        source_path: str,
+        target_path: str,
+        target_file_map: dict[str, Any],
+        unmatched_target_files_by_size: defaultdict[int, list[tuple[str, dict[str, Any]]]],
+        processed_target_signatures: set[tuple[str, int]],
+        files_to_transfer: list[dict[str, Any]],
+        stats: dict[str, Any],
+    ) -> None:
+        """
+        对一个源文件执行三步匹配（精确匹配 → 大小匹配 → 新文件）
+
+        :param source_filename: 源文件名
+        :param source_size: 源文件大小
+        :param source_file_info: 源文件信息
+        :param source_path: 源目录路径
+        :param target_path: 目标目录路径
+        :param target_file_map: 目标目录文件映射
+        :param unmatched_target_files_by_size: 按大小分组的未匹配目标文件
+        :param processed_target_signatures: 已处理目标文件签名集合
+        :param files_to_transfer: 待转存文件列表（就地追加）
+        :param stats: 同步统计信息字典
+        :return:
+        """
+        stats["files_processed"] += 1
+
+        target_file_info_in_map = target_file_map.get(source_filename)
+
+        # 第一步：尝试文件名匹配（精确匹配 或 文件修改）
+        if target_file_info_in_map and not target_file_info_in_map.get("is_folder", False):
+            target_size_by_name = target_file_info_in_map.get("file_size", -1)
+
+            if source_size == target_size_by_name:
+                # 精确匹配（文件名和大小都相同）
+                stats["files_skipped"] += 1
+                processed_target_signatures.add((source_filename, source_size))
+            else:
+                # 文件已修改（文件名相同，大小不同），需要转存覆盖
+                files_to_transfer.append({
+                    "file_name": source_filename,
+                    "file_size": source_size,
+                    "source_path": source_path,
+                    "target_path": target_path,
+                    "file_id": source_file_info.get("file_id", ""),
+                    **{k: v for k, v in source_file_info.items() if k not in ["file_size", "file_id"]},
+                })
+                processed_target_signatures.add((source_filename, target_size_by_name))
+
+            # 从未匹配列表中移除已处理的文件
+            if source_size in unmatched_target_files_by_size:
+                unmatched_target_files_by_size[source_size] = [
+                    item for item in unmatched_target_files_by_size[source_size]
+                    if item[0] != source_filename
+                ]
+                if not unmatched_target_files_by_size[source_size]:
+                    del unmatched_target_files_by_size[source_size]
+            return
+
+        # 第二步：尝试大小匹配（隐式重命名处理）
+        if source_size in unmatched_target_files_by_size:
+            for i, (target_rename_filename, _) in enumerate(
+                list(unmatched_target_files_by_size[source_size])
+            ):
+                if (target_rename_filename, source_size) not in processed_target_signatures:
+                    stats["files_skipped"] += 1
+                    processed_target_signatures.add((target_rename_filename, source_size))
+                    unmatched_target_files_by_size[source_size].pop(i)
+                    return
+
+        # 第三步：以上都未匹配，为新文件
+        files_to_transfer.append({
+            "file_name": source_filename,
+            "file_size": source_size,
+            "source_path": source_path,
+            "target_path": target_path,
+            "file_id": source_file_info.get("file_id", ""),
+            **{k: v for k, v in source_file_info.items() if k not in ["file_size", "file_id"]},
+        })
+
+    async def _collect_full_sync_deletions(
+        self,
+        service: CouldDriveService,
+        target_definition: DiskTargetDefinition,
+        target_file_map: dict[str, Any],
+        processed_target_signatures: set[tuple[str, int]],
+        target_path: str,
+        recursion_speed: RecursionSpeed,
+        stats: dict[str, Any],
+        task_id: int | None,
+        db: AsyncSession | None,
+        account_key: str | None = None,
+    ) -> None:
+        """
+        全量同步时收集并删除目标目录中的多余文件
+
+        :param service: 网盘服务实例
+        :param target_definition: 目标定义
+        :param target_file_map: 目标目录文件映射
+        :param processed_target_signatures: 已处理目标文件签名集合
+        :param target_path: 目标目录路径
+        :param recursion_speed: 递归速度
+        :param stats: 同步统计信息字典
+        :param task_id: 任务 ID
+        :param db: 数据库会话
+        :param account_key: 账户锁键
+        :return:
+        """
+        files_to_delete: list[dict[str, Any]] = []
+
+        for target_filename, target_file_info in target_file_map.items():
+            target_is_folder = target_filename.endswith('/')
+            target_size = target_file_info.get("file_size", 0) if not target_is_folder else 0
+            target_signature = (target_filename, target_size)
+
+            if target_signature not in processed_target_signatures:
+                files_to_delete.append({
+                    "file_name": target_filename,
+                    "file_size": target_size,
+                    "target_path": target_path,
+                    "file_id": target_file_info.get("file_id", ""),
+                })
+
+        if files_to_delete:
+            await self.delete_files(
+                service, target_definition, files_to_delete,
+                recursion_speed, stats, task_id, db, account_key=account_key,
+            )
+            if db:
+                await db.commit()
+
     async def sync_with_have(
         self,
         service: CouldDriveService,
@@ -1012,21 +1218,20 @@ class FileSyncService:
                 return
 
         if current_depth >= max_depth:
-            self.logger.warning(f"[任务{task_id or 'unknown'}] 达到最大递归深度 {max_depth}，停止递归: {source_path}")
+            self.logger.warning(
+                f"[任务{task_id or 'unknown'}] 达到最大递归深度 {max_depth}，停止递归: {source_path}"
+            )
             return
-        
+
         try:
-            # 获取源文件和目标文件映射（文件名 -> 文件大小）
             source_file_map = await self.list_dir(
                 service, source_path, True, item_filter, True,
-                source_definition, task_id=task_id, db=db, account_key=account_key
+                source_definition, task_id=task_id, db=db, account_key=account_key,
             )
-
             target_file_map = await self.list_dir(
                 service, target_path, False, item_filter, False,
-                target_definition, target_id, task_id, db, account_key=account_key
+                target_definition, target_id, task_id, db, account_key=account_key,
             )
-            
         except Exception as e:
             error_msg = f"扫描目录失败: {source_path} -> {target_path}, 错误: {str(e)}"
             self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}", exc_info=True)
@@ -1034,176 +1239,60 @@ class FileSyncService:
             return
 
         files_to_transfer: list[dict[str, Any]] = []
-        files_to_delete: list[dict[str, Any]] = []
 
-        # 用于通过大小快速查找目标目录中尚未被源目录匹配的文件
-        # 存储形式为 {file_size: [(file_name, file_info), ...] }
+        # {file_size: [(file_name, file_info), ...]} 按大小快速查找未匹配的目标文件
         unmatched_target_files_by_size: defaultdict[int, list[tuple[str, dict[str, Any]]]] = defaultdict(list)
-        # 用于跟踪目标目录中已经被处理（匹配、修改或重命名）的项，防止重复或错误删除
-        # 存储形式为 (文件名, 文件大小)
+        # (文件名, 文件大小) 跟踪已处理的目标项，防止重复或错误删除
         processed_target_signatures: set[tuple[str, int]] = set()
 
-        # 预处理目标文件信息，填充 unmatched_target_files_by_size
+        # 预处理目标文件信息
         for target_filename, target_file_info in target_file_map.items():
-            if not target_filename.endswith('/'): # 只处理文件，不处理目录
+            if not target_filename.endswith('/'):
                 file_size = target_file_info.get("file_size", 0)
                 unmatched_target_files_by_size[file_size].append((target_filename, target_file_info))
 
-
         # 处理源目录中的每个文件/目录
         for source_filename, source_file_info in source_file_map.items():
-            source_is_folder = source_filename.endswith('/')
-            source_size = source_file_info.get("file_size", 0) if not source_is_folder else 0
-            
-            item_handled = False # 标记当前源文件是否已被处理
-
-            if source_is_folder:
-                dir_name = source_filename.rstrip('/')
-                source_sub_path = join_path(source_path, dir_name, is_dir=True)
-                target_sub_path = join_path(target_path, dir_name, is_dir=True)
-                
-
-                # 目标目录没有这个目录
-                if source_filename not in target_file_map:
-                    await self.sync_without_have(
-                        service, source_definition, target_definition,
-                        source_sub_path, target_sub_path, target_id,  # 传递当前目录的target_id作为父目录ID
-                        sync_method, recursion_speed, item_filter,
-                        current_depth + 1, max_depth, stats, task_id, db,
-                        account_key=account_key
-                    )
-                # 目标目录有这个目录，继续递归
-                else:
-                    target_sub_file_id = target_file_map.get(source_filename, {}).get("file_id", "")
-                    await self.sync_with_have(
-                        service, source_definition, target_definition,
-                        source_sub_path, target_sub_path, target_sub_file_id,
-                        sync_method, recursion_speed, item_filter,
-                        current_depth + 1, max_depth, stats, task_id, db,
-                        account_key=account_key
-                    )
-                
-                # 标记目录为已处理。即使是新创建的，也不应被当作多余删除。
-                # 这里需要检查目标目录中是否存在，因为 sync_without_have 会创建新目录，但不会在当前的 target_file_map 中。
-                if source_filename in target_file_map:
-                    processed_target_signatures.add((source_filename, 0)) # 目录大小为0
-                
-                item_handled = True # 目录处理完毕
-
-            else: # 是文件
-                stats["files_processed"] += 1
-                
-
-                target_file_info_in_map = target_file_map.get(source_filename)
-                
-                # 第一步：尝试文件名匹配（精确匹配 或 文件修改）
-                if target_file_info_in_map and not target_file_info_in_map.get("is_folder", False):
-                    target_size_by_name = target_file_info_in_map.get("file_size", -1)
-                    
-                    if source_size == target_size_by_name:
-                        # 精确匹配 (文件名和大小都相同)
-                        stats["files_skipped"] += 1
-                        processed_target_signatures.add((source_filename, source_size))
-                        item_handled = True
-                    else:
-                        # 文件已修改 (文件名相同，大小不同)
-                        # 需要转存 (覆盖旧文件)
-                        transfer_file_info = {
-                            "file_name": source_filename,
-                            "file_size": source_size,
-                            "source_path": source_path,
-                            "target_path": target_path,
-                            "file_id": source_file_info.get("file_id", ""), # 源文件的ID
-                            **{k: v for k, v in source_file_info.items() if k not in ["file_size", "file_id"]}
-                        }
-                        files_to_transfer.append(transfer_file_info)
-                        
-                        processed_target_signatures.add((source_filename, target_size_by_name)) # 旧目标文件被"处理"了 (即将被覆盖)
-                        item_handled = True
-
-                    # 从 unmatched_target_files_by_size 中移除已处理的文件
-                    if source_size in unmatched_target_files_by_size:
-                        unmatched_target_files_by_size[source_size] = [
-                            item for item in unmatched_target_files_by_size[source_size] if item[0] != source_filename
-                        ]
-                        if not unmatched_target_files_by_size[source_size]:
-                            del unmatched_target_files_by_size[source_size]
-
-                # 第二步：如果文件名不匹配，尝试大小匹配 (隐式重命名处理)
-                if not item_handled and source_size in unmatched_target_files_by_size:
-                    # 查找是否有相同大小但文件名不同的目标文件
-                    found_rename_candidate = False
-                    for i, (target_rename_filename, target_rename_file_info) in enumerate(
-                        list(unmatched_target_files_by_size[source_size])
-                    ):
-                        # 检查是否已经被 processed_target_signatures 标记，确保不重复匹配
-                        if (target_rename_filename, source_size) not in processed_target_signatures:
-                            # 找到一个重命名候选：文件名不同，大小相同，且未被处理
-                            stats["files_skipped"] += 1 # 视为跳过，因为是重命名
-                            processed_target_signatures.add((target_rename_filename, source_size))
-                            
-                            # 从查找列表中移除，确保这个目标文件不再被匹配
-                            unmatched_target_files_by_size[source_size].pop(i)
-                            
-                            item_handled = True
-                            found_rename_candidate = True
-                            break # 找到一个匹配即可
-                    if found_rename_candidate:
-                        item_handled = True
-
-                # 第三步：如果以上都未匹配，则为新文件
-                if not item_handled:
-                    transfer_file_info = {
-                        "file_name": source_filename,
-                        "file_size": source_size,
-                        "source_path": source_path,
-                        "target_path": target_path,
-                        "file_id": source_file_info.get("file_id", ""), # 源文件的ID
-                        **{k: v for k, v in source_file_info.items() if k not in ["file_size", "file_id"]}
-                    }
-                    files_to_transfer.append(transfer_file_info)
-                    
+            if source_filename.endswith('/'):
+                await self._process_source_folder(
+                    service, source_definition, target_definition,
+                    source_filename, source_path, target_path, target_id,
+                    target_file_map, sync_method, recursion_speed, item_filter,
+                    current_depth, max_depth, stats, task_id, db,
+                    processed_target_signatures, account_key=account_key,
+                )
+            else:
+                source_size = source_file_info.get("file_size", 0)
+                self._match_source_file(
+                    source_filename, source_size, source_file_info,
+                    source_path, target_path, target_file_map,
+                    unmatched_target_files_by_size, processed_target_signatures,
+                    files_to_transfer, stats,
+                )
 
         # 批量转存当前目录下需要同步的文件
         if files_to_transfer:
-            transfer_start_time = time.time()
             transfer_result = await self.transfer_files(
                 service, source_definition, target_definition,
                 files_to_transfer,
                 recursion_speed, stats, task_id, db, account_key=account_key,
-                current_target_id=target_id
+                current_target_id=target_id,
             )
-
-            # 失败则跳过当前目录后续处理
             if not transfer_result:
-                self.logger.warning(f"[任务{task_id or 'unknown'}] 批量转存失败，跳过当前目录后续处理: {target_path}")
-                return
-            if db: await db.commit() # 每次批量转存后提交
-
-        # 如果是完全同步，删除目标目录中多余的文件
-        if sync_method == "full":
-            # 遍历目标目录中的所有项，找出未被 processed_target_signatures 标记的项进行删除
-            for target_filename, target_file_info in target_file_map.items():
-                target_is_folder = target_filename.endswith('/')
-                target_size = target_file_info.get("file_size", 0) if not target_is_folder else 0
-                target_signature = (target_filename, target_size)
-
-                if target_signature not in processed_target_signatures:
-                    # 这个目标项没有在源目录中找到匹配（精确匹配或大小匹配），也没有被修改，所以是多余的
-                    files_to_delete.append({
-                        "file_name": target_filename,
-                        "file_size": target_size,
-                        "target_path": target_path,
-                        "file_id": target_file_info.get("file_id", "")
-                    })
-            
-            if files_to_delete:
-                delete_start_time = time.time()
-                await self.delete_files(
-                    service, target_definition, files_to_delete,
-                    recursion_speed, stats, task_id, db, account_key=account_key
+                self.logger.warning(
+                    f"[任务{task_id or 'unknown'}] 批量转存失败，跳过当前目录后续处理: {target_path}"
                 )
-                if db: await db.commit()
+                return
+            if db:
+                await db.commit()
+
+        # 全量同步时删除目标目录中多余的文件
+        if sync_method == "full":
+            await self._collect_full_sync_deletions(
+                service, target_definition, target_file_map,
+                processed_target_signatures, target_path,
+                recursion_speed, stats, task_id, db, account_key=account_key,
+            )
 
     async def sync_without_have(
         self,
@@ -1490,7 +1579,177 @@ class FileSyncService:
             error_msg = f"扫描目录失败: {path}, 错误: {str(e)}"
             self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}", exc_info=True)
             raise e
-    
+
+    async def _build_transfer_request(
+        self,
+        service: CouldDriveService,
+        source_definition: ShareSourceDefinition,
+        target_definition: DiskTargetDefinition,
+        files: list[dict[str, Any]],
+        stats: dict[str, Any],
+        task_id: int | None,
+        current_target_id: str | None,
+    ) -> TransferParam | None:
+        """
+        验证 file_id 并构建转存请求参数
+
+        :param service: 网盘服务实例
+        :param source_definition: 源定义
+        :param target_definition: 目标定义
+        :param files: 文件列表
+        :param stats: 同步统计信息字典
+        :param task_id: 任务 ID
+        :param current_target_id: 当前目标目录 ID
+        :return:
+        """
+        drive_type = await service.get_drive_type()
+
+        # 提取并验证文件 ID 列表
+        file_ids = []
+        for file_info in files:
+            file_id = file_info.get("file_id", "")
+            if not file_id:
+                error_msg = f"文件 {file_info.get('file_name', '')} 缺少file_id"
+                self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
+                stats["errors"].append(error_msg)
+                if task_id and stats:
+                    task_item = await self.record_task_item(
+                        task_id, "copy",
+                        file_info.get("source_path", ""),
+                        file_info.get("target_path", ""),
+                        file_info.get("file_name", ""),
+                        file_info.get("file_size", 0),
+                        "failed", error_msg,
+                    )
+                    stats["pending_task_items"].append(task_item)
+                return None
+            file_ids.append(file_id)
+
+        # 构建扩展参数：基础参数 + 文件特定参数
+        ext_params = dict(source_definition.ext_params) if source_definition.ext_params else {}
+
+        # 为每个文件构建扩展信息
+        files_ext_info = []
+        for file_info in files:
+            file_ext_info = {
+                'file_id': file_info.get('file_id'),
+                'file_ext': {
+                    key: value for key, value in file_info.items()
+                    if key not in ["file_size", "file_id"]
+                },
+            }
+            files_ext_info.append(file_ext_info)
+
+        ext_params['files_ext_info'] = files_ext_info
+
+        # 合并第一个文件的基础扩展信息（保持向后兼容）
+        if files:
+            first_file = files[0]
+            for key, value in first_file.items():
+                if key not in ["file_name", "file_size", "source_path", "target_path", "file_id"]:
+                    ext_params[key] = value
+
+        first_file = files[0] if files else {}
+        actual_target_id = current_target_id or target_definition.file_id
+
+        return TransferParam(
+            drive_type=drive_type,
+            source_type=source_definition.source_type,
+            source_id=source_definition.source_id,
+            source_path=first_file.get("source_path", ""),
+            target_path=first_file.get("target_path", target_definition.file_path),
+            target_id=actual_target_id,
+            file_ids=file_ids,
+            ext=ext_params,
+        )
+
+    async def _update_transferred_file_ids(
+        self,
+        service: CouldDriveService,
+        target_definition: DiskTargetDefinition,
+        files: list[dict[str, Any]],
+        actual_target_id: str | None,
+        stats: dict[str, Any],
+        task_id: int | None,
+        db: AsyncSession | None,
+        account_key: str | None = None,
+    ) -> None:
+        """
+        转存成功后重新扫描目标目录，更新文件的 file_id
+
+        :param service: 网盘服务实例
+        :param target_definition: 目标定义
+        :param files: 已转存的文件列表
+        :param actual_target_id: 实际转存的目标目录 ID
+        :param stats: 同步统计信息字典
+        :param task_id: 任务 ID
+        :param db: 数据库会话
+        :param account_key: 账户锁键
+        :return:
+        """
+        first_file = files[0] if files else {}
+        actual_target_path = first_file.get("target_path", target_definition.file_path)
+
+        current_target_file_map = await self.list_dir(
+            service, actual_target_path, False, None, False,
+            target_definition, actual_target_id,
+            task_id, db, account_key=account_key,
+        )
+
+        for original_file_info in files:
+            original_file_name = original_file_info.get("file_name", "")
+            search_name = (
+                original_file_name + '/' if original_file_info.get("is_folder")
+                else original_file_name
+            )
+
+            if search_name in current_target_file_map:
+                new_file_info = current_target_file_map[search_name]
+                updated_file_info = dict(original_file_info)
+                updated_file_info["file_id"] = new_file_info.get(
+                    "file_id", original_file_info.get("file_id")
+                )
+                updated_file_info["parent_id"] = actual_target_id
+                stats["transferred_files_info"].append(updated_file_info)
+            else:
+                stats["transferred_files_info"].append(original_file_info)
+
+    async def _record_batch_task_items(
+        self,
+        files: list[dict[str, Any]],
+        task_id: int | None,
+        stats: dict[str, Any],
+        status: str,
+        error_msg: str | None = None,
+    ) -> None:
+        """
+        批量记录文件的任务项
+
+        :param files: 文件列表
+        :param task_id: 任务 ID
+        :param stats: 同步统计信息字典
+        :param status: 任务项状态（completed/failed）
+        :param error_msg: 错误信息
+        :return:
+        """
+        if not task_id or not stats:
+            return
+
+        status_label = {"completed": "转存成功", "failed": "转存失败"}.get(status, status)
+        for file_info in files:
+            self.logger.debug(
+                f"[任务{task_id}] {status_label}: '{file_info.get('file_name', '')}'"
+            )
+            task_item = await self.record_task_item(
+                task_id, "copy",
+                file_info.get("source_path", ""),
+                file_info.get("target_path", ""),
+                file_info.get("file_name", ""),
+                file_info.get("file_size", 0),
+                status, error_msg,
+            )
+            stats["pending_task_items"].append(task_item)
+
     async def transfer_files(
         self,
         service: CouldDriveService,
@@ -1529,175 +1788,51 @@ class FileSyncService:
             if await self._check_cancel_requested(db, task_id):
                 self.logger.info(f"[任务{task_id}] transfer_files 检测到取消请求，停止转存")
                 return False
-        
-        
+
         try:
-            # 获取驱动类型
-            drive_type = await service.get_drive_type()
-
-            # 提取文件ID列表
-            file_ids = []
-            for file_info in files:
-                file_id = file_info.get("file_id", "")
-                if not file_id:
-                    error_msg = f"文件 {file_info.get('file_name', '')} 缺少file_id"
-                    self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
-                    stats["errors"].append(error_msg)
-                    if task_id and stats:
-                        task_item = await self.record_task_item(
-                            task_id, "copy", file_info.get("source_path", ""), file_info.get("target_path", ""),
-                            file_info.get("file_name", ""), file_info.get("file_size", 0), "failed", error_msg
-                        )
-                        stats["pending_task_items"].append(task_item) # 添加到待记录列表
-                    return False
-                file_ids.append(file_id)
-
-
-            # 构建扩展参数：基础参数 + 文件特定参数
-            ext_params = dict(source_definition.ext_params) if source_definition.ext_params else {}
-
-
-            # 为每个文件构建扩展信息，确保每个文件都有各自的扩展参数
-            files_ext_info = []
-            for file_info in files:
-                file_ext_info = {
-                    'file_id': file_info.get('file_id'),
-                    'file_ext': {}
-                }
-
-                # 提取文件级别的扩展参数
-                for key, value in file_info.items():
-                    if key not in ["file_size", "file_id"]:
-                        file_ext_info['file_ext'][key] = value
-
-                files_ext_info.append(file_ext_info)
-
-            # 将文件扩展信息添加到参数中
-            ext_params['files_ext_info'] = files_ext_info
-
-            # 如果第一个文件有扩展参数，也合并其基础信息（保持向后兼容）
-            if files:
-                first_file = files[0]
-                for key, value in first_file.items():
-                    if key not in ["file_name", "file_size", "source_path", "target_path", "file_id"]:
-                        ext_params[key] = value
-
-
-            # 构建转存参数
-            from backend.app.coulddrive.schema.file import TransferParam
-            first_file = files[0] if files else {}
-
-            # 使用当前目标目录ID，如果没有提供则使用根目录ID
+            # 构建转存请求
             actual_target_id = current_target_id or target_definition.file_id
-
-            params = TransferParam(
-                drive_type=drive_type,
-                source_type=source_definition.source_type,
-                source_id=source_definition.source_id,
-                source_path=first_file.get("source_path", ""),
-                target_path=first_file.get("target_path", target_definition.file_path),
-                target_id=actual_target_id,
-                file_ids=file_ids,
-                ext=ext_params
+            params = await self._build_transfer_request(
+                service, source_definition, target_definition,
+                files, stats, task_id, current_target_id,
             )
-
+            if params is None:
+                return False
 
             self.logger.info(f"[任务{task_id}] 执行文件转存（已由上层获取账户锁）")
             transfer_result = await service.transfer_files(params=params)
-
             self.logger.info(f"[任务{task_id}] 转存API调用结果: {transfer_result}")
+
             # 写后安静期，等待上游平台落盘/索引收敛
             await asyncio.sleep(2)
-            
+
             if transfer_result:
                 stats["files_transferred"] += len(files)
                 self.logger.info(f"[任务{task_id or 'unknown'}] 批量转存成功: {len(files)} 个文件")
-                
-                # 记录成功的文件
-                for file_info in files:
-                    self.logger.info(f"[任务{task_id}] 转存成功: '{file_info.get('file_name', '')}'")
-                    if task_id and stats:
-                        task_item = await self.record_task_item(
-                            task_id, "copy", file_info.get("source_path", ""), file_info.get("target_path", ""),
-                            file_info.get("file_name", ""), file_info.get("file_size", 0), "completed", None
-                        )
-                        stats["pending_task_items"].append(task_item) # 添加到待记录列表
-
-                # ========== 解决 file not found 问题 ========== #
-                # 重新获取目标目录的最新文件列表，以获取转存后的正确file_id
-                # 使用实际转存的目标目录ID进行扫描，而不是根目录ID
-                actual_target_id_for_scan = actual_target_id
-                actual_target_path_for_scan = first_file.get("target_path", target_definition.file_path)
-                
-                current_target_file_map = await self.list_dir(
-                    service, actual_target_path_for_scan, False, None, False,
-                    target_definition, actual_target_id_for_scan,
-                    task_id, db, account_key=account_key # 这里需要 db, account_key
+                await self._record_batch_task_items(files, task_id, stats, "completed")
+                await self._update_transferred_file_ids(
+                    service, target_definition, files,
+                    actual_target_id, stats, task_id, db, account_key=account_key,
                 )
-                
-                
-                # 更新 stats["transferred_files_info"] 中的文件file_id
-                for original_file_info in files:
-                    original_file_name = original_file_info.get("file_name", "")
-                    # 处理目录的情况，list_dir 返回的目录名是带 '/' 的
-                    search_name = (
-                        original_file_name + '/' if original_file_info.get("is_folder")
-                        else original_file_name
-                    )
-
-                    if search_name in current_target_file_map:
-                        new_file_info_from_target = current_target_file_map[search_name]
-                        updated_file_info = dict(original_file_info) # 复制一份，避免修改原始数据
-                        updated_file_info["file_id"] = new_file_info_from_target.get(
-                            "file_id", original_file_info.get("file_id")
-                        )
-                        updated_file_info["parent_id"] = actual_target_id_for_scan # 更新 parent_id 为实际转存的目标目录ID
-                        stats["transferred_files_info"].append(updated_file_info) # 收集成功转存并更新ID的文件信息
-                    else:
-                        # 如果找不到，仍然将原始文件信息添加到 transferred_files_info，但可能ID是旧的或空的
-                        stats["transferred_files_info"].append(original_file_info)
-                
-                # ========== 解决 file not found 问题 ========== #
-
             else:
                 error_msg = f"批量转存失败：API返回False，涉及 {len(files)} 个文件"
                 self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
                 stats["errors"].append(error_msg)
-                
-                # 记录失败的文件
-                for file_info in files:
-                    self.logger.info(f"[任务{task_id}] 转存失败: '{file_info.get('file_name', '')}'")
-                    if task_id and stats:
-                        task_item = await self.record_task_item(
-                            task_id, "copy", file_info.get("source_path", ""), file_info.get("target_path", ""),
-                            file_info.get("file_name", ""), file_info.get("file_size", 0), "failed", error_msg
-                        )
-                        stats["pending_task_items"].append(task_item) # 添加到待记录列表
-            
+                await self._record_batch_task_items(files, task_id, stats, "failed", error_msg)
+
             # 速度控制
             if recursion_speed == RecursionSpeed.SLOW:
                 await asyncio.sleep(2)
             elif recursion_speed == RecursionSpeed.NORMAL:
                 await asyncio.sleep(1)
-            # 快速模式不暂停
-            
+
             return transfer_result
-            
+
         except Exception as e:
             error_msg = f"批量转存异常: {str(e)}"
             self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}", exc_info=True)
             stats["errors"].append(error_msg)
-            
-            # 记录所有文件失败
-            for file_info in files:
-                self.logger.info(f"[任务{task_id}] 转存异常: '{file_info.get('file_name', '')}'")
-                if task_id and stats:
-                    task_item = await self.record_task_item(
-                        task_id, "copy", file_info.get("source_path", ""), file_info.get("target_path", ""),
-                        file_info.get("file_name", ""), file_info.get("file_size", 0), "failed", error_msg
-                    )
-                    stats["pending_task_items"].append(task_item) # 添加到待记录列表
-            
+            await self._record_batch_task_items(files, task_id, stats, "failed", error_msg)
             return False
     
     async def delete_files(
@@ -1771,7 +1906,7 @@ class FileSyncService:
                 
                 # 记录删除的文件
                 for file_info in files:
-                    self.logger.info(f"[任务{task_id}] 删除成功: '{file_info['file_name']}'")
+                    self.logger.debug(f"[任务{task_id}] 删除成功: '{file_info['file_name']}'")
                     # 记录任务项
                     if task_id and stats:
                         task_item = await self.record_task_item(
@@ -1785,7 +1920,7 @@ class FileSyncService:
                 stats["errors"].append(error_msg)
                 # 记录失败的文件
                 for file_info in files:
-                    self.logger.info(f"[任务{task_id}] 删除失败: '{file_info['file_name']}'")
+                    self.logger.debug(f"[任务{task_id}] 删除失败: '{file_info['file_name']}'")
                     if task_id and stats:
                         task_item = await self.record_task_item(
                             task_id, "delete", "", file_info["target_path"],
@@ -1809,7 +1944,7 @@ class FileSyncService:
             
             # 记录失败的文件
             for file_info in files:
-                self.logger.info(f"[任务{task_id}] 删除异常: '{file_info['file_name']}'")
+                self.logger.debug(f"[任务{task_id}] 删除异常: '{file_info['file_name']}'")
                 if task_id and stats:
                     task_item = await self.record_task_item(
                         task_id, "delete", "", file_info["target_path"],

@@ -9,7 +9,7 @@ from backend.app.question_bank.schema.material import (
     CreateMaterialParam,
     DeleteMaterialParam,
     GetMaterialDetail,
-    GetMaterialList,
+    GetMaterialListItem,
     GetMaterialWithRelationDetail,
     LinkQuestionParam,
     MaterialParam,
@@ -41,7 +41,7 @@ async def get_material_list(
     keyword: Annotated[str | None, Query(description='关键字搜索')] = None,
     is_active: Annotated[bool | None, Query(description='是否启用')] = None,
     year: Annotated[int | None, Query(description='年份')] = None,
-) -> ResponseSchemaModel[list[GetMaterialList]]:
+) -> ResponseSchemaModel[list[GetMaterialListItem]]:
     """🔐 管理员接口 - 获取材料列表"""
     params = MaterialParam(
         bank_id=bank_id,
@@ -59,7 +59,7 @@ async def get_material_by_bank(
     db: CurrentSession,
     bank_id: Annotated[int, Path(description='题库 ID')],
     is_active: Annotated[bool | None, Query(description='是否启用')] = None,
-) -> ResponseSchemaModel[list[GetMaterialList]]:
+) -> ResponseSchemaModel[list[GetMaterialListItem]]:
     """🔐 管理员接口 - 获取指定题库的材料列表"""
     data = await material_service.get_by_bank(db=db, bank_id=bank_id, is_active=is_active)
     return response_base.success(data=data)

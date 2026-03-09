@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import delete
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import PracticeRecord
+from backend.common.enums import DataBaseType
+from backend.core.conf import settings
 
 
 class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
@@ -23,13 +28,17 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
 
     async def get_by_session(self, db: AsyncSession, session_id: int) -> list[PracticeRecord]:
         """
-        获取会话的所有答题记录
+        获取会话的所有答题记录（按题序排列）
 
         :param db: 数据库会话
         :param session_id: 会话 ID
         :return:
         """
-        stmt = await self.select_order('created_time', 'asc', session_id=session_id)
+        stmt = (
+            select(PracticeRecord)
+            .where(PracticeRecord.session_id == session_id)
+            .order_by(PracticeRecord.seq_no.asc())
+        )
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
@@ -44,7 +53,7 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         :param question_id: 题目 ID
         :return:
         """
-        filters = {'user_id': user_id}
+        filters: dict = {'user_id': user_id}
         if question_id:
             filters['question_id'] = question_id
 
@@ -65,6 +74,19 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         """
         return await self.select_model_by_column(db, session_id=session_id, question_id=question_id)
 
+    async def get_by_session_and_seq(
+        self, db: AsyncSession, session_id: int, seq_no: int
+    ) -> PracticeRecord | None:
+        """
+        获取特定会话中指定题序的答题记录
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param seq_no: 题序
+        :return:
+        """
+        return await self.select_model_by_column(db, session_id=session_id, seq_no=seq_no)
+
     async def create(self, db: AsyncSession, obj_dict: dict) -> PracticeRecord:
         """
         创建答题记录
@@ -79,17 +101,40 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         await db.refresh(new_record)
         return new_record
 
-    async def batch_create(self, db: AsyncSession, records: list[dict]) -> None:
+    async def batch_upsert(self, db: AsyncSession, records: list[dict]) -> None:
         """
-        批量创建答题记录
+        批量创建或更新答题记录（按 session_id + question_id 冲突更新，数据库级 upsert）
 
         :param db: 数据库会话
         :param records: 记录数据列表
-        :return:
         """
-        for record_dict in records:
-            new_record = self.model(**record_dict)
-            db.add(new_record)
+        if not records:
+            return
+
+        # 冲突时需要更新的列（排除构成唯一键的 session_id / question_id 和不可变的 user_id）
+        update_cols = [
+            'placement_id', 'seq_no', 'user_answer',
+            'is_correct', 'score', 'full_score',
+            'answer_time', 'judged_at', 'judge_version',
+        ]
+
+        if DataBaseType.postgresql == settings.DATABASE_TYPE:
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            stmt = pg_insert(PracticeRecord).values(records)
+            stmt = stmt.on_conflict_do_update(
+                constraint='uq_practice_record_session_question',
+                set_={col: stmt.excluded[col] for col in update_cols},
+            )
+        else:
+            from sqlalchemy.dialects.mysql import insert as mysql_insert
+
+            stmt = mysql_insert(PracticeRecord).values(records)
+            stmt = stmt.on_duplicate_key_update(
+                **{col: stmt.inserted[col] for col in update_cols},
+            )
+
+        await db.execute(stmt)
         await db.flush()
 
     async def delete_by_session(self, db: AsyncSession, session_id: int) -> int:
@@ -117,25 +162,48 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
-    async def update_is_correct(self, db: AsyncSession, record_id: int, is_correct: bool) -> int:
+    async def update_judge_result(
+        self,
+        db: AsyncSession,
+        record_id: int,
+        *,
+        is_correct: bool,
+        score: Decimal | None = None,
+        full_score: Decimal | None = None,
+        judged_at: datetime | None = None,
+        judge_version: str | None = None,
+    ) -> int:
         """
-        更新答题记录的判题结果
+        更新判题结果
 
         :param db: 数据库会话
         :param record_id: 记录 ID
         :param is_correct: 是否正确
+        :param score: 得分
+        :param full_score: 满分
+        :param judged_at: 判题时间
+        :param judge_version: 判题规则版本
         :return:
         """
-        return await self.update_model(db, record_id, {'is_correct': is_correct})
+        update_data: dict = {'is_correct': is_correct}
+        if score is not None:
+            update_data['score'] = score
+        if full_score is not None:
+            update_data['full_score'] = full_score
+        if judged_at is not None:
+            update_data['judged_at'] = judged_at
+        if judge_version is not None:
+            update_data['judge_version'] = judge_version
+
+        return await self.update_model(db, record_id, update_data)
 
     async def get_select(
         self,
         user_id: int | None = None,
         session_id: int | None = None,
         question_id: int | None = None,
+        placement_id: int | None = None,
         is_correct: bool | None = None,
-        bank_id: int | None = None,
-        chapter_id: int | None = None,
     ) -> Select:
         """
         获取答题记录列表查询表达式
@@ -143,27 +211,25 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         :param user_id: 用户 ID
         :param session_id: 会话 ID
         :param question_id: 题目 ID
+        :param placement_id: 挂载 ID
         :param is_correct: 是否正确
-        :param bank_id: 题库 ID
-        :param chapter_id: 章节 ID
         :return:
         """
-        filters = {}
+        stmt = select(PracticeRecord)
 
-        if user_id:
-            filters['user_id'] = user_id
-        if session_id:
-            filters['session_id'] = session_id
-        if question_id:
-            filters['question_id'] = question_id
+        if user_id is not None:
+            stmt = stmt.where(PracticeRecord.user_id == user_id)
+        if session_id is not None:
+            stmt = stmt.where(PracticeRecord.session_id == session_id)
+        if question_id is not None:
+            stmt = stmt.where(PracticeRecord.question_id == question_id)
+        if placement_id is not None:
+            stmt = stmt.where(PracticeRecord.placement_id == placement_id)
         if is_correct is not None:
-            filters['is_correct'] = is_correct
-        if bank_id:
-            filters['bank_id'] = bank_id
-        if chapter_id:
-            filters['chapter_id'] = chapter_id
+            stmt = stmt.where(PracticeRecord.is_correct == is_correct)
 
-        return await self.select_order('created_time', 'desc', **filters)
+        stmt = stmt.order_by(PracticeRecord.created_time.desc())
+        return stmt
 
 
 practice_record_dao: CRUDPracticeRecord = CRUDPracticeRecord(PracticeRecord)

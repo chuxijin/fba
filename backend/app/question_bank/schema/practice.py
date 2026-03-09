@@ -1,324 +1,252 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-练习相关 Schema
-
-包含：
-- PracticeSession（练习会话）- PracticeRecord（答题记录）
-- 统计相关
-"""
 from datetime import datetime
 from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
 
 
-# ============ 练习会话 Schema ============
+# ===== enums =====
+SessionType = Literal['chapter', 'bank', 'random', 'exam', 'wrong', 'favorite']
+SessionStatus = Literal['in_progress', 'completed', 'abandoned']
+QuestionType = Literal['single', 'multiple', 'judgement', 'fill', 'shortAnswer']
+AnswerCardStatus = Literal['correct', 'wrong', 'unanswered']
 
 
-class PracticeSessionSchemaBase(SchemaBase):
-    """练习会话基础 Schema"""
-
-    session_type: str = Field(description='练习类型: chapter/bank/random/exam/wrong/favorite')
-    bank_id: int | None = Field(None, description='题库 ID（考试模式时作为试卷 ID）')
-    chapter_id: int | None = Field(None, description='章节 ID')
-    question_ids: list[int] | None = Field(None, description='题目 ID 列表（可选，不传则根据 chapter_id/bank_id 自动获取）')
-    total_count: int | None = Field(None, description='题目总数（可选，后端自动计算）')
-    limit: int | None = Field(None, description='题目数量限制（用于随机出题，不传或传 0 表示全部）')
-    shuffle: bool = Field(False, description='是否随机顺序（默认 False 按原顺序）')
-    exam_config: dict | None = Field(None, description='考试配置（考试模式时使用）')
-
-
-class CreatePracticeSessionParam(PracticeSessionSchemaBase):
+# ===== session create / query =====
+class CreatePracticeSessionParam(SchemaBase):
     """创建练习会话参数"""
 
-    pass
+    session_type: SessionType = Field(description='会话类型')
+    practice_name: str | None = Field(None, max_length=255, description='会话名称')
+    bank_id: int | None = Field(None, gt=0, description='题库 ID（筛题上下文）')
+    chapter_id: int | None = Field(None, gt=0, description='章节 ID（筛题上下文）')
+    placement_ids: list[int] | None = Field(None, min_length=1, max_length=2000, description='指定挂载 ID 列表')
+    limit: int | None = Field(None, ge=1, le=500, description='抽题数量上限')
+    shuffle: bool = Field(False, description='是否打乱题序')
+    exam_config: dict[str, Any] | None = Field(None, description='考试配置')
 
 
-from backend.app.question_bank.schema.question import GetQuestionListItem
+class PracticeSessionQueryParam(SchemaBase):
+    """会话列表查询参数"""
+
+    session_type: SessionType | None = Field(None, description='会话类型')
+    status: SessionStatus | None = Field(None, description='会话状态')
+    bank_id: int | None = Field(None, gt=0, description='题库 ID')
+    chapter_id: int | None = Field(None, gt=0, description='章节 ID')
 
 
-class UserAnswerItem(SchemaBase):
-    """用户答案项"""
-
-    question_id: int = Field(description='题目 ID')
-    user_answer: str | list[str] = Field(description='用户答案')
-    answer_time: int = Field(default=0, description='答题用时（秒）')
-
-
-class GetPracticeSessionDetail(PracticeSessionSchemaBase):
-    """练习会话详情"""
+# ===== session question snapshot =====
+class SessionQuestionItem(SchemaBase):
+    """会话题目快照"""
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(description='会话 ID')
+    id: int = Field(description='会话题目明细 ID')
+    session_id: int = Field(description='会话 ID')
+    seq_no: int = Field(ge=1, description='题序')
+    question_id: int = Field(description='题目 ID')
+    placement_id: int = Field(description='挂载 ID')
+    question_type: QuestionType = Field(description='题型')
+    full_score: Decimal = Field(ge=Decimal('0'), description='满分')
+
+
+# ===== practice record =====
+class UpsertPracticeRecordItem(SchemaBase):
+    """单题作答提交项"""
+
+    seq_no: int = Field(ge=1, description='题序')
+    question_id: int = Field(gt=0, description='题目 ID')
+    placement_id: int = Field(gt=0, description='挂载 ID')
+    user_answer: dict[str, Any] | list[Any] | str = Field(description='用户答案（JSON 兼容）')
+    answer_time: int = Field(ge=0, le=7200, description='本题耗时（秒）')
+
+
+class BatchUpsertPracticeRecordsParam(SchemaBase):
+    """批量提交/更新作答记录"""
+
+    session_id: int = Field(gt=0, description='会话 ID')
+    records: list[UpsertPracticeRecordItem] = Field(min_length=1, max_length=500, description='作答记录列表')
+    judge_now: bool = Field(default=False, description='是否立即判题')
+
+
+class GetPracticeRecordDetail(SchemaBase):
+    """作答记录详情"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description='记录 ID')
+    session_id: int = Field(description='会话 ID')
     user_id: int = Field(description='用户 ID')
-    practice_name: str | None = Field(None, description='练习名称')
-    completed_count: int = Field(description='已完成数量')
-    correct_count: int = Field(description='答对数量')
-    wrong_count: int = Field(description='答错数量')
-    accuracy_rate: Decimal = Field(description='正确率（%）')
-    score: Decimal | None = Field(None, description='得分')
-    total_score: Decimal | None = Field(None, description='总分')
-    total_time: int = Field(description='总用时（秒）')
-    start_time: datetime = Field(description='开始时间')
-    submit_time: datetime | None = Field(None, description='提交时间')
-    status: str = Field(description='状态: in_progress/completed/abandoned')
+    seq_no: int = Field(description='题序')
+    question_id: int = Field(description='题目 ID')
+    placement_id: int = Field(description='挂载 ID')
+    user_answer: dict[str, Any] | list[Any] | str = Field(description='用户答案')
+    is_correct: bool | None = Field(None, description='是否正确')
+    score: Decimal | None = Field(None, ge=Decimal('0'), description='得分')
+    full_score: Decimal = Field(ge=Decimal('0'), description='满分')
+    answer_time: int = Field(ge=0, description='耗时（秒）')
+    judged_at: datetime | None = Field(None, description='判题时间')
+    judge_version: str | None = Field(None, max_length=32, description='判题规则版本')
     created_time: datetime = Field(description='创建时间')
-    questions: list[GetQuestionListItem] | None = Field(None, description='题目列表（创建/获取时返回）')
-    user_answers: dict[int, UserAnswerItem] | None = Field(None, description='用户答案（question_id -> 答案详情）')
+    updated_time: datetime | None = Field(None, description='更新时间')
 
 
+class GetPracticeRecordListItem(SchemaBase):
+    """作答记录列表项"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description='记录 ID')
+    session_id: int = Field(description='会话 ID')
+    seq_no: int = Field(description='题序')
+    question_id: int = Field(description='题目 ID')
+    placement_id: int = Field(description='挂载 ID')
+    is_correct: bool | None = Field(None, description='是否正确')
+    score: Decimal | None = Field(None, ge=Decimal('0'), description='得分')
+    full_score: Decimal = Field(ge=Decimal('0'), description='满分')
+    answer_time: int = Field(ge=0, description='耗时（秒）')
+    created_time: datetime = Field(description='创建时间')
+
+
+# ===== session read / submit =====
 class GetPracticeSessionListItem(SchemaBase):
     """练习会话列表项"""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='会话 ID')
-    session_type: str = Field(description='练习类型')
+    user_id: int = Field(description='用户 ID')
+    session_type: SessionType = Field(description='会话类型')
+    status: SessionStatus = Field(description='会话状态')
     bank_id: int | None = Field(None, description='题库 ID')
-    practice_name: str | None = Field(None, description='练习名称')
-    total_count: int = Field(description='题目总数')
-    completed_count: int = Field(description='已完成数量')
-    correct_count: int = Field(description='答对数量')
-    wrong_count: int = Field(description='答错数量')
-    accuracy_rate: Decimal = Field(description='正确率（%）')
-    total_time: int = Field(description='总用时（秒）')
-    status: str = Field(description='状态')
+    chapter_id: int | None = Field(None, description='章节 ID')
+    practice_name: str | None = Field(None, description='会话名称')
+    total_count: int = Field(ge=0, description='总题数')
+    completed_count: int = Field(ge=0, description='已完成数')
+    correct_count: int = Field(ge=0, description='答对数')
+    wrong_count: int = Field(ge=0, description='答错数')
+    accuracy_rate: Decimal = Field(ge=Decimal('0'), le=Decimal('100'), description='正确率（%）')
+    score: Decimal | None = Field(None, ge=Decimal('0'), description='总得分')
+    total_score: Decimal | None = Field(None, ge=Decimal('0'), description='总满分')
+    total_time: int = Field(ge=0, description='总耗时（秒）')
     start_time: datetime = Field(description='开始时间')
+    submit_time: datetime | None = Field(None, description='提交时间')
     updated_time: datetime | None = Field(None, description='更新时间')
 
 
-class UpdatePracticeSessionParam(SchemaBase):
-    """更新练习会话参数"""
+class GetPracticeSessionDetail(GetPracticeSessionListItem):
+    """练习会话详情"""
 
-    completed_count: int | None = Field(None, description='已完成数量')
-    correct_count: int | None = Field(None, description='答对数量')
-    wrong_count: int | None = Field(None, description='答错数量')
-    total_time: int | None = Field(None, description='总用时（秒）')
+    session_questions: list[SessionQuestionItem] = Field(default_factory=list, description='会话题目快照')
+    records: list[GetPracticeRecordListItem] = Field(default_factory=list, description='作答记录列表')
 
 
 class SubmitPracticeSessionParam(SchemaBase):
-    """提交练习会话参数"""
+    """提交会话参数"""
 
-    total_time: int = Field(description='总用时（秒）')
-
-
-# ============ 答题记录 Schema ============
+    total_time: int = Field(ge=0, description='总耗时（秒）')
+    judge_version: str | None = Field(None, max_length=32, description='判题规则版本')
 
 
-class PracticeRecordSchemaBase(SchemaBase):
-    """答题记录基础 Schema"""
+class SubmitPracticeSessionResult(SchemaBase):
+    """提交会话结果"""
 
-    question_id: int = Field(description='题目 ID')
-    user_answer: str | list[str] = Field(description='用户答案')
-    is_correct: bool | None = Field(None, description='是否正确（提交时由后端判题）')
-    answer_time: int = Field(description='本题用时（秒）')
-
-
-class CreatePracticeRecordParam(PracticeRecordSchemaBase):
-    """创建答题记录参数"""
-
-    session_id: int = Field(description='会话 ID')
-    bank_id: int = Field(description='题库 ID')
-    chapter_id: int | None = Field(None, description='章节 ID')
+    completed_count: int = Field(ge=0, description='已完成题数')
+    correct_count: int = Field(ge=0, description='答对题数')
+    wrong_count: int = Field(ge=0, description='答错题数')
+    accuracy_rate: Decimal = Field(ge=Decimal('0'), le=Decimal('100'), description='正确率（%）')
+    score: Decimal | None = Field(None, ge=Decimal('0'), description='总得分')
+    total_score: Decimal | None = Field(None, ge=Decimal('0'), description='总满分')
 
 
-class BatchCreatePracticeRecordsParam(SchemaBase):
-    """批量创建答题记录参数"""
-
-    session_id: int = Field(description='会话 ID')
-    records: list[PracticeRecordSchemaBase] = Field(description='答题记录列表')
-
-
-class GetPracticeRecordDetail(PracticeRecordSchemaBase):
-    """答题记录详情"""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int = Field(description='记录 ID')
-    user_id: int = Field(description='用户 ID')
-    session_id: int = Field(description='会话 ID')
-    bank_id: int = Field(description='题库 ID')
-    chapter_id: int | None = Field(None, description='章节 ID')
-    created_time: datetime = Field(description='答题时间')
-
-
-class GetPracticeRecordListItem(SchemaBase):
-    """答题记录列表项"""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int = Field(description='记录 ID')
-    question_id: int = Field(description='题目 ID')
-    is_correct: bool = Field(description='是否正确')
-    answer_time: int = Field(description='用时（秒）')
-    created_time: datetime = Field(description='答题时间')
-
-
-# ============ 统计 Schema ============
-
-
-class UserPracticeStatistics(SchemaBase):
-    """用户练习统计"""
-
-    total_sessions: int = Field(description='总会话数')
-    completed_sessions: int = Field(description='已完成会话数')
-    total_questions: int = Field(description='总做题数')
-    correct_count: int = Field(description='答对数')
-    wrong_count: int = Field(description='答错数')
-    accuracy_rate: Decimal = Field(description='总正确率（%）')
-    total_time: int = Field(description='总学习时长（秒）')
-    avg_answer_time: Decimal = Field(description='平均答题时间（秒）')
-
-
-class DailyPracticeStatistics(SchemaBase):
-    """每日练习统计"""
-
-    date: str = Field(description='日期 YYYY-MM-DD')
-    question_count: int = Field(description='做题数')
-    correct_count: int = Field(description='答对数')
-    accuracy_rate: Decimal = Field(description='正确率（%）')
-    study_time: int = Field(description='学习时长（秒）')
-
-
-class QuestionTypeStatistics(SchemaBase):
-    """题型统计"""
-
-    type: str = Field(description='题型')
-    count: int = Field(description='做题数')
-    correct_count: int = Field(description='答对数')
-    accuracy_rate: Decimal = Field(description='正确率（%）')
-
-
-# ============ 结算页面数据 Schema ============
-
-
+# ===== settlement/report =====
 class AnswerCardItem(SchemaBase):
     """答题卡项"""
 
-    index: int = Field(description='题目序号（从 1 开始）')
+    seq_no: int = Field(ge=1, description='题序')
     question_id: int = Field(description='题目 ID')
-    status: str = Field(description='状态: correct/wrong/unanswered')
-    answer_time: int = Field(default=0, description='答题用时（秒）')
+    placement_id: int = Field(description='挂载 ID')
+    status: AnswerCardStatus = Field(description='作答状态')
+    answer_time: int = Field(ge=0, description='耗时（秒）')
 
 
 class SessionReport(SchemaBase):
-    """会话答题报告"""
+    """会话报告"""
 
-    # 会话基本信息
     session_id: int = Field(description='会话 ID')
+    session_type: SessionType = Field(description='会话类型')
+    status: SessionStatus = Field(description='会话状态')
     bank_id: int | None = Field(None, description='题库 ID')
-    practice_name: str | None = Field(None, description='练习名称')
-    session_type: str = Field(description='练习类型')
-
-    # 统计数据
-    total_count: int = Field(description='题目总数')
-    completed_count: int = Field(description='已完成数量')
-    correct_count: int = Field(description='答对数量')
-    wrong_count: int = Field(description='答错数量')
-    unanswered_count: int = Field(description='未答题数')
-    accuracy_rate: Decimal = Field(description='正确率（%）')
-    total_time: int = Field(description='总用时（秒）')
-    status: str = Field(description='状态')
-
-    # 答题卡数据
-    answer_items: list[AnswerCardItem] = Field(description='答题卡列表')
-
-    # 错题 ID 列表（用于"仅看错题"功能）
-    wrong_question_ids: list[int] = Field(description='错题 ID 列表')
+    chapter_id: int | None = Field(None, description='章节 ID')
+    total_count: int = Field(ge=0, description='总题数')
+    completed_count: int = Field(ge=0, description='已完成数')
+    correct_count: int = Field(ge=0, description='答对数')
+    wrong_count: int = Field(ge=0, description='答错数')
+    unanswered_count: int = Field(ge=0, description='未作答数')
+    accuracy_rate: Decimal = Field(ge=Decimal('0'), le=Decimal('100'), description='正确率（%）')
+    total_time: int = Field(ge=0, description='总耗时（秒）')
+    answer_items: list[AnswerCardItem] = Field(default_factory=list, description='答题卡')
+    wrong_question_ids: list[int] = Field(default_factory=list, description='错题 question_id 列表')
 
 
-class QuestionSolution(SchemaBase):
-    """题目解析项"""
+# ===== 答题提交（从 question.py 迁移的练习域 Schema） =====
+
+
+class QuestionAnswerItem(SchemaBase):
+    """题目答案项"""
+
+    question_id: int = Field(gt=0, description='题目 ID')
+    user_answer: str | list[str] = Field(description='用户答案')
+    answer_time: Decimal | None = Field(None, ge=Decimal('0'), description='答题时间（秒）')
+
+
+class BatchSubmitAnswerParam(SchemaBase):
+    """批量提交答案参数"""
+
+    answers: list[QuestionAnswerItem] = Field(min_length=1, description='答案列表')
+    bank_id: int | None = Field(None, gt=0, description='题库 ID（用于定位挂载）')
+    chapter_id: int | None = Field(None, gt=0, description='章节 ID（用于定位挂载）')
+    include_analysis: bool = Field(default=False, description='是否包含解析内容')
+
+
+class QuestionResultItem(SchemaBase):
+    """题目结果项"""
 
     question_id: int = Field(description='题目 ID')
-    content: str = Field(description='题干')
-    type: str = Field(description='题型')
-    options: list[dict] | None = Field(None, description='选项列表')
+    is_correct: bool = Field(description='是否正确')
+    user_answer: str | list[str] = Field(description='用户答案')
+    correct_answer: dict[str, Any] = Field(description='正确答案')
+    score: Decimal = Field(ge=Decimal('0'), description='得分')
+    full_score: Decimal = Field(ge=Decimal('0'), description='满分')
+    analysis_content: str | None = Field(None, description='解析内容')
+
+
+class BatchSubmitAnswerResult(SchemaBase):
+    """批量提交答案结果"""
+
+    total_questions: int = Field(ge=0, description='总题目数')
+    correct_count: int = Field(ge=0, description='答对题目数')
+    wrong_count: int = Field(ge=0, description='答错题目数')
+    total_score: Decimal = Field(ge=Decimal('0'), description='总得分')
+    full_score: Decimal = Field(ge=Decimal('0'), description='总满分')
+    accuracy_rate: Decimal = Field(ge=Decimal('0'), le=Decimal('100'), description='正确率（%）')
+    score_rate: Decimal = Field(ge=Decimal('0'), le=Decimal('100'), description='得分率（%）')
+    results: list[QuestionResultItem] = Field(default_factory=list, description='每题结果详情')
+
+
+class GetQuestionSolution(SchemaBase):
+    """题目答案和解析"""
+
+    model_config = ConfigDict(from_attributes=True)
+
     correct_answer: str | list[str] = Field(description='正确答案')
-    analysis: str | None = Field(None, description='解析')
-    user_answer: str | list[str] | None = Field(None, description='用户答案')
+    analysis: str = Field(description='解析内容')
     is_correct: bool | None = Field(None, description='是否正确')
-    answer_time: int = Field(default=0, description='答题用时（秒）')
-
-
-class SessionSolution(SchemaBase):
-    """会话答案解析"""
-
-    session_id: int = Field(description='会话 ID')
-    questions: list[QuestionSolution] = Field(description='题目解析列表')
-
-
-# ============ 学习统计 Schema ============
-
-
-class ChapterStatistics(SchemaBase):
-    """章节学习统计"""
-
-    chapter_id: int = Field(description='章节 ID')
-    chapter_name: str = Field(description='章节名称')
-    total_questions: int = Field(description='总题数')
-    practiced_count: int = Field(description='已练习题数（去重）')
-    correct_count: int = Field(description='答对题数')
-    accuracy_rate: Decimal = Field(description='正确率（%）')
-
-
-class BankStatistics(SchemaBase):
-    """题库学习统计"""
-
-    bank_id: int = Field(description='题库 ID')
-    total_questions: int = Field(description='总题数')
-    practiced_count: int = Field(description='已练习题数（去重）')
-    correct_count: int = Field(description='答对题数')
-    accuracy_rate: Decimal = Field(description='正确率（%）')
-    total_time: int = Field(description='总练习时长（秒）')
-    chapter_statistics: list[ChapterStatistics] = Field(description='章节统计列表')
-
-
-# ============ 用户学习统计（练习中心用）============
-
-
-class ChapterProgressItem(SchemaBase):
-    """章节学习进度项"""
-
-    chapter_id: int = Field(description='章节 ID')
-    chapter_name: str = Field(description='章节名称')
-    total_count: int = Field(description='章节总题数')
-    practiced_count: int = Field(description='已练习题数（包含未判题）')
-    completed_count: int = Field(description='已判题题数（is_correct 不为空）')
-    correct_count: int = Field(description='答对题数')
-    accuracy_rate: Decimal = Field(description='正确率（%，基于已判题题目）')
-
-
-class BankProgressItem(SchemaBase):
-    """题库学习进度项"""
-
-    bank_id: int = Field(description='题库 ID')
-    practiced_count: int = Field(description='已练习题数（包含未判题，去重）')
-    completed_count: int = Field(description='已判题题数（is_correct 不为空，去重）')
-    total_count: int = Field(description='题库总题数')
-    correct_count: int = Field(description='答对题数')
-    accuracy_rate: Decimal = Field(description='正确率（%，基于已判题题目）')
-    total_time: int = Field(description='累计学习时长（秒）')
-    in_progress_session_id: int | None = Field(None, description='未完成会话ID')
-    in_progress_count: int = Field(0, description='未完成会话已做题数')
-    chapters: list[ChapterProgressItem] = Field(default_factory=list, description='章节学习进度')
-
-
-class UserStatisticsSummary(SchemaBase):
-    """用户学习汇总"""
-
-    total_practiced: int = Field(description='总练习题数')
-    total_correct: int = Field(description='总答对数')
-    total_time: int = Field(description='总学习时长（秒）')
-    bank_count: int = Field(description='学习过的题库数')
-
-
-class UserStatistics(SchemaBase):
-    """用户学习统计"""
-
-    banks: list[BankProgressItem] = Field(description='各题库学习进度')
-    summary: UserStatisticsSummary = Field(description='汇总数据')
+    correct_rate: Decimal = Field(
+        default=Decimal('0'), ge=Decimal('0'), le=Decimal('100'), description='全站正确率（%）'
+    )
+    wrong_option_stats: dict[str, Any] | None = Field(None, description='错误选项统计')

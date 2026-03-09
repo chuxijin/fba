@@ -1,4 +1,4 @@
-import shutil
+﻿import shutil
 
 from functools import cache
 from re import Pattern
@@ -339,6 +339,32 @@ class Settings(BaseSettings):
     EMAIL_SSL: bool
     EMAIL_CAPTCHA_REDIS_PREFIX: str
     EMAIL_CAPTCHA_EXPIRE_SECONDS: int
+
+    ##################################################
+    # [ Plugin ] oss 云存储
+    ##################################################
+    # 基础运行配置（可被 sys_config 覆盖）
+    STORAGE_PROVIDER: str = 'aliyun_oss'
+    STORAGE_KEY_PREFIX: str = ''
+    STORAGE_USE_SIGNED_URL: bool = False
+    STORAGE_SIGNED_URL_EXPIRE_SECONDS: int = 300
+    STORAGE_OBJECT_EXPIRE_DAYS: int = 0
+
+    # 阿里云 OSS
+    OSS_ACCESS_KEY: str = ''
+    OSS_SECRET_KEY: str = ''
+    OSS_ENDPOINT: str = ''
+    OSS_BUCKET_NAME: str = ''
+    OSS_USE_SIGNED_URL: bool = True
+    OSS_SIGNED_URL_EXPIRE_SECONDS: int = 300
+
+    # 七牛云 Kodo
+    QINIU_KODO_ACCESS_KEY: str = ''
+    QINIU_KODO_SECRET_KEY: str = ''
+    QINIU_KODO_BUCKET: str = ''
+    QINIU_KODO_BUCKET_NAME: str = ''
+    QINIU_KODO_DOMAIN: str = ''
+    QINIU_KODO_USE_HTTPS: bool = True
 
     ##################################################
     # [ Plugin ] task

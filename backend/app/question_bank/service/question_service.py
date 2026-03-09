@@ -1,16 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-题目服务层
-
-设计原则：
-- 题目查询不返回答案
-- 解析查询返回答案和解析内容
-- 答题提交时验证答案并更新统计
-- 答错自动加入错题本
-"""
+import logging
 from collections.abc import Sequence
-from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -20,44 +11,202 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.crud.crud_question import (
+    option_content_dao,
     question_analysis_dao,
     question_dao,
+    question_option_dao,
+    question_option_stats_dao,
+    question_placement_dao,
     question_statistics_dao,
 )
-from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
     Question,
     QuestionAnalysis,
     QuestionBank,
     QuestionChapter,
+    QuestionOptionStats,
+    QuestionPlacement,
     QuestionStatistics,
 )
 from backend.app.question_bank.schema.question import (
-    BatchImportParam,
-    BatchImportResult,
-    BatchSubmitAnswerParam,
-    BatchSubmitAnswerResult,
-    CreateQuestionAnalysisParam,
     CreateQuestionParam,
     DeleteQuestionParam,
-    ImportResultItem,
-    QuestionImportRow,
-    QuestionResultItem,
-    UpdateQuestionAnalysisParam,
+    QuestionOptionStatsItem,
     UpdateQuestionParam,
     UpdateQuestionStatisticsParam,
+    UpsertQuestionPlacementItem,
+)
+from backend.app.question_bank.schema.question_import import (
+    BatchImportParam,
+    BatchImportResult,
+    ImportResultItem,
 )
 from backend.common.exception import errors
+
+log = logging.getLogger(__name__)
 from backend.common.pagination import _CustomPage, _CustomPageParams
 
 
 class QuestionService:
-    """题目服务类"""
+    """Question service."""
+
+    # ------------------------------------------------------------------
+    #  工具方法
+    # ------------------------------------------------------------------
 
     @staticmethod
-    async def get(*, db: AsyncSession, pk: int) -> Question:
+    def _pick_placement(
+        *, question: Question, bank_id: int | None = None, chapter_id: int | None = None
+    ) -> QuestionPlacement | None:
         """
-        获取题目详情（不含答案）
+        根据题库/章节上下文选择挂载记录
+
+        :param question: 题目对象
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        :return:
+        """
+        placements = question.placements if question.placements else []
+        if not placements:
+            return None
+
+        if chapter_id is not None:
+            for placement in placements:
+                if placement.chapter_id == chapter_id and (bank_id is None or placement.bank_id == bank_id):
+                    return placement
+
+        if bank_id is not None:
+            for placement in placements:
+                if placement.bank_id == bank_id:
+                    return placement
+
+        return placements[0]
+
+    @staticmethod
+    def build_options_data(*, question: Question) -> dict | None:
+        """从规范化选项行构建 options_data"""
+        option_rows = question.options if question.options else []
+        if not option_rows:
+            return None
+
+        active_rows = [item for item in option_rows if item.is_active]
+        if not active_rows:
+            return None
+
+        sorted_rows = sorted(active_rows, key=lambda item: (item.sort_order, item.option_code))
+        options_data: dict[str, dict[str, str]] = {}
+        for row in sorted_rows:
+            options_data[row.option_code] = {
+                'code': row.option_code,
+                'content': row.content_ref.content if row.content_ref else '',
+            }
+
+        return options_data
+
+    @staticmethod
+    def parse_selected_option_codes(*, question_type: str, user_answer: str | list[str]) -> list[str]:
+        """从用户答案解析选中的选项编码"""
+        if question_type in ['single', 'judgement']:
+            option_code = str(user_answer).strip().upper()
+            return [option_code] if option_code else []
+
+        if question_type != 'multiple':
+            return []
+
+        raw_values: list[str]
+        if isinstance(user_answer, list):
+            raw_values = [str(item) for item in user_answer]
+        else:
+            answer_text = str(user_answer).strip()
+            if not answer_text:
+                return []
+            if ',' in answer_text:
+                raw_values = answer_text.split(',')
+            else:
+                raw_values = list(answer_text)
+
+        return sorted({value.strip().upper() for value in raw_values if value.strip()})
+
+    @staticmethod
+    def serialize_question(
+        *,
+        question: Question,
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+        include_analysis: bool = False,
+        include_materials: bool = False,
+    ) -> dict[str, Any]:
+        """
+        序列化题目为响应字典
+
+        :param question: 题目对象
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        :param include_analysis: 是否包含解析
+        :param include_materials: 是否包含材料
+        :return:
+        """
+        placement = QuestionService._pick_placement(question=question, bank_id=bank_id, chapter_id=chapter_id)
+
+        # 挂载级别字段
+        resolved_bank_id = placement.bank_id if placement else None
+        resolved_chapter_id = placement.chapter_id if placement else None
+        resolved_sort_order = placement.sort_order if placement else 0
+        resolved_is_active = placement.is_active if placement else True
+        resolved_score = placement.score if placement else None
+        resolved_review_status = placement.review_status if placement else 10
+
+        bank_name = None
+        if placement and placement.bank:
+            bank_name = placement.bank.name
+
+        chapter_name = None
+        if placement and placement.chapter:
+            chapter_name = placement.chapter.name
+
+        question_dict: dict[str, Any] = {
+            'id': question.id,
+            'type': question.type,
+            'stem': question.stem,
+            'options_data': QuestionService.build_options_data(question=question),
+            'difficulty': question.difficulty,
+            'default_score': question.default_score,
+            'knowledge_point': question.knowledge_point,
+            'content_status': question.content_status,
+            'created_time': question.created_time,
+            'updated_time': question.updated_time,
+            # 来自 Placement 的扁平化字段
+            'bank_id': resolved_bank_id,
+            'chapter_id': resolved_chapter_id,
+            'sort_order': resolved_sort_order,
+            'is_active': resolved_is_active,
+            'score': resolved_score,
+            'review_status': resolved_review_status,
+            'bank_name': bank_name,
+            'chapter_name': chapter_name,
+        }
+
+        if include_analysis:
+            current_analysis = question.analyses[0] if question.analyses else None
+            question_dict['answer_data'] = current_analysis.answer_data if current_analysis else None
+            question_dict['analysis_content'] = current_analysis.content if current_analysis else None
+            question_dict['analyses'] = question.analyses if question.analyses else []
+
+        if include_materials:
+            materials = question.materials if question.materials else []
+            question_dict['materials'] = [{'id': m.id, 'content': m.content} for m in materials]
+            question_dict['material_ids'] = [m.id for m in materials]
+
+        return question_dict
+
+    # ------------------------------------------------------------------
+    #  CRUD
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def get(*, db: AsyncSession, pk: int) -> dict[str, Any]:
+        """
+        获取题目详情（返回标准化 detail DTO 字典，包含 options/placements/analyses/material_ids）
 
         :param db: 数据库会话
         :param pk: 题目 ID
@@ -65,8 +214,13 @@ class QuestionService:
         """
         question = await question_dao.get_with_relations(db, pk)
         if not question:
-            raise errors.NotFoundError(msg='题目不存在')
-        return question
+            raise errors.NotFoundError(msg='Question not found')
+
+        return QuestionService.serialize_question(
+            question=question,
+            include_analysis=True,
+            include_materials=True,
+        )
 
     @staticmethod
     async def get_list(
@@ -77,160 +231,159 @@ class QuestionService:
         chapter_id: int | None = None,
         type: str | None = None,
         difficulty: str | None = None,
+        content_status: int | None = None,
         is_active: bool | None = None,
         review_status: int | None = None,
         keyword: str | None = None,
         page: int | None = None,
         size: int | None = None,
         include_analysis: bool = False,
-    ) -> Sequence[Question] | dict[str, Any]:
+    ) -> Sequence[dict[str, Any]] | dict[str, Any]:
         """
         获取题目列表
 
         :param db: 数据库会话
-        :param ids: 题目 ID 列表（批量查询）
+        :param ids: 题目 ID 列表
         :param bank_id: 题库 ID
         :param chapter_id: 章节 ID
         :param type: 题型
         :param difficulty: 难度
-        :param is_active: 是否启用
-        :param review_status: 审核状态
-        :param keyword: 关键字搜索
+        :param content_status: 内容状态
+        :param is_active: 是否启用（挂载级别）
+        :param review_status: 审核状态（挂载级别）
+        :param keyword: 题干关键字
         :param page: 页码
         :param size: 每页数量
-        :param include_analysis: 是否包含解析（答案）
+        :param include_analysis: 是否包含解析
         :return:
         """
-        # 按 ids 批量查询（优先级最高）
         if ids:
             questions = await question_dao.get_by_ids(db, ids, include_analysis=include_analysis)
-            return questions
+            return [
+                QuestionService.serialize_question(
+                    question=q,
+                    bank_id=bank_id,
+                    chapter_id=chapter_id,
+                    include_analysis=include_analysis,
+                    include_materials=False,
+                )
+                for q in questions
+            ]
 
-        # 如果提供了分页参数，使用优化的分页查询
         if page is not None and size is not None:
-            # 获取查询语句
             question_select = await question_dao.get_select(
                 bank_id=bank_id,
                 chapter_id=chapter_id,
                 type=type,
                 difficulty=difficulty,
+                content_status=content_status,
                 is_active=is_active,
                 review_status=review_status,
                 keyword=keyword,
             )
 
-            # 获取总数
             count_stmt = select(func.count()).select_from(question_select.subquery())
             total = await db.scalar(count_stmt) or 0
 
-            # 获取当前页数据
             offset = (page - 1) * size
             stmt = question_select.limit(size).offset(offset)
             result = await db.execute(stmt)
             questions = result.unique().scalars().all()
 
-            # 在异步上下文中手动序列化为字典，避免 MissingGreenlet 错误
-            # 这样可以确保所有关系属性的访问都在 async session context 内完成
-            questions_dict = []
-            for q in questions:
-                question_dict = {
-                    'id': q.id,
-                    'bank_id': q.bank_id,
-                    'type': q.type,
-                    'stem': q.stem,
-                    'chapter_id': q.chapter_id,
-                    'options_data': q.options_data,
-                    'difficulty': q.difficulty,
-                    'score': q.score,
-                    'knowledge_point': q.knowledge_point,
-                    'source': q.source,
-                    'year': q.year,
-                    'usage': q.usage,
-                    'is_active': q.is_active,
-                    'review_status': q.review_status,
-                    'created_time': q.created_time,
-                    'updated_time': q.updated_time,
-                    'created_by': q.created_by,
-                    'updated_by': q.updated_by,
-                    # 关系对象
-                    'bank': {'id': q.bank.id, 'name': q.bank.name} if q.bank else None,
-                    'chapter': {'id': q.chapter.id, 'name': q.chapter.name} if q.chapter else None,
-                    # 扁平化字段，方便前端表格显示
-                    'bank_name': q.bank.name if q.bank else None,
-                    'chapter_name': q.chapter.name if q.chapter else None,
-                }
-                questions_dict.append(question_dict)
+            questions_dict = [
+                QuestionService.serialize_question(
+                    question=q,
+                    bank_id=bank_id,
+                    chapter_id=chapter_id,
+                    include_analysis=include_analysis,
+                    include_materials=False,
+                )
+                for q in questions
+            ]
 
-            # 使用项目的分页工具函数构造分页响应
             params = _CustomPageParams(page=page, size=size)
             page_data = _CustomPage.create(items=questions_dict, params=params, total=total)
             return page_data.model_dump()
 
-        # 否则返回全部数据（客户端使用）
         questions = await question_dao.get_all(
             db,
             bank_id=bank_id,
             chapter_id=chapter_id,
             type=type,
             difficulty=difficulty,
+            content_status=content_status,
             is_active=is_active,
             review_status=review_status,
             keyword=keyword,
             include_analysis=include_analysis,
-            include_materials=True,  # 默认加载材料，确保前端能获取到
+            include_materials=True,
         )
-        return questions
+        return [
+            QuestionService.serialize_question(
+                question=q,
+                bank_id=bank_id,
+                chapter_id=chapter_id,
+                include_analysis=include_analysis,
+                include_materials=True,
+            )
+            for q in questions
+        ]
 
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateQuestionParam, user_id: int) -> Question:
         """
-        创建题目
+        创建题目（嵌套 schema：core / options / placements / analyses / material_ids）
 
         :param db: 数据库会话
         :param obj: 创建题目参数
         :param user_id: 用户 ID
         :return:
         """
-        bank = await bank_dao.get(db, obj.bank_id)
-        if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+        # 1. 验证挂载引用的题库/章节存在
+        for pl in obj.placements:
+            bank = await bank_dao.get(db, pl.bank_id)
+            if not bank:
+                raise errors.NotFoundError(msg=f'题库 ID {pl.bank_id} 不存在')
+            if pl.chapter_id:
+                chapter = await chapter_dao.get(db, pl.chapter_id)
+                if not chapter:
+                    raise errors.NotFoundError(msg=f'章节 ID {pl.chapter_id} 不存在')
+                if chapter.bank_id != pl.bank_id:
+                    raise errors.ForbiddenError(msg=f'章节 ID {pl.chapter_id} 不属于题库 ID {pl.bank_id}')
 
-        if obj.chapter_id:
-            chapter = await chapter_dao.get(db, obj.chapter_id)
-            if not chapter:
-                raise errors.NotFoundError(msg='章节不存在')
+        # 2. 创建主表
+        question = await question_dao.create(db, obj.core, user_id)
 
-        # Call DAO to create question (handles material_ids internally)
-        question = await question_dao.create(db, obj, user_id)
-
-        # 处理多版本解析（新格式，优先）
-        if obj.analyses:
-            for idx, analysis_item in enumerate(obj.analyses):
-                analysis_param = CreateQuestionAnalysisParam(
-                    question_id=question.id,
-                    answer_data=analysis_item.get('answer_data', {}),
-                    content=analysis_item.get('content', ''),
-                    type=analysis_item.get('type', 'official'),
-                    is_default=analysis_item.get('is_default', idx == 0),  # 第一个默认
-                )
-                await question_analysis_dao.create(db, analysis_param, user_id)
-        # 兼容旧格式（单条解析）
-        elif obj.analysis:
-            analysis_param = CreateQuestionAnalysisParam(
-                question_id=question.id,
-                answer_data=obj.analysis.get('answer_data', {}),
-                content=obj.analysis.get('content', ''),
-                type=obj.analysis.get('type', 'official'),
-                is_default=True,
+        # 3. 写选项
+        if obj.options:
+            await question_option_dao.replace_by_items(
+                db, question_id=question.id, items=obj.options, option_content_crud=option_content_dao,
             )
-            await question_analysis_dao.create(db, analysis_param, user_id)
 
+        # 4. 写挂载
+        await question_placement_dao.replace_for_question(
+            db, question_id=question.id, items=obj.placements, user_id=user_id,
+        )
+
+        # 5. 写解析
+        await question_analysis_dao.replace_versions(
+            db, question_id=question.id, items=obj.analyses, user_id=user_id,
+        )
+
+        # 6. 写材料关联
+        if obj.material_ids:
+            await question_dao.set_material_ids(db, question.id, obj.material_ids)
+
+        # 7. 更新 bank/chapter q_count_cache（每个挂载 +1）
+        await QuestionService._update_placement_caches(db=db, placements=obj.placements, delta=1)
+
+        log.info('Question created: id=%d type=%s user=%d', question.id, obj.core.type, user_id)
         return question
 
     @staticmethod
     async def update(*, db: AsyncSession, pk: int, obj: UpdateQuestionParam, user_id: int) -> int:
         """
-        更新题目
+        更新题目（嵌套 schema，每个子段可选，传入即全量替换）
 
         :param db: 数据库会话
         :param pk: 题目 ID
@@ -240,98 +393,114 @@ class QuestionService:
         """
         question = await question_dao.get(db, pk)
         if not question:
-            raise errors.NotFoundError(msg='题目不存在')
+            raise errors.NotFoundError(msg='Question not found')
 
-        bank = await bank_dao.get(db, obj.bank_id)
-        if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+        count = 0
 
-        if obj.chapter_id:
-            chapter = await chapter_dao.get(db, obj.chapter_id)
-            if not chapter:
-                raise errors.NotFoundError(msg='章节不存在')
+        # 1. 更新主表
+        if obj.core is not None:
+            count = await question_dao.update(db, pk, obj.core, user_id)
 
-        # Call DAO to update question (handles material_ids internally)
-        count = await question_dao.update(db, pk, obj, user_id)
-
-        # 处理多版本解析（新格式，优先）
-        if obj.analyses is not None:
-            # 删除该题目的所有现有解析
-            await db.execute(
-                select(QuestionAnalysis).where(QuestionAnalysis.question_id == pk)
+        # 2. 更新选项（全量替换）
+        if obj.options is not None:
+            await question_option_dao.replace_by_items(
+                db, question_id=pk, items=obj.options, option_content_crud=option_content_dao,
             )
-            await question_analysis_dao.delete_model_by_column(db, allow_multiple=True, question_id=pk)
-            
-            # 创建新的解析记录
-            for idx, analysis_item in enumerate(obj.analyses):
-                create_param = CreateQuestionAnalysisParam(
-                    question_id=pk,
-                    answer_data=analysis_item.get('answer_data', {}),
-                    content=analysis_item.get('content', ''),
-                    type=analysis_item.get('type', 'official'),
-                    is_default=analysis_item.get('is_default', idx == 0),
-                )
-                await question_analysis_dao.create(db, create_param, user_id)
-        # 兼容旧格式（单条解析）
-        elif obj.analysis:
-            existing_analysis = await question_analysis_dao.get_by_question_id(db, pk)
-            if existing_analysis:
-                # 更新现有解析
-                update_analysis_dict = {
-                    'answer_data': obj.analysis.get('answer_data', {}),
-                    'content': obj.analysis.get('content', ''),
-                    'type': obj.analysis.get('type', 'official'),
-                    'updated_by': user_id,
-                }
-                await question_analysis_dao.update_model_by_column(db, update_analysis_dict, question_id=pk)
-            else:
-                # 创建新解析
-                create_param = CreateQuestionAnalysisParam(
-                    question_id=pk,
-                    answer_data=obj.analysis.get('answer_data', {}),
-                    content=obj.analysis.get('content', ''),
-                    type=obj.analysis.get('type', 'official'),
-                    is_default=True,
-                )
-                await question_analysis_dao.create(db, create_param, user_id)
+            count = max(count, 1)
 
+        # 3. 更新挂载（全量替换）
+        if obj.placements is not None:
+            for pl in obj.placements:
+                bank = await bank_dao.get(db, pl.bank_id)
+                if not bank:
+                    raise errors.NotFoundError(msg=f'题库 ID {pl.bank_id} 不存在')
+                if pl.chapter_id:
+                    chapter = await chapter_dao.get(db, pl.chapter_id)
+                    if not chapter:
+                        raise errors.NotFoundError(msg=f'章节 ID {pl.chapter_id} 不存在')
+                    if chapter.bank_id != pl.bank_id:
+                        raise errors.ForbiddenError(msg=f'章节 ID {pl.chapter_id} 不属于题库 ID {pl.bank_id}')
+
+            # 先记录旧挂载用于计算 cache delta
+            old_placements = await question_placement_dao.get_by_question(db, pk)
+            await question_placement_dao.replace_for_question(
+                db, question_id=pk, items=obj.placements, user_id=user_id,
+            )
+            # 旧挂载 -1，新挂载 +1
+            await QuestionService._update_placement_caches_from_old(
+                db=db, old_placements=old_placements, new_placements=obj.placements,
+            )
+            count = max(count, 1)
+
+        # 4. 更新解析（全量替换）
+        if obj.analyses is not None:
+            await question_analysis_dao.replace_versions(
+                db, question_id=pk, items=obj.analyses, user_id=user_id,
+            )
+            count = max(count, 1)
+
+        # 5. 更新材料关联（全量替换）
+        if obj.material_ids is not None:
+            await question_dao.set_material_ids(db, pk, obj.material_ids)
+            count = max(count, 1)
+
+        log.info('Question updated: id=%d user=%d', pk, user_id)
         return count
 
     @staticmethod
     async def delete(*, db: AsyncSession, obj: DeleteQuestionParam) -> int:
         """
-        删除题目（级联删除解析和统计）
+        删除题目（先更新缓存再级联删除）
 
         :param db: 数据库会话
         :param obj: 删除题目参数
         :return:
         """
+        # 先查询将被删除的挂载，用于扣减缓存
+        if obj.ids:
+            placements = await question_placement_dao.list_by_question_ids(db, question_ids=obj.ids)
+            bank_delta: dict[int, int] = {}
+            chapter_delta: dict[int, int] = {}
+            for p in placements:
+                bank_delta[p.bank_id] = bank_delta.get(p.bank_id, 0) + 1
+                if p.chapter_id:
+                    chapter_delta[p.chapter_id] = chapter_delta.get(p.chapter_id, 0) + 1
+
+            for bid, delta in bank_delta.items():
+                await QuestionService._update_bank_q_count_cache_recursive(db=db, bank_id=bid, delta=-delta)
+            for cid, delta in chapter_delta.items():
+                await db.execute(
+                    update(QuestionChapter)
+                    .where(QuestionChapter.id == cid)
+                    .values(q_count_cache=QuestionChapter.q_count_cache - delta)
+                )
+
         count = await question_dao.delete(db, obj.ids)
+        log.info('Questions deleted: ids=%s count=%d', obj.ids, count)
         return count
 
-    # ============ 题目解析相关 ============
+    # ------------------------------------------------------------------
+    #  题目解析
+    # ------------------------------------------------------------------
 
     @staticmethod
     async def get_analysis(*, db: AsyncSession, question_id: int, increment_view: bool = True) -> QuestionAnalysis:
         """
-        获取题目解析（含答案）
+        获取题目解析
 
         :param db: 数据库会话
         :param question_id: 题目 ID
         :param increment_view: 是否增加查看次数
         :return:
         """
-        # 验证题目存在
         question = await question_dao.get(db, question_id)
         if not question:
-            raise errors.NotFoundError(msg='题目不存在')
+            raise errors.NotFoundError(msg='Question not found')
 
-        # 获取解析
         analysis = await question_analysis_dao.get_by_question_id(db, question_id)
         if not analysis:
-            raise errors.NotFoundError(msg='题目解析不存在')
+            raise errors.NotFoundError(msg='Question analysis not found')
 
-        # 增加查看次数
         if increment_view:
             await question_analysis_dao.increment_view_count(db, question_id)
 
@@ -344,87 +513,37 @@ class QuestionService:
 
         :param db: 数据库会话
         :param question_id: 题目 ID
-        :param user_answer: 用户答案（可选，传入时会返回判题结果）
-        :return: 包含 correct_answer、analysis、is_correct 和统计数据的字典
+        :param user_answer: 用户答案
+        :return:
         """
-        # 验证题目存在
         question = await question_dao.get(db, question_id)
         if not question:
-            raise errors.NotFoundError(msg='题目不存在')
+            raise errors.NotFoundError(msg='Question not found')
 
-        # 获取解析
         analysis = await question_analysis_dao.get_by_question_id(db, question_id)
         if not analysis:
-            raise errors.NotFoundError(msg='题目解析不存在')
+            raise errors.NotFoundError(msg='Question analysis not found')
 
-        # 🔥 获取统计数据（全站正确率和易错项）
         stats = await question_statistics_dao.get_or_create(db, question_id)
 
-        # 提取正确答案
         correct_answer = analysis.answer_data.get('correct', '')
 
-        # 判题（如果传入了用户答案）
         is_correct = None
         if user_answer is not None:
-            # 前端可能传入 JSON 字符串格式的数组（多选题），需要解析
             import json
             try:
                 parsed_answer = json.loads(user_answer)
-                is_correct = QuestionService._check_answer(question.type, parsed_answer, analysis.answer_data)
+                is_correct = QuestionService.check_answer(question.type, parsed_answer, analysis.answer_data)
             except (json.JSONDecodeError, TypeError):
-                # 不是 JSON 格式，直接使用字符串判题
-                is_correct = QuestionService._check_answer(question.type, user_answer, analysis.answer_data)
+                is_correct = QuestionService.check_answer(question.type, user_answer, analysis.answer_data)
 
         return {
             'correct_answer': correct_answer,
             'analysis': analysis.content,
             'is_correct': is_correct,
-            'correct_rate': stats.correct_rate,  # 🔥 全站正确率
-            'wrong_option_stats': stats.wrong_option_stats,  # 🔥 易错项统计
+            'correct_rate': stats.correct_rate,
+            'wrong_option_stats': stats.wrong_option_stats,
         }
-
-    @staticmethod
-    async def create_analysis(*, db: AsyncSession, obj: CreateQuestionAnalysisParam, user_id: int) -> QuestionAnalysis:
-        """
-        创建题目解析
-
-        :param db: 数据库会话
-        :param obj: 创建解析参数
-        :param user_id: 用户 ID
-        :return:
-        """
-        # 验证题目存在
-        question = await question_dao.get(db, obj.question_id)
-        if not question:
-            raise errors.NotFoundError(msg='题目不存在')
-
-        # 检查是否已存在解析
-        existing = await question_analysis_dao.get_by_question_id(db, obj.question_id)
-        if existing:
-            raise errors.ForbiddenError(msg='该题目已存在解析')
-
-        analysis = await question_analysis_dao.create(db, obj, user_id)
-        return analysis
-
-    @staticmethod
-    async def update_analysis(
-        *, db: AsyncSession, question_id: int, obj: UpdateQuestionAnalysisParam, user_id: int
-    ) -> int:
-        """
-        更新题目解析
-
-        :param db: 数据库会话
-        :param question_id: 题目 ID
-        :param obj: 更新解析参数
-        :param user_id: 用户 ID
-        :return:
-        """
-        analysis = await question_analysis_dao.get_by_question_id(db, question_id)
-        if not analysis:
-            raise errors.NotFoundError(msg='题目解析不存在')
-
-        count = await question_analysis_dao.update(db, question_id, obj, user_id)
-        return count
 
     @staticmethod
     async def mark_analysis_helpful(*, db: AsyncSession, question_id: int, is_helpful: bool) -> None:
@@ -437,118 +556,16 @@ class QuestionService:
         """
         analysis = await question_analysis_dao.get_by_question_id(db, question_id)
         if not analysis:
-            raise errors.NotFoundError(msg='题目解析不存在')
+            raise errors.NotFoundError(msg='Question analysis not found')
 
         await question_analysis_dao.increment_helpful_count(db, question_id, is_helpful)
 
-    # ============ 答题相关 ============
+    # ------------------------------------------------------------------
+    #  判题
+    # ------------------------------------------------------------------
 
     @staticmethod
-    async def batch_submit_answer(*, db: AsyncSession, obj: BatchSubmitAnswerParam, user_id: int) -> BatchSubmitAnswerResult:
-        """
-        批量提交答案并判分（适合考试/试卷场景）
-
-        :param db: 数据库会话
-        :param obj: 批量提交答案参数
-        :param user_id: 用户 ID
-        :return:
-        """
-        results: list[QuestionResultItem] = []
-        total_score = Decimal('0')
-        full_score = Decimal('0')
-        correct_count = 0
-        wrong_count = 0
-
-        # 逐题判分
-        for answer_item in obj.answers:
-            # 获取题目
-            question = await question_dao.get(db, answer_item.question_id)
-            if not question:
-                raise errors.NotFoundError(msg=f'题目 ID {answer_item.question_id} 不存在')
-
-            # 获取解析（包含正确答案）
-            analysis = await question_analysis_dao.get_by_question_id(db, answer_item.question_id)
-            if not analysis:
-                raise errors.NotFoundError(msg=f'题目 ID {answer_item.question_id} 的解析不存在')
-
-            # 判断答案是否正确
-            is_correct = QuestionService._check_answer(question.type, answer_item.user_answer, analysis.answer_data)
-
-            # 计算得分
-            score = question.score if is_correct else Decimal('0')
-            total_score += score
-            full_score += question.score
-
-            # 统计正确/错误数量
-            if is_correct:
-                correct_count += 1
-            else:
-                wrong_count += 1
-
-            # 更新统计数据
-            stats_param = UpdateQuestionStatisticsParam(
-                attempt_count=1,
-                correct_count=1 if is_correct else 0,
-                answer_time=answer_item.answer_time,
-                wrong_option=answer_item.user_answer if not is_correct and question.type in ['single', 'judgement'] else None,
-            )
-            await question_statistics_dao.update_stats(db, answer_item.question_id, stats_param)
-
-            # 🔥 错题本逻辑：答错自动加入错题本
-            if not is_correct:
-                # 答错：查找是否已存在错题记录
-                existing_wrong = await wrong_question_dao.get_by_user_and_question(
-                    db, user_id, answer_item.question_id
-                )
-                if existing_wrong:
-                    # 已存在：增加错误次数，重置连续正确次数
-                    await wrong_question_dao.increment_wrong(db, existing_wrong.id, datetime.now())
-                else:
-                    # 不存在：创建新的错题记录
-                    await wrong_question_dao.create(db, user_id, answer_item.question_id, datetime.now())
-            else:
-                # 答对：如果错题本中存在，增加连续正确次数（连续3次后自动标记为已掌握）
-                existing_wrong = await wrong_question_dao.get_by_user_and_question(
-                    db, user_id, answer_item.question_id
-                )
-                if existing_wrong:
-                    await wrong_question_dao.increment_correct(db, existing_wrong.id, datetime.now())
-
-            # 如果需要包含解析，增加查看次数
-            if obj.include_analysis:
-                await question_analysis_dao.increment_view_count(db, answer_item.question_id)
-
-            # 构造结果项
-            results.append(
-                QuestionResultItem(
-                    question_id=answer_item.question_id,
-                    is_correct=is_correct,
-                    user_answer=answer_item.user_answer,
-                    correct_answer=analysis.answer_data,
-                    score=score,
-                    full_score=question.score,
-                    analysis_content=analysis.content if obj.include_analysis else None,
-                )
-            )
-
-        # 计算总体统计
-        total_questions = len(obj.answers)
-        accuracy_rate = Decimal((correct_count / total_questions) * 100).quantize(Decimal('0.01')) if total_questions > 0 else Decimal('0')
-        score_rate = Decimal((total_score / full_score) * 100).quantize(Decimal('0.01')) if full_score > 0 else Decimal('0')
-
-        return BatchSubmitAnswerResult(
-            total_questions=total_questions,
-            correct_count=correct_count,
-            wrong_count=wrong_count,
-            total_score=total_score,
-            full_score=full_score,
-            accuracy_rate=accuracy_rate,
-            score_rate=score_rate,
-            results=results,
-        )
-
-    @staticmethod
-    def _check_answer(question_type: str, user_answer: str | list[str], correct_data: dict) -> bool:
+    def check_answer(question_type: str, user_answer: str | list[str], correct_data: dict) -> bool:
         """
         判断答案是否正确
 
@@ -560,11 +577,9 @@ class QuestionService:
         correct_answer = correct_data.get('correct')
 
         if question_type in ['single', 'judgement']:
-            # 单选/判断：比较字符串
             return str(user_answer).strip().upper() == str(correct_answer).strip().upper()
 
         if question_type == 'multiple':
-            # 多选：比较集合（不考虑顺序）
             if not isinstance(user_answer, list):
                 return False
             user_set = {str(ans).strip().upper() for ans in user_answer}
@@ -572,7 +587,6 @@ class QuestionService:
             return user_set == correct_set
 
         if question_type == 'fill':
-            # 填空：逐个比较（去除首尾空格）
             if not isinstance(user_answer, list):
                 return False
             if len(user_answer) != len(correct_answer):
@@ -583,7 +597,6 @@ class QuestionService:
             )
 
         if question_type == 'shortAnswer':
-            # 简答：关键词匹配（至少包含 60% 的关键词）
             keywords = correct_data.get('keywords', [])
             if not keywords:
                 return True
@@ -593,7 +606,9 @@ class QuestionService:
 
         return False
 
-    # ============ 题目统计相关 ============
+    # ------------------------------------------------------------------
+    #  题目统计
+    # ------------------------------------------------------------------
 
     @staticmethod
     async def get_statistics(*, db: AsyncSession, question_id: int) -> QuestionStatistics:
@@ -608,8 +623,65 @@ class QuestionService:
         if not question:
             raise errors.NotFoundError(msg='题目不存在')
 
-        stats = await question_statistics_dao.get_or_create(db, question_id)
-        return stats
+        return await question_statistics_dao.get_or_create(db, question_id)
+
+    @staticmethod
+    async def get_option_stats(
+        *,
+        db: AsyncSession,
+        question_id: int,
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+    ) -> list[QuestionOptionStatsItem]:
+        """获取题目各挂载点下的选项统计"""
+        question = await question_dao.get_with_relations(db, question_id)
+        if not question:
+            raise errors.NotFoundError(msg='题目不存在')
+
+        placement_candidates = question.placements if question.placements else []
+        target_placements = [
+            placement
+            for placement in placement_candidates
+            if (bank_id is None or placement.bank_id == bank_id)
+            and (chapter_id is None or placement.chapter_id == chapter_id)
+        ]
+        if not target_placements:
+            return []
+
+        active_options = [item for item in question.options if item.is_active] if question.options else []
+        if not active_options:
+            return []
+
+        placement_ids = [placement.id for placement in target_placements]
+        stmt = select(QuestionOptionStats).where(
+            QuestionOptionStats.question_id == question_id,
+            QuestionOptionStats.placement_id.in_(placement_ids),
+        )
+        result = await db.execute(stmt)
+        stats_rows = result.scalars().all()
+        stats_map = {(row.placement_id, row.option_code): row for row in stats_rows}
+
+        sorted_options = sorted(active_options, key=lambda item: (item.sort_order, item.option_code))
+        sorted_placements = sorted(target_placements, key=lambda item: (item.bank_id, item.chapter_id or 0, item.sort_order))
+
+        items: list[QuestionOptionStatsItem] = []
+        for placement in sorted_placements:
+            for option in sorted_options:
+                stats = stats_map.get((placement.id, option.option_code))
+                items.append(
+                    QuestionOptionStatsItem(
+                        placement_id=placement.id,
+                        bank_id=placement.bank_id,
+                        chapter_id=placement.chapter_id,
+                        option_code=option.option_code,
+                        option_content=option.content_ref.content if option.content_ref else '',
+                        selected_count=stats.selected_count if stats else 0,
+                        correct_selected_count=stats.correct_selected_count if stats else 0,
+                        wrong_selected_count=stats.wrong_selected_count if stats else 0,
+                    )
+                )
+
+        return items
 
     @staticmethod
     async def update_statistics(*, db: AsyncSession, question_id: int, obj: UpdateQuestionStatisticsParam) -> None:
@@ -622,30 +694,29 @@ class QuestionService:
         """
         question = await question_dao.get(db, question_id)
         if not question:
-            raise errors.NotFoundError(msg='题目不存在')
+            raise errors.NotFoundError(msg='Question not found')
 
         await question_statistics_dao.update_stats(db, question_id, obj)
 
-    # ============ 批量导入相关 ============
+    # ------------------------------------------------------------------
+    #  批量导入
+    # ------------------------------------------------------------------
 
     @staticmethod
     async def batch_import(*, db: AsyncSession, obj: BatchImportParam, user_id: int) -> BatchImportResult:
         """
-        批量导入题目（从 CSV）
-
-        采用"全有或全无"模式：所有题目验证通过才写入，有任何错误则全部不写入
+        批量导入题目（复用 create 流程）
 
         :param db: 数据库会话
         :param obj: 批量导入参数
         :param user_id: 用户 ID
         :return:
         """
-        # 验证题库存在
         bank = await bank_dao.get(db, obj.bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='Bank not found')
 
-        # 题型映射（中文 → 英文）
+        # 题型映射
         type_mapping = {
             '单选': 'single',
             '单选题': 'single',
@@ -659,14 +730,13 @@ class QuestionService:
             '简答题': 'shortAnswer',
         }
 
-        # 难度映射（中文 → 英文）
+        # 难度映射
         difficulty_mapping = {
             '简单': 'easy',
             '中等': 'medium',
             '困难': 'hard',
         }
 
-        # 章节缓存（避免重复查询）
         chapter_cache: dict[str, int] = {}
 
         # ============ 第一阶段：验证所有数据 ============
@@ -675,15 +745,12 @@ class QuestionService:
 
         for row_index, row in enumerate(obj.questions, start=2):
             try:
-                # 1️⃣ 验证题型
                 question_type = type_mapping.get(row.题型)
                 if not question_type:
                     raise ValueError(f'不支持的题型：{row.题型}')
 
-                # 2️⃣ 解析难度
                 difficulty = difficulty_mapping.get(row.难度 or '中等', 'medium')
 
-                # 3️⃣ 获取或创建章节（此处只查询，不创建）
                 chapter_id = await QuestionService._get_or_create_chapter(
                     db=db,
                     bank_id=obj.bank_id,
@@ -692,7 +759,6 @@ class QuestionService:
                     chapter_cache=chapter_cache,
                 )
 
-                # 4️⃣ 构建选项数据
                 options_data = None
                 if question_type in ['single', 'multiple', 'judgement']:
                     options_data = {}
@@ -704,13 +770,10 @@ class QuestionService:
                                 'content': option_value,
                             }
 
-                # 5️⃣ 验证答案格式
                 answer_data = QuestionService._parse_answer(row.答案, question_type)
 
-                # 6️⃣ 验证分数
-                score = Decimal(str(row.分数 if row.分数 is not None else 1))
+                default_score = Decimal(str(row.分数 if row.分数 is not None else 1))
 
-                # 保存验证通过的数据
                 validated_rows.append({
                     'row_index': row_index,
                     'question_type': question_type,
@@ -718,7 +781,7 @@ class QuestionService:
                     'chapter_id': chapter_id,
                     'options_data': options_data,
                     'answer_data': answer_data,
-                    'score': score,
+                    'default_score': default_score,
                     'stem': row.题目,
                     'analysis_content': row.解析 if row.解析 else '暂无解析',
                     'sort_order': int(row.ID) if row.ID is not None else row_index,
@@ -734,7 +797,7 @@ class QuestionService:
                     )
                 )
 
-        # ============ 如果有验证错误，直接返回，不写入任何数据 ============
+        # 有验证错误，直接返回
         if validation_errors:
             return BatchImportResult(
                 total=len(obj.questions),
@@ -743,36 +806,61 @@ class QuestionService:
                 details=validation_errors,
             )
 
-        # ============ 第二阶段：全部验证通过，批量写入数据库 ============
+        # ============ 第二阶段：复用 create 流程写入 ============
+        from backend.app.question_bank.schema.question import (
+            QuestionCoreBase,
+            UpsertQuestionAnalysisItem,
+            UpsertQuestionOptionItem,
+            UpsertQuestionPlacementItem,
+        )
+
         results: list[ImportResultItem] = []
         chapter_count: dict[int, int] = {}
 
         for row_data in validated_rows:
-            # 创建题目记录
-            question = Question(
-                bank_id=obj.bank_id,
-                chapter_id=row_data['chapter_id'],
+            # 构造嵌套 schema
+            core = QuestionCoreBase(
                 type=row_data['question_type'],
                 stem=row_data['stem'],
-                options_data=row_data['options_data'],
                 difficulty=row_data['difficulty'],
-                score=row_data['score'],
-                sort_order=row_data['sort_order'],
-                created_by=user_id,
+                default_score=row_data['default_score'],
             )
-            db.add(question)
-            await db.flush()
 
-            # 创建解析记录
-            analysis = QuestionAnalysis(
-                question_id=question.id,
+            # 选项
+            options: list[UpsertQuestionOptionItem] = []
+            if row_data['options_data']:
+                for code, opt in row_data['options_data'].items():
+                    options.append(UpsertQuestionOptionItem(
+                        option_code=code,
+                        content=opt['content'],
+                        sort_order=ord(code) - ord('A'),
+                    ))
+
+            # 挂载
+            placements = [UpsertQuestionPlacementItem(
+                bank_id=obj.bank_id,
+                chapter_id=row_data['chapter_id'],
+                sort_order=row_data['sort_order'],
+                is_active=True,
+                score=row_data['default_score'],
+            )]
+
+            # 解析
+            analyses = [UpsertQuestionAnalysisItem(
                 answer_data=row_data['answer_data'],
                 content=row_data['analysis_content'],
-                created_by=user_id,
-            )
-            db.add(analysis)
+                is_default=True,
+            )]
 
-            # 记录成功
+            create_param = CreateQuestionParam(
+                core=core,
+                options=options,
+                placements=placements,
+                analyses=analyses,
+            )
+
+            question = await QuestionService.create(db=db, obj=create_param, user_id=user_id)
+
             results.append(
                 ImportResultItem(
                     row_number=row_data['row_index'],
@@ -782,24 +870,21 @@ class QuestionService:
                 )
             )
 
-            # 统计章节题目数量
             if row_data['chapter_id']:
                 chapter_count[row_data['chapter_id']] = chapter_count.get(row_data['chapter_id'], 0) + 1
 
         success_count = len(validated_rows)
 
-        # ============ 第三阶段：更新 q_count ============
+        # ============ 第三阶段：更新 q_count_cache ============
         if success_count > 0:
-            # 更新各章节的 q_count
-            for chapter_id, count in chapter_count.items():
+            for chap_id, count in chapter_count.items():
                 await db.execute(
                     update(QuestionChapter)
-                    .where(QuestionChapter.id == chapter_id)
-                    .values(q_count=QuestionChapter.q_count + count)
+                    .where(QuestionChapter.id == chap_id)
+                    .values(q_count_cache=QuestionChapter.q_count_cache + count)
                 )
 
-            # 🔥 递归更新题库及其所有父级题库的 q_count
-            await QuestionService._update_bank_q_count_recursive(
+            await QuestionService._update_bank_q_count_cache_recursive(
                 db=db,
                 bank_id=obj.bank_id,
                 delta=success_count,
@@ -813,6 +898,10 @@ class QuestionService:
             fail_count=0,
             details=results,
         )
+
+    # ------------------------------------------------------------------
+    #  内部工具
+    # ------------------------------------------------------------------
 
     @staticmethod
     async def _get_or_create_chapter(
@@ -831,13 +920,12 @@ class QuestionService:
         :param level1_name: 一级章节名称
         :param level2_name: 二级章节名称
         :param chapter_cache: 章节缓存
-        :return: 章节 ID（None 表示无章节）
+        :return:
         """
-        # 如果没有章节，返回 None
         if not level1_name:
             return None
 
-        # 1️⃣ 获取或创建一级章节
+        # 获取或创建一级章节
         cache_key_1 = f'{bank_id}:{level1_name}'
         if cache_key_1 not in chapter_cache:
             level1_chapter = await chapter_dao.get_by_name(
@@ -847,7 +935,6 @@ class QuestionService:
                 parent_id=None,
             )
             if not level1_chapter:
-                # 创建一级章节
                 from backend.app.question_bank.schema.chapter import CreateChapterParam
 
                 level1_param = CreateChapterParam(
@@ -859,7 +946,6 @@ class QuestionService:
                 )
                 await chapter_dao.create(db, level1_param)
                 await db.flush()
-                # 重新查询获取 ID
                 level1_chapter = await chapter_dao.get_by_name(
                     db=db,
                     bank_id=bank_id,
@@ -870,11 +956,10 @@ class QuestionService:
 
         level1_id = chapter_cache[cache_key_1]
 
-        # 2️⃣ 如果没有二级章节，返回一级章节 ID
         if not level2_name:
             return level1_id
 
-        # 3️⃣ 获取或创建二级章节
+        # 获取或创建二级章节
         cache_key_2 = f'{bank_id}:{level1_name}:{level2_name}'
         if cache_key_2 not in chapter_cache:
             level2_chapter = await chapter_dao.get_by_name(
@@ -884,7 +969,6 @@ class QuestionService:
                 parent_id=level1_id,
             )
             if not level2_chapter:
-                # 创建二级章节
                 from backend.app.question_bank.schema.chapter import CreateChapterParam
 
                 level2_param = CreateChapterParam(
@@ -896,7 +980,6 @@ class QuestionService:
                 )
                 await chapter_dao.create(db, level2_param)
                 await db.flush()
-                # 重新查询获取 ID
                 level2_chapter = await chapter_dao.get_by_name(
                     db=db,
                     bank_id=bank_id,
@@ -908,25 +991,100 @@ class QuestionService:
         return chapter_cache[cache_key_2]
 
     @staticmethod
-    async def _update_bank_q_count_recursive(*, db: AsyncSession, bank_id: int, delta: int) -> None:
+    async def _update_placement_caches(
+        db: AsyncSession,
+        *,
+        placements: list[UpsertQuestionPlacementItem],
+        delta: int,
+    ) -> None:
         """
-        递归更新题库及其所有父级题库的 q_count
+        根据挂载列表更新 bank/chapter q_count_cache
+
+        :param db: 数据库会话
+        :param placements: 挂载列表
+        :param delta: 变化量（+1 创建 / -1 删除）
+        """
+        bank_delta: dict[int, int] = {}
+        chapter_delta: dict[int, int] = {}
+        for pl in placements:
+            bank_delta[pl.bank_id] = bank_delta.get(pl.bank_id, 0) + delta
+            if pl.chapter_id:
+                chapter_delta[pl.chapter_id] = chapter_delta.get(pl.chapter_id, 0) + delta
+
+        for bid, d in bank_delta.items():
+            await QuestionService._update_bank_q_count_cache_recursive(db=db, bank_id=bid, delta=d)
+        for cid, d in chapter_delta.items():
+            await db.execute(
+                update(QuestionChapter)
+                .where(QuestionChapter.id == cid)
+                .values(q_count_cache=QuestionChapter.q_count_cache + d)
+            )
+
+    @staticmethod
+    async def _update_placement_caches_from_old(
+        db: AsyncSession,
+        *,
+        old_placements: Sequence[QuestionPlacement],
+        new_placements: list[UpsertQuestionPlacementItem],
+    ) -> None:
+        """
+        根据旧/新挂载差异更新 bank/chapter q_count_cache
+
+        :param db: 数据库会话
+        :param old_placements: 旧挂载 ORM 列表
+        :param new_placements: 新挂载 schema 列表
+        """
+        # 旧挂载的 bank/chapter 各 -1
+        old_bank_delta: dict[int, int] = {}
+        old_chapter_delta: dict[int, int] = {}
+        for p in old_placements:
+            old_bank_delta[p.bank_id] = old_bank_delta.get(p.bank_id, 0) - 1
+            if p.chapter_id:
+                old_chapter_delta[p.chapter_id] = old_chapter_delta.get(p.chapter_id, 0) - 1
+
+        # 新挂载的 bank/chapter 各 +1
+        new_bank_delta: dict[int, int] = {}
+        new_chapter_delta: dict[int, int] = {}
+        for pl in new_placements:
+            new_bank_delta[pl.bank_id] = new_bank_delta.get(pl.bank_id, 0) + 1
+            if pl.chapter_id:
+                new_chapter_delta[pl.chapter_id] = new_chapter_delta.get(pl.chapter_id, 0) + 1
+
+        # 合并 delta
+        all_bank_ids = set(old_bank_delta) | set(new_bank_delta)
+        for bid in all_bank_ids:
+            delta = old_bank_delta.get(bid, 0) + new_bank_delta.get(bid, 0)
+            if delta != 0:
+                await QuestionService._update_bank_q_count_cache_recursive(db=db, bank_id=bid, delta=delta)
+
+        all_chapter_ids = set(old_chapter_delta) | set(new_chapter_delta)
+        for cid in all_chapter_ids:
+            delta = old_chapter_delta.get(cid, 0) + new_chapter_delta.get(cid, 0)
+            if delta != 0:
+                await db.execute(
+                    update(QuestionChapter)
+                    .where(QuestionChapter.id == cid)
+                    .values(q_count_cache=QuestionChapter.q_count_cache + delta)
+                )
+
+    @staticmethod
+    async def _update_bank_q_count_cache_recursive(*, db: AsyncSession, bank_id: int, delta: int) -> None:
+        """
+        递归更新题库及其所有父级题库的 q_count_cache
 
         :param db: 数据库会话
         :param bank_id: 题库 ID
-        :param delta: 变化量（正数增加，负数减少）
+        :param delta: 变化量
         """
         current_id = bank_id
 
         while current_id:
-            # 更新当前题库的 q_count
             await db.execute(
                 update(QuestionBank)
                 .where(QuestionBank.id == current_id)
-                .values(q_count=QuestionBank.q_count + delta)
+                .values(q_count_cache=QuestionBank.q_count_cache + delta)
             )
 
-            # 获取父级题库 ID
             result = await db.execute(
                 select(QuestionBank.parent_id).where(QuestionBank.id == current_id)
             )
@@ -943,23 +1101,16 @@ class QuestionService:
         :return:
         """
         if question_type in ['single', 'judgement']:
-            # 单选/判断：直接返回字符串
             return {'correct': answer_str.strip().upper()}
 
         if question_type == 'multiple':
-            # 多选：支持两种格式
-            # 1. 逗号分隔：A,B,C
-            # 2. 连续字母：ABC
             if ',' in answer_str:
-                # 格式 1：逗号分隔
                 answers = [ans.strip().upper() for ans in answer_str.split(',')]
             else:
-                # 格式 2：连续字母，拆分为单个字母
                 answers = [c.upper() for c in answer_str.strip() if c.isalpha()]
             return {'correct': answers}
 
         if question_type in ['fill', 'shortAnswer']:
-            # 填空/简答：分割为列表
             answers = [ans.strip() for ans in answer_str.split(',')]
             return {'correct': answers}
 

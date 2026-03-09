@@ -12,7 +12,7 @@ from typing import Any
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.file import CancelShareParam, ListShareInfoParam
-from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService, DriveAuthError
 from backend.common.log import log
 from backend.database.db import async_db_session
 
@@ -61,6 +61,24 @@ class ShareCleanupService:
                     if detail['status'] == 'error':
                         result['failed_accounts'] += 1
                     result['cleanup_details'].append(detail)
+
+                except DriveAuthError as e:
+                    log.warning(f'账户 {account.id} ({account.type}) 认证已失效: {e}')
+                    try:
+                        await drive_account_dao.update_validity(db, account.id, False)
+                        await db.commit()
+                    except Exception:
+                        await db.rollback()
+
+                    await ShareCleanupService._notify_auth_expired(account, e)
+                    result['failed_accounts'] += 1
+                    result['cleanup_details'].append({
+                        'account_id': account.id,
+                        'account_type': account.type,
+                        'status': 'auth_expired',
+                        'error': str(e),
+                    })
+
                 except Exception as e:
                     log.error(f'处理账户 {account.id} 时发生错误: {e}')
                     result['failed_accounts'] += 1
@@ -141,6 +159,8 @@ class ShareCleanupService:
                 page += 1
                 await asyncio.sleep(random.randint(5, 8))
 
+            except DriveAuthError:
+                raise
             except Exception as e:
                 log.error(f'获取账户 {account.id} 第{page}页分享信息失败: {e}')
                 break
@@ -185,6 +205,8 @@ class ShareCleanupService:
                 if i + batch_size < total:
                     await asyncio.sleep(random.randint(3, 5))
 
+            except DriveAuthError:
+                raise
             except Exception as e:
                 failed_batches += 1
                 log.error(f'账户 {account.id} 第{batch_num}批取消分享时发生错误: {e}')
@@ -201,6 +223,28 @@ class ShareCleanupService:
             'successful_batches': successful_batches,
             'failed_batches': failed_batches,
         }
+
+    @staticmethod
+    async def _notify_auth_expired(account, exc: DriveAuthError) -> None:
+        """发送认证失效告警通知"""
+        try:
+            from backend.plugin.notify.service.notify_service import notify_service
+
+            await notify_service.send(
+                title=f'网盘账号认证失效: {account.username}',
+                content=(
+                    f'账号: {account.username}\n'
+                    f'类型: {account.type}\n'
+                    f'账户ID: {account.id}\n'
+                    f'来源: 分享清理任务\n'
+                    f'错误: {str(exc)[:200]}\n'
+                    f'请及时更新 Cookie/Token'
+                ),
+                options={'tags': '网盘|认证失效'},
+                source='share_cleanup',
+            )
+        except Exception:
+            pass
 
 
 share_cleanup_service: ShareCleanupService = ShareCleanupService()

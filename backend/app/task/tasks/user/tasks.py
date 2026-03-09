@@ -3,12 +3,10 @@
 import asyncio
 import logging
 import random
-from datetime import datetime
-from typing import Dict, Any
-
+from typing import Any
 
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
-from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService, DriveAuthError
 from backend.app.coulddrive.schema.file import UserInfoParam
 from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.user import UpdateDriveAccountParam
@@ -19,20 +17,20 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name='refresh_all_valid_drive_users')
-async def refresh_all_valid_drive_users() -> Dict[str, Any]:
+async def refresh_all_valid_drive_users() -> dict[str, Any]:
     """
     刷新所有有效的网盘用户信息
-    
+
     扫描数据库中所有有效的网盘账户，
-    通过API获取最新的用户信息并更新到数据库
-    
-    :return: 执行结果统计
+    通过 API 获取最新的用户信息并更新到数据库
+
+    :return:
     """
     try:
         result = await _refresh_all_valid_drive_users()
         logger.info(f"用户信息刷新完成: 检查{result['checked_users']}个，刷新{result['refreshed_users']}个")
         return result
-            
+
     except Exception as e:
         logger.error(f"用户信息刷新失败: {str(e)}")
         return {
@@ -45,11 +43,11 @@ async def refresh_all_valid_drive_users() -> Dict[str, Any]:
         }
 
 
-async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
+async def _refresh_all_valid_drive_users() -> dict[str, Any]:
     """
     刷新所有有效的网盘用户信息的异步实现
-    
-    :return: 执行结果统计
+
+    :return:
     """
     result = {
         "checked_users": 0,
@@ -58,12 +56,12 @@ async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
         "skipped_users": 0,
         "refresh_details": []
     }
-    
+
     try:
         async with async_db_session() as db:
             # 获取所有有效的网盘账户
             valid_accounts = await drive_account_dao.get_list_with_pagination(db, is_valid=True)
-            
+
             result["checked_users"] = len(valid_accounts)
 
             for account in valid_accounts:
@@ -93,7 +91,7 @@ async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
 
                     # 获取最新的用户信息
                     updated_user_info = await service.get_user_info(params=user_info_params)
-                    
+
                     # 准备更新数据
                     update_data = UpdateDriveAccountParam(
                         username=updated_user_info.username,
@@ -104,10 +102,10 @@ async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
                         is_supervip=updated_user_info.is_supervip,
                         is_valid=True  # 如果能成功获取信息，说明账户仍然有效
                     )
-                    
+
                     # 更新数据库
                     await drive_account_dao.update(db, account.id, update_data)
-                    
+
                     result["refreshed_users"] += 1
                     result["refresh_details"].append({
                         "account_id": account.id,
@@ -124,24 +122,40 @@ async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
                         "old_supervip": account.is_supervip,
                         "new_supervip": updated_user_info.is_supervip
                     })
-                    
+
                     logger.info(f"用户 {updated_user_info.username} 信息刷新成功")
-                    
+
                     # 添加随机间隔时间，避免频繁请求
                     wait_time = random.randint(3, 8)
                     await asyncio.sleep(wait_time)
-                
+
+                except DriveAuthError as e:
+                    # 认证失效：回滚事务 → 标记账号无效 → 发送告警通知
+                    await db.rollback()
+                    try:
+                        await drive_account_dao.update_validity(db, account.id, False)
+                        await db.commit()
+                    except Exception:
+                        await db.rollback()
+
+                    logger.warning(f"用户 {account.username} ({account.type}) 认证已失效，已标记为无效")
+                    await _notify_auth_expired(account, e)
+
+                    result["failed_users"] += 1
+                    result["refresh_details"].append({
+                        "account_id": account.id,
+                        "user_id": account.user_id,
+                        "username": account.username,
+                        "drive_type": account.type,
+                        "status": "auth_expired",
+                        "error": str(e)
+                    })
+
                 except Exception as e:
+                    # 其他错误：回滚事务防止污染后续用户
+                    await db.rollback()
                     logger.error(f"刷新用户 {account.id} 信息时发生错误: {str(e)}")
-                    
-                    # 如果是认证失败，标记账户为无效
-                    if "认证" in str(e) or "登录" in str(e) or "token" in str(e).lower() or "auth" in str(e).lower():
-                        try:
-                            await drive_account_dao.update_validity(db, account.id, False)
-                            logger.warning(f"用户 {account.id} 认证失败，已标记为无效")
-                        except Exception as update_error:
-                            logger.error(f"更新用户 {account.id} 有效性状态失败: {str(update_error)}")
-                    
+
                     result["failed_users"] += 1
                     result["refresh_details"].append({
                         "account_id": account.id,
@@ -151,12 +165,33 @@ async def _refresh_all_valid_drive_users() -> Dict[str, Any]:
                         "status": "error",
                         "error": str(e)
                     })
-    
+
     except Exception as e:
         logger.error(f"刷新用户信息时发生错误: {str(e)}")
         result["error"] = str(e)
-    
+
     return result
+
+
+async def _notify_auth_expired(account, exc: DriveAuthError) -> None:
+    """发送认证失效告警通知"""
+    try:
+        from backend.plugin.notify.service.notify_service import notify_service
+
+        await notify_service.send(
+            title=f'网盘账号认证失效: {account.username}',
+            content=(
+                f'账号: {account.username}\n'
+                f'类型: {account.type}\n'
+                f'账户ID: {account.id}\n'
+                f'错误: {str(exc)[:200]}\n'
+                f'请及时更新 Cookie/Token'
+            ),
+            options={'tags': '网盘|认证失效'},
+            source='drive_auth_check',
+        )
+    except Exception:
+        pass
 
 
 @celery_app.task(name='check_expired_user_roles')
@@ -165,4 +200,3 @@ async def check_expired_user_roles() -> int:
     from backend.app.admin.service.user_role_expiry_service import user_role_expiry_service
 
     return await user_role_expiry_service.check_and_expire_roles()
-

@@ -49,6 +49,7 @@ from backend.app.coulddrive.service.coulddrive_service import (
     BaseDriveClient,
     ConfigItem,
     ConfigItemType,
+    DriveAuthError,
     DriverRegistry,
 )
 from backend.app.coulddrive.schema.enum import DriveType
@@ -316,6 +317,8 @@ class QuarkClient(BaseDriveClient):
                 self.logger.error(f"获取用户信息失败: {error_msg}")
                 return BaseUserInfo(user_id='0', username='未知用户', avatar_url='', is_vip=False, is_supervip=False)
         except Exception as e:
+            if self._is_auth_error(e):
+                raise DriveAuthError(str(e), drive_type=self.drive_type) from e
             self.logger.error(f"获取用户信息时发生错误: {e}")
             return BaseUserInfo(user_id='0', username='未知用户', avatar_url='', is_vip=False, is_supervip=False)
 
@@ -416,6 +419,8 @@ class QuarkClient(BaseDriveClient):
                     
                     page += 1
                 except Exception as e:
+                    if self._is_auth_error(e):
+                        raise DriveAuthError(str(e), drive_type=self.drive_type) from e
                     self.logger.error(f"获取第{page}页数据失败 pdir_fid: {pdir_fid}: {e}")
                     break
             
@@ -424,6 +429,8 @@ class QuarkClient(BaseDriveClient):
         try:
             # 获取目录内容
             items_raw = await fetch_all_quark_pages_from_api(initial_pdir_fid, sort_str)
+        except DriveAuthError:
+            raise
         except Exception as e:
             self.logger.error(f"Error listing path '{file_path}' with fid '{initial_pdir_fid}': {e}")
             return []
@@ -842,7 +849,11 @@ class QuarkClient(BaseDriveClient):
             
             return drive_files_list
             
+        except DriveAuthError:
+            raise
         except Exception as e:
+            if self._is_auth_error(e):
+                raise DriveAuthError(str(e), drive_type=self.drive_type) from e
             self.logger.error(f"处理分享链接时发生错误: {e}")
             return []
 
@@ -861,7 +872,11 @@ class QuarkClient(BaseDriveClient):
             share_ids = [str(sid) for sid in params.shareid_list]
             await self._quarkapi.cancel_shared(share_ids=share_ids)
             return True
+        except DriveAuthError:
+            raise
         except Exception as e:
+            if self._is_auth_error(e):
+                raise DriveAuthError(str(e), drive_type=self.drive_type) from e
             self.logger.error(f"取消分享时发生错误: {e}")
             return False
 

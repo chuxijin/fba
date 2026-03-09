@@ -10,7 +10,7 @@
 """
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Path, Query
+from fastapi import APIRouter, Path, Query
 
 from backend.app.question_bank.crud.crud_question_note import question_note_dao
 from backend.app.question_bank.schema.note import (
@@ -20,6 +20,7 @@ from backend.app.question_bank.schema.note import (
     GetUserNoteVoteDetail,
     NoteVoteStatistics,
     UpdateQuestionNoteParam,
+    VoteQuestionNoteParam,
 )
 from backend.app.question_bank.security import DependsCustomerAuth
 from backend.app.question_bank.service.note_service import note_service
@@ -97,14 +98,14 @@ async def update_note(
     obj: UpdateQuestionNoteParam,
     current_user: AuthUser = DependsCustomerAuth,
 ) -> ResponseModel:
-    """更新笔记内容和公开状态"""
+    """更新笔记内容和公开状态（支持局部更新）"""
     count = await note_service.update_note(
-        db=db, note_id=pk, user_id=current_user.user_id, content=obj.content, is_public=obj.is_public
+        db=db, note_id=pk, user_id=current_user.user_id, obj=obj
     )
 
     if count > 0:
         return response_base.success()
-    return response_base.fail(res=CustomResponse(code=400, msg='更新失败'))
+    return response_base.fail(res=CustomResponse(code=400, msg='没有需要更新的数据'))
 
 
 @router.delete('/{pk}', summary='删除笔记')
@@ -128,11 +129,11 @@ async def delete_note(
 async def vote_note(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='笔记 ID')],
-    vote_value: Annotated[int, Body(embed=True, description='投票值：1=点赞，-1=点踩')],
+    obj: VoteQuestionNoteParam,
     current_user: AuthUser = DependsCustomerAuth,
 ) -> ResponseModel:
     """对笔记投票（点赞/点踩）"""
-    await note_service.vote_note(db=db, note_id=pk, user_id=current_user.user_id, vote_value=vote_value)
+    await note_service.vote_note(db=db, note_id=pk, user_id=current_user.user_id, vote_value=obj.vote_value)
     return response_base.success()
 
 

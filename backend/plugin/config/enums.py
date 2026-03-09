@@ -8,3 +8,4 @@ class ConfigType(StrEnum):
     user_security = 'USER_SECURITY'
     login = 'LOGIN'
     task = 'Task'
+    storage = 'STORAGE'

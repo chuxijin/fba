@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-重构后的题目相关模型
-
-主要改进：
-1. 题目和解析分离 - 支持多版本解析、用户贡献
-2. 选项 JSON 化 - 简化查询，适合大多数场景
-3. 统计数据分离 - 避免频繁更新题目表，提升性能
-4. 索引优化 - 针对高频查询建立联合索引
-"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -16,9 +7,13 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, UniversalText, UserMixin, id_key
+
+# 为 PostgreSQL 提供原生的拥有极高索引与搜索能力的 JSONB 性能，并保留对本地普通库的兼容
+CompatibleJSONB = sa.JSON().with_variant(JSONB, 'postgresql')
 
 if TYPE_CHECKING:
     from .bank import QuestionBank
@@ -32,120 +27,130 @@ question_material_relation = sa.Table(
     sa.Column('question_id', sa.BigInteger, sa.ForeignKey('study_question.id', ondelete='CASCADE'), primary_key=True),
     sa.Column('material_id', sa.BigInteger, sa.ForeignKey('study_question_material.id', ondelete='CASCADE'), primary_key=True),
     sa.Column('sort_order', sa.Integer, default=0, comment='排序'),
+    sa.Index('idx_qmr_material', 'material_id'),
+    sa.Index('idx_qmr_question_sort', 'question_id', 'sort_order'),
+    sa.Index('idx_qmr_material_sort', 'material_id', 'sort_order'),
     comment='题目-材料关联表'
 )
 
 
-class Question(Base, UserMixin):
-    """
-    题目表 - 只存储题目核心信息
+class OptionContent(Base):
+    """选项内容表"""
 
-    设计原则：
-    - 题干和选项使用富文本（媒体资源直接嵌入）
-    - 解析分离到 QuestionAnalysis 表
-    - 统计分离到 QuestionStatistics 表
-    """
-
-    __tablename__ = 'study_question'
+    __tablename__ = 'study_option_content'
     __table_args__ = (
-        sa.Index('idx_question_bank_type_status', 'bank_id', 'type', 'review_status'),
-        sa.Index('idx_question_bank_sort', 'bank_id', 'sort_order'),
-        sa.Index('idx_question_chapter', 'chapter_id'),
-        sa.Index('idx_question_active_created', 'is_active', 'created_time'),
-        {'comment': '题目表'},
+        sa.UniqueConstraint('content_hash', name='uq_study_option_content_hash'),
+        sa.Index('idx_option_content_hash', 'content_hash'),
+        {'comment': '选项内容表'},
     )
 
-    # ============ 基础字段 ============
     id: Mapped[id_key] = mapped_column(init=False)
+    content_hash: Mapped[str] = mapped_column(sa.String(64), comment='内容哈希')
+    content: Mapped[str] = mapped_column(UniversalText, comment='选项内容')
+
+    question_options: Mapped[list[QuestionOption]] = relationship(
+        init=False,
+        back_populates='content_ref',
+        lazy='noload',
+    )
+
+
+class QuestionPlacement(Base, UserMixin):
+    """题目挂载表"""
+
+    __tablename__ = 'study_question_placement'
+    __table_args__ = (
+        sa.UniqueConstraint('bank_id', 'question_id', name='uq_study_question_placement_bank_question'),
+        sa.Index('idx_placement_bank_chapter_active_sort', 'bank_id', 'chapter_id', 'is_active', 'sort_order'),
+        sa.Index('idx_placement_question', 'question_id'),
+        sa.Index('idx_placement_bank_active_review', 'bank_id', 'is_active', 'review_status'),
+        sa.Index('idx_placement_scene_mask', 'scene_mask'),
+        {'comment': '题目挂载表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    question_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question.id', ondelete='CASCADE'),
+        comment='题目 ID',
+    )
     bank_id: Mapped[int] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_question_bank.id', ondelete='CASCADE'),
         comment='题库 ID',
     )
-
-    # ============ 题目内容（必填字段） ============
-    type: Mapped[str] = mapped_column(
-        sa.String(16),
-        comment='题型: single/multiple/judgement/fill/shortAnswer',
-    )
-    stem: Mapped[str] = mapped_column(
-        UniversalText,
-        comment='题干（富文本，包含图片/视频等媒体资源）',
-    )
-
-    # ============ 基础字段（可选） ============
     chapter_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_question_chapter.id', ondelete='SET NULL'),
         default=None,
         comment='章节 ID',
     )
-
-    # ============ 选项数据 (JSON) ============
-    options_data: Mapped[dict | None] = mapped_column(
-        sa.JSON,
+    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序')
+    is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
+    score: Mapped[Decimal | None] = mapped_column(sa.Numeric(6, 2), default=None, comment='挂载分值')
+    review_status: Mapped[int] = mapped_column(
+        sa.SmallInteger,
+        default=10,
+        comment='审核状态: 0=待审核, 10=已通过, 20=已拒绝',
+    )
+    scene_mask: Mapped[int | None] = mapped_column(
+        sa.Integer,
         default=None,
-        comment="""
-        选项数据（富文本）:
-        {
-            "A": {"code": "A", "content": "<p>选项A内容<img src='...' /></p>"},
-            "B": {"code": "B", "content": "<p>选项B内容</p>"},
-            "C": {"code": "C", "content": "<p>选项C<video src='...' /></p>"},
-            "D": {"code": "D", "content": "<p>选项D</p>"}
-        }
-        注：不包含答案标识，答案统一存储在 QuestionAnalysis.answer_data
-        填空题/简答题为 null
-        """,
+        comment='可用场景位标记（为空=继承题库）: 1=练习, 2=考试, 4=模考, 8=错题重练',
+    )
+    bank: Mapped['QuestionBank'] = relationship(init=False, back_populates='placements', lazy='noload')
+    chapter: Mapped['QuestionChapter | None'] = relationship(init=False, back_populates='placements', lazy='noload')
+    question: Mapped['Question'] = relationship(init=False, back_populates='placements', lazy='noload')
+    option_stats: Mapped[list[QuestionOptionStats]] = relationship(
+        init=False,
+        back_populates='placement',
+        lazy='noload',
+        cascade='all, delete-orphan',
     )
 
-    # ============ 元数据 ============
-    sort_order: Mapped[int] = mapped_column(
-        sa.Integer,
-        default=0,
-        comment='题目序号（在题库/章节内的排序）',
+
+class Question(Base, UserMixin):
+    """题目表"""
+
+    __tablename__ = 'study_question'
+    __table_args__ = (
+        sa.Index('idx_question_type_status', 'type', 'content_status'),
+        sa.Index('idx_question_difficulty', 'difficulty'),
+        sa.Index('idx_question_status_created', 'content_status', 'created_time'),
+        {'comment': '题目表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    type: Mapped[str] = mapped_column(
+        sa.String(16),
+        comment='题型: single/multiple/judgement/fill/shortAnswer',
+    )
+    stem: Mapped[str] = mapped_column(
+        UniversalText,
+        comment='题干（富文本）',
     )
     difficulty: Mapped[str] = mapped_column(
         sa.String(16),
         default='medium',
         comment='难度: easy/medium/hard',
     )
-    score: Mapped[Decimal] = mapped_column(
+    default_score: Mapped[Decimal] = mapped_column(
         sa.Numeric(6, 2),
         default=Decimal('1.0'),
         comment='默认分值',
     )
-    knowledge_point: Mapped[str | None] = mapped_column(
-        sa.String(255),
+    knowledge_point: Mapped[list[str] | None] = mapped_column(
+        CompatibleJSONB,
         default=None,
-        comment='考点（多个用逗号分隔）',
+        comment='考点标签',
     )
-    source: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='来源')
-    year: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='年份')
-    usage: Mapped[str] = mapped_column(
-        sa.String(16),
-        default='all',
-        comment='用途: all/exam/practice',
-    )
-
-    # ============ 状态字段 ============
-    is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
-    review_status: Mapped[int] = mapped_column(
+    content_status: Mapped[int] = mapped_column(
         sa.SmallInteger,
         default=10,
-        comment='审核状态: 0=待审核, 10=已通过, 20=已拒绝',
+        comment='内容状态: 0=待审核, 10=已通过, 20=已拒绝',
     )
 
     # ============ 关系 ============
-    bank: Mapped['QuestionBank'] = relationship(
-        init=False,
-        back_populates='questions',
-        lazy='joined',
-    )
-    chapter: Mapped['QuestionChapter | None'] = relationship(
-        init=False,
-        back_populates='questions',
-        lazy='joined',
-    )
     analyses: Mapped[list['QuestionAnalysis']] = relationship(
         init=False,
         back_populates='question',
@@ -163,65 +168,141 @@ class Question(Base, UserMixin):
         back_populates='questions',
         lazy='selectin',
     )
-
-
-class QuestionAnalysis(Base, UserMixin):
-    """
-    题目解析表 - 与题目完全分离
-
-    设计目标：
-    - 包含答案和解析内容
-    - 支持多版本解析（官方、名师、用户等）
-    - 解析内容使用富文本（媒体直接嵌入）
-    """
-
-    __tablename__ = 'study_question_analysis'
-    __table_args__ = (
-        sa.Index('idx_analysis_question', 'question_id'),
-        {'comment': '题目解析表'},
+    placements: Mapped[list['QuestionPlacement']] = relationship(
+        init=False,
+        back_populates='question',
+        lazy='selectin',
+        cascade='all, delete-orphan',
+    )
+    options: Mapped[list[QuestionOption]] = relationship(
+        init=False,
+        back_populates='question',
+        lazy='selectin',
+        cascade='all, delete-orphan',
     )
 
-    # ============ 基础字段 ============
+
+class QuestionOption(Base):
+    """题目选项表"""
+
+    __tablename__ = 'study_question_option'
+    __table_args__ = (
+        sa.UniqueConstraint('question_id', 'option_code', name='uq_study_question_option_question_code'),
+        sa.Index('idx_question_option_question_sort', 'question_id', 'sort_order'),
+        sa.Index('idx_question_option_content', 'content_id'),
+        sa.Index('idx_question_option_question_active', 'question_id', 'is_active'),
+        {'comment': '题目选项表'},
+    )
+
     id: Mapped[id_key] = mapped_column(init=False)
     question_id: Mapped[int] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_question.id', ondelete='CASCADE'),
-        # unique=True,  # 移除唯一约束，支持多版本
         comment='题目 ID',
     )
-    
+    option_code: Mapped[str] = mapped_column(sa.String(16), comment='选项编码')
+    content_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_option_content.id', ondelete='RESTRICT'),
+        comment='选项内容 ID',
+    )
+    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序')
+    is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
 
-
-    # ============ 答案数据 (JSON) ============
-    answer_data: Mapped[dict] = mapped_column(
-        sa.JSON,
-        comment="""
-        答案数据:
-        单选/判断: {"correct": "A"}
-        多选: {"correct": ["A", "C"]}
-        填空: {"correct": ["答案1", "答案2"]}
-        简答: {"keywords": ["关键词1", "关键词2"]}
-        """,
+    question: Mapped[Question] = relationship(init=False, back_populates='options', lazy='noload')
+    content_ref: Mapped[OptionContent] = relationship(init=False, back_populates='question_options', lazy='joined')
+    option_stats: Mapped[list[QuestionOptionStats]] = relationship(
+        init=False,
+        back_populates='option',
+        lazy='noload',
     )
 
-    # ============ 解析内容 ============
+
+class QuestionOptionStats(Base):
+    """选项统计表"""
+
+    __tablename__ = 'study_question_option_stats'
+    __table_args__ = (
+        sa.UniqueConstraint('placement_id', 'option_code', name='uq_study_question_option_stats_placement_code'),
+        sa.Index('idx_option_stats_question', 'question_id'),
+        sa.Index('idx_option_stats_option', 'option_id'),
+        sa.Index('idx_option_stats_placement', 'placement_id'),
+        sa.Index('idx_option_stats_placement_selected', 'placement_id', 'selected_count'),
+        {'comment': '选项统计表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    placement_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question_placement.id', ondelete='CASCADE'),
+        comment='挂载 ID',
+    )
+    question_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question.id', ondelete='CASCADE'),
+        comment='题目 ID',
+    )
+    option_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question_option.id', ondelete='CASCADE'),
+        comment='选项 ID',
+    )
+    option_code: Mapped[str] = mapped_column(sa.String(16), comment='选项编码')
+    selected_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='被选次数')
+    correct_selected_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='答对时被选次数')
+    wrong_selected_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='答错时被选次数')
+
+    placement: Mapped[QuestionPlacement] = relationship(init=False, back_populates='option_stats', lazy='noload')
+    question: Mapped[Question] = relationship(init=False, lazy='noload')
+    option: Mapped[QuestionOption] = relationship(init=False, back_populates='option_stats', lazy='noload')
+
+
+class QuestionAnalysis(Base, UserMixin):
+    """题目解析表"""
+
+    __tablename__ = 'study_question_analysis'
+    __table_args__ = (
+        sa.UniqueConstraint('question_id', 'type', 'version_no', name='uq_study_question_analysis_question_type_ver'),
+        sa.Index('idx_analysis_question', 'question_id'),
+        sa.Index('idx_analysis_question_default', 'question_id', 'is_default'),
+        sa.Index('idx_analysis_question_status', 'question_id', 'status'),
+        sa.Index('idx_analysis_type_status', 'type', 'status'),
+        {'comment': '题目解析表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    question_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question.id', ondelete='CASCADE'),
+        comment='题目 ID',
+    )
+    answer_data: Mapped[dict] = mapped_column(
+        CompatibleJSONB,
+        comment='答案数据',
+    )
     content: Mapped[str] = mapped_column(
         UniversalText,
-        comment='解析内容（富文本，包含图片/视频等媒体资源）',
+        comment='解析内容（富文本）',
     )
-
-    # ============ 解析类型 ============
     type: Mapped[str] = mapped_column(
         sa.String(32),
         default='official',
         comment='解析类型: official=官方, expert=名师, user=用户',
     )
+    version_no: Mapped[int] = mapped_column(
+        sa.SmallInteger,
+        default=1,
+        comment='版本号（同 type 下多版本）',
+    )
     is_default: Mapped[bool] = mapped_column(default=False, comment='是否默认展示')
-
-    # ============ 互动数据 ============
     view_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='查看次数')
     helpful_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='有帮助次数')
     unhelpful_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='无帮助次数')
+    status: Mapped[int] = mapped_column(
+        sa.SmallInteger,
+        default=10,
+        comment='状态: 0=待审核, 10=已通过, 20=已拒绝',
+    )
 
     # ============ 关系 ============
     question: Mapped['Question'] = relationship(
@@ -232,23 +313,17 @@ class QuestionAnalysis(Base, UserMixin):
 
 
 class QuestionStatistics(Base):
-    """
-    题目统计表
-
-    设计目标：
-    - 分离高频更新的统计数据，避免影响题目表性能
-    - 支持实时统计和定时批量更新
-    - 为推荐算法提供数据支持
-    """
+    """题目统计表"""
 
     __tablename__ = 'study_question_statistics'
     __table_args__ = (
         sa.Index('idx_statistics_question', 'question_id'),
         sa.Index('idx_statistics_rate', 'correct_rate'),
+        sa.Index('idx_statistics_attempt', 'attempt_count'),
+        sa.Index('idx_statistics_last_updated', 'last_updated'),
         {'comment': '题目统计表'},
     )
 
-    # ============ 基础字段 ============
     id: Mapped[id_key] = mapped_column(init=False)
     question_id: Mapped[int] = mapped_column(
         sa.BigInteger,
@@ -256,8 +331,6 @@ class QuestionStatistics(Base):
         unique=True,
         comment='题目 ID',
     )
-
-    # ============ 答题统计 ============
     attempt_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='答题总次数')
     correct_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='答对次数')
     correct_rate: Mapped[Decimal] = mapped_column(
@@ -270,27 +343,14 @@ class QuestionStatistics(Base):
         default=None,
         comment='平均答题时间（秒）',
     )
-
-    # ============ 选项统计 ============
     wrong_option_stats: Mapped[dict | None] = mapped_column(
-        sa.JSON,
+        CompatibleJSONB,
         default=None,
-        comment="""
-        错误选项统计:
-        {
-            "B": 1250,  # 选择B的次数
-            "D": 850,   # 选择D的次数
-            "C": 320
-        }
-        """,
+        comment='错误选项统计',
     )
-
-    # ============ 用户行为统计 ============
     collect_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='收藏次数')
     note_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='笔记次数')
     report_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='举报次数')
-
-    # ============ 时间字段 ============
     last_updated: Mapped[datetime] = mapped_column(
         init=False,
         default_factory=datetime.now,
@@ -436,6 +496,7 @@ class QuestionFavorite(Base, UserMixin):
         sa.Index('idx_favorite_user_pinned_time', 'user_id', 'is_pinned', 'created_time'),
         sa.Index('idx_favorite_user_folder', 'user_id', 'folder_name'),
         sa.Index('idx_favorite_question', 'question_id'),
+        sa.Index('idx_favorite_placement', 'placement_id'),
         {'comment': '题目收藏表'},
     )
 
@@ -451,6 +512,12 @@ class QuestionFavorite(Base, UserMixin):
         sa.ForeignKey('study_question.id', ondelete='CASCADE'),
         comment='题目 ID',
     )
+    placement_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question_placement.id', ondelete='SET NULL'),
+        default=None,
+        comment='挂载 ID（精确指定收藏的题库/章节上下文）',
+    )
 
     # ============ 收藏夹分组（可选） ============
     folder_name: Mapped[str | None] = mapped_column(
@@ -461,7 +528,7 @@ class QuestionFavorite(Base, UserMixin):
 
     # ============ 自定义标签 ============
     tags: Mapped[list[str] | None] = mapped_column(
-        sa.JSON,
+        CompatibleJSONB,
         default=None,
         comment='自定义标签 JSON: ["重点", "易错", "常考"]',
     )
@@ -498,61 +565,39 @@ class QuestionFavorite(Base, UserMixin):
 
 
 class QuestionMaterial(Base, UserMixin):
-    """
-    题目材料表
-
-    设计思路：
-    - 存储阅读理解、资料分析、案例分析等题型的共享材料
-    - 一个材料可对应多道题目（一对多关系）
-    - 材料内容使用富文本，支持图片/表格等媒体
-    """
+    """题目材料表"""
 
     __tablename__ = 'study_question_material'
     __table_args__ = (
         sa.Index('idx_material_bank', 'bank_id'),
         sa.Index('idx_material_category', 'category_id'),
         sa.Index('idx_material_active', 'is_active'),
+        sa.Index('idx_material_bank_sort', 'bank_id', 'sort_order'),
+        sa.Index('idx_material_bank_active', 'bank_id', 'is_active'),
         {'comment': '题目材料表'},
     )
 
-    # ============ 基础字段 ============
     id: Mapped[id_key] = mapped_column(init=False)
     bank_id: Mapped[int] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_question_bank.id', ondelete='CASCADE'),
         comment='题库 ID',
     )
-
-
-    # ============ 材料内容 ============
-    title: Mapped[str] = mapped_column(
-        sa.String(255),
-        comment='材料标题',
-    )
-    content: Mapped[str] = mapped_column(
-        UniversalText,
-        comment='材料内容（富文本，支持图片/表格等媒体资源）',
-    )
+    title: Mapped[str] = mapped_column(sa.String(255), comment='材料标题')
+    content: Mapped[str] = mapped_column(UniversalText, comment='材料内容（富文本）')
     category_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('sys_category.id', ondelete='SET NULL'),
         default=None,
         comment='分类 ID',
     )
-
-    # ============ 元数据 ============
     source: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='来源')
     year: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='年份')
-    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序顺序')
-
-    # ============ 状态字段 ============
+    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序')
     is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
 
     # ============ 关系 ============
-    bank: Mapped['QuestionBank'] = relationship(
-        init=False,
-        lazy='joined',
-    )
+    bank: Mapped['QuestionBank'] = relationship(init=False, lazy='joined')
     questions: Mapped[list['Question']] = relationship(
         init=False,
         secondary=question_material_relation,

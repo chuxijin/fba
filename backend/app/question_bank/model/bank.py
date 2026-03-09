@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.common.model import Base, id_key
+from backend.common.model import Base, UserMixin, id_key
 
 if TYPE_CHECKING:
     from .chapter import QuestionChapter
-    from .question import Question
+    from .question import QuestionPlacement
 
 
-class QuestionBank(Base):
+class QuestionBank(Base, UserMixin):
     """题库表"""
 
     __tablename__ = 'study_question_bank'
@@ -23,35 +23,39 @@ class QuestionBank(Base):
         sa.UniqueConstraint('code', name='uq_study_question_bank_code'),
         sa.Index('idx_study_question_bank_category_status', 'cat_id', 'status'),
         sa.Index('idx_study_question_bank_parent', 'parent_id'),
+        sa.Index('idx_study_question_bank_type_scene_status', 'bank_type', 'scene_mask', 'status'),
         {'comment': '题库表'},
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
-    cat_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        index=True,
-        comment='所属分类 ID（关联 sys_category）',
-    )
+    cat_id: Mapped[int] = mapped_column(sa.BigInteger, comment='分类 ID')
     name: Mapped[str] = mapped_column(sa.String(128), comment='题库名称')
-    code: Mapped[str] = mapped_column(sa.String(32), comment='题库编码')
-    desc: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='题库描述')
+    code: Mapped[str] = mapped_column(sa.String(32), comment='业务编码')
+    desc: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='描述')
     cover_url: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='封面地址')
-    difficulty: Mapped[Decimal | None] = mapped_column(sa.Numeric(3, 1), default=None, comment='难度')
-    type: Mapped[int] = mapped_column(
+    difficulty: Mapped[Decimal | None] = mapped_column(sa.Numeric(3, 1), default=None, comment='整体难度')
+    bank_type: Mapped[int] = mapped_column(
         sa.SmallInteger,
-        default=10,
-        comment='类型: 10=题库(含题目), 20=合集(含子题库)',
+        default=1,
+        comment='内容类型: 1=题库, 2=试卷, 3=合集',
+    )
+    scene_mask: Mapped[int] = mapped_column(
+        sa.Integer,
+        default=1,
+        comment='可用场景位标记: 1=练习, 2=考试, 4=模考, 8=错题重练',
     )
     parent_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_question_bank.id', ondelete='SET NULL'),
         default=None,
-        comment='父级题库 ID',
+        comment='父题库 ID（合集场景）',
     )
-    status: Mapped[int] = mapped_column(sa.SmallInteger, default=1, index=True, comment='题库状态')
+    status: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='状态')
     scope: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='可见范围')
-    q_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='题目数量')
-    total_score: Mapped[Decimal] = mapped_column(sa.Numeric(8, 2), default=Decimal('0'), comment='题库总分')
+    q_count_cache: Mapped[int] = mapped_column(sa.Integer, default=0, comment='缓存题量')
+    total_score_cache: Mapped[Decimal] = mapped_column(
+        sa.Numeric(8, 2), default=Decimal('0'), comment='缓存总分'
+    )
     buy_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='购买数量')
 
     parent: Mapped['QuestionBank | None'] = relationship(
@@ -68,4 +72,9 @@ class QuestionBank(Base):
         lazy='noload',
     )
     chapters: Mapped[list['QuestionChapter']] = relationship(init=False, back_populates='bank', cascade='all, delete-orphan', lazy='noload')
-    questions: Mapped[list['Question']] = relationship(init=False, back_populates='bank', cascade='all, delete-orphan', lazy='noload')
+    placements: Mapped[list['QuestionPlacement']] = relationship(
+        init=False,
+        back_populates='bank',
+        cascade='all, delete-orphan',
+        lazy='noload',
+    )

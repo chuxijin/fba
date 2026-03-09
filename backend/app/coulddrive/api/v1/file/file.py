@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Annotated, Any, Dict, List
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
@@ -22,7 +22,7 @@ from backend.app.coulddrive.schema.file import (
     BatchRenameParam # 导入批量重命名参数
 )
 from backend.app.coulddrive.service.fileoprate_service import FileOperateService
-from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService, DriveAuthError
 from backend.common.pagination import DependsPagination, PageData, paging_list_data, _CustomPageParams
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.response.response_code import CustomResponse
@@ -69,6 +69,8 @@ async def get_file_list(
         page_data = paging_list_data(file_list, page_params)
         return response_base.success(data=page_data)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -109,6 +111,8 @@ async def get_share_file_list(
         page_data = paging_list_data(file_list, page_params)
         return response_base.success(data=page_data)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -141,6 +145,8 @@ async def create_folder(
         folder_info = await service.mkdir(params=params)
         return response_base.success(data=folder_info)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -173,6 +179,8 @@ async def rename_file(
         result = await service.rename(params=params)
         return response_base.success(data=result)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -205,6 +213,8 @@ async def move_files(
         result = await service.move(params=params)
         return response_base.success(data=result)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -237,6 +247,8 @@ async def copy_files(
         result = await service.copy(params=params)
         return response_base.success(data=result)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -269,6 +281,8 @@ async def remove_files(
         result = await service.remove(params=params)
         return response_base.success(data=result)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -301,6 +315,8 @@ async def transfer_files(
         result = await service.transfer_files(params=params)
         return response_base.success(data=result)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -311,14 +327,14 @@ async def transfer_files(
     '/batch_rename',
     summary='批量重命名文件或文件夹',
     description='对选定的网盘文件或文件夹进行批量重命名，支持递归和规则模板',
-    response_model=ResponseSchemaModel[Dict[str, Any]],
+    response_model=ResponseSchemaModel[dict[str, Any]],
     dependencies=[DependsJwtAuth]
 )
 async def batch_rename_files(
     db: CurrentSession,
     x_token: Annotated[str, Header(description="认证令牌")],
     params: BatchRenameParam,
-) -> ResponseSchemaModel[Dict[str, Any]]:
+) -> ResponseSchemaModel[dict[str, Any]]:
     """批量重命名文件或文件夹"""
     global file_operate_service_instance
     if not file_operate_service_instance:
@@ -375,7 +391,9 @@ async def batch_rename_files(
             'stats': result
         })
         return response_base.success(data=result)
-        
+
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except Exception as e:
         return response_base.fail(res=CustomResponse(500, f"批量重命名失败: {str(e)}"))
 
@@ -408,7 +426,7 @@ async def get_batch_rename_progress(task_id: str):
     '/shareinfo',
     summary='获取分享详情信息',
     description='获取分享详情信息，支持外部分享链接信息获取和本地分享列表获取',
-    response_model=ResponseSchemaModel[List[BaseShareInfo]],
+    response_model=ResponseSchemaModel[list[BaseShareInfo]],
     dependencies=[DependsJwtAuth]
 )
 async def get_share_info(
@@ -417,7 +435,7 @@ async def get_share_info(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: Annotated[ListShareInfoParam, Depends()],
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[List[BaseShareInfo]]:
+) -> ResponseSchemaModel[list[BaseShareInfo]]:
     """
     获取分享详情信息
 
@@ -447,6 +465,8 @@ async def get_share_info(
 
         return response_base.success(data=share_info_list)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -489,6 +509,8 @@ async def create_share(
         share_info = await service.create_share(params=params)
         return response_base.success(data=share_info)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
@@ -531,6 +553,8 @@ async def cancel_share(
         result = await service.cancel_share(params=params)
         return response_base.success(data=result)
 
+    except DriveAuthError as e:
+        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
         return response_base.fail(res=CustomResponse(403, str(e)))
     except ValueError as e:
