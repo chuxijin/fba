@@ -122,14 +122,13 @@
 
       <!-- 我的笔记 -->
       <view v-if="activeTab === 'private'" class="notes-content">
-        <up-textarea
+        <wd-textarea
           v-model="noteInputValue"
           placeholder="写下你的思考和总结..."
           :maxlength="1000"
-          count
-          :autoHeight="true"
-          border="surround"
-          customStyle="background: var(--color-bg-elevated); padding: 24rpx; border-radius: 16rpx; min-height: 240rpx;"
+          show-word-limit
+          :auto-height="true"
+          custom-style="background: var(--color-bg-elevated); padding: 24rpx; border-radius: 16rpx; min-height: 240rpx;"
         />
 
         <!-- 公开/私密切换 -->
@@ -139,11 +138,11 @@
             <text class="notes-switch-text">{{ isPublicNote ? '公开笔记' : '私密笔记' }}</text>
             <text class="notes-switch-desc">{{ isPublicNote ? '其他用户可见' : '仅自己可见' }}</text>
           </view>
-          <up-switch
+          <wd-switch
             v-model="isPublicNote"
             size="24"
-            activeColor="#3b82f6"
-            inactiveColor="#94a3b8"
+            active-color="#3b82f6"
+            inactive-color="#94a3b8"
           />
         </view>
 
@@ -976,11 +975,11 @@ function handleCopyAnalysis() {
     box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.2);
   }
 
-  :deep(.up-collapse-item) {
+  :deep(.wd-collapse-item) {
     border-color: rgba(148, 163, 184, 0.25);
   }
 
-  :deep(.up-collapse-item:hover) {
+  :deep(.wd-collapse-item:hover) {
     border-color: rgba(59, 130, 246, 0.5);
   }
 

@@ -14,25 +14,12 @@ app.$mount()
 // #ifdef VUE3
 import { createSSRApp } from 'vue'
 import { createPinia } from 'pinia'
-import uviewPlus from 'uview-plus'
 
 export function createApp() {
   const app = createSSRApp(App)
   const pinia = createPinia()
 
   app.use(pinia)
-
-  // ✅ 配置 UView Plus
-  app.use(uviewPlus, () => {
-    return {
-      options: {
-        config: {
-          // 图标字体只加载一次（减少网络请求）
-          loadFontOnce: true
-        }
-      }
-    }
-  })
 
   return {
     app

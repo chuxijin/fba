@@ -18,12 +18,11 @@
       </view>
 
       <!-- 一键登录按钮 -->
-      <u-button
-        text="微信一键登录"
+      <wd-button
         type="primary"
         :disabled="isLoading"
         :loading="isLoading"
-        :customStyle="{
+        :custom-style="{
           width: '100%',
           height: '88rpx',
           borderRadius: '44rpx',
@@ -36,20 +35,21 @@
         @click="handleQuickLogin"
       >
         <template #icon>
-          <u-icon name="weixin-fill" color="#ffffff" size="20"></u-icon>
+          <wd-icon name="weixin-fill" color="#ffffff" size="20px"></wd-icon>
         </template>
-      </u-button>
+        微信一键登录
+      </wd-button>
 
       <!-- 用户协议勾选 -->
       <view class="agreement-section">
-        <u-checkbox-group v-model="checkboxList">
-          <u-checkbox
-            name="agree"
+        <wd-checkbox-group v-model="checkboxList">
+          <wd-checkbox
+            model-value="agree"
             shape="circle"
             :size="16"
-            activeColor="#667eea"
+            checked-color="#667eea"
           />
-        </u-checkbox-group>
+        </wd-checkbox-group>
         <text class="agreement-text">
           登录即表示同意
           <text class="agreement-link" @tap.stop="handleShowAgreement('user')">《用户协议》</text>
@@ -62,15 +62,8 @@
     <!-- 全屏 Loading 遮罩 -->
     <view v-if="isLoading" class="loading-overlay" @tap.stop>
       <view class="loading-container">
-        <up-loading-icon
-          mode="circle"
-          color="#ffffff"
-          size="40"
-          text="登录中..."
-          textColor="#ffffff"
-          textSize="14"
-          :vertical="true"
-        />
+        <wd-loading color="#ffffff" size="40px" />
+        <text style="color: #ffffff; font-size: 14px; margin-top: 12rpx;">登录中...</text>
       </view>
     </view>
   </view>

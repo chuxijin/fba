@@ -58,6 +58,14 @@ class ImportPaperData:
     qsort: list[int]
     modules: list[str | None]
 
+@dataclass
+class LocalEmptyPaperBank:
+    bank_id: int
+    paper_id: int
+    code: str
+    name: str
+    placement_count: int
+    distinct_question_count: int
 
 # 这里直接改 Cookie 即可；也支持环境变量 HUATU_COOKIE 覆盖
 HUATU_COOKIE = os.getenv("HUATU_COOKIE", """ht_businessUnitId=1; _c_WBKFRo=73LABjrVnFRyotN37t46HWSL2xqHPtneKoespgJB; sensorsdata2015jssdkchannel=%7B%22prop%22%3A%7B%22_sa_channel_landing_url%22%3A%22%22%7D%7D; ahhtip={"prov":"æµ™æ±Ÿ","city":"æ­å·ž","county":"","time":1773227041152}; ahexamtype=ahgwy; Hm_lvt_c5b3a7bc9cfb4e1133c856fee205fabd=1772622241,1772709667; Hm_lpvt_c5b3a7bc9cfb4e1133c856fee205fabd=1772709667; HMACCOUNT=A4C02431E5478C15; PHPSESSID=55b4roi9f9cp0r9sehuhmfj336; Hm_lvt_acd6257d64dd07c2b9bfcb44821207b3=1772761564; UserID=0; UserName=app_ztk1358512080; UserReName=157%2A%2A%2A%2A8743; UserFace=https%3A%2F%2Ftiku.huatu.com%2Fcdn%2Fimages%2Fvhuatu%2Favatars%2Fdefault2.png; synlogin=0; userMobile=15757698743; accountStatus=0; userCode=000ht14718112ae6; ht_token=7edc0947899f4c5e936929cdd11c442f; ht_id=246478648; ht_uname=app_ztk1358512080; ht_qcount=10; ucId=15757698743; jtoken=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOiIxNzcyNzYxNzA0IiwianRpIjoiTVRjM01qYzJNVGN3TkE9PSIsImV4cCI6IjE3NzUzNTM3MDQiLCJ1bmFtZSI6ImFwcF96dGsxMzU4NTEyMDgwIiwibmljayI6IjE1NyoqKio4NzQzIn0.pfIvY6M5LFHlN8dFwq6tFbgbXTrjjCBjMJZQMwVABKE; ht_catgory=1; ht_sub=1; isUserMemberapp_ztk1358512080=2; sensorsdata2015jssdkcross=%7B%22distinct_id%22%3A%2215757698743%22%2C%22first_id%22%3A%2219cb884dcfb15a9-0ceb7ded9951ae8-4c657b58-2073600-19cb884dcfc218f%22%2C%22props%22%3A%7B%22%24latest_traffic_source_type%22%3A%22%E7%9B%B4%E6%8E%A5%E6%B5%81%E9%87%8F%22%2C%22%24latest_search_keyword%22%3A%22%E6%9C%AA%E5%8F%96%E5%88%B0%E5%80%BC_%E7%9B%B4%E6%8E%A5%E6%89%93%E5%BC%80%22%2C%22%24latest_referrer%22%3A%22%22%2C%22%24latest_landing_page%22%3A%22https%3A%2F%2Fv.huatu.com%2Fmock%2Fpractice%2F%3Fanswerid%3D177276171665337202%22%7D%2C%22identities%22%3A%22eyIkaWRlbnRpdHlfY29va2llX2lkIjoiMTljYjg4NGRjZmIxNWE5LTBjZWI3ZGVkOTk1MWFlOC00YzY1N2I1OC0yMDczNjAwLTE5Y2I4ODRkY2ZjMjE4ZiIsIiRpZGVudGl0eV9sb2dpbl9pZCI6IjE1NzU3Njk4NzQzIn0%3D%22%2C%22history_login_id%22%3A%7B%22name%22%3A%22%24identity_login_id%22%2C%22value%22%3A%2215757698743%22%7D%2C%22%24device_id%22%3A%2219cb884dcfb15a9-0ceb7ded9951ae8-4c657b58-2073600-19cb884dcfc218f%22%7D; ht_auth=d1G2h9pbbbm9sd6fe9yaJep6Z9C2If60Ibj2I604Nej4Qb38OaD1Y504O8C2I2s1Im1vYmlsZSI6IjE1NzU3Njk4NzQzIiwiZW1haWwiOiJhcHBfenRrMTM1ODUxMjA4MCU0MHp0ay5jb20iLCJuYW1lIjoiYXBwX3p0azEzNTg1MTIwODAiLCJuaWNrIjoiMTU3JTJBJTJBJTJBJTJBODc0MyIsInNpZ25hdHVyZSI6IiIsImFyZWEiOiItOSIsInN1YmplY3QiOjAsInN0YXR1cyI6IjIiLCJhdmF0YXIiOiJodHRwcyUzQSUyRiUyRnRpa3UuaHVhdHUuY29tJTJGY2RuJTJGaW1hZ2VzJTJGdmh1YXR1JTJGYXZhdGFycyUyRmRlZmF1bHQyLnBuZyIsInJlZ0Zyb20iOiIxIiwiZGV2aWNlVG9rZW4iOm51bGwsImNyZWF0ZVRpbWUiOiIxNjQxOTEyODYyMDAwIiwidWNlbnRlcklkIjoiMzEyOTg4NzgiLCJwaG9uZUdlbyI6IiVFNiVCNSU5OSVFNiVCMSU5RiVFNyU5QyU4MSVFNSU4RiVCMCVFNSVCNyU5RSVFNSVCOCU4MiIsInBsYW5UaW1lIjoiIiwicHJvZmVzc2lvbiI6IiIsImFwcGx5RGVsZXRlVGltZSI6MCwibmV3VWNJZCI6IjE0NzE4MTEyIiwidXNlckNvZGUiOiIwMDBodDE0NzE4MTEyYWU2Iiwid3hOaWNrIjoiIiwibGFzdExvZ2luVGltZSI6MCwidW5hbWUiOiJhcHBfenRrMTM1ODUxMjA4MCIsInRva2VuIjoiN2VkYzA5NDc4OTlmNGM1ZTkzNjkyOWNkZDExYzQ0MmYiLCJxY291bnQiOiIxMCIsImNhdGdvcnkiOiIxIn0O0O0O; Hm_lvt_f735d6529dbfd84e0e9d68fea4bb90a4=1772848015; Hm_lpvt_f735d6529dbfd84e0e9d68fea4bb90a4=1772848015; u3_fujian=%5B%7B%22title%22%3A%22%E5%8D%8E%E5%9B%BE%E5%9C%A8%E7%BA%BF-%E5%85%AC%E8%81%8C%E6%95%99%E8%82%B2%E7%BD%91%E7%BB%9C%E5%AD%A6%E4%B9%A0%E5%B9%B3%E5%8F%B0%22%2C%22url%22%3A%22https%3A%2F%2Fv.huatu.com%2F%22%7D%5D; acw_tc=7b39f6bc17728519697513674e1b17ce09cf7a6c6afbcddc512ddf7fde6965; Hm_lpvt_acd6257d64dd07c2b9bfcb44821207b3=1772852222""")
@@ -2167,7 +2175,171 @@ async def build_incremental_plan(
 
     return missing_bank, need_import
 
+async def fetch_local_empty_paper_banks(name_regex: str) -> list[LocalEmptyPaperBank]:
+    """
+    Scan local paper banks that currently have no valid questions.
 
+    :param name_regex: paper name regex
+    :return:
+    """
+    pattern = re.compile(name_regex)
+    sql = sa_text(
+        """
+        select
+            b.id as bank_id,
+            b.code as code,
+            b.name as name,
+            count(p.id)::bigint as placement_count,
+            count(distinct q.id)::bigint as distinct_question_count
+        from study_question_bank b
+        left join study_question_placement p on p.bank_id = b.id
+        left join study_question q on q.id = p.question_id
+        where b.code like 'PAPER_%'
+        group by b.id, b.code, b.name
+        having count(distinct q.id) = 0
+        order by b.id
+        """
+    )
+
+    async with async_db_session() as db:
+        rows = (await db.execute(sql)).mappings().all()
+
+    result: list[LocalEmptyPaperBank] = []
+    for row in rows:
+        code = str(row["code"] or "").strip()
+        name = str(row["name"] or "").strip()
+        if not code or not name:
+            continue
+        if not pattern.search(name):
+            continue
+        try:
+            paper_id = int(code.split("_", 1)[1])
+        except Exception:
+            continue
+        result.append(
+            LocalEmptyPaperBank(
+                bank_id=int(row["bank_id"]),
+                paper_id=paper_id,
+                code=code,
+                name=name,
+                placement_count=int(row["placement_count"] or 0),
+                distinct_question_count=int(row["distinct_question_count"] or 0),
+            )
+        )
+    return result
+
+
+async def build_empty_bank_repair_plan(
+    area_nodes: list[AreaNode],
+    name_regex: str,
+) -> tuple[list[LocalEmptyPaperBank], list[RemotePaper], list[LocalEmptyPaperBank]]:
+    """
+    Build targeted repair plan for local empty paper banks.
+
+    :param area_nodes: area list
+    :param name_regex: paper name regex
+    :return:
+    """
+    local_empty_banks = await fetch_local_empty_paper_banks(name_regex)
+    if not local_empty_banks:
+        return [], [], []
+
+    remote_papers = await fetch_remote_papers(area_nodes, name_regex)
+    remote_by_id = {paper.paper_id: paper for paper in remote_papers}
+
+    need_import: list[RemotePaper] = []
+    missing_remote: list[LocalEmptyPaperBank] = []
+    for bank in local_empty_banks:
+        remote_paper = remote_by_id.get(bank.paper_id)
+        if remote_paper is None:
+            missing_remote.append(bank)
+            continue
+        need_import.append(remote_paper)
+
+    return local_empty_banks, need_import, missing_remote
+
+
+async def run_empty_bank_repair() -> None:
+    """Targeted import for local empty paper banks."""
+    areas = await select_areas()
+    name_regex = ask("输入试卷关键词正则（为空=全部）", ".*")
+    dry_run = ask_yes_no("是否 DryRun（仅演练不落库）", False)
+    mirror_images = ask_yes_no("是否启用外链图片镜像到 OSS", False)
+    mirror_safe_interval = 2.5
+    if mirror_images:
+        mirror_safe_interval = ask_float("图片请求安全间隔秒数（建议 2-5）", 2.5)
+    max_banks = ask_int("本次最多补录多少套空题库（0=不限）", 0)
+
+    local_empty_banks, need_import, missing_remote = await build_empty_bank_repair_plan(areas, name_regex)
+    print(
+        f"[空题库补录] 本地空题库={len(local_empty_banks)} "
+        f"可匹配远程={len(need_import)} 未匹配远程={len(missing_remote)}"
+    )
+
+    if local_empty_banks:
+        print("[空题库补录] 本地空题库样本:")
+        for bank in local_empty_banks[:50]:
+            print(
+                f"  - code={bank.code} bank_id={bank.bank_id} "
+                f"placements={bank.placement_count} questions={bank.distinct_question_count} {bank.name}"
+            )
+        if len(local_empty_banks) > 50:
+            print(f"  ... 其余 {len(local_empty_banks) - 50} 条未展示")
+
+    if missing_remote:
+        print("[空题库补录] 以下本地空题库未在当前区域/关键词下匹配到远程试卷:")
+        for bank in missing_remote[:50]:
+            print(f"  - code={bank.code} bank_id={bank.bank_id} {bank.name}")
+        if len(missing_remote) > 50:
+            print(f"  ... 其余 {len(missing_remote) - 50} 条未展示")
+
+    if not need_import:
+        print("[空题库补录] 没有可补录的试卷。")
+        return
+
+    if max_banks > 0:
+        need_import = need_import[:max_banks]
+
+    print("[空题库补录] 准备补录试卷:")
+    for paper in need_import[:50]:
+        print(f"  - [{paper.area_name}] paper_id={paper.paper_id} qcount={paper.qcount} {paper.name}")
+    if len(need_import) > 50:
+        print(f"  ... 其余 {len(need_import) - 50} 条未展示")
+
+    if not ask_yes_no("是否继续执行空题库补录", True):
+        print("已取消。")
+        return
+
+    success_count = 0
+    for index, paper in enumerate(need_import, start=1):
+        print(
+            f"[空题库补录] {index}/{len(need_import)} 开始 "
+            f"area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}"
+        )
+        pids = await clear_question_locks()
+        if pids:
+            print(f"[空题库补录] 清理锁会话: {pids}")
+
+        args = build_import_args(
+            areas=[paper.area_id],
+            name_regex=".*",
+            dry_run=dry_run,
+            mirror_images=mirror_images,
+            paper_id=paper.paper_id,
+            max_papers=0,
+            max_questions=0,
+            mirror_safe_interval=mirror_safe_interval,
+        )
+        try:
+            await run_question_import_core(args)
+            success_count += 1
+            print(f"[空题库补录] 完成 paper_id={paper.paper_id}")
+            if not dry_run:
+                await verify_paper(paper.paper_id)
+        except Exception as exc:
+            print(f"[空题库补录] 失败 paper_id={paper.paper_id} error={exc}")
+
+    print(f"[空题库补录] 完成成功数={success_count}/{len(need_import)}")
 async def select_areas() -> list[AreaNode]:
     """交互选择地区。"""
     try:
@@ -2377,6 +2549,7 @@ async def main() -> int:
         print("3) 从网页选择地区并批量导入")
         print("4) 增量导入（自动比对本地缺口）")
         print("5) 从网页选择试卷并校验本地")
+        print("6) 针对本地空题库补录")
         print("0) 退出")
         choice = ask("请选择功能", "0")
 
@@ -2397,6 +2570,9 @@ async def main() -> int:
             continue
         if choice == "5":
             await run_verify()
+            continue
+        if choice == "6":
+            await run_empty_bank_repair()
             continue
 
         print("无效选择，请重试。")

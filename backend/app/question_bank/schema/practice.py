@@ -15,6 +15,22 @@ SessionStatus = Literal['in_progress', 'completed', 'abandoned']
 QuestionType = Literal['single', 'multiple', 'judgement', 'fill', 'shortAnswer']
 AnswerCardStatus = Literal['correct', 'wrong', 'unanswered']
 
+KnowledgePointValue = str | int | dict[str, Any]
+
+
+# ===== chapter brief for session =====
+class SessionChapterBrief(SchemaBase):
+    """会话关联章节摘要"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description='章节 ID')
+    name: str = Field(description='章节名称')
+    code: str | None = Field(None, description='章节编码')
+    parent_id: int | None = Field(None, description='父级章节 ID')
+    level: int = Field(description='章节层级')
+    sort_order: int = Field(default=0, description='排序权重')
+
 
 # ===== session create / query =====
 class CreatePracticeSessionParam(SchemaBase):
@@ -24,7 +40,7 @@ class CreatePracticeSessionParam(SchemaBase):
     practice_name: str | None = Field(None, max_length=255, description='会话名称')
     bank_id: int | None = Field(None, gt=0, description='题库 ID（筛题上下文）')
     chapter_id: int | None = Field(None, gt=0, description='章节 ID（筛题上下文）')
-    placement_ids: list[int] | None = Field(None, min_length=1, max_length=2000, description='指定挂载 ID 列表')
+    knowledge_point: list[KnowledgePointValue] | None = Field(None, min_length=1, max_length=200, description='考点标签筛选')
     limit: int | None = Field(None, ge=1, le=500, description='抽题数量上限')
     shuffle: bool = Field(False, description='是否打乱题序')
     exam_config: dict[str, Any] | None = Field(None, description='考试配置')
@@ -52,6 +68,7 @@ class SessionQuestionItem(SchemaBase):
     placement_id: int = Field(description='挂载 ID')
     question_type: QuestionType = Field(description='题型')
     full_score: Decimal = Field(ge=Decimal('0'), description='满分')
+    chapter: SessionChapterBrief | None = Field(None, description='题目所属章节')
 
 
 # ===== practice record =====
@@ -112,6 +129,24 @@ class GetPracticeRecordListItem(SchemaBase):
     created_time: datetime = Field(description='创建时间')
 
 
+class GetPracticeRecordSessionItem(SchemaBase):
+    """会话详情中的作答记录项（包含 user_answer）"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description='记录 ID')
+    session_id: int = Field(description='会话 ID')
+    seq_no: int = Field(description='题序')
+    question_id: int = Field(description='题目 ID')
+    placement_id: int = Field(description='挂载 ID')
+    user_answer: dict[str, Any] | list[Any] | str = Field(description='用户答案')
+    is_correct: bool | None = Field(None, description='是否正确')
+    score: Decimal | None = Field(None, ge=Decimal('0'), description='得分')
+    full_score: Decimal = Field(ge=Decimal('0'), description='满分')
+    answer_time: int = Field(ge=0, description='耗时（秒）')
+    created_time: datetime = Field(description='创建时间')
+
+
 # ===== session read / submit =====
 class GetPracticeSessionListItem(SchemaBase):
     """练习会话列表项"""
@@ -138,11 +173,21 @@ class GetPracticeSessionListItem(SchemaBase):
     updated_time: datetime | None = Field(None, description='更新时间')
 
 
+class ChapterDistributionItem(SchemaBase):
+    """章节分布统计项"""
+
+    chapter_id: int | None = Field(None, description='章节 ID')
+    chapter_name: str | None = Field(None, description='章节名称')
+    chapter_code: str | None = Field(None, description='章节编码')
+    question_count: int = Field(ge=0, description='题目数量')
+
+
 class GetPracticeSessionDetail(GetPracticeSessionListItem):
     """练习会话详情"""
 
+    chapter_distribution: list[ChapterDistributionItem] = Field(default_factory=list, description='章节分布统计')
     session_questions: list[SessionQuestionItem] = Field(default_factory=list, description='会话题目快照')
-    records: list[GetPracticeRecordListItem] = Field(default_factory=list, description='作答记录列表')
+    records: list[GetPracticeRecordSessionItem] = Field(default_factory=list, description='作答记录列表')
 
 
 class SubmitPracticeSessionParam(SchemaBase):
@@ -249,4 +294,43 @@ class GetQuestionSolution(SchemaBase):
     correct_rate: Decimal = Field(
         default=Decimal('0'), ge=Decimal('0'), le=Decimal('100'), description='全站正确率（%）'
     )
-    wrong_option_stats: dict[str, Any] | None = Field(None, description='错误选项统计')
+    option_select_stats: dict[str, Any] | None = Field(None, description='选项选择统计')
+
+
+# ===== 会话题目批量返回 =====
+
+
+class SessionQuestionOptionItem(SchemaBase):
+    """会话题目选项项"""
+
+    option_code: str = Field(description='选项编码')
+    content: str = Field(description='选项内容')
+
+
+class SessionQuestionItem(SchemaBase):
+    """会话题目项"""
+
+    seq_no: int = Field(ge=1, description='题序')
+    question_id: int = Field(description='题目 ID')
+    type: QuestionType = Field(description='题型')
+    stem: str = Field(description='题干')
+    options: list[SessionQuestionOptionItem] = Field(default_factory=list, description='选项列表')
+    material_ids: list[int] = Field(default_factory=list, description='材料 ID 列表')
+    knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签')
+    difficulty: str | None = Field(None, description='难度')
+
+
+class SessionMaterialItem(SchemaBase):
+    """会话材料项"""
+
+    id: int = Field(description='材料 ID')
+    title: str | None = Field(None, description='材料标题')
+    content: str = Field(description='材料内容')
+
+
+class GetSessionQuestionsResponse(SchemaBase):
+    """会话题目批量返回"""
+
+    questions: list[SessionQuestionItem] = Field(default_factory=list, description='题目列表')
+    materials: list[SessionMaterialItem] = Field(default_factory=list, description='材料列表')
+

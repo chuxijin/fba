@@ -25,10 +25,10 @@
         <view class="material-meta">
           <text class="source-text">来自：{{ material.source }}</text>
           <view class="meta-right">
-            <u-tag :text="material.tag" type="error" size="mini" plain></u-tag>
+            <wd-tag type="error" size="small" plain>{{ material.tag }}</wd-tag>
             <view class="meta-hot-wrapper">
               <text class="hot-icon">🔥</text>
-              <u-badge :value="material.hot" :max="9999" numberType="limit" type="error"></u-badge>
+              <wd-badge :value="material.hot" :max="9999" type="error"></wd-badge>
             </view>
           </view>
         </view>
@@ -36,27 +36,27 @@
         <!-- 底部操作 -->
         <view class="material-footer">
           <view class="material-actions">
-            <u-button
-              text="预览"
+            <wd-button
               size="small"
               plain
               color="#64748b"
               @click.stop="handlePreview"
             >
               <template #icon>
-                <u-icon name="eye" :size="14" color="#64748b"></u-icon>
+                <wd-icon name="eye" size="14px" color="#64748b"></wd-icon>
               </template>
-            </u-button>
-            <u-button
-              text="下载"
+              预览
+            </wd-button>
+            <wd-button
               size="small"
               type="success"
               @click.stop="handleDownload"
             >
               <template #icon>
-                <u-icon name="download" :size="14" color="#ffffff"></u-icon>
+                <wd-icon name="download" size="14px" color="#ffffff"></wd-icon>
               </template>
-            </u-button>
+              下载
+            </wd-button>
           </view>
         </view>
       </view>
@@ -263,7 +263,7 @@ function handleDownload() {
   gap: 12rpx;
   width: 100%;
 
-  ::v-deep .u-button {
+  :deep(.wd-button) {
     flex: 1;
   }
 }

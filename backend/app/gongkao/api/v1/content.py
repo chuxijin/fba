@@ -1,3 +1,4 @@
+﻿from datetime import date as date_type
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request
@@ -13,7 +14,6 @@ from backend.app.gongkao.schema.content import (
 from backend.app.gongkao.service.content_service import content_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -21,49 +21,49 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/tags', summary='获取内容标签列表')
+@router.get('/tags', summary='Get content tags')
 async def get_content_tags(
     db: CurrentSession,
-    limit: Annotated[int, Query(description='限制数量')] = 50,
+    limit: Annotated[int, Query(description='limit')] = 50,
 ) -> ResponseSchemaModel[list[str]]:
-    """获取所有已发布内容的标签（去重聚合）"""
+    """Get all published content tags."""
     data = await content_service.get_tags(db=db, limit=limit)
     return response_base.success(data=data)
 
 
-@router.get('/{pk}', summary='获取内容详情')
+@router.get('/{pk}', summary='Get content detail')
 async def get_content(
-    db: CurrentSession, pk: Annotated[int, Path(description='ID')]
+    db: CurrentSession,
+    pk: Annotated[int, Path(description='id')],
 ) -> ResponseSchemaModel[GetContentDetail]:
-    """通过 ID 获取内容详情"""
+    """Get content detail by id."""
     data = await content_service.get(db=db, pk=pk)
     return response_base.success(data=data)
 
 
-@router.get('/slug/{slug}', summary='通过别名获取内容详情')
+@router.get('/slug/{slug}', summary='Get content detail by slug')
 async def get_content_by_slug(
-    db: CurrentSession, slug: Annotated[str, Path(description='别名')]
+    db: CurrentSession,
+    slug: Annotated[str, Path(description='slug')],
 ) -> ResponseSchemaModel[GetContentDetail]:
-    """通过别名获取内容详情"""
+    """Get content detail by slug."""
     data = await content_service.get_by_slug(db=db, slug=slug)
     return response_base.success(data=data)
 
 
-@router.get(
-    '',
-    summary='获取内容列表',
-    dependencies=[DependsPagination],
-)
+@router.get('', summary='Get content list', dependencies=[DependsPagination])
 async def get_content_list(
     db: CurrentSession,
-    title: Annotated[str | None, Query(description='标题关键词')] = None,
-    category_id: Annotated[int | None, Query(description='分类 ID')] = None,
-    tag: Annotated[str | None, Query(description='标签')] = None,
-    is_pinned: Annotated[bool | None, Query(description='是否置顶')] = None,
-    is_public: Annotated[bool | None, Query(description='是否公开')] = None,
-    is_published: Annotated[bool | None, Query(description='是否发布')] = None,
+    title: Annotated[str | None, Query(description='title keyword')] = None,
+    category_id: Annotated[int | None, Query(description='category id')] = None,
+    tag: Annotated[str | None, Query(description='tag')] = None,
+    is_pinned: Annotated[bool | None, Query(description='is pinned')] = None,
+    is_public: Annotated[bool | None, Query(description='is public')] = None,
+    is_published: Annotated[bool | None, Query(description='is published')] = None,
+    content_type: Annotated[str | None, Query(description='content type in extra')] = None,
+    daily_date: Annotated[str | None, Query(description='daily date in extra')] = None,
 ) -> ResponseSchemaModel[PageData[GetContentListDetail]]:
-    """获取内容列表（分页）"""
+    """Get content list with filters."""
     params = ContentParam(
         title=title,
         category_id=category_id,
@@ -71,6 +71,8 @@ async def get_content_list(
         is_pinned=is_pinned,
         is_public=is_public,
         is_published=is_published,
+        content_type=content_type,
+        daily_date=date_type.fromisoformat(daily_date) if daily_date else None,
     )
     data = await content_service.get_list(db=db, params=params)
     return response_base.success(data=data)
@@ -78,37 +80,31 @@ async def get_content_list(
 
 @router.post(
     '',
-    summary='创建内容',
-    dependencies=[
-        Depends(RequestPermission('gongkao:content:create')),
-        DependsRBAC,
-    ],
+    summary='Create content',
+    dependencies=[Depends(RequestPermission('gongkao:content:create')), DependsRBAC],
 )
 async def create_content(
     request: Request,
     db: CurrentSessionTransaction,
     obj: CreateContentParam,
 ) -> ResponseModel:
-    """创建内容"""
+    """Create content."""
     await content_service.create(db=db, obj=obj, created_by=request.user.id)
     return response_base.success()
 
 
 @router.put(
     '/{pk}',
-    summary='更新内容',
-    dependencies=[
-        Depends(RequestPermission('gongkao:content:update')),
-        DependsRBAC,
-    ],
+    summary='Update content',
+    dependencies=[Depends(RequestPermission('gongkao:content:update')), DependsRBAC],
 )
 async def update_content(
     request: Request,
     db: CurrentSessionTransaction,
-    pk: Annotated[int, Path(description='ID')],
+    pk: Annotated[int, Path(description='id')],
     obj: UpdateContentParam,
 ) -> ResponseModel:
-    """更新内容"""
+    """Update content."""
     count = await content_service.update(db=db, pk=pk, obj=obj, updated_by=request.user.id)
     if count > 0:
         return response_base.success()
@@ -117,24 +113,22 @@ async def update_content(
 
 @router.delete(
     '',
-    summary='删除内容',
-    dependencies=[
-        Depends(RequestPermission('gongkao:content:delete')),
-        DependsRBAC,
-    ],
+    summary='Delete content',
+    dependencies=[Depends(RequestPermission('gongkao:content:delete')), DependsRBAC],
 )
 async def delete_content(db: CurrentSessionTransaction, obj: DeleteContentParam) -> ResponseModel:
-    """删除内容"""
+    """Delete content."""
     count = await content_service.delete(db=db, obj=obj)
     if count > 0:
         return response_base.success()
     return response_base.fail()
 
 
-@router.post('/{pk}/view', summary='增加浏览量')
+@router.post('/{pk}/view', summary='Increment content view count')
 async def increment_content_view(
-    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='ID')]
+    db: CurrentSessionTransaction,
+    pk: Annotated[int, Path(description='id')],
 ) -> ResponseModel:
-    """增加浏览量"""
+    """Increment content view count."""
     await content_service.increment_view(db=db, pk=pk)
     return response_base.success()

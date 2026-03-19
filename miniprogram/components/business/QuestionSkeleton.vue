@@ -1,17 +1,17 @@
 <template>
   <view class="question-skeleton">
-    <!-- 使用 UView Plus 骨架屏组件 -->
-    <up-skeleton
+    <!-- 使用 wot-design-uni 骨架屏组件 -->
+    <wd-skeleton
       :loading="true"
       :animate="true"
       :rows="4"
       :title="true"
       :avatar="false"
-      rows-width="100%,90%,80%,100%"
-      rows-height="32,32,32,88"
-      title-width="120"
-      title-height="48"
-    ></up-skeleton>
+      :rows-width="['100%', '90%', '80%', '100%']"
+      rows-height="32px,32px,32px,88px"
+      title-width="120px"
+      title-height="48px"
+    ></wd-skeleton>
   </view>
 </template>
 

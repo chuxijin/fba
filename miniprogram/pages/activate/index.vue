@@ -3,31 +3,28 @@
     <view class="page-container">
       <!-- 激活码输入框 -->
       <view class="input-section">
-        <u-textarea
+        <wd-textarea
           v-model="activationCode"
           placeholder="请输入包含激活码的文段"
           :maxlength="500"
-          :height="100"
-          border="surround"
-          :autoHeight="false"
-          :showConfirmBar="false"
-          :cursorSpacing="20"
+          :auto-height="false"
           :disabled="hasQueried"
-        ></u-textarea>
+          custom-style="min-height: 200rpx;"
+        ></wd-textarea>
       </view>
 
       <!-- 确认按钮 -->
       <view class="button-section">
-        <u-button
+        <wd-button
           type="primary"
-          :text="loading ? (hasQueried ? '激活中...' : '查询中...') : (hasQueried ? '确认激活' : '开始激活')"
           :loading="loading"
           :disabled="!activationCode.trim() || loading"
           @click="handleActivate"
-          :color="hasQueried ? '#2979ff' : '#22c55e'"
-          shape="round"
+          round
           size="large"
-        ></u-button>
+          block
+          custom-style="height: 96rpx;"
+        >{{ loading ? (hasQueried ? '激活中...' : '查询中...') : (hasQueried ? '确认激活' : '开始激活') }}</wd-button>
       </view>
 
       <!-- 激活内容显示区 -->
@@ -279,11 +276,11 @@ async function performActivation() {
   padding: 32rpx;
   box-shadow: $shadow-sm;
 
-  ::v-deep .u-textarea {
+  :deep(.wd-textarea) {
     font-size: 32rpx;
   }
 
-  ::v-deep .u-textarea__field {
+  :deep(.wd-textarea__inner) {
     background: #f8f9fa;
     border-radius: $radius-base;
     padding: 24rpx;
@@ -366,7 +363,7 @@ async function performActivation() {
 .button-section {
   margin-bottom: 48rpx;
 
-  ::v-deep .u-button {
+  :deep(.wd-button) {
     height: 96rpx;
     font-size: 32rpx;
     font-weight: $font-weight-semibold;

@@ -3,30 +3,29 @@
   <page-meta :page-style="showTabManager || showSearch ? 'overflow: hidden' : ''"></page-meta>
 
   <view class="practice-page">
-    <!-- 顶部标签页导航 - 使用 UView Plus Tabs -->
-    <u-tabs
-      :list="tabList"
-      :current="activeTab"
-      :scrollable="true"
-      lineColor="#22c55e"
-      :activeStyle="{ color: '#22c55e', fontWeight: 'bold' }"
-      :inactiveStyle="{ color: '#94a3b8' }"
-      @change="handleTabChange"
-    >
-      <template #right>
-        <view class="tab-actions">
-          <!-- 搜索按钮 -->
-          <view class="tab-action-btn" @tap="handleOpenSearch">
-            <u-icon name="search" :size="20" color="#22c55e"></u-icon>
-          </view>
+    <!-- 顶部标签页导航 - 使用 Wot Design Uni Tabs -->
+    <view class="tabs-wrapper">
+      <wd-tabs
+        v-model="activeTab"
+        :scrollable="true"
+        line-color="#22c55e"
+        @change="handleTabChange"
+      >
+        <wd-tab v-for="(tab, index) in tabList" :key="index" :title="tab.name" />
+      </wd-tabs>
 
-          <!-- 添加 Tab 按钮 -->
-          <view class="tab-action-btn" @tap="handleTabClick(-1)">
-            <u-icon name="plus" :size="20" color="#22c55e"></u-icon>
-          </view>
+      <view class="tab-actions">
+        <!-- 搜索按钮 -->
+        <view class="tab-action-btn" @tap="handleOpenSearch">
+          <wd-icon name="search" size="20px" color="#22c55e"></wd-icon>
         </view>
-      </template>
-    </u-tabs>
+
+        <!-- 添加 Tab 按钮 -->
+        <view class="tab-action-btn" @tap="handleTabClick(-1)">
+          <wd-icon name="add" size="20px" color="#22c55e"></wd-icon>
+        </view>
+      </view>
+    </view>
 
     <!-- 主要内容区域 - 支持左右滑动 -->
     <swiper
@@ -52,22 +51,7 @@
             <view v-else-if="getTabBanks(index).length === 0" class="progress-empty">
               <text>该分类下暂无题库</text>
             </view>
-            <!-- 使用虚拟列表（数据量大于5条时） -->
-            <u-virtual-list
-              v-else-if="getTabBanks(index).length > 5"
-              :listData="getTabBanks(index)"
-              :itemHeight="120"
-              :gap="16"
-            >
-              <template #default="{ item }">
-                <BankCard
-                  :bank="item"
-                  @click="handleBankClick"
-                  @quick-start="handleQuickStart"
-                />
-              </template>
-            </u-virtual-list>
-            <!-- 普通列表（数据量少时） -->
+            <!-- 题库列表 -->
             <BankCard
               v-else
               v-for="bank in getTabBanks(index)"
@@ -397,12 +381,12 @@ function handleTabClick(index: number) {
 }
 
 /**
- * UView Tabs change 事件
+ * Wot Design Tabs change 事件
  *
- * :param item: tab 项数据
+ * :param options: wd-tabs change 事件参数
  */
-function handleTabChange(item: { index: number }) {
-  activeTab.value = item.index
+function handleTabChange(options: { name: number }) {
+  activeTab.value = options.name
 }
 
 /**
@@ -673,6 +657,18 @@ onShow(() => {
 
 .practice-page {
   background: $color-bg-page;
+}
+
+/* ============ Tabs 容器布局 ============ */
+
+.tabs-wrapper {
+  display: flex;
+  align-items: center;
+
+  :deep(.wd-tabs) {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 /* ============ 右侧操作按钮 ============ */

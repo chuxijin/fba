@@ -2,20 +2,19 @@
   <scroll-view class="mine-page" scroll-y>
     <!-- 顶部用户区域 -->
     <view class="user-card" @tap="handleUserClick">
-      <u-avatar
+      <wd-avatar
         :src="userInfo?.avatar || DEFAULT_AVATAR"
         :size="60"
         shape="circle"
-      ></u-avatar>
+      ></wd-avatar>
       <view class="user-meta">
         <text class="username">{{ displayName }}</text>
         <view v-if="isLoggedIn" class="user-level">
-          <u-tag
-            :text="`Lv${userLevel}`"
+          <wd-tag
             type="warning"
             plain
-            size="mini"
-          ></u-tag>
+            size="small"
+          >Lv{{ userLevel }}</wd-tag>
         </view>
       </view>
       <view class="arrow-icon">
@@ -60,8 +59,8 @@
 
     <!-- 快捷功能 -->
     <view class="section">
-      <u-grid :col="3" :border="false">
-        <u-grid-item
+      <wd-grid :column="3" :border="false">
+        <wd-grid-item
           v-for="item in functionItems"
           :key="item.id"
           @click="() => handleFunctionClick(item)"
@@ -72,35 +71,35 @@
             </view>
             <text class="function-label">{{ item.label }}</text>
           </view>
-        </u-grid-item>
-      </u-grid>
+        </wd-grid-item>
+      </wd-grid>
     </view>
 
     <!-- 更多服务 - 第一组：推广中心 -->
     <view class="section">
-      <u-cell-group :border="false">
-        <u-cell
+      <wd-cell-group>
+        <wd-cell
           v-for="item in moreServicesGroup1"
           :key="item.id"
           :title="item.label"
-          :isLink="true"
+          is-link
           @click="() => handleServiceClick(item)"
         >
           <template #icon>
             <text class="service-icon">{{ item.icon }}</text>
           </template>
-        </u-cell>
-      </u-cell-group>
+        </wd-cell>
+      </wd-cell-group>
     </view>
 
     <!-- 更多服务 - 第二组：客服 + 关于我们 -->
     <view class="section">
-      <u-cell-group :border="false">
-        <u-cell
+      <wd-cell-group>
+        <wd-cell
           v-for="item in moreServicesGroup2"
           :key="item.id"
           :title="item.label"
-          :isLink="item.id !== 'customer-service'"
+          :is-link="item.id !== 'customer-service'"
           @click="() => handleServiceClick(item)"
         >
           <template #icon>
@@ -113,28 +112,28 @@
               open-type="contact"
               session-from="user-center"
             >
-              <u-icon name="arrow-right" :size="16" color="#94a3b8"></u-icon>
+              <wd-icon name="arrow-right" size="16px" color="#94a3b8"></wd-icon>
             </button>
           </template>
-        </u-cell>
-      </u-cell-group>
+        </wd-cell>
+      </wd-cell-group>
     </view>
 
     <!-- 更多服务 - 第三组：设置 -->
     <view class="section">
-      <u-cell-group :border="false">
-        <u-cell
+      <wd-cell-group>
+        <wd-cell
           v-for="item in moreServicesGroup3"
           :key="item.id"
           :title="item.label"
-          :isLink="true"
+          is-link
           @click="() => handleServiceClick(item)"
         >
           <template #icon>
             <text class="service-icon">{{ item.icon }}</text>
           </template>
-        </u-cell>
-      </u-cell-group>
+        </wd-cell>
+      </wd-cell-group>
     </view>
 
     <!-- 登录弹窗 -->
@@ -534,14 +533,14 @@ function handleServiceClick(item: MenuItem) {
 
 /* ==================== 快捷功能 ==================== */
 .section {
-  ::v-deep .u-grid {
+  :deep(.wd-grid) {
     background: #ffffff;
     border-radius: $radius-lg;
     padding: 16rpx 0;
     box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.06);
   }
 
-  ::v-deep .u-cell-group {
+  :deep(.wd-cell-group) {
     background: #ffffff;
     border-radius: $radius-lg;
     overflow: hidden;

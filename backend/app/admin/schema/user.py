@@ -6,6 +6,7 @@ from typing_extensions import Self
 
 from backend.app.admin.schema.dept import GetDeptDetail
 from backend.app.admin.schema.role import GetRoleWithRelationDetail
+from backend.app.admin.schema.user_role_expiry import GetRoleExpiryBrief
 from backend.common.enums import StatusType
 from backend.common.schema import CustomEmailStr, CustomPhoneNumber, SchemaBase, ser_string
 
@@ -107,6 +108,7 @@ class GetCurrentUserInfoWithRelationDetail(GetUserInfoWithRelationDetail):
 
     dept: str | None = Field(None, description='部门名称')
     roles: list[str] = Field(description='角色名称列表')
+    role_expiries: list[GetRoleExpiryBrief] = Field(default_factory=list, description='角色有效期列表')
 
     @model_validator(mode='before')
     @classmethod

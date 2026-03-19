@@ -16,7 +16,7 @@
 
         <!-- 无权限时显示锁图标 -->
         <view v-if="!bank.hasAccess" class="lock-overlay">
-          <u-icon name="lock" :size="32" color="#ffffff"></u-icon>
+          <wd-icon name="lock" size="32px" color="#ffffff"></wd-icon>
         </view>
       </view>
 
@@ -25,13 +25,12 @@
         <!-- 标题行：名称 + 状态 -->
         <view class="bank-header">
           <text class="bank-name">{{ bank.name }}</text>
-          <u-tag
-            :text="bankStatusText"
+          <wd-tag
             :type="bankStatusTagType"
-            size="mini"
+            size="small"
             plain
-            shape="circle"
-          />
+            round
+          >{{ bankStatusText }}</wd-tag>
         </view>
 
         <!-- 进度条和百分比（同一行） -->
@@ -66,13 +65,12 @@
           </view>
 
           <!-- 右侧:快速开始按钮 -->
-          <u-button
-            :text="quickStartButtonText"
+          <wd-button
             size="small"
             :type="quickStartButtonType"
-            :customStyle="{ width: '140rpx', flexShrink: 0 }"
+            :custom-style="{ width: '140rpx', flexShrink: 0 }"
             @click="handleQuickStart($event)"
-          />
+          >{{ quickStartButtonText }}</wd-button>
         </view>
       </view>
 

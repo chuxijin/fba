@@ -23,8 +23,27 @@ router = APIRouter()
 
 
 @router.get('/me', summary='获取当前用户信息', dependencies=[DependsJwtAuth])
-async def get_current_user(request: Request) -> ResponseSchemaModel[GetCurrentUserInfoWithRelationDetail]:
+async def get_current_user(request: Request, db: CurrentSession) -> ResponseSchemaModel[GetCurrentUserInfoWithRelationDetail]:
     data = request.user.model_dump()
+    # 查询当前用户的角色有效期记录，附带角色名称
+    user_id = data['id']
+    from backend.app.admin.crud.crud_user_role_expiry import user_role_expiry_dao
+
+    expiry_records = await user_role_expiry_dao.get_by_user(db, user_id)
+    if expiry_records:
+        # 构建 role_id → role_name 映射（从 roles 原始数据中获取）
+        raw_roles = request.user.roles or []
+        role_id_name_map = {role.id: role.name for role in raw_roles}
+        data['role_expiries'] = [
+            {
+                'role_id': r.role_id,
+                'role_name': role_id_name_map.get(r.role_id, ''),
+                'valid_from': r.valid_from,
+                'valid_to': r.valid_to,
+                'status': r.status,
+            }
+            for r in expiry_records
+        ]
     return response_base.success(data=data)
 
 

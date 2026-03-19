@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import date, datetime
 
 from pydantic import ConfigDict, Field
 
@@ -6,93 +6,96 @@ from backend.common.schema import SchemaBase
 
 
 class ContentSchemaBase(SchemaBase):
-    """公考内容基础模型"""
+    """Content base."""
 
-    title: str = Field(description='标题')
-    slug: str = Field(description='别名（固定链接标识）')
-    content_json: dict | None = Field(None, description='Tiptap JSON 内容')
-    content_html: str | None = Field(None, description='预渲染 HTML')
-    summary: str | None = Field(None, description='摘要')
-    cover_image: str | None = Field(None, description='封面图 URL')
-    category_id: int | None = Field(None, description='关联分类 ID')
-    tags: list[str] | None = Field(None, description='标签')
-    is_pinned: bool = Field(default=False, description='是否置顶')
-    is_public: bool = Field(default=True, description='是否公开')
-    is_published: bool = Field(default=False, description='是否发布')
-    publish_time: datetime | None = Field(None, description='发表时间')
-    extra: dict | None = Field(None, description='元数据')
+    title: str = Field(description='title')
+    slug: str = Field(description='slug')
+    content_json: dict | None = Field(None, description='tiptap json content')
+    content_html: str | None = Field(None, description='render html content')
+    summary: str | None = Field(None, description='summary')
+    cover_image: str | None = Field(None, description='cover image url')
+    category_id: int | None = Field(None, description='category id')
+    tags: list[str] | None = Field(None, description='tags')
+    is_pinned: bool = Field(default=False, description='is pinned')
+    is_public: bool = Field(default=True, description='is public')
+    is_published: bool = Field(default=False, description='is published')
+    publish_time: datetime | None = Field(None, description='publish time')
+    extra: dict | None = Field(None, description='extra metadata')
 
 
 class ContentParam(SchemaBase):
-    """公考内容查询参数"""
+    """Content query."""
 
-    title: str | None = Field(None, description='标题关键词')
-    category_id: int | None = Field(None, description='分类 ID')
-    tag: str | None = Field(None, description='标签')
-    is_pinned: bool | None = Field(None, description='是否置顶')
-    is_public: bool | None = Field(None, description='是否公开')
-    is_published: bool | None = Field(None, description='是否发布')
+    title: str | None = Field(None, description='title keyword')
+    category_id: int | None = Field(None, description='category id')
+    category_ids: list[int] | None = Field(None, description='category ids')
+    tag: str | None = Field(None, description='tag')
+    is_pinned: bool | None = Field(None, description='is pinned')
+    is_public: bool | None = Field(None, description='is public')
+    is_published: bool | None = Field(None, description='is published')
+    content_type: str | None = Field(None, description='content type in extra')
+    daily_date: date | None = Field(None, description='daily date in extra')
 
 
 class CreateContentParam(ContentSchemaBase):
-    """创建公考内容参数"""
+    """Create content."""
 
 
 class UpdateContentParam(SchemaBase):
-    """更新公考内容参数"""
+    """Update content."""
 
-    title: str | None = Field(None, description='标题')
-    slug: str | None = Field(None, description='别名')
-    content_json: dict | None = Field(None, description='Tiptap JSON 内容')
-    content_html: str | None = Field(None, description='预渲染 HTML')
-    summary: str | None = Field(None, description='摘要')
-    cover_image: str | None = Field(None, description='封面图 URL')
-    category_id: int | None = Field(None, description='关联分类 ID')
-    tags: list[str] | None = Field(None, description='标签')
-    is_pinned: bool | None = Field(None, description='是否置顶')
-    is_public: bool | None = Field(None, description='是否公开')
-    is_published: bool | None = Field(None, description='是否发布')
-    publish_time: datetime | None = Field(None, description='发表时间')
-    extra: dict | None = Field(None, description='元数据')
-    sort_order: int | None = Field(None, description='排序权重')
+    title: str | None = Field(None, description='title')
+    slug: str | None = Field(None, description='slug')
+    content_json: dict | None = Field(None, description='tiptap json content')
+    content_html: str | None = Field(None, description='render html content')
+    summary: str | None = Field(None, description='summary')
+    cover_image: str | None = Field(None, description='cover image url')
+    category_id: int | None = Field(None, description='category id')
+    tags: list[str] | None = Field(None, description='tags')
+    is_pinned: bool | None = Field(None, description='is pinned')
+    is_public: bool | None = Field(None, description='is public')
+    is_published: bool | None = Field(None, description='is published')
+    publish_time: datetime | None = Field(None, description='publish time')
+    extra: dict | None = Field(None, description='extra metadata')
+    sort_order: int | None = Field(None, description='sort order')
 
 
 class DeleteContentParam(SchemaBase):
-    """批量删除公考内容参数"""
+    """Delete content."""
 
-    ids: list[int] = Field(description='ID 列表')
+    ids: list[int] = Field(description='id list')
 
 
 class GetContentDetail(ContentSchemaBase):
-    """公考内容详情"""
+    """Content detail."""
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(description='ID')
-    view_count: int = Field(description='浏览量')
-    sort_order: int = Field(description='排序权重')
-    created_by: int = Field(description='创建者')
-    updated_by: int | None = Field(None, description='修改者')
-    created_time: datetime = Field(description='创建时间')
-    updated_time: datetime | None = Field(None, description='更新时间')
+    id: int = Field(description='id')
+    view_count: int = Field(description='view count')
+    sort_order: int = Field(description='sort order')
+    created_by: int = Field(description='created by')
+    updated_by: int | None = Field(None, description='updated by')
+    created_time: datetime = Field(description='created time')
+    updated_time: datetime | None = Field(None, description='updated time')
 
 
 class GetContentListDetail(SchemaBase):
-    """公考内容列表项（轻量版，不返回完整内容）"""
+    """Content list item."""
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(description='ID')
-    title: str = Field(description='标题')
-    slug: str = Field(description='别名')
-    summary: str | None = Field(None, description='摘要')
-    cover_image: str | None = Field(None, description='封面图 URL')
-    category_id: int | None = Field(None, description='关联分类 ID')
-    tags: list[str] | None = Field(None, description='标签')
-    is_pinned: bool = Field(description='是否置顶')
-    is_public: bool = Field(description='是否公开')
-    is_published: bool = Field(description='是否发布')
-    publish_time: datetime | None = Field(None, description='发表时间')
-    view_count: int = Field(description='浏览量')
-    created_by: int = Field(description='创建者')
-    created_time: datetime = Field(description='创建时间')
+    id: int = Field(description='id')
+    title: str = Field(description='title')
+    slug: str = Field(description='slug')
+    summary: str | None = Field(None, description='summary')
+    cover_image: str | None = Field(None, description='cover image url')
+    category_id: int | None = Field(None, description='category id')
+    tags: list[str] | None = Field(None, description='tags')
+    is_pinned: bool = Field(description='is pinned')
+    is_public: bool = Field(description='is public')
+    is_published: bool = Field(description='is published')
+    publish_time: datetime | None = Field(None, description='publish time')
+    view_count: int = Field(description='view count')
+    created_by: int = Field(description='created by')
+    created_time: datetime = Field(description='created time')

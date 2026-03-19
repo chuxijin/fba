@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 用户设置接口
@@ -9,7 +9,7 @@ from backend.app.question_bank.schema.user_settings import (
     GetStudyPreferenceResponse,
     UpdateStudyPreferenceParam,
 )
-from backend.app.question_bank.security import DependsCustomerAuth
+from backend.app.question_bank.security import DependsCurrentUser
 from backend.app.question_bank.service.user_settings_service import user_settings_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.auth_strategy import AuthUser
@@ -21,7 +21,7 @@ router = APIRouter()
 @router.get('/study-preference', summary='获取学习偏好设置', name='qbank_get_study_preference')
 async def get_study_preference(
     db: CurrentSession,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetStudyPreferenceResponse]:
     """获取学习偏好设置"""
     data = await user_settings_service.get_study_preference(db=db, user_id=current_user.user_id)
@@ -32,7 +32,7 @@ async def get_study_preference(
 async def update_study_preference(
     db: CurrentSessionTransaction,
     param: UpdateStudyPreferenceParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """更新学习偏好设置"""
     await user_settings_service.update_study_preference(
@@ -43,3 +43,4 @@ async def update_study_preference(
     )
 
     return response_base.success(data='success')
+

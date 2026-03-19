@@ -1,4 +1,4 @@
-﻿import type { ApiClient } from '../client/types';
+import type { ApiClient } from '../client/types';
 import type {
   BatchImportParam,
   BatchImportResult,
@@ -41,67 +41,68 @@ export interface QuestionModule {
 export function createQuestionModule(client: ApiClient): QuestionModule {
   return {
     getDetail(id) {
-      return client.get<GetQuestionDetail>(`/qbank/questions/${id}`);
+      return client.get<GetQuestionDetail>(`/questions/${id}`);
     },
 
     getList(params) {
-      return client.get<QuestionListResult>('/qbank/questions', {
+      return client.get<QuestionListResult>('/questions', {
         params: params as Record<string, unknown>,
       });
     },
 
     getAnalysis(id) {
-      return client.get<QuestionAnalysisItem>(`/qbank/questions/${id}/analysis`);
+      return client.get<QuestionAnalysisItem>(`/questions/${id}/analysis`);
     },
 
     getSolution(id, userAnswer) {
-      return client.get<GetQuestionSolution>(`/qbank/questions/${id}/solution`, {
+      return client.get<GetQuestionSolution>(`/questions/${id}/solution`, {
         params: userAnswer ? { user_answer: userAnswer } : undefined,
       });
     },
 
     markAnalysisHelpful(id, isHelpful) {
-      return client.post(`/qbank/questions/${id}/analysis/helpful`, {
+      return client.post(`/questions/${id}/analysis/helpful`, {
         is_helpful: isHelpful,
       });
     },
 
     getStatistics(id) {
-      return client.get<GetQuestionStatisticsDetail>(`/qbank/questions/${id}/statistics`);
+      return client.get<GetQuestionStatisticsDetail>(`/questions/${id}/statistics`);
     },
 
     getOptionStats(id, params) {
-      return client.get<QuestionOptionStatsItem[]>(`/qbank/questions/${id}/option-stats`, {
+      return client.get<QuestionOptionStatsItem[]>(`/questions/${id}/option-stats`, {
         params: params as Record<string, unknown>,
       });
     },
 
     checkFavorites(questionIds) {
-      return client.get<Record<number, boolean>>('/qbank/questions/favorites', {
+      return client.get<Record<number, boolean>>('/questions/favorites', {
         params: { question_ids: questionIds.join(',') },
       });
     },
 
     getNotes(questionIds) {
-      return client.get<Record<number, GetQuestionNoteDetail | null>>('/qbank/questions/notes', {
+      return client.get<Record<number, GetQuestionNoteDetail | null>>('/questions/notes', {
         params: { question_ids: questionIds.join(',') },
       });
     },
 
     create(data) {
-      return client.post('/qbank/questions', data);
+      return client.post('/questions', data);
     },
 
     update(id, data) {
-      return client.put(`/qbank/questions/${id}`, data);
+      return client.put(`/questions/${id}`, data);
     },
 
     remove(ids) {
-      return client.delete('/qbank/questions', { ids });
+      return client.delete('/questions', { ids });
     },
 
     batchImport(data) {
-      return client.post<BatchImportResult>('/qbank/questions/import', data);
+      return client.post<BatchImportResult>('/questions/import', data);
     },
   };
 }
+

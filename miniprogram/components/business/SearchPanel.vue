@@ -8,18 +8,18 @@
       <view class="search-panel__content" @touchmove.stop.prevent>
         <!-- 搜索框 -->
         <view class="search-box">
-          <u-search
-            :modelValue="modelValue"
+          <wd-search
+            :model-value="modelValue"
             placeholder="搜索题库..."
             shape="round"
-            :showAction="false"
-            :clearabled="true"
-            bgColor="#f1f5f9"
+            :show-action="false"
+            :clearable="true"
+            bg-color="#f1f5f9"
             :focus="visible"
-            @update:modelValue="handleInput"
+            @update:model-value="handleInput"
             @search="handleConfirm"
             @clear="handleClear"
-          ></u-search>
+          ></wd-search>
         </view>
 
       <!-- 搜索结果 -->

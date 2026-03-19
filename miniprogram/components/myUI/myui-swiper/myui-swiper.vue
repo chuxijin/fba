@@ -1,6 +1,6 @@
 <template>
 	<view class="myui-swiper" :style="{ borderRadius: radius + 'rpx' }">
-		<up-swiper
+		<wd-swiper
 			:list="list"
 			:indicator="indicator"
 			:indicatorActiveColor="indicatorActiveColor"
@@ -30,14 +30,14 @@
 			<template #indicator>
 				<slot name="indicator"></slot>
 			</template>
-		</up-swiper>
+		</wd-swiper>
 	</view>
 </template>
 
 <script>
 /**
  * myui-swiper 轮播图
- * @description 基于 uview-plus 封装的轮播图组件，保持 FirstUI 风格
+ * @description 基于 wot-design-uni 封装的轮播图组件，保持 FirstUI 风格
  * @property {Array} list 轮播图数据
  * @property {Boolean} indicator 是否显示指示器 (默认 true)
  * @property {String} indicatorActiveColor 指示器激活颜色 (默认 '#FFFFFF')

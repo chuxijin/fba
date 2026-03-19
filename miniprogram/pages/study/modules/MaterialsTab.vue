@@ -1,39 +1,38 @@
 <template>
   <view class="materials-page">
     <!-- 顶部通知栏 -->
-    <u-notice-bar
+    <wd-notice-bar
       text="📚 小学至大学，全科资料随找随印"
       mode="link"
       direction="row"
       :speed="80"
-      icon="volume"
+      prefix="volume"
       color="#ff6b2c"
-      bgColor="#fff5f5"
-    ></u-notice-bar>
+      background="#fff5f5"
+    ></wd-notice-bar>
 
     <!-- 搜索框 -->
-    <u-search
+    <wd-search
       v-model="searchKeyword"
       placeholder="搜索资料"
       shape="round"
-      :clearabled="true"
-      bgColor="#ffffff"
-      :height="36"
+      :clearable="true"
+      hide-cancel
       @search="handleSearch"
       @clear="handleClear"
-    ></u-search>
+    ></wd-search>
 
     <!-- 分类网格 -->
-    <u-grid :col="4" :border="false">
-      <u-grid-item v-for="item in categoryItems" :key="item.id" @click="handleCategoryClick(item)">
+    <wd-grid :column="4" :border="false">
+      <wd-grid-item v-for="item in categoryItems" :key="item.id" @click="handleCategoryClick(item)">
         <view class="category-content">
           <view class="category-icon-wrapper" :style="{ backgroundColor: item.bgColor }">
             <text class="category-icon">{{ item.icon }}</text>
           </view>
           <text class="category-label">{{ item.label }}</text>
         </view>
-      </u-grid-item>
-    </u-grid>
+      </wd-grid-item>
+    </wd-grid>
 
     <!-- 热门资料 -->
     <view class="section-header">
@@ -164,17 +163,17 @@ function handleClear() {
   padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
 
   /* 通知栏底部间距 */
-  ::v-deep .u-notice-bar {
+  :deep(.wd-notice-bar) {
     margin-bottom: 24rpx;
   }
 
   /* 搜索组件底部间距 */
-  ::v-deep .u-search {
+  :deep(.wd-search) {
     margin-bottom: 24rpx;
   }
 
   /* Grid 组件底部间距 */
-  ::v-deep .u-grid {
+  :deep(.wd-grid) {
     margin-bottom: 24rpx;
   }
 }

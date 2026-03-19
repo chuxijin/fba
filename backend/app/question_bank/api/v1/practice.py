@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -9,7 +9,7 @@ from backend.app.question_bank.schema.question import (
     GetQuestionListItem,
     QuestionAnalysisItem,
 )
-from backend.app.question_bank.security import DependsCustomerAuth
+from backend.app.question_bank.security import DependsCurrentUser
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.practice_service import practice_service
 from backend.app.question_bank.service.question_service import question_service
@@ -26,7 +26,7 @@ router = APIRouter()
 async def get_practice_questions(
     db: CurrentSession,
     request: Request,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
     chapter_id: Annotated[int | None, Query(description='章节 ID')] = None,
     type: Annotated[str | None, Query(description='题型')] = None,
@@ -63,7 +63,7 @@ async def get_practice_questions(
 async def get_bank_questions(
     db: CurrentSession,
     bank_id: Annotated[int, Path(description='题库 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     type: Annotated[str | None, Query(description='题型')] = None,
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
@@ -81,7 +81,7 @@ async def get_bank_questions(
 async def get_chapter_questions(
     db: CurrentSession,
     chapter_id: Annotated[int, Path(description='章节 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     type: Annotated[str | None, Query(description='题型')] = None,
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
@@ -99,7 +99,7 @@ async def get_chapter_questions(
 async def get_question(
     db: CurrentSession,
     pk: Annotated[int, Path(description='题目 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetQuestionDetail]:
     """客户端刷题接口 - 获取题目详情用于练习（不含答案）"""
     await membership_service.verify_question_access(db=db, user_id=current_user.user_id, question_id=pk)
@@ -112,7 +112,7 @@ async def get_question(
 async def get_analysis(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='题目 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[QuestionAnalysisItem]:
     """
     客户端刷题接口 - 查看题目解析（含答案）
@@ -123,3 +123,4 @@ async def get_analysis(
 
     analysis = await practice_service.get_practice_analysis(db=db, question_id=pk)
     return response_base.success(data=analysis)
+

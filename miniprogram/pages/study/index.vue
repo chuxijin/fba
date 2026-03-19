@@ -1,15 +1,14 @@
 <template>
   <view class="study-page">
-    <!-- Tab 切换区域 - 使用 UView Plus Tabs -->
-    <u-tabs
-      :list="tabList"
-      :current="activeTabIndex"
+    <!-- Tab 切换区域 - 使用 Wot Design Uni Tabs -->
+    <wd-tabs
+      v-model="activeTabIndex"
       :scrollable="false"
-      lineColor="#22c55e"
-      :activeStyle="{ color: '#22c55e', fontWeight: 'bold' }"
-      :inactiveStyle="{ color: '#94a3b8' }"
+      line-color="#22c55e"
       @change="handleTabChange"
-    ></u-tabs>
+    >
+      <wd-tab v-for="(tab, index) in tabList" :key="index" :title="tab.name" />
+    </wd-tabs>
 
     <!-- 主要内容区域 - 支持左右滑动 -->
     <swiper
@@ -65,10 +64,10 @@ const { calculateSwiperHeight } = useSystemInfo()
 /**
  * Tab 切换
  *
- * :param item: tab 项数据
+ * :param options: wd-tabs change 事件参数
  */
-function handleTabChange(item: { index: number }) {
-  activeTabIndex.value = item.index
+function handleTabChange(options: { name: number }) {
+  activeTabIndex.value = options.name
 }
 
 /**

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -142,3 +142,4 @@ async def delete_bank(db: CurrentSessionTransaction, obj: DeleteBankParam) -> Re
     if count > 0:
         return response_base.success()
     return response_base.fail()
+

@@ -5,10 +5,10 @@
       <!-- 做题模式 -->
       <view class="section">
         <view class="section-title">学习设置</view>
-        <u-cell-group :border="false">
-          <u-cell
+        <wd-cell-group>
+          <wd-cell
             title="做题模式"
-            :isLink="true"
+            is-link
             @click="showPracticeModeSelector = true"
           >
             <template #icon>
@@ -17,34 +17,34 @@
             <template #value>
               <text class="setting-value">{{ practiceModeLabel }}</text>
             </template>
-          </u-cell>
-        </u-cell-group>
+          </wd-cell>
+        </wd-cell-group>
       </view>
 
       <!-- 其他设置（预留） -->
       <!-- <view class="section">
         <view class="section-title">通用设置</view>
-        <u-cell-group :border="false">
-          <u-cell title="主题模式" :isLink="true">
+        <wd-cell-group>
+          <wd-cell title="主题模式" is-link>
             <template #icon>
               <text class="setting-icon">🌙</text>
             </template>
             <template #value>
               <text class="setting-value">跟随系统</text>
             </template>
-          </u-cell>
-        </u-cell-group>
+          </wd-cell>
+        </wd-cell-group>
       </view> -->
     </view>
 
     <!-- 做题模式选择器 -->
-    <u-action-sheet
-      :show="showPracticeModeSelector"
+    <wd-action-sheet
+      v-model="showPracticeModeSelector"
       :actions="practiceModeActions"
       title="选择做题模式"
       @close="showPracticeModeSelector = false"
       @select="handlePracticeModeSelect"
-    ></u-action-sheet>
+    ></wd-action-sheet>
   </view>
 </template>
 

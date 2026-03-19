@@ -7,7 +7,7 @@
     "marked": "^17.0.1",
     "mp-html": "^2.5.1",
     "pinia": "^3.0.4",
-    "uview-plus": "^3.6.10"
+    "wot-design-uni": "^1.14.0"
   },
   "devDependencies": {
     "sass": "^1.63.2",

@@ -49,51 +49,49 @@
 
       <!-- 快捷功能 -->
       <view class="section action-section">
-        <u-grid :col="5" :border="false">
-          <u-grid-item @click="handleRandomPractice">
+        <wd-grid :column="5" :border="false">
+          <wd-grid-item @click="handleRandomPractice">
             <view class="action-content">
               <text class="action-icon">🎲</text>
               <text class="action-label">随机练习</text>
             </view>
-          </u-grid-item>
-          <u-grid-item @click="handleHistory">
+          </wd-grid-item>
+          <wd-grid-item @click="handleHistory">
             <view class="action-content">
               <text class="action-icon">📜</text>
               <text class="action-label">练习历史</text>
             </view>
-          </u-grid-item>
-          <u-grid-item @click="handleWrongQuestions">
+          </wd-grid-item>
+          <wd-grid-item @click="handleWrongQuestions">
             <view class="action-content">
               <text class="action-icon">❌</text>
               <text class="action-label">错题集</text>
             </view>
-          </u-grid-item>
-          <u-grid-item @click="handleFavorites">
+          </wd-grid-item>
+          <wd-grid-item @click="handleFavorites">
             <view class="action-content">
               <text class="action-icon">⭐</text>
               <text class="action-label">我的收藏</text>
             </view>
-          </u-grid-item>
-          <u-grid-item @click="handleNotes">
+          </wd-grid-item>
+          <wd-grid-item @click="handleNotes">
             <view class="action-content">
               <text class="action-icon">📝</text>
               <text class="action-label">我的笔记</text>
             </view>
-          </u-grid-item>
-        </u-grid>
+          </wd-grid-item>
+        </wd-grid>
       </view>
 
       <!-- 公告通知栏 -->
       <view v-if="announcements.length > 0" class="announcement-section">
-        <u-notice-bar
+        <wd-notice-bar
           :text="announcementText"
-          mode="link"
-          direction="row"
           :speed="80"
-          icon="volume"
+          prefix="volume"
           color="#92400e"
-          bgColor="#fffbeb"
-        ></u-notice-bar>
+          background-color="#fffbeb"
+        ></wd-notice-bar>
       </view>
 
       <!-- 章节列表 -->
@@ -109,23 +107,19 @@
         <!-- 多层级：显示 Tab + 子章节 -->
         <view v-else-if="isMultiLevel" class="chapter-multi-level">
           <!-- 🔥 添加 v-if 保护 + key 强制重渲染，避免 rect undefined 错误 -->
-          <u-tabs
+          <wd-tabs
             v-if="topLevelTabs.length > 0"
             :key="'tabs-' + topLevelTabs.length"
-            :list="topLevelTabs"
-            :current="currentTabIndex"
+            v-model="currentTabIndex"
             @change="handleTabChange"
-            lineColor="#3b82f6"
-            :activeStyle="{
-              color: '#3b82f6',
-              fontWeight: 'bold',
-              fontSize: '30rpx'
-            }"
-            :inactiveStyle="{
-              color: '#6b7280',
-              fontSize: '28rpx'
-            }"
-          ></u-tabs>
+            line-color="#3b82f6"
+          >
+            <wd-tab
+              v-for="(tab, index) in topLevelTabs"
+              :key="index"
+              :title="tab.name"
+            />
+          </wd-tabs>
 
           <view class="chapter-list">
             <view
@@ -162,18 +156,18 @@
               </view>
               <!-- 右侧图标：锁或箭头 -->
               <view class="chapter-arrow">
-                <up-icon
+                <wd-icon
                   v-if="!chapter.is_trial && !hasAccess"
-                  name="lock-fill"
-                  size="16"
+                  name="lock"
+                  size="16px"
                   color="#9ca3af"
-                ></up-icon>
-                <up-icon
+                ></wd-icon>
+                <wd-icon
                   v-else
                   name="arrow-right"
-                  size="16"
+                  size="16px"
                   color="#d1d5db"
-                ></up-icon>
+                ></wd-icon>
               </view>
             </view>
           </view>
@@ -215,18 +209,18 @@
             </view>
             <!-- 右侧图标：锁或箭头 -->
             <view class="chapter-arrow">
-              <up-icon
+              <wd-icon
                 v-if="!chapter.is_trial && !hasAccess"
-                name="lock-fill"
-                size="16"
+                name="lock"
+                size="16px"
                 color="#9ca3af"
-              ></up-icon>
-              <up-icon
+              ></wd-icon>
+              <wd-icon
                 v-else
                 name="arrow-right"
-                size="16"
+                size="16px"
                 color="#d1d5db"
-              ></up-icon>
+              ></wd-icon>
             </view>
           </view>
         </view>
@@ -287,7 +281,7 @@ const topLevelChapters = computed(() => {
 })
 
 /**
- * 转换为 u-tabs 组件需要的格式
+ * 转换为 wd-tabs 组件需要的格式
  */
 const topLevelTabs = computed(() => {
   return topLevelChapters.value.map(chapter => ({
@@ -411,10 +405,10 @@ function getChapterProgressPercent(chapterId: number): number {
 /**
  * 切换顶级章节 Tab
  *
- * :param item: uView Plus tabs 传递的对象 { index, name }
+ * :param detail: wot-design-uni tabs 传递的对象 { value, index }
  */
-function handleTabChange(item: { index: number; name: string }) {
-  currentTabIndex.value = item.index
+function handleTabChange(detail: { value: number; index: number }) {
+  currentTabIndex.value = detail.index
 }
 
 /**
@@ -756,11 +750,11 @@ onMounted(() => {
 .action-section {
   padding: 16rpx 0;
 
-  ::v-deep .u-grid {
+  :deep(.wd-grid) {
     background: transparent;
   }
 
-  ::v-deep .u-grid-item {
+  :deep(.wd-grid-item) {
     padding: 0;
   }
 }

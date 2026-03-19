@@ -99,6 +99,7 @@ class PracticeSession(Base, UserMixin):
 
     # ============ 关系 ============
     account: Mapped[UserAccount] = relationship(init=False, back_populates='practice_sessions', lazy='noload')
+    chapter: Mapped['QuestionChapter | None'] = relationship(init=False, lazy='noload')
     session_questions: Mapped[list[SessionQuestion]] = relationship(
         init=False,
         back_populates='session',

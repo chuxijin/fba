@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -11,7 +11,7 @@ from backend.app.question_bank.schema.chapter import (
     GetChapterTree,
     UpdateChapterParam,
 )
-from backend.app.question_bank.security import DependsCustomerAuth
+from backend.app.question_bank.security import DependsCurrentUser
 from backend.app.question_bank.service.chapter_service import chapter_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -27,7 +27,7 @@ router = APIRouter()
 async def get_chapter(
     db: CurrentSession,
     pk: Annotated[int, Path(description='章节 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetChapterDetail]:
     """👤 客户接口 - 需要登录且开通会员后查看章节详情"""
     await membership_service.verify_chapter_access(db=db, user_id=current_user.user_id, chapter_id=pk)
@@ -110,3 +110,4 @@ async def delete_chapter(db: CurrentSessionTransaction, obj: DeleteChapterParam)
     if count > 0:
         return response_base.success()
     return response_base.fail()
+

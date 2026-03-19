@@ -203,10 +203,10 @@ watch(isSheetVisible, (visible) => {
     return
   }
   if (visible) {
-    document.body.classList.add('u-body--locked')
+    document.body.classList.add('body--scroll-locked')
     return
   }
-  document.body.classList.remove('u-body--locked')
+  document.body.classList.remove('body--scroll-locked')
 })
 
 // 显示的题目列表（根据 viewMode 过滤）
@@ -979,7 +979,7 @@ onBeforeUnmount(() => {
     themeObserver = null
   }
   if (typeof document !== 'undefined') {
-    document.body.classList.remove('u-body--locked')
+    document.body.classList.remove('body--scroll-locked')
   }
 })
 

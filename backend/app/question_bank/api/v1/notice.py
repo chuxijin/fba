@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -119,3 +119,4 @@ async def delete_notice(
     """🔐 管理员接口 - 删除通知"""
     await notice_service.delete(db=db, pk=pk)
     return response_base.success()
+

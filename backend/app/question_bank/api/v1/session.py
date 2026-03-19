@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -15,7 +15,7 @@ from backend.app.question_bank.schema.practice import (
     SubmitPracticeSessionParam,
     SubmitPracticeSessionResult,
 )
-from backend.app.question_bank.security import DependsCustomerAuth
+from backend.app.question_bank.security import DependsCurrentUser
 from backend.app.question_bank.service.session_service import session_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
@@ -33,7 +33,7 @@ router = APIRouter()
 async def create_session(
     db: CurrentSessionTransaction,
     obj: CreatePracticeSessionParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """创建练习会话"""
     new_session = await session_service.create_session(db=db, user_id=current_user.user_id, obj=obj)
@@ -48,11 +48,11 @@ async def create_session(
 @router.get('/latest', summary='获取最新的进行中会话', name='qbank_practice_get_latest_session')
 async def get_latest_session(
     db: CurrentSession,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     session_type: Annotated[str | None, Query(description='会话类型')] = None,
     bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
     chapter_id: Annotated[int | None, Query(description='章节 ID')] = None,
-) -> ResponseSchemaModel[GetPracticeSessionDetail]:
+) -> ResponseModel:
     """获取用户最新的进行中会话（用于恢复未完成的练习）"""
     session = await session_service.get_latest_session(
         db=db, user_id=current_user.user_id, session_type=session_type,
@@ -72,7 +72,7 @@ async def get_latest_session(
 )
 async def get_sessions(
     db: CurrentSession,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     session_type: Annotated[str | None, Query(description='会话类型')] = None,
     status: Annotated[str | None, Query(description='状态')] = None,
 ) -> ResponseSchemaModel[PageData[GetPracticeSessionListItem]]:
@@ -88,13 +88,13 @@ async def get_sessions(
 async def get_session(
     db: CurrentSession,
     pk: Annotated[int, Path(description='会话 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """获取练习会话详情（含会话题目快照和答题记录）"""
-    session = await session_service.get_session_detail(
+    session_data = await session_service.get_session_detail(
         db=db, session_id=pk, user_id=current_user.user_id
     )
-    return response_base.success(data=GetPracticeSessionDetail.model_validate(session))
+    return response_base.success(data=session_data)
 
 
 @router.post('/{pk}/submit', summary='提交练习会话', name='qbank_practice_submit_session')
@@ -102,7 +102,7 @@ async def submit_session(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='会话 ID')],
     obj: SubmitPracticeSessionParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[SubmitPracticeSessionResult]:
     """提交练习会话（统一判题 + 统计 + 错题本）"""
     result = await session_service.submit_session(
@@ -115,7 +115,7 @@ async def submit_session(
 async def abandon_session(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='会话 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """放弃练习会话（用户中途退出练习时调用）"""
     count = await session_service.abandon_session(db=db, session_id=pk, user_id=current_user.user_id)
@@ -128,7 +128,7 @@ async def abandon_session(
 async def delete_session(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='会话 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """删除练习会话（删除会话及其关联的所有答题记录）"""
     count = await session_service.delete_session(db=db, session_id=pk, user_id=current_user.user_id)
@@ -145,7 +145,7 @@ async def upsert_records(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='会话 ID')],
     obj: BatchUpsertPracticeRecordsParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """批量创建/更新答题记录（基于 session_id + question_id 幂等）"""
     # 路径中的 session_id 覆盖 body 中的值，保证一致性
@@ -158,7 +158,7 @@ async def upsert_records(
 async def get_record(
     db: CurrentSession,
     pk: Annotated[int, Path(description='记录 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetPracticeRecordDetail]:
     """获取答题记录详情"""
     record = await session_service.get_record(db=db, record_id=pk, user_id=current_user.user_id)
@@ -173,7 +173,7 @@ async def get_record(
 )
 async def get_records(
     db: CurrentSession,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     session_id: Annotated[int | None, Query(description='会话 ID')] = None,
     question_id: Annotated[int | None, Query(description='题目 ID')] = None,
 ) -> ResponseSchemaModel[PageData[GetPracticeRecordListItem]]:
@@ -189,7 +189,7 @@ async def get_records(
 async def get_session_records(
     db: CurrentSession,
     pk: Annotated[int, Path(description='会话 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[list[GetPracticeRecordDetail]]:
     """获取会话的所有答题记录"""
     records = await session_service.get_session_records(db=db, session_id=pk, user_id=current_user.user_id)
@@ -203,7 +203,7 @@ async def get_session_records(
 async def get_session_report(
     db: CurrentSession,
     pk: Annotated[int, Path(description='会话 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[SessionReport]:
     """获取会话答题报告（含统计信息、答题卡数据、错题 ID 列表）"""
     report = await session_service.get_session_report(db=db, session_id=pk, user_id=current_user.user_id)
@@ -214,8 +214,9 @@ async def get_session_report(
 async def get_session_solution(
     db: CurrentSession,
     pk: Annotated[int, Path(description='会话 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """获取会话全部题目的答案与解析"""
     solutions = await session_service.get_session_solution(db=db, session_id=pk, user_id=current_user.user_id)
     return response_base.success(data=solutions)
+

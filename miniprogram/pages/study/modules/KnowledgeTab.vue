@@ -41,7 +41,7 @@
           <!-- 左侧工具组 -->
           <view class="toolbar-group">
             <view class="toolbar-item" @tap="handleToolClick('chat')">
-              <u-icon name="chat" :size="14" color="#334155"></u-icon>
+              <wd-icon name="chat" size="14px" color="#334155"></wd-icon>
               <text class="toolbar-label">对话</text>
               <text class="toolbar-arrow">∨</text>
             </view>
@@ -60,11 +60,11 @@
           <!-- 右侧工具组 -->
           <view class="toolbar-group">
             <view class="toolbar-item toolbar-item--circle" @tap="handleToolClick('voice')">
-              <u-icon name="mic" :size="14" color="#334155"></u-icon>
+              <wd-icon name="mic" size="14px" color="#334155"></wd-icon>
             </view>
 
             <view class="toolbar-item toolbar-item--circle" @tap="handleToolClick('add')">
-              <u-icon name="plus" :size="14" color="#334155"></u-icon>
+              <wd-icon name="plus" size="14px" color="#334155"></wd-icon>
             </view>
           </view>
         </view>

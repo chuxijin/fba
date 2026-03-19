@@ -84,7 +84,7 @@ class CRUDCategory(CRUDPlus[Category]):
 
         return await self.select_models_order(db, 'sort_order', 'asc', **filters)
 
-    async def get_select(
+    def get_select(
         self,
         app_code: str | None = None,
         type_: str | None = None,
@@ -100,17 +100,18 @@ class CRUDCategory(CRUDPlus[Category]):
         :param status: 状态
         :return:
         """
-        filters = {}
-        if app_code is not None:
-            filters['app_code'] = app_code
-        if type_ is not None:
-            filters['type'] = type_
-        if name is not None:
-            filters['name__like'] = f'%{name}%'
-        if status is not None:
-            filters['status'] = status
+        stmt = select(Category).order_by(Category.sort_order.asc())
 
-        return await self.select_order('sort_order', 'asc', **filters)
+        if app_code is not None:
+            stmt = stmt.where(Category.app_code == app_code)
+        if type_ is not None:
+            stmt = stmt.where(Category.type == type_)
+        if name is not None:
+            stmt = stmt.where(Category.name.like(f'%{name}%'))
+        if status is not None:
+            stmt = stmt.where(Category.status == status)
+
+        return stmt
 
     async def get_children(self, db: AsyncSession, parent_id: int) -> Sequence[Category]:
         """

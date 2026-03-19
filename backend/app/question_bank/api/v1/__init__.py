@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
@@ -39,3 +39,4 @@ router.include_router(note_router, prefix='/notes', tags=['笔记'])
 router.include_router(favorite_router, prefix='/favorites', tags=['收藏'])
 router.include_router(upload_router, prefix='/upload', tags=['文件上传'])
 router.include_router(parse_router, prefix='/parse', tags=['文档提取'])
+

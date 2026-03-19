@@ -2,30 +2,30 @@
   <view class="home-page">
     <!-- 轮播图 -->
     <view v-if="bannerImages.length > 0" class="banner-section">
-      <up-swiper
-        :list="bannerImages"
+      <wd-swiper
+        :list="swiperImages"
         :autoplay="true"
         :interval="3000"
         :circular="true"
         :indicator="true"
-        indicatorActiveColor="#22c55e"
+        indicator-active-color="#22c55e"
         radius="16"
         height="386rpx"
-        imgMode="aspectFill"
+        image-mode="aspectFill"
         @click="handleBannerClick"
-      ></up-swiper>
+      ></wd-swiper>
     </view>
 
     <!-- 通知栏 -->
     <view v-if="noticeText" class="notice-section">
-      <up-notice-bar
+      <wd-notice-bar
         :text="noticeText"
         mode="link"
         direction="row"
         :speed="80"
-        icon="volume"
+        prefix="volume"
         :color="noticeColor.color"
-        :bgColor="noticeColor.bgColor"
+        :background="noticeColor.bgColor"
         @click="handleNoticeBarClick"
       />
     </view>
@@ -128,6 +128,9 @@ const {
   noticeText,
   noticeColor,
 } = useContent()
+
+// wd-swiper 需要 [{value: url}] 格式
+const swiperImages = computed(() => bannerImages.value.map((url: string) => ({ value: url })))
 
 // 弹窗状态
 const showCheckInCalendar = ref(false)

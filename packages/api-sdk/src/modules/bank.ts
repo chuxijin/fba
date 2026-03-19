@@ -1,4 +1,4 @@
-﻿import type { ApiClient } from '../client/types';
+import type { ApiClient } from '../client/types';
 import type {
   BankListParams,
   CreateBankParam,
@@ -24,35 +24,36 @@ export interface BankModule {
 export function createBankModule(client: ApiClient): BankModule {
   return {
     getRecommend() {
-      return client.get<GetBankDetail[]>('/qbank/banks/recommend');
+      return client.get<GetBankDetail[]>('/banks/recommend');
     },
 
     getDetail(id) {
-      return client.get<GetBankDetailWithChapters>(`/qbank/banks/${id}`);
+      return client.get<GetBankDetailWithChapters>(`/banks/${id}`);
     },
 
     getList(params) {
-      return client.get<GetBankDetail[]>('/qbank/banks', {
+      return client.get<GetBankDetail[]>('/banks', {
         params: params as Record<string, unknown>,
       });
     },
 
     getAllQuestions(bankId, params) {
-      return client.get<GetBankQuestionsAllResult>(`/qbank/banks/${bankId}/questions/all`, {
+      return client.get<GetBankQuestionsAllResult>(`/banks/${bankId}/questions/all`, {
         params: params as Record<string, unknown>,
       });
     },
 
     create(data) {
-      return client.post('/qbank/banks', data);
+      return client.post('/banks', data);
     },
 
     update(id, data) {
-      return client.put(`/qbank/banks/${id}`, data);
+      return client.put(`/banks/${id}`, data);
     },
 
     remove(ids) {
-      return client.delete('/qbank/banks', { ids });
+      return client.delete('/banks', { ids });
     },
   };
 }
+

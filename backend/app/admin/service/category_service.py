@@ -71,7 +71,7 @@ class CategoryService:
         :param status: 状态
         :return:
         """
-        select = await category_dao.get_select(app_code=app_code, type_=type_, name=name, status=status)
+        select = category_dao.get_select(app_code=app_code, type_=type_, name=name, status=status)
         return await paging_data(db, select)
 
     @staticmethod

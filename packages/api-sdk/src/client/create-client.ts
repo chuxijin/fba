@@ -5,6 +5,7 @@ interface RawResponse<T = unknown> {
   code: number;
   msg: string;
   data: T;
+  encrypted?: boolean;
 }
 
 interface ParsedAdapterError {
@@ -52,11 +53,14 @@ export function createApiClient(options: SdkOptions): ApiClient {
     getToken,
     timeout = 15_000,
     onUnauthorized,
+    decryptData,
   } = options;
 
-  async function request<T>(config: RequestConfig): Promise<T> {
-    const fullUrl = `${baseURL.replace(/\/+$/, '')}${apiPrefix}${config.url}`;
+  function buildUrl(url: string): string {
+    return `${baseURL.replace(/\/+$/, '')}${apiPrefix}${url}`;
+  }
 
+  async function withHeaders(config: RequestConfig): Promise<RequestConfig> {
     const headers: Record<string, string> = { ...config.headers };
     if (getToken) {
       const token = await getToken();
@@ -65,14 +69,17 @@ export function createApiClient(options: SdkOptions): ApiClient {
       }
     }
 
-    let raw: RawResponse<T>;
+    return {
+      ...config,
+      url: buildUrl(config.url),
+      headers,
+      timeout: config.timeout ?? timeout,
+    };
+  }
+
+  async function rawRequest<T>(config: RequestConfig): Promise<T> {
     try {
-      raw = await adapter.request<RawResponse<T>>({
-        ...config,
-        url: fullUrl,
-        headers,
-        timeout: config.timeout ?? timeout,
-      });
+      return await adapter.request<T>(await withHeaders(config));
     } catch (err) {
       const parsedError = parseAdapterError(err);
 
@@ -85,8 +92,12 @@ export function createApiClient(options: SdkOptions): ApiClient {
         throw new ApiError(parsedError.raw.code, parsedError.raw.msg, parsedError.raw.data);
       }
 
-      throw new NetworkError('网络请求失败，请检查网络连接', err);
+      throw new NetworkError('Network request failed', err);
     }
+  }
+
+  async function request<T>(config: RequestConfig): Promise<T> {
+    const raw = await rawRequest<RawResponse<T>>(config);
 
     if (raw.code === 401) {
       onUnauthorized?.();
@@ -97,22 +108,27 @@ export function createApiClient(options: SdkOptions): ApiClient {
       throw new ApiError(raw.code, raw.msg, raw.data);
     }
 
+    // Decrypt if backend returned encrypted data
+    if (raw.encrypted && decryptData && typeof raw.data === 'string') {
+      return await decryptData(raw.data as string) as T;
+    }
+
     return raw.data;
   }
 
   return {
+    raw<T>(config: RequestConfig): Promise<T> {
+      return rawRequest<T>(config);
+    },
     get<T>(url: string, config?: Partial<RequestConfig>): Promise<T> {
       return request<T>({ method: 'GET', url, ...config });
     },
-
     post<T>(url: string, data?: unknown, config?: Partial<RequestConfig>): Promise<T> {
       return request<T>({ method: 'POST', url, data, ...config });
     },
-
     put<T>(url: string, data?: unknown, config?: Partial<RequestConfig>): Promise<T> {
       return request<T>({ method: 'PUT', url, data, ...config });
     },
-
     delete<T>(url: string, data?: unknown, config?: Partial<RequestConfig>): Promise<T> {
       return request<T>({ method: 'DELETE', url, data, ...config });
     },

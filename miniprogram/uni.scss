@@ -153,22 +153,7 @@ body[data-theme='dark'] {
   color: var(--color-text-primary);
 }
 
-/* ============ UView Plus 主题配置 ============ */
-/* 1. 先导入主题变量（必须最先导入） */
-@import 'uview-plus/theme.scss';
-
-/* 2. 覆盖主题变量（与项目设计系统保持一致） */
-$u-primary: #3b82f6;
-$u-success: #22c55e;
-$u-warning: #f59e0b;
-$u-error: #ef4444;
-$u-info: #3b82f6;
-
-/* 3. 引入 UView Plus SCSS mixins */
-@import 'uview-plus/libs/css/mixin.scss';
-
-/* 4. 引入 UView Plus 完整样式 */
-@import 'uview-plus/index.scss';
+/* ============ Wot Design Uni 主题配置（通过 CSS 变量） ============ */
 
 
 

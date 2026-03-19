@@ -1,22 +1,18 @@
 <template>
   <view>
-    <u-calendar
-      :show="show"
-      :default-date="defaultDate"
-      mode="single"
-      :max-date="maxDate"
-      :min-date="minDate"
-      :formatter="dateFormatter"
-      :show-lunar="false"
-      :show-title="true"
-      :show-subtitle="true"
-      :close-on-click-overlay="true"
-      :round="20"
-      @confirm="handleConfirm"
-      @close="handleClose"
-    >
-      <!-- 底部统计信息插槽 -->
-      <template #footer>
+    <wd-popup v-model="show" position="bottom" :close-on-click-modal="true" @close="handleClose" custom-style="border-radius: 20px 20px 0 0;">
+      <view class="calendar-wrapper">
+        <view class="calendar-header">
+          <text class="calendar-title">打卡日历</text>
+        </view>
+        <wd-calendar-view
+          v-model="selectedDate"
+          :min-date="minDateObj"
+          :max-date="maxDateObj"
+          :formatter="dateFormatter"
+          @change="handleConfirm"
+        />
+        <!-- 底部统计信息 -->
         <view class="calendar-stats">
           <view class="stat-item">
             <text class="stat-label">本月打卡</text>
@@ -27,8 +23,8 @@
             <text class="stat-value">{{ checkInStreak }}天</text>
           </view>
         </view>
-      </template>
-    </u-calendar>
+      </view>
+    </wd-popup>
   </view>
 </template>
 
@@ -54,9 +50,9 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 // 日期范围设置
-const defaultDate = ref<number[]>([])
-const minDate = ref('')
-const maxDate = ref('')
+const selectedDate = ref<Date>(new Date())
+const minDateObj = ref<Date>(new Date())
+const maxDateObj = ref<Date>(new Date())
 
 // 日历数据
 const calendarData = ref<homeApi.CheckInCalendarData | null>(null)
@@ -79,7 +75,7 @@ function dateFormatter(day: any) {
   if (dayData && dayData.is_checked_in) {
     // 已打卡日期
     day.bottomInfo = `✓ ${dayData.practice_count}题`
-    day.className = 'checked-day'
+    day.type = 'selected'
   } else {
     day.bottomInfo = ''
   }
@@ -118,14 +114,11 @@ async function loadCalendarData() {
     calendarData.value = data
 
     // 设置默认选中今天
-    const todayTimestamp = today.getTime()
-    defaultDate.value = [todayTimestamp]
+    selectedDate.value = today
 
     // 设置日期范围（当前月份）
-    const firstDay = new Date(year, month - 1, 1)
-    const lastDay = new Date(year, month, 0)
-    minDate.value = formatDateToString(firstDay)
-    maxDate.value = formatDateToString(lastDay)
+    minDateObj.value = new Date(year, month - 1, 1)
+    maxDateObj.value = new Date(year, month, 0)
 
     console.log('[打卡日历] 数据加载成功:', data)
   } catch (error) {
@@ -163,14 +156,31 @@ watch(() => props.show, (newVal) => {
 </script>
 
 <style scoped lang="scss">
-// 自定义打卡日期样式
-::v-deep .checked-day {
-  .u-calendar-month-day__text {
+/* 日历容器 */
+.calendar-wrapper {
+  background: #ffffff;
+  padding-bottom: 16rpx;
+}
+
+.calendar-header {
+  padding: 32rpx 32rpx 16rpx;
+  text-align: center;
+}
+
+.calendar-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* 自定义打卡日期样式 */
+:deep(.wd-calendar-view__day--selected) {
+  .wd-calendar-view__day-text {
     color: #22c55e !important;
     font-weight: 600;
   }
 
-  .u-calendar-month-day__bottom-info {
+  .wd-calendar-view__day-bottom {
     color: #22c55e !important;
     font-size: 20rpx;
   }

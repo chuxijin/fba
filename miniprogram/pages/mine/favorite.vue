@@ -1,14 +1,13 @@
 <template>
   <view class="favorite-page">
     <!-- 顶部 Tab：收藏夹筛选 -->
-    <u-tabs
-      :list="folderTabs"
-      :current="currentFolderIndex"
-      lineColor="#22c55e"
-      :activeStyle="{ color: '#22c55e', fontWeight: 'bold' }"
-      :inactiveStyle="{ color: '#94a3b8' }"
+    <wd-tabs
+      v-model="currentFolderIndex"
       @change="handleFolderChange"
-    />
+      line-color="#22c55e"
+    >
+      <wd-tab v-for="(tab, index) in folderTabs" :key="index" :title="tab.name" />
+    </wd-tabs>
 
     <!-- 主要内容区域 -->
     <scroll-view class="content-scroll" scroll-y>
@@ -26,8 +25,8 @@
 
       <!-- 题库列表 -->
       <view v-else class="bank-list">
-        <up-collapse>
-          <up-collapse-item
+        <wd-collapse>
+          <wd-collapse-item
             v-for="bank in groupedBanks"
             :key="bank.bank_id"
             :name="bank.bank_id"
@@ -60,8 +59,8 @@
                 </view>
               </view>
             </view>
-          </up-collapse-item>
-        </up-collapse>
+          </wd-collapse-item>
+        </wd-collapse>
       </view>
     </scroll-view>
   </view>
@@ -219,8 +218,8 @@ async function loadFavorites() {
 /**
  * 切换收藏夹 Tab
  */
-function handleFolderChange(item: { index: number }) {
-  currentFolderIndex.value = item.index
+function handleFolderChange(detail: { value: number; index: number }) {
+  currentFolderIndex.value = detail.index
   loadFavorites()
 }
 
@@ -308,7 +307,7 @@ function handleChapterClick(bank: BankGroup, chapter: ChapterInfo) {
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
 }
 
-/* uview-plus Collapse 样式定制 */
+/* wot-design-uni Collapse 样式定制 */
 .bank-collapse-item {
   margin-bottom: 24rpx;
   background: #ffffff;
@@ -316,21 +315,17 @@ function handleChapterClick(bank: BankGroup, chapter: ChapterInfo) {
   overflow: hidden;
   box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.06);
 
-  /* 覆盖 uview-plus 默认样式 */
-  :deep(.up-collapse-item) {
+  /* 覆盖 wot-design-uni 默认样式 */
+  :deep(.wd-collapse-item) {
     border: none !important;
   }
 
-  :deep(.up-collapse-item__title) {
+  :deep(.wd-collapse-item__header) {
     padding: 32rpx 24rpx !important;
     background: #ffffff !important;
   }
 
-  :deep(.up-collapse-item__title__text) {
-    flex: 1 !important;
-  }
-
-  :deep(.up-collapse-item__content) {
+  :deep(.wd-collapse-item__wrapper) {
     padding: 0 !important;
     border-top: 1rpx solid #f0f0f0;
   }

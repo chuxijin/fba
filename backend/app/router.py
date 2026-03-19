@@ -11,6 +11,7 @@ from backend.app.job.router import v1 as job_v1
 from backend.app.question_bank.api.router import v1 as question_bank_v1
 from backend.app.gongkao.api.router import v1 as gongkao_v1
 from backend.app.jia.api.router import v1 as jia_v1
+from backend.app.mall.api.router import v1 as mall_v1
 
 router = APIRouter()
 
@@ -25,3 +26,4 @@ router.include_router(social_v1)
 router.include_router(question_bank_v1)
 router.include_router(gongkao_v1)
 router.include_router(jia_v1)
+router.include_router(mall_v1)

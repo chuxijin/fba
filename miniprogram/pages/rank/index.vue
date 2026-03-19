@@ -1,16 +1,14 @@
 <template>
   <view class="rank-page">
-    <!-- Tab 切换区域 - 使用 UView Plus Tabs -->
-    <u-tabs
-      :list="tabList"
-      :current="activeTabIndex"
-      :scrollable="false"
-      lineColor="#ffffff"
-      :activeStyle="{ color: '#ffffff', fontWeight: 'bold', fontSize: '36rpx' }"
-      :inactiveStyle="{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '32rpx' }"
-      bgColor="transparent"
-      @change="handleTabChange"
-    ></u-tabs>
+    <!-- Tab 切换区域 -->
+    <wd-tabs
+      v-model="activeTabIndex"
+      :swipeable="true"
+      line-color="#ffffff"
+      @change="handleTabWdChange"
+    >
+      <wd-tab v-for="(tab, index) in tabs" :key="tab.type" :title="tab.label" :name="index"></wd-tab>
+    </wd-tabs>
 
     <!-- 主要内容区域 - 支持左右滑动 -->
     <swiper
@@ -48,9 +46,6 @@ const tabs: Tab[] = [
   { type: 'streak_days', label: '坚持天数' }
 ]
 
-// UView Tabs 需要的数据格式
-const tabList = computed(() => tabs.map(tab => ({ name: tab.label })))
-
 // 当前选中的 tab 索引
 const activeTabIndex = ref(0)
 const loading = ref(false)
@@ -65,10 +60,10 @@ const { calculateSwiperHeight } = useSystemInfo()
 const currentTab = computed(() => tabs[activeTabIndex.value].type)
 
 /**
- * Tab 切换
+ * Tab 切换（wd-tabs change 事件）
  */
-function handleTabChange(item: { index: number }) {
-  activeTabIndex.value = item.index
+function handleTabWdChange({ name }: { name: number }) {
+  activeTabIndex.value = name
 }
 
 /**

@@ -1,19 +1,11 @@
 <template>
-  <!-- 使用 UView Plus Modal 组件 -->
-  <up-modal
-    :show="visible"
-    :title="title"
-    :content="message"
-    :confirm-text="confirmText"
-    :cancel-text="cancelText"
-    :zoom="true"
-    :close-on-click-overlay="false"
-    @confirm="handleConfirm"
-    @cancel="handleCancel"
-  ></up-modal>
+  <wd-message-box selector="confirm-dialog-box"></wd-message-box>
 </template>
 
 <script setup lang="ts">
+import { watch } from 'vue'
+import { useMessage } from 'wot-design-uni'
+
 interface ConfirmDialogProps {
   visible: boolean
   title?: string
@@ -33,11 +25,26 @@ const emit = defineEmits<{
   (event: 'cancel'): void
 }>()
 
-function handleConfirm() {
-  emit('confirm')
-}
+const messageBox = useMessage('confirm-dialog-box')
 
-function handleCancel() {
-  emit('cancel')
-}
+watch(
+  () => props.visible,
+  (val) => {
+    if (val) {
+      messageBox
+        .confirm({
+          title: props.title,
+          msg: props.message,
+          confirmButtonText: props.confirmText,
+          cancelButtonText: props.cancelText
+        })
+        .then(() => {
+          emit('confirm')
+        })
+        .catch(() => {
+          emit('cancel')
+        })
+    }
+  }
+)
 </script>

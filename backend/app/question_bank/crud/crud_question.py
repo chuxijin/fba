@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.dialects import postgresql
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import (
@@ -987,35 +988,44 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                 ),
             )
 
-        # 原子错误选项统计：使用 JSON 函数就地更新避免读-改-写
-        if obj.wrong_option is not None:
-            option_key = obj.wrong_option
+        if obj.option_select is not None and len(obj.option_select) > 0:
             if DataBaseType.postgresql == settings.DATABASE_TYPE:
-                # PG: jsonb_set(COALESCE(col,'{}'), '{key}', (COALESCE((col->key)::int, 0) + 1)::text::jsonb)
-                values['wrong_option_stats'] = sa.func.jsonb_set(
-                    sa.func.coalesce(QuestionStatistics.wrong_option_stats, sa.text("'{}'::jsonb")),
-                    sa.text(f"'{{{option_key}}}'"),
-                    sa.type_coerce(
-                        sa.cast(
-                            sa.func.coalesce(
-                                sa.cast(QuestionStatistics.wrong_option_stats[option_key].as_string(), sa.Integer),
-                                0,
-                            ) + 1,
-                            sa.Text,
-                        ),
-                        sa.JSON,
-                    ),
+                current_stats_expr = QuestionStatistics.option_select_stats
+                safe_base = sa.case(
+                    (sa.func.jsonb_typeof(current_stats_expr) == 'object', current_stats_expr),
+                    else_=sa.cast(sa.literal('{}'), postgresql.JSONB),
                 )
+                base_val = sa.func.coalesce(safe_base, sa.cast(sa.literal('{}'), postgresql.JSONB))
+
+                for option_key in obj.option_select:
+                    current_count = sa.cast(
+                        sa.func.coalesce(base_val.op('->>')(option_key), "0"),
+                        sa.Integer,
+                    )
+                    new_count = current_count + 1
+                    path = sa.cast(postgresql.array([sa.literal(option_key)]), postgresql.ARRAY(sa.String))
+                    new_value = sa.func.to_jsonb(new_count)
+
+                    base_val = sa.func.jsonb_set(base_val, path, new_value, True)
+
+                values['option_select_stats'] = base_val
             else:
-                # MySQL: JSON_SET(COALESCE(col,'{}'), '$.key', COALESCE(JSON_EXTRACT(col,'$.key'),0)+1)
-                values['wrong_option_stats'] = sa.func.json_set(
-                    sa.func.coalesce(QuestionStatistics.wrong_option_stats, sa.text("'{}'")),
-                    sa.text(f"'$.{option_key}'"),
-                    sa.func.coalesce(
-                        sa.func.json_extract(QuestionStatistics.wrong_option_stats, sa.text(f"'$.{option_key}'")),
+                # MySQL: JSON_SET
+                current_stats_expr = QuestionStatistics.option_select_stats
+                base_val = sa.func.coalesce(current_stats_expr, sa.text("'{}'"))
+                
+                for option_key in obj.option_select:
+                    current_count = sa.func.coalesce(
+                        sa.func.json_extract(base_val, sa.text(f"'$.{option_key}'")),
                         0,
-                    ) + 1,
-                )
+                    )
+                    new_count = current_count + 1
+                    base_val = sa.func.json_set(
+                        base_val,
+                        sa.text(f"'$.{option_key}'"),
+                        new_count
+                    )
+                values['option_select_stats'] = base_val
 
         if values:
             stmt = (

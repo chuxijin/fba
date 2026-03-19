@@ -1,7 +1,7 @@
-﻿// 鈹€鈹€ Common 鈹€鈹€
+﻿// Common
 export type { DeleteParam, PageData, PaginationParams, ResponseModel } from './common';
 
-// 鈹€鈹€ Bank 鈹€鈹€
+// Bank
 export type {
   BankListParams,
   BankSchemaBase,
@@ -16,7 +16,7 @@ export type {
   UpdateBankParam,
 } from './bank';
 
-// 鈹€鈹€ Material 鈹€鈹€
+// Material
 export type {
   ChapterBankBrief,
   CreateMaterialParam,
@@ -29,7 +29,7 @@ export type {
   UpdateMaterialParam,
 } from './material';
 
-// 鈹€鈹€ Question 鈹€鈹€
+// Question
 export type {
   AnalysisStatus,
   BatchImportParam,
@@ -57,7 +57,7 @@ export type {
   UpsertQuestionPlacementItem,
 } from './question';
 
-// 鈹€鈹€ Practice 鈹€鈹€
+// Practice
 export type {
   AnswerCardStatus,
   BatchUpsertPracticeRecordsParam,
@@ -66,6 +66,8 @@ export type {
   GetPracticeRecordListItem,
   GetPracticeSessionDetail,
   GetPracticeSessionListItem,
+  AnswerCardItem,
+  SessionReport,
   PracticeQuestionParams,
   PracticeSessionQueryParam,
   SessionQuestionItem,
@@ -75,4 +77,62 @@ export type {
   SubmitPracticeSessionResult,
   UpsertPracticeRecordItem,
 } from './practice';
+
+// Gongkao
+export type {
+  GongkaoEntity,
+  GongkaoListParams,
+  GkContentParams,
+  GkContentResult,
+  GkCiyuParams,
+  GkCiyuResult,
+  GkGangweiParams,
+  GkGangweiResult,
+  GkGuanmeiParams,
+  GkGuanmeiResult,
+  GkMaterialParams,
+  GkMaterialResult,
+  GkQuestionAnswerResult,
+  GkQuestionOptionResult,
+  GkQuestionParams,
+  GkQuestionResult,
+  GkShipingParams,
+  GkShipingResult,
+  GkShizhenParams,
+  GkShizhenResult,
+} from './gongkao';
+
+// Admin
+export type {
+  AdminCaptchaResult,
+  AdminCurrentUser,
+  AdminEntity,
+  AdminListParams,
+  AdminLoginParams,
+  AdminLoginToken,
+  AdminRefreshTokenResult,
+  AdminRoleExpiry,
+  AdminSwaggerToken,
+  AdminUserInfo,
+  CategoryListParams,
+  CategorySchemaBase,
+  CreateCategoryParam,
+  DeleteCategoryParam,
+  GetCategoryDetail,
+  GetCategoryTree,
+  UpdateCategoryParam,
+} from './admin';
+
+// Qbank extra
+export type {
+  QbankCheckInParam,
+  QbankEntity,
+  QbankTestLoginParam,
+  QbankUserAccountDetail,
+  QbankWxLoginParam,
+  QbankWxLoginResponse,
+} from './qbank';
+
+
+
 

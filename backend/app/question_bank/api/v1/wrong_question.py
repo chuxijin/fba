@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -11,7 +11,7 @@ from backend.app.question_bank.schema.wrong_question import (
     WrongQuestionQueryParam,
     WrongQuestionStatistics,
 )
-from backend.app.question_bank.security import DependsCustomerAuth
+from backend.app.question_bank.security import DependsCurrentUser
 from backend.app.question_bank.service.wrong_question_service import wrong_question_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
@@ -27,7 +27,7 @@ router = APIRouter()
 
 @router.get('/statistics', summary='获取错题本统计', name='qbank_wrong_question_statistics')
 async def get_statistics(
-    db: CurrentSession, current_user: AuthUser = DependsCustomerAuth
+    db: CurrentSession, current_user: AuthUser = DependsCurrentUser
 ) -> ResponseSchemaModel[WrongQuestionStatistics]:
     """获取用户的错题本统计数据"""
     stats = await wrong_question_service.get_statistics(db=db, user_id=current_user.user_id)
@@ -41,7 +41,7 @@ async def get_statistics(
 async def get_wrong_question(
     db: CurrentSession,
     pk: Annotated[int, Path(description='错题 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetWrongQuestionDetail]:
     """获取错题详情"""
     wrong = await wrong_question_service.get_wrong_question(db=db, wrong_id=pk, user_id=current_user.user_id)
@@ -55,7 +55,7 @@ async def get_wrong_question(
 async def get_wrong_questions(
     db: CurrentSession,
     query: Annotated[WrongQuestionQueryParam, Depends()],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[PageData[GetWrongQuestionListItem]]:
     """获取用户的错题本列表"""
     stmt = await wrong_question_dao.get_select(
@@ -78,7 +78,7 @@ async def set_pin(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='错题 ID')],
     is_pinned: Annotated[bool, Body(embed=True, description='是否置顶')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """设置错题置顶或取消置顶"""
     count = await wrong_question_service.set_pin(db=db, wrong_id=pk, user_id=current_user.user_id, is_pinned=is_pinned)
@@ -91,7 +91,7 @@ async def set_pin(
 async def delete_wrong_questions(
     db: CurrentSessionTransaction,
     wrong_ids: Annotated[list[int], Body(description='错题 ID 列表（支持单个或批量）')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """从错题本移除题目"""
     count = await wrong_question_service.delete_wrong_questions(
@@ -104,10 +104,11 @@ async def delete_wrong_questions(
 
 @router.post('/clear-mastered', summary='清空已掌握的错题', name='qbank_wrong_question_clear_mastered')
 async def clear_mastered(
-    db: CurrentSessionTransaction, current_user: AuthUser = DependsCustomerAuth
+    db: CurrentSessionTransaction, current_user: AuthUser = DependsCurrentUser
 ) -> ResponseModel:
     """清空用户已掌握的错题"""
     count = await wrong_question_service.clear_mastered(db=db, user_id=current_user.user_id)
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg=f'成功清空 {count} 条已掌握错题'))
     return response_base.success(res=CustomResponse(code=200, msg='没有已掌握的错题'))
+

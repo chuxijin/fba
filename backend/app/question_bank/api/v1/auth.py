@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
@@ -9,7 +9,7 @@ from backend.app.question_bank.schema.auth import (
     WxLoginParam,
     WxLoginResponse,
 )
-from backend.app.question_bank.security import DependsCustomerAuth
+from backend.app.question_bank.security import DependsCurrentUser
 from backend.app.question_bank.service.auth_service import auth_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.auth_strategy import AuthUser
@@ -78,7 +78,7 @@ async def test_login(db: CurrentSessionTransaction, obj: TestLoginParam) -> Resp
 
 @router.get('/me', summary='获取当前用户信息', name='qbank_get_current_user')
 async def get_current_user(
-    db: CurrentSessionTransaction, current_user: AuthUser = DependsCustomerAuth
+    db: CurrentSessionTransaction, current_user: AuthUser = DependsCurrentUser
 ) -> ResponseSchemaModel[GetUserAccountDetail]:
     """
     获取当前用户信息
@@ -102,3 +102,4 @@ async def get_current_user(
         status=user.user.status,
     )
     return response_base.success(data=user_info)
+

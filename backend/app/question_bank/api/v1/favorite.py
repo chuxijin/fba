@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 收藏接口
@@ -20,7 +20,7 @@ from backend.app.question_bank.schema.favorite import (
     GetQuestionFavoriteListItem,
     UpdateQuestionFavoriteParam,
 )
-from backend.app.question_bank.security import DependsCustomerAuth
+from backend.app.question_bank.security import DependsCurrentUser
 from backend.app.question_bank.service.favorite_service import favorite_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
@@ -40,7 +40,7 @@ router = APIRouter()
 async def create_favorite(
     db: CurrentSessionTransaction,
     obj: CreateQuestionFavoriteParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetQuestionFavoriteDetail]:
     """收藏题目"""
     new_favorite = await favorite_service.create_favorite(db=db, user_id=current_user.user_id, obj=obj)
@@ -50,7 +50,7 @@ async def create_favorite(
 @router.get('', summary='获取收藏列表', name='qbank_favorite_get_list', dependencies=[DependsPagination])
 async def get_favorites(
     db: CurrentSession,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     folder_name: Annotated[str | None, Query(description='收藏夹名称')] = None,
     is_pinned: Annotated[bool | None, Query(description='是否置顶')] = None,
 ) -> ResponseSchemaModel[PageData[GetQuestionFavoriteListItem]]:
@@ -69,7 +69,7 @@ async def get_favorites(
 async def delete_favorite_by_question(
     db: CurrentSessionTransaction,
     question_id: Annotated[int, Path(description='题目 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """通过题目ID直接取消收藏"""
     count = await favorite_service.delete_favorite_by_question(
@@ -83,7 +83,7 @@ async def delete_favorite_by_question(
 
 @router.get('/folders', summary='获取收藏夹列表', name='qbank_favorite_get_folders')
 async def get_folders(
-    db: CurrentSession, current_user: AuthUser = DependsCustomerAuth
+    db: CurrentSession, current_user: AuthUser = DependsCurrentUser
 ) -> ResponseSchemaModel[list[str]]:
     """获取用户的所有收藏夹名称"""
     folders = await question_favorite_dao.get_user_folders(db=db, user_id=current_user.user_id)
@@ -94,7 +94,7 @@ async def get_folders(
 async def clear_folder(
     db: CurrentSessionTransaction,
     obj: ClearFolderParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """清空指定收藏夹"""
     count = await question_favorite_dao.clear_folder(db=db, user_id=current_user.user_id, folder_name=obj.folder_name)
@@ -111,7 +111,7 @@ async def clear_folder(
 async def check_favorited(
     db: CurrentSession,
     question_ids: Annotated[list[int], Body(description='题目 ID 列表（可以是单个或多个）')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[dict[int, bool]]:
     """批量检查题目的收藏状态"""
     status_map = await favorite_service.check_favorited(
@@ -123,7 +123,7 @@ async def check_favorited(
 
 @router.get('/statistics', summary='获取收藏统计', name='qbank_favorite_statistics')
 async def get_statistics(
-    db: CurrentSession, current_user: AuthUser = DependsCustomerAuth
+    db: CurrentSession, current_user: AuthUser = DependsCurrentUser
 ) -> ResponseSchemaModel[FavoriteStatistics]:
     """获取用户的收藏统计数据"""
     stats = await favorite_service.get_statistics(db=db, user_id=current_user.user_id)
@@ -138,7 +138,7 @@ async def get_statistics(
 async def get_favorite(
     db: CurrentSession,
     pk: Annotated[int, Path(description='收藏 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetQuestionFavoriteDetail]:
     """获取收藏详情"""
     favorite = await favorite_service.get_favorite(db=db, favorite_id=pk, user_id=current_user.user_id)
@@ -151,7 +151,7 @@ async def update_favorite(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='收藏 ID')],
     obj: UpdateQuestionFavoriteParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """更新收藏信息"""
     count = await favorite_service.update_favorite(
@@ -173,7 +173,7 @@ async def set_pin(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='收藏 ID')],
     is_pinned: Annotated[bool, Body(embed=True, description='是否置顶')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """设置收藏置顶或取消置顶"""
     count = await favorite_service.set_pin(
@@ -189,7 +189,7 @@ async def set_pin(
 async def delete_favorites(
     db: CurrentSessionTransaction,
     favorite_ids: Annotated[list[int], Body(description='收藏 ID 列表（支持单个或批量）')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """取消收藏题目（支持单个和批量）"""
     count = await favorite_service.delete_favorites(
@@ -199,3 +199,4 @@ async def delete_favorites(
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg=f'成功取消 {count} 个收藏'))
     return response_base.fail(res=CustomResponse(code=400, msg='取消收藏失败'))
+

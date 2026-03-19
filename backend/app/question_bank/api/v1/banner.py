@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -128,3 +128,4 @@ async def delete_banner(
     """🔐 管理员接口 - 删除轮播图"""
     await banner_service.delete(db=db, pk=pk)
     return response_base.success()
+

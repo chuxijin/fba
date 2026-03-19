@@ -9,6 +9,7 @@ from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import PracticeRecord, PracticeSession, SessionQuestion
+from backend.app.question_bank.model.question import QuestionPlacement
 
 
 class CRUDPracticeSession(CRUDPlus[PracticeSession]):
@@ -36,7 +37,9 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
             select(PracticeSession)
             .where(PracticeSession.id == session_id)
             .options(
-                selectinload(PracticeSession.session_questions),
+                selectinload(PracticeSession.session_questions)
+                .selectinload(SessionQuestion.placement)
+                .selectinload(QuestionPlacement.chapter),
                 selectinload(PracticeSession.records),
             )
         )

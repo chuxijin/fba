@@ -16,6 +16,8 @@ ContentStatusEnum = Literal[0, 10, 20]
 ReviewStatusEnum = Literal[0, 10, 20]
 AnalysisStatusEnum = Literal[0, 10, 20]
 
+KnowledgePointValue = str | int | dict[str, Any]
+
 
 # ===== 题目核心 =====
 
@@ -27,7 +29,7 @@ class QuestionCoreBase(SchemaBase):
     stem: str = Field(min_length=1, description='题干（富文本）')
     difficulty: DifficultyEnum = Field(default='medium', description='难度')
     default_score: Decimal = Field(default=Decimal('1.0'), ge=Decimal('0'), description='默认分值')
-    knowledge_point: list[str] | None = Field(None, description='考点标签')
+    knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签')
     content_status: ContentStatusEnum = Field(default=10, description='内容状态')
 
 
@@ -146,7 +148,7 @@ class GetQuestionStatisticsDetail(SchemaBase):
     correct_count: int = Field(ge=0, description='答对次数')
     correct_rate: Decimal = Field(ge=Decimal('0'), le=Decimal('100'), description='正确率（%）')
     avg_answer_time: Decimal | None = Field(None, ge=Decimal('0'), description='平均答题时间（秒）')
-    wrong_option_stats: dict[str, Any] | None = Field(None, description='错误选项统计')
+    option_select_stats: dict[str, Any] | None = Field(None, description='选项选择统计')
     collect_count: int = Field(ge=0, description='收藏次数')
     note_count: int = Field(ge=0, description='笔记次数')
     report_count: int = Field(default=0, ge=0, description='举报次数')
@@ -159,7 +161,7 @@ class UpdateQuestionStatisticsParam(SchemaBase):
     attempt_count: int | None = Field(None, ge=0, description='答题次数（增量）')
     correct_count: int | None = Field(None, ge=0, description='答对次数（增量）')
     answer_time: Decimal | None = Field(None, ge=Decimal('0'), description='本次答题时间（秒）')
-    wrong_option: str | None = Field(None, description='错误选项')
+    option_select: list[str] | None = Field(None, description='被选选项')
     collect_delta: int | None = Field(None, description='收藏数变化')
     note_delta: int | None = Field(None, description='笔记数变化')
 
@@ -236,13 +238,28 @@ class GetQuestionListItem(SchemaBase):
     stem: str = Field(description='题干')
     difficulty: DifficultyEnum = Field(description='难度')
     default_score: Decimal = Field(ge=Decimal('0'), description='默认分值')
-    knowledge_point: list[str] | None = Field(None, description='考点标签')
+    knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签')
     content_status: ContentStatusEnum = Field(description='内容状态')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
     placement: QuestionPlacementItem | None = Field(None, description='上下文挂载')
     option_count: int = Field(default=0, ge=0, description='选项数量')
     analysis_count: int = Field(default=0, ge=0, description='解析数量')
+
+
+class GetQuestionDynamicCollectionItem(SchemaBase):
+    """按筛选条件动态聚合得到的题目合集项"""
+
+    id: int = Field(description='题库 ID')
+    cat_id: int = Field(description='分类 ID')
+    name: str = Field(description='题库名称')
+    code: str = Field(description='题库编码')
+    desc: str | None = Field(None, description='题库描述')
+    bank_type: int = Field(description='内容类型')
+    difficulty: Decimal | None = Field(None, description='难度')
+    parent_id: int | None = Field(None, description='父级题库 ID')
+    q_count_cache: int = Field(default=0, description='题库缓存题量')
+    matched_q_count: int = Field(default=0, description='当前筛选命中的题量')
 
 
 class GetQuestionDetail(SchemaBase):
@@ -255,7 +272,7 @@ class GetQuestionDetail(SchemaBase):
     stem: str = Field(description='题干')
     difficulty: DifficultyEnum = Field(description='难度')
     default_score: Decimal = Field(ge=Decimal('0'), description='默认分值')
-    knowledge_point: list[str] | None = Field(None, description='考点标签')
+    knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签')
     content_status: ContentStatusEnum = Field(description='内容状态')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
@@ -276,7 +293,7 @@ class GetQuestionWithAnswer(SchemaBase):
     stem: str = Field(description='题干')
     difficulty: DifficultyEnum = Field(description='难度')
     default_score: Decimal = Field(ge=Decimal('0'), description='默认分值')
-    knowledge_point: list[str] | None = Field(None, description='考点标签')
+    knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签')
     content_status: ContentStatusEnum = Field(description='内容状态')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')

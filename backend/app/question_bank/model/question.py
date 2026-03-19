@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
@@ -139,7 +139,7 @@ class Question(Base, UserMixin):
         default=Decimal('1.0'),
         comment='默认分值',
     )
-    knowledge_point: Mapped[list[str] | None] = mapped_column(
+    knowledge_point: Mapped[list[str | int | dict[str, Any]] | None] = mapped_column(
         CompatibleJSONB,
         default=None,
         comment='考点标签',
@@ -343,10 +343,10 @@ class QuestionStatistics(Base):
         default=None,
         comment='平均答题时间（秒）',
     )
-    wrong_option_stats: Mapped[dict | None] = mapped_column(
+    option_select_stats: Mapped[dict | None] = mapped_column(
         CompatibleJSONB,
         default=None,
-        comment='错误选项统计',
+        comment='选中选项统计',
     )
     collect_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='收藏次数')
     note_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='笔记次数')

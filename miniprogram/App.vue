@@ -160,7 +160,7 @@ export default {
 
 	/*每个页面公共css */
 
-	.u-body--locked {
+	.body--scroll-locked {
 		overflow: hidden;
 		height: 100vh;
 		position: fixed;

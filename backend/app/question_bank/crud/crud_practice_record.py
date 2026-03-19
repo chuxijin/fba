@@ -111,11 +111,20 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         if not records:
             return
 
-        # 冲突时需要更新的列（排除构成唯一键的 session_id / question_id 和不可变的 user_id）
+        # 为所有记录添加时间戳
+        now = datetime.now()
+        for record in records:
+            if 'created_time' not in record:
+                record['created_time'] = now
+            if 'updated_time' not in record:
+                record['updated_time'] = now
+
+        # 冲突时需要更新的列（排除构成唯一键的 session_id / question_id 和不可变的 user_id / created_time）
         update_cols = [
             'placement_id', 'seq_no', 'user_answer',
             'is_correct', 'score', 'full_score',
             'answer_time', 'judged_at', 'judge_version',
+            'updated_time',
         ]
 
         if DataBaseType.postgresql == settings.DATABASE_TYPE:

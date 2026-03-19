@@ -2,6 +2,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.crud.crud_category import category_dao
 from backend.app.gongkao.crud.crud_content import content_dao
 from backend.app.gongkao.model import GkContent
 from backend.app.gongkao.schema.content import (
@@ -54,7 +55,12 @@ class ContentService:
         :param params: 查询参数
         :return:
         """
-        content_select = await content_dao.get_select(params)
+        query_params = params.model_copy(deep=True)
+        if params.category_id is not None:
+            category_ids = await category_dao.get_all_children_ids(db, params.category_id)
+            query_params.category_ids = category_ids or [params.category_id]
+
+        content_select = await content_dao.get_select(query_params)
         return await paging_data(db, content_select)
 
     @staticmethod

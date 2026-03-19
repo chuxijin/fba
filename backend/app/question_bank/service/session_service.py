@@ -6,7 +6,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import cast, or_, select
+from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -44,6 +45,54 @@ log = logging.getLogger(__name__)
 class SessionService:
     """练习会话服务类（唯一刷题写入入口）"""
 
+    @staticmethod
+    def _parse_kp_id(value: Any) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value if value > 0 else None
+        if isinstance(value, str):
+            text = value.strip()
+            if text.isdigit():
+                parsed = int(text)
+                return parsed if parsed > 0 else None
+            return None
+        return None
+
+    @staticmethod
+    def _parse_kp_name(value: Any) -> str | None:
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        return None
+
+    @classmethod
+    def _normalize_knowledge_point_terms(cls, items: list[Any] | None) -> tuple[list[int], list[str]]:
+        kp_ids: set[int] = set()
+        kp_names: set[str] = set()
+
+        for item in items or []:
+            if isinstance(item, dict):
+                obj_id = cls._parse_kp_id(item.get('id') or item.get('category_id') or item.get('cat_id'))
+                if obj_id is not None:
+                    kp_ids.add(obj_id)
+
+                obj_name = cls._parse_kp_name(item.get('name') or item.get('label') or item.get('title'))
+                if obj_name:
+                    kp_names.add(obj_name)
+                continue
+
+            scalar_id = cls._parse_kp_id(item)
+            if scalar_id is not None:
+                kp_ids.add(scalar_id)
+                continue
+
+            scalar_name = cls._parse_kp_name(item)
+            if scalar_name:
+                kp_names.add(scalar_name)
+
+        return sorted(kp_ids), sorted(kp_names)
+
     # ------------------------------------------------------------------
     #  Session 生命周期
     # ------------------------------------------------------------------
@@ -67,24 +116,41 @@ class SessionService:
         shuffle_flag = obj.shuffle
 
         # ---- 1. 确定挂载列表 ----
-        if obj.placement_ids:
-            # 前端直接指定挂载 ID
-            stmt = (
-                select(QuestionPlacement)
-                .where(
-                    QuestionPlacement.id.in_(obj.placement_ids),
-                    QuestionPlacement.is_active.is_(True),
+        if obj.knowledge_point:
+            # ???????? name / id / {id,name} ????
+            kp_ids, kp_names = SessionService._normalize_knowledge_point_terms(obj.knowledge_point)
+            if not kp_ids and not kp_names:
+                placements = []
+            else:
+                stmt = (
+                    select(QuestionPlacement)
+                    .where(QuestionPlacement.is_active.is_(True))
+                    .join(Question, Question.id == QuestionPlacement.question_id)
+                    .where(Question.content_status == 10)
+                    .options(
+                        joinedload(QuestionPlacement.bank),
+                        joinedload(QuestionPlacement.chapter),
+                    )
+                    .order_by(QuestionPlacement.sort_order, QuestionPlacement.question_id)
                 )
-                .join(Question, Question.id == QuestionPlacement.question_id)
-                .where(Question.content_status == 10)
-                .options(
-                    joinedload(QuestionPlacement.bank),
-                    joinedload(QuestionPlacement.chapter),
-                )
-                .order_by(QuestionPlacement.sort_order, QuestionPlacement.question_id)
-            )
-            result = await db.execute(stmt)
-            placements: list[QuestionPlacement] = list(result.unique().scalars().all())
+                if obj.bank_id:
+                    stmt = stmt.where(QuestionPlacement.bank_id == obj.bank_id)
+                if obj.chapter_id:
+                    stmt = stmt.where(QuestionPlacement.chapter_id == obj.chapter_id)
+
+                kp_column = cast(Question.knowledge_point, PGJSONB)
+                conditions = []
+                for kp_id in kp_ids:
+                    conditions.append(kp_column.contains([kp_id]))
+                    conditions.append(kp_column.contains([{'id': kp_id}]))
+
+                for kp_name in kp_names:
+                    conditions.append(kp_column.contains([kp_name]))
+                    conditions.append(kp_column.contains([{'name': kp_name}]))
+
+                stmt = stmt.where(or_(*conditions))
+                result = await db.execute(stmt)
+                placements = list(result.unique().scalars().all())
         elif obj.chapter_id:
             # 按章节筛选
             stmt = (
@@ -197,7 +263,7 @@ class SessionService:
         return new_session
 
     @staticmethod
-    async def get_session_detail(*, db: AsyncSession, session_id: int, user_id: int) -> PracticeSession:
+    async def get_session_detail(*, db: AsyncSession, session_id: int, user_id: int) -> dict:
         """
         获取练习会话详情（含会话题目快照和答题记录）
 
@@ -212,7 +278,72 @@ class SessionService:
         if session.user_id != user_id:
             raise errors.ForbiddenError(msg='无权访问此会话')
 
-        return session
+        # 计算章节分布统计 & 构造 session_questions 数据
+        chapter_distribution = {}
+        session_questions_data = []
+
+        for sq in session.session_questions:
+            # 获取章节信息
+            chapter_data = None
+            if sq.placement and sq.placement.chapter:
+                chapter = sq.placement.chapter
+                chapter_data = {
+                    'id': chapter.id,
+                    'name': chapter.name,
+                    'code': chapter.code,
+                    'parent_id': chapter.parent_id,
+                    'level': chapter.level,
+                    'sort_order': chapter.sort_order,
+                }
+
+                # 统计章节分布
+                chapter_key = chapter.id
+                if chapter_key not in chapter_distribution:
+                    chapter_distribution[chapter_key] = {
+                        'chapter_id': chapter.id,
+                        'chapter_name': chapter.name,
+                        'chapter_code': chapter.code,
+                        'question_count': 0,
+                        'sort_order': chapter.sort_order,
+                    }
+                chapter_distribution[chapter_key]['question_count'] += 1
+            else:
+                # 未分类章节
+                if None not in chapter_distribution:
+                    chapter_distribution[None] = {
+                        'chapter_id': None,
+                        'chapter_name': '未分类',
+                        'chapter_code': None,
+                        'question_count': 0,
+                    }
+                chapter_distribution[None]['question_count'] += 1
+
+            # 构造题目数据（包含 chapter）
+            session_questions_data.append({
+                'id': sq.id,
+                'session_id': sq.session_id,
+                'seq_no': sq.seq_no,
+                'question_id': sq.question_id,
+                'placement_id': sq.placement_id,
+                'question_type': sq.question_type,
+                'full_score': sq.full_score,
+                'chapter': chapter_data,
+            })
+
+        # 转换为列表并按题目数量降序排序
+        distribution_list = sorted(
+            chapter_distribution.values(),
+            key=lambda x: x['question_count'],
+            reverse=True,
+        )
+
+        # 构造返回数据
+        return {
+            **session.__dict__,
+            'chapter_distribution': distribution_list,
+            'session_questions': session_questions_data,
+            'records': session.records,
+        }
 
     @staticmethod
     async def get_latest_session(
@@ -519,25 +650,23 @@ class SessionService:
                 judge_version=judge_version,
             )
 
-            # 3b. 更新全站题目统计
-            stats_param = UpdateQuestionStatisticsParam(
-                attempt_count=1,
-                correct_count=1 if is_correct else 0,
-                answer_time=record.answer_time,
-                wrong_option=(
-                    record.user_answer
-                    if not is_correct and question.type in ['single', 'judgement']
-                    else None
-                ),
-            )
-            await question_statistics_dao.update_stats(db, record.question_id, stats_param)
-
-            # 3c. 更新选项统计
+            # 3b. 提取选中的选项编码
             placement_id = sq.placement_id if sq else record.placement_id
             selected_codes = question_service.parse_selected_option_codes(
                 question_type=question.type,
                 user_answer=record.user_answer,
             )
+
+            # 3c. 更新全站题目统计
+            stats_param = UpdateQuestionStatisticsParam(
+                attempt_count=1,
+                correct_count=1 if is_correct else 0,
+                answer_time=record.answer_time,
+                option_select=selected_codes if question.type in ['single', 'multiple', 'judgement'] and selected_codes else None,
+            )
+            await question_statistics_dao.update_stats(db, record.question_id, stats_param)
+
+            # 3d. 更新选项统计
             if selected_codes:
                 await question_option_stats_dao.increment_by_codes(
                     db,
@@ -755,6 +884,99 @@ class SessionService:
 
         return solutions
 
+    @staticmethod
+    async def get_session_questions_with_materials(
+        *, db: AsyncSession, session_id: int, user_id: int
+    ) -> dict[str, Any]:
+        """
+        获取会话题目静态内容和去重材料
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param user_id: 用户 ID
+        :return: 包含 questions 和 materials 的字典
+        """
+        session = await practice_session_dao.get(db=db, session_id=session_id)
+        if not session:
+            raise errors.NotFoundError(msg='会话不存在')
+        if session.user_id != user_id:
+            raise errors.ForbiddenError(msg='无权访问此会话')
+
+        # 1. 获取会话题目快照（按 seq_no 排序）
+        session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
+        if not session_questions:
+            return {'questions': [], 'materials': []}
+
+        # 2. 批量查询题目详情（含选项和材料关联）
+        question_ids = [sq.question_id for sq in session_questions]
+        stmt = (
+            select(Question)
+            .where(Question.id.in_(question_ids))
+            .options(
+                selectinload(Question.options).joinedload(QuestionOption.content_ref),
+                selectinload(Question.materials),
+            )
+        )
+        result = await db.execute(stmt)
+        question_map: dict[int, Question] = {q.id: q for q in result.unique().scalars().all()}
+
+        # 3. 构建题目列表（按 seq_no 排序）
+        questions_list: list[dict[str, Any]] = []
+        all_material_ids: set[int] = set()
+
+        for sq in session_questions:
+            question = question_map.get(sq.question_id)
+            if not question:
+                continue
+
+            # 构建选项数组
+            options_list: list[dict[str, str]] = []
+            if question.options:
+                active_options = [opt for opt in question.options if opt.is_active]
+                sorted_options = sorted(active_options, key=lambda x: (x.sort_order, x.option_code))
+                for opt in sorted_options:
+                    options_list.append({
+                        'option_code': opt.option_code,
+                        'content': opt.content_ref.content if opt.content_ref else '',
+                    })
+
+            # 提取材料 ID 列表
+            material_ids = [m.id for m in question.materials] if question.materials else []
+            all_material_ids.update(material_ids)
+
+            questions_list.append({
+                'seq_no': sq.seq_no,
+                'question_id': question.id,
+                'type': question.type,
+                'stem': question.stem,
+                'options': options_list,
+                'material_ids': material_ids,
+                'knowledge_point': question.knowledge_point,
+                'difficulty': question.difficulty,
+            })
+
+        # 4. 去重并批量查询材料
+        materials_list: list[dict[str, Any]] = []
+        if all_material_ids:
+            from backend.app.question_bank.model.question import QuestionMaterial
+
+            material_ids_list = list(all_material_ids)
+            materials_stmt = select(QuestionMaterial).where(QuestionMaterial.id.in_(material_ids_list))
+            materials_result = await db.execute(materials_stmt)
+            materials = materials_result.scalars().all()
+
+            for material in materials:
+                materials_list.append({
+                    'id': material.id,
+                    'title': material.title,
+                    'content': material.content,
+                })
+
+        return {
+            'questions': questions_list,
+            'materials': materials_list,
+        }
+
     # ------------------------------------------------------------------
     #  列表查询（包装 DAO，避免 API 层直接访问 DAO）
     # ------------------------------------------------------------------
@@ -799,3 +1021,4 @@ class SessionService:
 
 
 session_service: SessionService = SessionService()
+

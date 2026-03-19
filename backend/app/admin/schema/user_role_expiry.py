@@ -36,3 +36,15 @@ class GetUserRoleExpiryDetail(SchemaBase):
     valid_to: datetime | None = Field(default=None, description='有效期结束')
     status: int = Field(description='状态')
     created_time: datetime = Field(description='创建时间')
+
+
+class GetRoleExpiryBrief(SchemaBase):
+    """角色有效期简要信息（用于 /me 接口）"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    role_id: int = Field(description='角色 ID')
+    role_name: str = Field(description='角色名称')
+    valid_from: datetime | None = Field(default=None, description='有效期开始')
+    valid_to: datetime | None = Field(default=None, description='有效期结束')
+    status: int = Field(description='状态(0停用 1正常 2已过期)')

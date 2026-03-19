@@ -90,20 +90,14 @@
     />
 
     <!-- 确认提交对话框 -->
-    <up-modal
-      :show="showConfirmDialog"
-      title="提示"
-      :content="confirmDialogMessage"
-      show-cancel-button
-      @confirm="handleConfirmSubmit"
-      @cancel="handleCancelSubmit"
-    />
+    <wd-message-box />
   </view>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onHide } from '@dcloudio/uni-app'
+import { useMessage } from 'wot-design-uni'
 
 import AnswerSheet from './modules/AnswerSheet.vue'
 import HeaderPanel from '../../components/business/HeaderPanel.vue'
@@ -132,6 +126,7 @@ declare const document: Document & {
 }
 
 // ============ Composables 初始化 ============
+const message = useMessage()
 const timer = useTimer()
 const answerSheet = useAnswerSheet()
 const { calculateSwiperHeight } = useSystemInfo()
@@ -223,8 +218,6 @@ const resultData = ref({
 const THEME_STORAGE_KEY = 'app-theme'
 const isDarkMode = ref(false)
 const showConfirmDialog = ref(false)
-const confirmDialogMessage = ref('')
-const unansweredCountForDialog = ref(0)
 
 // 触摸事件状态
 const touchStartX = ref(0)
@@ -236,10 +229,10 @@ watch(isSheetVisible, (visible) => {
     return
   }
   if (visible) {
-    document.body.classList.add('u-body--locked')
+    document.body.classList.add('body--scroll-locked')
     return
   }
-  document.body.classList.remove('u-body--locked')
+  document.body.classList.remove('body--scroll-locked')
 })
 
 // 显示的题目列表（根据 viewMode 过滤）
@@ -1192,26 +1185,22 @@ function handleSubmitAll() {
     // 先关闭答题卡，避免对话框被遮挡
     closeAnswerSheet()
 
-    // 显示自定义确认对话框
-    unansweredCountForDialog.value = unansweredCount
-    confirmDialogMessage.value = `还有 ${unansweredCount} 道题未作答，确定要提交吗？`
+    // 使用 wd-message-box 的命令式 API 显示确认对话框
     showConfirmDialog.value = true
+    message.confirm({
+      title: '提示',
+      msg: `还有 ${unansweredCount} 道题未作答，确定要提交吗？`
+    }).then(() => {
+      showConfirmDialog.value = false
+      submitAnswers()
+    }).catch(() => {
+      showConfirmDialog.value = false
+      // 用户点击取消，重新打开答题卡
+      openAnswerSheet()
+    })
   } else {
     submitAnswers()
   }
-}
-
-// 确认对话框 - 确认提交
-function handleConfirmSubmit() {
-  showConfirmDialog.value = false
-  submitAnswers()
-}
-
-// 确认对话框 - 取消提交
-function handleCancelSubmit() {
-  showConfirmDialog.value = false
-  // 用户点击取消，重新打开答题卡
-  openAnswerSheet()
 }
 
 async function submitAnswers() {
@@ -1473,7 +1462,7 @@ onBeforeUnmount(() => {
     themeObserver = null
   }
   if (typeof document !== 'undefined') {
-    document.body.classList.remove('u-body--locked')
+    document.body.classList.remove('body--scroll-locked')
   }
 })
 

@@ -179,6 +179,7 @@ class Settings(BaseSettings):
     # CORS
     CORS_ALLOWED_ORIGINS: list[str] = [  # 末尾不带斜杠
         'http://127.0.0.1:8000',
+        'http://localhost:3000',
         'http://localhost:8080',
         'http://127.0.0.1',
         'http://localhost:5173',
@@ -458,6 +459,13 @@ class Settings(BaseSettings):
     ##################################################
     # Firebase 服务账号凭证 JSON 文件路径
     FIREBASE_CREDENTIALS_PATH: str = ''
+
+    ##################################################
+    # 响应加密
+    ##################################################
+    RESPONSE_ENCRYPT_ENABLED: bool = False
+    RESPONSE_ENCRYPT_SECRET_KEY: str = ''  # AES 密钥，32 字符 hex 字符串（16 bytes）
+    RESPONSE_ENCRYPT_INCLUDE: list[str] = []  # 加密路径前缀，为空则加密所有 API 路径
 
     ##################################################
     # [ App ] Jia 文档加密

@@ -16,63 +16,66 @@
       </view>
 
       <!-- 历史记录列表 -->
-      <view v-else class="history-list" @tap="closeSwipeActions">
-        <up-swipe-action ref="swipeActionRef">
-          <up-swipe-action-item
-            v-for="session in sessions"
-            :key="session.id"
-            :options="swipeOptions"
-            @click="handleSwipeClick($event, session)"
+      <view v-else class="history-list">
+        <wd-swipe-action
+          v-for="session in sessions"
+          :key="session.id"
+          ref="swipeActionRefs"
+        >
+          <view
+            class="history-card"
+            @tap.stop="() => handleCardClick(session)"
           >
-            <view
-              class="history-card"
-              @tap.stop="() => handleCardClick(session)"
-            >
-              <!-- 第一行：名称 + 时间 -->
-              <view class="card-row">
-                <view class="row-left">
-                  <text class="session-type-icon">{{ getTypeIcon(session.session_type) }}</text>
-                  <text class="session-title">{{ getTitle(session) }}</text>
-                  <up-tag
-                    v-if="session.status === 'in_progress'"
-                    text="未完成"
-                    type="warning"
-                    plain
-                    size="mini"
-                    class="status-tag"
-                  />
-                  <up-tag
-                    v-else-if="session.status === 'abandoned'"
-                    text="已放弃"
-                    type="info"
-                    plain
-                    size="mini"
-                    class="status-tag"
-                  />
-                </view>
-                <text class="session-time">{{ formatTimeWithMinute(session.updated_time) }}</text>
+            <!-- 第一行：名称 + 时间 -->
+            <view class="card-row">
+              <view class="row-left">
+                <text class="session-type-icon">{{ getTypeIcon(session.session_type) }}</text>
+                <text class="session-title">{{ getTitle(session) }}</text>
+                <wd-tag
+                  v-if="session.status === 'in_progress'"
+                  type="warning"
+                  plain
+                  size="small"
+                  class="status-tag"
+                >未完成</wd-tag>
+                <wd-tag
+                  v-else-if="session.status === 'abandoned'"
+                  type="info"
+                  plain
+                  size="small"
+                  class="status-tag"
+                >已放弃</wd-tag>
               </view>
+              <text class="session-time">{{ formatTimeWithMinute(session.updated_time) }}</text>
+            </view>
 
-              <!-- 第二行：答题情况 + 用时 -->
-              <view class="card-row card-row--secondary">
-                <view class="row-left">
-                  <text class="stat-text">
-                    <text class="stat-correct">{{ session.correct_count }}</text>
-                    <text class="stat-separator">/</text>
-                    <text class="stat-total">{{ session.total_count }}</text>
-                    <text class="stat-label">题</text>
-                    <text v-if="session.status === 'completed'" class="stat-accuracy">
-                      · {{ session.accuracy_rate }}%
-                    </text>
+            <!-- 第二行：答题情况 + 用时 -->
+            <view class="card-row card-row--secondary">
+              <view class="row-left">
+                <text class="stat-text">
+                  <text class="stat-correct">{{ session.correct_count }}</text>
+                  <text class="stat-separator">/</text>
+                  <text class="stat-total">{{ session.total_count }}</text>
+                  <text class="stat-label">题</text>
+                  <text v-if="session.status === 'completed'" class="stat-accuracy">
+                    · {{ session.accuracy_rate }}%
                   </text>
-                </view>
-                <text v-if="session.total_time > 0" class="duration-text">
-                  ⏱ {{ formatDuration(session.total_time) }}
                 </text>
               </view>
+              <text v-if="session.total_time > 0" class="duration-text">
+                ⏱ {{ formatDuration(session.total_time) }}
+              </text>
             </view>
-          </up-swipe-action-item>
-        </up-swipe-action>
+          </view>
+          <template #right>
+            <view style="display:flex;height:100%;">
+              <view
+                style="background:#f56c6c;color:#fff;padding:0 30rpx;display:flex;align-items:center;font-size:28rpx;"
+                @tap="handleSwipeDelete(session)"
+              >删除</view>
+            </view>
+          </template>
+        </wd-swipe-action>
 
         <!-- 加载更多 -->
         <view v-if="hasMore" class="load-more" @tap="loadMore">
@@ -89,26 +92,21 @@
     </scroll-view>
 
     <!-- 删除确认对话框 -->
-    <up-modal
-      :show="showDeleteConfirm"
-      title="确认删除"
-      content="删除后将无法恢复，确定要删除这条练习记录吗？"
-      show-cancel-button
-      confirm-color="#f56c6c"
-      @confirm="confirmDelete"
-      @cancel="cancelDelete"
-    />
+    <wd-message-box />
   </view>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import { useMessage } from 'wot-design-uni'
 import * as practiceApi from '../../api/business/practice'
 import type { SessionListItem } from '../../api/business/practice'
 import { formatDuration } from '../../utils/format'
 
 declare const uni: any
+
+const message = useMessage()
 
 const loading = ref(true)
 const loadingMore = ref(false)
@@ -119,7 +117,6 @@ const hasMore = ref(true)
 const isFirstLoad = ref(true)
 
 // 删除确认对话框状态
-const showDeleteConfirm = ref(false)
 const sessionToDelete = ref<SessionListItem | null>(null)
 
 // 🔥 页面显示时刷新数据（包括首次加载和从答题页返回）
@@ -135,25 +132,17 @@ onShow(() => {
   }
 })
 
-// 滑动组件 ref
-const swipeActionRef = ref<any>(null)
+// 滑动组件 refs
+const swipeActionRefs = ref<any[]>([])
 
 /**
  * 关闭所有滑动菜单
  */
 function closeSwipeActions() {
-  swipeActionRef.value?.closeAll?.()
+  swipeActionRefs.value?.forEach((ref: any) => {
+    ref?.close?.()
+  })
 }
-
-// 滑动删除配置
-const swipeOptions = [
-  {
-    text: '删除',
-    style: {
-      backgroundColor: '#f56c6c'
-    }
-  }
-]
 
 /**
  * 加载练习历史（带 loading 状态）
@@ -347,43 +336,24 @@ function handleCardClick(session: SessionListItem) {
 }
 
 /**
- * 滑动按钮点击事件
+ * 滑动删除按钮点击事件
  *
- * :param indexOrEvent: 按钮索引对象 {index: 0, name: ""}
  * :param session: 会话数据
  */
-function handleSwipeClick(indexOrEvent: any, session: SessionListItem) {
-  // indexOrEvent 是一个对象 {index: 0, name: ""}
-  const index = typeof indexOrEvent === 'object' && indexOrEvent.index !== undefined
-    ? indexOrEvent.index
-    : indexOrEvent
-
-  // index 0 是删除按钮
-  if (index === 0) {
-    // 保存要删除的会话，显示确认对话框
-    sessionToDelete.value = session
-    showDeleteConfirm.value = true
-  }
-}
-
-/**
- * 确认删除
- */
-async function confirmDelete() {
-  showDeleteConfirm.value = false
-  if (sessionToDelete.value) {
-    await deleteSession(sessionToDelete.value)
+function handleSwipeDelete(session: SessionListItem) {
+  sessionToDelete.value = session
+  message.confirm({
+    title: '确认删除',
+    msg: '删除后将无法恢复，确定要删除这条练习记录吗？'
+  }).then(async () => {
+    if (sessionToDelete.value) {
+      await deleteSession(sessionToDelete.value)
+      sessionToDelete.value = null
+    }
+  }).catch(() => {
     sessionToDelete.value = null
-  }
-}
-
-/**
- * 取消删除
- */
-function cancelDelete() {
-  showDeleteConfirm.value = false
-  sessionToDelete.value = null
-  closeSwipeActions()
+    closeSwipeActions()
+  })
 }
 
 /**

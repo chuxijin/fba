@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from decimal import Decimal
 from typing import Annotated, Any
@@ -344,3 +344,4 @@ async def save_segments(
         return response_base.success(data={'count': len(saved_files), 'path': str(base_dir)})
     except Exception as e:
         return response_base.fail(res=CustomResponse(code=400, msg=f'保存失败: {e}'))
+

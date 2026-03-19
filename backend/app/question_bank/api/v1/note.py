@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 笔记接口
@@ -22,7 +22,7 @@ from backend.app.question_bank.schema.note import (
     UpdateQuestionNoteParam,
     VoteQuestionNoteParam,
 )
-from backend.app.question_bank.security import DependsCustomerAuth
+from backend.app.question_bank.security import DependsCurrentUser
 from backend.app.question_bank.service.note_service import note_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
@@ -40,7 +40,7 @@ router = APIRouter()
 async def create_note(
     db: CurrentSessionTransaction,
     obj: CreateQuestionNoteParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetQuestionNoteDetail]:
     """创建题目笔记"""
     new_note = await note_service.create_note(db=db, user_id=current_user.user_id, obj=obj)
@@ -51,7 +51,7 @@ async def create_note(
 async def get_note(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='笔记 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetQuestionNoteDetail]:
     """获取笔记详情"""
     note = await note_service.get_note(db=db, note_id=pk, user_id=current_user.user_id)
@@ -61,7 +61,7 @@ async def get_note(
 @router.get('', summary='获取笔记列表', dependencies=[DependsPagination])
 async def get_notes(
     db: CurrentSession,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     question_id: Annotated[int | None, Query(description='题目 ID')] = None,
     is_public: Annotated[bool | None, Query(description='是否公开')] = None,
     is_featured: Annotated[bool | None, Query(description='是否精选')] = None,
@@ -81,7 +81,7 @@ async def get_notes(
 async def get_question_public_notes(
     db: CurrentSession,
     question_id: Annotated[int, Path(description='题目 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
     is_featured: Annotated[bool | None, Query(description='只看精选')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionNoteListItem]]:
     """获取题目的所有公开笔记（按质量分排序）"""
@@ -96,7 +96,7 @@ async def update_note(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='笔记 ID')],
     obj: UpdateQuestionNoteParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """更新笔记内容和公开状态（支持局部更新）"""
     count = await note_service.update_note(
@@ -112,7 +112,7 @@ async def update_note(
 async def delete_note(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='笔记 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """删除笔记"""
     count = await note_service.delete_note(db=db, note_id=pk, user_id=current_user.user_id)
@@ -130,7 +130,7 @@ async def vote_note(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='笔记 ID')],
     obj: VoteQuestionNoteParam,
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """对笔记投票（点赞/点踩）"""
     await note_service.vote_note(db=db, note_id=pk, user_id=current_user.user_id, vote_value=obj.vote_value)
@@ -141,7 +141,7 @@ async def vote_note(
 async def cancel_vote(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='笔记 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseModel:
     """取消对笔记的投票"""
     count = await note_service.cancel_vote(db=db, note_id=pk, user_id=current_user.user_id)
@@ -155,7 +155,7 @@ async def cancel_vote(
 async def get_my_vote(
     db: CurrentSession,
     pk: Annotated[int, Path(description='笔记 ID')],
-    current_user: AuthUser = DependsCustomerAuth,
+    current_user: AuthUser = DependsCurrentUser,
 ) -> ResponseSchemaModel[GetUserNoteVoteDetail]:
     """获取当前用户对笔记的投票状态"""
     vote = await note_service.get_my_vote(db=db, note_id=pk, user_id=current_user.user_id)
@@ -169,3 +169,4 @@ async def get_vote_statistics(
     """获取笔记的投票统计数据"""
     stats = await note_service.get_vote_statistics(db=db, note_id=pk)
     return response_base.success(data=stats)
+

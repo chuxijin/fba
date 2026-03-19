@@ -1,7 +1,7 @@
 <template>
-  <u-popup
-    :show="show"
-    mode="center"
+  <wd-popup
+    v-model="show"
+    position="center"
     :round="20"
     @close="handleClose"
   >
@@ -66,7 +66,7 @@
         <text class="close-text">关闭</text>
       </view>
     </view>
-  </u-popup>
+  </wd-popup>
 </template>
 
 <script setup lang="ts">

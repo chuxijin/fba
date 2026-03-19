@@ -1,13 +1,17 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import logging
+import re
 from collections.abc import Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import cast, func, or_, select, update
+from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.crud.crud_question import (
@@ -20,10 +24,12 @@ from backend.app.question_bank.crud.crud_question import (
     question_statistics_dao,
 )
 from backend.app.question_bank.model import (
+    OptionContent,
     Question,
     QuestionAnalysis,
     QuestionBank,
     QuestionChapter,
+    QuestionOption,
     QuestionOptionStats,
     QuestionPlacement,
     QuestionStatistics,
@@ -70,17 +76,68 @@ class QuestionService:
         if not placements:
             return None
 
+        active_placements = [item for item in placements if item.is_active]
+        candidates = active_placements or placements
+        sorted_candidates = sorted(candidates, key=lambda item: (item.sort_order, item.id))
+
         if chapter_id is not None:
-            for placement in placements:
+            for placement in sorted_candidates:
                 if placement.chapter_id == chapter_id and (bank_id is None or placement.bank_id == bank_id):
                     return placement
 
         if bank_id is not None:
-            for placement in placements:
+            for placement in sorted_candidates:
                 if placement.bank_id == bank_id:
                     return placement
 
-        return placements[0]
+        return sorted_candidates[0]
+
+    @staticmethod
+    def _extract_option_codes(text: str | list[str]) -> list[str]:
+        if isinstance(text, list):
+            raw = ','.join([str(item) for item in text if str(item).strip()])
+        else:
+            raw = str(text or '')
+
+        raw = raw.strip().upper()
+        if not raw:
+            return []
+
+        parts = re.split(r'[\s,，、|]+', raw)
+        codes: list[str] = []
+        for part in parts:
+            token = part.strip()
+            if not token:
+                continue
+            if token.isalpha():
+                codes.extend(list(token)) if len(token) > 1 else codes.append(token)
+                continue
+            letters = [ch for ch in token if ch.isalpha()]
+            if not letters:
+                continue
+            if len(letters) == 1:
+                codes.append(letters[0])
+            else:
+                codes.extend(letters)
+
+        return codes
+
+    @staticmethod
+    def _split_answer_text(answer_str: str) -> list[str]:
+        if not answer_str:
+            return []
+        text = str(answer_str)
+        for sep in ['\r\n', '\n', '\r', '，', ';', '；', '|', '/', '、']:
+            text = text.replace(sep, ',')
+        return [item.strip() for item in text.split(',') if item.strip()]
+
+    @staticmethod
+    def _pick_default_analysis(analyses: Sequence[QuestionAnalysis] | None) -> QuestionAnalysis | None:
+        if not analyses:
+            return None
+        defaults = [item for item in analyses if getattr(item, 'is_default', False)]
+        candidates = defaults or list(analyses)
+        return sorted(candidates, key=lambda item: item.id)[0]
 
     @staticmethod
     def build_options_data(*, question: Question) -> dict | None:
@@ -107,25 +164,64 @@ class QuestionService:
     def parse_selected_option_codes(*, question_type: str, user_answer: str | list[str]) -> list[str]:
         """从用户答案解析选中的选项编码"""
         if question_type in ['single', 'judgement']:
-            option_code = str(user_answer).strip().upper()
-            return [option_code] if option_code else []
+            codes = QuestionService._extract_option_codes(user_answer)
+            return codes[:1]
 
         if question_type != 'multiple':
             return []
 
-        raw_values: list[str]
-        if isinstance(user_answer, list):
-            raw_values = [str(item) for item in user_answer]
-        else:
-            answer_text = str(user_answer).strip()
-            if not answer_text:
-                return []
-            if ',' in answer_text:
-                raw_values = answer_text.split(',')
-            else:
-                raw_values = list(answer_text)
+        codes = QuestionService._extract_option_codes(user_answer)
+        if not codes:
+            return []
+        return sorted(set(codes))
 
-        return sorted({value.strip().upper() for value in raw_values if value.strip()})
+    @staticmethod
+    def _parse_kp_id(value: Any) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value if value > 0 else None
+        if isinstance(value, str):
+            text = value.strip()
+            if text.isdigit():
+                parsed = int(text)
+                return parsed if parsed > 0 else None
+            return None
+        return None
+
+    @staticmethod
+    def _parse_kp_name(value: Any) -> str | None:
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        return None
+
+    @classmethod
+    def _normalize_knowledge_point_terms(cls, items: list[Any] | None) -> tuple[list[int], list[str]]:
+        kp_ids: set[int] = set()
+        kp_names: set[str] = set()
+
+        for item in items or []:
+            if isinstance(item, dict):
+                obj_id = cls._parse_kp_id(item.get('id') or item.get('category_id') or item.get('cat_id'))
+                if obj_id is not None:
+                    kp_ids.add(obj_id)
+
+                obj_name = cls._parse_kp_name(item.get('name') or item.get('label') or item.get('title'))
+                if obj_name:
+                    kp_names.add(obj_name)
+                continue
+
+            scalar_id = cls._parse_kp_id(item)
+            if scalar_id is not None:
+                kp_ids.add(scalar_id)
+                continue
+
+            scalar_name = cls._parse_kp_name(item)
+            if scalar_name:
+                kp_names.add(scalar_name)
+
+        return sorted(kp_ids), sorted(kp_names)
 
     @staticmethod
     def serialize_question(
@@ -187,7 +283,7 @@ class QuestionService:
         }
 
         if include_analysis:
-            current_analysis = question.analyses[0] if question.analyses else None
+            current_analysis = QuestionService._pick_default_analysis(question.analyses)
             question_dict['answer_data'] = current_analysis.answer_data if current_analysis else None
             question_dict['analysis_content'] = current_analysis.content if current_analysis else None
             question_dict['analyses'] = question.analyses if question.analyses else []
@@ -216,11 +312,51 @@ class QuestionService:
         if not question:
             raise errors.NotFoundError(msg='Question not found')
 
-        return QuestionService.serialize_question(
+        data = QuestionService.serialize_question(
             question=question,
             include_analysis=True,
             include_materials=True,
         )
+
+        # 详情接口对齐 GetQuestionDetail schema：补齐 options / placements
+        option_rows = question.options if question.options else []
+        sorted_options = sorted(option_rows, key=lambda item: (item.sort_order, item.option_code))
+        data['options'] = [
+            {
+                'id': item.id,
+                'question_id': item.question_id,
+                'option_code': item.option_code,
+                'content_id': item.content_id,
+                'content': item.content_ref.content if item.content_ref else '',
+                'sort_order': item.sort_order,
+                'is_active': item.is_active,
+            }
+            for item in sorted_options
+        ]
+
+        placement_rows = question.placements if question.placements else []
+        sorted_placements = sorted(
+            placement_rows,
+            key=lambda item: (item.bank_id, item.chapter_id or 0, item.sort_order, item.id),
+        )
+        data['placements'] = [
+            {
+                'id': item.id,
+                'question_id': item.question_id,
+                'bank_id': item.bank_id,
+                'chapter_id': item.chapter_id,
+                'sort_order': item.sort_order,
+                'is_active': item.is_active,
+                'score': item.score,
+                'review_status': item.review_status,
+                'scene_mask': item.scene_mask,
+                'bank_name': item.bank.name if item.bank else None,
+                'chapter_name': item.chapter.name if item.chapter else None,
+            }
+            for item in sorted_placements
+        ]
+
+        return data
 
     @staticmethod
     async def get_list(
@@ -330,10 +466,149 @@ class QuestionService:
         ]
 
     @staticmethod
+    async def get_dynamic_collections(
+        *,
+        db: AsyncSession,
+        cat_id: int | None = None,
+        region: str | None = None,
+        knowledge_ids: list[int] | None = None,
+        knowledge_names: list[str] | None = None,
+        stem_keyword: str | None = None,
+        option_keyword: str | None = None,
+        analysis_keyword: str | None = None,
+        year_start: int | None = None,
+        year_end: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        根据筛选条件动态聚合题目合集（按试卷维度聚合）。
+
+        核心关系：
+        Question --(question_id)--> QuestionPlacement --(bank_id)--> QuestionBank
+        """
+        cat_ids = await category_dao.get_all_children_ids(db, cat_id) if cat_id is not None else None
+
+        stmt = (
+            select(
+                QuestionBank.id.label('id'),
+                QuestionBank.cat_id.label('cat_id'),
+                QuestionBank.name.label('name'),
+                QuestionBank.code.label('code'),
+                QuestionBank.desc.label('desc'),
+                QuestionBank.bank_type.label('bank_type'),
+                QuestionBank.difficulty.label('difficulty'),
+                QuestionBank.parent_id.label('parent_id'),
+                QuestionBank.q_count_cache.label('q_count_cache'),
+                func.count(func.distinct(Question.id)).label('matched_q_count'),
+            )
+            .select_from(QuestionPlacement)
+            .join(Question, Question.id == QuestionPlacement.question_id)
+            .join(QuestionBank, QuestionBank.id == QuestionPlacement.bank_id)
+            .where(
+                QuestionPlacement.is_active.is_(True),
+                Question.content_status == 10,
+                QuestionBank.status == 1,
+                QuestionBank.bank_type == 2,
+            )
+        )
+
+        if cat_ids:
+            stmt = stmt.where(QuestionBank.cat_id.in_(cat_ids))
+
+        region_text = (region or '').strip()
+        if region_text:
+            stmt = stmt.where(
+                or_(
+                    QuestionBank.name.ilike(f'%{region_text}%'),
+                    QuestionBank.code.ilike(f'%{region_text}%'),
+                    QuestionBank.desc.ilike(f'%{region_text}%'),
+                )
+            )
+
+        stem_text = (stem_keyword or '').strip()
+        if stem_text:
+            stmt = stmt.where(Question.stem.ilike(f'%{stem_text}%'))
+
+        option_text = (option_keyword or '').strip()
+        if option_text:
+            option_exists = (
+                select(1)
+                .select_from(QuestionOption)
+                .join(OptionContent, OptionContent.id == QuestionOption.content_id)
+                .where(
+                    QuestionOption.question_id == Question.id,
+                    QuestionOption.is_active.is_(True),
+                    OptionContent.content.ilike(f'%{option_text}%'),
+                )
+                .exists()
+            )
+            stmt = stmt.where(option_exists)
+
+        analysis_text = (analysis_keyword or '').strip()
+        if analysis_text:
+            analysis_exists = (
+                select(1)
+                .select_from(QuestionAnalysis)
+                .where(
+                    QuestionAnalysis.question_id == Question.id,
+                    QuestionAnalysis.status == 10,
+                    QuestionAnalysis.content.ilike(f'%{analysis_text}%'),
+                )
+                .exists()
+            )
+            stmt = stmt.where(analysis_exists)
+
+        if year_start is not None:
+            start_at = datetime(year_start, 1, 1)
+            stmt = stmt.where(Question.created_time >= start_at)
+        if year_end is not None:
+            end_at = datetime(year_end + 1, 1, 1)
+            stmt = stmt.where(Question.created_time < end_at)
+
+        normalized_ids = [kp_id for kp_id in (knowledge_ids or []) if isinstance(kp_id, int) and kp_id > 0]
+        normalized_names = [name.strip() for name in (knowledge_names or []) if name and name.strip()]
+
+        if normalized_ids or normalized_names:
+            kp_column = cast(Question.knowledge_point, PGJSONB)
+            conditions = []
+            for kp_id in normalized_ids:
+                conditions.append(kp_column.contains([kp_id]))
+                conditions.append(kp_column.contains([{'id': kp_id}]))
+                conditions.append(kp_column.contains([{'category_id': kp_id}]))
+                conditions.append(kp_column.contains([{'cat_id': kp_id}]))
+
+            for kp_name in normalized_names:
+                conditions.append(kp_column.contains([kp_name]))
+                conditions.append(kp_column.contains([{'name': kp_name}]))
+                conditions.append(kp_column.contains([{'label': kp_name}]))
+                conditions.append(kp_column.contains([{'title': kp_name}]))
+
+            stmt = stmt.where(or_(*conditions))
+
+        stmt = (
+            stmt.group_by(
+                QuestionBank.id,
+                QuestionBank.cat_id,
+                QuestionBank.name,
+                QuestionBank.code,
+                QuestionBank.desc,
+                QuestionBank.bank_type,
+                QuestionBank.difficulty,
+                QuestionBank.parent_id,
+                QuestionBank.q_count_cache,
+            )
+            .order_by(
+                func.count(func.distinct(Question.id)).desc(),
+                QuestionBank.id.desc(),
+            )
+        )
+
+        rows = (await db.execute(stmt)).mappings().all()
+        return [dict(row) for row in rows]
+
+    @staticmethod
     async def create(*, db: AsyncSession, obj: CreateQuestionParam, user_id: int) -> Question:
         """
-        创建题目（嵌套 schema：core / options / placements / analyses / material_ids）
-
+        创建题目
         :param db: 数据库会话
         :param obj: 创建题目参数
         :param user_id: 用户 ID
@@ -510,7 +785,6 @@ class QuestionService:
     async def get_solution(*, db: AsyncSession, question_id: int, user_answer: str | None = None) -> dict[str, Any]:
         """
         获取题目答案和解析（练题模式专用）
-
         :param db: 数据库会话
         :param question_id: 题目 ID
         :param user_answer: 用户答案
@@ -542,14 +816,13 @@ class QuestionService:
             'analysis': analysis.content,
             'is_correct': is_correct,
             'correct_rate': stats.correct_rate,
-            'wrong_option_stats': stats.wrong_option_stats,
+            'option_select_stats': stats.option_select_stats,
         }
 
     @staticmethod
     async def mark_analysis_helpful(*, db: AsyncSession, question_id: int, is_helpful: bool) -> None:
         """
         标记解析是否有帮助
-
         :param db: 数据库会话
         :param question_id: 题目 ID
         :param is_helpful: 是否有帮助
@@ -706,7 +979,6 @@ class QuestionService:
     async def batch_import(*, db: AsyncSession, obj: BatchImportParam, user_id: int) -> BatchImportResult:
         """
         批量导入题目（复用 create 流程）
-
         :param db: 数据库会话
         :param obj: 批量导入参数
         :param user_id: 用户 ID
@@ -1095,26 +1367,26 @@ class QuestionService:
     def _parse_answer(answer_str: str, question_type: str) -> dict:
         """
         解析答案字符串
-
         :param answer_str: 答案字符串
         :param question_type: 题型
         :return:
         """
         if question_type in ['single', 'judgement']:
-            return {'correct': answer_str.strip().upper()}
+            codes = QuestionService._extract_option_codes(answer_str)
+            return {'correct': codes[0] if codes else ''}
 
         if question_type == 'multiple':
-            if ',' in answer_str:
-                answers = [ans.strip().upper() for ans in answer_str.split(',')]
-            else:
-                answers = [c.upper() for c in answer_str.strip() if c.isalpha()]
-            return {'correct': answers}
+            answers = QuestionService._extract_option_codes(answer_str)
+            return {'correct': sorted(set(answers))}
 
         if question_type in ['fill', 'shortAnswer']:
-            answers = [ans.strip() for ans in answer_str.split(',')]
+            answers = QuestionService._split_answer_text(answer_str)
             return {'correct': answers}
 
         return {'correct': answer_str}
 
 
 question_service: QuestionService = QuestionService()
+
+
+
