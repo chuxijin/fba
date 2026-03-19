@@ -271,6 +271,7 @@ class Settings(BaseSettings):
     SERVER_CHAN_SEND_KEY: str = "SCT241185TZMzg15OPJD8qIxVo6I0DUGTw"
 
     # Plugin 配置
+    PLUGIN_REQUIRED: list[str] = ['dict']
     PLUGIN_PIP_CHINA: bool = True
     PLUGIN_PIP_INDEX_URL: str = 'https://mirrors.aliyun.com/pypi/simple/'
     PLUGIN_PIP_MAX_RETRY: int = 3

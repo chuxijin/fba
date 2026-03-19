@@ -11,6 +11,8 @@ Task 模块基于 Celery 实现异步任务处理，支持定时任务、队列�
 - 任务状态跟踪
 - 结果存储
 - 错误重试机制
+当前任务使用 Celery
+实现，实施方案请查看 [#225](https://github.com/fastapi-practices/fastapi-best-architecture/discussions/225)
 
 ## 定时任务
 
