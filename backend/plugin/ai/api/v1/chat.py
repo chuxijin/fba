@@ -5,6 +5,7 @@ from backend.common.response.response_schema import ResponseModel, response_base
 from backend.database.db import CurrentSession
 from backend.plugin.ai.schema.chat import AIChat, EmbeddingParam
 from backend.plugin.ai.service.chat_service import ai_chat_service
+from backend.utils.embedding import embed
 
 router = APIRouter()
 
@@ -15,6 +16,6 @@ async def completions(db: CurrentSession, chat: AIChat) -> StreamingResponse:
 
 
 @router.post('/embeddings', summary='文本向量化')
-async def embeddings(db: CurrentSession, obj: EmbeddingParam) -> ResponseModel:
-    vector = await ai_chat_service.embedding(db=db, provider_id=obj.provider_id, model_id=obj.model_id, text=obj.text)
+async def embeddings(obj: EmbeddingParam) -> ResponseModel:
+    vector = await embed(obj.text, model=obj.model_id)
     return response_base.success(data=vector)

@@ -9,11 +9,7 @@ from backend.app.jia.model.exercise import Exercise
 from backend.app.jia.schema.exercise import CreateExerciseParam, GetExerciseListResponse, UpdateExerciseParam
 from backend.common.log import log
 from backend.common.pagination import paging_data
-from backend.plugin.ai.service.chat_service import ai_chat_service
-
-# 向量化配置
-PROVIDER_ID = 2
-EMBED_MODEL = 'text-embedding-3-small'
+from backend.utils.embedding import embed
 
 
 class ExerciseService:
@@ -43,12 +39,7 @@ class ExerciseService:
         if semantic and name:
             # 语义搜索模式
             try:
-                vector = await ai_chat_service.embedding(
-                    db=db,
-                    provider_id=PROVIDER_ID,
-                    model_id=EMBED_MODEL,
-                    text=name,
-                )
+                vector = await embed(name)
                 return await exercise_dao.search_by_vector(db, vector, limit=limit)
             except Exception as e:
                 log.error(f'语义搜索向量化失败: {e}')
@@ -142,12 +133,7 @@ class ExerciseService:
             return None
 
         try:
-            return await ai_chat_service.embedding(
-                db=db,
-                provider_id=PROVIDER_ID,
-                model_id=EMBED_MODEL,
-                text=text_to_embed,
-            )
+            return await embed(text_to_embed)
         except Exception as e:
             log.error(f'动作向量化失败: {e}')
             return None

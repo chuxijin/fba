@@ -13,12 +13,8 @@ from backend.app.jia.service.push_service import push_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.pagination import paging_data
-from backend.plugin.ai.service.chat_service import ai_chat_service
+from backend.utils.embedding import embed
 from backend.utils.file_ops import delete_files
-
-# 向量化配置
-PROVIDER_ID = 2
-EMBED_MODEL = 'text-embedding-3-small'
 
 # 状态优先级（数值越小越紧急，需要提醒）
 STATUS_PRIORITY = {
@@ -86,12 +82,7 @@ class ItemService:
         if semantic and name:
             # 语义搜索模式
             try:
-                vector = await ai_chat_service.embedding(
-                    db=db,
-                    provider_id=PROVIDER_ID,
-                    model_id=EMBED_MODEL,
-                    text=name,
-                )
+                vector = await embed(name)
                 return await item_dao.search_by_vector(db, vector, user_id, limit)
             except Exception as e:
                 log.error(f'语义搜索向量化失败: {e}')
@@ -162,12 +153,7 @@ class ItemService:
         
         if text_to_embed:
             try:
-                vector = await ai_chat_service.embedding(
-                    db=db,
-                    provider_id=PROVIDER_ID,
-                    model_id=EMBED_MODEL,
-                    text=text_to_embed,
-                )
+                vector = await embed(text_to_embed)
             except Exception as e:
                 log.error(f'创建物品向量化失败: {e}')
 
@@ -213,12 +199,7 @@ class ItemService:
             
             if text_to_embed:
                 try:
-                    vector = await ai_chat_service.embedding(
-                        db=db,
-                        provider_id=PROVIDER_ID,
-                        model_id=EMBED_MODEL,
-                        text=text_to_embed,
-                    )
+                    vector = await embed(text_to_embed)
                 except Exception as e:
                     log.error(f'更新物品向量化失败: {e}')
 

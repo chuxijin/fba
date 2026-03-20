@@ -17,7 +17,7 @@ from backend.app.coulddrive.schema.resource import (
     CreateResourceViewHistoryParam,
     GetResourceViewHistoryListParam
 )
-from backend.app.coulddrive.service.vector_service import get_vector_service
+from backend.utils.embedding import embed, batch_embed
 from backend.common.log import log
 from backend.utils.timezone import timezone
 
@@ -563,8 +563,7 @@ class CRUDResource(CRUDPlus[Resource]):
         :return: (资源对象, 相似度分数) 列表，按相似度降序排列
         """
         # 将查询文本转换为向量
-        vector_service = get_vector_service()
-        query_vector = await vector_service.encode(query_text)
+        query_vector = await embed(query_text)
 
         # 使用 pgvector 的余弦距离运算符 (<=>)
         # 余弦距离: 0 表示完全相同，2 表示完全相反
@@ -630,8 +629,21 @@ class CRUDResource(CRUDPlus[Resource]):
         }
 
         # 生成向量
-        vector_service = get_vector_service()
-        vector = await vector_service.encode_resource(resource_data)
+        # 拼接向量化文本
+        text_parts = []
+        resource_intro = (resource_data.get("resource_intro") or "").strip()
+        if resource_intro:
+            text_parts.append(resource_intro)
+        description = (resource_data.get("description") or "").strip()
+        if description:
+            text_parts.append(description)
+        combined_text = "\n".join(text_parts)
+
+        if not combined_text:
+            log.warning(f"资源 {resource_data.get('id')} 没有可向量化的文本内容")
+            vector = [0.0] * 1536
+        else:
+            vector = await embed(combined_text)
 
         # 更新向量
         await self.update_model_by_column(
@@ -670,39 +682,22 @@ class CRUDResource(CRUDPlus[Resource]):
         log.info(f"开始批量向量化 {total_count} 个资源")
 
         success_count = 0
-        vector_service = get_vector_service()
 
         for i in range(0, total_count, batch_size):
             batch = resources[i : i + batch_size]
 
-            # 准备批量数据（只提取向量化需要的字段）
-            batch_data = []
-            for resource in batch:
-                resource_data = {
-                    "id": resource.id,
-                    "description": resource.description,
-                    "resource_intro": resource.resource_intro,
-                }
-                batch_data.append(resource_data)
-
-            # 批量生成向量
             try:
+                # 拼接向量化文本
                 texts = []
-                for data in batch_data:
-                    # 只使用核心内容字段（与 encode_resource 逻辑一致）
+                for resource in batch:
                     text_parts = []
-
-                    # 1. 资源介绍（最重要）
-                    if data.get("resource_intro"):
-                        text_parts.append(data["resource_intro"])
-
-                    # 2. 描述（次要）
-                    if data.get("description"):
-                        text_parts.append(data["description"])
-
+                    if resource.resource_intro:
+                        text_parts.append(resource.resource_intro.strip())
+                    if resource.description:
+                        text_parts.append(resource.description.strip())
                     texts.append("\n".join(text_parts))
 
-                vectors = await vector_service.batch_encode(texts, batch_size=batch_size)
+                vectors = await batch_embed(texts, batch_size=batch_size)
 
                 # 批量更新
                 for resource, vector in zip(batch, vectors):

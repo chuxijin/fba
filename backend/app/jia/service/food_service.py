@@ -10,11 +10,7 @@ from backend.app.jia.schema.food import CreateFoodParam, GetFoodDetail, UpdateFo
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.pagination import paging_data
-from backend.plugin.ai.service.chat_service import ai_chat_service
-
-# 向量化配置
-PROVIDER_ID = 2
-EMBED_MODEL = 'text-embedding-3-small'
+from backend.utils.embedding import embed
 
 
 def generate_nutrition_tags(food: HealthyFood | CreateFoodParam | UpdateFoodParam) -> list[str]:
@@ -161,12 +157,7 @@ class FoodService:
         if semantic and name:
             # 语义搜索模式
             try:
-                vector = await ai_chat_service.embedding(
-                    db=db,
-                    provider_id=PROVIDER_ID,
-                    model_id=EMBED_MODEL,
-                    text=name,
-                )
+                vector = await embed(name)
                 return await food_dao.search_by_vector(db, vector, limit=limit)
             except Exception as e:
                 log.error(f'语义搜索向量化失败: {e}')
@@ -198,12 +189,7 @@ class FoodService:
         )
 
         try:
-            vector = await ai_chat_service.embedding(
-                db=db,
-                provider_id=PROVIDER_ID,
-                model_id=EMBED_MODEL,
-                text=text_to_embed,
-            )
+            vector = await embed(text_to_embed)
         except Exception as e:
             raise errors.ServerError(msg=f'食物创建失败: 向量化服务异常 - {str(e)}')
 
@@ -265,12 +251,7 @@ class FoodService:
             )
 
             try:
-                vector = await ai_chat_service.embedding(
-                    db=db,
-                    provider_id=PROVIDER_ID,
-                    model_id=EMBED_MODEL,
-                    text=text_to_embed,
-                )
+                vector = await embed(text_to_embed)
             except Exception as e:
                 log.error(f'更新食物向量化失败: {e}')
 
