@@ -103,12 +103,14 @@ class Settings(BaseSettings):
     TOKEN_REFRESH_REDIS_PREFIX: str = 'fba:refresh_token'
     TOKEN_REQUEST_PATH_EXCLUDE: list[str] = [  # JWT / RBAC 路由白名单
         f'{FASTAPI_API_V1_PATH}/auth/login',
-        f'{FASTAPI_API_V1_PATH}/qbank/auth/wx-login',  # 题库微信登录
-        f'{FASTAPI_API_V1_PATH}/qbank/auth/test-login',  # 题库测试登录
+        f'{FASTAPI_API_V1_PATH}/auth/wx-login',  # 统一微信登录
+        f'{FASTAPI_API_V1_PATH}/auth/test-login',  # 统一测试登录
         f'{FASTAPI_API_V1_PATH}/qbank/banks',  # 题库列表（公开接口）
         f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',  # 百度网盘 OAuth 回调
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/activate',  # 订单号激活账户
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/verify',  # 验证订单号
+        f'{FASTAPI_API_V1_PATH}/mall/pay/notify',  # 微信支付回调
+        f'{FASTAPI_API_V1_PATH}/mall/pay/refund-notify',  # 微信退款回调
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$',
@@ -384,6 +386,18 @@ class Settings(BaseSettings):
     # .env 微信 H5 配置（可选）
     WX_H5_APPID: str = ''
     WX_H5_SECRET: str = ''
+
+    ##################################################
+    # [ App ] 微信支付 V3
+    ##################################################
+    # .env 微信支付配置
+    WECHAT_PAY_MCH_ID: str = ''
+    WECHAT_PAY_API_V3_KEY: str = ''
+    WECHAT_PAY_CERT_SERIAL_NO: str = ''
+    WECHAT_PAY_PRIVATE_KEY_PATH: str = ''
+    WECHAT_PAY_CERT_PATH: str = ''
+    WECHAT_PAY_NOTIFY_URL: str = ''
+    WECHAT_PAY_REFUND_NOTIFY_URL: str = ''
 
     ##################################################
     # OpenAI 向量化服务

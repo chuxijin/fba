@@ -106,15 +106,24 @@ class CustomerUserLoader(UserLoader):
         return f'{settings.TOKEN_REDIS_PREFIX}:customer'
 
     async def load_user(self, db: AsyncSession, user_id: int) -> AuthUser | None:
-        from backend.app.question_bank.crud.crud_user import user_account_dao
+        from sqlalchemy import select
+
+        from backend.app.admin.model import User
+        from backend.app.auth.crud.crud_social_account import social_account_dao
         from backend.common.exception import errors
 
-        user = await user_account_dao.get(db, user_id)
+        # user_id 现在是 sys_user.id
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
         if not user:
             return None
 
-        if user.status != 1:
+        if not user.status:
             raise errors.AuthorizationError(msg='账户已被禁用')
+
+        # 从社交绑定表获取 openid
+        open_id = await social_account_dao.get_user_openid(db, user_id, 'wechat_miniapp')
 
         return AuthUser(
             user_id=user.id,
@@ -122,7 +131,7 @@ class CustomerUserLoader(UserLoader):
             username=user.username,
             extra={
                 'nickname': user.nickname,
-                'open_id': user.open_id,
+                'open_id': open_id,
             },
         )
 

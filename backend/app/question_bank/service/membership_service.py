@@ -3,10 +3,11 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.membership.security import check_membership_level
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
-from backend.app.question_bank.crud.crud_question import question_dao, question_placement_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
+from backend.app.question_bank.crud.crud_question import question_dao
 from backend.app.question_bank.model import QuestionPlacement
 from backend.common.exception import errors
 
@@ -26,7 +27,13 @@ class MembershipService:
         bank = await bank_dao.get(db, bank_id)
         if not bank:
             raise errors.NotFoundError(msg='题库不存在')
-        # TODO: 会员等级校验（当前阶段公开题库全部放行，付费题库需要 membership 表判断）
+
+        # scope <= 1 为免费题库，直接放行
+        if bank.scope <= 1:
+            return
+
+        # 付费题库需要会员等级 >= scope
+        await check_membership_level(db, user_id=user_id, required_level=bank.scope)
 
     @staticmethod
     async def verify_chapter_access(*, db: AsyncSession, user_id: int, chapter_id: int) -> None:
@@ -41,6 +48,13 @@ class MembershipService:
         if not chapter:
             raise errors.NotFoundError(msg='章节不存在')
 
+        # 试用章节，直接放行
+        if chapter.is_trial:
+            return
+
+        # 非试用章节，校验所属题库的访问权限
+        await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=chapter.bank_id)
+
     @staticmethod
     async def verify_question_access(*, db: AsyncSession, user_id: int, question_id: int) -> None:
         """
@@ -54,6 +68,17 @@ class MembershipService:
         if not question:
             raise errors.NotFoundError(msg='题目不存在')
 
+        # 查询题目所属的题库（通过 placement）
+        stmt = select(QuestionPlacement.bank_id).where(
+            QuestionPlacement.question_id == question_id,
+            QuestionPlacement.is_active.is_(True),
+        ).limit(1)
+        result = await db.execute(stmt)
+        bank_id = result.scalar_one_or_none()
+
+        if bank_id:
+            await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+
     @staticmethod
     async def verify_bank_list_access(*, db: AsyncSession, user_id: int, bank_id: int) -> None:
         """
@@ -63,9 +88,7 @@ class MembershipService:
         :param user_id: 用户 ID
         :param bank_id: 题库 ID
         """
-        bank = await bank_dao.get(db, bank_id)
-        if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+        await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
 
     @staticmethod
     async def verify_placement_access(*, db: AsyncSession, user_id: int, placement_id: int) -> None:
