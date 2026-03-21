@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.model import User
 from backend.app.auth.crud.crud_social_account import social_account_dao
-from backend.app.auth.model.social_account import SocialAccount
+from backend.app.auth.model.social_account import UserSocialAccount
 from backend.app.auth.utils.wx_decrypt import WXBizDataCrypt
 from backend.common.exception import errors
 from backend.common.log import log
@@ -98,7 +98,7 @@ class UnifiedAuthService:
         platform: str,
         nickname: str | None = None,
         avatar: str | None = None,
-    ) -> tuple[SocialAccount, User]:
+    ) -> tuple[UserSocialAccount, User]:
         """
         查找或创建用户（核心匹配逻辑，只操作 sys_user + sys_social_account）
 
@@ -123,9 +123,24 @@ class UnifiedAuthService:
 
         if social:
             # 已有绑定，更新 session_key
-            if session_key:
+            if session_key and social.platform == platform:
                 await social_account_dao.update_session_key(db, social.id, session_key)
                 social.session_key = session_key
+
+            # 如果是通过 unionid 匹配到的，但当前平台还没有绑定记录，补建一条
+            if social.platform != platform:
+                existing = await social_account_dao.get_by_openid(db, platform, openid)
+                if not existing:
+                    new_social = UserSocialAccount(
+                        user_id=social.user_id,
+                        platform=platform,
+                        openid=openid,
+                        unionid=unionid,
+                        session_key=session_key,
+                    )
+                    db.add(new_social)
+                    await db.flush()
+                    social = new_social
 
             # 获取关联的 sys_user
             stmt = select(User).where(User.id == social.user_id)
@@ -155,7 +170,7 @@ class UnifiedAuthService:
         db.add(sys_user)
         await db.flush()
 
-        social = SocialAccount(
+        social = UserSocialAccount(
             user_id=sys_user.id,
             platform=platform,
             openid=openid,
@@ -178,7 +193,7 @@ class UnifiedAuthService:
         avatar: str | None = None,
         encrypted_data: str | None = None,
         iv: str | None = None,
-    ) -> tuple[str, User, SocialAccount]:
+    ) -> tuple[str, User, UserSocialAccount]:
         """
         微信登录
 
@@ -239,7 +254,7 @@ class UnifiedAuthService:
         db: AsyncSession,
         username: str = 'test_user',
         nickname: str = '测试用户',
-    ) -> tuple[str, User, SocialAccount | None]:
+    ) -> tuple[str, User, UserSocialAccount | None]:
         """
         测试登录（仅用于开发测试）
 

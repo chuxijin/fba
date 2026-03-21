@@ -6,15 +6,15 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.auth.model.social_account import SocialAccount
+from backend.app.auth.model.social_account import UserSocialAccount
 
 
-class CRUDSocialAccount(CRUDPlus[SocialAccount]):
+class CRUDSocialAccount(CRUDPlus[UserSocialAccount]):
     """社交账号绑定数据库操作类"""
 
     async def get_by_openid(
         self, db: AsyncSession, platform: str, openid: str
-    ) -> SocialAccount | None:
+    ) -> UserSocialAccount | None:
         """
         按平台和 openid 查找
 
@@ -43,7 +43,7 @@ class CRUDSocialAccount(CRUDPlus[SocialAccount]):
         result = await db.execute(stmt)
         return result.scalars().first()
 
-    async def get_by_user_id(self, db: AsyncSession, user_id: int) -> Sequence[SocialAccount]:
+    async def get_by_user_id(self, db: AsyncSession, user_id: int) -> Sequence[UserSocialAccount]:
         """
         获取用户所有社交绑定
 
@@ -101,4 +101,4 @@ class CRUDSocialAccount(CRUDPlus[SocialAccount]):
         return result.scalar_one_or_none()
 
 
-social_account_dao: CRUDSocialAccount = CRUDSocialAccount(SocialAccount)
+social_account_dao: CRUDSocialAccount = CRUDSocialAccount(UserSocialAccount)

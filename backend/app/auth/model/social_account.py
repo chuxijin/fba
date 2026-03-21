@@ -7,8 +7,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from backend.common.model import Base, UniversalText, id_key
 
 
-class SocialAccount(Base):
-    """社交账号绑定表"""
+class UserSocialAccount(Base):
+    """用户社交账号绑定表"""
 
     __tablename__ = 'sys_social_account'
     __table_args__ = (
