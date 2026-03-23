@@ -7,8 +7,11 @@ from backend.plugin.oauth2.enums import UserSocialType
 class UserSocialSchemaBase(SchemaBase):
     """用户社交基础模型"""
 
-    sid: str = Field(description='第三方用户 ID')
-    source: UserSocialType = Field(description='社交平台')
+    sid: str | None = Field(None, description='第三方用户 ID')
+    source: str = Field(description='社交平台来源')
+    openid: str | None = Field(None, description='平台 OpenID')
+    unionid: str | None = Field(None, description='跨平台 UnionID')
+    extra: str | None = Field(None, description='平台扩展 JSON 数据')
 
 
 class CreateUserSocialParam(UserSocialSchemaBase):

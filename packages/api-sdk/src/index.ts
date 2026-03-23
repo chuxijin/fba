@@ -6,6 +6,10 @@ import { createGongkaoModule } from './modules/gongkao';
 import type { GongkaoModule } from './modules/gongkao';
 import { createQbankModule } from './modules/qbank';
 import type { QbankModule } from './modules/qbank';
+import { createCoulddriveModule } from './modules/coulddrive';
+import type { CoulddriveModule } from './modules/coulddrive';
+import { createOssModule } from './modules/oss';
+import type { OssModule } from './modules/oss';
 import type { BankModule } from './modules/bank';
 import type { MaterialModule } from './modules/material';
 import type { PracticeModule } from './modules/practice';
@@ -15,6 +19,8 @@ export interface FbaApiSdk {
   admin: AdminModule;
   gongkao: GongkaoModule;
   qbank: QbankModule;
+  coulddrive: CoulddriveModule;
+  oss: OssModule;
   bank: BankModule;
   material: MaterialModule;
   question: QuestionModule;
@@ -27,11 +33,15 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
   const admin = createAdminModule(client);
   const gongkao = createGongkaoModule(client);
   const qbank = createQbankModule(client);
+  const coulddrive = createCoulddriveModule(client);
+  const oss = createOssModule(client);
 
   return {
     admin,
     gongkao,
     qbank,
+    coulddrive,
+    oss,
     bank: qbank.bank,
     material: qbank.material,
     question: qbank.question,
@@ -46,6 +56,8 @@ export type { ApiClient, FormDataLike, RequestAdapter, RequestConfig, SdkOptions
 export type { AdminModule } from './modules/admin';
 export type { GongkaoModule } from './modules/gongkao';
 export type { QbankModule } from './modules/qbank';
+export type { CoulddriveModule } from './modules/coulddrive';
+export type { OssModule } from './modules/oss';
 export type { BankModule } from './modules/bank';
 export type { MaterialModule } from './modules/material';
 export type { PracticeModule } from './modules/practice';
@@ -145,10 +157,22 @@ export type {
   AdminUserInfo,
   QbankCheckInParam,
   QbankEntity,
+  QbankRoleExpiry,
   QbankTestLoginParam,
   QbankUserAccountDetail,
   QbankWxLoginParam,
   QbankWxLoginResponse,
+  CoulddriveDriveType,
+  CoulddriveResourceListItem,
+  CoulddriveResourceListParams,
+  CoulddriveResourceKnowledgeItem,
+  CoulddriveResourceVectorSearchKnowledgeResultItem,
+  CoulddriveResourceVectorSearchParams,
+  CoulddriveResourceVectorSearchResultItem,
+  CoulddriveResourceVectorizeParams,
+  CoulddriveResourceVectorizeResult,
+  OssUploadParams,
+  OssUploadResult,
 } from './types';
 
 

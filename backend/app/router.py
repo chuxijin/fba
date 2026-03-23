@@ -2,7 +2,6 @@ from fastapi import APIRouter
 
 from backend.app.actcode.api.router import v1 as actcode_v1
 from backend.app.admin.api.router import v1 as admin_v1
-from backend.app.auth.api.router import v1 as auth_v1
 from backend.app.bili.api.router import v1 as bili_v1
 from backend.app.task.api.router import v1 as task_v1
 from backend.app.coulddrive.api.router import v1 as coulddrive_v1
@@ -20,7 +19,6 @@ router = APIRouter()
 
 router.include_router(actcode_v1)
 router.include_router(admin_v1)
-router.include_router(auth_v1)
 router.include_router(bili_v1)
 router.include_router(task_v1)
 router.include_router(job_v1)

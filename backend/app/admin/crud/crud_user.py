@@ -2,7 +2,7 @@ from typing import Any
 
 import bcrypt
 
-from sqlalchemy import Select, delete, insert, select
+from sqlalchemy import Select, and_, delete, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus, JoinConfig
 
@@ -34,6 +34,18 @@ from backend.utils.timezone import timezone
 class CRUDUser(CRUDPlus[User]):
     """用户数据库操作类"""
 
+
+    @staticmethod
+    def _active_user_role_join_condition() -> Any:
+        """构建生效用户角色关联条件"""
+        now = timezone.now()
+        return and_(
+            user_role.c.user_id == User.id,
+            user_role.c.status == 1,
+            or_(user_role.c.valid_from.is_(None), user_role.c.valid_from <= now),
+            or_(user_role.c.valid_to.is_(None), user_role.c.valid_to >= now),
+        )
+
     async def get(self, db: AsyncSession, user_id: int) -> User | None:
         """
         获取用户详情
@@ -62,8 +74,6 @@ class CRUDUser(CRUDPlus[User]):
         :param account: 用户名或邮箱
         :return:
         """
-        from sqlalchemy import or_
-
         stmt = select(self.model).where(or_(self.model.username == account, self.model.email == account))
         result = await db.execute(stmt)
         return result.scalars().first()
@@ -114,7 +124,7 @@ class CRUDUser(CRUDPlus[User]):
             'desc',
             join_conditions=[
                 JoinConfig(model=Dept, join_on=Dept.id == self.model.dept_id, fill_result=True),
-                JoinConfig(model=user_role, join_on=user_role.c.user_id == self.model.id),
+                JoinConfig(model=user_role, join_on=self._active_user_role_join_condition()),
                 JoinConfig(model=Role, join_on=Role.id == user_role.c.role_id, fill_result=True),
             ],
             **filters,
@@ -155,7 +165,17 @@ class CRUDUser(CRUDPlus[User]):
         :return:
         """
         dict_obj = obj.model_dump()
-        dict_obj.update({'is_staff': True, 'salt': None})
+
+        salt = bcrypt.gensalt()
+        password = obj.password if obj.password else '123456'
+        dict_obj.update(
+            {
+                'password': get_hash_password(password, salt),
+                'is_staff': True,
+                'salt': salt,
+            }
+        )
+
         new_user = self.model(**dict_obj)
         db.add(new_user)
         await db.flush()
@@ -352,7 +372,7 @@ class CRUDUser(CRUDPlus[User]):
             db,
             join_conditions=[
                 JoinConfig(model=Dept, join_on=Dept.id == self.model.dept_id, fill_result=True),
-                JoinConfig(model=user_role, join_on=user_role.c.user_id == self.model.id),
+                JoinConfig(model=user_role, join_on=self._active_user_role_join_condition()),
                 JoinConfig(model=Role, join_on=Role.id == user_role.c.role_id, fill_result=True),
                 JoinConfig(model=role_menu, join_on=role_menu.c.role_id == Role.id),
                 JoinConfig(model=Menu, join_on=Menu.id == role_menu.c.menu_id, fill_result=True),

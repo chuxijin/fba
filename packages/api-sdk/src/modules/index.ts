@@ -5,6 +5,8 @@ export { createQuestionModule } from './question';
 export { createAdminModule } from './admin';
 export { createGongkaoModule } from './gongkao';
 export { createQbankModule } from './qbank';
+export { createCoulddriveModule } from './coulddrive';
+export { createOssModule } from './oss';
 
 export type { BankModule } from './bank';
 export type { MaterialModule } from './material';
@@ -13,3 +15,5 @@ export type { QuestionModule } from './question';
 export type { AdminModule } from './admin';
 export type { GongkaoModule } from './gongkao';
 export type { QbankModule } from './qbank';
+export type { CoulddriveModule } from './coulddrive';
+export type { OssModule } from './oss';

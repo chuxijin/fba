@@ -56,7 +56,7 @@ class PracticeSession(Base, UserMixin):
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_user_account.id', ondelete='CASCADE'),
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
         comment='用户 ID',
     )
     session_type: Mapped[str] = mapped_column(
@@ -186,7 +186,7 @@ class PracticeRecord(Base):
     )
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_user_account.id', ondelete='CASCADE'),
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
         comment='用户 ID',
     )
     question_id: Mapped[int] = mapped_column(
@@ -244,7 +244,7 @@ class WrongQuestionBook(Base, UserMixin):
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_user_account.id', ondelete='CASCADE'),
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
         comment='用户 ID',
     )
     question_id: Mapped[int] = mapped_column(

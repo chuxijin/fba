@@ -3,7 +3,7 @@
 """首页接口"""
 from datetime import date
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from backend.app.question_bank.schema.home import (
     CheckInCalendarData,
@@ -11,12 +11,11 @@ from backend.app.question_bank.schema.home import (
     HomeDashboardData,
     RankListData,
 )
-from backend.app.question_bank.security import DependsCurrentUser
+from backend.common.security.jwt import DependsJwtAuth
 from backend.app.question_bank.service.check_in_service import check_in_service
 from backend.app.question_bank.service.home_service import home_service
 from backend.app.question_bank.service.rank_service import rank_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
-from backend.common.security.auth_strategy import AuthUser
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
@@ -25,7 +24,7 @@ router = APIRouter()
 @router.get('/dashboard', summary='获取首页Dashboard数据', name='home_dashboard')
 async def get_home_dashboard(
     db: CurrentSession,
-    current_user: AuthUser = DependsCurrentUser,
+    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[HomeDashboardData]:
     """
     👤 客户端首页 - 获取Dashboard聚合数据
@@ -41,7 +40,7 @@ async def get_home_dashboard(
     - 准实时数据：本周统计、累计数据（可缓存5分钟）
     - 定时数据：排名信息（从预计算表读取，缓存24小时）
     """
-    dashboard_data = await home_service.get_dashboard_data(db=db, user_id=current_user.user_id)
+    dashboard_data = await home_service.get_dashboard_data(db=db, user_id=request.user.id)
     return response_base.success(data=dashboard_data)
 
 
@@ -49,7 +48,7 @@ async def get_home_dashboard(
 async def check_in(
     db: CurrentSessionTransaction,
     obj: CheckInParam,
-    current_user: AuthUser = DependsCurrentUser,
+    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel:
     """
     👤 客户端首页 - 用户打卡
@@ -66,7 +65,7 @@ async def check_in(
     """
     await check_in_service.check_in(
         db=db,
-        user_id=current_user.user_id,
+        user_id=request.user.id,
         practice_count=obj.practice_count,
         practice_duration=obj.practice_duration,
     )
@@ -76,7 +75,7 @@ async def check_in(
 @router.get('/check-in-calendar', summary='获取打卡日历', name='home_check_in_calendar')
 async def get_check_in_calendar(
     db: CurrentSession,
-    current_user: AuthUser = DependsCurrentUser,
+    request: Request, _token: str = DependsJwtAuth,
     year: int = Query(default=None, description='年份（默认当前年）'),
     month: int = Query(default=None, description='月份（默认当前月，1-12）'),
 ) -> ResponseSchemaModel[CheckInCalendarData]:
@@ -97,7 +96,7 @@ async def get_check_in_calendar(
 
     calendar_data = await check_in_service.get_check_in_calendar(
         db=db,
-        user_id=current_user.user_id,
+        user_id=request.user.id,
         year=year,
         month=month,
     )
@@ -107,7 +106,7 @@ async def get_check_in_calendar(
 @router.get('/rank', summary='获取排行榜列表', name='home_rank_list')
 async def get_rank_list(
     db: CurrentSession,
-    current_user: AuthUser = DependsCurrentUser,
+    request: Request, _token: str = DependsJwtAuth,
     rank_type: str = Query(
         default='practice_count',
         description='排行榜类型（practice_count: 刷题数量, accuracy_rate: 正确率, streak_days: 坚持天数）',
@@ -135,8 +134,10 @@ async def get_rank_list(
     rank_data = await rank_service.get_rank_list(
         db=db,
         rank_type=rank_type,
-        current_user_id=current_user.user_id,
+        current_user_id=request.user.id,
         limit=limit,
     )
     return response_base.success(data=rank_data)
+
+
 

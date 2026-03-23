@@ -30,7 +30,7 @@ class UserCheckIn(Base, UserMixin):
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_user_account.id', ondelete='CASCADE'),
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
         comment='用户 ID',
     )
     check_date: Mapped[date] = mapped_column(comment='打卡日期')

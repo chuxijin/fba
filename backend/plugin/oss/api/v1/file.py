@@ -17,6 +17,7 @@ async def oss_upload_files(
     db: CurrentSession,
     file: Annotated[UploadFile, File()],
     path: Annotated[str | None, Form()] = None,
+    use_signed_url: Annotated[bool | None, Form()] = None,
     url_expire_seconds: Annotated[int | None, Form()] = None,
     object_expire_days: Annotated[int | None, Form()] = None,
 ) -> ResponseSchemaModel[OssUploadResult]:
@@ -32,6 +33,7 @@ async def oss_upload_files(
         db=db,
         file=file,
         path=path,
+        use_signed_url=use_signed_url,
         url_expire_seconds=url_expire_seconds,
         object_expire_days=object_expire_days,
     )

@@ -389,7 +389,7 @@ class QuestionNote(Base, UserMixin):
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_user_account.id', ondelete='CASCADE'),
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
         comment='用户 ID',
     )
     question_id: Mapped[int] = mapped_column(
@@ -450,7 +450,7 @@ class UserNoteVote(Base):
     # ============ 基础字段（复合主键） ============
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_user_account.id', ondelete='CASCADE'),
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
         comment='投票用户 ID',
     )
     note_id: Mapped[int] = mapped_column(
@@ -504,7 +504,7 @@ class QuestionFavorite(Base, UserMixin):
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_user_account.id', ondelete='CASCADE'),
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
         comment='用户 ID',
     )
     question_id: Mapped[int] = mapped_column(

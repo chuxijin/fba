@@ -42,17 +42,17 @@ async def _update_daily_user_ranks() -> dict:
 
         stmt = (
             select(
-                UserAccount.id.label('user_id'),
+                UserAccount.user_id.label('user_id'),
                 func.count(PracticeRecord.id).label('practice_count'),
                 func.sum(func.cast(PracticeRecord.is_correct, sa.Integer)).label('correct_count'),
             )
             .outerjoin(
                 PracticeRecord,
-                (PracticeRecord.user_id == UserAccount.id)
+                (PracticeRecord.user_id == UserAccount.user_id)
                 & (PracticeRecord.created_time >= yesterday_start)
                 & (PracticeRecord.created_time < today_start),
             )
-            .group_by(UserAccount.id)
+            .group_by(UserAccount.user_id)
             .order_by(func.count(PracticeRecord.id).desc())
         )
 

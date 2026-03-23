@@ -180,6 +180,16 @@ class OrderService:
         if order.status not in ['pending']:
             raise errors.ForbiddenError(msg='订单状态不允许取消')
 
+        # 如果已发起过预下单，关闭微信侧的预付单
+        if order.pay_type:
+            from backend.common.payment import get_provider
+
+            try:
+                provider = get_provider(order.pay_type)
+                await provider.close(order_no=order.order_no)
+            except Exception as e:
+                log.warning(f'关闭微信预付单失败: order_no={order.order_no}, error={e}')
+
         now = timezone.now()
         count = await order_dao.update_model(
             db,

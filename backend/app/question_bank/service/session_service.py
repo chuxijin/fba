@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_session_question import session_question_dao
@@ -23,6 +24,7 @@ from backend.app.question_bank.model import (
     PracticeRecord,
     PracticeSession,
     Question,
+    QuestionBank,
     QuestionOption,
     QuestionPlacement,
     SessionQuestion,
@@ -93,6 +95,24 @@ class SessionService:
 
         return sorted(kp_ids), sorted(kp_names)
 
+    @staticmethod
+    def _dedup_placements_by_question(placements: list[QuestionPlacement]) -> list[QuestionPlacement]:
+        """
+        按 question_id 去重（保留首个命中 placement）
+
+        说明：
+        - 同一题可能挂载在多个试卷/章节，创建同一会话时应只保留一题；
+        - 保留顺序受上游排序/打乱影响（即“当前顺序下第一个命中”）。
+        """
+        seen_question_ids: set[int] = set()
+        unique_placements: list[QuestionPlacement] = []
+        for placement in placements:
+            if placement.question_id in seen_question_ids:
+                continue
+            seen_question_ids.add(placement.question_id)
+            unique_placements.append(placement)
+        return unique_placements
+
     # ------------------------------------------------------------------
     #  Session 生命周期
     # ------------------------------------------------------------------
@@ -137,6 +157,43 @@ class SessionService:
                     stmt = stmt.where(QuestionPlacement.bank_id == obj.bank_id)
                 if obj.chapter_id:
                     stmt = stmt.where(QuestionPlacement.chapter_id == obj.chapter_id)
+
+                region_text = (obj.region or '').strip()
+                has_collection_scope = (
+                    obj.cat_id is not None
+                    or bool(region_text)
+                    or obj.year_start is not None
+                    or obj.year_end is not None
+                )
+                if has_collection_scope:
+                    stmt = stmt.join(QuestionBank, QuestionBank.id == QuestionPlacement.bank_id)
+                    stmt = stmt.where(
+                        QuestionBank.status == 1,
+                        QuestionBank.bank_type == 2,
+                    )
+
+                    if obj.cat_id is not None:
+                        cat_ids = await category_dao.get_all_children_ids(db, obj.cat_id)
+                        if cat_ids:
+                            stmt = stmt.where(QuestionBank.cat_id.in_(cat_ids))
+
+                    if region_text:
+                        stmt = stmt.where(
+                            or_(
+                                QuestionBank.name.ilike(f'%{region_text}%'),
+                                QuestionBank.code.ilike(f'%{region_text}%'),
+                                QuestionBank.desc.ilike(f'%{region_text}%'),
+                            )
+                        )
+
+                    year_start = obj.year_start
+                    year_end = obj.year_end
+                    if year_start is not None and year_end is not None and year_start > year_end:
+                        year_start, year_end = year_end, year_start
+                    if year_start is not None:
+                        stmt = stmt.where(Question.created_time >= datetime(year_start, 1, 1))
+                    if year_end is not None:
+                        stmt = stmt.where(Question.created_time < datetime(year_end + 1, 1, 1))
 
                 kp_column = cast(Question.knowledge_point, PGJSONB)
                 conditions = []
@@ -206,6 +263,11 @@ class SessionService:
         # ---- 2. 打乱 / 截断 ----
         if shuffle_flag:
             random.shuffle(placements)
+        original_count = len(placements)
+        placements = SessionService._dedup_placements_by_question(placements)
+        deduped_count = original_count - len(placements)
+        if deduped_count > 0:
+            log.info('Session create dedup: removed %d duplicate question placements', deduped_count)
         if limit_count and limit_count > 0:
             placements = placements[:limit_count]
 

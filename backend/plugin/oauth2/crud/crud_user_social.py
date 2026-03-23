@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -32,6 +33,27 @@ class CRUDUserSocial(CRUDPlus[UserSocial]):
         """
         return await self.select_model_by_column(db, sid=sid, source=source)
 
+    async def get_by_openid(self, db: AsyncSession, openid: str, source: str) -> UserSocial | None:
+        """
+        通过 openid 获取社交用户
+
+        :param db: 数据库会话
+        :param openid: 平台 OpenID
+        :param source: 社交账号类型
+        :return:
+        """
+        return await self.select_model_by_column(db, openid=openid, source=source)
+
+    async def get_by_unionid(self, db: AsyncSession, unionid: str) -> UserSocial | None:
+        """
+        通过 unionid 获取社交用户
+
+        :param db: 数据库会话
+        :param unionid: 微信 UnionID
+        :return:
+        """
+        return await self.select_model_by_column(db, unionid=unionid)
+
     async def get_by_user_id(self, db: AsyncSession, user_id: int) -> Sequence[UserSocial]:
         """
         通过用户 ID 获取所有社交账号绑定
@@ -41,6 +63,26 @@ class CRUDUserSocial(CRUDPlus[UserSocial]):
         :return:
         """
         return await self.select_models(db, user_id=user_id)
+
+    async def get_user_openid(self, db: AsyncSession, user_id: int, source: str) -> str | None:
+        """
+        鑾峰彇鐢ㄦ埛鍦ㄦ寚瀹氬钩鍙扮殑 openid
+
+        :param db: 鏁版嵁搴撲細璇?
+        :param user_id: 鐢ㄦ埛 ID
+        :param source: 绀句氦璐﹀彿绫诲瀷
+        :return:
+        """
+        stmt = (
+            select(self.model.openid)
+            .where(
+                self.model.user_id == user_id,
+                self.model.source == source,
+            )
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def create(self, db: AsyncSession, obj: CreateUserSocialParam) -> None:
         """

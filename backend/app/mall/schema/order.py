@@ -44,6 +44,8 @@ class GetOrderListItem(SchemaBase):
     total_amount: Decimal = Field(description='订单总额')
     paid_amount: Decimal = Field(description='已支付金额')
     status: OrderStatus = Field(description='订单状态')
+    pay_type: str | None = Field(None, description='支付方式')
+    trade_no: str | None = Field(None, description='第三方交易号')
     team_id: int | None = Field(None, description='拼团团队 ID')
     activity_id: int | None = Field(None, description='拼团活动 ID')
     created_time: datetime = Field(description='创建时间')

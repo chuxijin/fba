@@ -8,6 +8,7 @@ import type {
   GetQuestionNoteDetail,
   GetQuestionSolution,
   GetQuestionStatisticsDetail,
+  GetSessionQuestionsResponse,
   QuestionAnalysisItem,
   QuestionListParams,
   QuestionOptionStatsItem,
@@ -24,6 +25,7 @@ export interface QuestionModule {
   getList(params?: QuestionListParams): Promise<QuestionListResult>;
   getAnalysis(id: number): Promise<QuestionAnalysisItem>;
   getSolution(id: number, userAnswer?: string): Promise<GetQuestionSolution>;
+  getSessionQuestions(sessionId: number): Promise<GetSessionQuestionsResponse>;
   markAnalysisHelpful(id: number, isHelpful: boolean): Promise<void>;
   getStatistics(id: number): Promise<GetQuestionStatisticsDetail>;
   getOptionStats(
@@ -58,6 +60,10 @@ export function createQuestionModule(client: ApiClient): QuestionModule {
       return client.get<GetQuestionSolution>(`/questions/${id}/solution`, {
         params: userAnswer ? { user_answer: userAnswer } : undefined,
       });
+    },
+
+    getSessionQuestions(sessionId) {
+      return client.get<GetSessionQuestionsResponse>(`/questions/sessions/${sessionId}`);
     },
 
     markAnalysisHelpful(id, isHelpful) {
@@ -105,4 +111,3 @@ export function createQuestionModule(client: ApiClient): QuestionModule {
     },
   };
 }
-

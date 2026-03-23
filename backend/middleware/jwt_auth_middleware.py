@@ -99,7 +99,7 @@ class JwtAuthMiddleware(AuthenticationBackend):
             # 如果是 customer token，只做基本验证，具体权限检查留给路由依赖
             if user_type == 'customer':
                 # Customer token 已通过 JWT 解析验证（签名、过期时间等）
-                # 具体的用户信息和权限由路由的 DependsCurrentUser 处理
+                # 具体的用户信息和权限由路由层按业务自行处理
                 return None
         except jwt.ExpiredSignatureError:
             raise AuthenticationError(code=401, msg='Token 已过期')

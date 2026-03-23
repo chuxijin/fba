@@ -189,5 +189,24 @@ class CRUDUserAccount(CRUDPlus[UserAccount]):
             return 1
         return 0
 
+    async def update_avatar_by_sys_user_id(self, db: AsyncSession, sys_user_id: int, avatar: str) -> int:
+        """
+        通过 sys_user.id 更新头像
+
+        :param db: 数据库会话
+        :param sys_user_id: 系统用户 ID（sys_user.id）
+        :param avatar: 头像 URL
+        :return:
+        """
+        stmt = select(User).where(User.id == sys_user_id)
+        result = await db.execute(stmt)
+        sys_user = result.scalar_one_or_none()
+        if not sys_user:
+            return 0
+
+        sys_user.avatar = avatar
+        await db.flush()
+        return 1
+
 
 user_account_dao: CRUDUserAccount = CRUDUserAccount(UserAccount)

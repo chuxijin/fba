@@ -4,17 +4,22 @@ import { createMaterialModule, type MaterialModule } from './material';
 import { createPracticeModule, type PracticeModule } from './practice';
 import { createQuestionModule, type QuestionModule } from './question';
 import { createScopedClient, type ScopedApiClient } from './_shared';
+import type { PageData } from '../types/common';
 import type { QbankCheckInParam, QbankEntity, QbankTestLoginParam, QbankUserAccountDetail, QbankWxLoginParam, QbankWxLoginResponse } from '../types/qbank';
 import type {
   BatchUpsertPracticeRecordsParam,
   CreatePracticeSessionParam,
   GetPracticeRecordDetail,
+  GetPracticeRecordListItem,
   GetPracticeSessionDetail,
   GetPracticeSessionListItem,
   PracticeSessionQueryParam,
+  SessionReport,
   SubmitPracticeSessionParam,
   SubmitPracticeSessionResult,
 } from '../types/practice';
+
+type LatestPracticeSessionQuery = Pick<PracticeSessionQueryParam, 'session_type' | 'bank_id' | 'chapter_id'>;
 
 export interface QbankModule {
   request: ScopedApiClient;
@@ -43,18 +48,18 @@ export interface QbankModule {
   };
   session: {
     create(data: CreatePracticeSessionParam): Promise<GetPracticeSessionDetail>;
-    getLatest(): Promise<GetPracticeSessionDetail | null>;
-    getList(params?: PracticeSessionQueryParam): Promise<GetPracticeSessionListItem[]>;
+    getLatest(params?: LatestPracticeSessionQuery): Promise<GetPracticeSessionDetail | null>;
+    getList(params?: PracticeSessionQueryParam): Promise<PageData<GetPracticeSessionListItem>>;
     getDetail(id: number): Promise<GetPracticeSessionDetail>;
     submit(id: number, data: SubmitPracticeSessionParam): Promise<SubmitPracticeSessionResult>;
     abandon(id: number): Promise<void>;
     remove(id: number): Promise<void>;
     upsertRecords(id: number, data: BatchUpsertPracticeRecordsParam): Promise<QbankEntity>;
     getRecord(id: number): Promise<GetPracticeRecordDetail>;
-    getRecords(params?: QbankEntity): Promise<QbankEntity>;
-    getSessionRecords(id: number): Promise<QbankEntity[]>;
-    getReport(id: number): Promise<QbankEntity>;
-    getSolution(id: number): Promise<QbankEntity>;
+    getRecords(params?: { session_id?: number; question_id?: number }): Promise<PageData<GetPracticeRecordListItem>>;
+    getSessionRecords(id: number): Promise<GetPracticeRecordDetail[]>;
+    getReport(id: number): Promise<SessionReport>;
+    getSolution(id: number): Promise<unknown>;
   };
   favorite: {
     create(data: QbankEntity): Promise<void>;
@@ -136,9 +141,9 @@ export function createQbankModule(client: ApiClient): QbankModule {
     question: createQuestionModule(request),
     practice: createPracticeModule(request),
     auth: {
-      wxLogin(data) { return request.post<QbankWxLoginResponse>('/auth/wx-login', data); },
-      testLogin(data) { return request.post<QbankWxLoginResponse>('/auth/test-login', data); },
-      getMe() { return request.get<QbankUserAccountDetail>('/auth/me'); },
+      wxLogin(data) { return client.post<QbankWxLoginResponse>('/oauth2/wechat/miniapp/login', data); },
+      testLogin(data) { return client.post<QbankWxLoginResponse>('/auth/test-login', data); },
+      getMe() { return client.get<QbankUserAccountDetail>('/sys/users/me'); },
     },
     home: {
       getDashboard() { return request.get<QbankEntity>('/home/dashboard'); },
@@ -156,18 +161,18 @@ export function createQbankModule(client: ApiClient): QbankModule {
     },
     session: {
       create(data) { return request.post<GetPracticeSessionDetail>('/sessions', data); },
-      getLatest() { return request.get<GetPracticeSessionDetail | null>('/sessions/latest'); },
-      getList(params) { return request.get<GetPracticeSessionListItem[]>('/sessions', { params: params as Record<string, unknown> }); },
+      getLatest(params) { return request.get<GetPracticeSessionDetail | null>('/sessions/latest', { params: params as Record<string, unknown> | undefined }); },
+      getList(params) { return request.get<PageData<GetPracticeSessionListItem>>('/sessions', { params: params as Record<string, unknown> }); },
       getDetail(id) { return request.get<GetPracticeSessionDetail>(`/sessions/${id}`); },
       submit(id, data) { return request.post<SubmitPracticeSessionResult>(`/sessions/${id}/submit`, data); },
       abandon(id) { return request.post(`/sessions/${id}/abandon`); },
       remove(id) { return request.delete(`/sessions/${id}`); },
       upsertRecords(id, data) { return request.post<QbankEntity>(`/sessions/${id}/records`, data); },
       getRecord(id) { return request.get<GetPracticeRecordDetail>(`/sessions/records/${id}`); },
-      getRecords(params) { return request.get<QbankEntity>('/sessions/records', { params: params as Record<string, unknown> }); },
-      getSessionRecords(id) { return request.get<QbankEntity[]>(`/sessions/${id}/records`); },
-      getReport(id) { return request.get<QbankEntity>(`/sessions/${id}/report`); },
-      getSolution(id) { return request.get<QbankEntity>(`/sessions/${id}/solution`); },
+      getRecords(params) { return request.get<PageData<GetPracticeRecordListItem>>('/sessions/records', { params: params as Record<string, unknown> | undefined }); },
+      getSessionRecords(id) { return request.get<GetPracticeRecordDetail[]>(`/sessions/${id}/records`); },
+      getReport(id) { return request.get<SessionReport>(`/sessions/${id}/report`); },
+      getSolution(id) { return request.get<unknown>(`/sessions/${id}/solution`); },
     },
     favorite: {
       create(data) { return request.post('/favorites', data); },
@@ -239,5 +244,3 @@ export function createQbankModule(client: ApiClient): QbankModule {
     },
   };
 }
-
-

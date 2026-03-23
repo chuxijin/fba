@@ -167,6 +167,7 @@ class StorageService:
         cfg: StorageRuntimeConfig,
         file: UploadFile,
         object_key: str,
+        use_signed_url: bool | None,
         url_expire_seconds: int | None,
         object_expire_days: int | None,
     ) -> ProviderUploadContext:
@@ -176,16 +177,18 @@ class StorageService:
         :param cfg: runtime config
         :param file: upload file
         :param object_key: object key
+        :param use_signed_url: whether force signed url
         :param url_expire_seconds: request url expire seconds
         :param object_expire_days: request object expire days
         :return:
         """
         signed_url_expire = self._resolve_signed_url_expire(url_expire_seconds, cfg.signed_url_expire_seconds)
         effective_object_expire_days = self._resolve_object_expire_days(object_expire_days, cfg.object_expire_days)
+        effective_use_signed_url = cfg.use_signed_url if use_signed_url is None else bool(use_signed_url)
         return ProviderUploadContext(
             file=file,
             object_key=object_key,
-            use_signed_url=cfg.use_signed_url,
+            use_signed_url=effective_use_signed_url,
             signed_url_expire_seconds=signed_url_expire,
             object_expire_days=effective_object_expire_days,
         )
@@ -281,6 +284,7 @@ class StorageService:
         db: AsyncSession,
         file: UploadFile,
         path: str | None = None,
+        use_signed_url: bool | None = None,
         url_expire_seconds: int | None = None,
         object_expire_days: int | None = None,
     ) -> tuple[str, str]:
@@ -290,6 +294,7 @@ class StorageService:
         :param db: db session
         :param file: upload file
         :param path: request upload path
+        :param use_signed_url: whether force signed url
         :param url_expire_seconds: request url expire seconds
         :param object_expire_days: request object expire days
         :return:
@@ -304,12 +309,14 @@ class StorageService:
             cfg=cfg,
             file=file,
             object_key=object_key,
+            use_signed_url=use_signed_url,
             url_expire_seconds=url_expire_seconds,
             object_expire_days=object_expire_days,
         )
         log.info(
             f'[OSS] upload begin provider={cfg.provider} object_key={object_key} '
-            f'configured_signed={cfg.use_signed_url} expire_seconds={context.signed_url_expire_seconds}'
+            f'configured_signed={cfg.use_signed_url} effective_signed={context.use_signed_url} ' 
+            f'expire_seconds={context.signed_url_expire_seconds}'
         )
         url = await provider.upload(context)
         url_type = self._detect_url_type(url)
@@ -325,6 +332,7 @@ class StorageService:
         file: UploadFile,
         filename: str,
         path: str | None = None,
+        use_signed_url: bool | None = None,
         url_expire_seconds: int | None = None,
         object_expire_days: int | None = None,
     ) -> tuple[str, str]:
@@ -335,6 +343,7 @@ class StorageService:
         :param file: upload file
         :param filename: custom filename
         :param path: request upload path
+        :param use_signed_url: whether force signed url
         :param url_expire_seconds: request url expire seconds
         :param object_expire_days: request object expire days
         :return:
@@ -349,12 +358,14 @@ class StorageService:
             cfg=cfg,
             file=file,
             object_key=object_key,
+            use_signed_url=use_signed_url,
             url_expire_seconds=url_expire_seconds,
             object_expire_days=object_expire_days,
         )
         log.info(
             f'[OSS] upload begin provider={cfg.provider} object_key={object_key} '
-            f'configured_signed={cfg.use_signed_url} expire_seconds={context.signed_url_expire_seconds}'
+            f'configured_signed={cfg.use_signed_url} effective_signed={context.use_signed_url} ' 
+            f'expire_seconds={context.signed_url_expire_seconds}'
         )
         url = await provider.upload(context)
         url_type = self._detect_url_type(url)

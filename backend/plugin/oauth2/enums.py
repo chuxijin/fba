@@ -6,6 +6,10 @@ class UserSocialType(StrEnum):
 
     github = 'Github'
     google = 'Google'
+    wechat_web = 'wechat_web'
+    wechat_miniapp = 'wechat_miniapp'
+    wechat_mp = 'wechat_mp'
+    qq = 'QQ'
 
 
 class UserSocialAuthType(StrEnum):

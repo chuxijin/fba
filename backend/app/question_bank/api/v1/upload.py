@@ -8,10 +8,9 @@ from typing import Annotated
 from fastapi import APIRouter, File, Request, UploadFile
 
 from backend.app.question_bank.crud.crud_user import user_account_dao
-from backend.app.question_bank.security import DependsCurrentUser
+from backend.common.security.jwt import DependsJwtAuth
 from backend.common.dataclasses import UploadUrl
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
-from backend.common.security.auth_strategy import AuthUser
 from backend.database.db import CurrentSessionTransaction
 from backend.utils.file_ops import upload_file, upload_file_verify
 
@@ -20,10 +19,9 @@ router = APIRouter()
 
 @router.post('/avatar', summary='上传头像', name='qbank_upload_avatar')
 async def upload_avatar(
-    request: Request,
     db: CurrentSessionTransaction,
     file: Annotated[UploadFile, File()],
-    current_user: AuthUser = DependsCurrentUser,
+    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[UploadUrl]:
     """
     上传用户头像并更新数据库
@@ -42,9 +40,11 @@ async def upload_avatar(
     full_url = f'{base_url}/static/upload/{filename}'
 
     # ✅ 立即更新数据库
-    await user_account_dao.update_avatar(db, current_user.user_id, full_url)
+    await user_account_dao.update_avatar_by_sys_user_id(db, request.user.id, full_url)
 
-    print(f'[Upload API] 用户 {current_user.user_id} 上传头像成功: {full_url}')
+    print(f'[Upload API] 用户 {request.user.id} 上传头像成功: {full_url}')
 
     return response_base.success(data={'url': full_url})
+
+
 

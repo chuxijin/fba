@@ -83,6 +83,8 @@ dependencies = [
   # [ Plugin ] notify 多渠道通知
   "aiosmtplib>=3.0.0",
   "serverchan-sdk>=0.3.0",
+  # [ App ] 微信支付 V3
+  "wechatpayv3>=1.2.44",
 ]
 dynamic = ["version"]
 

@@ -23,6 +23,7 @@ class Order(Base, UserMixin):
         sa.Index('idx_order_user_status', 'user_id', 'status'),
         sa.Index('idx_order_team_status', 'team_id', 'status'),
         sa.Index('idx_order_no', 'order_no', unique=True),
+        sa.Index('idx_order_trade_no', 'trade_no'),
         sa.Index('idx_order_created_time', 'created_time'),
         sa.CheckConstraint(
             "status IN ('pending','paid','cancelled','refunded','completed')",
@@ -62,6 +63,8 @@ class Order(Base, UserMixin):
     status: Mapped[str] = mapped_column(
         sa.String(16), default='pending', comment='状态: pending/paid/cancelled/refunded/completed'
     )
+    pay_type: Mapped[str | None] = mapped_column(sa.String(16), default=None, comment='支付方式(jsapi/h5)')
+    trade_no: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='第三方交易号')
     team_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('mall_group_buy_team.id', ondelete='SET NULL'),

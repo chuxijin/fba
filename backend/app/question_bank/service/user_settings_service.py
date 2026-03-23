@@ -21,7 +21,7 @@ class UserSettingsService:
         :param user_id: 用户 ID
         :return: 学习偏好设置
         """
-        user = await user_account_dao.get(db, user_id)
+        user = await user_account_dao.get_by_sys_user_id(db, user_id)
         if not user:
             raise errors.NotFoundError(msg='用户不存在')
 
@@ -51,7 +51,7 @@ class UserSettingsService:
         :param practice_mode: 练习模式
         :param custom_tabs: 自定义标签页
         """
-        user = await user_account_dao.get(db, user_id)
+        user = await user_account_dao.get_by_sys_user_id(db, user_id)
         if not user:
             raise errors.NotFoundError(msg='用户不存在')
 
@@ -66,7 +66,11 @@ class UserSettingsService:
         if custom_tabs is not None:
             current_settings['custom_tabs'] = [tab.model_dump() for tab in custom_tabs]
 
-        await user_account_dao.update_model(db, user_id, {'study_preference_settings': json.dumps(current_settings)})
+        await user_account_dao.update_model(
+            db,
+            user.id,
+            {'study_preference_settings': json.dumps(current_settings)},
+        )
 
 
 user_settings_service = UserSettingsService()

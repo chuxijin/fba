@@ -31,12 +31,6 @@ class UserAccount(Base):
         index=True,
         comment='关联系统用户 ID',
     )
-    # 微信相关
-    union_id: Mapped[str | None] = mapped_column(
-        sa.String(128), default=None, unique=True, index=True, comment='微信 UnionID'
-    )
-    open_id: Mapped[str | None] = mapped_column(sa.String(128), default=None, index=True, comment='微信 OpenID')
-    session_key: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='微信 SessionKey')
     # 用户画像（精简）
     gender: Mapped[int | None] = mapped_column(default=None, comment='性别（0 未知 1 男 2 女）')
     province: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='省')

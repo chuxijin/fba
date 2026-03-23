@@ -14,20 +14,22 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_FILE = path.resolve(__dirname, '../src/types/__generated__.ts');
-const DEFAULT_URL = 'http://127.0.0.1:8000/openapi.json';
+const DEFAULT_URL = 'http://127.0.0.1:8000/openapi';
 
 async function main() {
   const url = process.env['OPENAPI_URL'] || DEFAULT_URL;
   console.log(`\n📡 Fetching OpenAPI schema from: ${url}\n`);
 
   // 动态导入 openapi-typescript
-  const { default: openapiTS } = await import('openapi-typescript');
+  const { default: openapiTS, astToString } = await import('openapi-typescript');
 
   const source = new URL(url);
-  const output = await openapiTS(source, {
+  const ast = await openapiTS(source, {
     exportType: true,
     alphabetize: true,
   });
+  
+  const output = astToString(ast);
 
   // 写入文件
   const header = [

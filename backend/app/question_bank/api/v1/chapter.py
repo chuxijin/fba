@@ -11,11 +11,10 @@ from backend.app.question_bank.schema.chapter import (
     GetChapterTree,
     UpdateChapterParam,
 )
-from backend.app.question_bank.security import DependsCurrentUser
+from backend.common.security.jwt import DependsJwtAuth
 from backend.app.question_bank.service.chapter_service import chapter_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.security.auth_strategy import AuthUser
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -27,10 +26,10 @@ router = APIRouter()
 async def get_chapter(
     db: CurrentSession,
     pk: Annotated[int, Path(description='章节 ID')],
-    current_user: AuthUser = DependsCurrentUser,
+    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[GetChapterDetail]:
     """👤 客户接口 - 需要登录且开通会员后查看章节详情"""
-    await membership_service.verify_chapter_access(db=db, user_id=current_user.user_id, chapter_id=pk)
+    await membership_service.verify_chapter_access(db=db, user_id=request.user.id, chapter_id=pk)
     data = await chapter_service.get(db=db, pk=pk)
     return response_base.success(data=data)
 
@@ -110,4 +109,6 @@ async def delete_chapter(db: CurrentSessionTransaction, obj: DeleteChapterParam)
     if count > 0:
         return response_base.success()
     return response_base.fail()
+
+
 

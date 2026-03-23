@@ -6,8 +6,20 @@ export interface QbankUserAccountDetail extends QbankEntity {
   nickname?: string;
   avatar?: string;
   phone?: string;
+  email?: string;
+  dept?: string | null;
+  roles?: string[];
+  role_expiries?: QbankRoleExpiry[];
   open_id?: string;
   status?: number;
+}
+
+export interface QbankRoleExpiry {
+  role_id: number;
+  role_name: string;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  status: number;
 }
 
 export interface QbankWxLoginParam {
@@ -26,7 +38,10 @@ export interface QbankTestLoginParam {
 
 export interface QbankWxLoginResponse {
   access_token: string;
-  user_info: QbankUserAccountDetail;
+  access_token_expire_time?: string;
+  session_uuid?: string;
+  user?: QbankUserAccountDetail;
+  user_info?: QbankUserAccountDetail;
 }
 
 export interface QbankCheckInParam {

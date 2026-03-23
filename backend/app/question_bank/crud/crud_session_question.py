@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import logging
 from collections.abc import Sequence
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import SessionQuestion
+from backend.utils.timezone import timezone
+
+log = logging.getLogger(__name__)
 
 
 class CRUDSessionQuestion(CRUDPlus[SessionQuestion]):
@@ -36,9 +41,32 @@ class CRUDSessionQuestion(CRUDPlus[SessionQuestion]):
         :param session_id: 会话 ID
         :param items: 题目明细列表
         """
+        if not items:
+            return
+
+        now = timezone.now()
+        rows: list[dict] = []
         for item in items:
-            item['session_id'] = session_id
-            db.add(SessionQuestion(**item))
+            row = dict(item)
+            row['session_id'] = session_id
+            row.setdefault('created_time', now)
+            row.setdefault('updated_time', None)
+            rows.append(row)
+
+        stmt = (
+            pg_insert(SessionQuestion)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=['session_id', 'question_id'])
+        )
+        result = await db.execute(stmt)
+        inserted_count = result.rowcount if result.rowcount is not None else -1
+        if inserted_count >= 0 and inserted_count < len(rows):
+            log.warning(
+                'SessionQuestion batch_create skipped duplicates: session_id=%s inserted=%s skipped=%s',
+                session_id,
+                inserted_count,
+                len(rows) - inserted_count,
+            )
         await db.flush()
 
     async def replace_by_session(self, db: AsyncSession, session_id: int, items: list[dict]) -> None:

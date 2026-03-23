@@ -1,4 +1,4 @@
-﻿// Common
+// Common
 export type { DeleteParam, PageData, PaginationParams, ResponseModel } from './common';
 
 // Bank
@@ -59,18 +59,26 @@ export type {
 
 // Practice
 export type {
+  AnswerCardItem,
   AnswerCardStatus,
   BatchUpsertPracticeRecordsParam,
+  ChapterDistributionItem,
   CreatePracticeSessionParam,
   GetPracticeRecordDetail,
   GetPracticeRecordListItem,
+  GetPracticeRecordSessionItem,
   GetPracticeSessionDetail,
   GetPracticeSessionListItem,
-  AnswerCardItem,
-  SessionReport,
+  GetSessionQuestionsResponse,
+  KnowledgePointValue,
   PracticeQuestionParams,
   PracticeSessionQueryParam,
+  SessionChapterBrief,
+  SessionMaterialItem,
+  SessionQuestionContentItem,
   SessionQuestionItem,
+  SessionQuestionOption,
+  SessionReport,
   SessionStatus,
   SessionType,
   SubmitPracticeSessionParam,
@@ -127,12 +135,25 @@ export type {
 export type {
   QbankCheckInParam,
   QbankEntity,
+  QbankRoleExpiry,
   QbankTestLoginParam,
   QbankUserAccountDetail,
   QbankWxLoginParam,
   QbankWxLoginResponse,
 } from './qbank';
 
+// Coulddrive
+export type {
+  CoulddriveDriveType,
+  CoulddriveResourceKnowledgeItem,
+  CoulddriveResourceListItem,
+  CoulddriveResourceListParams,
+  CoulddriveResourceVectorSearchKnowledgeResultItem,
+  CoulddriveResourceVectorSearchParams,
+  CoulddriveResourceVectorSearchResultItem,
+  CoulddriveResourceVectorizeParams,
+  CoulddriveResourceVectorizeResult,
+} from './coulddrive';
 
-
-
+// Oss
+export type { OssUploadParams, OssUploadResult } from './oss';

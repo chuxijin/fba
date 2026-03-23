@@ -63,16 +63,16 @@ class RankService:
 
         stmt = (
             select(
-                UserAccount.id,
+                UserAccount.user_id.label('user_id'),
                 func.count(PracticeRecord.id).label('practice_count'),
             )
             .outerjoin(
                 PracticeRecord,
-                (PracticeRecord.user_id == UserAccount.id)
+                (PracticeRecord.user_id == UserAccount.user_id)
                 & (PracticeRecord.created_time >= yesterday_start)
                 & (PracticeRecord.created_time < today_start),
             )
-            .group_by(UserAccount.id)
+            .group_by(UserAccount.user_id)
             .order_by(func.count(PracticeRecord.id).desc())
         )
 
@@ -83,7 +83,7 @@ class RankService:
         current_rank = 1
 
         for i, row in enumerate(all_ranks, 1):
-            if row.id == user_id:
+            if row.user_id == user_id:
                 current_rank = i
                 break
 
@@ -126,14 +126,14 @@ class RankService:
         """获取刷题数量排行榜"""
         stmt = (
             select(
-                UserAccount.id.label('user_id'),
+                UserAccount.user_id.label('user_id'),
                 User.nickname,
                 User.avatar,
                 func.count(PracticeRecord.id).label('practice_count'),
             )
             .join(User, User.id == UserAccount.user_id)
-            .outerjoin(PracticeRecord, PracticeRecord.user_id == UserAccount.id)
-            .group_by(UserAccount.id, User.nickname, User.avatar)
+            .outerjoin(PracticeRecord, PracticeRecord.user_id == UserAccount.user_id)
+            .group_by(UserAccount.user_id, User.nickname, User.avatar)
             .order_by(func.count(PracticeRecord.id).desc())
             .limit(limit)
         )
@@ -174,15 +174,15 @@ class RankService:
         """获取正确率排行榜"""
         stmt = (
             select(
-                UserAccount.id.label('user_id'),
+                UserAccount.user_id.label('user_id'),
                 User.nickname,
                 User.avatar,
                 func.count(PracticeRecord.id).label('total_count'),
                 func.sum(func.cast(PracticeRecord.is_correct, sa.Integer)).label('correct_count'),
             )
             .join(User, User.id == UserAccount.user_id)
-            .outerjoin(PracticeRecord, PracticeRecord.user_id == UserAccount.id)
-            .group_by(UserAccount.id, User.nickname, User.avatar)
+            .outerjoin(PracticeRecord, PracticeRecord.user_id == UserAccount.user_id)
+            .group_by(UserAccount.user_id, User.nickname, User.avatar)
             .having(func.count(PracticeRecord.id) >= 10)
             .limit(limit * 2)
         )
@@ -238,7 +238,7 @@ class RankService:
     ) -> RankListData:
         """获取坚持天数（连续打卡）排行榜"""
         all_users_stmt = (
-            select(UserAccount.id, User.nickname, User.avatar)
+            select(UserAccount.user_id.label('user_id'), User.nickname, User.avatar)
             .join(User, User.id == UserAccount.user_id)
         )
         users_result = await db.execute(all_users_stmt)
@@ -247,10 +247,10 @@ class RankService:
         users_with_streak = []
 
         for user in all_users:
-            streak = await check_in_dao.get_streak(db, user.id)
+            streak = await check_in_dao.get_streak(db, user.user_id)
             if streak > 0:
                 users_with_streak.append({
-                    'user_id': user.id,
+                    'user_id': user.user_id,
                     'nickname': user.nickname,
                     'avatar': user.avatar,
                     'streak': streak,
