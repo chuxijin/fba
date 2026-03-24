@@ -77,11 +77,18 @@ class QuarkApi:
         self._user_info = None
 
     def _parse_cookies(self, cookies: str) -> Dict[str, Optional[str]]:
-        """将字符串形式的 cookies 转换为字典"""
+        """将字符串形式的 cookies 转换为字典，并清洗非 ASCII 字符"""
         cookie_dict = {}
         for cookie in cookies.split(';'):
-            key, value = cookie.strip().split('=', 1)  # 只分割第一个 '='
-            cookie_dict[key] = value
+            cookie = cookie.strip()
+            if not cookie or '=' not in cookie:
+                continue
+            key, value = cookie.split('=', 1)  # 只分割第一个 '='
+            # 清洗非 latin-1 字符，HTTP 头部只支持 latin-1 编码
+            key = key.encode('latin-1', errors='ignore').decode('latin-1')
+            value = value.encode('latin-1', errors='ignore').decode('latin-1')
+            if key:
+                cookie_dict[key] = value
         return cookie_dict
 
     @property

@@ -19,6 +19,7 @@ from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.common.pagination import DependsPagination, PageData, paging_list_data, _CustomPageParams
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.response.response_code import CustomResponse
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
 
@@ -153,24 +154,22 @@ async def delete_coulddrive_user(
 )
 async def refresh_user_info(
     user_id: int,
-    request: Request,
     db: CurrentSession,
 ) -> ResponseSchemaModel[BaseUserInfo]:
     """
     刷新用户信息
-    
+
     :param user_id: 用户ID
-    :param request: 请求对象
     :param db: 数据库会话
     :return: 最新的用户信息
     """
     # 获取数据库中的用户信息
     user_account = await drive_account_dao.get(db, user_id)
     if not user_account:
-        return response_base.fail(msg="用户不存在")
-    
+        return response_base.fast_success(res=CustomResponse(404, "用户不存在"))
+
     if not user_account.cookies:
-        return response_base.fail(msg="用户认证信息不完整")
+        return response_base.fast_success(res=CustomResponse(400, "用户认证信息不完整"))
     
     try:
         # 构造参数
@@ -180,16 +179,28 @@ async def refresh_user_info(
         service = CouldDriveService(auth_data=user_account.cookies, drive_type=user_account.type)
         user_info = await service.get_user_info(params=params)
 
-        # 更新数据库中的用户信息
-        drive_type_str = user_account.type
-        await drive_account_dao.create_or_update(
-            db, user_info, drive_type_str, user_account.cookies, request.user.id
+        # 校验 API 返回的数据是否有效，防止假数据写入数据库
+        if user_info.user_id == '0' or user_info.username == '未知用户':
+            raise ValueError("获取用户信息失败，Cookie 可能已失效")
+
+        # 直接根据已知的 user_id 更新数据库记录，避免 username 不匹配时误创建新记录
+        update_data = UpdateDriveAccountParam(
+            user_id=user_info.user_id,
+            username=user_info.username,
+            avatar_url=user_info.avatar_url,
+            quota=user_info.quota,
+            used=user_info.used,
+            is_vip=user_info.is_vip,
+            is_supervip=user_info.is_supervip,
+            is_valid=True,
         )
+        await drive_account_dao.update(db, user_id, update_data)
 
         return response_base.success(data=user_info)
 
     except Exception as e:
-        # 如果刷新失败，可能是认证信息过期，标记账户为无效
+        # 如果刷新失败，先回滚已中止的事务，再标记账户为无效
+        await db.rollback()
         await drive_account_dao.update_validity(db, user_id, False)
         await db.commit()
-        return response_base.fail(msg=f"刷新用户信息失败: {str(e)}")
+        return response_base.fast_success(res=CustomResponse(500, f"刷新用户信息失败: {str(e)}"))

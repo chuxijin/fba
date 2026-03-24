@@ -42,7 +42,7 @@ def assert_ok(func):
 
         # 支持夸克网盘的 "OK" 状态码
         if code != 0 and code != "OK":  # 判断 code 是否为 0 或 "OK"
-            err = QuarkApiError(f"Error code: {code}, message: {info.get('message', 'Unknown error')}")
+            err = QuarkApiError(f"Error code: {code}, message: {info.get('message', 'Unknown error')}", error_code=code if isinstance(code, int) else None)
             raise err
         return info
 
@@ -55,7 +55,7 @@ def assert_ok(func):
 
         # 支持夸克网盘的 "OK" 状态码
         if code != 0 and code != "OK":  # 判断 code 是否为 0 或 "OK"
-            err = QuarkApiError(f"Error code: {code}, message: {info.get('message', 'Unknown error')}")
+            err = QuarkApiError(f"Error code: {code}, message: {info.get('message', 'Unknown error')}", error_code=code if isinstance(code, int) else None)
             raise err
         return info
 

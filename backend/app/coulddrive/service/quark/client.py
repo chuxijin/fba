@@ -125,6 +125,13 @@ class QuarkClient(BaseDriveClient):
     - 配置字典 {"cookie": "__pus=xxx;__puus=xxx"}
     """
 
+    # 夸克认证错误码
+    AUTH_ERROR_CODES: set[int] = {31001}
+    # 扩展认证错误关键词
+    AUTH_ERROR_PATTERNS: tuple[str, ...] = (
+        'auth', 'token', '登录', '认证', '未授权', 'cookie', 'login', 'guest', 'require login'
+    )
+
     # ========== Alist 风格：配置项声明 ==========
 
     @classmethod

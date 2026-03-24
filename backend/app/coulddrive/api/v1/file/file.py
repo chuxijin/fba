@@ -70,11 +70,11 @@ async def get_file_list(
         return response_base.success(data=page_data)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.get(
@@ -112,11 +112,11 @@ async def get_share_file_list(
         return response_base.success(data=page_data)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -146,11 +146,11 @@ async def create_folder(
         return response_base.success(data=folder_info)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -180,11 +180,11 @@ async def rename_file(
         return response_base.success(data=result)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -214,11 +214,11 @@ async def move_files(
         return response_base.success(data=result)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -248,11 +248,11 @@ async def copy_files(
         return response_base.success(data=result)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.delete(
@@ -282,11 +282,11 @@ async def remove_files(
         return response_base.success(data=result)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -316,11 +316,11 @@ async def transfer_files(
         return response_base.success(data=result)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -350,7 +350,7 @@ async def batch_rename_files(
         from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
         account_id = await drive_account_dao.get_id_by_cookies(db, x_token)
         if not account_id:
-            return response_base.fail(res=CustomResponse(400, "无法获取网盘账户信息"))
+            return response_base.fast_success(res=CustomResponse(400, "无法获取网盘账户信息"))
         account_key = str(account_id)
         
         # 如果有模板ID，预先获取模板信息
@@ -362,7 +362,7 @@ async def batch_rename_files(
                 if template and template.rule_config:
                     template_data = template.rule_config
             except Exception as e:
-                return response_base.fail(res=CustomResponse(400, f"获取重命名模板失败: {str(e)}"))
+                return response_base.fast_success(res=CustomResponse(400, f"获取重命名模板失败: {str(e)}"))
         
         # 初始化进度信息
         file_operate_service_instance.update_progress(str(temp_task_id), {
@@ -393,9 +393,9 @@ async def batch_rename_files(
         return response_base.success(data=result)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except Exception as e:
-        return response_base.fail(res=CustomResponse(500, f"批量重命名失败: {str(e)}"))
+        return response_base.fast_success(res=CustomResponse(500, f"批量重命名失败: {str(e)}"))
 
 
 @router.get(
@@ -466,11 +466,11 @@ async def get_share_info(
         return response_base.success(data=share_info_list)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.post(
@@ -510,11 +510,11 @@ async def create_share(
         return response_base.success(data=share_info)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
 
 
 @router.delete(
@@ -554,8 +554,8 @@ async def cancel_share(
         return response_base.success(data=result)
 
     except DriveAuthError as e:
-        return response_base.fail(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
+        return response_base.fast_success(res=CustomResponse(401, f'网盘认证已失效，请更新 Cookie: {e}'))
     except PermissionError as e:
-        return response_base.fail(res=CustomResponse(403, str(e)))
+        return response_base.fast_success(res=CustomResponse(403, str(e)))
     except ValueError as e:
-        return response_base.fail(res=CustomResponse(404, str(e)))
+        return response_base.fast_success(res=CustomResponse(404, str(e)))
