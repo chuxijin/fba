@@ -22,6 +22,7 @@ class BankSchemaBase(SchemaBase):
     bank_type: Literal[1, 2, 3] = Field(default=1, description='内容类型: 1=题库, 2=试卷, 3=合集')
     scene_mask: int = Field(default=1, ge=0, description='可用场景位标记: 1=练习, 2=考试, 4=模考, 8=错题重练')
     parent_id: int | None = Field(None, description='父题库 ID')
+    chapter_source_bank_id: int | None = Field(None, description='章节来源题库 ID')
     status: int = Field(default=1, ge=0, description='状态')
     scope: int = Field(default=1, ge=0, description='可见范围')
 
@@ -79,3 +80,25 @@ class DeleteBankParam(SchemaBase):
     """删除题库参数"""
 
     ids: list[int] = Field(description='题库 ID 列表')
+
+
+class ChapterProgressNode(SchemaBase):
+    """章节进度节点"""
+
+    chapter_id: int = Field(description='章节 ID')
+    name: str = Field(description='章节名称')
+    question_count: int = Field(default=0, description='题目总数')
+    answer_count: int = Field(default=0, description='已做题数')
+    correct_count: int = Field(default=0, description='答对数')
+    correct_ratio: Decimal = Field(default=Decimal('0'), description='正确率（%）')
+    children: list['ChapterProgressNode'] = Field(default_factory=list, description='子章节')
+
+
+class GetBankChapterProgress(SchemaBase):
+    """题库章节进度"""
+
+    bank_id: int = Field(description='题库 ID')
+    total_question_count: int = Field(default=0, description='总题数')
+    total_answer_count: int = Field(default=0, description='总已做题数')
+    total_correct_count: int = Field(default=0, description='总答对数')
+    chapters: list[ChapterProgressNode] = Field(default_factory=list, description='章节进度树')

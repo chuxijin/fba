@@ -41,7 +41,14 @@ async def get_practice_questions(
         if not await verify_permission(request, perm_key):
             raise errors.ForbiddenError(msg=f'您没有该题库的刷题权限(需权限: {perm_key})')
 
-    if bank_id:
+    if bank_id and chapter_id:
+        await membership_service.verify_bank_chapter_access(
+            db=db,
+            user_id=request.user.id,
+            bank_id=bank_id,
+            chapter_id=chapter_id,
+        )
+    elif bank_id:
         await membership_service.verify_bank_list_access(db=db, user_id=request.user.id, bank_id=bank_id)
     elif chapter_id:
         await membership_service.verify_chapter_access(db=db, user_id=request.user.id, chapter_id=chapter_id)

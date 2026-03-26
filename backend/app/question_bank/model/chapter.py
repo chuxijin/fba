@@ -21,6 +21,13 @@ class QuestionChapter(Base):
     __table_args__ = (
         sa.UniqueConstraint('bank_id', 'code', name='uq_study_question_chapter_code'),
         sa.UniqueConstraint('bank_id', 'parent_id', 'name', name='uq_study_question_chapter_name'),
+        sa.Index(
+            'uq_study_question_chapter_root_name',
+            'bank_id',
+            'name',
+            unique=True,
+            postgresql_where=sa.text('parent_id IS NULL'),
+        ),
         sa.Index('idx_study_question_chapter_parent_sort', 'bank_id', 'parent_id', 'sort_order'),
         {'comment': '题库章节表'},
     )

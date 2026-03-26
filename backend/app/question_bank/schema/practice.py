@@ -10,7 +10,7 @@ from backend.common.schema import SchemaBase
 
 
 # ===== enums =====
-SessionType = Literal['chapter', 'bank', 'random', 'exam', 'wrong', 'favorite']
+SessionType = Literal['chapter', 'bank', 'random', 'exam', 'wrong', 'favorite', 'note']
 SessionStatus = Literal['in_progress', 'completed', 'abandoned']
 QuestionType = Literal['single', 'multiple', 'judgement', 'fill', 'shortAnswer']
 AnswerCardStatus = Literal['correct', 'wrong', 'unanswered']
@@ -48,6 +48,17 @@ class CreatePracticeSessionParam(SchemaBase):
     limit: int | None = Field(None, ge=1, le=500, description='抽题数量上限')
     shuffle: bool = Field(False, description='是否打乱题序')
     exam_config: dict[str, Any] | None = Field(None, description='考试配置')
+
+
+class CreateSessionFromIdsParam(SchemaBase):
+    """从题目 ID 列表创建练习会话"""
+
+    question_ids: list[int] = Field(min_length=1, max_length=500, description='题目 ID 列表')
+    session_type: SessionType = Field(description='会话类型')
+    practice_name: str | None = Field(None, max_length=255, description='会话名称')
+    bank_id: int | None = Field(None, gt=0, description='题库 ID（可选，用于限定挂载上下文）')
+    chapter_id: int | None = Field(None, gt=0, description='章节 ID（可选，用于限定挂载上下文）')
+
 
 
 class PracticeSessionQueryParam(SchemaBase):
@@ -164,6 +175,8 @@ class GetPracticeSessionListItem(SchemaBase):
     bank_id: int | None = Field(None, description='题库 ID')
     chapter_id: int | None = Field(None, description='章节 ID')
     practice_name: str | None = Field(None, description='会话名称')
+    source_key: str | None = Field(None, description='来源签名')
+    exam_config: dict[str, Any] | None = Field(None, description='考试配置')
     total_count: int = Field(ge=0, description='总题数')
     completed_count: int = Field(ge=0, description='已完成数')
     correct_count: int = Field(ge=0, description='答对数')
@@ -221,6 +234,7 @@ class AnswerCardItem(SchemaBase):
     placement_id: int = Field(description='挂载 ID')
     status: AnswerCardStatus = Field(description='作答状态')
     answer_time: int = Field(ge=0, description='耗时（秒）')
+    chapter_name: str | None = Field(None, description='章节名称')
 
 
 class SessionReport(SchemaBase):
@@ -337,4 +351,3 @@ class GetSessionQuestionsResponse(SchemaBase):
 
     questions: list[SessionQuestionItem] = Field(default_factory=list, description='题目列表')
     materials: list[SessionMaterialItem] = Field(default_factory=list, description='材料列表')
-

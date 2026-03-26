@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 收藏接口
@@ -20,8 +20,10 @@ from backend.app.question_bank.schema.favorite import (
     GetQuestionFavoriteListItem,
     UpdateQuestionFavoriteParam,
 )
+from backend.app.question_bank.schema.wrong_question import WrongQuestionGroupItem
 from backend.common.security.jwt import DependsJwtAuth
 from backend.app.question_bank.service.favorite_service import favorite_service
+from backend.app.question_bank.service.membership_service import membership_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -42,6 +44,11 @@ async def create_favorite(
     request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[GetQuestionFavoriteDetail]:
     """收藏题目"""
+    if obj.placement_id is not None:
+        await membership_service.verify_placement_access(db=db, user_id=request.user.id, placement_id=obj.placement_id)
+    else:
+        await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=obj.question_id)
+
     new_favorite = await favorite_service.create_favorite(db=db, user_id=request.user.id, obj=obj)
     return response_base.success(data=GetQuestionFavoriteDetail.model_validate(new_favorite))
 
@@ -122,12 +129,50 @@ async def check_favorited(
 
 @router.get('/statistics', summary='获取收藏统计', name='qbank_favorite_statistics')
 async def get_statistics(
-    db: CurrentSession, request: Request, _token: str = DependsJwtAuth
-) -> ResponseSchemaModel[FavoriteStatistics]:
-    """获取用户的收藏统计数据"""
+    db: CurrentSession,
+    request: Request,
+    group_by: str | None = None,
+    _token: str = DependsJwtAuth,
+) -> ResponseSchemaModel:
+    """获取用户的收藏统计数据，传 group_by 时返回树形分组"""
+    if group_by:
+        data = await favorite_service.get_statistics_with_groups(
+            db=db, user_id=request.user.id, group_by=group_by,
+        )
+        return response_base.success(data=data)
     stats = await favorite_service.get_statistics(db=db, user_id=request.user.id)
-
     return response_base.success(data=stats)
+
+
+@router.get('/grouped', summary='获取收藏分组聚合', name='qbank_favorite_grouped')
+async def get_grouped(
+    db: CurrentSession,
+    request: Request,
+    group_by: str = 'bank',
+    _token: str = DependsJwtAuth,
+) -> ResponseSchemaModel[list[WrongQuestionGroupItem]]:
+    """按题库或知识点分组聚合收藏数量"""
+    data = await favorite_service.get_grouped(db=db, user_id=request.user.id, group_by=group_by)
+    return response_base.success(data=data)
+
+
+@router.get('/ids', summary='获取分组内收藏题目 ID 列表', name='qbank_favorite_ids')
+async def get_question_ids(
+    db: CurrentSession,
+    request: Request,
+    bank_id: int | None = None,
+    chapter_id: int | None = None,
+    knowledge_point: str | None = None,
+    _token: str = DependsJwtAuth,
+) -> ResponseSchemaModel[list[int]]:
+    """按分组条件获取收藏的题目 ID 列表"""
+    if bank_id is not None and chapter_id is not None:
+        await membership_service.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
+
+    ids = await question_favorite_dao.get_question_ids(
+        db=db, user_id=request.user.id, bank_id=bank_id, chapter_id=chapter_id, knowledge_point=knowledge_point,
+    )
+    return response_base.success(data=ids)
 
 
 # ============ 通配路径接口（必须放在最后）============

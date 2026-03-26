@@ -72,6 +72,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         session_type: str | None = None,
         bank_id: int | None = None,
         chapter_id: int | None = None,
+        source_key: str | None = None,
     ) -> PracticeSession | None:
         """
         获取用户最新的进行中会话
@@ -81,6 +82,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param session_type: 会话类型
         :param bank_id: 题库 ID
         :param chapter_id: 章节 ID
+        :param source_key: 来源签名
         :return:
         """
         filters: dict = {'user_id': user_id, 'status': 'in_progress'}
@@ -90,6 +92,8 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
             filters['bank_id'] = bank_id
         if chapter_id:
             filters['chapter_id'] = chapter_id
+        if source_key:
+            filters['source_key'] = source_key
 
         stmt = await self.select_order('start_time', 'desc', **filters)
         result = await db.execute(stmt)
@@ -208,6 +212,23 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :return:
         """
         return await self.update_model(db, session_id, {'status': 'abandoned'})
+
+    async def update_progress(
+        self, db: AsyncSession, session_id: int, *, completed_count: int, total_time: int
+    ) -> int:
+        """
+        更新会话做题进度（已完成题数和累计用时）
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param completed_count: 已完成数量
+        :param total_time: 累计用时（秒）
+        :return:
+        """
+        return await self.update_model(db, session_id, {
+            'completed_count': completed_count,
+            'total_time': total_time,
+        })
 
     async def get_select(
         self,

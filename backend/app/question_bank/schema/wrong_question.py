@@ -103,6 +103,13 @@ class BatchDeleteWrongQuestionsParam(SchemaBase):
     wrong_ids: list[int] = Field(min_length=1, description='错题 ID 列表')
 
 
+class WrongQuestionAnswerCorrectParam(SchemaBase):
+    """错题答对上报参数"""
+
+    mastery_threshold: int = Field(default=3, ge=1, le=20, description='连对掌握阈值')
+    placement_id: int | None = Field(None, gt=0, description='挂载 ID')
+
+
 # ===== 统计 =====
 
 
@@ -124,3 +131,14 @@ class WrongQuestionProgressStatistics(SchemaBase):
     today_mastered: int = Field(ge=0, description='今日掌握数量')
     recent_7d_wrong: int = Field(ge=0, description='近 7 天新增错题')
     recent_7d_mastered: int = Field(ge=0, description='近 7 天掌握数量')
+
+
+# ===== 分组聚合 =====
+
+
+class WrongQuestionGroupItem(SchemaBase):
+    """分组聚合项"""
+
+    group_id: int | None = Field(None, description='分组 ID（按题库时为 bank_id，按知识点时为 None）')
+    group_name: str = Field(description='分组名称')
+    count: int = Field(ge=0, description='错题数量')

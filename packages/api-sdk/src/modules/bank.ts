@@ -11,6 +11,7 @@ import type {
 export interface BankModule {
   getRecommend(): Promise<GetBankDetail[]>;
   getDetail(id: number): Promise<GetBankDetailWithChapters>;
+  getChapterProgress(bankId: number): Promise<any>;
   getList(params?: BankListParams): Promise<GetBankDetail[]>;
   getAllQuestions(
     bankId: number,
@@ -29,6 +30,10 @@ export function createBankModule(client: ApiClient): BankModule {
 
     getDetail(id) {
       return client.get<GetBankDetailWithChapters>(`/banks/${id}`);
+    },
+
+    getChapterProgress(bankId) {
+      return client.get<any>(`/banks/${bankId}/chapter-progress`);
     },
 
     getList(params) {

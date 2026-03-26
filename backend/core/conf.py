@@ -190,6 +190,7 @@ class Settings(BaseSettings):
         'http://127.0.0.1:5500',
         'https://zyas.top',
         'https://admin.yzxj.vip',
+        'https://home.yzxj.vip',
         'https://blog.yzxj.vip',
         'https://static.yzxj.vip',
         'https://ai.yzxj.vip',

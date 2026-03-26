@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import case, func, select, update as sa_update
+from sqlalchemy import case, cast, func, literal_column, or_, select, update as sa_update
+from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import QuestionNote, UserNoteVote
+from backend.app.question_bank.model.question import Question
 
 
 class CRUDQuestionNote(CRUDPlus[QuestionNote]):
@@ -23,9 +25,9 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
 
     async def get_by_user_and_question(
         self, db: AsyncSession, user_id: int, question_id: int
-    ) -> list[QuestionNote]:
+    ) -> QuestionNote | None:
         """
-        获取用户在特定题目下的所有笔记
+        获取用户在特定题目下的笔记
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -34,7 +36,7 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         """
         stmt = await self.select_order('updated_time', 'desc', user_id=user_id, question_id=question_id)
         result = await db.execute(stmt)
-        return list(result.scalars().all())
+        return result.scalars().first()
 
     async def get_public_notes(
         self, db: AsyncSession, question_id: int, is_featured: bool | None = None
@@ -124,6 +126,37 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
             db, note_id, {'like_count': like_count, 'dislike_count': dislike_count, 'quality_score': quality_score}
         )
 
+    async def adjust_vote_stats(
+        self,
+        db: AsyncSession,
+        note_id: int,
+        like_delta: int = 0,
+        dislike_delta: int = 0,
+    ) -> int:
+        """
+        澧為噺鏇存柊鎶曠エ缁熻
+
+        :param db: 鏁版嵁搴撲細璇?
+        :param note_id: 绗旇 ID
+        :param like_delta: 鐐硅禐澧為噺
+        :param dislike_delta: 鐐硅俯澧為噺
+        :return:
+        """
+        if like_delta == 0 and dislike_delta == 0:
+            return 0
+
+        stmt = (
+            sa_update(QuestionNote)
+            .where(QuestionNote.id == note_id)
+            .values(
+                like_count=QuestionNote.like_count + like_delta,
+                dislike_count=QuestionNote.dislike_count + dislike_delta,
+                quality_score=QuestionNote.quality_score + like_delta - dislike_delta,
+            )
+        )
+        result = await db.execute(stmt)
+        return result.rowcount
+
     async def set_featured(self, db: AsyncSession, note_id: int, is_featured: bool) -> int:
         """
         设置精选状态（管理员功能）
@@ -173,6 +206,152 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         stmt = stmt.order_by(QuestionNote.quality_score.desc())
         return stmt
 
+    # ============ 分组聚合 ============
+
+    async def get_grouped_by_bank(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按题库分组聚合笔记数量（利用冗余字段）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(
+                QuestionNote.bank_id.label('group_id'),
+                QuestionNote.bank_name.label('group_name'),
+                func.count().label('count'),
+            )
+            .where(
+                QuestionNote.user_id == user_id,
+                QuestionNote.bank_id.isnot(None),
+            )
+            .group_by(QuestionNote.bank_id, QuestionNote.bank_name)
+            .order_by(func.count().desc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'group_id': r.group_id, 'group_name': r.group_name or '未分类', 'count': r.count} for r in rows]
+
+    async def get_grouped_by_knowledge_point(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按知识点分组聚合笔记数量
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        kp_element = func.jsonb_array_elements(Question.knowledge_point).table_valued('value')
+        kp_name = func.coalesce(
+            kp_element.c.value.op('->>')(literal_column("'name'")),
+            kp_element.c.value.op('->>')(literal_column("'label'")),
+            kp_element.c.value.op('->>')(literal_column("'title'")),
+            kp_element.c.value.op('#>>')(literal_column("'{}'")),
+        ).label('kp_name')
+
+        stmt = (
+            select(
+                kp_name,
+                func.count(func.distinct(QuestionNote.id)).label('count'),
+            )
+            .select_from(QuestionNote)
+            .join(Question, Question.id == QuestionNote.question_id)
+            .join(kp_element, literal_column('true'))
+            .where(
+                QuestionNote.user_id == user_id,
+                Question.knowledge_point.isnot(None),
+            )
+            .group_by(kp_name)
+            .having(kp_name.isnot(None))
+            .order_by(func.count(func.distinct(QuestionNote.id)).desc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'group_id': None, 'group_name': r.kp_name, 'count': r.count} for r in rows]
+
+    async def get_bank_chapter_counts(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按 bank_id + chapter_id 分组统计笔记数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(
+                QuestionNote.bank_id,
+                QuestionNote.chapter_id,
+                func.count().label('count'),
+            )
+            .where(QuestionNote.user_id == user_id)
+            .group_by(QuestionNote.bank_id, QuestionNote.chapter_id)
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'bank_id': r.bank_id, 'chapter_id': r.chapter_id, 'count': r.count} for r in rows]
+
+    async def get_question_ids(
+        self, db: AsyncSession, user_id: int,
+        bank_id: int | None = None, chapter_id: int | None = None, knowledge_point: str | None = None,
+    ) -> list[int]:
+        """
+        按分组条件获取有笔记的题目 ID 列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        :param knowledge_point: 知识点名称
+        :return:
+        """
+        stmt = (
+            select(QuestionNote.question_id)
+            .where(QuestionNote.user_id == user_id)
+            .distinct()
+            .order_by(QuestionNote.question_id)
+        )
+
+        if bank_id is not None:
+            stmt = stmt.where(QuestionNote.bank_id == bank_id)
+
+        if chapter_id is not None:
+            stmt = stmt.where(QuestionNote.chapter_id == chapter_id)
+
+        if knowledge_point is not None:
+            stmt = stmt.join(Question, Question.id == QuestionNote.question_id)
+            kp_col = cast(Question.knowledge_point, PGJSONB)
+            stmt = stmt.where(
+                or_(
+                    kp_col.contains([knowledge_point]),
+                    kp_col.contains([{'name': knowledge_point}]),
+                    kp_col.contains([{'label': knowledge_point}]),
+                    kp_col.contains([{'title': knowledge_point}]),
+                )
+            )
+
+        rows = (await db.execute(stmt)).scalars().all()
+        return list(rows)
+
+    async def get_statistics(self, db: AsyncSession, user_id: int) -> dict:
+        """
+        获取用户笔记统计数据
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(
+                func.count().label('total'),
+                func.sum(case((QuestionNote.is_public == True, 1), else_=0)).label('public_count'),  # noqa: E712
+                func.sum(case((QuestionNote.is_featured == True, 1), else_=0)).label('featured_count'),  # noqa: E712
+            )
+            .where(QuestionNote.user_id == user_id)
+        )
+        row = (await db.execute(stmt)).one()
+        return {
+            'total': row.total or 0,
+            'public_count': int(row.public_count or 0),
+            'featured_count': int(row.featured_count or 0),
+        }
+
 
 class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
     """笔记投票数据库操作类"""
@@ -188,7 +367,7 @@ class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
         """
         return await self.select_model_by_column(db, user_id=user_id, note_id=note_id)
 
-    async def vote(self, db: AsyncSession, user_id: int, note_id: int, vote_value: int) -> UserNoteVote:
+    async def vote(self, db: AsyncSession, user_id: int, note_id: int, vote_value: int) -> tuple[UserNoteVote, int | None]:
         """
         投票（新增或更新）
 
@@ -199,19 +378,23 @@ class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
         :return:
         """
         existing_vote = await self.get_vote(db, user_id, note_id)
+        previous_vote_value = existing_vote.vote_value if existing_vote else None
 
         if existing_vote:
+            if existing_vote.vote_value == vote_value:
+                return existing_vote, previous_vote_value
+
             await self.update_model_by_column(db, {'vote_value': vote_value}, user_id=user_id, note_id=note_id)
-            await db.refresh(existing_vote)
-            return existing_vote
+            existing_vote.vote_value = vote_value
+            return existing_vote, previous_vote_value
 
         new_vote = self.model(user_id=user_id, note_id=note_id, vote_value=vote_value)
         db.add(new_vote)
         await db.flush()
         await db.refresh(new_vote)
-        return new_vote
+        return new_vote, previous_vote_value
 
-    async def cancel_vote(self, db: AsyncSession, user_id: int, note_id: int) -> int:
+    async def cancel_vote(self, db: AsyncSession, user_id: int, note_id: int) -> int | None:
         """
         取消投票
 
@@ -220,7 +403,14 @@ class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
         :param note_id: 笔记 ID
         :return:
         """
-        return await self.delete_model_by_column(db, user_id=user_id, note_id=note_id)
+        existing_vote = await self.get_vote(db, user_id, note_id)
+        if not existing_vote:
+            return None
+
+        vote_value = existing_vote.vote_value
+        await db.delete(existing_vote)
+        await db.flush()
+        return vote_value
 
     async def get_note_vote_stats(self, db: AsyncSession, note_id: int) -> tuple[int, int]:
         """
@@ -239,6 +429,7 @@ class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
         row = result.first()
 
         return (row.like_count or 0, row.dislike_count or 0)
+
 
 
 question_note_dao: CRUDQuestionNote = CRUDQuestionNote(QuestionNote)

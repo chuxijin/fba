@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -56,7 +57,7 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         :param parent_id: 父级 ID
         :return:
         """
-        filters = {}
+        filters: dict = {}
 
         if cat_ids is not None:
             filters['cat_id__in'] = cat_ids
@@ -90,6 +91,10 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         db.add(new_bank)
         await db.flush()
 
+        if new_bank.chapter_source_bank_id is None:
+            new_bank.chapter_source_bank_id = new_bank.id
+            await db.flush()
+
     async def update(self, db: AsyncSession, bank_id: int, obj: UpdateBankParam, *, updated_by: int) -> int:
         """
         更新题库
@@ -101,6 +106,8 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         :return:
         """
         dict_obj = obj.model_dump()
+        if dict_obj.get('chapter_source_bank_id') is None:
+            dict_obj['chapter_source_bank_id'] = bank_id
         dict_obj['updated_by'] = updated_by
         return await self.update_model(db, bank_id, dict_obj)
 
@@ -114,31 +121,26 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=bank_ids)
 
-    async def count_children_by_parent_ids(
-        self, db: AsyncSession, parent_ids: list[int]
-    ) -> dict[int, int]:
+    async def count_children_by_parent_ids(self, db: AsyncSession, parent_ids: list[int]) -> dict[int, int]:
         """
         统计每个父级题库的子题库数量
 
         :param db: 数据库会话
         :param parent_ids: 父级题库 ID 列表
-        :return: {parent_id: child_count} 映射
+        :return:
         """
-        from sqlalchemy import func, select
-        
         stmt = (
             select(
                 QuestionBank.parent_id,
-                func.count(QuestionBank.id).label('child_count')
+                func.count(QuestionBank.id).label('child_count'),
             )
             .where(QuestionBank.parent_id.in_(parent_ids))
-            .where(QuestionBank.status == 1)  # 只统计启用的子题库
+            .where(QuestionBank.status == 1)
             .group_by(QuestionBank.parent_id)
         )
-        
+
         result = await db.execute(stmt)
         rows = result.all()
-        
         return {row.parent_id: row.child_count for row in rows}
 
 

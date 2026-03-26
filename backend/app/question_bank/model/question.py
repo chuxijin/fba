@@ -379,9 +379,11 @@ class QuestionNote(Base, UserMixin):
 
     __tablename__ = 'study_question_note'
     __table_args__ = (
+        sa.UniqueConstraint('user_id', 'question_id', name='uq_user_question_note'),
         sa.Index('idx_note_user_question', 'user_id', 'question_id'),
         sa.Index('idx_note_question_public_quality', 'question_id', 'is_public', 'quality_score'),
         sa.Index('idx_note_featured', 'is_featured', 'quality_score'),
+        sa.Index('idx_note_user_bank', 'user_id', 'bank_id'),
         {'comment': '题目笔记表'},
     )
 
@@ -403,6 +405,12 @@ class QuestionNote(Base, UserMixin):
         UniversalText,
         comment='笔记内容（Markdown 格式）',
     )
+
+    # ============ 冗余字段（创建时快照，用于分组聚合） ============
+    bank_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='题库 ID（冗余）')
+    bank_name: Mapped[str | None] = mapped_column(sa.String(200), default=None, comment='题库名称（冗余）')
+    chapter_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='章节 ID（冗余）')
+    chapter_name: Mapped[str | None] = mapped_column(sa.String(200), default=None, comment='章节名称（冗余）')
 
     # ============ 公开设置 ============
     is_public: Mapped[bool] = mapped_column(default=False, comment='是否公开（公开后其他用户可见）')

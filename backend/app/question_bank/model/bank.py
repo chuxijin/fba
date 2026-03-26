@@ -23,6 +23,7 @@ class QuestionBank(Base, UserMixin):
         sa.UniqueConstraint('code', name='uq_study_question_bank_code'),
         sa.Index('idx_study_question_bank_category_status', 'cat_id', 'status'),
         sa.Index('idx_study_question_bank_parent', 'parent_id'),
+        sa.Index('idx_study_question_bank_chapter_source', 'chapter_source_bank_id'),
         sa.Index('idx_study_question_bank_type_scene_status', 'bank_type', 'scene_mask', 'status'),
         {'comment': '题库表'},
     )
@@ -50,11 +51,19 @@ class QuestionBank(Base, UserMixin):
         default=None,
         comment='父题库 ID（合集场景）',
     )
+    chapter_source_bank_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question_bank.id', ondelete='RESTRICT'),
+        default=None,
+        comment='章节来源题库 ID',
+    )
     status: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='状态')
     scope: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='可见范围')
     q_count_cache: Mapped[int] = mapped_column(sa.Integer, default=0, comment='缓存题量')
     total_score_cache: Mapped[Decimal] = mapped_column(
-        sa.Numeric(8, 2), default=Decimal('0'), comment='缓存总分'
+        sa.Numeric(8, 2),
+        default=Decimal('0'),
+        comment='缓存总分',
     )
     buy_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='购买数量')
 
@@ -62,6 +71,7 @@ class QuestionBank(Base, UserMixin):
         init=False,
         remote_side=lambda: [QuestionBank.id],
         back_populates='children',
+        foreign_keys=lambda: [QuestionBank.parent_id],
         lazy='selectin',
     )
     children: Mapped[list['QuestionBank']] = relationship(
@@ -69,9 +79,15 @@ class QuestionBank(Base, UserMixin):
         back_populates='parent',
         cascade='all, delete-orphan',
         single_parent=True,
+        foreign_keys=lambda: [QuestionBank.parent_id],
         lazy='noload',
     )
-    chapters: Mapped[list['QuestionChapter']] = relationship(init=False, back_populates='bank', cascade='all, delete-orphan', lazy='noload')
+    chapters: Mapped[list['QuestionChapter']] = relationship(
+        init=False,
+        back_populates='bank',
+        cascade='all, delete-orphan',
+        lazy='noload',
+    )
     placements: Mapped[list['QuestionPlacement']] = relationship(
         init=False,
         back_populates='bank',

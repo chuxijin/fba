@@ -28,11 +28,9 @@ class MembershipService:
         if not bank:
             raise errors.NotFoundError(msg='题库不存在')
 
-        # scope <= 1 为免费题库，直接放行
         if bank.scope <= 1:
             return
 
-        # 付费题库需要会员等级 >= scope
         await check_membership_level(db, user_id=user_id, required_level=bank.scope)
 
     @staticmethod
@@ -48,12 +46,52 @@ class MembershipService:
         if not chapter:
             raise errors.NotFoundError(msg='章节不存在')
 
-        # 试用章节，直接放行
         if chapter.is_trial:
             return
 
-        # 非试用章节，校验所属题库的访问权限
         await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=chapter.bank_id)
+
+    @staticmethod
+    async def verify_bank_chapter_relation(*, db: AsyncSession, bank_id: int, chapter_id: int) -> None:
+        """
+        校验章节是否属于题库当前章节来源
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        """
+        bank = await bank_dao.get(db, bank_id)
+        if not bank:
+            raise errors.NotFoundError(msg='题库不存在')
+
+        chapter = await chapter_dao.get(db, chapter_id)
+        if not chapter:
+            raise errors.NotFoundError(msg='章节不存在')
+
+        source_bank_id = bank.chapter_source_bank_id or bank.id
+        if chapter.bank_id != source_bank_id:
+            raise errors.ForbiddenError(msg=f'章节 ID {chapter_id} 不属于题库 ID {bank_id} 的章节来源')
+
+    @staticmethod
+    async def verify_bank_chapter_access(*, db: AsyncSession, user_id: int, bank_id: int, chapter_id: int) -> None:
+        """
+        验证章节是否属于题库当前章节来源，并校验访问权限
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        """
+        await MembershipService.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
+
+        chapter = await chapter_dao.get(db, chapter_id)
+        if not chapter:
+            raise errors.NotFoundError(msg='章节不存在')
+
+        if chapter.is_trial:
+            return
+
+        await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
 
     @staticmethod
     async def verify_question_access(*, db: AsyncSession, user_id: int, question_id: int) -> None:
@@ -68,7 +106,6 @@ class MembershipService:
         if not question:
             raise errors.NotFoundError(msg='题目不存在')
 
-        # 查询题目所属的题库（通过 placement）
         stmt = select(QuestionPlacement.bank_id).where(
             QuestionPlacement.question_id == question_id,
             QuestionPlacement.is_active.is_(True),
@@ -108,7 +145,6 @@ class MembershipService:
         if not placement:
             raise errors.NotFoundError(msg='题目挂载不存在或已禁用')
 
-        # 校验挂载所属题库的访问权限
         await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=placement.bank_id)
 
     @staticmethod
@@ -135,7 +171,6 @@ class MembershipService:
         :param user_id: 用户 ID
         :param scene_mask: 场景位掩码
         """
-        # TODO: 场景权限校验（根据用户订阅的场景包判断）
         pass
 
 

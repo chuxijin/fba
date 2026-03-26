@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """首页相关 Schema"""
 import datetime
 from decimal import Decimal
 
-from pydantic import ConfigDict, Field
+from pydantic import Field
 
 from backend.common.schema import SchemaBase
 
@@ -22,7 +22,7 @@ class WeekPracticeStats(SchemaBase):
     """本周刷题统计"""
 
     total_count: int = Field(description='本周做题总数')
-    correct_count: int = Field(description='本周答对数')
+    correct_count: int = Field(description='本周答对数量')
     accuracy_rate: Decimal = Field(description='本周正确率（0-100）')
     total_duration: int = Field(description='本周总时长（秒）')
     daily_breakdown: list[DailyPractice] = Field(description='每日明细')
@@ -44,11 +44,23 @@ class UserRankInfo(SchemaBase):
     current_rank: int = Field(description='当前排名')
     total_users: int = Field(description='总用户数')
     yesterday_rank: int | None = Field(None, description='昨日排名')
-    rank_change: int | None = Field(None, description='排名变化（正数=上升，负数=下降）')
+    rank_change: int | None = Field(None, description='排名变化（正数上升，负数下降）')
+
+
+class HomeUserReportData(SchemaBase):
+    """用户报告统计"""
+
+    total_answer_count: int = Field(description='总答题量')
+    accuracy_rate: Decimal = Field(description='正确率（0-100）')
+    site_max_answer_count: int = Field(description='全站最高答题量')
+    answer_count_rank: int = Field(description='答题量排名')
+    practice_days: int = Field(description='练习天数')
+    total_answer_duration: int = Field(description='答题时长（秒）')
+    created_session_count: int = Field(description='创建练习数')
 
 
 class HomeDashboardData(SchemaBase):
-    """首页Dashboard数据"""
+    """首页 Dashboard 数据"""
 
     check_in: CheckInInfo = Field(description='打卡信息')
     week_stats: WeekPracticeStats = Field(description='本周刷题统计')
@@ -56,6 +68,7 @@ class HomeDashboardData(SchemaBase):
     total_questions: int = Field(description='累计做题数')
     total_correct: int = Field(description='累计答对数')
     overall_accuracy: Decimal = Field(description='总体正确率（0-100）')
+    report: HomeUserReportData = Field(description='用户报告统计')
 
 
 class CheckInParam(SchemaBase):
@@ -103,5 +116,5 @@ class RankListData(SchemaBase):
     """排行榜列表数据"""
 
     rank_type: str = Field(description='排行榜类型（practice_count/accuracy_rate/streak_days）')
-    current_user_rank: RankItem | None = Field(None, description='当前用户排名（可能不在前100）')
+    current_user_rank: RankItem | None = Field(None, description='当前用户排名（可能不在前 100）')
     top_users: list[RankItem] = Field(description='排行榜用户列表')

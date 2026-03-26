@@ -1,7 +1,7 @@
 import type { QuestionType } from './question';
 
 /** 缁冧範浼氳瘽绫诲瀷 */
-export type SessionType = 'chapter' | 'bank' | 'random' | 'exam' | 'wrong' | 'favorite';
+export type SessionType = 'chapter' | 'bank' | 'random' | 'exam' | 'wrong' | 'favorite' | 'note';
 
 /** 浼氳瘽鐘舵€?*/
 export type SessionStatus = 'in_progress' | 'completed' | 'abandoned';
@@ -122,6 +122,8 @@ export interface GetPracticeSessionListItem {
   bank_id: number | null;
   chapter_id: number | null;
   practice_name: string | null;
+  source_key?: string | null;
+  exam_config?: Record<string, unknown> | null;
   total_count: number;
   completed_count: number;
   correct_count: number;
@@ -181,6 +183,7 @@ export interface AnswerCardItem {
   placement_id: number;
   status: AnswerCardStatus;
   answer_time: number;
+  chapter_name?: string | null;
 }
 
 /** 浼氳瘽鎶ュ憡 */

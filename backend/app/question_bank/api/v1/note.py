@@ -1,13 +1,5 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-笔记接口
-
-设计原则：
-- 用户可为题目写笔记，支持公开/私密
-- 公开笔记可被其他用户点赞/点踩
-- 管理员可精选优质笔记
-"""
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
@@ -22,7 +14,9 @@ from backend.app.question_bank.schema.note import (
     UpdateQuestionNoteParam,
     VoteQuestionNoteParam,
 )
+from backend.app.question_bank.schema.wrong_question import WrongQuestionGroupItem
 from backend.common.security.jwt import DependsJwtAuth
+from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.note_service import note_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
@@ -42,19 +36,13 @@ async def create_note(
     request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[GetQuestionNoteDetail]:
     """创建题目笔记"""
+    if obj.placement_id is not None:
+        await membership_service.verify_placement_access(db=db, user_id=request.user.id, placement_id=obj.placement_id)
+    else:
+        await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=obj.question_id)
+
     new_note = await note_service.create_note(db=db, user_id=request.user.id, obj=obj)
     return response_base.success(data=GetQuestionNoteDetail.model_validate(new_note))
-
-
-@router.get('/{pk}', summary='获取笔记详情')
-async def get_note(
-    db: CurrentSessionTransaction,
-    pk: Annotated[int, Path(description='笔记 ID')],
-    request: Request, _token: str = DependsJwtAuth,
-) -> ResponseSchemaModel[GetQuestionNoteDetail]:
-    """获取笔记详情"""
-    note = await note_service.get_note(db=db, note_id=pk, user_id=request.user.id)
-    return response_base.success(data=GetQuestionNoteDetail.model_validate(note))
 
 
 @router.get('', summary='获取笔记列表', dependencies=[DependsPagination])
@@ -76,6 +64,55 @@ async def get_notes(
     return response_base.success(data=page_data)
 
 
+@router.get('/statistics', summary='获取笔记统计', name='qbank_note_statistics')
+async def get_statistics(
+    db: CurrentSession,
+    request: Request,
+    group_by: str | None = None,
+    _token: str = DependsJwtAuth,
+) -> ResponseSchemaModel:
+    """获取用户的笔记统计数据，传 group_by 时返回树形分组"""
+    if group_by:
+        data = await note_service.get_statistics_with_groups(
+            db=db, user_id=request.user.id, group_by=group_by,
+        )
+        return response_base.success(data=data)
+    from backend.app.question_bank.crud.crud_question_note import question_note_dao
+    stats = await question_note_dao.get_statistics(db=db, user_id=request.user.id)
+    return response_base.success(data=stats)
+
+
+@router.get('/grouped', summary='获取笔记分组聚合', name='qbank_note_grouped')
+async def get_grouped(
+    db: CurrentSession,
+    request: Request,
+    group_by: str = 'bank',
+    _token: str = DependsJwtAuth,
+) -> ResponseSchemaModel[list[WrongQuestionGroupItem]]:
+    """按题库或知识点分组聚合笔记数量"""
+    data = await note_service.get_grouped(db=db, user_id=request.user.id, group_by=group_by)
+    return response_base.success(data=data)
+
+
+@router.get('/ids', summary='获取分组内笔记题目 ID 列表', name='qbank_note_ids')
+async def get_question_ids(
+    db: CurrentSession,
+    request: Request,
+    bank_id: int | None = None,
+    chapter_id: int | None = None,
+    knowledge_point: str | None = None,
+    _token: str = DependsJwtAuth,
+) -> ResponseSchemaModel[list[int]]:
+    """按分组条件获取有笔记的题目 ID 列表"""
+    if bank_id is not None and chapter_id is not None:
+        await membership_service.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
+
+    ids = await question_note_dao.get_question_ids(
+        db=db, user_id=request.user.id, bank_id=bank_id, chapter_id=chapter_id, knowledge_point=knowledge_point,
+    )
+    return response_base.success(data=ids)
+
+
 @router.get('/questions/{question_id}/public', summary='获取题目的公开笔记')
 async def get_question_public_notes(
     db: CurrentSession,
@@ -88,6 +125,17 @@ async def get_question_public_notes(
         db=db, question_id=question_id, is_featured=is_featured
     )
     return response_base.success(data=note_list)
+
+
+@router.get('/{pk}', summary='获取笔记详情')
+async def get_note(
+    db: CurrentSessionTransaction,
+    pk: Annotated[int, Path(description='笔记 ID')],
+    request: Request, _token: str = DependsJwtAuth,
+) -> ResponseSchemaModel[GetQuestionNoteDetail]:
+    """获取笔记详情"""
+    note = await note_service.get_note(db=db, note_id=pk, user_id=request.user.id)
+    return response_base.success(data=GetQuestionNoteDetail.model_validate(note))
 
 
 @router.put('/{pk}', summary='更新笔记')

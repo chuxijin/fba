@@ -215,7 +215,14 @@ async def get_question_list(
 
     # 客户需要验证会员权限（按 ids 查询时跳过权限验证）
     if user_type == 'customer' and not question_ids:
-        if bank_id:
+        if bank_id and chapter_id:
+            await membership_service.verify_bank_chapter_access(
+                db=db,
+                user_id=request.user.id,
+                bank_id=bank_id,
+                chapter_id=chapter_id,
+            )
+        elif bank_id:
             await membership_service.verify_bank_list_access(db=db, user_id=request.user.id, bank_id=bank_id)
         elif chapter_id:
             await membership_service.verify_chapter_access(db=db, user_id=request.user.id, chapter_id=chapter_id)

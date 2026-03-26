@@ -28,8 +28,9 @@ class PracticeSession(Base, UserMixin):
         sa.Index('idx_session_user_status_updated', 'user_id', 'status', 'updated_time'),
         sa.Index('idx_session_user_start_time', 'user_id', 'start_time'),
         sa.Index('idx_session_bank_chapter_status', 'bank_id', 'chapter_id', 'status'),
+        sa.Index('idx_session_user_status_source_key', 'user_id', 'status', 'source_key'),
         sa.CheckConstraint(
-            "session_type IN ('chapter','bank','random','exam','wrong','favorite')",
+            "session_type IN ('chapter','bank','random','exam','wrong','favorite','note')",
             name='ck_practice_session_type',
         ),
         sa.CheckConstraint(
@@ -61,7 +62,7 @@ class PracticeSession(Base, UserMixin):
     )
     session_type: Mapped[str] = mapped_column(
         sa.String(32),
-        comment='练习类型: chapter/bank/random/exam/wrong/favorite',
+        comment='练习类型: chapter/bank/random/exam/wrong/favorite/note',
     )
     bank_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
@@ -77,6 +78,12 @@ class PracticeSession(Base, UserMixin):
     )
     practice_name: Mapped[str | None] = mapped_column(
         sa.String(255), default=None, comment='练习名称（快照）',
+    )
+    source_key: Mapped[str | None] = mapped_column(
+        sa.String(64), default=None, comment='来源签名',
+    )
+    source_snapshot: Mapped[dict | None] = mapped_column(
+        CompatibleJSONB, default=None, comment='来源快照',
     )
     status: Mapped[str] = mapped_column(
         sa.String(32), default='in_progress', comment='状态: in_progress/completed/abandoned',
@@ -272,3 +279,51 @@ class WrongQuestionBook(Base, UserMixin):
     account: Mapped[UserAccount] = relationship(init=False, back_populates='wrong_questions', lazy='noload')
     question: Mapped[Question] = relationship(init=False, lazy='joined')
     placement: Mapped[QuestionPlacement | None] = relationship(init=False, lazy='noload')
+
+    @property
+    def question_stem(self) -> str | None:
+        if self.question:
+            return self.question.stem
+        return None
+
+    @property
+    def question_type(self) -> str | None:
+        if self.question:
+            return self.question.type
+        return None
+
+    @property
+    def bank_id(self) -> int | None:
+        if self.placement:
+            return self.placement.bank_id
+        return None
+
+    @property
+    def bank_name(self) -> str | None:
+        if self.placement and self.placement.bank:
+            return self.placement.bank.name
+        return None
+
+    @property
+    def chapter_id(self) -> int | None:
+        if self.placement:
+            return self.placement.chapter_id
+        return None
+
+    @property
+    def chapter_name(self) -> str | None:
+        if self.placement and self.placement.chapter:
+            return self.placement.chapter.name
+        return None
+
+    @property
+    def cat_id(self) -> int | None:
+        if self.placement and self.placement.bank:
+            return self.placement.bank.cat_id
+        return None
+
+    @property
+    def cat_name(self) -> str | None:
+        if self.placement and self.placement.bank and self.placement.bank.category:
+            return self.placement.bank.category.name
+        return None

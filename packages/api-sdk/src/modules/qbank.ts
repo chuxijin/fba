@@ -68,7 +68,9 @@ export interface QbankModule {
     getFolders(): Promise<QbankEntity[]>;
     clearFolder(data: QbankEntity): Promise<void>;
     check(data: QbankEntity): Promise<QbankEntity>;
-    getStatistics(): Promise<QbankEntity>;
+    getStatistics(groupBy?: string): Promise<QbankEntity>;
+    getGrouped(groupBy?: string): Promise<QbankEntity[]>;
+    getIds(params?: QbankEntity): Promise<number[]>;
     getDetail(id: number): Promise<QbankEntity>;
     update(id: number, data: QbankEntity): Promise<void>;
     pin(id: number, data: QbankEntity): Promise<void>;
@@ -85,14 +87,20 @@ export interface QbankModule {
     unvote(id: number): Promise<void>;
     getMyVote(id: number): Promise<QbankEntity>;
     getVoteStatistics(id: number): Promise<QbankEntity>;
+    getStatistics(groupBy?: string): Promise<QbankEntity>;
+    getGrouped(groupBy?: string): Promise<QbankEntity[]>;
+    getIds(params?: QbankEntity): Promise<number[]>;
   };
   wrongQuestion: {
-    getStatistics(): Promise<QbankEntity>;
+    getStatistics(groupBy?: string): Promise<QbankEntity>;
     getDetail(id: number): Promise<QbankEntity>;
     getList(params?: QbankEntity): Promise<QbankEntity>;
     pin(id: number, data: QbankEntity): Promise<void>;
     remove(data: QbankEntity): Promise<void>;
     clearMastered(data?: QbankEntity): Promise<void>;
+    getGrouped(groupBy?: string): Promise<QbankEntity[]>;
+    getIds(params?: QbankEntity): Promise<number[]>;
+    answerCorrect(questionId: number, data?: QbankEntity): Promise<QbankEntity>;
   };
   banner: {
     getActiveList(scene?: string): Promise<QbankEntity[]>;
@@ -181,11 +189,13 @@ export function createQbankModule(client: ApiClient): QbankModule {
       getFolders() { return request.get<QbankEntity[]>('/favorites/folders'); },
       clearFolder(data) { return request.post('/favorites/folders/clear', data); },
       check(data) { return request.post<QbankEntity>('/favorites/questions/check', data); },
-      getStatistics() { return request.get<QbankEntity>('/favorites/statistics'); },
+      getStatistics(groupBy) { return request.get<QbankEntity>('/favorites/statistics', { params: groupBy ? { group_by: groupBy } : undefined }); },
       getDetail(id) { return request.get<QbankEntity>(`/favorites/${id}`); },
       update(id, data) { return request.put(`/favorites/${id}`, data); },
       pin(id, data) { return request.put(`/favorites/${id}/pin`, data); },
       remove(data) { return request.delete('/favorites', data); },
+      getGrouped(groupBy = 'bank') { return request.get<QbankEntity[]>('/favorites/grouped', { params: { group_by: groupBy } }); },
+      getIds(params) { return request.get<number[]>('/favorites/ids', { params: params as Record<string, unknown> }); },
     },
     note: {
       create(data) { return request.post('/notes', data); },
@@ -198,14 +208,20 @@ export function createQbankModule(client: ApiClient): QbankModule {
       unvote(id) { return request.delete(`/notes/${id}/vote`); },
       getMyVote(id) { return request.get<QbankEntity>(`/notes/${id}/vote/my`); },
       getVoteStatistics(id) { return request.get<QbankEntity>(`/notes/${id}/vote/statistics`); },
+      getStatistics(groupBy) { return request.get<QbankEntity>('/notes/statistics', { params: groupBy ? { group_by: groupBy } : undefined }); },
+      getGrouped(groupBy = 'bank') { return request.get<QbankEntity[]>('/notes/grouped', { params: { group_by: groupBy } }); },
+      getIds(params) { return request.get<number[]>('/notes/ids', { params: params as Record<string, unknown> }); },
     },
     wrongQuestion: {
-      getStatistics() { return request.get<QbankEntity>('/wrong-questions/statistics'); },
+      getStatistics(groupBy) { return request.get<QbankEntity>('/wrong-questions/statistics', { params: groupBy ? { group_by: groupBy } : undefined }); },
       getDetail(id) { return request.get<QbankEntity>(`/wrong-questions/${id}`); },
       getList(params) { return request.get<QbankEntity>('/wrong-questions', { params: params as Record<string, unknown> }); },
       pin(id, data) { return request.put(`/wrong-questions/${id}/pin`, data); },
       remove(data) { return request.delete('/wrong-questions', data); },
       clearMastered(data) { return request.post('/wrong-questions/clear-mastered', data); },
+      getGrouped(groupBy = 'bank') { return request.get<QbankEntity[]>('/wrong-questions/grouped', { params: { group_by: groupBy } }); },
+      getIds(params) { return request.get<number[]>('/wrong-questions/ids', { params: params as Record<string, unknown> }); },
+      answerCorrect(questionId, data) { return request.post<QbankEntity>(`/wrong-questions/${questionId}/answer-correct`, data); },
     },
     banner: {
       getActiveList(scene) { return request.get<QbankEntity[]>('/banners', { params: scene ? { scene } : undefined }); },

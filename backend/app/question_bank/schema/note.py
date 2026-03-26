@@ -21,6 +21,7 @@ class QuestionNoteSchemaBase(SchemaBase):
 
 class CreateQuestionNoteParam(QuestionNoteSchemaBase):
     """创建笔记参数"""
+    placement_id: int | None = Field(None, gt=0, description='挂载 ID（可选，用于明确题库/章节上下文）')
 
 
 class UpdateQuestionNoteParam(SchemaBase):

@@ -67,7 +67,13 @@
       "Bash(npx tsup:*)",
       "Bash(echo:*)",
       "Bash(ls:*)",
-      "Bash(.venv/Scripts/python.exe -c \"\nimport sys; sys.path.insert\\(0, '.'\\)\nfrom backend.app.membership.model import MembershipPlan, UserMembership, MembershipRecord\nprint\\('Models OK:', MembershipPlan.__tablename__, UserMembership.__tablename__, MembershipRecord.__tablename__\\)\n\nfrom backend.app.membership.schema.plan import CreateMembershipPlanParam, GetMembershipPlanDetail, GetMembershipPlanBrief\nfrom backend.app.membership.schema.membership import OpenMembershipParam, AddDaysParam, GetUserMembershipBrief\nfrom backend.app.membership.schema.record import GetMembershipRecordDetail, GetMembershipRecordBrief\nprint\\('Schemas OK'\\)\n\nfrom backend.app.membership.crud.crud_plan import membership_plan_dao\nfrom backend.app.membership.crud.crud_membership import user_membership_dao\nfrom backend.app.membership.crud.crud_record import membership_record_dao\nprint\\('CRUDs OK'\\)\n\nfrom backend.app.membership.service.plan_service import membership_plan_service\nfrom backend.app.membership.service.membership_service import membership_service\nprint\\('Services OK'\\)\n\")"
+      "Bash(.venv/Scripts/python.exe -c \"\nimport sys; sys.path.insert\\(0, '.'\\)\nfrom backend.app.membership.model import MembershipPlan, UserMembership, MembershipRecord\nprint\\('Models OK:', MembershipPlan.__tablename__, UserMembership.__tablename__, MembershipRecord.__tablename__\\)\n\nfrom backend.app.membership.schema.plan import CreateMembershipPlanParam, GetMembershipPlanDetail, GetMembershipPlanBrief\nfrom backend.app.membership.schema.membership import OpenMembershipParam, AddDaysParam, GetUserMembershipBrief\nfrom backend.app.membership.schema.record import GetMembershipRecordDetail, GetMembershipRecordBrief\nprint\\('Schemas OK'\\)\n\nfrom backend.app.membership.crud.crud_plan import membership_plan_dao\nfrom backend.app.membership.crud.crud_membership import user_membership_dao\nfrom backend.app.membership.crud.crud_record import membership_record_dao\nprint\\('CRUDs OK'\\)\n\nfrom backend.app.membership.service.plan_service import membership_plan_service\nfrom backend.app.membership.service.membership_service import membership_service\nprint\\('Services OK'\\)\n\")",
+      "Bash(backend/plugin/app_auth/sql/mysql/destroy.sql:*)",
+      "Bash(backend/plugin/app_auth/sql/mysql/destroy_snowflake.sql:*)",
+      "Bash(for plugin:*)",
+      "Bash(do)",
+      "Read(//d/100_Work/101_Program/Proj/fba/backend/plugin/$plugin/**)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

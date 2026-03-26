@@ -1,0 +1,339 @@
+<script lang="ts" setup>
+import { ref } from 'vue'
+import { useTokenStore } from '@/store'
+
+const props = defineProps<{
+  modelValue: boolean
+}>()
+
+const emit = defineEmits<{
+  'update:modelValue': [boolean]
+  'success': []
+}>()
+
+const tokenStore = useTokenStore()
+
+// 登录视图模式：wechat(微信授权) | account(账号密码) | order(订单创建)
+const loginType = ref<'wechat' | 'account' | 'order'>('wechat')
+const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix'
+
+const loginForm = ref({
+  avatar: DEFAULT_AVATAR,
+  nickname: '',
+})
+
+const accountForm = ref({
+  username: '',
+  password: '',
+})
+
+const orderForm = ref({
+  orderNo: '',
+})
+
+function onChooseAvatar(e: any) {
+  loginForm.value.avatar = e.detail.avatarUrl
+}
+
+function getWechatProfile() {
+  return new Promise<{ nickname?: string, avatar?: string }>((resolve) => {
+    uni.getUserProfile({
+      desc: '用于完善您的头像和昵称资料',
+      success: (res: any) => {
+        const userInfo = res?.userInfo || {}
+        resolve({
+          nickname: userInfo.nickName || '',
+          avatar: userInfo.avatarUrl || '',
+        })
+      },
+      fail: () => {
+        resolve({})
+      },
+    })
+  })
+}
+
+async function buildWechatIdentity(): Promise<{ nickname: string, avatar: string }> {
+  const profile = await getWechatProfile()
+  const nickname = loginForm.value.nickname || profile.nickname || '微信用户'
+
+  const localAvatar = loginForm.value.avatar || ''
+  const isRemoteAvatar = /^https?:\/\//.test(localAvatar) && localAvatar !== DEFAULT_AVATAR
+  const avatar = isRemoteAvatar ? localAvatar : (profile.avatar || DEFAULT_AVATAR)
+
+  return {
+    nickname,
+    avatar,
+  }
+}
+
+// “授权登录”（严格校验用户是否填写了昵称）
+async function confirmWxLogin() {
+  if (!loginForm.value.nickname) {
+    return uni.showToast({ title: '请输入您的纯手工身份昵称', icon: 'none' })
+  }
+
+  emit('update:modelValue', false)
+  uni.showLoading({ title: '安全授权中...', mask: true })
+
+  try {
+    const identity = await buildWechatIdentity()
+    await tokenStore.wxLogin({
+      nickname: identity.nickname,
+      avatar: identity.avatar,
+    })
+    uni.showToast({ title: '欢迎新晋学霸！', icon: 'success' })
+    emit('success')
+  }
+  catch (err) {
+    console.error('Login Error:', err)
+  }
+  finally {
+    uni.hideLoading()
+  }
+}
+
+// “一键登录”（不填任何东西，直接系统代写数据无脑飞入后台）
+async function quickWxLogin() {
+  emit('update:modelValue', false)
+  uni.showLoading({ title: '一键飞速登录中...', mask: true })
+
+  try {
+    const identity = await buildWechatIdentity()
+
+    await tokenStore.wxLogin({
+      nickname: identity.nickname,
+      avatar: identity.avatar,
+    })
+    uni.showToast({ title: '极速登入成功', icon: 'success' })
+    emit('success')
+  }
+  catch (err) {
+    console.error('Quick Login Error:', err)
+  }
+  finally {
+    uni.hideLoading()
+  }
+}
+
+async function confirmAccountLogin() {
+  if (!accountForm.value.username)
+    return uni.showToast({ title: '请输入账号', icon: 'none' })
+  if (!accountForm.value.password)
+    return uni.showToast({ title: '请输入密码', icon: 'none' })
+
+  emit('update:modelValue', false)
+  uni.showLoading({ title: '安全验证中...', mask: true })
+
+  try {
+    await tokenStore.login({
+      username: accountForm.value.username,
+      nickname: '密码达人',
+    })
+    uni.showToast({ title: '登录成功', icon: 'success' })
+    emit('success')
+  }
+  catch (err) {
+    console.error('Account Login Error:', err)
+  }
+  finally {
+    uni.hideLoading()
+  }
+}
+
+function confirmOrderLogin() {
+  if (!orderForm.value.orderNo)
+    return uni.showToast({ title: '没有输入订单号哦', icon: 'none' })
+  uni.showToast({ title: '订单系统研发中...', icon: 'none' })
+}
+
+function cancelLogin() {
+  emit('update:modelValue', false)
+}
+</script>
+
+<template>
+  <wd-popup
+    :model-value="modelValue"
+    position="bottom"
+    custom-class="rounded-t-3xl overflow-hidden bg-[#FAFAFA]"
+    :safe-area-inset-bottom="true"
+    :z-index="999999"
+    @update:model-value="$emit('update:modelValue', $event)"
+  >
+    <view class="relative p-6 transition-all duration-300">
+      <!-- 绝对极简关闭小叉号 -->
+      <view class="absolute right-4 top-4 z-20 h-8 w-8 flex items-center justify-center rounded-full bg-slate-100/50 transition-transform active:scale-90" @click="cancelLogin">
+        <view class="i-carbon-close text-lg text-slate-400" />
+      </view>
+
+      <!-- 公共文案头部 -->
+      <view class="relative mb-6 mt-3 text-center">
+        <view class="mb-2 from-[#A855F7] to-[#7E22CE] bg-gradient-to-r bg-clip-text text-xl text-[#1E293B] text-transparent font-bold tracking-wide">
+          {{ loginType === 'wechat' ? '获取您的专属身份' : (loginType === 'account' ? '安全身份验证' : '内部订单凭证创建') }}
+        </view>
+        <view class="text-[13px] text-[#64748B]">
+          {{ loginType === 'wechat' ? '提供头像和昵称，让我们能记住优秀的您' : (loginType === 'account' ? '请输入您注册时绑定的账号与密码' : '请输入系统核发的独家授权凭证') }}
+        </view>
+      </view>
+
+      <!-- ================= 微信模式 ================= -->
+      <view v-if="loginType === 'wechat'">
+        <view class="mx-auto mb-6 h-24 w-24 flex justify-center rounded-full shadow-[0px_10px_30px_rgba(168,85,247,0.1)]">
+          <button
+            open-type="chooseAvatar"
+            class="custom-btn-no-border m-0 h-full w-full overflow-hidden border-[4px] border-[#F3E8FF] rounded-full bg-white p-0 shadow-inner transition-transform active:scale-95"
+            @chooseavatar="onChooseAvatar"
+          >
+            <image class="h-full w-full bg-slate-100" :src="loginForm.avatar" mode="aspectFill" />
+          </button>
+        </view>
+        <view class="mb-7 text-center text-xs text-[#94A3B8] opacity-80 -mt-5">
+          点击更换自定义头面相
+        </view>
+
+        <view class="group relative mb-8 overflow-hidden border border-gray-100/80 rounded-2xl bg-white p-4 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)]">
+          <view class="absolute left-0 top-0 h-full w-1 from-[#A855F7] to-[#C084FC] bg-gradient-to-b opacity-40" />
+          <view class="flex items-center pl-2">
+            <text class="w-14 text-[13px] text-[#475569] font-bold">昵称</text>
+            <input
+              v-model="loginForm.nickname"
+              type="nickname"
+              class="ml-2 flex-1 bg-transparent text-base text-[#1E293B]"
+              placeholder="自定义专属名称 (可选)"
+              placeholder-class="text-[#CBD5E1] text-[15px]"
+            >
+            <view class="i-carbon-keyboard text-lg text-[#CBD5E1] opacity-50" />
+          </view>
+        </view>
+
+        <view class="flex space-x-4">
+          <!-- 降级：原本的暂不登录变成了“授权登录” -->
+          <button
+            class="custom-btn-no-border m-0 h-[52px] flex-1 border-2 border-[#E9D5FF] rounded-2xl bg-[#F1F5F9] text-[16px] text-[#8B5CF6] font-bold leading-[48px] transition-transform active:scale-95"
+            @click="confirmWxLogin"
+          >
+            授权登录
+          </button>
+          <!-- 升级：一键无脑飞仙登录 -->
+          <button
+            class="custom-btn-no-border m-0 h-[52px] flex-[1.4] rounded-2xl from-[#C084FC] to-[#9333EA] bg-gradient-to-r text-[17px] text-white font-bold leading-[52px] tracking-wider shadow-lg shadow-purple-200 transition-transform active:scale-95"
+            @click="quickWxLogin"
+          >
+            <view class="flex items-center justify-center">
+              <view class="i-carbon-flash mr-1.5 text-xl text-[#FDE047]" /> 一键登录
+            </view>
+          </button>
+        </view>
+      </view>
+
+      <!-- ================= 账号密码登入态 ================= -->
+      <view v-else-if="loginType === 'account'">
+        <view class="mb-8 space-y-4">
+          <view class="relative flex items-center overflow-hidden border border-gray-100/80 rounded-2xl bg-white p-4 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)]">
+            <view class="absolute left-0 top-0 h-full w-1 bg-[#E2E8F0]" />
+            <view class="i-carbon-user ml-2 text-[22px] text-[#94A3B8]" />
+            <input
+              v-model="accountForm.username"
+              type="text"
+              class="ml-4 flex-1 bg-transparent text-base text-[#1E293B]"
+              placeholder="请输入您的账号"
+              placeholder-class="text-[#CBD5E1] text-[15px]"
+            >
+          </view>
+          <view class="relative flex items-center overflow-hidden border border-gray-100/80 rounded-2xl bg-white p-4 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)]">
+            <view class="absolute left-0 top-0 h-full w-1 bg-[#E2E8F0]" />
+            <view class="i-carbon-locked ml-2 text-[22px] text-[#94A3B8]" />
+            <input
+              v-model="accountForm.password"
+              type="text"
+              password
+              class="ml-4 flex-1 bg-transparent text-base text-[#1E293B]"
+              placeholder="请输入密码验证"
+              placeholder-class="text-[#CBD5E1] text-[15px]"
+            >
+          </view>
+        </view>
+
+        <view class="flex">
+          <button
+            class="custom-btn-no-border m-0 h-[52px] w-full rounded-2xl from-[#1E293B] to-[#334155] bg-gradient-to-r text-[17px] text-white font-bold leading-[52px] tracking-wider shadow-slate-200 shadow-xl transition-transform active:scale-95"
+            @click="confirmAccountLogin"
+          >
+            <view class="flex items-center justify-center">
+              立即登入 <view class="i-carbon-arrow-right ml-1.5 text-lg" />
+            </view>
+          </button>
+        </view>
+      </view>
+
+      <!-- ================= 订单号登入态 ================= -->
+      <view v-else-if="loginType === 'order'">
+        <view class="mb-8 space-y-4">
+          <view class="relative flex items-center overflow-hidden border border-gray-100/80 rounded-2xl bg-white p-4 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)]">
+            <view class="absolute left-0 top-0 h-full w-1 from-[#F59E0B] to-[#D97706] bg-gradient-to-b opacity-60" />
+            <view class="i-carbon-document ml-2 text-[22px] text-[#94A3B8]" />
+            <input
+              v-model="orderForm.orderNo"
+              type="text"
+              class="ml-4 flex-1 bg-transparent text-base text-[#1E293B]"
+              placeholder="请输入系统的实体/电子授权码"
+              placeholder-class="text-[#CBD5E1] text-[15px]"
+            >
+          </view>
+        </view>
+
+        <view class="flex">
+          <button
+            class="custom-btn-no-border m-0 h-[52px] w-full rounded-2xl from-[#F59E0B] to-[#B45309] bg-gradient-to-r text-[17px] text-white font-bold leading-[52px] tracking-wider shadow-orange-200/50 shadow-xl transition-transform active:scale-95"
+            @click="confirmOrderLogin"
+          >
+            <view class="flex items-center justify-center">
+              使用订单凭证开启 <view class="i-carbon-rocket ml-1.5 text-lg" />
+            </view>
+          </button>
+        </view>
+      </view>
+
+      <!-- 底部iOS风格 Segmented Control 模式切换器 -->
+      <view class="mt-5 flex justify-center pb-2">
+        <view class="flex items-center border border-slate-100 rounded-full bg-[#F8FAFC] p-1.5 shadow-inner">
+          <view
+            class="flex items-center whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] transition-all"
+            :class="loginType === 'wechat' ? 'bg-white text-[#A855F7] font-bold shadow-sm border border-slate-100/50' : 'text-[#64748B] active:bg-white/50'"
+            @click="loginType = 'wechat'"
+          >
+            <view class="i-carbon-logo-wechat mr-1 text-[14px]" /> 微信通行
+          </view>
+
+          <view
+            class="flex items-center whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] transition-all"
+            :class="loginType === 'account' ? 'bg-white text-[#1E293B] font-bold shadow-sm border border-slate-100/50' : 'text-[#64748B] active:bg-white/50'"
+            @click="loginType = 'account'"
+          >
+            <view class="i-carbon-user mr-1 text-[14px]" /> 账号密码
+          </view>
+
+          <view
+            class="flex items-center whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] transition-all"
+            :class="loginType === 'order' ? 'bg-white text-[#F59E0B] font-bold shadow-sm border border-slate-100/50' : 'text-[#64748B] active:bg-white/50'"
+            @click="loginType = 'order'"
+          >
+            <view class="i-carbon-document mr-1 text-[14px]" /> 订单凭证
+          </view>
+        </view>
+      </view>
+
+      <view class="h-safe-area-bottom w-full" />
+    </view>
+  </wd-popup>
+</template>
+
+<style scoped>
+.custom-btn-no-border::after {
+  border: none !important;
+}
+.custom-btn-no-border {
+  overflow: visible;
+}
+</style>

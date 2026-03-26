@@ -56,6 +56,28 @@ from backend.common.pagination import _CustomPage, _CustomPageParams
 class QuestionService:
     """Question service."""
 
+    @staticmethod
+    async def _verify_chapter_in_bank_context(*, db: AsyncSession, bank_id: int, chapter_id: int) -> None:
+        """
+        校验章节是否属于题库当前章节来源
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        :return:
+        """
+        bank = await bank_dao.get(db, bank_id)
+        if not bank:
+            raise errors.NotFoundError(msg=f'题库 ID {bank_id} 不存在')
+
+        chapter = await chapter_dao.get(db, chapter_id)
+        if not chapter:
+            raise errors.NotFoundError(msg=f'章节 ID {chapter_id} 不存在')
+
+        source_bank_id = bank.chapter_source_bank_id or bank.id
+        if chapter.bank_id != source_bank_id:
+            raise errors.ForbiddenError(msg=f'章节 ID {chapter_id} 不属于题库 ID {bank_id} 的章节来源')
+
     # ------------------------------------------------------------------
     #  工具方法
     # ------------------------------------------------------------------
@@ -620,11 +642,11 @@ class QuestionService:
             if not bank:
                 raise errors.NotFoundError(msg=f'题库 ID {pl.bank_id} 不存在')
             if pl.chapter_id:
-                chapter = await chapter_dao.get(db, pl.chapter_id)
-                if not chapter:
-                    raise errors.NotFoundError(msg=f'章节 ID {pl.chapter_id} 不存在')
-                if chapter.bank_id != pl.bank_id:
-                    raise errors.ForbiddenError(msg=f'章节 ID {pl.chapter_id} 不属于题库 ID {pl.bank_id}')
+                await QuestionService._verify_chapter_in_bank_context(
+                    db=db,
+                    bank_id=pl.bank_id,
+                    chapter_id=pl.chapter_id,
+                )
 
         # 2. 创建主表
         question = await question_dao.create(db, obj.core, user_id)
@@ -690,11 +712,11 @@ class QuestionService:
                 if not bank:
                     raise errors.NotFoundError(msg=f'题库 ID {pl.bank_id} 不存在')
                 if pl.chapter_id:
-                    chapter = await chapter_dao.get(db, pl.chapter_id)
-                    if not chapter:
-                        raise errors.NotFoundError(msg=f'章节 ID {pl.chapter_id} 不存在')
-                    if chapter.bank_id != pl.bank_id:
-                        raise errors.ForbiddenError(msg=f'章节 ID {pl.chapter_id} 不属于题库 ID {pl.bank_id}')
+                    await QuestionService._verify_chapter_in_bank_context(
+                        db=db,
+                        bank_id=pl.bank_id,
+                        chapter_id=pl.chapter_id,
+                    )
 
             # 先记录旧挂载用于计算 cache delta
             old_placements = await question_placement_dao.get_by_question(db, pk)
@@ -1197,12 +1219,18 @@ class QuestionService:
         if not level1_name:
             return None
 
+        bank = await bank_dao.get(db, bank_id)
+        if not bank:
+            raise errors.NotFoundError(msg=f'题库 ID {bank_id} 不存在')
+
+        source_bank_id = bank.chapter_source_bank_id or bank.id
+
         # 获取或创建一级章节
-        cache_key_1 = f'{bank_id}:{level1_name}'
+        cache_key_1 = f'{source_bank_id}:{level1_name}'
         if cache_key_1 not in chapter_cache:
             level1_chapter = await chapter_dao.get_by_name(
                 db=db,
-                bank_id=bank_id,
+                bank_id=source_bank_id,
                 name=level1_name,
                 parent_id=None,
             )
@@ -1210,7 +1238,7 @@ class QuestionService:
                 from backend.app.question_bank.schema.chapter import CreateChapterParam
 
                 level1_param = CreateChapterParam(
-                    bank_id=bank_id,
+                    bank_id=source_bank_id,
                     name=level1_name,
                     level=1,
                     parent_id=None,
@@ -1220,7 +1248,7 @@ class QuestionService:
                 await db.flush()
                 level1_chapter = await chapter_dao.get_by_name(
                     db=db,
-                    bank_id=bank_id,
+                    bank_id=source_bank_id,
                     name=level1_name,
                     parent_id=None,
                 )
@@ -1232,11 +1260,11 @@ class QuestionService:
             return level1_id
 
         # 获取或创建二级章节
-        cache_key_2 = f'{bank_id}:{level1_name}:{level2_name}'
+        cache_key_2 = f'{source_bank_id}:{level1_name}:{level2_name}'
         if cache_key_2 not in chapter_cache:
             level2_chapter = await chapter_dao.get_by_name(
                 db=db,
-                bank_id=bank_id,
+                bank_id=source_bank_id,
                 name=level2_name,
                 parent_id=level1_id,
             )
@@ -1244,7 +1272,7 @@ class QuestionService:
                 from backend.app.question_bank.schema.chapter import CreateChapterParam
 
                 level2_param = CreateChapterParam(
-                    bank_id=bank_id,
+                    bank_id=source_bank_id,
                     name=level2_name,
                     level=2,
                     parent_id=level1_id,
@@ -1254,7 +1282,7 @@ class QuestionService:
                 await db.flush()
                 level2_chapter = await chapter_dao.get_by_name(
                     db=db,
-                    bank_id=bank_id,
+                    bank_id=source_bank_id,
                     name=level2_name,
                     parent_id=level1_id,
                 )

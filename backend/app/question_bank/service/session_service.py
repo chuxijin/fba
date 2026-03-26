@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import hashlib
+import json
 import logging
 import random
 from datetime import datetime
@@ -19,6 +21,8 @@ from backend.app.question_bank.crud.crud_question import (
     question_option_stats_dao,
     question_statistics_dao,
 )
+from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
+from backend.app.question_bank.crud.crud_question_note import question_note_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
     PracticeRecord,
@@ -28,16 +32,17 @@ from backend.app.question_bank.model import (
     QuestionOption,
     QuestionPlacement,
     SessionQuestion,
+    WrongQuestionBook,
 )
 from backend.app.question_bank.schema.practice import (
     AnswerCardItem,
     BatchUpsertPracticeRecordsParam,
     CreatePracticeSessionParam,
+    CreateSessionFromIdsParam,
     SessionReport,
     SubmitPracticeSessionParam,
     SubmitPracticeSessionResult,
 )
-from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
 from backend.app.question_bank.service.question_service import question_service
 from backend.common.exception import errors
 
@@ -96,6 +101,72 @@ class SessionService:
         return sorted(kp_ids), sorted(kp_names)
 
     @staticmethod
+    def _build_knowledge_point_conditions(*, kp_ids: list[int], kp_names: list[str]) -> list[Any]:
+        """
+        构建知识点查询条件
+
+        :param kp_ids: 知识点 ID 列表
+        :param kp_names: 知识点名称列表
+        :return:
+        """
+        kp_column = cast(Question.knowledge_point, PGJSONB)
+        conditions: list[Any] = []
+
+        for kp_id in kp_ids:
+            conditions.append(kp_column.contains([kp_id]))
+            conditions.append(kp_column.contains([{'id': kp_id}]))
+
+        for kp_name in kp_names:
+            conditions.append(kp_column.contains([kp_name]))
+            conditions.append(kp_column.contains([{'name': kp_name}]))
+            conditions.append(kp_column.contains([{'label': kp_name}]))
+            conditions.append(kp_column.contains([{'title': kp_name}]))
+
+        return conditions
+
+    @classmethod
+    def _build_session_source_snapshot(cls, obj: CreatePracticeSessionParam) -> dict[str, Any]:
+        """
+        构建会话来源快照
+
+        :param obj: 创建会话参数
+        :return:
+        """
+        kp_ids, kp_names = cls._normalize_knowledge_point_terms(obj.knowledge_point)
+        source_scope = 'personal' if obj.session_type in {'wrong', 'favorite', 'note'} else 'placement'
+        exam_config = obj.exam_config or {}
+        practice_mode = exam_config.get('practice_mode')
+        time_limit = exam_config.get('time_limit')
+
+        return {
+            'session_type': obj.session_type,
+            'source_scope': source_scope,
+            'bank_id': obj.bank_id,
+            'chapter_id': obj.chapter_id,
+            'cat_id': obj.cat_id,
+            'region': (obj.region or '').strip() or None,
+            'year_start': obj.year_start,
+            'year_end': obj.year_end,
+            'knowledge_point_ids': kp_ids,
+            'knowledge_point_names': kp_names,
+            'limit': obj.limit,
+            'shuffle': obj.shuffle,
+            'practice_mode': practice_mode,
+            'time_limit': time_limit,
+        }
+
+    @staticmethod
+    def _build_session_source_key(source_snapshot: dict[str, Any]) -> str:
+        """
+        计算会话来源签名
+
+        :param source_snapshot: 来源快照
+        :return:
+        """
+        payload = json.dumps(source_snapshot, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        return hashlib.sha1(payload.encode('utf-8')).hexdigest()
+
+    @staticmethod
     def _dedup_placements_by_question(placements: list[QuestionPlacement]) -> list[QuestionPlacement]:
         """
         按 question_id 去重（保留首个命中 placement）
@@ -113,13 +184,59 @@ class SessionService:
             unique_placements.append(placement)
         return unique_placements
 
+    @staticmethod
+    def _pick_placement_by_context(
+        *,
+        placements: list[QuestionPlacement],
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+    ) -> QuestionPlacement | None:
+        """
+        按题库/章节上下文选择挂载
+
+        :param placements: 候选挂载列表
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        :return:
+        """
+        if not placements:
+            return None
+
+        sorted_candidates = sorted(placements, key=lambda item: (item.sort_order, item.id))
+
+        if bank_id is not None and chapter_id is not None:
+            for placement in sorted_candidates:
+                if placement.bank_id == bank_id and placement.chapter_id == chapter_id:
+                    return placement
+            return None
+
+        if bank_id is not None:
+            for placement in sorted_candidates:
+                if placement.bank_id == bank_id:
+                    return placement
+            return None
+
+        if chapter_id is not None:
+            for placement in sorted_candidates:
+                if placement.chapter_id == chapter_id:
+                    return placement
+            return None
+
+        return sorted_candidates[0]
+
     # ------------------------------------------------------------------
     #  Session 生命周期
     # ------------------------------------------------------------------
 
-    @staticmethod
+    @classmethod
     async def create_session(
-        *, db: AsyncSession, user_id: int, obj: CreatePracticeSessionParam
+        cls,
+        *,
+        db: AsyncSession,
+        user_id: int,
+        obj: CreatePracticeSessionParam,
+        source_key: str | None = None,
+        source_snapshot: dict[str, Any] | None = None,
     ) -> PracticeSession:
         """
         创建练习会话
@@ -131,7 +248,6 @@ class SessionService:
         :param obj: 创建会话参数
         :return:
         """
-        now = datetime.now()
         limit_count = obj.limit
         shuffle_flag = obj.shuffle
 
@@ -195,17 +311,7 @@ class SessionService:
                     if year_end is not None:
                         stmt = stmt.where(Question.created_time < datetime(year_end + 1, 1, 1))
 
-                kp_column = cast(Question.knowledge_point, PGJSONB)
-                conditions = []
-                for kp_id in kp_ids:
-                    conditions.append(kp_column.contains([kp_id]))
-                    conditions.append(kp_column.contains([{'id': kp_id}]))
-
-                for kp_name in kp_names:
-                    conditions.append(kp_column.contains([kp_name]))
-                    conditions.append(kp_column.contains([{'name': kp_name}]))
-
-                stmt = stmt.where(or_(*conditions))
+                stmt = stmt.where(or_(*cls._build_knowledge_point_conditions(kp_ids=kp_ids, kp_names=kp_names)))
                 result = await db.execute(stmt)
                 placements = list(result.unique().scalars().all())
         elif obj.chapter_id:
@@ -251,83 +357,260 @@ class SessionService:
         else:
             placements = []
 
+        return await cls._create_session_snapshot(
+            db=db,
+            user_id=user_id,
+            session_type=obj.session_type,
+            placements=placements,
+            practice_name=obj.practice_name,
+            bank_id=obj.bank_id,
+            chapter_id=obj.chapter_id,
+            exam_config=obj.exam_config,
+            source_key=source_key,
+            source_snapshot=source_snapshot,
+            shuffle=shuffle_flag,
+            limit=limit_count,
+        )
+
+    @classmethod
+    async def create_session_from_ids(
+        cls,
+        *,
+        db: AsyncSession,
+        user_id: int,
+        obj: CreateSessionFromIdsParam,
+        source_key: str | None = None,
+        source_snapshot: dict[str, Any] | None = None,
+    ) -> PracticeSession:
+        """
+        从题目 ID 列表创建练习会话
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param obj: 包含 question_ids、session_type、practice_name
+        :return:
+        """
+        # ---- 1. 根据 question_ids 查询 placement ----
+        placements = await cls._query_placements_by_question_ids(
+            db=db,
+            question_ids=obj.question_ids,
+            bank_id=obj.bank_id,
+            chapter_id=obj.chapter_id,
+        )
+        return await cls._create_session_snapshot(
+            db=db,
+            user_id=user_id,
+            session_type=obj.session_type,
+            placements=placements,
+            practice_name=obj.practice_name,
+            bank_id=obj.bank_id,
+            chapter_id=obj.chapter_id,
+            source_key=source_key,
+            source_snapshot=source_snapshot,
+        )
+
+    @staticmethod
+    async def _get_question_type_map(
+        *, db: AsyncSession, question_ids: list[int]
+    ) -> dict[int, str]:
+        """
+        获取题目类型映射
+
+        :param db: 数据库会话
+        :param question_ids: 题目 ID 列表
+        :return:
+        """
+        if not question_ids:
+            return {}
+
+        stmt = select(Question.id, Question.type).where(Question.id.in_(question_ids))
+        rows = (await db.execute(stmt)).all()
+        return {row[0]: row[1] for row in rows}
+
+    @classmethod
+    async def _query_placements_by_question_ids(
+        cls,
+        *,
+        db: AsyncSession,
+        question_ids: list[int],
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+    ) -> list[QuestionPlacement]:
+        """
+        根据题目 ID 列表反查挂载
+
+        :param db: 数据库会话
+        :param question_ids: 题目 ID 列表
+        :param bank_id: 题库 ID
+        :param chapter_id: 篇章 ID
+        :return:
+        """
+        if not question_ids:
+            return []
+
+        stmt = (
+            select(QuestionPlacement)
+            .where(
+                QuestionPlacement.question_id.in_(question_ids),
+                QuestionPlacement.is_active.is_(True),
+            )
+            .options(
+                joinedload(QuestionPlacement.bank),
+                joinedload(QuestionPlacement.chapter),
+            )
+            .order_by(QuestionPlacement.sort_order, QuestionPlacement.id)
+        )
+        result = await db.execute(stmt)
+        all_placements = list(result.unique().scalars().all())
+
+        placement_map: dict[int, list[QuestionPlacement]] = {}
+        for placement in all_placements:
+            placement_map.setdefault(placement.question_id, []).append(placement)
+
+        placements: list[QuestionPlacement] = []
+        for question_id in question_ids:
+            matched_placement = cls._pick_placement_by_context(
+                placements=placement_map.get(question_id, []),
+                bank_id=bank_id,
+                chapter_id=chapter_id,
+            )
+            if matched_placement is not None:
+                placements.append(matched_placement)
+
+        return placements
+
+    @staticmethod
+    async def _create_session_snapshot(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        session_type: str,
+        placements: list[QuestionPlacement],
+        practice_name: str | None = None,
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+        exam_config: dict[str, Any] | None = None,
+        source_key: str | None = None,
+        source_snapshot: dict[str, Any] | None = None,
+        shuffle: bool = False,
+        limit: int | None = None,
+    ) -> PracticeSession:
+        """
+        根据挂载列表写入会话快照
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param session_type: 会话类型
+        :param placements: 挂载列表
+        :param practice_name: 练习名称
+        :param bank_id: 题库 ID
+        :param chapter_id: 篇章 ID
+        :param exam_config: 考试配置
+        :param source_key: 来源签名
+        :param source_snapshot: 来源快照
+        :param shuffle: 是否打乱
+        :param limit: 限制题数
+        :return:
+        """
         if not placements:
             raise errors.NotFoundError(msg='没有可用的题目')
 
-        # ---- 1b. 查询 question.type（QuestionPlacement.question 为 noload） ----
-        q_ids = list({p.question_id for p in placements})
-        q_type_stmt = select(Question.id, Question.type).where(Question.id.in_(q_ids))
-        q_type_rows = (await db.execute(q_type_stmt)).all()
-        question_type_map: dict[int, str] = {row[0]: row[1] for row in q_type_rows}
-
-        # ---- 2. 打乱 / 截断 ----
-        if shuffle_flag:
+        if shuffle:
             random.shuffle(placements)
+
         original_count = len(placements)
         placements = SessionService._dedup_placements_by_question(placements)
         deduped_count = original_count - len(placements)
         if deduped_count > 0:
             log.info('Session create dedup: removed %d duplicate question placements', deduped_count)
-        if limit_count and limit_count > 0:
-            placements = placements[:limit_count]
 
-        # ---- 3. 推导会话名称 ----
-        practice_name = obj.practice_name
-        bank_id = obj.bank_id
-        chapter_id = obj.chapter_id
+        if limit is not None:
+            placements = placements[:limit]
+
+        if not placements:
+            raise errors.NotFoundError(msg='没有可用的题目')
+
+        first_placement = placements[0]
+        resolved_bank_id = bank_id or first_placement.bank_id
+        resolved_chapter_id = chapter_id or first_placement.chapter_id
 
         if not practice_name:
-            first_placement = placements[0]
             if first_placement.chapter and first_placement.chapter.name:
                 practice_name = first_placement.chapter.name
             elif first_placement.bank and first_placement.bank.name:
                 practice_name = first_placement.bank.name
 
-        if not bank_id and placements[0].bank_id:
-            bank_id = placements[0].bank_id
-        if not chapter_id and placements[0].chapter_id:
-            chapter_id = placements[0].chapter_id
+        question_type_map = await SessionService._get_question_type_map(
+            db=db,
+            question_ids=list({placement.question_id for placement in placements}),
+        )
+        total_score = sum(placement.score or Decimal('0') for placement in placements)
 
-        # ---- 4. 计算总满分 ----
-        total_score = sum(p.score or Decimal('0') for p in placements)
-
-        # ---- 5. 创建会话 ----
         session_dict = {
             'user_id': user_id,
-            'session_type': obj.session_type,
-            'bank_id': bank_id,
-            'chapter_id': chapter_id,
+            'session_type': session_type,
+            'bank_id': resolved_bank_id,
+            'chapter_id': resolved_chapter_id,
             'practice_name': practice_name,
+            'source_key': source_key,
+            'source_snapshot': source_snapshot,
             'total_count': len(placements),
             'total_score': total_score if total_score > 0 else None,
-            'start_time': now,
-            'exam_config': obj.exam_config,
+            'start_time': datetime.now(),
+            'exam_config': exam_config,
             'created_by': user_id,
         }
         new_session = await practice_session_dao.create(db=db, obj_dict=session_dict)
 
-        # ---- 6. 批量写 SessionQuestion 快照 ----
-        sq_items = []
-        for idx, p in enumerate(placements, start=1):
-            sq_items.append({
-                'seq_no': idx,
-                'question_id': p.question_id,
-                'placement_id': p.id,
-                'question_type': question_type_map.get(p.question_id, 'single'),
-                'full_score': p.score or Decimal('0'),
+        session_question_items: list[dict[str, Any]] = []
+        for index, placement in enumerate(placements, start=1):
+            session_question_items.append({
+                'seq_no': index,
+                'question_id': placement.question_id,
+                'placement_id': placement.id,
+                'question_type': question_type_map.get(placement.question_id, 'single'),
+                'full_score': placement.score or Decimal('0'),
             })
-        await session_question_dao.batch_create(db=db, session_id=new_session.id, items=sq_items)
+        await session_question_dao.batch_create(
+            db=db,
+            session_id=new_session.id,
+            items=session_question_items,
+        )
 
         log.info(
-            'Session created: id=%d user=%d type=%s bank=%s total=%d',
-            new_session.id, user_id, obj.session_type, bank_id, len(placements),
+            'Session created: id=%d user=%d type=%s total=%d',
+            new_session.id,
+            user_id,
+            session_type,
+            len(placements),
         )
         return new_session
 
     @staticmethod
-    async def get_session_detail(*, db: AsyncSession, session_id: int, user_id: int) -> dict:
+    async def _get_owned_session(
+        *, db: AsyncSession, session_id: int, user_id: int
+    ) -> PracticeSession:
         """
-        获取练习会话详情（含会话题目快照和答题记录）
+        获取当前用户可访问的会话
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param user_id: 用户 ID
+        :return:
+        """
+        session = await practice_session_dao.get(db=db, session_id=session_id)
+        if not session:
+            raise errors.NotFoundError(msg='会话不存在')
+        if session.user_id != user_id:
+            raise errors.ForbiddenError(msg='无权访问此会话')
+        return session
+
+    @staticmethod
+    async def _get_owned_session_detail(
+        *, db: AsyncSession, session_id: int, user_id: int
+    ) -> PracticeSession:
+        """
+        获取当前用户可访问的会话详情
 
         :param db: 数据库会话
         :param session_id: 会话 ID
@@ -339,6 +622,23 @@ class SessionService:
             raise errors.NotFoundError(msg='会话不存在')
         if session.user_id != user_id:
             raise errors.ForbiddenError(msg='无权访问此会话')
+        return session
+
+    @staticmethod
+    async def get_session_detail(*, db: AsyncSession, session_id: int, user_id: int) -> dict:
+        """
+        获取练习会话详情（含会话题目快照和答题记录）
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param user_id: 用户 ID
+        :return:
+        """
+        session = await SessionService._get_owned_session_detail(
+            db=db,
+            session_id=session_id,
+            user_id=user_id,
+        )
 
         # 计算章节分布统计 & 构造 session_questions 数据
         chapter_distribution = {}
@@ -410,7 +710,7 @@ class SessionService:
     @staticmethod
     async def get_latest_session(
         *, db: AsyncSession, user_id: int, session_type: str | None = None,
-        bank_id: int | None = None, chapter_id: int | None = None
+        bank_id: int | None = None, chapter_id: int | None = None, source_key: str | None = None
     ) -> PracticeSession | None:
         """
         获取用户最新的进行中会话
@@ -420,11 +720,12 @@ class SessionService:
         :param session_type: 会话类型
         :param bank_id: 题库 ID
         :param chapter_id: 章节 ID
+        :param source_key: 来源签名
         :return:
         """
         return await practice_session_dao.get_latest_session(
             db=db, user_id=user_id, session_type=session_type,
-            bank_id=bank_id, chapter_id=chapter_id,
+            bank_id=bank_id, chapter_id=chapter_id, source_key=source_key,
         )
 
     @staticmethod
@@ -437,11 +738,7 @@ class SessionService:
         :param user_id: 用户 ID
         :return:
         """
-        session = await practice_session_dao.get(db=db, session_id=session_id)
-        if not session:
-            raise errors.NotFoundError(msg='会话不存在')
-        if session.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权操作此会话')
+        await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
 
         log.info('Session abandoned: id=%d user=%d', session_id, user_id)
         return await practice_session_dao.abandon_session(db=db, session_id=session_id)
@@ -456,11 +753,7 @@ class SessionService:
         :param user_id: 用户 ID
         :return:
         """
-        session = await practice_session_dao.get(db=db, session_id=session_id)
-        if not session:
-            raise errors.NotFoundError(msg='会话不存在')
-        if session.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权操作此会话')
+        await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
 
         return await practice_session_dao.delete(db=db, session_id=session_id)
 
@@ -482,11 +775,11 @@ class SessionService:
         :param obj: 批量提交参数
         :return: 包含 upserted_count 和可选 judge_results 的字典
         """
-        session = await practice_session_dao.get(db=db, session_id=obj.session_id)
-        if not session:
-            raise errors.NotFoundError(msg='会话不存在')
-        if session.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权操作此会话')
+        session = await SessionService._get_owned_session(
+            db=db,
+            session_id=obj.session_id,
+            user_id=user_id,
+        )
         if session.status != 'in_progress':
             raise errors.ForbiddenError(msg='会话已结束，不可作答')
 
@@ -589,11 +882,7 @@ class SessionService:
         :param user_id: 用户 ID
         :return:
         """
-        session = await practice_session_dao.get(db=db, session_id=session_id)
-        if not session:
-            raise errors.NotFoundError(msg='会话不存在')
-        if session.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权访问此会话')
+        await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
 
         return await practice_record_dao.get_by_session(db=db, session_id=session_id)
 
@@ -674,6 +963,21 @@ class SessionService:
         judge_version = obj.judge_version
         total_score = Decimal('0')
         earned_score = Decimal('0')
+        correct_count = 0
+        judged_record_rows: list[dict[str, Any]] = []
+        question_stats_rows: list[dict[str, Any]] = []
+        option_stat_rows: list[dict[str, Any]] = []
+        wrong_create_rows: list[dict[str, Any]] = []
+        wrong_update_rows: list[dict[str, Any]] = []
+
+        existing_wrongs = await wrong_question_dao.list_by_user_and_questions(
+            db=db,
+            user_id=user_id,
+            question_ids=question_ids,
+        )
+        existing_wrong_map: dict[tuple[int, int | None], WrongQuestionBook] = {
+            (wrong.question_id, wrong.placement_id): wrong for wrong in existing_wrongs
+        }
 
         # 3. 遍历判题
         for record in records:
@@ -700,81 +1004,117 @@ class SessionService:
             score = full if is_correct else Decimal('0')
             total_score += full
             earned_score += score
+            if is_correct:
+                correct_count += 1
 
-            # 3a. 更新记录判题结果
-            await practice_record_dao.update_judge_result(
-                db=db,
-                record_id=record.id,
-                is_correct=is_correct,
-                score=score,
-                full_score=full,
-                judged_at=submit_time,
-                judge_version=judge_version,
-            )
-
-            # 3b. 提取选中的选项编码
             placement_id = sq.placement_id if sq else record.placement_id
+            judged_record_rows.append({
+                'session_id': record.session_id,
+                'user_id': record.user_id,
+                'question_id': record.question_id,
+                'placement_id': placement_id,
+                'seq_no': record.seq_no,
+                'user_answer': record.user_answer,
+                'answer_time': record.answer_time,
+                'full_score': full,
+                'is_correct': is_correct,
+                'score': score,
+                'judged_at': submit_time,
+                'judge_version': judge_version,
+            })
+
+            # 3a. 提取选中的选项编码
             selected_codes = question_service.parse_selected_option_codes(
                 question_type=question.type,
                 user_answer=record.user_answer,
             )
 
-            # 3c. 更新全站题目统计
-            stats_param = UpdateQuestionStatisticsParam(
-                attempt_count=1,
-                correct_count=1 if is_correct else 0,
-                answer_time=record.answer_time,
-                option_select=selected_codes if question.type in ['single', 'multiple', 'judgement'] and selected_codes else None,
-            )
-            await question_statistics_dao.update_stats(db, record.question_id, stats_param)
+            option_select_counts: dict[str, int] | None = None
+            if question.type in ['single', 'multiple', 'judgement'] and selected_codes:
+                option_select_counts = {}
+                for option_code in selected_codes:
+                    current_count = option_select_counts.get(option_code, 0)
+                    option_select_counts[option_code] = current_count + 1
 
-            # 3d. 更新选项统计
-            if selected_codes:
-                await question_option_stats_dao.increment_by_codes(
-                    db,
-                    placement_id=placement_id,
-                    question_id=record.question_id,
-                    option_codes=selected_codes,
-                    is_correct=is_correct,
-                )
+            question_stats_rows.append({
+                'question_id': record.question_id,
+                'attempt_count': 1,
+                'correct_count': 1 if is_correct else 0,
+                'answer_time_total': record.answer_time,
+                'option_select_counts': option_select_counts,
+            })
 
-            # 3d. 更新错题本
+            # 3c. 汇总选项统计
+            if selected_codes and placement_id is not None:
+                option_stat_rows.append({
+                    'placement_id': placement_id,
+                    'question_id': record.question_id,
+                    'option_codes': selected_codes,
+                    'is_correct': is_correct,
+                })
+
+            # 3d. 汇总错题本
+            wrong_key = (record.question_id, placement_id)
+            existing_wrong = existing_wrong_map.get(wrong_key)
             if not is_correct:
-                existing_wrong = await wrong_question_dao.get_by_user_and_question(
-                    db, user_id=user_id, question_id=record.question_id,
-                    placement_id=placement_id,
-                )
                 if existing_wrong:
-                    await wrong_question_dao.increment_wrong(db, existing_wrong.id, submit_time)
+                    wrong_update_rows.append({
+                        'filter_wrong_id': existing_wrong.id,
+                        'set_wrong_count': existing_wrong.wrong_count + 1,
+                        'set_correct_streak': 0,
+                        'set_last_wrong_time': submit_time,
+                        'set_last_practice_time': existing_wrong.last_practice_time,
+                        'set_is_mastered': False,
+                        'set_mastered_time': None,
+                    })
                 else:
-                    await wrong_question_dao.create(
-                        db, user_id=user_id, question_id=record.question_id,
-                        wrong_time=submit_time, placement_id=placement_id,
-                    )
+                    wrong_create_rows.append({
+                        'user_id': user_id,
+                        'question_id': record.question_id,
+                        'placement_id': placement_id,
+                        'wrong_count': 1,
+                        'correct_streak': 0,
+                        'first_wrong_time': submit_time,
+                        'last_wrong_time': submit_time,
+                        'last_practice_time': None,
+                        'is_mastered': False,
+                        'mastered_time': None,
+                        'created_by': user_id,
+                    })
             else:
-                # 答对：如果在错题本中则增加连续做对次数
-                existing_wrong = await wrong_question_dao.get_by_user_and_question(
-                    db, user_id=user_id, question_id=record.question_id,
-                    placement_id=placement_id,
-                )
                 if existing_wrong:
-                    await wrong_question_dao.increment_correct(db, existing_wrong.id, submit_time)
+                    new_streak = existing_wrong.correct_streak + 1
+                    is_mastered = existing_wrong.is_mastered or new_streak >= 3
+                    mastered_time = existing_wrong.mastered_time
+                    if is_mastered and mastered_time is None:
+                        mastered_time = submit_time
+                    wrong_update_rows.append({
+                        'filter_wrong_id': existing_wrong.id,
+                        'set_wrong_count': existing_wrong.wrong_count,
+                        'set_correct_streak': new_streak,
+                        'set_last_wrong_time': existing_wrong.last_wrong_time,
+                        'set_last_practice_time': submit_time,
+                        'set_is_mastered': is_mastered,
+                        'set_mastered_time': mastered_time,
+                    })
 
-        # 4. 计算汇总（update_judge_result 走 SQL update 不刷 ORM 属性，用本地变量统计）
-        correct_ids: set[int] = set()
-        for record in records:
-            question = question_map.get(record.question_id)
-            if not question:
-                continue
-            analysis = None
-            if question.analyses:
-                analysis = next((a for a in question.analyses if a.is_default), question.analyses[0])
-            if analysis and analysis.answer_data:
-                if question_service.check_answer(question.type, record.user_answer, analysis.answer_data):
-                    correct_ids.add(record.question_id)
+        # 4. 批量落库
+        if judged_record_rows:
+            await practice_record_dao.batch_upsert(db=db, records=judged_record_rows)
+
+        if question_stats_rows:
+            await question_statistics_dao.batch_update_stats(db=db, items=question_stats_rows)
+
+        if option_stat_rows:
+            await question_option_stats_dao.batch_increment_by_records(db=db, records=option_stat_rows)
+
+        if wrong_create_rows:
+            await wrong_question_dao.batch_create(db=db, rows=wrong_create_rows)
+
+        if wrong_update_rows:
+            await wrong_question_dao.batch_update(db=db, rows=wrong_update_rows)
 
         completed_count = len(records)
-        correct_count = len(correct_ids)
         wrong_count = completed_count - correct_count
 
         # 5. 标记会话完成
@@ -820,11 +1160,11 @@ class SessionService:
         :param user_id: 用户 ID
         :return:
         """
-        session = await practice_session_dao.get_detail(db=db, session_id=session_id)
-        if not session:
-            raise errors.NotFoundError(msg='会话不存在')
-        if session.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权访问此会话')
+        session = await SessionService._get_owned_session_detail(
+            db=db,
+            session_id=session_id,
+            user_id=user_id,
+        )
 
         # 构造答题卡 + 错题列表
         record_map: dict[int, PracticeRecord] = {r.question_id: r for r in session.records}
@@ -886,11 +1226,11 @@ class SessionService:
         :param user_id: 用户 ID
         :return: 逐题解析列表
         """
-        session = await practice_session_dao.get_detail(db=db, session_id=session_id)
-        if not session:
-            raise errors.NotFoundError(msg='会话不存在')
-        if session.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权访问此会话')
+        session = await SessionService._get_owned_session_detail(
+            db=db,
+            session_id=session_id,
+            user_id=user_id,
+        )
 
         # 批量查题目 + 解析 + 选项
         question_ids = [sq.question_id for sq in session.session_questions]
@@ -958,11 +1298,7 @@ class SessionService:
         :param user_id: 用户 ID
         :return: 包含 questions 和 materials 的字典
         """
-        session = await practice_session_dao.get(db=db, session_id=session_id)
-        if not session:
-            raise errors.NotFoundError(msg='会话不存在')
-        if session.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权访问此会话')
+        await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
 
         # 1. 获取会话题目快照（按 seq_no 排序）
         session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
@@ -1079,6 +1415,125 @@ class SessionService:
         """
         return await practice_record_dao.get_select(
             user_id=user_id, session_id=session_id, question_id=question_id,
+        )
+
+    @classmethod
+    async def _filter_question_ids_by_knowledge_point(
+        cls,
+        *,
+        db: AsyncSession,
+        question_ids: list[int],
+        knowledge_point: list[Any] | None,
+    ) -> list[int]:
+        """
+        根据知识点过滤题目 ID 列表
+
+        :param db: 数据库会话
+        :param question_ids: 题目 ID 列表
+        :param knowledge_point: 知识点条件
+        :return:
+        """
+        if not question_ids or not knowledge_point:
+            return question_ids
+
+        kp_ids, kp_names = cls._normalize_knowledge_point_terms(knowledge_point)
+        if not kp_ids and not kp_names:
+            return []
+
+        stmt = select(Question.id).where(
+            Question.id.in_(question_ids),
+            or_(*cls._build_knowledge_point_conditions(kp_ids=kp_ids, kp_names=kp_names)),
+        )
+        matched_question_ids = set((await db.execute(stmt)).scalars().all())
+        return [question_id for question_id in question_ids if question_id in matched_question_ids]
+
+    @classmethod
+    async def create_unified_session(
+        cls,
+        *,
+        db: AsyncSession,
+        user_id: int,
+        obj: CreatePracticeSessionParam,
+    ) -> PracticeSession:
+        """
+        统一创建练习会话
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param obj: 创建会话参数
+        :return:
+        """
+        source_snapshot = cls._build_session_source_snapshot(obj)
+        source_key = cls._build_session_source_key(source_snapshot)
+
+        latest_session = await practice_session_dao.get_latest_session(
+            db=db,
+            user_id=user_id,
+            session_type=obj.session_type,
+            bank_id=obj.bank_id,
+            chapter_id=obj.chapter_id,
+            source_key=source_key,
+        )
+        if latest_session:
+            return latest_session
+
+        if obj.session_type not in {'wrong', 'favorite', 'note'}:
+            return await cls.create_session(
+                db=db,
+                user_id=user_id,
+                obj=obj,
+                source_key=source_key,
+                source_snapshot=source_snapshot,
+            )
+
+        if obj.session_type == 'wrong':
+            question_ids = await wrong_question_dao.get_question_ids(
+                db=db,
+                user_id=user_id,
+                bank_id=obj.bank_id,
+                chapter_id=obj.chapter_id,
+            )
+        elif obj.session_type == 'favorite':
+            question_ids = await question_favorite_dao.get_question_ids(
+                db=db,
+                user_id=user_id,
+                bank_id=obj.bank_id,
+                chapter_id=obj.chapter_id,
+            )
+        else:
+            question_ids = await question_note_dao.get_question_ids(
+                db=db,
+                user_id=user_id,
+                bank_id=obj.bank_id,
+                chapter_id=obj.chapter_id,
+            )
+
+        question_ids = list(dict.fromkeys(question_ids))
+        question_ids = await cls._filter_question_ids_by_knowledge_point(
+            db=db,
+            question_ids=question_ids,
+            knowledge_point=obj.knowledge_point,
+        )
+
+        if obj.shuffle:
+            random.shuffle(question_ids)
+
+        if obj.limit is not None:
+            question_ids = question_ids[:obj.limit]
+
+        from_ids_obj = CreateSessionFromIdsParam(
+            question_ids=question_ids,
+            session_type=obj.session_type,
+            practice_name=obj.practice_name,
+            bank_id=obj.bank_id,
+            chapter_id=obj.chapter_id,
+        )
+        return await cls.create_session_from_ids(
+            db=db,
+            user_id=user_id,
+            obj=from_ids_obj,
+            source_key=source_key,
+            source_snapshot=source_snapshot,
         )
 
 

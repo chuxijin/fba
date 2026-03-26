@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Path, Query, Request
 from backend.app.question_bank.schema.bank import (
     CreateBankParam,
     DeleteBankParam,
+    GetBankChapterProgress,
     GetBankDetail,
     GetBankDetailWithChapters,
     UpdateBankParam,
@@ -37,6 +38,17 @@ async def get_bank(
 ) -> ResponseSchemaModel[GetBankDetailWithChapters]:
     """🌍 公开接口 - 任何人都可以查看题库详情（含章节树）"""
     data = await bank_service.get(db=db, pk=pk)
+    return response_base.success(data=data)
+
+
+@router.get('/{pk}/chapter-progress', summary='获取题库章节进度', name='qbank_get_bank_chapter_progress')
+async def get_bank_chapter_progress(
+    request: Request,
+    db: CurrentSession,
+    pk: Annotated[int, Path(description='题库 ID')],
+) -> ResponseSchemaModel[GetBankChapterProgress]:
+    """🔒 登录接口 - 获取用户在指定题库下的章节做题进度"""
+    data = await bank_service.get_chapter_progress(db=db, bank_id=pk, user_id=request.user.id)
     return response_base.success(data=data)
 
 

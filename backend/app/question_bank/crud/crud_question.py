@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from datetime import datetime
 import hashlib
 from collections.abc import Sequence
 from decimal import Decimal
+from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import bindparam, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.dialects import postgresql
@@ -688,6 +690,132 @@ class CRUDQuestionOptionStats(CRUDPlus[QuestionOptionStats]):
 
         await db.flush()
 
+    async def batch_increment_by_records(self, db: AsyncSession, records: list[dict]) -> None:
+        """
+        批量更新选项统计
+
+        :param db: 数据库会话
+        :param records: 选项统计增量列表
+        :return:
+        """
+        if not records:
+            return
+
+        if DataBaseType.postgresql != settings.DATABASE_TYPE:
+            for record in records:
+                await self.increment_by_codes(
+                    db=db,
+                    placement_id=record['placement_id'],
+                    question_id=record['question_id'],
+                    option_codes=record['option_codes'],
+                    is_correct=record['is_correct'],
+                )
+            return
+
+        aggregated: dict[tuple[int, int, str], dict] = {}
+        question_ids: set[int] = set()
+        option_codes: set[str] = set()
+        for record in records:
+            placement_id = record.get('placement_id')
+            if placement_id is None:
+                continue
+
+            question_id = record['question_id']
+            is_correct = bool(record['is_correct'])
+            normalized_codes = sorted({
+                str(code).strip().upper()
+                for code in record.get('option_codes', [])
+                if str(code).strip()
+            })
+            for option_code in normalized_codes:
+                key = (placement_id, question_id, option_code)
+                item = aggregated.get(key)
+                if item is None:
+                    item = {
+                        'placement_id': placement_id,
+                        'question_id': question_id,
+                        'option_code': option_code,
+                        'selected_delta': 0,
+                        'correct_delta': 0,
+                        'wrong_delta': 0,
+                    }
+                    aggregated[key] = item
+
+                item['selected_delta'] += 1
+                if is_correct:
+                    item['correct_delta'] += 1
+                else:
+                    item['wrong_delta'] += 1
+
+                question_ids.add(question_id)
+                option_codes.add(option_code)
+
+        if not aggregated:
+            return
+
+        option_stmt = select(QuestionOption).where(
+            QuestionOption.question_id.in_(question_ids),
+            QuestionOption.option_code.in_(option_codes),
+        )
+        option_rows = (await db.execute(option_stmt)).scalars().all()
+        option_map = {(item.question_id, item.option_code): item for item in option_rows}
+
+        payloads: list[dict] = []
+        insert_rows: list[dict] = []
+        for item in aggregated.values():
+            option_row = option_map.get((item['question_id'], item['option_code']))
+            if option_row is None:
+                continue
+
+            payloads.append({
+                'filter_placement_id': item['placement_id'],
+                'filter_option_code': item['option_code'],
+                'set_question_id': item['question_id'],
+                'set_option_id': option_row.id,
+                'selected_delta': item['selected_delta'],
+                'correct_delta': item['correct_delta'],
+                'wrong_delta': item['wrong_delta'],
+            })
+            insert_rows.append({
+                'placement_id': item['placement_id'],
+                'question_id': item['question_id'],
+                'option_id': option_row.id,
+                'option_code': item['option_code'],
+                'selected_count': 0,
+                'correct_selected_count': 0,
+                'wrong_selected_count': 0,
+            })
+
+        if not payloads:
+            return
+
+        insert_stmt = postgresql.insert(QuestionOptionStats).values(insert_rows)
+        insert_stmt = insert_stmt.on_conflict_do_nothing(
+            constraint='uq_study_question_option_stats_placement_code'
+        )
+        await db.execute(insert_stmt)
+
+        update_stmt = (
+            sa_update(QuestionOptionStats)
+            .where(
+                QuestionOptionStats.placement_id == bindparam('filter_placement_id'),
+                QuestionOptionStats.option_code == bindparam('filter_option_code'),
+            )
+            .values(
+                question_id=bindparam('set_question_id'),
+                option_id=bindparam('set_option_id'),
+                selected_count=QuestionOptionStats.selected_count + bindparam('selected_delta'),
+                correct_selected_count=(
+                    QuestionOptionStats.correct_selected_count + bindparam('correct_delta')
+                ),
+                wrong_selected_count=(
+                    QuestionOptionStats.wrong_selected_count + bindparam('wrong_delta')
+                ),
+            )
+        )
+        await db.execute(update_stmt, payloads)
+        await db.flush()
+
 
 # ============ Analysis CRUD ============
 
@@ -961,15 +1089,21 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         :param question_id: 题目 ID
         :param obj: 更新统计参数
         """
-        stats = await self.get_or_create(db, question_id)
+        if DataBaseType.postgresql == settings.DATABASE_TYPE:
+            insert_stmt = postgresql.insert(QuestionStatistics).values({'question_id': question_id})
+            insert_stmt = insert_stmt.on_conflict_do_nothing(index_elements=[QuestionStatistics.question_id])
+            await db.execute(insert_stmt)
+        else:
+            await self.get_or_create(db, question_id)
 
-        # 原子自增：直接使用 SQL 表达式
         values: dict = {}
+        attempt_delta = obj.attempt_count or 0
+        correct_delta = obj.correct_count or 0
 
         if obj.attempt_count is not None:
-            values['attempt_count'] = QuestionStatistics.attempt_count + obj.attempt_count
+            values['attempt_count'] = QuestionStatistics.attempt_count + attempt_delta
         if obj.correct_count is not None:
-            values['correct_count'] = QuestionStatistics.correct_count + obj.correct_count
+            values['correct_count'] = QuestionStatistics.correct_count + correct_delta
         if obj.collect_delta is not None:
             values['collect_count'] = QuestionStatistics.collect_count + obj.collect_delta
         if obj.note_delta is not None:
@@ -977,15 +1111,19 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         if hasattr(obj, 'report_delta') and obj.report_delta is not None:
             values['report_count'] = QuestionStatistics.report_count + obj.report_delta
 
-        # 原子平均答题时间：CASE WHEN avg IS NULL THEN new ELSE (avg * (cnt-1) + new) / cnt
-        if obj.answer_time is not None:
-            new_attempt = values.get('attempt_count', QuestionStatistics.attempt_count)
+        if obj.answer_time is not None and attempt_delta > 0:
+            new_attempt = QuestionStatistics.attempt_count + attempt_delta
             values['avg_answer_time'] = sa.case(
-                (QuestionStatistics.avg_answer_time.is_(None), obj.answer_time),
-                else_=(
-                    (QuestionStatistics.avg_answer_time * (new_attempt - 1) + obj.answer_time)
-                    / new_attempt
+                (
+                    sa.or_(
+                        QuestionStatistics.avg_answer_time.is_(None),
+                        QuestionStatistics.attempt_count <= 0,
+                    ),
+                    obj.answer_time,
                 ),
+                else_=(
+                    (QuestionStatistics.avg_answer_time * QuestionStatistics.attempt_count) + obj.answer_time
+                ) / new_attempt,
             )
 
         if obj.option_select is not None and len(obj.option_select) > 0:
@@ -1005,15 +1143,13 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     new_count = current_count + 1
                     path = sa.cast(postgresql.array([sa.literal(option_key)]), postgresql.ARRAY(sa.String))
                     new_value = sa.func.to_jsonb(new_count)
-
                     base_val = sa.func.jsonb_set(base_val, path, new_value, True)
 
                 values['option_select_stats'] = base_val
             else:
-                # MySQL: JSON_SET
                 current_stats_expr = QuestionStatistics.option_select_stats
                 base_val = sa.func.coalesce(current_stats_expr, sa.text("'{}'"))
-                
+
                 for option_key in obj.option_select:
                     current_count = sa.func.coalesce(
                         sa.func.json_extract(base_val, sa.text(f"'$.{option_key}'")),
@@ -1027,26 +1163,216 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     )
                 values['option_select_stats'] = base_val
 
-        if values:
-            stmt = (
-                sa_update(QuestionStatistics)
-                .where(QuestionStatistics.id == stats.id)
-                .values(**values)
+        if attempt_delta > 0 or correct_delta > 0:
+            new_attempt_expr = QuestionStatistics.attempt_count + attempt_delta
+            new_correct_expr = QuestionStatistics.correct_count + correct_delta
+            values['correct_rate'] = sa.case(
+                (
+                    new_attempt_expr > 0,
+                    sa.cast(
+                        sa.func.round(
+                            sa.cast(new_correct_expr, sa.Numeric(18, 4))
+                            * Decimal('100')
+                            / sa.cast(new_attempt_expr, sa.Numeric(18, 4)),
+                            2,
+                        ),
+                        sa.Numeric(5, 2),
+                    ),
+                ),
+                else_=Decimal('0'),
             )
-            await db.execute(stmt)
-            # 刷新实例以获取最新计数
-            await db.refresh(stats)
 
-        # 重新计算正确率（需要最新值）
-        if obj.attempt_count is not None or obj.correct_count is not None:
-            if stats.attempt_count > 0:
-                new_rate = Decimal((stats.correct_count / stats.attempt_count) * 100).quantize(Decimal('0.01'))
-                stmt_rate = (
-                    sa_update(QuestionStatistics)
-                    .where(QuestionStatistics.id == stats.id)
-                    .values(correct_rate=new_rate)
+        if not values:
+            return
+
+        stmt = (
+            sa_update(QuestionStatistics)
+            .where(QuestionStatistics.question_id == question_id)
+            .values(**values)
+        )
+        await db.execute(stmt)
+
+    async def batch_update_stats(self, db: AsyncSession, items: list[dict[str, Any]]) -> None:
+        """
+        批量更新题目统计
+
+        :param db: 数据库会话
+        :param items: 统计增量列表
+        :return:
+        """
+        if not items:
+            return
+
+        if DataBaseType.postgresql != settings.DATABASE_TYPE:
+            for item in items:
+                option_select = list(item.get('option_select') or [])
+                option_select_counts = item.get('option_select_counts')
+                if isinstance(option_select_counts, dict):
+                    for option_key, count in option_select_counts.items():
+                        option_select.extend([str(option_key)] * int(count or 0))
+
+                answer_time = item.get('answer_time')
+                answer_time_total = item.get('answer_time_total')
+                attempt_count = int(item.get('attempt_count') or 0)
+                if answer_time is None and answer_time_total is not None and attempt_count > 0:
+                    answer_time = Decimal(str(answer_time_total)) / Decimal(attempt_count)
+
+                await self.update_stats(
+                    db=db,
+                    question_id=int(item['question_id']),
+                    obj=UpdateQuestionStatisticsParam(
+                        attempt_count=attempt_count or None,
+                        correct_count=int(item.get('correct_count') or 0) or None,
+                        answer_time=answer_time,
+                        option_select=option_select or None,
+                        collect_delta=item.get('collect_delta'),
+                        note_delta=item.get('note_delta'),
+                    ),
                 )
-                await db.execute(stmt_rate)
+            return
+
+        aggregated: dict[int, dict[str, Any]] = {}
+        for item in items:
+            question_id = int(item['question_id'])
+            aggregated_item = aggregated.get(question_id)
+            if aggregated_item is None:
+                aggregated_item = {
+                    'question_id': question_id,
+                    'attempt_count': 0,
+                    'correct_count': 0,
+                    'answer_time_total': Decimal('0'),
+                    'collect_delta': 0,
+                    'note_delta': 0,
+                    'report_delta': 0,
+                    'option_select_counts': {},
+                }
+                aggregated[question_id] = aggregated_item
+
+            aggregated_item['attempt_count'] += int(item.get('attempt_count') or 0)
+            aggregated_item['correct_count'] += int(item.get('correct_count') or 0)
+            aggregated_item['collect_delta'] += int(item.get('collect_delta') or 0)
+            aggregated_item['note_delta'] += int(item.get('note_delta') or 0)
+            aggregated_item['report_delta'] += int(item.get('report_delta') or 0)
+
+            answer_time_total = item.get('answer_time_total')
+            answer_time = item.get('answer_time')
+            if answer_time_total is not None:
+                aggregated_item['answer_time_total'] += Decimal(str(answer_time_total))
+            elif answer_time is not None:
+                aggregated_item['answer_time_total'] += Decimal(str(answer_time))
+
+            option_select = item.get('option_select')
+            if option_select:
+                for option_key in option_select:
+                    normalized_key = str(option_key)
+                    current_count = aggregated_item['option_select_counts'].get(normalized_key, 0)
+                    aggregated_item['option_select_counts'][normalized_key] = current_count + 1
+
+            option_select_counts = item.get('option_select_counts')
+            if isinstance(option_select_counts, dict):
+                for option_key, count in option_select_counts.items():
+                    normalized_key = str(option_key)
+                    current_count = aggregated_item['option_select_counts'].get(normalized_key, 0)
+                    aggregated_item['option_select_counts'][normalized_key] = current_count + int(count or 0)
+
+        question_ids = list(aggregated.keys())
+        insert_stmt = postgresql.insert(QuestionStatistics).values([
+            {'question_id': question_id} for question_id in question_ids
+        ])
+        insert_stmt = insert_stmt.on_conflict_do_nothing(index_elements=[QuestionStatistics.question_id])
+        await db.execute(insert_stmt)
+
+        lock_stmt = (
+            select(QuestionStatistics)
+            .where(QuestionStatistics.question_id.in_(question_ids))
+            .with_for_update()
+        )
+        rows = (await db.execute(lock_stmt)).scalars().all()
+        stats_map = {row.question_id: row for row in rows}
+        current_time = datetime.now()
+        payloads: list[dict[str, Any]] = []
+
+        for question_id, aggregated_item in aggregated.items():
+            stats = stats_map.get(question_id)
+            if stats is None:
+                continue
+
+            current_attempt = int(stats.attempt_count or 0)
+            current_correct = int(stats.correct_count or 0)
+            current_collect = int(stats.collect_count or 0)
+            current_note = int(stats.note_count or 0)
+            current_report = int(stats.report_count or 0)
+
+            new_attempt = current_attempt + aggregated_item['attempt_count']
+            new_correct = current_correct + aggregated_item['correct_count']
+            new_collect = current_collect + aggregated_item['collect_delta']
+            new_note = current_note + aggregated_item['note_delta']
+            new_report = current_report + aggregated_item['report_delta']
+
+            new_avg_answer_time = stats.avg_answer_time
+            if aggregated_item['attempt_count'] > 0:
+                if current_attempt <= 0 or stats.avg_answer_time is None:
+                    new_avg_answer_time = (
+                        aggregated_item['answer_time_total']
+                        / Decimal(aggregated_item['attempt_count'])
+                    ).quantize(Decimal('0.01'))
+                else:
+                    current_avg = Decimal(str(stats.avg_answer_time))
+                    total_answer_time = (
+                        current_avg * Decimal(current_attempt)
+                        + aggregated_item['answer_time_total']
+                    )
+                    new_avg_answer_time = (
+                        total_answer_time / Decimal(new_attempt)
+                    ).quantize(Decimal('0.01'))
+
+            current_option_stats = stats.option_select_stats
+            if not isinstance(current_option_stats, dict):
+                current_option_stats = {}
+            new_option_stats = dict(current_option_stats)
+            for option_key, count in aggregated_item['option_select_counts'].items():
+                current_count = int(new_option_stats.get(option_key, 0) or 0)
+                new_option_stats[option_key] = current_count + count
+
+            new_correct_rate = Decimal('0')
+            if new_attempt > 0:
+                new_correct_rate = (
+                    Decimal(new_correct) * Decimal('100') / Decimal(new_attempt)
+                ).quantize(Decimal('0.01'))
+
+            payloads.append({
+                'filter_question_id': question_id,
+                'set_attempt_count': new_attempt,
+                'set_correct_count': new_correct,
+                'set_correct_rate': new_correct_rate,
+                'set_avg_answer_time': new_avg_answer_time,
+                'set_option_select_stats': new_option_stats or None,
+                'set_collect_count': new_collect,
+                'set_note_count': new_note,
+                'set_report_count': new_report,
+                'set_last_updated': current_time,
+            })
+
+        if not payloads:
+            return
+
+        update_stmt = (
+            sa_update(QuestionStatistics)
+            .where(QuestionStatistics.question_id == bindparam('filter_question_id'))
+            .values(
+                attempt_count=bindparam('set_attempt_count'),
+                correct_count=bindparam('set_correct_count'),
+                correct_rate=bindparam('set_correct_rate'),
+                avg_answer_time=bindparam('set_avg_answer_time'),
+                option_select_stats=bindparam('set_option_select_stats', type_=postgresql.JSONB),
+                collect_count=bindparam('set_collect_count'),
+                note_count=bindparam('set_note_count'),
+                report_count=bindparam('set_report_count'),
+                last_updated=bindparam('set_last_updated'),
+            )
+        )
+        await db.execute(update_stmt, payloads)
+        await db.flush()
 
 
 # ============ 导出实例 ============

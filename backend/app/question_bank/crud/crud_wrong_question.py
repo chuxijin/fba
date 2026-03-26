@@ -2,13 +2,19 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, timedelta
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import bindparam, case, cast, delete, func, literal_column, or_, select, update as sa_update
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, noload, selectinload
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import WrongQuestionBook
+from backend.app.question_bank.model.bank import QuestionBank
 from backend.app.question_bank.model.question import Question, QuestionPlacement
+from backend.common.enums import DataBaseType
+from backend.core.conf import settings
 
 
 class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
@@ -16,13 +22,35 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
 
     async def get(self, db: AsyncSession, wrong_id: int) -> WrongQuestionBook | None:
         """
-        获取错题记录详情
+        获取错题记录详情（预加载 placement → bank / chapter）
 
         :param db: 数据库会话
         :param wrong_id: 错题记录 ID
         :return:
         """
-        return await self.select_model(db, wrong_id)
+        stmt = (
+            select(WrongQuestionBook)
+            .where(WrongQuestionBook.id == wrong_id)
+            .options(
+                # question 只需 stem / type，阻止自动 selectin 子关系
+                joinedload(WrongQuestionBook.question).options(
+                    noload(Question.analyses),
+                    noload(Question.materials),
+                    noload(Question.placements),
+                    noload(Question.options),
+                ),
+                # placement → bank（阻止 parent selectin）→ category / chapter
+                selectinload(WrongQuestionBook.placement)
+                    .selectinload(QuestionPlacement.bank)
+                    .options(
+                        selectinload(QuestionBank.category),
+                        noload(QuestionBank.parent),
+                    ),
+                selectinload(WrongQuestionBook.placement).selectinload(QuestionPlacement.chapter),
+            )
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
 
     async def get_by_user_and_question(
         self, db: AsyncSession, user_id: int, question_id: int, placement_id: int | None = None
@@ -41,6 +69,70 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             filters['placement_id'] = placement_id
 
         return await self.select_model_by_column(db, **filters)
+
+    async def list_by_user_and_question(
+        self, db: AsyncSession, user_id: int, question_id: int
+    ) -> list[WrongQuestionBook]:
+        """
+        获取用户同一题目的全部错题记录
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param question_id: 题目 ID
+        :return:
+        """
+        stmt = (
+            select(WrongQuestionBook)
+            .where(
+                WrongQuestionBook.user_id == user_id,
+                WrongQuestionBook.question_id == question_id,
+            )
+            .order_by(
+                WrongQuestionBook.last_wrong_time.desc(),
+                WrongQuestionBook.id.desc(),
+            )
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_by_ids(self, db: AsyncSession, wrong_ids: list[int]) -> list[WrongQuestionBook]:
+        """
+        按 ID 批量查询错题
+
+        :param db: 数据库会话
+        :param wrong_ids: 错题 ID 列表
+        :return:
+        """
+        if not wrong_ids:
+            return []
+
+        stmt = select(WrongQuestionBook).where(WrongQuestionBook.id.in_(wrong_ids))
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_by_user_and_questions(
+        self, db: AsyncSession, user_id: int, question_ids: list[int]
+    ) -> list[WrongQuestionBook]:
+        """
+        批量查询用户题目对应的错题记录
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param question_ids: 题目 ID 列表
+        :return:
+        """
+        if not question_ids:
+            return []
+
+        stmt = (
+            select(WrongQuestionBook)
+            .where(
+                WrongQuestionBook.user_id == user_id,
+                WrongQuestionBook.question_id.in_(question_ids),
+            )
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     async def get_by_user(
         self, db: AsyncSession, user_id: int, is_mastered: bool | None = None, is_pinned: bool | None = None
@@ -116,13 +208,16 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             },
         )
 
-    async def increment_correct(self, db: AsyncSession, wrong_id: int, practice_time: datetime) -> int:
+    async def increment_correct(
+        self, db: AsyncSession, wrong_id: int, practice_time: datetime, mastery_threshold: int = 3
+    ) -> int:
         """
-        增加连续做对次数（答对时调用，连续 3 次标记为已掌握）
+        增加连续做对次数（答对时调用，达到阈值标记为已掌握）
 
         :param db: 数据库会话
         :param wrong_id: 错题记录 ID
         :param practice_time: 练习时间
+        :param mastery_threshold: 连续答对多少次标记为已掌握
         :return:
         """
         wrong = await self.select_model(db, wrong_id)
@@ -132,7 +227,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         new_streak = wrong.correct_streak + 1
         update_data: dict = {'correct_streak': new_streak, 'last_practice_time': practice_time}
 
-        if new_streak >= 3:
+        if new_streak >= mastery_threshold:
             update_data['is_mastered'] = True
             update_data['mastered_time'] = practice_time
 
@@ -164,6 +259,97 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         :return:
         """
         return await self.delete_model(db, wrong_id)
+
+    async def batch_delete(self, db: AsyncSession, wrong_ids: list[int]) -> int:
+        """
+        批量删除错题记录
+
+        :param db: 数据库会话
+        :param wrong_ids: 错题 ID 列表
+        :return:
+        """
+        if not wrong_ids:
+            return 0
+
+        stmt = delete(WrongQuestionBook).where(WrongQuestionBook.id.in_(wrong_ids))
+        result = await db.execute(stmt)
+        return result.rowcount
+
+    async def batch_create(self, db: AsyncSession, rows: list[dict]) -> None:
+        """
+        批量创建错题记录
+
+        :param db: 数据库会话
+        :param rows: 错题记录列表
+        :return:
+        """
+        if not rows:
+            return
+
+        if DataBaseType.postgresql != settings.DATABASE_TYPE:
+            for row in rows:
+                await self.create(
+                    db=db,
+                    user_id=row['user_id'],
+                    question_id=row['question_id'],
+                    wrong_time=row['first_wrong_time'],
+                    placement_id=row.get('placement_id'),
+                )
+            return
+
+        rows_with_placement = [row for row in rows if row.get('placement_id') is not None]
+        rows_without_placement = [row for row in rows if row.get('placement_id') is None]
+
+        if rows_with_placement:
+            stmt = postgresql.insert(WrongQuestionBook).values(rows_with_placement)
+            stmt = stmt.on_conflict_do_nothing(
+                index_elements=[
+                    WrongQuestionBook.user_id,
+                    WrongQuestionBook.question_id,
+                    WrongQuestionBook.placement_id,
+                ],
+                index_where=WrongQuestionBook.placement_id.isnot(None),
+            )
+            await db.execute(stmt)
+
+        if rows_without_placement:
+            stmt = postgresql.insert(WrongQuestionBook).values(rows_without_placement)
+            stmt = stmt.on_conflict_do_nothing(
+                index_elements=[
+                    WrongQuestionBook.user_id,
+                    WrongQuestionBook.question_id,
+                ],
+                index_where=WrongQuestionBook.placement_id.is_(None),
+            )
+            await db.execute(stmt)
+
+        await db.flush()
+
+    async def batch_update(self, db: AsyncSession, rows: list[dict]) -> None:
+        """
+        批量更新错题记录
+
+        :param db: 数据库会话
+        :param rows: 更新数据列表
+        :return:
+        """
+        if not rows:
+            return
+
+        stmt = (
+            sa_update(WrongQuestionBook)
+            .where(WrongQuestionBook.id == bindparam('filter_wrong_id'))
+            .values(
+                wrong_count=bindparam('set_wrong_count'),
+                correct_streak=bindparam('set_correct_streak'),
+                last_wrong_time=bindparam('set_last_wrong_time'),
+                last_practice_time=bindparam('set_last_practice_time'),
+                is_mastered=bindparam('set_is_mastered'),
+                mastered_time=bindparam('set_mastered_time'),
+            )
+        )
+        await db.execute(stmt, rows)
+        await db.flush()
 
     async def clear_mastered(self, db: AsyncSession, user_id: int) -> int:
         """
@@ -264,7 +450,28 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         :param keyword: 关键字搜索（搜索题干）
         :return:
         """
-        stmt = select(WrongQuestionBook).where(WrongQuestionBook.user_id == user_id)
+        stmt = (
+            select(WrongQuestionBook)
+            .where(WrongQuestionBook.user_id == user_id)
+            .options(
+                # question 只需 stem / type，阻止自动 selectin 子关系
+                selectinload(WrongQuestionBook.question).options(
+                    noload(Question.analyses),
+                    noload(Question.materials),
+                    noload(Question.placements),
+                    noload(Question.options),
+                ),
+                # placement → bank（阻止 parent selectin）→ category / chapter
+                selectinload(WrongQuestionBook.placement)
+                    .selectinload(QuestionPlacement.bank)
+                    .options(
+                        selectinload(QuestionBank.category),
+                        noload(QuestionBank.parent),
+                    ),
+                selectinload(WrongQuestionBook.placement).selectinload(QuestionPlacement.chapter),
+            )
+        )
+
 
         if bank_id is not None or chapter_id is not None:
             stmt = stmt.join(
@@ -293,6 +500,152 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             WrongQuestionBook.last_wrong_time.desc(),
         )
         return stmt
+
+    # ============ 分组聚合 ============
+
+    async def get_grouped_by_bank(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按题库分组聚合错题数量
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(
+                QuestionPlacement.bank_id.label('group_id'),
+                QuestionBank.name.label('group_name'),
+                func.count().label('count'),
+            )
+            .select_from(WrongQuestionBook)
+            .join(QuestionPlacement, QuestionPlacement.id == WrongQuestionBook.placement_id)
+            .join(QuestionBank, QuestionBank.id == QuestionPlacement.bank_id)
+            .where(
+                WrongQuestionBook.user_id == user_id,
+                WrongQuestionBook.is_mastered == False,  # noqa: E712
+            )
+            .group_by(QuestionPlacement.bank_id, QuestionBank.name)
+            .order_by(func.count().desc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'group_id': r.group_id, 'group_name': r.group_name, 'count': r.count} for r in rows]
+
+    async def get_grouped_by_knowledge_point(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按知识点分组聚合错题数量
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        # 展开 Question.knowledge_point JSONB 数组
+        kp_element = func.jsonb_array_elements(Question.knowledge_point).table_valued('value')
+        # 提取知识点名称：纯字符串 elem 或 dict 的 name / label / title 字段
+        kp_name = func.coalesce(
+            kp_element.c.value.op('->>')(literal_column("'name'")),
+            kp_element.c.value.op('->>')(literal_column("'label'")),
+            kp_element.c.value.op('->>')(literal_column("'title'")),
+            kp_element.c.value.op('#>>')(literal_column("'{}'")),
+        ).label('kp_name')
+
+        stmt = (
+            select(
+                kp_name,
+                func.count(func.distinct(WrongQuestionBook.id)).label('count'),
+            )
+            .select_from(WrongQuestionBook)
+            .join(Question, Question.id == WrongQuestionBook.question_id)
+            .join(kp_element, literal_column('true'))
+            .where(
+                WrongQuestionBook.user_id == user_id,
+                WrongQuestionBook.is_mastered == False,  # noqa: E712
+                Question.knowledge_point.isnot(None),
+            )
+            .group_by(kp_name)
+            .having(kp_name.isnot(None))
+            .order_by(func.count(func.distinct(WrongQuestionBook.id)).desc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'group_id': None, 'group_name': r.kp_name, 'count': r.count} for r in rows]
+
+    async def get_question_ids(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+        knowledge_point: str | None = None,
+    ) -> list[int]:
+        """
+        按分组条件获取未掌握错题的题目 ID 列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        :param knowledge_point: 知识点名称
+        :return:
+        """
+        stmt = (
+            select(WrongQuestionBook.question_id)
+            .where(
+                WrongQuestionBook.user_id == user_id,
+                WrongQuestionBook.is_mastered == False,  # noqa: E712
+            )
+            .order_by(WrongQuestionBook.last_wrong_time.desc())
+        )
+
+        if bank_id is not None or chapter_id is not None:
+            stmt = stmt.join(
+                QuestionPlacement,
+                QuestionPlacement.id == WrongQuestionBook.placement_id,
+            )
+            if bank_id is not None:
+                stmt = stmt.where(QuestionPlacement.bank_id == bank_id)
+            if chapter_id is not None:
+                stmt = stmt.where(QuestionPlacement.chapter_id == chapter_id)
+
+        if knowledge_point is not None:
+            stmt = stmt.join(
+                Question, Question.id == WrongQuestionBook.question_id,
+            )
+            kp_col = cast(Question.knowledge_point, PGJSONB)
+            stmt = stmt.where(
+                or_(
+                    kp_col.contains([knowledge_point]),
+                    kp_col.contains([{'name': knowledge_point}]),
+                    kp_col.contains([{'label': knowledge_point}]),
+                    kp_col.contains([{'title': knowledge_point}]),
+                )
+            )
+
+        rows = (await db.execute(stmt)).scalars().all()
+        return list(rows)
+
+    async def get_bank_chapter_counts(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按 bank_id + chapter_id 分组统计未掌握错题数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(
+                QuestionPlacement.bank_id,
+                QuestionPlacement.chapter_id,
+                func.count().label('count'),
+            )
+            .select_from(WrongQuestionBook)
+            .join(QuestionPlacement, QuestionPlacement.id == WrongQuestionBook.placement_id)
+            .where(
+                WrongQuestionBook.user_id == user_id,
+                WrongQuestionBook.is_mastered == False,  # noqa: E712
+            )
+            .group_by(QuestionPlacement.bank_id, QuestionPlacement.chapter_id)
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'bank_id': r.bank_id, 'chapter_id': r.chapter_id, 'count': r.count} for r in rows]
 
 
 wrong_question_dao: CRUDWrongQuestion = CRUDWrongQuestion(WrongQuestionBook)

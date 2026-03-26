@@ -2,13 +2,16 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import cast, delete, func, literal_column, or_, select
+from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import QuestionFavorite
+from backend.app.question_bank.model.question import Question, QuestionPlacement
+from backend.common.exception import errors
 
 
 class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
@@ -75,6 +78,26 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         result = await db.execute(stmt)
         return [row[0] for row in result.all()]
 
+    async def get_folder_counts(self, db: AsyncSession, user_id: int) -> list[dict[str, str | int | None]]:
+        """
+        获取用户收藏夹计数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(
+                QuestionFavorite.folder_name,
+                func.count().label('count'),
+            )
+            .where(QuestionFavorite.user_id == user_id)
+            .group_by(QuestionFavorite.folder_name)
+            .order_by(func.count().desc(), QuestionFavorite.folder_name.asc().nullsfirst())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'folder_name': row.folder_name, 'count': row.count} for row in rows]
+
     async def create(
         self,
         db: AsyncSession,
@@ -97,8 +120,6 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param remark: 备注
         :return:
         """
-        from backend.app.question_bank.model import Question, QuestionPlacement
-
         # 查询题目及其挂载信息（用于填充冗余字段）
         stmt = (
             select(Question)
@@ -116,15 +137,20 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
 
         # 精确匹配 placement_id，未传则降级取第一条
         placement = None
+        active_placements = [item for item in question.placements if item.is_active]
+        sorted_placements = sorted(active_placements, key=lambda item: (item.sort_order, item.id))
         if placement_id is not None:
-            placement = next((p for p in question.placements if p.id == placement_id), None)
-        if placement is None and question.placements:
-            placement = question.placements[0]
+            placement = next((p for p in sorted_placements if p.id == placement_id), None)
+            if placement is None:
+                raise errors.NotFoundError(msg='挂载不存在或不属于当前题目')
+        if placement is None and sorted_placements:
+            placement = sorted_placements[0]
 
         # 创建收藏，填充冗余字段
         new_favorite = self.model(
             user_id=user_id,
             question_id=question_id,
+            placement_id=placement.id if placement else None,
             folder_name=folder_name,
             tags=tags,
             remark=remark,
@@ -213,6 +239,21 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         result = await db.execute(stmt)
         return result.rowcount
 
+    async def list_by_ids(self, db: AsyncSession, favorite_ids: list[int]) -> list[QuestionFavorite]:
+        """
+        按 ID 批量查询收藏
+
+        :param db: 数据库会话
+        :param favorite_ids: 收藏 ID 列表
+        :return:
+        """
+        if not favorite_ids:
+            return []
+
+        stmt = select(QuestionFavorite).where(QuestionFavorite.id.in_(favorite_ids))
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     async def clear_folder(self, db: AsyncSession, user_id: int, folder_name: str) -> int:
         """
         清空收藏夹
@@ -277,6 +318,128 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
             QuestionFavorite.created_time.desc(),
         )
         return stmt
+
+    # ============ 分组聚合 ============
+
+    async def get_grouped_by_bank(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按题库分组聚合收藏数量（利用冗余字段，无需 JOIN）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(
+                QuestionFavorite.bank_id.label('group_id'),
+                QuestionFavorite.bank_name.label('group_name'),
+                func.count().label('count'),
+            )
+            .where(
+                QuestionFavorite.user_id == user_id,
+                QuestionFavorite.bank_id.isnot(None),
+            )
+            .group_by(QuestionFavorite.bank_id, QuestionFavorite.bank_name)
+            .order_by(func.count().desc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'group_id': r.group_id, 'group_name': r.group_name or '未分类', 'count': r.count} for r in rows]
+
+    async def get_grouped_by_knowledge_point(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按知识点分组聚合收藏数量
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        kp_element = func.jsonb_array_elements(Question.knowledge_point).table_valued('value')
+        kp_name = func.coalesce(
+            kp_element.c.value.op('->>')(literal_column("'name'")),
+            kp_element.c.value.op('->>')(literal_column("'label'")),
+            kp_element.c.value.op('->>')(literal_column("'title'")),
+            kp_element.c.value.op('#>>')(literal_column("'{}'")),
+        ).label('kp_name')
+
+        stmt = (
+            select(
+                kp_name,
+                func.count(func.distinct(QuestionFavorite.id)).label('count'),
+            )
+            .select_from(QuestionFavorite)
+            .join(Question, Question.id == QuestionFavorite.question_id)
+            .join(kp_element, literal_column('true'))
+            .where(
+                QuestionFavorite.user_id == user_id,
+                Question.knowledge_point.isnot(None),
+            )
+            .group_by(kp_name)
+            .having(kp_name.isnot(None))
+            .order_by(func.count(func.distinct(QuestionFavorite.id)).desc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'group_id': None, 'group_name': r.kp_name, 'count': r.count} for r in rows]
+
+    async def get_question_ids(
+        self, db: AsyncSession, user_id: int,
+        bank_id: int | None = None, chapter_id: int | None = None, knowledge_point: str | None = None,
+    ) -> list[int]:
+        """
+        按分组条件获取收藏的题目 ID 列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_id: 题库 ID
+        :param chapter_id: 章节 ID
+        :param knowledge_point: 知识点名称
+        :return:
+        """
+        stmt = (
+            select(QuestionFavorite.question_id)
+            .where(QuestionFavorite.user_id == user_id)
+            .order_by(QuestionFavorite.created_time.desc())
+        )
+
+        if bank_id is not None:
+            stmt = stmt.where(QuestionFavorite.bank_id == bank_id)
+
+        if chapter_id is not None:
+            stmt = stmt.where(QuestionFavorite.chapter_id == chapter_id)
+
+        if knowledge_point is not None:
+            stmt = stmt.join(Question, Question.id == QuestionFavorite.question_id)
+            kp_col = cast(Question.knowledge_point, PGJSONB)
+            stmt = stmt.where(
+                or_(
+                    kp_col.contains([knowledge_point]),
+                    kp_col.contains([{'name': knowledge_point}]),
+                    kp_col.contains([{'label': knowledge_point}]),
+                    kp_col.contains([{'title': knowledge_point}]),
+                )
+            )
+
+        rows = (await db.execute(stmt)).scalars().all()
+        return list(rows)
+
+    async def get_bank_chapter_counts(self, db: AsyncSession, user_id: int) -> list[dict]:
+        """
+        按 bank_id + chapter_id 分组统计收藏数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(
+                QuestionFavorite.bank_id,
+                QuestionFavorite.chapter_id,
+                func.count().label('count'),
+            )
+            .where(QuestionFavorite.user_id == user_id)
+            .group_by(QuestionFavorite.bank_id, QuestionFavorite.chapter_id)
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'bank_id': r.bank_id, 'chapter_id': r.chapter_id, 'count': r.count} for r in rows]
 
 
 question_favorite_dao: CRUDQuestionFavorite = CRUDQuestionFavorite(QuestionFavorite)
