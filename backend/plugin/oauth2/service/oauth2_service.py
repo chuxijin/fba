@@ -179,27 +179,15 @@ class OAuth2Service:
         :return:
         """
         try:
-            from backend.app.question_bank.model.user import UserAccount
+            from backend.app.question_bank.service.user_account_service import user_account_service
         except Exception:
             return
 
-        stmt = select(UserAccount).where(UserAccount.user_id == user_id).limit(1)
-        result = await db.execute(stmt)
-        account = result.scalar_one_or_none()
-
-        if account:
-            if register_channel and not account.register_channel:
-                account.register_channel = register_channel
-                await db.flush()
-            return
-
-        db.add(
-            UserAccount(
-                user_id=user_id,
-                register_channel=register_channel,
-            )
+        await user_account_service.ensure_by_sys_user_id(
+            db=db,
+            sys_user_id=user_id,
+            register_channel=register_channel,
         )
-        await db.flush()
 
     @staticmethod
     async def login(

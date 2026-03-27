@@ -101,7 +101,7 @@ async function updatePracticeMode(nextMode: PracticeMode) {
       await fbaApi.qbank.settings.updateStudyPreference({
         practice_mode: nextMode,
       } as any)
-      mergeCachedStudyPreference(Number(userStore.userInfo?.userId || 0), {
+      mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), {
         practice_mode: nextMode,
       })
     }

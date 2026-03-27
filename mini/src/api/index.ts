@@ -38,7 +38,7 @@ export const questionApiV2 = {
 // 认证 API
 export const authApi = {
   wxLogin: fbaApi.qbank.auth.wxLogin,
-  testLogin: fbaApi.qbank.auth.testLogin,
+  login: fbaApi.admin.auth.login,
   getCurrentUser: fbaApi.qbank.auth.getMe,
 }
 

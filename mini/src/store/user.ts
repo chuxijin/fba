@@ -4,6 +4,7 @@ import { fbaApi } from '@/api/sdk'
 
 // 初始化状态
 const userInfoState: any = {
+  id: -1,
   userId: -1,
   username: '',
   nickname: '',
@@ -19,10 +20,13 @@ export const useUserStore = defineStore(
     const setUserInfo = (val: any) => {
       console.log('设置用户信息', val)
       // 若头像为空 则使用默认头像
-      if (!val.avatar) {
-        val.avatar = userInfoState.avatar
+      const normalizedUserId = Number(val?.id || val?.userId || -1)
+      userInfo.value = {
+        ...val,
+        id: normalizedUserId > 0 ? normalizedUserId : -1,
+        userId: normalizedUserId > 0 ? normalizedUserId : -1,
+        avatar: val?.avatar || userInfoState.avatar,
       }
-      userInfo.value = val
     }
     const setUserAvatar = (avatar: string) => {
       userInfo.value.avatar = avatar

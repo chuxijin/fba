@@ -1,6 +1,7 @@
 ﻿<script lang="ts" setup>
 import { fbaApi } from '@/api/sdk'
 import { useTokenStore } from '@/store'
+import { toLoginPage } from '@/utils/toLoginPage'
 
 defineOptions({
   name: 'MyWrongQuestions',
@@ -47,7 +48,7 @@ function ensureLogin() {
 
   uni.showToast({ title: '请先登录后查看错题', icon: 'none' })
   setTimeout(() => {
-    uni.switchTab({ url: '/pages/mine/index' })
+    toLoginPage()
   }, 300)
   return false
 }
@@ -129,7 +130,7 @@ async function startPractice(node: TreeNode) {
   try {
     const session = await fbaApi.qbank.session.create(params as any)
     uni.navigateTo({
-      url: `/pages/practice/session/index?sessionId=${session.id}&mode=practice`,
+      url: `/pages/practice/session/index?sessionId=${session.id}&mode=practice&autoDestroy=1`,
     })
   }
   catch (error: any) {

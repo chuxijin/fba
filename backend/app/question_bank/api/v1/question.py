@@ -106,6 +106,46 @@ async def get_dynamic_collections(
     return response_base.success(data=data)
 
 
+@router.get(
+    '/sessions/{session_id}/favorites',
+    summary='按会话批量检查收藏状态',
+    name='qbank_get_session_favorites',
+    dependencies=[DependsJwtAuth],
+)
+async def get_session_favorites(
+    request: Request,
+    db: CurrentSession,
+    session_id: Annotated[int, Path(description='会话 ID')],
+) -> ResponseSchemaModel[dict[int, bool]]:
+    """按会话批量检查收藏状态"""
+    status_map = await favorite_service.batch_check_favorites_by_session(
+        db=db,
+        user_id=request.user.id,
+        session_id=session_id,
+    )
+    return response_base.success(data=status_map)
+
+
+@router.get(
+    '/sessions/{session_id}/notes',
+    summary='按会话批量查询笔记',
+    name='qbank_get_session_notes',
+    dependencies=[DependsJwtAuth],
+)
+async def get_session_notes(
+    request: Request,
+    db: CurrentSession,
+    session_id: Annotated[int, Path(description='会话 ID')],
+) -> ResponseSchemaModel[dict[int, GetQuestionNoteDetail]]:
+    """按会话批量查询笔记"""
+    note_map = await note_service.batch_get_notes_by_session(
+        db=db,
+        user_id=request.user.id,
+        session_id=session_id,
+    )
+    return response_base.success(data=note_map)
+
+
 # ============ 题目相关接口 ============
 
 

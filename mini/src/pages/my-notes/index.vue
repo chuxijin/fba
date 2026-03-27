@@ -1,6 +1,7 @@
 ﻿<script lang="ts" setup>
 import { fbaApi } from '@/api/sdk'
 import { useTokenStore } from '@/store'
+import { toLoginPage } from '@/utils/toLoginPage'
 
 defineOptions({
   name: 'MyNotes',
@@ -47,7 +48,7 @@ function ensureLogin() {
 
   uni.showToast({ title: '请先登录后查看笔记', icon: 'none' })
   setTimeout(() => {
-    uni.switchTab({ url: '/pages/mine/index' })
+    toLoginPage()
   }, 300)
   return false
 }

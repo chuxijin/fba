@@ -71,6 +71,72 @@ export interface AdminSwaggerToken extends AdminEntity {
   user: AdminUserInfo;
 }
 
+export type FeedbackType =
+  | 'bug'
+  | 'content_error'
+  | 'product_suggestion'
+  | 'feature_request'
+  | 'experience'
+  | 'other';
+
+export type FeedbackStatus = 'pending' | 'processing' | 'resolved' | 'rejected';
+
+export interface CreateFeedbackParam {
+  feedback_type?: FeedbackType;
+  content: string;
+  contact?: string | null;
+  images?: string[] | null;
+  source_app?: string | null;
+  source_platform?: string | null;
+  page_path?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
+  target_text?: string | null;
+}
+
+export interface UpdateFeedbackParam {
+  status?: FeedbackStatus | null;
+  reply_content?: string | null;
+}
+
+export interface DeleteFeedbackParam {
+  ids: number[];
+}
+
+export interface GetFeedbackDetail {
+  id: number;
+  feedback_type: FeedbackType;
+  content: string;
+  contact?: string | null;
+  images?: string[] | null;
+  source_app?: string | null;
+  source_platform?: string | null;
+  page_path?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
+  target_text?: string | null;
+  status: FeedbackStatus;
+  reply_content?: string | null;
+  read_time?: string | null;
+  handled_by?: number | null;
+  handled_time?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  created_time: string;
+  updated_time?: string | null;
+}
+
+export interface FeedbackListParams extends PaginationParams {
+  feedback_type?: FeedbackType;
+  status?: FeedbackStatus;
+  keyword?: string;
+  contact?: string;
+  source_app?: string;
+  source_platform?: string;
+  target_type?: string;
+  is_read?: boolean;
+}
+
 export interface CategorySchemaBase {
   app_code: string;
   type?: string;

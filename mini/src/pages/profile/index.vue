@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
 import { useTokenStore, useUserStore } from '@/store'
+import { toLoginPage } from '@/utils/toLoginPage'
 import { getEnvBaseUrl } from '@/utils'
 
 defineOptions({
@@ -29,13 +30,21 @@ const userInfo = computed(() => userStore.userInfo || {})
 const displayAvatar = computed(() => userInfo.value.avatar || DEFAULT_AVATAR)
 const displayNickname = computed(() => userInfo.value.nickname || '微信用户')
 const displayUsername = computed(() => userInfo.value.username || '-')
+const loginMethodLabel = computed(() => {
+  const username = String(userInfo.value.username || '').trim()
+  if (!username) {
+    return '未识别'
+  }
+
+  return username.startsWith('wx_') ? '微信登录' : '账号密码登录'
+})
 const { statusBarHeight } = uni.getSystemInfoSync()
 
 function ensureLogin() {
   if (tokenStore.updateNowTime().hasLogin) {
     return true
   }
-  uni.switchTab({ url: '/pages/mine/index' })
+  toLoginPage()
   return false
 }
 
@@ -47,7 +56,7 @@ function updateLocalUser(patch: Record<string, any>) {
 }
 
 async function uploadAvatarToOss(filePath: string): Promise<string> {
-  const token = tokenStore.updateNowTime().validToken || uni.getStorageSync('access_token') || ''
+  const token = await tokenStore.tryGetValidToken()
   if (!token) {
     throw new Error('未登录')
   }
@@ -303,10 +312,9 @@ onShow(() => {
         <view class="ml-4 h-[1px] bg-[#F1E8FB]" />
 
         <view class="h-14 flex items-center justify-between px-4">
-          <text class="text-[15px] text-[#1E293B] font-bold">微信</text>
+          <text class="text-[15px] text-[#1E293B] font-bold">登录方式</text>
           <view class="flex items-center text-[#64748B]">
-            <text class="text-[14px]">已绑定</text>
-            <view class="i-carbon-chevron-right ml-1 text-lg" />
+            <text class="text-[14px]">{{ loginMethodLabel }}</text>
           </view>
         </view>
 

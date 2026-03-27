@@ -5,8 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.admin.model import User
+from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_question import question_statistics_dao
 from backend.app.question_bank.crud.crud_question_note import question_note_dao, user_note_vote_dao
+from backend.app.question_bank.crud.crud_session_question import session_question_dao
 from backend.app.question_bank.model import QuestionNote, UserNoteVote
 from backend.app.question_bank.schema.note import (
     CreateQuestionNoteParam,
@@ -309,6 +311,72 @@ class NoteService:
             dislike_count=dislike_count,
             quality_score=like_count - dislike_count,
         )
+
+    @staticmethod
+    async def _get_owned_session_question_ids(*, db: AsyncSession, user_id: int, session_id: int) -> list[int]:
+        """
+        获取当前用户会话内题目 ID 列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param session_id: 会话 ID
+        :return:
+        """
+        session = await practice_session_dao.get(db=db, session_id=session_id)
+        if not session:
+            raise errors.NotFoundError(msg='会话不存在')
+        if session.user_id != user_id:
+            raise errors.AuthorizationError(msg='无权访问此会话')
+
+        session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
+        return [item.question_id for item in session_questions]
+
+    @staticmethod
+    async def batch_get_notes_by_session(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        session_id: int,
+    ) -> dict[int, 'GetQuestionNoteDetail']:
+        """
+        通过会话批量查询题目笔记（仅返回存在的笔记）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param session_id: 会话 ID
+        :return:
+        """
+        from backend.app.question_bank.schema.note import GetQuestionNoteDetail
+
+        question_ids = await NoteService._get_owned_session_question_ids(
+            db=db,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        if not question_ids:
+            return {}
+
+        stmt = (
+            select(question_note_dao.model)
+            .where(
+                question_note_dao.model.user_id == user_id,
+                question_note_dao.model.question_id.in_(question_ids),
+            )
+            .order_by(
+                question_note_dao.model.updated_time.desc(),
+                question_note_dao.model.id.desc(),
+            )
+        )
+        result = await db.execute(stmt)
+        notes = result.scalars().all()
+
+        note_map: dict[int, GetQuestionNoteDetail] = {}
+        for note in notes:
+            if note.question_id in note_map:
+                continue
+            note_map[note.question_id] = GetQuestionNoteDetail.model_validate(note)
+
+        return note_map
 
     @staticmethod
     async def batch_get_notes_from_string(

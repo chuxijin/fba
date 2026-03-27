@@ -2,8 +2,8 @@
 /* tslint:disable */
 /**
  * 由 OpenAPI 自动生成 — 请勿手动修改
- * 数据源: http://127.0.0.1:8000/openapi
- * 生成时间: 2026-03-22T08:20:36.284Z
+ * 数据源: file:///D:/100_Work/101_Program/Proj/fba/packages/api-sdk/.openapi.local.json
+ * 生成时间: 2026-03-27T00:51:46.604Z
  */
 export type paths = {
     "/api/v1/actcode/agiso/activate": {
@@ -2489,6 +2489,31 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/feedbacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 提交反馈
+         * @description 提交反馈
+         *
+         *     :param request: FastAPI 请求对象
+         *     :param db: 数据库事务会话
+         *     :param obj: 创建反馈参数
+         *     :return:
+         */
+        post: operations["create_feedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gk/category": {
         parameters: {
             query?: never;
@@ -2569,19 +2594,19 @@ export type paths = {
             cookie?: never;
         };
         /**
-         * Get content list
-         * @description Get content list with filters.
+         * 获取内容列表
+         * @description 获取内容列表（分页）
          */
         get: operations["get_content_list"];
         put?: never;
         /**
-         * Create content
-         * @description Create content.
+         * 创建内容
+         * @description 创建内容
          */
         post: operations["create_content"];
         /**
-         * Delete content
-         * @description Delete content.
+         * 删除内容
+         * @description 删除内容
          */
         delete: operations["delete_content"];
         options?: never;
@@ -2597,13 +2622,13 @@ export type paths = {
             cookie?: never;
         };
         /**
-         * Get content detail
-         * @description Get content detail by id.
+         * 获取内容详情
+         * @description 获取内容详情
          */
         get: operations["get_content"];
         /**
-         * Update content
-         * @description Update content.
+         * 更新内容
+         * @description 更新内容
          */
         put: operations["update_content"];
         post?: never;
@@ -2623,8 +2648,8 @@ export type paths = {
         get?: never;
         put?: never;
         /**
-         * Increment content view count
-         * @description Increment content view count.
+         * 增加内容阅读量
+         * @description 增加内容阅读量
          */
         post: operations["increment_content_view"];
         delete?: never;
@@ -2641,8 +2666,8 @@ export type paths = {
             cookie?: never;
         };
         /**
-         * Get content detail by slug
-         * @description Get content detail by slug.
+         * 通过 slug 获取内容详情
+         * @description 通过 slug 获取内容详情
          */
         get: operations["get_content_by_slug"];
         put?: never;
@@ -2661,8 +2686,8 @@ export type paths = {
             cookie?: never;
         };
         /**
-         * Get content tags
-         * @description Get all published content tags.
+         * 获取内容标签
+         * @description 获取所有已发布内容的标签
          */
         get: operations["get_content_tags"];
         put?: never;
@@ -2957,54 +2982,6 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gk/feedback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 获取反馈列表
-         * @description 获取反馈列表（管理员）
-         */
-        get: operations["get_feedback_list"];
-        put?: never;
-        /**
-         * 提交反馈
-         * @description 提交反馈（公开接口）
-         */
-        post: operations["create_feedback"];
-        /**
-         * 删除反馈
-         * @description 删除反馈（管理员）
-         */
-        delete: operations["delete_feedback"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gk/feedback/{pk}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * 更新反馈状态/回复
-         * @description 更新反馈（管理员）
-         */
-        put: operations["update_feedback"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/gk/gangwei": {
         parameters: {
             query?: never;
@@ -3213,10 +3190,7 @@ export type paths = {
         };
         /**
          * 获取官媒学言语列表
-         * @description 获取官媒学言语列表（分页）
-         *
-         *     This is a wrapper around content API that automatically filters by guanmei categories.
-         *     Only returns published content from categories with app_code='gongkao' and type='guanmei'.
+         * @description 获取官媒学言语列表（分页），只返回已发布内容
          */
         get: operations["get_guanmei_list"];
         put?: never;
@@ -3387,7 +3361,7 @@ export type paths = {
             cookie?: never;
         };
         /**
-         * Get jingyan list
+         * 获取经验列表
          * @description 获取经验列表（分页），默认分类 ID=33，可传子分类 ID 进一步筛选
          */
         get: operations["get_jingyan_list"];
@@ -3407,8 +3381,8 @@ export type paths = {
             cookie?: never;
         };
         /**
-         * Get jingyan detail
-         * @description Get jingyan detail by id.
+         * 获取经验详情
+         * @description 获取经验详情
          */
         get: operations["get_jingyan"];
         put?: never;
@@ -3429,8 +3403,8 @@ export type paths = {
         get?: never;
         put?: never;
         /**
-         * Increment jingyan view count
-         * @description Increment jingyan view count.
+         * 增加经验阅读量
+         * @description 增加经验阅读量
          */
         post: operations["increment_jingyan_view"];
         delete?: never;
@@ -6787,6 +6761,26 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/qbank/banks/{pk}/chapter-progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取题库章节进度
+         * @description 🔒 登录接口 - 获取用户在指定题库下的章节做题进度
+         */
+        get: operations["qbank_get_bank_chapter_progress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/qbank/banks/{pk}/questions/all": {
         parameters: {
             query?: never;
@@ -6987,7 +6981,7 @@ export type paths = {
          *
          *     :param db: 数据库会话
          *     :param bank_id: 题库 ID
-         *     :return: 章节树列表
+         *     :return:
          */
         get: operations["qbank_get_chapter_tree_customer"];
         put?: never;
@@ -7110,6 +7104,46 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/qbank/favorites/grouped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取收藏分组聚合
+         * @description 按题库或知识点分组聚合收藏数量
+         */
+        get: operations["qbank_favorite_grouped"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/qbank/favorites/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取分组内收藏题目 ID 列表
+         * @description 按分组条件获取收藏的题目 ID 列表
+         */
+        get: operations["qbank_favorite_ids"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/qbank/favorites/questions/{question_id}": {
         parameters: {
             query?: never;
@@ -7159,7 +7193,7 @@ export type paths = {
         };
         /**
          * 获取收藏统计
-         * @description 获取用户的收藏统计数据
+         * @description 获取用户的收藏统计数据，传 group_by 时返回树形分组
          */
         get: operations["qbank_favorite_statistics"];
         put?: never;
@@ -7184,14 +7218,6 @@ export type paths = {
          * @description 👤 客户端首页 - 用户打卡
          *
          *     在用户完成一定数量的做题后触发打卡
-         *
-         *     参数说明：
-         *     - practice_count: 当日做题数
-         *     - practice_duration: 当日练习时长（秒）
-         *
-         *     注意：
-         *     - 同一天多次打卡会更新数据（不会重复创建）
-         *     - 打卡记录用于计算连续打卡天数
          */
         post: operations["home_check_in"];
         delete?: never;
@@ -7212,12 +7238,6 @@ export type paths = {
          * @description 👤 客户端首页 - 获取打卡日历
          *
          *     获取指定月份的打卡日历数据，包括每天的打卡状态和做题数
-         *
-         *     返回数据：
-         *     - year: 年份
-         *     - month: 月份
-         *     - days: 每天的打卡数据列表
-         *     - total_check_in_days: 本月打卡天数
          */
         get: operations["home_check_in_calendar"];
         put?: never;
@@ -7244,11 +7264,6 @@ export type paths = {
          *     - 本周刷题统计
          *     - 排名信息（击败用户百分比）
          *     - 累计做题数据
-         *
-         *     数据更新策略：
-         *     - 实时数据：今日打卡、今日做题（每次请求计算）
-         *     - 准实时数据：本周统计、累计数据（可缓存5分钟）
-         *     - 定时数据：排名信息（从预计算表读取，缓存24小时）
          */
         get: operations["home_dashboard"];
         put?: never;
@@ -7274,16 +7289,6 @@ export type paths = {
          *     - practice_count: 刷题数量排行榜
          *     - accuracy_rate: 正确率排行榜（要求至少做过 10 题）
          *     - streak_days: 坚持天数排行榜（连续打卡天数）
-         *
-         *     返回数据：
-         *     - rank_type: 排行榜类型
-         *     - current_user_rank: 当前用户排名（如果在前 N 名中）
-         *     - top_users: 排行榜用户列表
-         *
-         *     性能优化：
-         *     - 刷题数量：SQL 聚合查询，性能高
-         *     - 正确率：SQL 聚合 + Python 排序（需要至少 10 题）
-         *     - 坚持天数：遍历所有用户计算连续打卡（适合小规模用户）
          */
         get: operations["home_rank_list"];
         put?: never;
@@ -7522,6 +7527,46 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/qbank/notes/grouped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取笔记分组聚合
+         * @description 按题库或知识点分组聚合笔记数量
+         */
+        get: operations["qbank_note_grouped"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/qbank/notes/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取分组内笔记题目 ID 列表
+         * @description 按分组条件获取有笔记的题目 ID 列表
+         */
+        get: operations["qbank_note_ids"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/qbank/notes/questions/{question_id}/public": {
         parameters: {
             query?: never;
@@ -7534,6 +7579,26 @@ export type paths = {
          * @description 获取题目的所有公开笔记（按质量分排序）
          */
         get: operations["get_question_public_notes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/qbank/notes/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取笔记统计
+         * @description 获取用户的笔记统计数据，传 group_by 时返回树形分组
+         */
+        get: operations["qbank_note_statistics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7666,9 +7731,6 @@ export type paths = {
         /**
          * 提交智能解析结果入库
          * @description 将前端确认后的智能解析结果批量入库
-         *
-         *     通过 question_service.create() 走标准嵌套 schema 流程，
-         *     保证选项归一化、挂载写入、解析写入、材料关联等所有副作用完整执行。
          */
         post: operations["qbank_smart_commit"];
         delete?: never;
@@ -7811,7 +7873,7 @@ export type paths = {
          * 查看题目解析
          * @description 客户端刷题接口 - 查看题目解析（含答案）
          *
-         *     通常在提交答案后查看，会自动增加解析的查看次数
+         *     通常在提交答案后查看，会自动增加解析的查看次数（需要写入，因此使用 Transaction）
          */
         get: operations["practice_get_analysis"];
         put?: never;
@@ -7893,7 +7955,7 @@ export type paths = {
          * 获取题目解析（含答案）
          * @description 获取题目解析（含答案）
          *
-         *     - 客户：需要会员权限验证，自动增加查看次数
+         *     - 客户：需要会员权限验证，自动增加查看次数（需要写入，因此使用 Transaction）
          *     - 管理员：直接查看，不增加查看次数
          */
         get: operations["qbank_get_question_analysis"];
@@ -8103,7 +8165,7 @@ export type paths = {
         };
         /**
          * 获取用户练习会话列表
-         * @description 获取用户的练习会话列表（分页）
+         * @description 获取用户的练习会话列表
          */
         get: operations["qbank_practice_get_sessions"];
         put?: never;
@@ -8127,14 +8189,14 @@ export type paths = {
         };
         /**
          * 获取练习会话详情
-         * @description 获取练习会话详情（含会话题目快照和答题记录）
+         * @description 获取练习会话详情
          */
         get: operations["qbank_practice_get_session"];
         put?: never;
         post?: never;
         /**
          * 删除练习会话
-         * @description 删除练习会话（删除会话及其关联的所有答题记录）
+         * @description 删除练习会话
          */
         delete: operations["qbank_practice_delete_session"];
         options?: never;
@@ -8153,7 +8215,7 @@ export type paths = {
         put?: never;
         /**
          * 放弃练习会话
-         * @description 放弃练习会话（用户中途退出练习时调用）
+         * @description 放弃练习会话
          */
         post: operations["qbank_practice_abandon_session"];
         delete?: never;
@@ -8170,14 +8232,14 @@ export type paths = {
             cookie?: never;
         };
         /**
-         * 获取会话的所有答题记录
-         * @description 获取会话的所有答题记录
+         * 获取会话全部答题记录
+         * @description 获取会话全部答题记录
          */
         get: operations["qbank_practice_get_session_records"];
         put?: never;
         /**
-         * 批量提交/更新答题记录
-         * @description 批量创建/更新答题记录（基于 session_id + question_id 幂等）
+         * 批量提交或更新答题记录
+         * @description 批量创建或更新答题记录
          */
         post: operations["qbank_practice_upsert_records"];
         delete?: never;
@@ -8195,7 +8257,7 @@ export type paths = {
         };
         /**
          * 获取会话答题报告
-         * @description 获取会话答题报告（含统计信息、答题卡数据、错题 ID 列表）
+         * @description 获取会话答题报告
          */
         get: operations["qbank_practice_get_session_report"];
         put?: never;
@@ -8237,7 +8299,7 @@ export type paths = {
         put?: never;
         /**
          * 提交练习会话
-         * @description 提交练习会话（统一判题 + 统计 + 错题本）
+         * @description 提交练习会话
          */
         post: operations["qbank_practice_submit_session"];
         delete?: never;
@@ -8254,8 +8316,8 @@ export type paths = {
             cookie?: never;
         };
         /**
-         * 获取最新的进行中会话
-         * @description 获取用户最新的进行中会话（用于恢复未完成的练习）
+         * 获取最新进行中的会话
+         * @description 获取用户最新的进行中会话
          */
         get: operations["qbank_practice_get_latest_session"];
         put?: never;
@@ -8275,7 +8337,7 @@ export type paths = {
         };
         /**
          * 获取答题记录列表
-         * @description 获取答题记录列表（分页）
+         * @description 获取答题记录列表
          */
         get: operations["qbank_practice_get_records"];
         put?: never;
@@ -8342,12 +8404,6 @@ export type paths = {
         /**
          * 上传头像
          * @description 上传用户头像并更新数据库
-         *
-         *     :param request: Request 对象
-         *     :param db: 数据库会话
-         *     :param file: 上传的文件
-         *     :param current_user: 当前用户
-         *     :return: 文件 URL
          */
         post: operations["qbank_upload_avatar"];
         delete?: never;
@@ -8420,6 +8476,29 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/qbank/wrong-questions/{question_id}/answer-correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 错题答对上报
+         * @description 轻量刷题模式下，用户答对某题后调用
+         *
+         *     根据 question_id + user_id 查找错题记录，增加连续答对次数，
+         *     达到 mastery_threshold 自动标记为已掌握。
+         */
+        post: operations["qbank_wrong_question_answer_correct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/qbank/wrong-questions/clear-mastered": {
         parameters: {
             query?: never;
@@ -8440,6 +8519,46 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/qbank/wrong-questions/grouped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取错题分组聚合
+         * @description 按题库或知识点分组聚合错题数量
+         */
+        get: operations["qbank_wrong_question_grouped"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/qbank/wrong-questions/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取分组内错题 ID 列表
+         * @description 按分组条件获取未掌握错题的题目 ID 列表
+         */
+        get: operations["qbank_wrong_question_ids"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/qbank/wrong-questions/statistics": {
         parameters: {
             query?: never;
@@ -8449,7 +8568,7 @@ export type paths = {
         };
         /**
          * 获取错题本统计
-         * @description 获取用户的错题本统计数据
+         * @description 获取用户的错题本统计数据，传 group_by 时返回树形分组
          */
         get: operations["qbank_wrong_question_statistics"];
         put?: never;
@@ -9636,6 +9755,79 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sys/feedbacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分页获取反馈列表
+         * @description 获取反馈分页列表
+         *
+         *     :param db: 数据库会话
+         *     :param feedback_type: 反馈类型
+         *     :param status: 处理状态
+         *     :param keyword: 内容关键词
+         *     :param contact: 联系方式
+         *     :param source_app: 来源应用
+         *     :param source_platform: 来源平台
+         *     :param target_type: 关联目标类型
+         *     :param is_read: 是否已读
+         *     :return:
+         */
+        get: operations["get_feedback_list"];
+        put?: never;
+        post?: never;
+        /**
+         * 批量删除反馈
+         * @description 批量删除反馈
+         *
+         *     :param db: 数据库事务会话
+         *     :param obj: 删除参数
+         *     :return:
+         */
+        delete: operations["delete_feedbacks"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sys/feedbacks/{pk}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取反馈详情
+         * @description 获取反馈详情
+         *
+         *     :param db: 数据库事务会话
+         *     :param pk: 反馈 ID
+         *     :return:
+         */
+        get: operations["get_feedback_detail"];
+        /**
+         * 更新反馈
+         * @description 更新反馈
+         *
+         *     :param request: FastAPI 请求对象
+         *     :param db: 数据库事务会话
+         *     :param pk: 反馈 ID
+         *     :param obj: 更新参数
+         *     :return:
+         */
+        put: operations["update_feedback"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sys/files/create-folder": {
         parameters: {
             query?: never;
@@ -10653,6 +10845,57 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trail/points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询轨迹点 */
+        get: operations["get_trail_points"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trail/points/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 批量上传轨迹点 */
+        post: operations["batch_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trail/points/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取最新位置 */
+        get: operations["get_latest_point"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/visit/record": {
         parameters: {
             query?: never;
@@ -11049,6 +11292,11 @@ export type components = {
              * @description 耗时（秒）
              */
             answer_time: number;
+            /**
+             * Chapter Name
+             * @description 章节名称
+             */
+            chapter_name?: string | null;
             /**
              * Placement Id
              * @description 挂载 ID
@@ -13554,6 +13802,17 @@ export type components = {
             remark?: string | null;
         };
         /**
+         * BatchCreateTrailPointParam
+         * @description 批量创建轨迹点参数
+         */
+        BatchCreateTrailPointParam: {
+            /**
+             * Points
+             * @description 轨迹点列表
+             */
+            points: components["schemas"]["CreateTrailPointParam"][];
+        };
+        /**
          * BatchDeleteResourceParam
          * @description 批量删除资源参数
          */
@@ -13745,6 +14004,8 @@ export type components = {
             path?: string | null;
             /** Url Expire Seconds */
             url_expire_seconds?: number | null;
+            /** Use Signed Url */
+            use_signed_url?: boolean | null;
         };
         /** Body_parse_import_file_api_v1_gk_gangwei_import_parse_post */
         Body_parse_import_file_api_v1_gk_gangwei_import_parse_post: {
@@ -14041,6 +14302,51 @@ export type components = {
             /**
              * Question Count
              * @description 题目数量
+             */
+            question_count: number;
+        };
+        /**
+         * ChapterProgressNode
+         * @description 章节进度节点
+         */
+        ChapterProgressNode: {
+            /**
+             * Answer Count
+             * @description 已做题数
+             * @default 0
+             */
+            answer_count: number;
+            /**
+             * Chapter Id
+             * @description 章节 ID
+             */
+            chapter_id: number;
+            /**
+             * Children
+             * @description 子章节
+             */
+            children?: components["schemas"]["ChapterProgressNode"][];
+            /**
+             * Correct Count
+             * @description 答对数
+             * @default 0
+             */
+            correct_count: number;
+            /**
+             * Correct Ratio
+             * @description 正确率（%）
+             * @default 0
+             */
+            correct_ratio: string;
+            /**
+             * Name
+             * @description 章节名称
+             */
+            name: string;
+            /**
+             * Question Count
+             * @description 题目总数
+             * @default 0
              */
             question_count: number;
         };
@@ -14723,6 +15029,11 @@ export type components = {
              * @description 分类 ID
              */
             cat_id: number;
+            /**
+             * Chapter Source Bank Id
+             * @description 章节来源题库 ID
+             */
+            chapter_source_bank_id?: number | null;
             /**
              * Code
              * @description 业务编码
@@ -15821,7 +16132,10 @@ export type components = {
              */
             secondary_muscles?: string[] | null;
         };
-        /** CreateFeedbackParam */
+        /**
+         * CreateFeedbackParam
+         * @description 创建反馈参数
+         */
         CreateFeedbackParam: {
             /**
              * Contact
@@ -15834,20 +16148,47 @@ export type components = {
              */
             content: string;
             /**
+             * Feedback Type
+             * @description 反馈类型
+             * @default other
+             * @enum {string}
+             */
+            feedback_type: "bug" | "content_error" | "product_suggestion" | "feature_request" | "experience" | "other";
+            /**
              * Images
-             * @description 图片附件列表
+             * @description 图片列表
              */
             images?: string[] | null;
             /**
-             * Target Source
-             * @description 关联链接/目标
+             * Page Path
+             * @description 页面路径
              */
-            target_source?: string | null;
+            page_path?: string | null;
             /**
-             * Type
-             * @description 反馈类型
+             * Source App
+             * @description 来源应用
              */
-            type: string;
+            source_app?: string | null;
+            /**
+             * Source Platform
+             * @description 来源平台
+             */
+            source_platform?: string | null;
+            /**
+             * Target Id
+             * @description 关联目标 ID
+             */
+            target_id?: string | null;
+            /**
+             * Target Text
+             * @description 关联目标描述
+             */
+            target_text?: string | null;
+            /**
+             * Target Type
+             * @description 关联目标类型
+             */
+            target_type?: string | null;
         };
         /**
          * CreateFolderParam
@@ -17249,7 +17590,7 @@ export type components = {
              * @description 会话类型
              * @enum {string}
              */
-            session_type: "chapter" | "bank" | "random" | "exam" | "wrong" | "favorite";
+            session_type: "chapter" | "bank" | "random" | "exam" | "wrong" | "favorite" | "note";
             /**
              * Shuffle
              * @description 是否打乱题序
@@ -17520,6 +17861,11 @@ export type components = {
              * @default false
              */
             is_public: boolean;
+            /**
+             * Placement Id
+             * @description 挂载 ID（可选，用于明确题库/章节上下文）
+             */
+            placement_id?: number | null;
             /**
              * Question Id
              * @description 题目 ID
@@ -18100,6 +18446,162 @@ export type components = {
             task: string;
             /** @description 任务调度类型（0间隔 1定时） */
             type: components["schemas"]["TaskSchedulerType"];
+        };
+        /**
+         * CreateTrailPointParam
+         * @description 创建轨迹点参数
+         */
+        CreateTrailPointParam: {
+            /**
+             * Accuracy
+             * @description 定位精度(米)
+             */
+            accuracy?: number | null;
+            /**
+             * Ad Code
+             * @description 区域编码
+             */
+            ad_code?: string | null;
+            /**
+             * Address
+             * @description 详细地址
+             */
+            address?: string | null;
+            /**
+             * Altitude
+             * @description 海拔(米)
+             */
+            altitude?: number | null;
+            /**
+             * Aoi Name
+             * @description AOI 名称
+             */
+            aoi_name?: string | null;
+            /**
+             * Battery Level
+             * @description 电池电量(0-100)
+             */
+            battery_level?: number | null;
+            /**
+             * Bearing
+             * @description 方向角(0-360)
+             */
+            bearing?: number | null;
+            /**
+             * City
+             * @description 城市
+             */
+            city?: string | null;
+            /**
+             * City Code
+             * @description 城市编码
+             */
+            city_code?: string | null;
+            /**
+             * Country
+             * @description 国家
+             */
+            country?: string | null;
+            /**
+             * District
+             * @description 区
+             */
+            district?: string | null;
+            /**
+             * Extra Data
+             * @description 扩展数据
+             */
+            extra_data?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Foreground App
+             * @description 前台 App 包名
+             */
+            foreground_app?: string | null;
+            /**
+             * Foreground App Name
+             * @description 前台 App 名称
+             */
+            foreground_app_name?: string | null;
+            /**
+             * Interval Used
+             * @description 本次实际定位间隔(秒)
+             * @default 60
+             */
+            interval_used: number;
+            /**
+             * Is Moving
+             * @description 是否在移动中
+             * @default false
+             */
+            is_moving: boolean;
+            /**
+             * Latitude
+             * @description 纬度
+             */
+            latitude: number;
+            /**
+             * Location Name
+             * @description POI 名称
+             */
+            location_name?: string | null;
+            /**
+             * Longitude
+             * @description 经度
+             */
+            longitude: number;
+            /**
+             * Note
+             * @description 用户备注
+             */
+            note?: string | null;
+            /**
+             * Provider
+             * @description 定位来源: gps/wifi/cell
+             */
+            provider?: string | null;
+            /**
+             * Province
+             * @description 省
+             */
+            province?: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             * @description 客户端记录时间
+             */
+            recorded_at: string;
+            /**
+             * Speed
+             * @description 速度(m/s)
+             */
+            speed?: number | null;
+            /**
+             * Step Count
+             * @description 当日累计步数
+             */
+            step_count?: number | null;
+            /**
+             * Street
+             * @description 街道
+             */
+            street?: string | null;
+            /**
+             * Street Num
+             * @description 门牌号
+             */
+            street_num?: string | null;
+            /**
+             * Weather
+             * @description 天气
+             */
+            weather?: string | null;
+            /**
+             * Wifi Ssid
+             * @description WiFi 名称
+             */
+            wifi_ssid?: string | null;
         };
         /**
          * CreateUserCertificateParam
@@ -18695,11 +19197,14 @@ export type components = {
              */
             pks: number[];
         };
-        /** DeleteFeedbackParam */
+        /**
+         * DeleteFeedbackParam
+         * @description 删除反馈参数
+         */
         DeleteFeedbackParam: {
             /**
              * Ids
-             * @description 反馈ID列表
+             * @description 反馈 ID 列表
              */
             ids: number[];
         };
@@ -18980,27 +19485,6 @@ export type components = {
             text: string;
         };
         /**
-         * FavoriteStatistics
-         * @description 收藏统计
-         */
-        FavoriteStatistics: {
-            /**
-             * Folder Count
-             * @description 收藏夹数量
-             */
-            folder_count: number;
-            /**
-             * Folders
-             * @description 收藏夹列表
-             */
-            folders: components["schemas"]["FolderInfo"][];
-            /**
-             * Total Count
-             * @description 总收藏数
-             */
-            total_count: number;
-        };
-        /**
          * FieldMappingItem
          * @description 字段映射项
          */
@@ -19025,22 +19509,6 @@ export type components = {
              * @description 固定值
              */
             fixed_value?: string | null;
-        };
-        /**
-         * FolderInfo
-         * @description 收藏夹信息
-         */
-        FolderInfo: {
-            /**
-             * Count
-             * @description 收藏数量
-             */
-            count: number;
-            /**
-             * Folder Name
-             * @description 收藏夹名称
-             */
-            folder_name: string;
         };
         /**
          * GetActiveBanner
@@ -19433,6 +19901,40 @@ export type components = {
             updated_time: string | null;
         };
         /**
+         * GetBankChapterProgress
+         * @description 题库章节进度
+         */
+        GetBankChapterProgress: {
+            /**
+             * Bank Id
+             * @description 题库 ID
+             */
+            bank_id: number;
+            /**
+             * Chapters
+             * @description 章节进度树
+             */
+            chapters?: components["schemas"]["ChapterProgressNode"][];
+            /**
+             * Total Answer Count
+             * @description 总已做题数
+             * @default 0
+             */
+            total_answer_count: number;
+            /**
+             * Total Correct Count
+             * @description 总答对数
+             * @default 0
+             */
+            total_correct_count: number;
+            /**
+             * Total Question Count
+             * @description 总题数
+             * @default 0
+             */
+            total_question_count: number;
+        };
+        /**
          * GetBankDetail
          * @description 题库详情
          */
@@ -19454,6 +19956,11 @@ export type components = {
              * @description 分类 ID
              */
             cat_id: number;
+            /**
+             * Chapter Source Bank Id
+             * @description 章节来源题库 ID
+             */
+            chapter_source_bank_id?: number | null;
             /**
              * Code
              * @description 业务编码
@@ -19561,6 +20068,11 @@ export type components = {
              * @description 分类 ID
              */
             cat_id: number;
+            /**
+             * Chapter Source Bank Id
+             * @description 章节来源题库 ID
+             */
+            chapter_source_bank_id?: number | null;
             /**
              * Chapters
              * @description 章节树
@@ -21855,38 +22367,114 @@ export type components = {
             /** Updated Time */
             updated_time?: string | null;
         };
-        /** GetFeedbackDetail */
+        /**
+         * GetFeedbackDetail
+         * @description 反馈详情
+         */
         GetFeedbackDetail: {
-            /** Contact */
+            /**
+             * Contact
+             * @description 联系方式
+             */
             contact?: string | null;
-            /** Content */
+            /**
+             * Content
+             * @description 反馈内容
+             */
             content: string;
             /**
              * Created Time
              * Format: date-time
+             * @description 创建时间
              */
             created_time: string;
-            /** Id */
+            /**
+             * Feedback Type
+             * @description 反馈类型
+             * @enum {string}
+             */
+            feedback_type: "bug" | "content_error" | "product_suggestion" | "feature_request" | "experience" | "other";
+            /**
+             * Handled By
+             * @description 处理人 ID
+             */
+            handled_by?: number | null;
+            /**
+             * Handled Time
+             * @description 处理时间
+             */
+            handled_time?: string | null;
+            /**
+             * Id
+             * @description 反馈 ID
+             */
             id: number;
-            /** Images */
+            /**
+             * Images
+             * @description 图片列表
+             */
             images?: string[] | null;
-            /** Ip Address */
+            /**
+             * Ip Address
+             * @description IP 地址
+             */
             ip_address?: string | null;
-            /** Reply */
-            reply?: string | null;
-            /** Status */
-            status: string;
-            /** Target Source */
-            target_source?: string | null;
-            /** Type */
-            type: string;
+            /**
+             * Page Path
+             * @description 页面路径
+             */
+            page_path?: string | null;
+            /**
+             * Read Time
+             * @description 首次查看时间
+             */
+            read_time?: string | null;
+            /**
+             * Reply Content
+             * @description 处理回复
+             */
+            reply_content?: string | null;
+            /**
+             * Source App
+             * @description 来源应用
+             */
+            source_app?: string | null;
+            /**
+             * Source Platform
+             * @description 来源平台
+             */
+            source_platform?: string | null;
+            /**
+             * Status
+             * @description 处理状态
+             * @enum {string}
+             */
+            status: "pending" | "processing" | "resolved" | "rejected";
+            /**
+             * Target Id
+             * @description 关联目标 ID
+             */
+            target_id?: string | null;
+            /**
+             * Target Text
+             * @description 关联目标描述
+             */
+            target_text?: string | null;
+            /**
+             * Target Type
+             * @description 关联目标类型
+             */
+            target_type?: string | null;
             /**
              * Updated Time
-             * Format: date-time
+             * @description 更新时间
              */
-            updated_time: string;
-            /** View Status */
-            view_status: number;
+            updated_time?: string | null;
+            /**
+             * User Agent
+             * @description 用户代理
+             */
+            user_agent?: string | null;
         };
         /**
          * GetFolderDetail
@@ -24681,6 +25269,13 @@ export type components = {
              */
             correct_count: number;
             /**
+             * Exam Config
+             * @description 考试配置
+             */
+            exam_config?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Id
              * @description 会话 ID
              */
@@ -24710,7 +25305,12 @@ export type components = {
              * @description 会话类型
              * @enum {string}
              */
-            session_type: "chapter" | "bank" | "random" | "exam" | "wrong" | "favorite";
+            session_type: "chapter" | "bank" | "random" | "exam" | "wrong" | "favorite" | "note";
+            /**
+             * Source Key
+             * @description 来源签名
+             */
+            source_key?: string | null;
             /**
              * Start Time
              * Format: date-time
@@ -24790,6 +25390,13 @@ export type components = {
              */
             correct_count: number;
             /**
+             * Exam Config
+             * @description 考试配置
+             */
+            exam_config?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Id
              * @description 会话 ID
              */
@@ -24809,7 +25416,12 @@ export type components = {
              * @description 会话类型
              * @enum {string}
              */
-            session_type: "chapter" | "bank" | "random" | "exam" | "wrong" | "favorite";
+            session_type: "chapter" | "bank" | "random" | "exam" | "wrong" | "favorite" | "note";
+            /**
+             * Source Key
+             * @description 来源签名
+             */
+            source_key?: string | null;
             /**
              * Start Time
              * Format: date-time
@@ -26997,6 +27609,170 @@ export type components = {
             username: string;
         };
         /**
+         * GetTrailPointDetail
+         * @description 轨迹点详情
+         */
+        GetTrailPointDetail: {
+            /**
+             * Accuracy
+             * @description 定位精度(米)
+             */
+            accuracy?: number | null;
+            /**
+             * Ad Code
+             * @description 区域编码
+             */
+            ad_code?: string | null;
+            /**
+             * Address
+             * @description 详细地址
+             */
+            address?: string | null;
+            /**
+             * Altitude
+             * @description 海拔(米)
+             */
+            altitude?: number | null;
+            /**
+             * Aoi Name
+             * @description AOI 名称
+             */
+            aoi_name?: string | null;
+            /**
+             * Battery Level
+             * @description 电池电量
+             */
+            battery_level?: number | null;
+            /**
+             * Bearing
+             * @description 方向角
+             */
+            bearing?: number | null;
+            /**
+             * City
+             * @description 城市
+             */
+            city?: string | null;
+            /**
+             * City Code
+             * @description 城市编码
+             */
+            city_code?: string | null;
+            /**
+             * Country
+             * @description 国家
+             */
+            country?: string | null;
+            /**
+             * District
+             * @description 区
+             */
+            district?: string | null;
+            /**
+             * Extra Data
+             * @description 扩展数据
+             */
+            extra_data?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Foreground App
+             * @description 前台 App 包名
+             */
+            foreground_app?: string | null;
+            /**
+             * Foreground App Name
+             * @description 前台 App 名称
+             */
+            foreground_app_name?: string | null;
+            /**
+             * Id
+             * @description 轨迹点 ID
+             */
+            id: number;
+            /**
+             * Interval Used
+             * @description 定位间隔(秒)
+             */
+            interval_used: number;
+            /**
+             * Is Moving
+             * @description 是否在移动中
+             */
+            is_moving: boolean;
+            /**
+             * Latitude
+             * @description 纬度
+             */
+            latitude: number;
+            /**
+             * Location Name
+             * @description POI 名称
+             */
+            location_name?: string | null;
+            /**
+             * Longitude
+             * @description 经度
+             */
+            longitude: number;
+            /**
+             * Note
+             * @description 用户备注
+             */
+            note?: string | null;
+            /**
+             * Provider
+             * @description 定位来源
+             */
+            provider?: string | null;
+            /**
+             * Province
+             * @description 省
+             */
+            province?: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             * @description 客户端记录时间
+             */
+            recorded_at: string;
+            /**
+             * Speed
+             * @description 速度(m/s)
+             */
+            speed?: number | null;
+            /**
+             * Step Count
+             * @description 当日累计步数
+             */
+            step_count?: number | null;
+            /**
+             * Street
+             * @description 街道
+             */
+            street?: string | null;
+            /**
+             * Street Num
+             * @description 门牌号
+             */
+            street_num?: string | null;
+            /**
+             * User Id
+             * @description 用户 ID
+             */
+            user_id: number;
+            /**
+             * Weather
+             * @description 天气
+             */
+            weather?: string | null;
+            /**
+             * Wifi Ssid
+             * @description WiFi 名称
+             */
+            wifi_ssid?: string | null;
+        };
+        /**
          * GetUserCertificateDetail
          * @description 资格证书详情
          */
@@ -28188,7 +28964,7 @@ export type components = {
         };
         /**
          * HomeDashboardData
-         * @description 首页Dashboard数据
+         * @description 首页 Dashboard 数据
          */
         HomeDashboardData: {
             check_in: components["schemas"]["CheckInInfo"];
@@ -28199,6 +28975,7 @@ export type components = {
             overall_accuracy: string;
             /** @description 排名信息 */
             rank: components["schemas"]["UserRankInfo"];
+            report: components["schemas"]["HomeUserReportData"];
             /**
              * Total Correct
              * @description 累计答对数
@@ -28210,6 +28987,47 @@ export type components = {
              */
             total_questions: number;
             week_stats: components["schemas"]["WeekPracticeStats"];
+        };
+        /**
+         * HomeUserReportData
+         * @description 用户报告统计
+         */
+        HomeUserReportData: {
+            /**
+             * Accuracy Rate
+             * @description 正确率（0-100）
+             */
+            accuracy_rate: string;
+            /**
+             * Answer Count Rank
+             * @description 答题量排名
+             */
+            answer_count_rank: number;
+            /**
+             * Created Session Count
+             * @description 创建练习数
+             */
+            created_session_count: number;
+            /**
+             * Practice Days
+             * @description 练习天数
+             */
+            practice_days: number;
+            /**
+             * Site Max Answer Count
+             * @description 全站最高答题量
+             */
+            site_max_answer_count: number;
+            /**
+             * Total Answer Count
+             * @description 总答题量
+             */
+            total_answer_count: number;
+            /**
+             * Total Answer Duration
+             * @description 答题时长（秒）
+             */
+            total_answer_duration: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -30162,6 +30980,32 @@ export type components = {
              */
             total_pages: number;
         };
+        /** PageData[GetTrailPointDetail] */
+        PageData_GetTrailPointDetail_: {
+            /** Items */
+            items: components["schemas"]["GetTrailPointDetail"][];
+            links: components["schemas"]["_Links"];
+            /**
+             * Page
+             * @description 当前页码
+             */
+            page: number;
+            /**
+             * Size
+             * @description 每页数量
+             */
+            size: number;
+            /**
+             * Total
+             * @description 数据总条数
+             */
+            total: number;
+            /**
+             * Total Pages
+             * @description 总页数
+             */
+            total_pages: number;
+        };
         /** PageData[GetUserInfoWithRelationDetail] */
         PageData_GetUserInfoWithRelationDetail_: {
             /** Items */
@@ -30924,7 +31768,7 @@ export type components = {
          * @description 排行榜列表数据
          */
         RankListData: {
-            /** @description 当前用户排名（可能不在前100） */
+            /** @description 当前用户排名（可能不在前 100） */
             current_user_rank?: components["schemas"]["RankItem"] | null;
             /**
              * Rank Type
@@ -32136,22 +32980,6 @@ export type components = {
              */
             msg: string;
         };
-        /** ResponseSchemaModel[FavoriteStatistics] */
-        ResponseSchemaModel_FavoriteStatistics_: {
-            /**
-             * Code
-             * @description 返回状态码
-             * @default 200
-             */
-            code: number;
-            data: components["schemas"]["FavoriteStatistics"];
-            /**
-             * Msg
-             * @description 返回信息
-             * @default 请求成功
-             */
-            msg: string;
-        };
         /** ResponseSchemaModel[GetAIModelDetail] */
         ResponseSchemaModel_GetAIModelDetail_: {
             /**
@@ -32241,6 +33069,22 @@ export type components = {
              */
             code: number;
             data: components["schemas"]["GetAuthorizationDetail"];
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+        };
+        /** ResponseSchemaModel[GetBankChapterProgress] */
+        ResponseSchemaModel_GetBankChapterProgress_: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            data: components["schemas"]["GetBankChapterProgress"];
             /**
              * Msg
              * @description 返回信息
@@ -32673,6 +33517,22 @@ export type components = {
              */
             code: number;
             data: components["schemas"]["GetExerciseListResponse"];
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+        };
+        /** ResponseSchemaModel[GetFeedbackDetail] */
+        ResponseSchemaModel_GetFeedbackDetail_: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            data: components["schemas"]["GetFeedbackDetail"];
             /**
              * Msg
              * @description 返回信息
@@ -34955,6 +35815,23 @@ export type components = {
              */
             msg: string;
         };
+        /** ResponseSchemaModel[list[WrongQuestionGroupItem]] */
+        ResponseSchemaModel_list_WrongQuestionGroupItem__: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            /** Data */
+            data: components["schemas"]["WrongQuestionGroupItem"][];
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+        };
         /** ResponseSchemaModel[LogStatistics] */
         ResponseSchemaModel_LogStatistics_: {
             /**
@@ -35660,6 +36537,22 @@ export type components = {
              */
             msg: string;
         };
+        /** ResponseSchemaModel[PageData[GetTrailPointDetail]] */
+        ResponseSchemaModel_PageData_GetTrailPointDetail__: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            data: components["schemas"]["PageData_GetTrailPointDetail_"];
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+        };
         /** ResponseSchemaModel[PageData[GetUserInfoWithRelationDetail]] */
         ResponseSchemaModel_PageData_GetUserInfoWithRelationDetail__: {
             /**
@@ -36093,6 +36986,22 @@ export type components = {
              */
             msg: string;
         };
+        /** ResponseSchemaModel[Union[GetTrailPointDetail, NoneType]] */
+        ResponseSchemaModel_Union_GetTrailPointDetail__NoneType__: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            data: components["schemas"]["GetTrailPointDetail"] | null;
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+        };
         /** ResponseSchemaModel[Union[GetUserProfileDetail, NoneType]] */
         ResponseSchemaModel_Union_GetUserProfileDetail__NoneType__: {
             /**
@@ -36235,22 +37144,6 @@ export type components = {
              */
             code: number;
             data: components["schemas"]["VisitStatsResponse"];
-            /**
-             * Msg
-             * @description 返回信息
-             * @default 请求成功
-             */
-            msg: string;
-        };
-        /** ResponseSchemaModel[WrongQuestionStatistics] */
-        ResponseSchemaModel_WrongQuestionStatistics_: {
-            /**
-             * Code
-             * @description 返回状态码
-             * @default 200
-             */
-            code: number;
-            data: components["schemas"]["WrongQuestionStatistics"];
             /**
              * Msg
              * @description 返回信息
@@ -36474,7 +37367,7 @@ export type components = {
              * @description 会话类型
              * @enum {string}
              */
-            session_type: "chapter" | "bank" | "random" | "exam" | "wrong" | "favorite";
+            session_type: "chapter" | "bank" | "random" | "exam" | "wrong" | "favorite" | "note";
             /**
              * Status
              * @description 会话状态
@@ -36897,6 +37790,11 @@ export type components = {
              * @description 分类 ID
              */
             cat_id: number;
+            /**
+             * Chapter Source Bank Id
+             * @description 章节来源题库 ID
+             */
+            chapter_source_bank_id?: number | null;
             /**
              * Code
              * @description 业务编码
@@ -37971,23 +38869,21 @@ export type components = {
              */
             secondary_muscles?: string[] | null;
         };
-        /** UpdateFeedbackParam */
+        /**
+         * UpdateFeedbackParam
+         * @description 更新反馈参数
+         */
         UpdateFeedbackParam: {
             /**
-             * Reply
-             * @description 管理员回复/备注
+             * Reply Content
+             * @description 处理回复
              */
-            reply?: string | null;
+            reply_content?: string | null;
             /**
              * Status
              * @description 处理状态
              */
-            status?: string | null;
-            /**
-             * View Status
-             * @description 查看状态 0未读 1已读
-             */
-            view_status?: number | null;
+            status?: ("pending" | "processing" | "resolved" | "rejected") | null;
         };
         /**
          * UpdateFolderParam
@@ -40581,7 +41477,7 @@ export type components = {
             current_rank: number;
             /**
              * Rank Change
-             * @description 排名变化（正数=上升，负数=下降）
+             * @description 排名变化（正数上升，负数下降）
              */
             rank_change?: number | null;
             /**
@@ -40697,7 +41593,7 @@ export type components = {
             accuracy_rate: string;
             /**
              * Correct Count
-             * @description 本周答对数
+             * @description 本周答对数量
              */
             correct_count: number;
             /**
@@ -40717,40 +41613,42 @@ export type components = {
             total_duration: number;
         };
         /**
-         * WrongQuestionStatistics
-         * @description 错题本统计
+         * WrongQuestionAnswerCorrectParam
+         * @description 错题答对上报参数
          */
-        WrongQuestionStatistics: {
+        WrongQuestionAnswerCorrectParam: {
             /**
-             * Avg Correct Streak
-             * @description 平均连续做对次数
+             * Mastery Threshold
+             * @description 连对掌握阈值
+             * @default 3
              */
-            avg_correct_streak: number;
+            mastery_threshold: number;
             /**
-             * Avg Wrong Count
-             * @description 平均错误次数
+             * Placement Id
+             * @description 挂载 ID
              */
-            avg_wrong_count: number;
+            placement_id?: number | null;
+        };
+        /**
+         * WrongQuestionGroupItem
+         * @description 分组聚合项
+         */
+        WrongQuestionGroupItem: {
             /**
-             * Mastered Count
-             * @description 已掌握数量
+             * Count
+             * @description 错题数量
              */
-            mastered_count: number;
+            count: number;
             /**
-             * Pinned Count
-             * @description 置顶数量
+             * Group Id
+             * @description 分组 ID（按题库时为 bank_id，按知识点时为 None）
              */
-            pinned_count: number;
+            group_id?: number | null;
             /**
-             * Total Count
-             * @description 错题总数
+             * Group Name
+             * @description 分组名称
              */
-            total_count: number;
-            /**
-             * Unmastered Count
-             * @description 未掌握数量
-             */
-            unmastered_count: number;
+            group_name: string;
         };
     };
     responses: never;
@@ -45909,6 +46807,39 @@ export interface operations {
             };
         };
     };
+    create_feedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFeedbackParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_gongkao_category_list: {
         parameters: {
             query?: {
@@ -46126,25 +47057,25 @@ export interface operations {
     get_content_list: {
         parameters: {
             query?: {
-                /** @description category id */
+                /** @description 分类 ID */
                 category_id?: number | null;
-                /** @description content type in extra */
+                /** @description 内容类型 */
                 content_type?: string | null;
-                /** @description daily date in extra */
+                /** @description 每日日期 */
                 daily_date?: string | null;
-                /** @description is pinned */
+                /** @description 是否置顶 */
                 is_pinned?: boolean | null;
-                /** @description is public */
+                /** @description 是否公开 */
                 is_public?: boolean | null;
-                /** @description is published */
+                /** @description 是否发布 */
                 is_published?: boolean | null;
                 /** @description 页码 */
                 page?: number;
                 /** @description 每页数量 */
                 size?: number;
-                /** @description tag */
+                /** @description 标签 */
                 tag?: string | null;
-                /** @description title keyword */
+                /** @description 标题关键字 */
                 title?: string | null;
             };
             header?: never;
@@ -46244,7 +47175,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description id */
+                /** @description 内容 ID */
                 pk: number;
             };
             cookie?: never;
@@ -46276,7 +47207,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description id */
+                /** @description 内容 ID */
                 pk: number;
             };
             cookie?: never;
@@ -46312,7 +47243,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description id */
+                /** @description 内容 ID */
                 pk: number;
             };
             cookie?: never;
@@ -46374,7 +47305,7 @@ export interface operations {
     get_content_tags: {
         parameters: {
             query?: {
-                /** @description limit */
+                /** @description 数量限制 */
                 limit?: number;
             };
             header?: never;
@@ -47017,152 +47948,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResponseSchemaModel_list_"];
-                };
-            };
-        };
-    };
-    get_feedback_list: {
-        parameters: {
-            query?: {
-                /** @description 联系人搜索 */
-                contact?: string | null;
-                /** @description 内容搜索 */
-                content?: string | null;
-                /** @description 页码 */
-                page?: number;
-                /** @description 每页数量 */
-                size?: number;
-                /** @description 处理状态 */
-                status?: string | null;
-                /** @description 反馈类型 */
-                type?: string | null;
-                /** @description 查看状态 */
-                view_status?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResponseSchemaModel_PageData_GetFeedbackDetail__"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_feedback: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateFeedbackParam"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResponseModel"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_feedback: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeleteFeedbackParam"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResponseModel"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_feedback: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 反馈ID */
-                pk: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateFeedbackParam"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResponseModel"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -47955,15 +48740,15 @@ export interface operations {
             query?: {
                 /** @description 分类 ID */
                 category_id?: number;
-                /** @description daily date */
+                /** @description 日期 */
                 daily_date?: string | null;
                 /** @description 页码 */
                 page?: number;
                 /** @description 每页数量 */
                 size?: number;
-                /** @description tag */
+                /** @description 标签 */
                 tag?: string | null;
-                /** @description title keyword */
+                /** @description 标题关键字 */
                 title?: string | null;
             };
             header?: never;
@@ -47997,7 +48782,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description id */
+                /** @description 经验 ID */
                 pk: number;
             };
             cookie?: never;
@@ -48029,7 +48814,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description id */
+                /** @description 经验 ID */
                 pk: number;
             };
             cookie?: never;
@@ -56253,6 +57038,38 @@ export interface operations {
             };
         };
     };
+    qbank_get_bank_chapter_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 题库 ID */
+                pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_GetBankChapterProgress_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     qbank_get_bank_questions_all: {
         parameters: {
             query?: {
@@ -57000,6 +57817,70 @@ export interface operations {
             };
         };
     };
+    qbank_favorite_grouped: {
+        parameters: {
+            query?: {
+                group_by?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_list_WrongQuestionGroupItem__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    qbank_favorite_ids: {
+        parameters: {
+            query?: {
+                bank_id?: number | null;
+                chapter_id?: number | null;
+                knowledge_point?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_list_int__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     qbank_favorite_delete_by_question: {
         parameters: {
             query?: never;
@@ -57067,7 +57948,9 @@ export interface operations {
     };
     qbank_favorite_statistics: {
         parameters: {
-            query?: never;
+            query?: {
+                group_by?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -57080,7 +57963,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ResponseSchemaModel_FavoriteStatistics_"];
+                    "application/json": components["schemas"]["ResponseSchemaModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -57794,6 +58686,70 @@ export interface operations {
             };
         };
     };
+    qbank_note_grouped: {
+        parameters: {
+            query?: {
+                group_by?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_list_WrongQuestionGroupItem__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    qbank_note_ids: {
+        parameters: {
+            query?: {
+                bank_id?: number | null;
+                chapter_id?: number | null;
+                knowledge_point?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_list_int__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_question_public_notes: {
         parameters: {
             query?: {
@@ -57816,6 +58772,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResponseSchemaModel_list_GetQuestionNoteListItem__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    qbank_note_statistics: {
+        parameters: {
+            query?: {
+                group_by?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel"];
                 };
             };
             /** @description Validation Error */
@@ -58082,7 +59069,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ResponseSchemaModel"];
                 };
             };
             /** @description Validation Error */
@@ -58115,7 +59102,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ResponseSchemaModel"];
                 };
             };
             /** @description Validation Error */
@@ -58391,11 +59378,11 @@ export interface operations {
                 /** @description 关键字搜索 */
                 keyword?: string | null;
                 /** @description 页码 */
-                page?: number;
+                page?: number | null;
                 /** @description 审核状态（挂载级别） */
                 review_status?: number | null;
                 /** @description 每页数量 */
-                size?: number;
+                size?: number | null;
                 /** @description 题型 */
                 type?: string | null;
             };
@@ -59248,10 +60235,12 @@ export interface operations {
             query?: {
                 /** @description 题库 ID */
                 bank_id?: number | null;
-                /** @description 章节 ID */
+                /** @description 篇章 ID */
                 chapter_id?: number | null;
                 /** @description 会话类型 */
                 session_type?: string | null;
+                /** @description 来源签名 */
+                source_key?: string | null;
             };
             header?: never;
             path?: never;
@@ -59575,6 +60564,42 @@ export interface operations {
             };
         };
     };
+    qbank_wrong_question_answer_correct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 题目 ID */
+                question_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WrongQuestionAnswerCorrectParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     qbank_wrong_question_clear_mastered: {
         parameters: {
             query?: never;
@@ -59595,9 +60620,11 @@ export interface operations {
             };
         };
     };
-    qbank_wrong_question_statistics: {
+    qbank_wrong_question_grouped: {
         parameters: {
-            query?: never;
+            query?: {
+                group_by?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -59610,7 +60637,80 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ResponseSchemaModel_WrongQuestionStatistics_"];
+                    "application/json": components["schemas"]["ResponseSchemaModel_list_WrongQuestionGroupItem__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    qbank_wrong_question_ids: {
+        parameters: {
+            query?: {
+                bank_id?: number | null;
+                chapter_id?: number | null;
+                knowledge_point?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_list_int__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    qbank_wrong_question_statistics: {
+        parameters: {
+            query?: {
+                group_by?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -62814,6 +63914,157 @@ export interface operations {
             };
         };
     };
+    get_feedback_list: {
+        parameters: {
+            query?: {
+                /** @description 联系方式 */
+                contact?: string | null;
+                /** @description 反馈类型 */
+                feedback_type?: string | null;
+                /** @description 是否已读 */
+                is_read?: boolean | null;
+                /** @description 内容关键词 */
+                keyword?: string | null;
+                /** @description 页码 */
+                page?: number;
+                /** @description 每页数量 */
+                size?: number;
+                /** @description 来源应用 */
+                source_app?: string | null;
+                /** @description 来源平台 */
+                source_platform?: string | null;
+                /** @description 处理状态 */
+                status?: string | null;
+                /** @description 关联目标类型 */
+                target_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_PageData_GetFeedbackDetail__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_feedbacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteFeedbackParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_feedback_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 反馈 ID */
+                pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_GetFeedbackDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_feedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 反馈 ID */
+                pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFeedbackParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_upload_folder: {
         parameters: {
             query: {
@@ -65287,6 +66538,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trail_points: {
+        parameters: {
+            query: {
+                /** @description 结束时间 */
+                end_time: string;
+                /** @description 页码 */
+                page?: number;
+                /** @description 每页数量 */
+                size?: number;
+                /** @description 开始时间 */
+                start_time: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_PageData_GetTrailPointDetail__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchCreateTrailPointParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_point: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_Union_GetTrailPointDetail__NoneType__"];
                 };
             };
         };

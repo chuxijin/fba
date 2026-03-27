@@ -32,8 +32,8 @@ export interface QuestionModule {
     id: number,
     params?: { bank_id?: number; chapter_id?: number },
   ): Promise<QuestionOptionStatsItem[]>;
-  checkFavorites(questionIds: number[]): Promise<Record<number, boolean>>;
-  getNotes(questionIds: number[]): Promise<Record<number, GetQuestionNoteDetail | null>>;
+  checkFavorites(sessionIdOrQuestionIds: number | number[]): Promise<Record<number, boolean>>;
+  getNotes(sessionIdOrQuestionIds: number | number[]): Promise<Record<number, GetQuestionNoteDetail | null>>;
   create(data: CreateQuestionParam): Promise<void>;
   update(id: number, data: UpdateQuestionParam): Promise<void>;
   remove(ids: number[]): Promise<void>;
@@ -82,16 +82,26 @@ export function createQuestionModule(client: ApiClient): QuestionModule {
       });
     },
 
-    checkFavorites(questionIds) {
-      return client.get<Record<number, boolean>>('/questions/favorites', {
-        params: { question_ids: questionIds.join(',') },
-      });
+    checkFavorites(sessionIdOrQuestionIds) {
+      if (Array.isArray(sessionIdOrQuestionIds)) {
+        return client.get<Record<number, boolean>>('/questions/favorites', {
+          params: { question_ids: sessionIdOrQuestionIds.join(',') },
+        });
+      }
+
+      return client.get<Record<number, boolean>>(`/questions/sessions/${sessionIdOrQuestionIds}/favorites`);
     },
 
-    getNotes(questionIds) {
-      return client.get<Record<number, GetQuestionNoteDetail | null>>('/questions/notes', {
-        params: { question_ids: questionIds.join(',') },
-      });
+    getNotes(sessionIdOrQuestionIds) {
+      if (Array.isArray(sessionIdOrQuestionIds)) {
+        return client.get<Record<number, GetQuestionNoteDetail | null>>('/questions/notes', {
+          params: { question_ids: sessionIdOrQuestionIds.join(',') },
+        });
+      }
+
+      return client.get<Record<number, GetQuestionNoteDetail>>(
+        `/questions/sessions/${sessionIdOrQuestionIds}/notes`,
+      );
     },
 
     create(data) {

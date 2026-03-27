@@ -5,6 +5,7 @@ import { fbaApi } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { useResultStore } from '@/store/result'
 import { formatDateTime, formatDuration, getSessionStatusLabel, getSessionTypeLabel } from '@/utils/mine'
+import { toLoginPage } from '@/utils/toLoginPage'
 
 defineOptions({
   name: 'PracticeRecord',
@@ -51,7 +52,7 @@ function ensureLogin() {
 
   uni.showToast({ title: '请先登录后查看刷题记录', icon: 'none' })
   setTimeout(() => {
-    uni.switchTab({ url: '/pages/mine/index' })
+    toLoginPage()
   }, 300)
   return false
 }

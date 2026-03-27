@@ -703,7 +703,7 @@ async function loadStudyPreference() {
   }
 
   try {
-    const userId = Number(userStore.userInfo?.userId || 0)
+    const userId = Number(userStore.userInfo?.id || 0)
     const cached = getCachedStudyPreference(userId)
     if (cached) {
       applyStudyPreference(cached)
@@ -733,7 +733,7 @@ async function saveStudyPreference() {
       custom_tabs: buildPreferencePayload(),
     } as any
     await fbaApi.qbank.settings.updateStudyPreference(payload)
-    setCachedStudyPreference(Number(userStore.userInfo?.userId || 0), payload)
+    setCachedStudyPreference(Number(userStore.userInfo?.id || 0), payload)
   }
   catch (error) {
     console.error('保存学习偏好失败:', error)

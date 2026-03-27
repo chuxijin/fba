@@ -1,4 +1,4 @@
-﻿import type { ApiClient, FormDataLike } from '../client/types';
+import type { ApiClient, FormDataLike } from '../client/types';
 import type {
   AdminCaptchaResult,
   AdminCurrentUser,
@@ -10,9 +10,13 @@ import type {
   AdminSwaggerToken,
   CategoryListParams,
   CreateCategoryParam,
+  CreateFeedbackParam,
+  FeedbackListParams,
   GetCategoryDetail,
   GetCategoryTree,
+  GetFeedbackDetail,
   UpdateCategoryParam,
+  UpdateFeedbackParam,
 } from '../types/admin';
 import type { PageData } from '../types/common';
 import { createScopedClient, type ScopedApiClient } from './_shared';
@@ -26,6 +30,9 @@ export interface AdminModule {
     logout(): Promise<void>;
     getCodes(): Promise<string[]>;
     loginSwagger(headers?: Record<string, string>): Promise<AdminSwaggerToken>;
+  };
+  feedback: {
+    create(data: CreateFeedbackParam): Promise<void>;
   };
   sys: {
     user: {
@@ -60,6 +67,12 @@ export interface AdminModule {
       update(id: number, data: UpdateCategoryParam): Promise<void>;
       remove(ids: number[]): Promise<void>;
     };
+    feedback: {
+      getList(params?: FeedbackListParams): Promise<PageData<GetFeedbackDetail>>;
+      getDetail(id: number): Promise<GetFeedbackDetail>;
+      update(id: number, data: UpdateFeedbackParam): Promise<void>;
+      remove(ids: number[]): Promise<void>;
+    };
   };
 }
 
@@ -77,6 +90,9 @@ export function createAdminModule(client: ApiClient): AdminModule {
       loginSwagger(headers) {
         return request.raw<AdminSwaggerToken>({ method: 'POST', url: '/auth/login/swagger', headers });
       },
+    },
+    feedback: {
+      create(data) { return request.post('/feedbacks', data); },
     },
     sys: {
       user: {
@@ -145,7 +161,16 @@ export function createAdminModule(client: ApiClient): AdminModule {
         update(id, data) { return request.put(`/sys/category/${id}`, data); },
         remove(ids) { return request.delete('/sys/category', { ids }); },
       },
+      feedback: {
+        getList(params) {
+          return request.get<PageData<GetFeedbackDetail>>('/sys/feedbacks', {
+            params: params as Record<string, unknown>,
+          });
+        },
+        getDetail(id) { return request.get<GetFeedbackDetail>(`/sys/feedbacks/${id}`); },
+        update(id, data) { return request.put(`/sys/feedbacks/${id}`, data); },
+        remove(ids) { return request.delete('/sys/feedbacks', { ids }); },
+      },
     },
   };
 }
-

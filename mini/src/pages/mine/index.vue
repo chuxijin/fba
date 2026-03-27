@@ -3,6 +3,12 @@ import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import LoginModal from '@/components/LoginModal.vue'
 import { useTokenStore, useUserStore } from '@/store'
+import {
+  clearLoginRedirect,
+  consumeLoginAutoOpen,
+  redirectAfterLogin,
+  setLoginRedirect,
+} from '@/utils/toLoginPage'
 
 defineOptions({
   name: 'Mine',
@@ -19,24 +25,62 @@ definePage({
 const userStore = useUserStore()
 const tokenStore = useTokenStore()
 const showLoginModal = ref(false)
-const hasLogin = ref(false)
 const { statusBarHeight } = uni.getSystemInfoSync()
+const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix'
 
-const displayAvatar = computed(() => hasLogin.value
-  ? (userStore.userInfo.avatar || 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix')
-  : 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix')
+const hasLogin = computed(() => tokenStore.hasLogin)
 
-const displayNickname = computed(() => hasLogin.value
-  ? (userStore.userInfo.nickname || '微信用户')
-  : '未登录学员')
+const displayAvatar = computed(() => {
+  if (!hasLogin.value) {
+    return DEFAULT_AVATAR
+  }
 
-function syncLoginState() {
-  hasLogin.value = tokenStore.updateNowTime().hasLogin
+  return userStore.userInfo.avatar || DEFAULT_AVATAR
+})
+
+const displayNickname = computed(() => {
+  if (!hasLogin.value) {
+    return '未登录学员'
+  }
+
+  return userStore.userInfo.nickname || userStore.userInfo.username || '微信用户'
+})
+
+async function syncLoginState() {
+  tokenStore.updateNowTime()
+
+  if (!tokenStore.hasLogin) {
+    return
+  }
+
+  const userId = Number(userStore.userInfo?.id || userStore.userInfo?.userId || 0)
+  if (userId > 0) {
+    return
+  }
+
+  try {
+    await userStore.fetchUserInfo()
+  }
+  catch (error) {
+    console.error('Sync mine user info error:', error)
+  }
+}
+
+function maybeOpenLoginModal() {
+  if (hasLogin.value || showLoginModal.value) {
+    consumeLoginAutoOpen()
+    return
+  }
+
+  if (consumeLoginAutoOpen()) {
+    showLoginModal.value = true
+  }
 }
 
 function handleLogin() {
-  syncLoginState()
+  tokenStore.updateNowTime()
   if (!hasLogin.value) {
+    clearLoginRedirect()
     showLoginModal.value = true
     return
   }
@@ -45,8 +89,9 @@ function handleLogin() {
 }
 
 function openServicePage(url: string) {
-  syncLoginState()
+  tokenStore.updateNowTime()
   if (!hasLogin.value) {
+    setLoginRedirect(url)
     showLoginModal.value = true
     return
   }
@@ -54,12 +99,19 @@ function openServicePage(url: string) {
   uni.navigateTo({ url })
 }
 
-function handleLoginSuccess() {
-  syncLoginState()
+function openFeedbackPage() {
+  uni.navigateTo({ url: '/pages/feedback/index' })
+}
+
+async function handleLoginSuccess() {
+  await syncLoginState()
+  redirectAfterLogin()
 }
 
 onShow(() => {
-  syncLoginState()
+  void syncLoginState().finally(() => {
+    maybeOpenLoginModal()
+  })
 })
 </script>
 
@@ -148,7 +200,7 @@ onShow(() => {
             <text class="text-[11px] text-[#64748B] font-medium">我的笔记</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openFeedbackPage">
             <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#8B5CF6] shadow-inner">
               <view class="i-carbon-idea text-[22px]" />
             </view>

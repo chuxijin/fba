@@ -1,9 +1,12 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
 from backend.app.admin.api.v1.sys.category import router as category_router
 from backend.app.admin.api.v1.sys.data_rule import router as data_rule_router
 from backend.app.admin.api.v1.sys.data_scope import router as data_scope_router
 from backend.app.admin.api.v1.sys.dept import router as dept_router
+from backend.app.admin.api.v1.sys.feedback import router as feedback_router
 from backend.app.admin.api.v1.sys.file import router as file_router
 from backend.app.admin.api.v1.sys.menu import router as menu_router
 from backend.app.admin.api.v1.sys.plugin import router as plugin_router
@@ -21,3 +24,4 @@ router.include_router(data_rule_router, prefix='/data-rules', tags=['系统数�
 router.include_router(data_scope_router, prefix='/data-scopes', tags=['系统数据范围'])
 router.include_router(file_router, prefix='/files', tags=['系统文件'])
 router.include_router(plugin_router, prefix='/plugins', tags=['系统插件'])
+router.include_router(feedback_router, prefix='/feedbacks', tags=['系统反馈'])

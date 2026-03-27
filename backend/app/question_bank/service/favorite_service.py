@@ -3,8 +3,10 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_question import question_statistics_dao
 from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
+from backend.app.question_bank.crud.crud_session_question import session_question_dao
 from backend.app.question_bank.model import QuestionFavorite
 from backend.app.question_bank.schema.favorite import (
     CreateQuestionFavoriteParam,
@@ -202,6 +204,52 @@ class FavoriteService:
         result = await db.execute(stmt)
         favorited_ids = {row[0] for row in result.fetchall()}
         return {question_id: question_id in favorited_ids for question_id in question_ids}
+
+    @staticmethod
+    async def _get_owned_session_question_ids(*, db: AsyncSession, user_id: int, session_id: int) -> list[int]:
+        """
+        获取当前用户会话内题目 ID 列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param session_id: 会话 ID
+        :return:
+        """
+        session = await practice_session_dao.get(db=db, session_id=session_id)
+        if not session:
+            raise errors.NotFoundError(msg='会话不存在')
+        if session.user_id != user_id:
+            raise errors.AuthorizationError(msg='无权访问此会话')
+
+        session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
+        return [item.question_id for item in session_questions]
+
+    @staticmethod
+    async def batch_check_favorites_by_session(
+        *, db: AsyncSession, user_id: int, session_id: int
+    ) -> dict[int, bool]:
+        """
+        通过会话批量检查收藏状态
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param session_id: 会话 ID
+        :return:
+        """
+        question_ids = await FavoriteService._get_owned_session_question_ids(
+            db=db,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        if not question_ids:
+            return {}
+
+        status_map = await FavoriteService.check_favorited(
+            db=db,
+            user_id=user_id,
+            question_ids=question_ids,
+        )
+        return {question_id: is_favorited for question_id, is_favorited in status_map.items() if is_favorited}
 
     @staticmethod
     async def batch_check_favorites_from_string(

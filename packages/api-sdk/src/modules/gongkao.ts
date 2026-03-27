@@ -123,12 +123,6 @@ export interface GongkaoModule {
     remove(ids: number[]): Promise<void>;
     incrementView(id: number): Promise<void>;
   };
-  feedback: {
-    create(data: GongkaoEntity): Promise<void>;
-    getList(params?: GongkaoListParams): Promise<PageData<GongkaoEntity>>;
-    update(id: number, data: GongkaoEntity): Promise<void>;
-    remove(ids: number[]): Promise<void>;
-  };
   userProfile: {
     getMe(): Promise<GongkaoEntity | null>;
     createMe(data: GongkaoEntity): Promise<GongkaoEntity>;
@@ -261,12 +255,6 @@ export function createGongkaoModule(client: ApiClient): GongkaoModule {
       update(id, data) { return request.put(`/jingyan/${id}`, data); },
       remove(ids) { return request.delete('/jingyan', { ids }); },
       incrementView(id) { return request.post(`/jingyan/${id}/view`); },
-    },
-    feedback: {
-      create(data) { return request.post('/feedback', data); },
-      getList(params) { return request.get<PageData<GongkaoEntity>>('/feedback', { params: params as Record<string, unknown> }); },
-      update(id, data) { return request.put(`/feedback/${id}`, data); },
-      remove(ids) { return request.delete('/feedback', { ids }); },
     },
     userProfile: {
       getMe() { return request.get<GongkaoEntity | null>('/profile/me'); },

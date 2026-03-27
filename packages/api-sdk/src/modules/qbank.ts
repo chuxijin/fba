@@ -5,7 +5,7 @@ import { createPracticeModule, type PracticeModule } from './practice';
 import { createQuestionModule, type QuestionModule } from './question';
 import { createScopedClient, type ScopedApiClient } from './_shared';
 import type { PageData } from '../types/common';
-import type { QbankCheckInParam, QbankEntity, QbankTestLoginParam, QbankUserAccountDetail, QbankWxLoginParam, QbankWxLoginResponse } from '../types/qbank';
+import type { QbankCheckInParam, QbankEntity, QbankUserAccountDetail, QbankWxLoginParam, QbankWxLoginResponse } from '../types/qbank';
 import type {
   BatchUpsertPracticeRecordsParam,
   CreatePracticeSessionParam,
@@ -29,7 +29,6 @@ export interface QbankModule {
   practice: PracticeModule;
   auth: {
     wxLogin(data: QbankWxLoginParam): Promise<QbankWxLoginResponse>;
-    testLogin(data: QbankTestLoginParam): Promise<QbankWxLoginResponse>;
     getMe(): Promise<QbankUserAccountDetail>;
   };
   home: {
@@ -150,8 +149,7 @@ export function createQbankModule(client: ApiClient): QbankModule {
     practice: createPracticeModule(request),
     auth: {
       wxLogin(data) { return client.post<QbankWxLoginResponse>('/oauth2/wechat/miniapp/login', data); },
-      testLogin(data) { return client.post<QbankWxLoginResponse>('/auth/test-login', data); },
-      getMe() { return client.get<QbankUserAccountDetail>('/sys/users/me'); },
+      getMe() { return request.get<QbankUserAccountDetail>('/auth/me'); },
     },
     home: {
       getDashboard() { return request.get<QbankEntity>('/home/dashboard'); },

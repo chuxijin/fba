@@ -1,8 +1,6 @@
 import type { RequestAdapter, RequestConfig } from '@fba/api-sdk'
 import { createFbaApiSdk } from '@fba/api-sdk'
 import { http } from '@/http/http'
-import { useUserStore } from '@/store'
-import { clearStoredRefreshCookie } from '@/utils/auth-cookie'
 import { getEnvBaseUrl } from '@/utils'
 
 function getStoredAccessToken(): string {
@@ -64,15 +62,22 @@ export const fbaApi = createFbaApiSdk({
   adapter: unibestRequestAdapter,
   apiPrefix: import.meta.env.VITE_API_PREFIX || '/api/v1',
   getToken: () => getStoredAccessToken(),
-  onUnauthorized: () => {
-    const userStore = useUserStore()
-    uni.removeStorageSync('accessTokenExpireTime')
-    uni.removeStorageSync('refreshTokenExpireTime')
-    uni.removeStorageSync('access_token')
-    uni.removeStorageSync('token')
-    uni.removeStorageSync('refresh_token')
-    clearStoredRefreshCookie()
-    userStore.clearUserInfo()
-    uni.switchTab({ url: '/pages/mine/index' })
-  },
 })
+
+// 兼容旧 SDK 缓存：统一支持 session_id 查询（number）和旧的 question_ids 查询（number[]）
+const rawCheckFavorites = fbaApi.qbank.question.checkFavorites.bind(fbaApi.qbank.question)
+const rawGetNotes = fbaApi.qbank.question.getNotes.bind(fbaApi.qbank.question)
+
+fbaApi.qbank.question.checkFavorites = ((sessionIdOrQuestionIds: number | number[]) => {
+  if (Array.isArray(sessionIdOrQuestionIds)) {
+    return rawCheckFavorites(sessionIdOrQuestionIds)
+  }
+  return fbaApi.qbank.request.get(`/questions/sessions/${sessionIdOrQuestionIds}/favorites`) as Promise<Record<number, boolean>>
+}) as typeof fbaApi.qbank.question.checkFavorites
+
+fbaApi.qbank.question.getNotes = ((sessionIdOrQuestionIds: number | number[]) => {
+  if (Array.isArray(sessionIdOrQuestionIds)) {
+    return rawGetNotes(sessionIdOrQuestionIds)
+  }
+  return fbaApi.qbank.request.get(`/questions/sessions/${sessionIdOrQuestionIds}/notes`) as Promise<Record<number, any>>
+}) as typeof fbaApi.qbank.question.getNotes

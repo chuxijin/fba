@@ -2,6 +2,7 @@
 import { onHide, onLoad, onPullDownRefresh, onUnload } from '@dcloudio/uni-app'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { fbaApi } from '@/api/sdk'
+import FeedbackPopup from '@/components/FeedbackPopup.vue'
 import { useResultStore } from '@/store/result'
 
 defineOptions({ name: 'PracticeSessionPage' })
@@ -23,6 +24,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const actionQuestionId = ref(0)
 const showAnswerSheet = ref(false)
+const showFeedbackPopup = ref(false)
 const showDraftOverlay = ref(false)
 const draftQuestionId = ref(0)
 const canvasPenColor = ref('#FF3B30')
@@ -80,6 +82,10 @@ function getQuestionIndex(questionId: number) {
 const currentSnap = computed(() => questions.value[currentIndex.value] || null)
 const currentQuestionId = computed(() => Number(currentSnap.value?.question_id || 0))
 const currentQuestion = computed(() => questionMap[currentQuestionId.value] || null)
+const feedbackTargetText = computed(() => {
+  const seqNo = Number(currentSnap.value?.seq_no || currentIndex.value + 1 || 1)
+  return `${pageTitle.value} 第 ${seqNo} 题`
+})
 const currentState = computed(() => currentQuestionId.value ? getState(currentQuestionId.value) : null)
 const currentSolution = computed(() => solutionMap[currentQuestionId.value] || null)
 const materials = computed(() => (currentQuestion.value?.material_ids || []).map((id: number) => materialMap[id]).filter(Boolean))
@@ -541,11 +547,11 @@ async function maybeLoadCurrentSolution() {
 }
 
 async function loadFavoriteStates() {
-  const ids = questions.value.map(item => Number(item.question_id)).filter(Boolean)
-  if (!ids.length)
+  if (!sessionId.value)
     return
   try {
-    const statusMap = await fbaApi.qbank.question.checkFavorites(ids)
+    clearMap(favoritedMap)
+    const statusMap = await fbaApi.qbank.question.checkFavorites(sessionId.value)
     Object.keys(statusMap || {}).forEach((key) => {
       favoritedMap[Number(key)] = Boolean((statusMap as any)[key])
     })
@@ -556,14 +562,15 @@ async function loadFavoriteStates() {
 }
 
 async function loadNotes() {
-  const ids = questions.value.map(item => Number(item.question_id)).filter(Boolean)
-  if (!ids.length)
+  if (!sessionId.value)
     return
   try {
-    const result = await fbaApi.qbank.question.getNotes(ids) as any
+    clearMap(noteMap)
+    clearMap(noteContentMap)
+    const result = await fbaApi.qbank.question.getNotes(sessionId.value) as any
     Object.keys(result || {}).forEach((key) => {
       const qid = Number(key)
-      noteMap[qid] = result[key] || null
+      noteMap[qid] = result[key]
       if (result[key]?.content)
         noteContentMap[qid] = result[key].content
     })
@@ -971,6 +978,9 @@ onUnload(() => {
             {{ pageTitle }}
           </view>
         </view>
+        <view class="h-9 w-9 flex items-center justify-center rounded-full bg-white/92 text-[#8B5CF6] shadow-sm active:scale-95" @click="showFeedbackPopup = true">
+          <view class="i-carbon-idea text-[18px]" />
+        </view>
       </view>
     </view>
 
@@ -1242,6 +1252,17 @@ onUnload(() => {
     </wd-popup>
 
     <!-- 草稿涂鸦遮罩 -->
+    <FeedbackPopup
+      v-model="showFeedbackPopup"
+      title="题目反馈"
+      subtitle="题目内容、答案解析、交互异常都可以快速反馈"
+      feedback-type="content_error"
+      :page-path="`/pages/practice/session/index?sessionId=${sessionId}`"
+      target-type="question"
+      :target-id="currentQuestionId ? String(currentQuestionId) : null"
+      :target-text="feedbackTargetText"
+    />
+
     <view v-if="showDraftOverlay" class="draft-overlay">
       <canvas
         canvas-id="draftCanvas"

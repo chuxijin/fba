@@ -31,11 +31,6 @@ export interface QbankWxLoginParam {
   iv?: string;
 }
 
-export interface QbankTestLoginParam {
-  username: string;
-  nickname?: string;
-}
-
 export interface QbankWxLoginResponse {
   access_token: string;
   access_token_expire_time?: string;
