@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
-from sqlalchemy import Select, or_
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -85,8 +85,6 @@ class CRUDDictMajor(CRUDPlus[GkDictMajor]):
         :param edu_level: 学历层次
         :return:
         """
-        from sqlalchemy import select
-
         stmt = select(self.model).where(
             self.model.is_active == True,  # noqa: E712
             or_(
@@ -187,8 +185,6 @@ class CRUDDictMajor(CRUDPlus[GkDictMajor]):
         :param edu_level: 学历层次
         :return:
         """
-        from sqlalchemy import select
-
         stmt = select(self.model).where(self.model.is_active == True)  # noqa: E712
         if edu_level:
             stmt = stmt.where(self.model.edu_level == edu_level)

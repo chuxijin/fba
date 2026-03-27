@@ -78,9 +78,6 @@ async def get_gongkao_category_list(
     return response_base.success(data=data)
 
 
-
-
-
 @router.post(
     '',
     summary='创建分类',

@@ -1,7 +1,5 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import hashlib
-import json
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Path, Query, Request
@@ -23,50 +21,33 @@ from backend.app.question_bank.schema.question_import import (
     BatchImportParam,
     BatchImportResult,
 )
-from backend.common.security.jwt import DependsJwtAuth
 from backend.app.question_bank.service.favorite_service import favorite_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.note_service import note_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.session_service import session_service
-from backend.common.pagination import DependsPagination, PageData
+from backend.common.pagination import PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.rbac import DependsRBAC
-from backend.database.redis import redis_client
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
 
 
-def _parse_int_csv(value: str | None) -> list[int]:
-    if not value:
-        return []
-    result: list[int] = []
-    for item in value.split(','):
-        token = item.strip()
-        if not token or not token.isdigit():
-            continue
-        parsed = int(token)
-        if parsed > 0:
-            result.append(parsed)
-    return sorted(set(result))
-
-
-def _parse_text_csv(value: str | None) -> list[str]:
-    if not value:
-        return []
-    values = [item.strip() for item in value.split(',') if item and item.strip()]
-    return sorted(set(values))
-
-
 # ============ 批量查询接口（必须在 /{pk} 之前） ===========
 
 
-@router.get('/favorites', summary='批量检查收藏状态', name='qbank_batch_check_favorites')
+@router.get(
+    '/favorites',
+    summary='批量检查收藏状态',
+    name='qbank_batch_check_favorites',
+    dependencies=[DependsJwtAuth],
+)
 async def batch_check_favorites(
+    request: Request,
     db: CurrentSession,
     question_ids: Annotated[str, Query(description='题目 ID 列表，逗号分隔')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[dict[int, bool]]:
     """批量检查收藏状态"""
     status_map = await favorite_service.batch_check_favorites_from_string(
@@ -75,11 +56,16 @@ async def batch_check_favorites(
     return response_base.success(data=status_map)
 
 
-@router.get('/notes', summary='批量查询笔记', name='qbank_batch_get_notes')
+@router.get(
+    '/notes',
+    summary='批量查询笔记',
+    name='qbank_batch_get_notes',
+    dependencies=[DependsJwtAuth],
+)
 async def batch_get_notes(
+    request: Request,
     db: CurrentSession,
     question_ids: Annotated[str, Query(description='题目 ID 列表，逗号分隔')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[dict[int, GetQuestionNoteDetail | None]]:
     """批量查询笔记"""
     note_map = await note_service.batch_get_notes_from_string(
@@ -102,53 +88,21 @@ async def get_dynamic_collections(
     year_end: Annotated[int | None, Query(description='结束年份（按题目创建年）')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionDynamicCollectionItem]]:
     """按筛选条件动态返回试卷合集（通过题目挂载关系聚合）"""
-    kp_ids = _parse_int_csv(knowledge_ids)
-    kp_names = _parse_text_csv(knowledge_names)
     if year_start is not None and year_end is not None and year_start > year_end:
         year_start, year_end = year_end, year_start
-
-    cache_payload = {
-        'cat_id': cat_id,
-        'region': (region or '').strip() or None,
-        'knowledge_ids': kp_ids,
-        'knowledge_names': kp_names,
-        'stem_keyword': (stem_keyword or '').strip() or None,
-        'option_keyword': (option_keyword or '').strip() or None,
-        'analysis_keyword': (analysis_keyword or '').strip() or None,
-        'year_start': year_start,
-        'year_end': year_end,
-    }
-    cache_hash = hashlib.sha1(
-        json.dumps(cache_payload, ensure_ascii=False, sort_keys=True).encode('utf-8')
-    ).hexdigest()
-    cache_key = f'qbank:collections:v1:{cache_hash}'
-
-    try:
-        cached = await redis_client.get(cache_key)
-        if cached:
-            return response_base.success(data=json.loads(cached))
-    except Exception:
-        # 缓存异常不影响主流程
-        pass
 
     data = await question_service.get_dynamic_collections(
         db=db,
         cat_id=cat_id,
         region=region,
-        knowledge_ids=kp_ids,
-        knowledge_names=kp_names,
+        knowledge_ids=question_service.parse_int_csv(knowledge_ids),
+        knowledge_names=question_service.parse_text_csv(knowledge_names),
         stem_keyword=stem_keyword,
         option_keyword=option_keyword,
         analysis_keyword=analysis_keyword,
         year_start=year_start,
         year_end=year_end,
     )
-
-    try:
-        await redis_client.set(cache_key, json.dumps(data, ensure_ascii=False), ex=60)
-    except Exception:
-        pass
-
     return response_base.success(data=data)
 
 
@@ -180,7 +134,7 @@ async def get_question(
     '',
     summary='获取题目列表',
     name='qbank_get_question_list',
-    dependencies=[DependsJwtAuth, DependsPagination],
+    dependencies=[DependsJwtAuth],
 )
 async def get_question_list(
     request: Request,
@@ -308,7 +262,7 @@ async def get_question_analysis(
     """
     获取题目解析（含答案）
 
-    - 客户：需要会员权限验证，自动增加查看次数
+    - 客户：需要会员权限验证，自动增加查看次数（需要写入，因此使用 Transaction）
     - 管理员：直接查看，不增加查看次数
     """
     user_type = getattr(request.user, 'user_type', 'admin')
@@ -421,6 +375,7 @@ async def batch_import_questions(
 
 
 # ============ 会话题目批量获取接口 ============
+# TODO: 此接口语义上属于 session 模块，但移动会变更 API 路径，暂保留在此
 
 
 @router.get(
@@ -445,7 +400,3 @@ async def get_session_questions(
         db=db, session_id=session_id, user_id=request.user.id
     )
     return response_base.success(data=data)
-
-
-
-

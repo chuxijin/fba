@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-收藏接口
-
-设计原则：
-- 支持收藏夹分组（类似 LeetCode）
-- 支持自定义标签
-- 支持置顶功能
-"""
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Path, Query, Request
 
+from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
 from backend.app.question_bank.schema.favorite import (
     ClearFolderParam,
     CreateQuestionFavoriteParam,
@@ -21,14 +14,13 @@ from backend.app.question_bank.schema.favorite import (
     UpdateQuestionFavoriteParam,
 )
 from backend.app.question_bank.schema.wrong_question import WrongQuestionGroupItem
-from backend.common.security.jwt import DependsJwtAuth
 from backend.app.question_bank.service.favorite_service import favorite_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
-from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
 
 router = APIRouter()
 
@@ -37,11 +29,11 @@ router = APIRouter()
 # 重要：具体路径的路由必须放在通配路由（/{pk}）之前，否则会被通配路由拦截
 
 
-@router.post('', summary='收藏题目', name='qbank_favorite_create')
+@router.post('', summary='收藏题目', name='qbank_favorite_create', dependencies=[DependsJwtAuth])
 async def create_favorite(
+    request: Request,
     db: CurrentSessionTransaction,
     obj: CreateQuestionFavoriteParam,
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[GetQuestionFavoriteDetail]:
     """收藏题目"""
     if obj.placement_id is not None:
@@ -53,10 +45,10 @@ async def create_favorite(
     return response_base.success(data=GetQuestionFavoriteDetail.model_validate(new_favorite))
 
 
-@router.get('', summary='获取收藏列表', name='qbank_favorite_get_list', dependencies=[DependsPagination])
+@router.get('', summary='获取收藏列表', name='qbank_favorite_get_list', dependencies=[DependsJwtAuth, DependsPagination])
 async def get_favorites(
+    request: Request,
     db: CurrentSession,
-    request: Request, _token: str = DependsJwtAuth,
     folder_name: Annotated[str | None, Query(description='收藏夹名称')] = None,
     is_pinned: Annotated[bool | None, Query(description='是否置顶')] = None,
 ) -> ResponseSchemaModel[PageData[GetQuestionFavoriteListItem]]:
@@ -71,11 +63,11 @@ async def get_favorites(
 # ============ 收藏夹管理接口（具体路径，必须在 /{pk} 之前）============
 
 
-@router.delete('/questions/{question_id}', summary='通过题目ID取消收藏', name='qbank_favorite_delete_by_question')
+@router.delete('/questions/{question_id}', summary='通过题目ID取消收藏', name='qbank_favorite_delete_by_question', dependencies=[DependsJwtAuth])
 async def delete_favorite_by_question(
+    request: Request,
     db: CurrentSessionTransaction,
     question_id: Annotated[int, Path(description='题目 ID')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseModel:
     """通过题目ID直接取消收藏"""
     count = await favorite_service.delete_favorite_by_question(
@@ -87,20 +79,21 @@ async def delete_favorite_by_question(
     return response_base.success(res=CustomResponse(code=200, msg='该题目未收藏或已取消'))
 
 
-@router.get('/folders', summary='获取收藏夹列表', name='qbank_favorite_get_folders')
+@router.get('/folders', summary='获取收藏夹列表', name='qbank_favorite_get_folders', dependencies=[DependsJwtAuth])
 async def get_folders(
-    db: CurrentSession, request: Request, _token: str = DependsJwtAuth
+    request: Request,
+    db: CurrentSession,
 ) -> ResponseSchemaModel[list[str]]:
     """获取用户的所有收藏夹名称"""
     folders = await question_favorite_dao.get_user_folders(db=db, user_id=request.user.id)
     return response_base.success(data=folders)
 
 
-@router.post('/folders/clear', summary='清空收藏夹', name='qbank_favorite_clear_folder')
+@router.post('/folders/clear', summary='清空收藏夹', name='qbank_favorite_clear_folder', dependencies=[DependsJwtAuth])
 async def clear_folder(
+    request: Request,
     db: CurrentSessionTransaction,
     obj: ClearFolderParam,
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseModel:
     """清空指定收藏夹"""
     count = await question_favorite_dao.clear_folder(db=db, user_id=request.user.id, folder_name=obj.folder_name)
@@ -113,26 +106,24 @@ async def clear_folder(
 # ============ 工具接口（具体路径，必须在 /{pk} 之前）============
 
 
-@router.post('/questions/check', summary='检查题目收藏状态', name='qbank_favorite_check')
+@router.post('/questions/check', summary='检查题目收藏状态', name='qbank_favorite_check', dependencies=[DependsJwtAuth])
 async def check_favorited(
+    request: Request,
     db: CurrentSession,
     question_ids: Annotated[list[int], Body(description='题目 ID 列表（可以是单个或多个）')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[dict[int, bool]]:
     """批量检查题目的收藏状态"""
     status_map = await favorite_service.check_favorited(
         db=db, user_id=request.user.id, question_ids=question_ids
     )
-
     return response_base.success(data=status_map)
 
 
-@router.get('/statistics', summary='获取收藏统计', name='qbank_favorite_statistics')
+@router.get('/statistics', summary='获取收藏统计', name='qbank_favorite_statistics', dependencies=[DependsJwtAuth])
 async def get_statistics(
-    db: CurrentSession,
     request: Request,
+    db: CurrentSession,
     group_by: str | None = None,
-    _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel:
     """获取用户的收藏统计数据，传 group_by 时返回树形分组"""
     if group_by:
@@ -144,26 +135,24 @@ async def get_statistics(
     return response_base.success(data=stats)
 
 
-@router.get('/grouped', summary='获取收藏分组聚合', name='qbank_favorite_grouped')
+@router.get('/grouped', summary='获取收藏分组聚合', name='qbank_favorite_grouped', dependencies=[DependsJwtAuth])
 async def get_grouped(
-    db: CurrentSession,
     request: Request,
+    db: CurrentSession,
     group_by: str = 'bank',
-    _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[list[WrongQuestionGroupItem]]:
     """按题库或知识点分组聚合收藏数量"""
     data = await favorite_service.get_grouped(db=db, user_id=request.user.id, group_by=group_by)
     return response_base.success(data=data)
 
 
-@router.get('/ids', summary='获取分组内收藏题目 ID 列表', name='qbank_favorite_ids')
+@router.get('/ids', summary='获取分组内收藏题目 ID 列表', name='qbank_favorite_ids', dependencies=[DependsJwtAuth])
 async def get_question_ids(
-    db: CurrentSession,
     request: Request,
+    db: CurrentSession,
     bank_id: int | None = None,
     chapter_id: int | None = None,
     knowledge_point: str | None = None,
-    _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[list[int]]:
     """按分组条件获取收藏的题目 ID 列表"""
     if bank_id is not None and chapter_id is not None:
@@ -178,24 +167,23 @@ async def get_question_ids(
 # ============ 通配路径接口（必须放在最后）============
 
 
-@router.get('/{pk}', summary='获取收藏详情', name='qbank_favorite_get')
+@router.get('/{pk}', summary='获取收藏详情', name='qbank_favorite_get', dependencies=[DependsJwtAuth])
 async def get_favorite(
+    request: Request,
     db: CurrentSession,
     pk: Annotated[int, Path(description='收藏 ID')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[GetQuestionFavoriteDetail]:
     """获取收藏详情"""
     favorite = await favorite_service.get_favorite(db=db, favorite_id=pk, user_id=request.user.id)
-
     return response_base.success(data=GetQuestionFavoriteDetail.model_validate(favorite))
 
 
-@router.put('/{pk}', summary='更新收藏', name='qbank_favorite_update')
+@router.put('/{pk}', summary='更新收藏', name='qbank_favorite_update', dependencies=[DependsJwtAuth])
 async def update_favorite(
+    request: Request,
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='收藏 ID')],
     obj: UpdateQuestionFavoriteParam,
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseModel:
     """更新收藏信息"""
     count = await favorite_service.update_favorite(
@@ -212,12 +200,12 @@ async def update_favorite(
     return response_base.fail(res=CustomResponse(code=400, msg='没有需要更新的数据'))
 
 
-@router.put('/{pk}/pin', summary='设置收藏置顶', name='qbank_favorite_set_pin')
+@router.put('/{pk}/pin', summary='设置收藏置顶', name='qbank_favorite_set_pin', dependencies=[DependsJwtAuth])
 async def set_pin(
+    request: Request,
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='收藏 ID')],
     is_pinned: Annotated[bool, Body(embed=True, description='是否置顶')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseModel:
     """设置收藏置顶或取消置顶"""
     count = await favorite_service.set_pin(
@@ -229,11 +217,11 @@ async def set_pin(
     return response_base.fail(res=CustomResponse(code=400, msg='设置失败'))
 
 
-@router.delete('', summary='取消收藏', name='qbank_favorite_delete')
+@router.delete('', summary='取消收藏', name='qbank_favorite_delete', dependencies=[DependsJwtAuth])
 async def delete_favorites(
+    request: Request,
     db: CurrentSessionTransaction,
     favorite_ids: Annotated[list[int], Body(description='收藏 ID 列表（支持单个或批量）')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseModel:
     """取消收藏题目（支持单个和批量）"""
     count = await favorite_service.delete_favorites(
@@ -243,6 +231,3 @@ async def delete_favorites(
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg=f'成功取消 {count} 个收藏'))
     return response_base.fail(res=CustomResponse(code=400, msg='取消收藏失败'))
-
-
-

@@ -179,5 +179,56 @@ class WrongQuestionService:
             return await wrong_question_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
         return await wrong_question_dao.get_grouped_by_bank(db=db, user_id=user_id)
 
+    @staticmethod
+    async def answer_correct(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        question_id: int,
+        placement_id: int | None = None,
+        mastery_threshold: int = 3,
+    ) -> dict:
+        """
+        错题答对上报
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param question_id: 题目 ID
+        :param placement_id: 挂载 ID（可选，精确匹配）
+        :param mastery_threshold: 连续答对达到此阈值标记为已掌握
+        :return:
+        """
+        from datetime import datetime
+
+        if placement_id is not None:
+            wrong = await wrong_question_dao.get_by_user_and_question(
+                db=db, user_id=user_id, question_id=question_id, placement_id=placement_id,
+            )
+            wrong_records = [wrong] if wrong else []
+        else:
+            wrong_records = await wrong_question_dao.list_by_user_and_question(
+                db=db, user_id=user_id, question_id=question_id,
+            )
+
+        wrong_records = [item for item in wrong_records if item]
+        if not wrong_records:
+            return {'is_mastered': False, 'correct_streak': 0, 'message': '未找到对应错题记录'}
+
+        practice_time = datetime.now()
+        for wrong in wrong_records:
+            await wrong_question_dao.increment_correct(
+                db=db,
+                wrong_id=wrong.id,
+                practice_time=practice_time,
+                mastery_threshold=mastery_threshold,
+            )
+            await db.refresh(wrong)
+
+        return {
+            'is_mastered': all(item.is_mastered for item in wrong_records),
+            'correct_streak': max(item.correct_streak for item in wrong_records),
+            'affected_count': len(wrong_records),
+        }
+
 
 wrong_question_service = WrongQuestionService()

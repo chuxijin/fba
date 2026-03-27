@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""官媒学言语模块 - 基于 content 的封装接口"""
 from datetime import date as date_type
 from typing import Annotated
 
@@ -37,17 +36,12 @@ async def get_guanmei_list(
     tag: Annotated[str | None, Query(description='标签')] = None,
     daily_date: Annotated[str | None, Query(description='日期')] = None,
 ) -> ResponseSchemaModel[PageData[GetContentListDetail]]:
-    """
-    获取官媒学言语列表（分页）
-
-    This is a wrapper around content API that automatically filters by guanmei categories.
-    Only returns published content from categories with app_code='gongkao' and type='guanmei'.
-    """
+    """获取官媒学言语列表（分页），只返回已发布内容"""
     params = ContentParam(
         title=title,
         category_id=category_id,
         tag=tag,
-        is_published=True,  # 只返回已发布的内容
+        is_published=True,
         daily_date=date_type.fromisoformat(daily_date) if daily_date else None,
     )
     data = await content_service.get_list(db=db, params=params)

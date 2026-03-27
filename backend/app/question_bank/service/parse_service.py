@@ -441,4 +441,157 @@ class ParseService:
         
         log.info(f"流式分片抽取彻底结束，总获取题数: {total_found}")
 
+    @staticmethod
+    async def smart_commit(
+        *,
+        db: AsyncSession,
+        bank_id: int,
+        materials_data: list[dict],
+        questions_data: list[dict],
+        user_id: int,
+    ) -> dict:
+        """
+        将智能解析结果批量入库
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :param materials_data: 材料数据列表
+        :param questions_data: 题目数据列表
+        :param user_id: 操作用户 ID
+        :return:
+        """
+        from decimal import Decimal
+
+        from backend.app.question_bank.crud.crud_bank import bank_dao
+        from backend.app.question_bank.crud.crud_material import material_dao
+        from backend.app.question_bank.schema.material import CreateMaterialParam
+        from backend.app.question_bank.schema.question import (
+            CreateQuestionParam,
+            QuestionCoreBase,
+            UpsertQuestionAnalysisItem,
+            UpsertQuestionOptionItem,
+            UpsertQuestionPlacementItem,
+        )
+        from backend.app.question_bank.service.question_service import QuestionService, question_service
+
+        bank = await bank_dao.get(db, bank_id)
+        if not bank:
+            raise errors.NotFoundError(msg='题库不存在')
+
+        # -------- 1. 保存公共材料 --------
+        material_id_map: dict[str | int, int] = {}
+        for m_data in materials_data:
+            create_material = CreateMaterialParam(
+                bank_id=bank_id,
+                title=m_data.get('title', '资料分析材料'),
+                content=m_data.get('content', ''),
+                is_active=True,
+            )
+            material = await material_dao.create(db, create_material, created_by=user_id)
+            await db.flush()
+
+            temp_id = m_data.get('material_id')
+            if temp_id is not None:
+                material_id_map[temp_id] = material.id
+
+        # -------- 2. 逐题构建 CreateQuestionParam 并调用 service --------
+        chapter_cache: dict[str, int] = {}
+        success_count = 0
+
+        for q_data in questions_data:
+            # 2a. 章节处理
+            chapter_id = None
+            c_name = q_data.get('chapter_name')
+            if c_name:
+                chapter_id = await QuestionService._get_or_create_chapter(
+                    db=db, bank_id=bank_id, level1_name=c_name, level2_name=None, chapter_cache=chapter_cache,
+                )
+
+            # 2b. 基本字段
+            q_type = q_data.get('type') or 'single'
+            q_diff = q_data.get('difficulty') or 'medium'
+            q_default_score = Decimal(str(q_data.get('score') or '1.0'))
+
+            sort_order = q_data.get('sort_order')
+            if sort_order is None:
+                sort_order = success_count + 1
+            elif isinstance(sort_order, str) and sort_order.isdigit():
+                sort_order = int(sort_order)
+            elif not isinstance(sort_order, int):
+                sort_order = success_count + 1
+
+            knowledge_point = q_data.get('knowledge_point')
+            if isinstance(knowledge_point, str):
+                knowledge_point = [knowledge_point] if knowledge_point else None
+
+            # 2c. 构建 core
+            core = QuestionCoreBase(
+                type=q_type,
+                stem=q_data.get('stem') or '',
+                difficulty=q_diff,
+                default_score=q_default_score,
+                knowledge_point=knowledge_point,
+            )
+
+            # 2d. 构建选项
+            options: list[UpsertQuestionOptionItem] = []
+            raw_options = q_data.get('options_data')
+            if isinstance(raw_options, dict):
+                for code, opt in raw_options.items():
+                    content = opt.get('content', '') if isinstance(opt, dict) else str(opt)
+                    options.append(UpsertQuestionOptionItem(
+                        option_code=code.upper(),
+                        content=content,
+                        sort_order=ord(code.upper()) - ord('A'),
+                    ))
+
+            # 2e. 构建挂载（一题一挂载，挂到 bank + chapter）
+            placements = [UpsertQuestionPlacementItem(
+                bank_id=bank_id,
+                chapter_id=chapter_id,
+                sort_order=sort_order,
+                is_active=True,
+                score=q_default_score,
+                review_status=10,
+            )]
+
+            # 2f. 构建解析
+            answer_data = q_data.get('answer_data') or {}
+            analysis_content = q_data.get('analysis_content') or ''
+            analyses = [UpsertQuestionAnalysisItem(
+                type='official',
+                is_default=True,
+                answer_data=answer_data,
+                content=analysis_content or '暂无解析',
+            )]
+
+            # 2g. 材料关联
+            material_ids: list[int] | None = None
+            temp_mid = q_data.get('material_id')
+            if temp_mid is not None and temp_mid in material_id_map:
+                material_ids = [material_id_map[temp_mid]]
+
+            # 2h. 组装并调用 service.create
+            create_param = CreateQuestionParam(
+                core=core,
+                options=options,
+                placements=placements,
+                analyses=analyses,
+                material_ids=material_ids,
+            )
+            await question_service.create(db=db, obj=create_param, user_id=user_id)
+            success_count += 1
+
+        # -------- 3. 更新题库 q_count_cache --------
+        if success_count > 0:
+            await QuestionService._update_bank_q_count_cache_recursive(
+                db=db, bank_id=bank_id, delta=success_count,
+            )
+            await db.flush()
+
+        return {
+            'materials_count': len(materials_data),
+            'questions_count': success_count,
+        }
+
 parse_service = ParseService()

@@ -1,13 +1,13 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Request
 
 from backend.app.actcode.schema.actcode import RedeemCodeResult
-from backend.common.security.jwt import DependsJwtAuth
 from backend.app.question_bank.service.activation_service import activation_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
+from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
 
 router = APIRouter(prefix='/activation', tags=['激活码'])
@@ -23,11 +23,11 @@ async def query_activation_code(
     return response_base.success(data=result)
 
 
-@router.post('/redeem', summary='兑换激活码')
+@router.post('/redeem', summary='兑换激活码', dependencies=[DependsJwtAuth])
 async def redeem_activation_code(
+    request: Request,
     db: CurrentSession,
     code: Annotated[str, Body(..., description='激活码', embed=True)],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[RedeemCodeResult]:
     """兑换激活码并自动创建会员权益"""
     result = await activation_service.redeem_code_for_qbank(
@@ -36,6 +36,3 @@ async def redeem_activation_code(
         code=code,
     )
     return response_base.success(data=result)
-
-
-

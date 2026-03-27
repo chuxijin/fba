@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
@@ -9,22 +9,22 @@ from backend.app.question_bank.schema.question import (
     GetQuestionListItem,
     QuestionAnalysisItem,
 )
-from backend.common.security.jwt import DependsJwtAuth
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.practice_service import practice_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.common.exception import errors
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
+from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import verify_permission
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
 
 
-@router.get('/questions', summary='获取练习题目列表', name='practice_get_questions')
+@router.get('/questions', summary='获取练习题目列表', name='practice_get_questions', dependencies=[DependsJwtAuth])
 async def get_practice_questions(
+    request: Request,
     db: CurrentSession,
-    request: Request, _token: str = DependsJwtAuth,
     bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
     chapter_id: Annotated[int | None, Query(description='章节 ID')] = None,
     type: Annotated[str | None, Query(description='题型')] = None,
@@ -64,11 +64,11 @@ async def get_practice_questions(
     return response_base.success(data=result)
 
 
-@router.get('/banks/{bank_id}/questions', summary='获取题库题目列表', name='practice_get_bank_questions')
+@router.get('/banks/{bank_id}/questions', summary='获取题库题目列表', name='practice_get_bank_questions', dependencies=[DependsJwtAuth])
 async def get_bank_questions(
+    request: Request,
     db: CurrentSession,
     bank_id: Annotated[int, Path(description='题库 ID')],
-    request: Request, _token: str = DependsJwtAuth,
     type: Annotated[str | None, Query(description='题型')] = None,
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
@@ -82,11 +82,11 @@ async def get_bank_questions(
     return response_base.success(data=result)
 
 
-@router.get('/chapters/{chapter_id}/questions', summary='获取章节题目列表', name='practice_get_chapter_questions')
+@router.get('/chapters/{chapter_id}/questions', summary='获取章节题目列表', name='practice_get_chapter_questions', dependencies=[DependsJwtAuth])
 async def get_chapter_questions(
+    request: Request,
     db: CurrentSession,
     chapter_id: Annotated[int, Path(description='章节 ID')],
-    request: Request, _token: str = DependsJwtAuth,
     type: Annotated[str | None, Query(description='题型')] = None,
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
@@ -100,11 +100,11 @@ async def get_chapter_questions(
     return response_base.success(data=result)
 
 
-@router.get('/questions/{pk}', summary='获取题目详情（刷题）', name='practice_get_question')
+@router.get('/questions/{pk}', summary='获取题目详情（刷题）', name='practice_get_question', dependencies=[DependsJwtAuth])
 async def get_question(
+    request: Request,
     db: CurrentSession,
     pk: Annotated[int, Path(description='题目 ID')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[GetQuestionDetail]:
     """客户端刷题接口 - 获取题目详情用于练习（不含答案）"""
     await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
@@ -113,21 +113,18 @@ async def get_question(
     return response_base.success(data=question)
 
 
-@router.get('/questions/{pk}/analysis', summary='查看题目解析', name='practice_get_analysis')
+@router.get('/questions/{pk}/analysis', summary='查看题目解析', name='practice_get_analysis', dependencies=[DependsJwtAuth])
 async def get_analysis(
+    request: Request,
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='题目 ID')],
-    request: Request, _token: str = DependsJwtAuth,
 ) -> ResponseSchemaModel[QuestionAnalysisItem]:
     """
     客户端刷题接口 - 查看题目解析（含答案）
 
-    通常在提交答案后查看，会自动增加解析的查看次数
+    通常在提交答案后查看，会自动增加解析的查看次数（需要写入，因此使用 Transaction）
     """
     await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
 
     analysis = await practice_service.get_practice_analysis(db=db, question_id=pk)
     return response_base.success(data=analysis)
-
-
-

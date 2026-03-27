@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import Select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -9,14 +9,14 @@ from backend.app.gongkao.schema.hanyu import CreateHanyuParam, HanyuParam, Updat
 
 
 class CRUDHanyu(CRUDPlus[GkHanyu]):
-    """Hanyu CRUD."""
+    """汉语词汇数据库操作类"""
 
     async def get(self, db: AsyncSession, pk: int) -> GkHanyu | None:
         """
         获取汉语词汇详情
 
-        :param db: database session
-        :param pk: primary key
+        :param db: 数据库会话
+        :param pk: 主键 ID
         :return:
         """
         return await self.select_model(db, pk)
@@ -25,7 +25,7 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
         """
         根据名称获取汉语词汇
 
-        :param db: database session
+        :param db: 数据库会话
         :param name: 词语名称
         :param type_: 类型
         :return:
@@ -37,13 +37,11 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
 
     async def get_select(self, params: HanyuParam) -> Select:
         """
-        构建汉语词汇列表查询
+        构建汉语词汇列表查询表达式
 
-        :param params: query params
+        :param params: 查询参数
         :return:
         """
-        from sqlalchemy import select
-
         se = select(self.model).order_by(
             self.model.frequency.desc(),
             self.model.created_time.desc(),
@@ -66,9 +64,9 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
         """
         创建汉语词汇
 
-        :param db: database session
-        :param obj: create payload
-        :param created_by: user id
+        :param db: 数据库会话
+        :param obj: 创建参数
+        :param created_by: 创建者 ID
         :return:
         """
         hanyu = await self.create_model(db, obj, created_by=created_by)
@@ -80,20 +78,20 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
         """
         更新汉语词汇
 
-        :param db: database session
-        :param pk: primary key
-        :param obj: update payload
-        :param updated_by: user id
+        :param db: 数据库会话
+        :param pk: 主键 ID
+        :param obj: 更新参数
+        :param updated_by: 修改者 ID
         :return:
         """
         return await self.update_model(db, pk, obj, updated_by=updated_by)
 
     async def delete(self, db: AsyncSession, pks: list[int]) -> int:
         """
-        删除汉语词汇
+        删除汉语词汇（支持批量）
 
-        :param db: database session
-        :param pks: id list
+        :param db: 数据库会话
+        :param pks: 主键 ID 列表
         :return:
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=pks)
@@ -102,8 +100,8 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
         """
         增加使用频次
 
-        :param db: database session
-        :param pk: primary key
+        :param db: 数据库会话
+        :param pk: 主键 ID
         :return:
         """
         hanyu = await self.get(db, pk)
@@ -113,13 +111,11 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
 
     async def get_types(self, db: AsyncSession) -> list[str]:
         """
-        获取所有类型
+        获取所有词汇类型
 
-        :param db: database session
+        :param db: 数据库会话
         :return:
         """
-        from sqlalchemy import select
-
         stmt = select(GkHanyu.type).where(
             GkHanyu.type.isnot(None)
         ).distinct().order_by(GkHanyu.type)

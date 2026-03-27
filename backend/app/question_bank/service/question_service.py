@@ -1,5 +1,7 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import hashlib
+import json
 import logging
 import re
 from collections.abc import Sequence
@@ -48,9 +50,10 @@ from backend.app.question_bank.schema.question_import import (
     ImportResultItem,
 )
 from backend.common.exception import errors
+from backend.common.pagination import _CustomPage, _CustomPageParams
+from backend.database.redis import redis_client
 
 log = logging.getLogger(__name__)
-from backend.common.pagination import _CustomPage, _CustomPageParams
 
 
 class QuestionService:
@@ -488,6 +491,29 @@ class QuestionService:
         ]
 
     @staticmethod
+    def parse_int_csv(value: str | None) -> list[int]:
+        """解析逗号分隔的整数字符串"""
+        if not value:
+            return []
+        result: list[int] = []
+        for item in value.split(','):
+            token = item.strip()
+            if not token or not token.isdigit():
+                continue
+            parsed = int(token)
+            if parsed > 0:
+                result.append(parsed)
+        return sorted(set(result))
+
+    @staticmethod
+    def parse_text_csv(value: str | None) -> list[str]:
+        """解析逗号分隔的文本字符串"""
+        if not value:
+            return []
+        values = [item.strip() for item in value.split(',') if item and item.strip()]
+        return sorted(set(values))
+
+    @staticmethod
     async def get_dynamic_collections(
         *,
         db: AsyncSession,
@@ -502,11 +528,35 @@ class QuestionService:
         year_end: int | None = None,
     ) -> list[dict[str, Any]]:
         """
-        根据筛选条件动态聚合题目合集（按试卷维度聚合）。
+        根据筛选条件动态聚合题目合集（按试卷维度聚合），结果缓存 60 秒。
 
         核心关系：
         Question --(question_id)--> QuestionPlacement --(bank_id)--> QuestionBank
         """
+        # 缓存
+        cache_payload = {
+            'cat_id': cat_id,
+            'region': (region or '').strip() or None,
+            'knowledge_ids': knowledge_ids,
+            'knowledge_names': knowledge_names,
+            'stem_keyword': (stem_keyword or '').strip() or None,
+            'option_keyword': (option_keyword or '').strip() or None,
+            'analysis_keyword': (analysis_keyword or '').strip() or None,
+            'year_start': year_start,
+            'year_end': year_end,
+        }
+        cache_hash = hashlib.sha1(
+            json.dumps(cache_payload, ensure_ascii=False, sort_keys=True).encode('utf-8')
+        ).hexdigest()
+        cache_key = f'qbank:collections:v1:{cache_hash}'
+
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+
         cat_ids = await category_dao.get_all_children_ids(db, cat_id) if cat_id is not None else None
 
         stmt = (
@@ -625,7 +675,14 @@ class QuestionService:
         )
 
         rows = (await db.execute(stmt)).mappings().all()
-        return [dict(row) for row in rows]
+        data = [dict(row) for row in rows]
+
+        try:
+            await redis_client.set(cache_key, json.dumps(data, ensure_ascii=False, default=str), ex=60)
+        except Exception:
+            pass
+
+        return data
 
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateQuestionParam, user_id: int) -> Question:
@@ -826,7 +883,6 @@ class QuestionService:
 
         is_correct = None
         if user_answer is not None:
-            import json
             try:
                 parsed_answer = json.loads(user_answer)
                 is_correct = QuestionService.check_answer(question.type, parsed_answer, analysis.answer_data)

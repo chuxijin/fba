@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""经验模块 - 基于 content 的封装接口"""
 from datetime import date as date_type
 from typing import Annotated
 
@@ -19,23 +18,23 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/{pk}', summary='Get jingyan detail')
+@router.get('/{pk}', summary='获取经验详情')
 async def get_jingyan(
     db: CurrentSession,
-    pk: Annotated[int, Path(description='id')],
+    pk: Annotated[int, Path(description='经验 ID')],
 ) -> ResponseSchemaModel[GetContentDetail]:
-    """Get jingyan detail by id."""
+    """获取经验详情"""
     data = await content_service.get(db=db, pk=pk)
     return response_base.success(data=data)
 
 
-@router.get('', summary='Get jingyan list', dependencies=[DependsPagination])
+@router.get('', summary='获取经验列表', dependencies=[DependsPagination])
 async def get_jingyan_list(
     db: CurrentSession,
-    title: Annotated[str | None, Query(description='title keyword')] = None,
+    title: Annotated[str | None, Query(description='标题关键字')] = None,
     category_id: Annotated[int, Query(description='分类 ID')] = 33,
-    tag: Annotated[str | None, Query(description='tag')] = None,
-    daily_date: Annotated[str | None, Query(description='daily date')] = None,
+    tag: Annotated[str | None, Query(description='标签')] = None,
+    daily_date: Annotated[str | None, Query(description='日期')] = None,
 ) -> ResponseSchemaModel[PageData[GetContentListDetail]]:
     """获取经验列表（分页），默认分类 ID=33，可传子分类 ID 进一步筛选"""
     params = ContentParam(
@@ -49,11 +48,11 @@ async def get_jingyan_list(
     return response_base.success(data=data)
 
 
-@router.post('/{pk}/view', summary='Increment jingyan view count')
+@router.post('/{pk}/view', summary='增加经验阅读量')
 async def increment_jingyan_view(
     db: CurrentSessionTransaction,
-    pk: Annotated[int, Path(description='id')],
+    pk: Annotated[int, Path(description='经验 ID')],
 ) -> ResponseModel:
-    """Increment jingyan view count."""
+    """增加经验阅读量"""
     await content_service.increment_view(db=db, pk=pk)
     return response_base.success()

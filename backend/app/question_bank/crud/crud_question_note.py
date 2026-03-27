@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from datetime import datetime
+
 from sqlalchemy import case, cast, func, literal_column, or_, select, update as sa_update
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -134,12 +136,12 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         dislike_delta: int = 0,
     ) -> int:
         """
-        澧為噺鏇存柊鎶曠エ缁熻
+        增量更新投票统计
 
-        :param db: 鏁版嵁搴撲細璇?
-        :param note_id: 绗旇 ID
-        :param like_delta: 鐐硅禐澧為噺
-        :param dislike_delta: 鐐硅俯澧為噺
+        :param db: 数据库会话
+        :param note_id: 笔记 ID
+        :param like_delta: 点赞增量
+        :param dislike_delta: 点踩增量
         :return:
         """
         if like_delta == 0 and dislike_delta == 0:
@@ -166,8 +168,6 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         :param is_featured: 是否精选
         :return:
         """
-        from datetime import datetime
-
         update_data: dict = {'is_featured': is_featured}
         if is_featured:
             update_data['featured_time'] = datetime.now()
@@ -429,7 +429,6 @@ class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
         row = result.first()
 
         return (row.like_count or 0, row.dislike_count or 0)
-
 
 
 question_note_dao: CRUDQuestionNote = CRUDQuestionNote(QuestionNote)

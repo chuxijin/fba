@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""时政模块 - 基于 content 的封装接口"""
 from datetime import date as date_type
 from typing import Annotated
 

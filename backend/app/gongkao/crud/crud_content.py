@@ -1,4 +1,6 @@
-﻿from sqlalchemy import Select, func
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from sqlalchemy import Select, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -7,37 +9,35 @@ from backend.app.gongkao.schema.content import ContentParam, CreateContentParam,
 
 
 class CRUDContent(CRUDPlus[GkContent]):
-    """Content CRUD."""
+    """内容数据库操作类"""
 
     async def get(self, db: AsyncSession, pk: int) -> GkContent | None:
         """
-        Get content by primary key.
+        获取内容详情
 
-        :param db: database session
-        :param pk: primary key
+        :param db: 数据库会话
+        :param pk: 主键 ID
         :return:
         """
         return await self.select_model(db, pk)
 
     async def get_by_slug(self, db: AsyncSession, slug: str) -> GkContent | None:
         """
-        Get content by slug.
+        通过 slug 获取内容
 
-        :param db: database session
-        :param slug: content slug
+        :param db: 数据库会话
+        :param slug: 内容 slug
         :return:
         """
         return await self.select_model_by_column(db, slug=slug)
 
     async def get_select(self, params: ContentParam) -> Select:
         """
-        Build content list select.
+        构建内容列表查询表达式
 
-        :param params: query params
+        :param params: 查询参数
         :return:
         """
-        from sqlalchemy import select
-
         se = select(self.model).order_by(
             self.model.sort_order.desc(),
             self.model.created_time.desc(),
@@ -66,11 +66,11 @@ class CRUDContent(CRUDPlus[GkContent]):
 
     async def create(self, db: AsyncSession, obj: CreateContentParam, created_by: int) -> GkContent:
         """
-        Create content.
+        创建内容
 
-        :param db: database session
-        :param obj: create payload
-        :param created_by: user id
+        :param db: 数据库会话
+        :param obj: 创建参数
+        :param created_by: 创建者 ID
         :return:
         """
         content = await self.create_model(db, obj, created_by=created_by)
@@ -80,32 +80,32 @@ class CRUDContent(CRUDPlus[GkContent]):
 
     async def update(self, db: AsyncSession, pk: int, obj: UpdateContentParam, updated_by: int) -> int:
         """
-        Update content.
+        更新内容
 
-        :param db: database session
-        :param pk: primary key
-        :param obj: update payload
-        :param updated_by: user id
+        :param db: 数据库会话
+        :param pk: 主键 ID
+        :param obj: 更新参数
+        :param updated_by: 修改者 ID
         :return:
         """
         return await self.update_model(db, pk, obj, updated_by=updated_by)
 
     async def delete(self, db: AsyncSession, pks: list[int]) -> int:
         """
-        Delete contents by ids.
+        删除内容（支持批量）
 
-        :param db: database session
-        :param pks: id list
+        :param db: 数据库会话
+        :param pks: 主键 ID 列表
         :return:
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=pks)
 
     async def increment_view_count(self, db: AsyncSession, pk: int) -> int:
         """
-        Increment view count.
+        增加阅读量
 
-        :param db: database session
-        :param pk: primary key
+        :param db: 数据库会话
+        :param pk: 主键 ID
         :return:
         """
         content = await self.get(db, pk)
@@ -115,14 +115,12 @@ class CRUDContent(CRUDPlus[GkContent]):
 
     async def get_all_tags(self, db: AsyncSession, limit: int = 50) -> list[str]:
         """
-        Get published distinct tags.
+        获取已发布内容的去重标签
 
-        :param db: database session
-        :param limit: result limit
+        :param db: 数据库会话
+        :param limit: 结果限制数量
         :return:
         """
-        from sqlalchemy import select, text
-
         stmt = select(
             func.jsonb_array_elements_text(GkContent.tags).label('tag')
         ).where(
