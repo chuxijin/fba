@@ -62,7 +62,13 @@ export function createApiClient(options: SdkOptions): ApiClient {
 
   async function withHeaders(config: RequestConfig): Promise<RequestConfig> {
     const headers: Record<string, string> = { ...config.headers };
-    if (getToken) {
+    const hasExplicitAuthorization = Object.prototype.hasOwnProperty.call(headers, 'Authorization');
+
+    if (hasExplicitAuthorization && !headers.Authorization) {
+      delete headers.Authorization;
+    }
+
+    if (getToken && !hasExplicitAuthorization) {
       const token = await getToken();
       if (token) {
         headers.Authorization = `Bearer ${token}`;

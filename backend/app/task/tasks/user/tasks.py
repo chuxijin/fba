@@ -200,3 +200,11 @@ async def check_expired_user_roles() -> int:
     from backend.app.admin.service.user_role_expiry_service import user_role_expiry_service
 
     return await user_role_expiry_service.check_and_expire_roles()
+
+
+@celery_app.task(name='check_expired_memberships')
+async def check_expired_memberships() -> int:
+    """检查并处理过期会员"""
+    from backend.app.membership.service.membership_service import membership_service
+
+    return await membership_service.check_and_expire_memberships()

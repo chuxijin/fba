@@ -35,6 +35,72 @@ class AuthService:
     """认证服务类"""
 
     @staticmethod
+    async def issue_login_token(
+        *,
+        db: AsyncSession,
+        response: Response,
+        user: User,
+        background_tasks: BackgroundTasks | None = None,
+        password_expire_days_remaining: int | None = None,
+        success_msg: str | None = None,
+    ) -> GetLoginToken:
+        """
+        鍩轰簬鐜版湁鐢ㄦ埛绛惧彂鐧诲綍浠ょ墝
+
+        :param db: 鏁版嵁搴撲細璇?
+        :param response: 鍝嶅簲瀵硅薄
+        :param user: 鐢ㄦ埛 ORM 瀵硅薄
+        :param background_tasks: 鍚庡彴浠诲姟
+        :param password_expire_days_remaining: 瀵嗙爜鍒版湡鍓╀綑澶╂暟
+        :param success_msg: 鐧诲綍鎴愬姛鏃ュ織
+        :return:
+        """
+        await user_dao.update_login_time(db, user.username)
+        await db.refresh(user)
+
+        access_token_data = await create_access_token(
+            user.id,
+            multi_login=user.is_multi_login,
+            username=user.username,
+            nickname=user.nickname,
+            last_login_time=timezone.to_str(user.last_login_time),
+            ip=ctx.ip,
+            os=ctx.os,
+            browser=ctx.browser,
+            device=ctx.device,
+        )
+        refresh_token_data = await create_refresh_token(
+            access_token_data.session_uuid,
+            user.id,
+            multi_login=user.is_multi_login,
+        )
+        response.set_cookie(
+            key=settings.COOKIE_REFRESH_TOKEN_KEY,
+            value=refresh_token_data.refresh_token,
+            max_age=settings.COOKIE_REFRESH_TOKEN_EXPIRE_SECONDS,
+            expires=timezone.to_utc(refresh_token_data.refresh_token_expire_time),
+            httponly=True,
+        )
+
+        if background_tasks is not None:
+            background_tasks.add_task(
+                login_log_service.create,
+                user_uuid=user.uuid,
+                username=user.username,
+                login_time=timezone.now(),
+                status=LoginLogStatusType.success.value,
+                msg=success_msg or t('success.login.success'),
+            )
+
+        return GetLoginToken(
+            access_token=access_token_data.access_token,
+            access_token_expire_time=access_token_data.access_token_expire_time,
+            session_uuid=access_token_data.session_uuid,
+            password_expire_days_remaining=password_expire_days_remaining,
+            user=user,  # type: ignore[arg-type]
+        )
+
+    @staticmethod
     async def user_verify(db: AsyncSession, username: str, password: str) -> tuple[User, int | None]:
         """
         验证用户名和密码
@@ -111,32 +177,6 @@ class AuthService:
                 await redis_client.delete(f'{settings.LOGIN_CAPTCHA_REDIS_PREFIX}:{obj.uuid}')
 
             user, days_remaining = await self.user_verify(db, obj.username, obj.password)
-            await user_dao.update_login_time(db, obj.username)
-            await db.refresh(user)
-            access_token_data = await create_access_token(
-                user.id,
-                multi_login=user.is_multi_login,
-                # extra info
-                username=user.username,
-                nickname=user.nickname,
-                last_login_time=timezone.to_str(user.last_login_time),
-                ip=ctx.ip,
-                os=ctx.os,
-                browser=ctx.browser,
-                device=ctx.device,
-            )
-            refresh_token_data = await create_refresh_token(
-                access_token_data.session_uuid,
-                user.id,
-                multi_login=user.is_multi_login,
-            )
-            response.set_cookie(
-                key=settings.COOKIE_REFRESH_TOKEN_KEY,
-                value=refresh_token_data.refresh_token,
-                max_age=settings.COOKIE_REFRESH_TOKEN_EXPIRE_SECONDS,
-                expires=timezone.to_utc(refresh_token_data.refresh_token_expire_time),
-                httponly=True,
-            )
         except errors.NotFoundError as e:
             log.error('登陆错误: 用户名不存在')
             raise errors.NotFoundError(msg=e.msg)
@@ -156,20 +196,12 @@ class AuthService:
             log.error(f'登陆错误: {e}')
             raise
         else:
-            background_tasks.add_task(
-                login_log_service.create,
-                user_uuid=user.uuid,
-                username=obj.username,
-                login_time=timezone.now(),
-                status=LoginLogStatusType.success.value,
-                msg=t('success.login.success'),
-            )
-            data = GetLoginToken(
-                access_token=access_token_data.access_token,
-                access_token_expire_time=access_token_data.access_token_expire_time,
-                session_uuid=access_token_data.session_uuid,
+            data = await self.issue_login_token(
+                db=db,
+                response=response,
+                user=user,
+                background_tasks=background_tasks,
                 password_expire_days_remaining=days_remaining,
-                user=user,  # type: ignore
             )
             return data
 

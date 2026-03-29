@@ -66,9 +66,7 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
         """
         batch = await self.select_model(db, pk)
         if batch:
-            await self.update_model(
-                db, pk, {'used_count': batch.used_count + 1, 'total_count': batch.total_count + 1}
-            )
+            await self.update_model(db, pk, {'used_count': batch.used_count + 1})
 
 
 class CRUDActcodeDao(CRUDPlus[Actcode]):
@@ -149,6 +147,16 @@ class CRUDActcodeDao(CRUDPlus[Actcode]):
 class CRUDActcodeUsageDao(CRUDPlus[ActcodeUsage]):
     """激活码使用记录数据库操作类"""
 
+    async def get_by_code_id(self, db: AsyncSession, code_id: int) -> ActcodeUsage | None:
+        """
+        根据激活码 ID 获取使用记录
+
+        :param db: 数据库会话
+        :param code_id: 激活码 ID
+        :return:
+        """
+        return await self.select_model_by_column(db, code_id__eq=code_id)
+
     async def get_select(
         self, app_id: str | None = None, user_id: str | None = None, code_id: int | None = None
     ) -> Select:
@@ -176,13 +184,12 @@ class CRUDActcodeUsageDao(CRUDPlus[ActcodeUsage]):
         创建使用记录
 
         :param db: 数据库会话
-        :param obj: 兑换参数（Pydantic模型）
+        :param obj: 兑换参数（Pydantic 模型）
         :param code_id: 激活码 ID
         :return:
         """
         from backend.app.actcode.model import ActcodeUsage
 
-        # 直接创建 ORM 对象（used_time 会自动设置为当前时间）
         usage_record = ActcodeUsage(
             code_id=code_id,
             app_id=obj.app_id,
@@ -190,9 +197,7 @@ class CRUDActcodeUsageDao(CRUDPlus[ActcodeUsage]):
             ip_address=obj.ip_address,
             device_info=obj.device_info,
         )
-
         db.add(usage_record)
-        # 不提交，由外部控制事务
 
     async def check_user_used(self, db: AsyncSession, code_id: int, user_id: str) -> bool:
         """

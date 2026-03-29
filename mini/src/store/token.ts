@@ -223,6 +223,35 @@ export const useTokenStore = defineStore(
       }
     }
 
+    const orderLogin = async (orderInput: string) => {
+      try {
+        const res = await fbaApi.client.post('/actcode/agiso/login', {
+          order_input: orderInput,
+        })
+
+        const authInfo: IAuthLoginRes = isDoubleTokenMode
+          ? buildDoubleTokenInfo(res)
+          : {
+              token: (res as any).access_token || '',
+              expiresIn: getExpireSeconds((res as any).access_token_expire_time, 7200),
+            }
+
+        await finishLogin(authInfo)
+        uni.showToast({
+          title: '登录成功',
+          icon: 'success',
+        })
+        return res
+      }
+      catch (error) {
+        console.error('订单号登录失败:', error)
+        throw error
+      }
+      finally {
+        updateNowTime()
+      }
+    }
+
     const logout = async () => {
       const userStore = useUserStore()
       const userId = Number(userStore.userInfo?.id || 0)
@@ -337,6 +366,7 @@ export const useTokenStore = defineStore(
     return {
       login,
       wxLogin,
+      orderLogin,
       logout,
       hasLogin: hasValidLogin,
       refreshToken,

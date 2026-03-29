@@ -27,7 +27,6 @@ class ChapterSchemaBase(SchemaBase):
     level: int = Field(default=1, ge=1, description='章节层级')
     sort_order: int = Field(default=0, ge=0, description='排序权重')
     parent_id: int | None = Field(None, ge=1, description='父级章节 ID')
-    is_trial: bool = Field(default=False, description='是否为试用章节')
     status: Literal[0, 1] = Field(default=1, description='状态: 0=禁用, 1=启用')
 
 

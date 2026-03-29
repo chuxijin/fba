@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 from typing import Any
 
 import bcrypt
@@ -25,8 +28,8 @@ from backend.app.admin.schema.user import (
     UpdateUserParam,
 )
 from backend.app.admin.utils.password_security import get_hash_password
-from backend.common.enums import StatusType
 from backend.common.exception import errors
+from backend.core.conf import settings
 from backend.plugin.core import check_plugin_installed
 from backend.utils.serializers import select_join_serialize
 from backend.utils.timezone import timezone
@@ -144,18 +147,7 @@ class CRUDUser(CRUDPlus[User]):
 
         dict_obj = obj.model_dump(exclude={'roles'})
         dict_obj.update({'salt': salt})
-        new_user = self.model(**dict_obj)
-        db.add(new_user)
-        await db.flush()
-
-        if obj.roles:
-            role_stmt = select(Role).where(Role.id.in_(obj.roles))
-            result = await db.execute(role_stmt)
-            roles = result.scalars().all()
-
-            user_role_data = [AddUserRoleParam(user_id=new_user.id, role_id=role.id).model_dump() for role in roles]
-            user_role_stmt = insert(user_role)
-            await db.execute(user_role_stmt, user_role_data)
+        await self.create_user_with_roles(db, user_data=dict_obj, role_ids=obj.roles)
 
     async def add_by_oauth2(self, db: AsyncSession, obj: AddOAuth2UserParam) -> None:
         """
@@ -172,23 +164,13 @@ class CRUDUser(CRUDPlus[User]):
         dict_obj.update(
             {
                 'password': get_hash_password(password, salt),
-                'is_staff': True,
                 'salt': salt,
             }
         )
 
-        new_user = self.model(**dict_obj)
-        db.add(new_user)
-        await db.flush()
+        await self.create_user_with_roles(db, user_data=dict_obj)
 
-        role_stmt = select(Role).where(Role.status == StatusType.enable)
-        result = await db.execute(role_stmt)
-        role = result.scalars().first()  # 默认绑定第一个角色
-        if role is None:
-            raise errors.NotFoundError(msg='未找到可用角色，请联系系统管理员')
 
-        user_role_stmt = insert(user_role).values(AddUserRoleParam(user_id=new_user.id, role_id=role.id).model_dump())
-        await db.execute(user_role_stmt)
 
     async def update(self, db: AsyncSession, user_id: int, obj: UpdateUserParam) -> int:
         """
@@ -207,14 +189,10 @@ class CRUDUser(CRUDPlus[User]):
         user_role_stmt = delete(user_role).where(user_role.c.user_id == user_id)
         await db.execute(user_role_stmt)
 
-        if role_ids:
-            role_stmt = select(Role).where(Role.id.in_(role_ids))
-            result = await db.execute(role_stmt)
-            roles = result.scalars().all()
-
-            user_role_data = [AddUserRoleParam(user_id=user_id, role_id=role.id).model_dump() for role in roles]
-            user_role_stmt = insert(user_role)
-            await db.execute(user_role_stmt, user_role_data)
+        bind_role_ids = list(role_ids)
+        if settings.USER_BASE_ROLE_ID not in bind_role_ids:
+            bind_role_ids.insert(0, settings.USER_BASE_ROLE_ID)
+        await self._bind_roles(db, user_id=user_id, role_ids=bind_role_ids)
 
         return count
 
@@ -397,6 +375,67 @@ class CRUDUser(CRUDPlus[User]):
                 'DataScope-m2m-DataRule:rules',
             ],
         )
+
+    async def _get_role_or_error(self, db: AsyncSession, role_id: int) -> Role:
+        """
+        获取角色
+
+        :param db: 数据库会话
+        :param role_id: 角色 ID
+        :return:
+        """
+        role = await db.get(Role, role_id)
+        if role is None:
+            raise errors.NotFoundError(msg=f'未找到可用角色，role_id={role_id}')
+        if role.status != 1:
+            raise errors.RequestError(msg=f'角色未启用，role_id={role_id}')
+        return role
+
+    async def _bind_roles(self, db: AsyncSession, *, user_id: int, role_ids: list[int]) -> None:
+        """
+        绑定用户角色
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param role_ids: 角色 ID 列表
+        :return:
+        """
+        unique_role_ids = list(dict.fromkeys(role_ids))
+        if not unique_role_ids:
+            return
+
+        for role_id in unique_role_ids:
+            await self._get_role_or_error(db, role_id)
+
+        user_role_data = [AddUserRoleParam(user_id=user_id, role_id=role_id).model_dump() for role_id in unique_role_ids]
+        await db.execute(insert(user_role), user_role_data)
+
+    async def create_user_with_roles(
+        self,
+        db: AsyncSession,
+        *,
+        user_data: dict[str, Any],
+        role_ids: list[int] | None = None,
+        ensure_base_role: bool = True,
+    ) -> User:
+        """
+        创建用户并绑定角色
+
+        :param db: 数据库会话
+        :param user_data: 用户字段
+        :param role_ids: 额外角色 ID 列表
+        :param ensure_base_role: 是否补齐基础角色
+        :return:
+        """
+        bind_role_ids = list(role_ids or [])
+        if ensure_base_role and settings.USER_BASE_ROLE_ID not in bind_role_ids:
+            bind_role_ids.insert(0, settings.USER_BASE_ROLE_ID)
+
+        new_user = self.model(**user_data)
+        db.add(new_user)
+        await db.flush()
+        await self._bind_roles(db, user_id=new_user.id, role_ids=bind_role_ids)
+        return new_user
 
 
 user_dao: CRUDUser = CRUDUser(User)

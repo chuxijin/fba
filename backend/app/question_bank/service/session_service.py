@@ -1463,6 +1463,16 @@ class SessionService:
         :param obj: 创建会话参数
         :return:
         """
+        if obj.chapter_id is not None:
+            from backend.app.question_bank.service.membership_service import membership_service
+
+            obj.bank_id = await membership_service.resolve_bank_context_for_chapter(
+                db=db,
+                chapter_id=obj.chapter_id,
+                bank_id=obj.bank_id,
+                user_id=user_id,
+            )
+
         source_snapshot = cls._build_session_source_snapshot(obj)
         source_key = cls._build_session_source_key(source_snapshot)
 
@@ -1513,6 +1523,14 @@ class SessionService:
             db=db,
             question_ids=question_ids,
             knowledge_point=obj.knowledge_point,
+        )
+
+        from backend.app.question_bank.service.membership_service import membership_service
+
+        await membership_service.verify_question_ids_access(
+            db=db,
+            user_id=user_id,
+            question_ids=question_ids,
         )
 
         if obj.shuffle:

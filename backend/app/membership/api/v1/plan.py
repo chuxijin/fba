@@ -15,23 +15,24 @@ from backend.common.response.response_schema import ResponseModel, ResponseSchem
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
-from backend.database.db import CurrentSession
+from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
 
 
 @router.get(
     '',
-    summary='分页查询会员计划列表',
+    summary='分页查询会员计划',
     dependencies=[DependsJwtAuth, DependsPagination],
 )
 async def get_plan_pagination(
     db: CurrentSession,
     name: Annotated[str | None, Query(description='计划名称')] = None,
     status: Annotated[int | None, Query(description='状态')] = None,
+    tier_id: Annotated[int | None, Query(description='会员等级 ID')] = None,
 ) -> ResponseSchemaModel[PageData[GetMembershipPlanDetail]]:
-    """分页查询会员计划列表"""
-    plan_select = await membership_plan_service.get_select(name=name, status=status)
+    """分页查询会员计划"""
+    plan_select = await membership_plan_service.get_select(name=name, status=status, tier_id=tier_id)
     page_data = await paging_data(db, plan_select, GetMembershipPlanDetail)
     return response_base.success(data=page_data)
 
@@ -59,7 +60,7 @@ async def get_plan_detail(
     ],
 )
 async def create_plan(
-    db: CurrentSession,
+    db: CurrentSessionTransaction,
     obj: CreateMembershipPlanParam,
 ) -> ResponseModel:
     """创建会员计划"""
@@ -76,7 +77,7 @@ async def create_plan(
     ],
 )
 async def update_plan(
-    db: CurrentSession,
+    db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='计划 ID')],
     obj: UpdateMembershipPlanParam,
 ) -> ResponseModel:
@@ -94,7 +95,7 @@ async def update_plan(
     ],
 )
 async def delete_plan(
-    db: CurrentSession,
+    db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='计划 ID')],
 ) -> ResponseModel:
     """删除会员计划"""

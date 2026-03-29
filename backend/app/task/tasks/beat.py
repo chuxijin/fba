@@ -1,84 +1,78 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from celery.schedules import schedule
 
 from backend.app.task.utils.tzcrontab import TzAwareCrontab
 
-# 参考：https://docs.celeryq.dev/en/stable/userguide/periodic-tasks.html
 LOCAL_BEAT_SCHEDULE = {
-    '测试同步任务': {
+    'task_demo_sync': {
         'task': 'task_demo',
         'schedule': schedule(30),
     },
-    '测试异步任务': {
+    'task_demo_async': {
         'task': 'task_demo_async',
         'schedule': TzAwareCrontab('1'),
     },
-    '测试传参任务': {
+    'task_demo_params': {
         'task': 'task_demo_params',
         'schedule': TzAwareCrontab('1'),
         'args': ['你好，'],
         'kwargs': {'world': '世界'},
     },
-    '清理操作日志': {
+    'delete_db_opera_log': {
         'task': 'delete_db_opera_log',
         'schedule': TzAwareCrontab('0', '0', day_of_week='6'),
     },
-    '清理登录日志': {
+    'delete_db_login_log': {
         'task': 'delete_db_login_log',
         'schedule': TzAwareCrontab('0', '0', day_of_month='15'),
     },
-    # 清理 Celery 任务结果 - 每天凌晨3点执行
-    '清理 Celery 任务结果': {
+    'delete_celery_task_results': {
         'task': 'delete_celery_task_results',
-        'schedule': TzAwareCrontab('0', '3'),  # 每天凌晨3点
+        'schedule': TzAwareCrontab('0', '3'),
     },
-    # 文件同步定时任务检查 - 每5分钟执行一次
-    '文件同步定时任务检查': {
+    'check_filesync_cron_tasks': {
         'task': 'check_and_execute_filesync_cron_tasks',
-        'schedule': TzAwareCrontab('*/5'),  # 每5分钟
+        'schedule': TzAwareCrontab('*/5'),
     },
-    # 刷新网盘用户信息 - 每天晚上10点执行
-    '刷新网盘用户信息': {
+    'refresh_all_valid_drive_users': {
         'task': 'refresh_all_valid_drive_users',
-        'schedule': TzAwareCrontab('0', '22'),  # 每天晚上10点
+        'schedule': TzAwareCrontab('0', '22'),
     },
-    # 检查并刷新过期资源 - 每天晚上11点执行
-    '检查并刷新过期资源': {
+    'check_and_refresh_expiring_resources': {
         'task': 'check_and_refresh_expiring_resources',
-        'schedule': TzAwareCrontab('0', '23'),  # 每天晚上11点
+        'schedule': TzAwareCrontab('0', '23'),
     },
-    # 清理本地失效分享 - 每天凌晨5点执行
-    '清理本地失效分享': {
+    'cleanup_expired_local_shares': {
         'task': 'cleanup_expired_local_shares',
-        'schedule': TzAwareCrontab('0', '5'),  # 每天凌晨5点
+        'schedule': TzAwareCrontab('0', '5'),
     },
-    # 刷新"定时更新"模式资源 - 每天早上7点执行
-    '刷新更新模式资源': {
+    'refresh_resources_with_update_mode': {
         'task': 'refresh_resources_with_update_mode',
-        'schedule': TzAwareCrontab('0', '7'),  # 每天早上7点
+        'schedule': TzAwareCrontab('0', '7'),
     },
-    # 清理30天以外的文件同步数据 - 每天凌晨2点执行
-    '清理过期文件同步数据': {
+    'delete_filesync_data_older_than_30_days': {
         'task': 'delete_filesync_data_older_than_30_days',
-        'schedule': TzAwareCrontab('0', '2'),  # 每天凌晨2点
+        'schedule': TzAwareCrontab('0', '2'),
     },
-    # 更新用户每日排名 - 每天凌晨0:05执行
-    '更新用户每日排名': {
+    'update_daily_user_ranks': {
         'task': 'update_daily_user_ranks',
-        'schedule': TzAwareCrontab('5', '0'),  # 每天凌晨0:05
+        'schedule': TzAwareCrontab('5', '0'),
     },
-    # 同步每日时政新闻 - 每天早上8点执行
-    '同步每日时政新闻': {
+    'sync_daily_news_to_shizhen': {
         'task': 'sync_daily_news_to_shizhen',
-        'schedule': TzAwareCrontab('0', '8'),  # 每天早上8点
+        'schedule': TzAwareCrontab('0', '8'),
     },
-    # 更新物品状态 - 每小时执行
-    '更新物品状态': {
+    'update_jia_item_status': {
         'task': 'update_jia_item_status',
-        'schedule': TzAwareCrontab('0'),  # 每小时整点
+        'schedule': TzAwareCrontab('0'),
     },
-    # 检查过期用户角色 - 每小时执行
-    '检查过期用户角色': {
+    'check_expired_user_roles': {
         'task': 'check_expired_user_roles',
-        'schedule': TzAwareCrontab('30'),  # 每小时30分
+        'schedule': TzAwareCrontab('30'),
+    },
+    'check_expired_memberships': {
+        'task': 'check_expired_memberships',
+        'schedule': TzAwareCrontab('35'),
     },
 }

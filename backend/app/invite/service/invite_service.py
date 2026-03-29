@@ -6,7 +6,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.invite.crud.crud_invite import invite_code_dao, invite_relation_dao, invite_reward_rule_dao
+from backend.app.invite.crud.crud_invite import (
+    invite_code_dao,
+    invite_relation_dao,
+    invite_reward_rule_dao,
+)
 from backend.app.invite.model import InviteRelation
 from backend.app.invite.schema.invite import (
     AcceptInviteParam,
@@ -18,7 +22,6 @@ from backend.app.invite.schema.invite import (
     UpdateRewardRuleParam,
 )
 from backend.common.exception import errors
-from backend.common.log import log
 from backend.common.pagination import paging_data
 from backend.common.reward import dispatch_reward
 from backend.utils.timezone import timezone
@@ -35,11 +38,39 @@ class InviteService:
         :param length: 邀请码长度
         :return:
         """
-        # 排除易混淆字符
         charset = string.ascii_uppercase + string.digits
         for char in 'O0I1':
             charset = charset.replace(char, '')
         return ''.join(secrets.choice(charset) for _ in range(length))
+
+    @staticmethod
+    def _build_reward_payload(
+        *,
+        reward_data: dict | None,
+        relation_id: int,
+        reward_target: str,
+        inviter_user_id: int,
+        invitee_user_id: int,
+    ) -> dict:
+        """
+        构建奖励发放参数
+
+        :param reward_data: 原始奖励数据
+        :param relation_id: 邀请关系 ID
+        :param reward_target: 奖励对象
+        :param inviter_user_id: 邀请人用户 ID
+        :param invitee_user_id: 被邀请人用户 ID
+        :return:
+        """
+        payload = dict(reward_data or {})
+        payload['source'] = 'invite'
+        payload['source_key'] = f'invite:{relation_id}:{reward_target}'
+        payload.setdefault(
+            'source_detail',
+            f'invite_relation={relation_id},inviter={inviter_user_id},invitee={invitee_user_id}',
+        )
+        payload.setdefault('remark', '邀请奖励')
+        return payload
 
     @staticmethod
     async def create_code(*, db: AsyncSession, user_id: int, obj: CreateInviteCodeParam) -> GetInviteCodeDetail:
@@ -51,13 +82,11 @@ class InviteService:
         :param obj: 创建参数
         :return:
         """
-        # 校验奖励规则是否存在
         if obj.reward_rule_id:
             rule = await invite_reward_rule_dao.select_model(db, obj.reward_rule_id)
             if not rule:
                 raise errors.NotFoundError(msg='奖励规则不存在')
 
-        # 生成唯一邀请码（重试机制）
         for _ in range(10):
             code = InviteService._generate_invite_code()
             existing = await invite_code_dao.get_by_code(db, code)
@@ -76,10 +105,13 @@ class InviteService:
 
     @staticmethod
     async def get_my_code(
-        *, db: AsyncSession, user_id: int, campaign_id: int | None = None
+        *,
+        db: AsyncSession,
+        user_id: int,
+        campaign_id: int | None = None,
     ) -> GetInviteCodeDetail | None:
         """
-        获取用户的邀请码（如果不存在则自动创建默认邀请码）
+        获取当前用户邀请码
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -90,7 +122,6 @@ class InviteService:
         if invite_code:
             return GetInviteCodeDetail.model_validate(invite_code)
 
-        # 自动创建默认邀请码
         obj = CreateInviteCodeParam(campaign_id=campaign_id)
         return await InviteService.create_code(db=db, user_id=user_id, obj=obj)
 
@@ -124,7 +155,6 @@ class InviteService:
         :param obj: 接受邀请参数
         :return:
         """
-        # 查找邀请码
         invite_code = await invite_code_dao.get_by_code(db, obj.code)
         if not invite_code:
             return AcceptInviteResult(success=False, message='邀请码不存在')
@@ -132,38 +162,31 @@ class InviteService:
         if invite_code.status != 1:
             return AcceptInviteResult(success=False, message='邀请码已停用')
 
-        # 不能邀请自己
         if invite_code.user_id == invitee_user_id:
             return AcceptInviteResult(success=False, message='不能使用自己的邀请码')
 
-        # 检查是否已被邀请过
         already_invited = await invite_relation_dao.check_already_invited(db, invitee_user_id)
         if already_invited:
-            return AcceptInviteResult(success=False, message='您已接受过邀请')
+            return AcceptInviteResult(success=False, message='您已接受过邀请码')
 
-        # 检查使用次数限制
         if invite_code.max_uses > 0 and invite_code.used_count >= invite_code.max_uses:
             return AcceptInviteResult(success=False, message='该邀请码已达使用上限')
 
-        # 校验奖励规则
         rule = None
         if invite_code.reward_rule_id:
             rule = await invite_reward_rule_dao.select_model(db, invite_code.reward_rule_id)
             if rule and rule.status == 1:
-                # 校验规则有效期
                 now = timezone.now()
                 if rule.valid_from and now < rule.valid_from:
                     return AcceptInviteResult(success=False, message='邀请活动尚未开始')
                 if rule.valid_to and now > rule.valid_to:
                     return AcceptInviteResult(success=False, message='邀请活动已结束')
 
-                # 校验邀请人邀请上限
                 if rule.max_invites_per_user > 0:
                     invite_count = await invite_relation_dao.get_invite_count(db, invite_code.user_id)
                     if invite_count >= rule.max_invites_per_user:
                         return AcceptInviteResult(success=False, message='邀请人已达邀请上限')
 
-        # 创建邀请关系
         relation = InviteRelation(
             invite_code_id=invite_code.id,
             inviter_user_id=invite_code.user_id,
@@ -172,28 +195,37 @@ class InviteService:
             ip_address=obj.ip_address,
         )
         db.add(relation)
+        await db.flush()
 
-        # 更新邀请码使用次数
         await invite_code_dao.increment_used_count(db, invite_code.id)
 
-        # 发放奖励
         if rule and rule.status == 1:
-            # 发放邀请人奖励
             inviter_ok = await dispatch_reward(
                 db=db,
                 user_id=invite_code.user_id,
                 reward_type=rule.inviter_reward_type,
-                reward_data=rule.inviter_reward_data,
+                reward_data=InviteService._build_reward_payload(
+                    reward_data=rule.inviter_reward_data,
+                    relation_id=relation.id,
+                    reward_target='inviter',
+                    inviter_user_id=invite_code.user_id,
+                    invitee_user_id=invitee_user_id,
+                ),
             )
             relation.inviter_reward_status = 1 if inviter_ok else 2
 
-            # 发放被邀请人奖励（如果配置了）
             if rule.invitee_reward_type and rule.invitee_reward_data:
                 invitee_ok = await dispatch_reward(
                     db=db,
                     user_id=invitee_user_id,
                     reward_type=rule.invitee_reward_type,
-                    reward_data=rule.invitee_reward_data,
+                    reward_data=InviteService._build_reward_payload(
+                        reward_data=rule.invitee_reward_data,
+                        relation_id=relation.id,
+                        reward_target='invitee',
+                        inviter_user_id=invite_code.user_id,
+                        invitee_user_id=invitee_user_id,
+                    ),
                 )
                 relation.invitee_reward_status = 1 if invitee_ok else 2
 
@@ -202,7 +234,10 @@ class InviteService:
 
     @staticmethod
     async def get_invite_list(
-        *, db: AsyncSession, inviter_user_id: int | None = None, invitee_user_id: int | None = None
+        *,
+        db: AsyncSession,
+        inviter_user_id: int | None = None,
+        invitee_user_id: int | None = None,
     ) -> dict[str, Any]:
         """
         获取邀请关系列表
@@ -213,7 +248,8 @@ class InviteService:
         :return:
         """
         relation_select = await invite_relation_dao.get_select(
-            inviter_user_id=inviter_user_id, invitee_user_id=invitee_user_id
+            inviter_user_id=inviter_user_id,
+            invitee_user_id=invitee_user_id,
         )
         return await paging_data(db, relation_select)
 
@@ -228,8 +264,6 @@ class InviteService:
         """
         invite_count = await invite_relation_dao.get_invite_count(db, user_id)
         return {'total_invites': invite_count}
-
-    # ============ 奖励规则管理 ============
 
     @staticmethod
     async def create_reward_rule(*, db: AsyncSession, obj: CreateRewardRuleParam) -> GetRewardRuleDetail:
@@ -258,8 +292,7 @@ class InviteService:
         rule = await invite_reward_rule_dao.select_model(db, pk)
         if not rule:
             raise errors.NotFoundError(msg='奖励规则不存在')
-        count = await invite_reward_rule_dao.update_model(db, pk, obj)
-        return count
+        return await invite_reward_rule_dao.update_model(db, pk, obj)
 
     @staticmethod
     async def get_reward_rule(*, db: AsyncSession, pk: int) -> GetRewardRuleDetail:

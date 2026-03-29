@@ -100,8 +100,13 @@ async def get_question_ids(
     knowledge_point: str | None = None,
 ) -> ResponseSchemaModel[list[int]]:
     """按分组条件获取有笔记的题目 ID 列表"""
-    if bank_id is not None and chapter_id is not None:
-        await membership_service.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
+    if chapter_id is not None:
+        bank_id = await membership_service.resolve_bank_context_for_chapter(
+            db=db,
+            chapter_id=chapter_id,
+            bank_id=bank_id,
+            user_id=request.user.id,
+        )
 
     ids = await question_note_dao.get_question_ids(
         db=db, user_id=request.user.id, bank_id=bank_id, chapter_id=chapter_id, knowledge_point=knowledge_point,

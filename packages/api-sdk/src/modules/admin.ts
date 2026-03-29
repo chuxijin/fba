@@ -84,8 +84,16 @@ export function createAdminModule(client: ApiClient): AdminModule {
     auth: {
       getCaptcha() { return request.get<AdminCaptchaResult>('/auth/captcha'); },
       login(data) { return request.post<AdminLoginToken>('/auth/login', data); },
-      refresh() { return request.post<AdminRefreshTokenResult>('/auth/refresh'); },
-      logout() { return request.post('/auth/logout'); },
+      refresh() {
+        return request.post<AdminRefreshTokenResult>('/auth/refresh', undefined, {
+          headers: { Authorization: '' },
+        });
+      },
+      logout() {
+        return request.post('/auth/logout', undefined, {
+          headers: { Authorization: '' },
+        });
+      },
       getCodes() { return request.get<string[]>('/auth/codes'); },
       loginSwagger(headers) {
         return request.raw<AdminSwaggerToken>({ method: 'POST', url: '/auth/login/swagger', headers });
@@ -142,6 +150,7 @@ export function createAdminModule(client: ApiClient): AdminModule {
         getTree(params) {
           return request.get<GetCategoryTree[]>('/sys/categories/tree', {
             params: params as Record<string, unknown>,
+            headers: { Authorization: '' },
           });
         },
         getList(params) {

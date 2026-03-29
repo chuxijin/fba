@@ -103,11 +103,14 @@ class Settings(BaseSettings):
     TOKEN_REFRESH_REDIS_PREFIX: str = 'fba:refresh_token'
     TOKEN_REQUEST_PATH_EXCLUDE: list[str] = [  # JWT / RBAC 路由白名单
         f'{FASTAPI_API_V1_PATH}/auth/login',
+        f'{FASTAPI_API_V1_PATH}/auth/refresh',
+        f'{FASTAPI_API_V1_PATH}/auth/logout',
         f'{FASTAPI_API_V1_PATH}/auth/wx-login',  # 统一微信登录
         f'{FASTAPI_API_V1_PATH}/auth/test-login',  # 统一测试登录
+        f'{FASTAPI_API_V1_PATH}/sys/categories/tree',  # 系统分类树（公开接口）
         f'{FASTAPI_API_V1_PATH}/qbank/banks',  # 题库列表（公开接口）
         f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',  # 百度网盘 OAuth 回调
-        f'{FASTAPI_API_V1_PATH}/actcode/agiso/activate',  # 订单号激活账户
+        f'{FASTAPI_API_V1_PATH}/actcode/agiso/login',  # 订单号直接登录
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/verify',  # 验证订单号
         f'{FASTAPI_API_V1_PATH}/mall/pay/notify',  # 微信支付回调
         f'{FASTAPI_API_V1_PATH}/mall/pay/refund-notify',  # 微信退款回调
@@ -118,6 +121,7 @@ class Settings(BaseSettings):
     ]
 
     # 用户安全
+    USER_BASE_ROLE_ID: int = 1
     USER_LOCK_REDIS_PREFIX: str = 'fba:user:lock'
     USER_LOCK_THRESHOLD: int = 5  # 用户密码错误锁定阈值，0 表示禁用锁定
     USER_LOCK_SECONDS: int = 60 * 5  # 5 分钟

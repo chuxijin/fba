@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.admin.model import User
+from backend.app.admin.crud.crud_user import user_dao
 from backend.app.question_bank.model import UserAccount
 
 
@@ -91,14 +91,15 @@ class CRUDUserAccount(CRUDPlus[UserAccount]):
             username = f'wx_{uuid.uuid4().hex[:12]}'
 
         # 1. 先创建 sys_user 记录
-        sys_user = User(
-            username=username,
-            nickname=nickname,
-            avatar=avatar,
-            status=1,
+        sys_user = await user_dao.create_user_with_roles(
+            db,
+            user_data={
+                'username': username,
+                'nickname': nickname,
+                'avatar': avatar,
+                'status': 1,
+            },
         )
-        db.add(sys_user)
-        await db.flush()
 
         # 2. 再创建 study_user_account 关联记录
         account = UserAccount(

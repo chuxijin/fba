@@ -536,7 +536,6 @@ async def ensure_bank(
             scene_mask=1,
             parent_id=parent_id,
             status=1,
-            scope=1,
             q_count_cache=0,
             total_score_cache=Decimal("0"),
             buy_count=0,

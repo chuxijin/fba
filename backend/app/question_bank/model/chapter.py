@@ -49,7 +49,6 @@ class QuestionChapter(Base):
     level: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='章节层级')
     sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序权重')
     q_count_cache: Mapped[int] = mapped_column(sa.Integer, default=0, comment='缓存题量')
-    is_trial: Mapped[bool] = mapped_column(sa.Boolean, default=False, comment='是否为试用章节')
     status: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='状态')
 
     bank: Mapped['QuestionBank'] = relationship(init=False, back_populates='chapters', lazy='selectin')

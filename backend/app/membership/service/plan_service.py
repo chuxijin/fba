@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_role import role_dao
 from backend.app.membership.crud.crud_plan import membership_plan_dao
+from backend.app.membership.crud.crud_tier import membership_tier_dao
 from backend.app.membership.model.plan import MembershipPlan
 from backend.app.membership.schema.plan import CreateMembershipPlanParam, UpdateMembershipPlanParam
 from backend.common.exception import errors
@@ -20,15 +21,17 @@ class MembershipPlanService:
         *,
         name: str | None = None,
         status: int | None = None,
+        tier_id: int | None = None,
     ) -> Select:
         """
         获取会员计划分页查询语句
 
         :param name: 计划名称
         :param status: 状态
+        :param tier_id: 会员等级 ID
         :return:
         """
-        return await membership_plan_dao.get_select(name=name, status=status)
+        return await membership_plan_dao.get_select(name=name, status=status, tier_id=tier_id)
 
     @staticmethod
     async def get(db: AsyncSession, *, pk: int) -> MembershipPlan:
@@ -57,7 +60,12 @@ class MembershipPlanService:
         if existing:
             raise errors.ConflictError(msg='计划名称已存在')
 
-        # 校验 role_id 有效性
+        tier = await membership_tier_dao.select_model(db, obj.tier_id)
+        if not tier:
+            raise errors.NotFoundError(msg='会员等级不存在')
+        if tier.status != 1:
+            raise errors.RequestError(msg='会员等级已停用')
+
         role = await role_dao.get(db, obj.role_id)
         if not role:
             raise errors.NotFoundError(msg='关联角色不存在')
@@ -83,7 +91,14 @@ class MembershipPlanService:
             if existing:
                 raise errors.ConflictError(msg='计划名称已存在')
 
-        if obj.role_id:
+        if obj.tier_id is not None:
+            tier = await membership_tier_dao.select_model(db, obj.tier_id)
+            if not tier:
+                raise errors.NotFoundError(msg='会员等级不存在')
+            if tier.status != 1:
+                raise errors.RequestError(msg='会员等级已停用')
+
+        if obj.role_id is not None:
             role = await role_dao.get(db, obj.role_id)
             if not role:
                 raise errors.NotFoundError(msg='关联角色不存在')
@@ -106,7 +121,12 @@ class MembershipPlanService:
 
     @staticmethod
     async def get_active_plans(db: AsyncSession) -> Sequence[MembershipPlan]:
-        """获取所有上架的计划"""
+        """
+        获取上架计划
+
+        :param db: 数据库会话
+        :return:
+        """
         return await membership_plan_dao.get_active_plans(db)
 
 

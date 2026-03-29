@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Path, Query, Request
 
 from backend.app.question_bank.schema.chapter import (
     CreateChapterParam,
@@ -26,9 +26,23 @@ async def get_chapter(
     request: Request,
     db: CurrentSession,
     pk: Annotated[int, Path(description='章节 ID')],
+    bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
 ) -> ResponseSchemaModel[GetChapterDetail]:
-    """👤 客户接口 - 需要登录且开通会员后查看章节详情"""
-    await membership_service.verify_chapter_access(db=db, user_id=request.user.id, chapter_id=pk)
+    """
+    客户端接口 - 登录后查看章节详情
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param pk: 章节 ID
+    :param bank_id: 题库 ID
+    :return:
+    """
+    await membership_service.resolve_bank_context_for_chapter(
+        db=db,
+        chapter_id=pk,
+        bank_id=bank_id,
+        user_id=request.user.id,
+    )
     data = await chapter_service.get(db=db, pk=pk)
     return response_base.success(data=data)
 
@@ -39,7 +53,7 @@ async def get_chapter_tree_customer(
     bank_id: Annotated[int, Query(description='题库 ID')],
 ) -> ResponseSchemaModel[list[GetChapterTree]]:
     """
-    👤 客户端接口 - 查看题库章节树（公开）
+    客户端接口 - 查看题库章节树
 
     :param db: 数据库会话
     :param bank_id: 题库 ID
@@ -54,14 +68,26 @@ async def get_chapter_tree(
     db: CurrentSession,
     bank_id: Annotated[int, Query(description='题库 ID')],
 ) -> ResponseSchemaModel[list[GetChapterTree]]:
-    """🔐 管理员接口 - 管理员可以查看章节树"""
+    """
+    管理端接口 - 获取章节树
+
+    :param db: 数据库会话
+    :param bank_id: 题库 ID
+    :return:
+    """
     tree = await chapter_service.get_tree(db=db, bank_id=bank_id)
     return response_base.success(data=tree)
 
 
 @router.post('', summary='创建章节', name='qbank_create_chapter', dependencies=[DependsRBAC])
 async def create_chapter(db: CurrentSessionTransaction, obj: CreateChapterParam) -> ResponseModel:
-    """🔐 管理员接口 - 只有管理员可以创建章节"""
+    """
+    管理端接口 - 创建章节
+
+    :param db: 数据库会话
+    :param obj: 创建参数
+    :return:
+    """
     await chapter_service.create(db=db, obj=obj)
     return response_base.success()
 
@@ -72,7 +98,14 @@ async def update_chapter(
     pk: Annotated[int, Path(description='章节 ID')],
     obj: UpdateChapterParam,
 ) -> ResponseModel:
-    """🔐 管理员接口 - 只有管理员可以更新章节"""
+    """
+    管理端接口 - 更新章节
+
+    :param db: 数据库会话
+    :param pk: 章节 ID
+    :param obj: 更新参数
+    :return:
+    """
     count = await chapter_service.update(db=db, pk=pk, obj=obj)
     if count > 0:
         return response_base.success()
@@ -81,7 +114,13 @@ async def update_chapter(
 
 @router.delete('', summary='删除章节', name='qbank_delete_chapter', dependencies=[DependsRBAC])
 async def delete_chapter(db: CurrentSessionTransaction, obj: DeleteChapterParam) -> ResponseModel:
-    """🔐 管理员接口 - 只有管理员可以删除章节"""
+    """
+    管理端接口 - 删除章节
+
+    :param db: 数据库会话
+    :param obj: 删除参数
+    :return:
+    """
     count = await chapter_service.delete(db=db, obj=obj)
     if count > 0:
         return response_base.success()

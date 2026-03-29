@@ -11,7 +11,7 @@ class CreateMembershipPlanParam(SchemaBase):
     """创建会员计划"""
 
     name: str = Field(description='计划名称')
-    level: int = Field(default=0, ge=0, le=3, description='等级层次(0免费 1基础 2高级 3至尊)')
+    tier_id: int = Field(description='会员等级 ID')
     role_id: int = Field(description='关联角色 ID')
     duration_days: int = Field(gt=0, description='默认时长天数')
     price: int = Field(default=0, ge=0, description='价格(分)')
@@ -25,7 +25,7 @@ class UpdateMembershipPlanParam(SchemaBase):
     """更新会员计划"""
 
     name: str | None = Field(default=None, description='计划名称')
-    level: int | None = Field(default=None, ge=0, le=3, description='等级层次(0免费 1基础 2高级 3至尊)')
+    tier_id: int | None = Field(default=None, description='会员等级 ID')
     role_id: int | None = Field(default=None, description='关联角色 ID')
     duration_days: int | None = Field(default=None, gt=0, description='默认时长天数')
     price: int | None = Field(default=None, ge=0, description='价格(分)')
@@ -42,7 +42,7 @@ class GetMembershipPlanDetail(SchemaBase):
 
     id: int = Field(description='计划 ID')
     name: str = Field(description='计划名称')
-    level: int = Field(description='等级层次')
+    tier_id: int = Field(description='会员等级 ID')
     role_id: int = Field(description='关联角色 ID')
     duration_days: int = Field(description='默认时长天数')
     price: int = Field(description='价格(分)')
@@ -61,7 +61,7 @@ class GetMembershipPlanBrief(SchemaBase):
 
     id: int = Field(description='计划 ID')
     name: str = Field(description='计划名称')
-    level: int = Field(description='等级层次')
+    tier_id: int = Field(description='会员等级 ID')
     duration_days: int = Field(description='默认时长天数')
     price: int = Field(description='价格(分)')
     original_price: int = Field(description='原价(分)')

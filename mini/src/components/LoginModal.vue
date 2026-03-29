@@ -45,6 +45,16 @@ function closeModal() {
   emit('update:modelValue', false)
 }
 
+function getErrorMessage(error: any, fallback: string) {
+  return (
+    error?.response?.data?.msg
+    || error?.response?.data?.message
+    || error?.msg
+    || error?.message
+    || fallback
+  )
+}
+
 function handleLoginSuccess() {
   closeModal()
   emit('success')
@@ -222,18 +232,39 @@ async function confirmAccountLogin() {
   }
 }
 
-function confirmOrderLogin() {
-  if (!orderForm.value.orderNo.trim()) {
+async function confirmOrderLogin() {
+  const orderNo = orderForm.value.orderNo.trim()
+
+  if (!orderNo) {
     return uni.showToast({
       title: '请输入订单号',
       icon: 'none',
     })
   }
 
-  uni.showToast({
-    title: '订单登录下一阶段再接入',
-    icon: 'none',
+  uni.showLoading({
+    title: '验证订单中...',
+    mask: true,
   })
+
+  try {
+    await fbaApi.client.post('/actcode/agiso/verify', {
+      order_input: orderNo,
+    })
+    await tokenStore.orderLogin(orderNo)
+    orderForm.value.orderNo = ''
+    handleLoginSuccess()
+  }
+  catch (error) {
+    console.error('Order Login Error:', error)
+    uni.showToast({
+      title: getErrorMessage(error, '订单号登录失败，请重试'),
+      icon: 'none',
+    })
+  }
+  finally {
+    uni.hideLoading()
+  }
 }
 
 function cancelLogin() {

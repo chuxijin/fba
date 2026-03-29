@@ -296,11 +296,11 @@ def run(host: str, port: int, reload: bool, workers: int) -> None:  # noqa: FBT0
         panel_content.append('无', style='white')
 
     if settings.ENVIRONMENT == 'dev':
-        panel_content.append(f'\n\n📖 Swagger 文档: {docs_url}', style='bold magenta')
-        panel_content.append(f'\n📚 Redoc   文档: {redoc_url}', style='bold magenta')
-        panel_content.append(f'\n📡 OpenAPI JSON: {openapi_url}', style='bold magenta')
+        panel_content.append(f'\n\nSwagger 文档: {docs_url}', style='bold magenta')
+        panel_content.append(f'\nRedoc   文档: {redoc_url}', style='bold magenta')
+        panel_content.append(f'\nOpenAPI JSON: {openapi_url}', style='bold magenta')
 
-    panel_content.append('\n🌐 架构官方文档: ', style='bold magenta')
+    panel_content.append('\n架构官方文档: ', style='bold magenta')
     panel_content.append('https://fastapi-practices.github.io/fastapi_best_architecture_docs/')
 
     console.print(Panel(panel_content, title=f'fba (v{__version__})', border_style='purple', padding=(1, 2)))

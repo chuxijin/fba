@@ -35,6 +35,11 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
+def _should_bypass_membership_checks(request: Request) -> bool:
+    """判断是否允许跳过题库会员校验"""
+    return bool(getattr(request.user, 'is_superuser', False))
+
+
 # ============ 批量查询接口（必须在 /{pk} 之前） ===========
 
 
@@ -50,6 +55,13 @@ async def batch_check_favorites(
     question_ids: Annotated[str, Query(description='题目 ID 列表，逗号分隔')],
 ) -> ResponseSchemaModel[dict[int, bool]]:
     """批量检查收藏状态"""
+    if not _should_bypass_membership_checks(request):
+        await membership_service.verify_question_ids_access(
+            db=db,
+            user_id=request.user.id,
+            question_ids=question_service.parse_int_csv(question_ids),
+        )
+
     status_map = await favorite_service.batch_check_favorites_from_string(
         db=db, user_id=request.user.id, question_ids_str=question_ids
     )
@@ -68,14 +80,27 @@ async def batch_get_notes(
     question_ids: Annotated[str, Query(description='题目 ID 列表，逗号分隔')],
 ) -> ResponseSchemaModel[dict[int, GetQuestionNoteDetail | None]]:
     """批量查询笔记"""
+    if not _should_bypass_membership_checks(request):
+        await membership_service.verify_question_ids_access(
+            db=db,
+            user_id=request.user.id,
+            question_ids=question_service.parse_int_csv(question_ids),
+        )
+
     note_map = await note_service.batch_get_notes_from_string(
         db=db, user_id=request.user.id, question_ids_str=question_ids
     )
     return response_base.success(data=note_map)
 
 
-@router.get('/collections', summary='动态获取题目合集', name='qbank_get_dynamic_collections')
+@router.get(
+    '/collections',
+    summary='动态获取题目合集',
+    name='qbank_get_dynamic_collections',
+    dependencies=[DependsJwtAuth],
+)
 async def get_dynamic_collections(
+    request: Request,
     db: CurrentSession,
     cat_id: Annotated[int | None, Query(description='分类 ID')] = None,
     region: Annotated[str | None, Query(description='地区关键字')] = None,
@@ -91,12 +116,34 @@ async def get_dynamic_collections(
     if year_start is not None and year_end is not None and year_start > year_end:
         year_start, year_end = year_end, year_start
 
+    knowledge_id_list = question_service.parse_int_csv(knowledge_ids)
+    knowledge_name_list = question_service.parse_text_csv(knowledge_names)
+
+    if not _should_bypass_membership_checks(request):
+        await membership_service.verify_filter_access(
+            db=db,
+            user_id=request.user.id,
+            cat_id=cat_id,
+            region=region,
+            year_start=year_start,
+            year_end=year_end,
+            stem_keyword=stem_keyword,
+            option_keyword=option_keyword,
+            analysis_keyword=analysis_keyword,
+        )
+        await membership_service.verify_knowledge_access(
+            db=db,
+            user_id=request.user.id,
+            knowledge_ids=knowledge_id_list,
+            knowledge_names=knowledge_name_list,
+        )
+
     data = await question_service.get_dynamic_collections(
         db=db,
         cat_id=cat_id,
         region=region,
-        knowledge_ids=question_service.parse_int_csv(knowledge_ids),
-        knowledge_names=question_service.parse_text_csv(knowledge_names),
+        knowledge_ids=knowledge_id_list,
+        knowledge_names=knowledge_name_list,
         stem_keyword=stem_keyword,
         option_keyword=option_keyword,
         analysis_keyword=analysis_keyword,
@@ -118,6 +165,7 @@ async def get_session_favorites(
     session_id: Annotated[int, Path(description='会话 ID')],
 ) -> ResponseSchemaModel[dict[int, bool]]:
     """按会话批量检查收藏状态"""
+    await membership_service.verify_session_access(db=db, user_id=request.user.id, session_id=session_id)
     status_map = await favorite_service.batch_check_favorites_by_session(
         db=db,
         user_id=request.user.id,
@@ -138,6 +186,7 @@ async def get_session_notes(
     session_id: Annotated[int, Path(description='会话 ID')],
 ) -> ResponseSchemaModel[dict[int, GetQuestionNoteDetail]]:
     """按会话批量查询笔记"""
+    await membership_service.verify_session_access(db=db, user_id=request.user.id, session_id=session_id)
     note_map = await note_service.batch_get_notes_by_session(
         db=db,
         user_id=request.user.id,
@@ -161,9 +210,7 @@ async def get_question(
     - 客户：需要会员权限验证
     - 管理员：直接查看，无需会员验证
     """
-    user_type = getattr(request.user, 'user_type', 'admin')
-
-    if user_type == 'customer':
+    if not _should_bypass_membership_checks(request):
         await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
 
     data = await question_service.get(db=db, pk=pk)
@@ -200,26 +247,30 @@ async def get_question_list(
     - 支持通过 ids 参数批量获取指定题目
     - include_answer=True 时返回答案和解析
     """
-    user_type = getattr(request.user, 'user_type', 'admin')
+    allow_admin_read = _should_bypass_membership_checks(request)
 
     # 解析 ids 参数
     question_ids = None
     if ids:
         question_ids = [int(id.strip()) for id in ids.split(',') if id.strip()]
 
-    # 客户需要验证会员权限（按 ids 查询时跳过权限验证）
-    if user_type == 'customer' and not question_ids:
-        if bank_id and chapter_id:
-            await membership_service.verify_bank_chapter_access(
+    if chapter_id is not None:
+        bank_id = await membership_service.resolve_bank_context_for_chapter(
+            db=db,
+            chapter_id=chapter_id,
+            bank_id=bank_id,
+            user_id=None if allow_admin_read else request.user.id,
+        )
+
+    if not allow_admin_read:
+        if question_ids:
+            await membership_service.verify_question_ids_access(
                 db=db,
                 user_id=request.user.id,
-                bank_id=bank_id,
-                chapter_id=chapter_id,
+                question_ids=question_ids,
             )
         elif bank_id:
             await membership_service.verify_bank_list_access(db=db, user_id=request.user.id, bank_id=bank_id)
-        elif chapter_id:
-            await membership_service.verify_chapter_access(db=db, user_id=request.user.id, chapter_id=chapter_id)
 
     data = await question_service.get_list(
         db=db,
@@ -232,8 +283,8 @@ async def get_question_list(
         is_active=is_active,
         review_status=review_status,
         keyword=keyword,
-        page=page if user_type == 'admin' else None,
-        size=size if user_type == 'admin' else None,
+        page=page if allow_admin_read else None,
+        size=size if allow_admin_read else None,
         include_analysis=include_answer,
     )
 
@@ -305,9 +356,7 @@ async def get_question_analysis(
     - 客户：需要会员权限验证，自动增加查看次数（需要写入，因此使用 Transaction）
     - 管理员：直接查看，不增加查看次数
     """
-    user_type = getattr(request.user, 'user_type', 'admin')
-
-    if user_type == 'customer':
+    if not _should_bypass_membership_checks(request):
         await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
         increment_view = True
     else:
@@ -330,6 +379,9 @@ async def get_question_solution(
     user_answer: Annotated[str | None, Query(description='用户答案（用于判题）')] = None,
 ) -> ResponseSchemaModel[GetQuestionSolution]:
     """获取题目答案和解析（练题模式专用）"""
+    if not _should_bypass_membership_checks(request):
+        await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
+
     data = await question_service.get_solution(db=db, question_id=pk, user_answer=user_answer)
     return response_base.success(data=data)
 
@@ -366,6 +418,9 @@ async def get_question_statistics(
     pk: Annotated[int, Path(description='题目 ID')],
 ) -> ResponseSchemaModel[GetQuestionStatisticsDetail]:
     """获取题目统计"""
+    if not _should_bypass_membership_checks(request):
+        await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
+
     data = await question_service.get_statistics(db=db, question_id=pk)
     return response_base.success(data=data)
 
@@ -384,6 +439,9 @@ async def get_question_option_stats(
     chapter_id: Annotated[int | None, Query(description='章节 ID')] = None,
 ) -> ResponseSchemaModel[list[QuestionOptionStatsItem]]:
     """获取题目各挂载点下的选项统计"""
+    if not _should_bypass_membership_checks(request):
+        await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
+
     data = await question_service.get_option_stats(
         db=db,
         question_id=pk,

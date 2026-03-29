@@ -39,7 +39,6 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         cat_id: int | None = None,
         cat_ids: list[int] | None = None,
         status: int | None = None,
-        scope: int | None = None,
         keyword: str | None = None,
         bank_type: int | None = None,
         parent_id: int | None = None,
@@ -51,7 +50,6 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         :param cat_id: 分类 ID（精确匹配）
         :param cat_ids: 分类 ID 列表（包含子分类，优先级高于 cat_id）
         :param status: 题库状态
-        :param scope: 可见范围
         :param keyword: 关键字搜索
         :param bank_type: 内容类型
         :param parent_id: 父级 ID
@@ -65,8 +63,6 @@ class CRUDBank(CRUDPlus[QuestionBank]):
             filters['cat_id'] = cat_id
         if status is not None:
             filters['status'] = status
-        if scope is not None:
-            filters['scope'] = scope
         if keyword is not None:
             filters['name__like'] = f'%{keyword}%'
         if bank_type is not None:

@@ -97,6 +97,11 @@ def setup_logging() -> None:
     # 移除 loguru 默认处理器
     logger.remove()
 
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
     # 配置 loguru 处理器
     logger.configure(
         handlers=[  # type: ignore[arg-type]

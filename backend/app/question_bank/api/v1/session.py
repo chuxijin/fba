@@ -15,6 +15,7 @@ from backend.app.question_bank.schema.practice import (
     SubmitPracticeSessionParam,
     SubmitPracticeSessionResult,
 )
+from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.session_service import session_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
@@ -35,6 +36,34 @@ async def create_session(
     obj: CreatePracticeSessionParam,
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """创建练习会话"""
+    if obj.chapter_id is not None:
+        obj.bank_id = await membership_service.resolve_bank_context_for_chapter(
+            db=db,
+            chapter_id=obj.chapter_id,
+            bank_id=obj.bank_id,
+            user_id=request.user.id,
+        )
+    elif obj.bank_id:
+        await membership_service.verify_bank_list_access(
+            db=db,
+            user_id=request.user.id,
+            bank_id=obj.bank_id,
+        )
+
+    await membership_service.verify_filter_access(
+        db=db,
+        user_id=request.user.id,
+        cat_id=obj.cat_id,
+        region=obj.region,
+        year_start=obj.year_start,
+        year_end=obj.year_end,
+    )
+    await membership_service.verify_knowledge_access(
+        db=db,
+        user_id=request.user.id,
+        knowledge_point=obj.knowledge_point,
+    )
+
     new_session = await session_service.create_unified_session(db=db, user_id=request.user.id, obj=obj)
     session = await session_service.get_session_detail(
         db=db, session_id=new_session.id, user_id=request.user.id
@@ -52,6 +81,14 @@ async def get_latest_session(
     source_key: Annotated[str | None, Query(description='来源签名')] = None,
 ) -> ResponseModel:
     """获取用户最新的进行中会话"""
+    if chapter_id is not None:
+        bank_id = await membership_service.resolve_bank_context_for_chapter(
+            db=db,
+            chapter_id=chapter_id,
+            bank_id=bank_id,
+            user_id=request.user.id,
+        )
+
     session = await session_service.get_latest_session(
         db=db,
         user_id=request.user.id,

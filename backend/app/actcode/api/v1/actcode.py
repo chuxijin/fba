@@ -2,22 +2,26 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, Path, Query
+from fastapi import APIRouter, Path, Query, Request, Response
+from starlette.background import BackgroundTasks
 
 from backend.app.actcode.schema.actcode import (
     CreateBatchParam,
-    GetActcodeDetail,
     GetBatchDetail,
+    OrderCodeActivateResult,
+    OrderCodeLoginResult,
+    OrderCodePayload,
+    OrderCodeVerifyResult,
     RedeemCodeParam,
     RedeemCodeResult,
     UpdateBatchParam,
 )
 from backend.app.actcode.service.actcode_service import actcode_service
+from backend.app.actcode.service.activate_service import activate_service
 from backend.common.pagination import DependsPagination, _CustomPageParams
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
-from backend.database.db import CurrentSession
-from backend.app.actcode.service.activate_service import activate_service
+from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter(prefix='/actcode', tags=['激活码系统'])
 
@@ -101,39 +105,64 @@ async def get_usage_list(
     return response_base.success(data=data)
 
 
-@router.post('/agiso/activate', summary='通过订单号激活账户')
-async def activate_by_agiso_order(
-    order_input: Annotated[str, Form(description='包含订单号的文本，系统自动识别')],
-    username: Annotated[str, Form(description='用户名')],
-    password: Annotated[str, Form(description='密码')],
-) -> ResponseModel:
+@router.post('/agiso/login', summary='通过订单号登录')
+async def login_by_agiso_order(
+    db: CurrentSessionTransaction,
+    response: Response,
+    obj: OrderCodePayload,
+    background_tasks: BackgroundTasks,
+) -> ResponseSchemaModel[OrderCodeLoginResult]:
     """
-    用户通过订单号激活账户
+    通过订单号直接登录，未绑定时自动创建账号并开通权益
 
-    无需登录，用户提交包含订单号的文本、用户名、密码即可创建账户
-    系统会自动从文本中识别订单号
-
-    :param order_input: 包含订单号的文本
-    :param username: 用户名
-    :param password: 密码
+    :param db: 数据库会话
+    :param response: FastAPI 响应对象
+    :param obj: 订单号参数
+    :param background_tasks: 后台任务
     :return:
     """
-    result = await activate_service.activate_by_order(order_input, username, password)
+    result = await activate_service.login_by_order(
+        db=db,
+        order_input=obj.order_input,
+        response=response,
+        background_tasks=background_tasks,
+    )
+    return response_base.success(data=result)
+
+
+@router.post('/agiso/activate', summary='已登录用户当前账号激活订单号', dependencies=[DependsJwtAuth])
+async def activate_agiso_order_for_current_user(
+    request: Request,
+    db: CurrentSessionTransaction,
+    obj: OrderCodePayload,
+) -> ResponseSchemaModel[OrderCodeActivateResult]:
+    """
+    将订单号绑定到当前登录账号
+
+    :param request: FastAPI 请求对象
+    :param db: 数据库会话
+    :param obj: 订单号参数
+    :return:
+    """
+    result = await activate_service.activate_current_user(
+        db=db,
+        order_input=obj.order_input,
+        current_user=request.user,
+    )
     return response_base.success(data=result)
 
 
 @router.post('/agiso/verify', summary='验证订单号是否有效')
 async def verify_order_no(
-    order_input: Annotated[str, Form(description='包含订单号的文本，系统自动识别')],
-) -> ResponseModel:
+    db: CurrentSession,
+    obj: OrderCodePayload,
+) -> ResponseSchemaModel[OrderCodeVerifyResult]:
     """
     验证用户输入中是否包含有效的订单号
 
-    无需登录，用于前端实时校验
-
-    :param order_input: 包含订单号的文本
+    :param db: 数据库会话
+    :param obj: 订单号参数
     :return:
     """
-    result = await activate_service.verify_order(order_input)
+    result = await activate_service.verify_order(db=db, order_input=obj.order_input)
     return response_base.success(data=result)
-

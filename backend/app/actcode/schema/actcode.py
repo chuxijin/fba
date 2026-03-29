@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
+from backend.app.admin.schema.token import GetLoginToken
 from backend.app.actcode.schema.code_config import CodeGeneratorConfig
 from backend.common.schema import SchemaBase
 
@@ -94,3 +95,47 @@ class GetUsageDetail(SchemaBase):
     used_time: datetime = Field(description='使用时间')
     ip_address: str | None = Field(None, description='IP 地址')
     device_info: str | None = Field(None, description='设备信息')
+
+
+class OrderCodePayload(SchemaBase):
+    """订单号参数"""
+
+    order_input: str = Field(min_length=1, max_length=500, description='包含订单号的原始文本')
+
+
+class OrderCodeVerifyResult(SchemaBase):
+    """订单号校验结果"""
+
+    valid: bool = Field(description='是否有效')
+    order_no: str | None = Field(None, description='识别到的订单号')
+    is_bound: bool = Field(default=False, description='是否已绑定账号')
+    can_login: bool = Field(default=False, description='是否可直接登录')
+    username: str | None = Field(None, description='已绑定的用户名')
+    membership_plan_id: int | None = Field(None, description='会员计划 ID')
+    message: str = Field(description='提示信息')
+
+
+class OrderCodeActivateResult(SchemaBase):
+    """订单号激活结果"""
+
+    order_no: str = Field(description='订单号')
+    user_id: int = Field(description='用户 ID')
+    username: str = Field(description='用户名')
+    just_activated: bool = Field(description='是否本次新完成激活')
+    membership_plan_id: int | None = Field(None, description='会员计划 ID')
+    tier_code: str | None = Field(None, description='会员等级编码')
+    tier_name: str | None = Field(None, description='会员等级名称')
+    membership_valid_to: datetime | None = Field(None, description='会员有效期至')
+    message: str = Field(description='提示信息')
+
+
+class OrderCodeLoginResult(GetLoginToken):
+    """订单号登录结果"""
+
+    order_no: str = Field(description='订单号')
+    auto_created: bool = Field(description='是否自动创建了账号')
+    just_activated: bool = Field(description='是否本次新完成激活')
+    membership_plan_id: int | None = Field(None, description='会员计划 ID')
+    tier_code: str | None = Field(None, description='会员等级编码')
+    tier_name: str | None = Field(None, description='会员等级名称')
+    membership_valid_to: datetime | None = Field(None, description='会员有效期至')

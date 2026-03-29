@@ -64,8 +64,13 @@ async def get_question_ids(
     knowledge_point: str | None = None,
 ) -> ResponseSchemaModel[list[int]]:
     """按分组条件获取未掌握错题的题目 ID 列表"""
-    if bank_id is not None and chapter_id is not None:
-        await membership_service.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
+    if chapter_id is not None:
+        bank_id = await membership_service.resolve_bank_context_for_chapter(
+            db=db,
+            chapter_id=chapter_id,
+            bank_id=bank_id,
+            user_id=request.user.id,
+        )
 
     ids = await wrong_question_dao.get_question_ids(
         db=db, user_id=request.user.id, bank_id=bank_id, chapter_id=chapter_id, knowledge_point=knowledge_point,
@@ -102,11 +107,12 @@ async def get_wrong_questions(
     query: Annotated[WrongQuestionQueryParam, Depends()],
 ) -> ResponseSchemaModel[PageData[GetWrongQuestionListItem]]:
     """获取用户的错题本列表"""
-    if query.bank_id is not None and query.chapter_id is not None:
-        await membership_service.verify_bank_chapter_relation(
+    if query.chapter_id is not None:
+        query.bank_id = await membership_service.resolve_bank_context_for_chapter(
             db=db,
-            bank_id=query.bank_id,
             chapter_id=query.chapter_id,
+            bank_id=query.bank_id,
+            user_id=request.user.id,
         )
 
     stmt = await wrong_question_dao.get_select(

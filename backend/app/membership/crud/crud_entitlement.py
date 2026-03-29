@@ -6,25 +6,23 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.membership.model.plan import MembershipPlan
+from backend.app.membership.model.entitlement import MembershipEntitlement
 
 
-class CRUDMembershipPlan(CRUDPlus[MembershipPlan]):
-    """会员计划数据库操作类"""
+class CRUDMembershipEntitlement(CRUDPlus[MembershipEntitlement]):
+    """会员权益数据库操作类"""
 
     async def get_select(
         self,
         *,
         name: str | None = None,
         status: int | None = None,
-        tier_id: int | None = None,
     ) -> Select:
         """
-        获取会员计划分页查询语句
+        获取权益分页查询语句
 
-        :param name: 计划名称(模糊搜索)
+        :param name: 权益名称
         :param status: 状态
-        :param tier_id: 会员等级 ID
         :return:
         """
         filters = {}
@@ -32,23 +30,21 @@ class CRUDMembershipPlan(CRUDPlus[MembershipPlan]):
             filters['name__like'] = name
         if status is not None:
             filters['status__eq'] = status
-        if tier_id is not None:
-            filters['tier_id__eq'] = tier_id
         return await self.select_order('sort', 'asc', **filters)
 
-    async def get_by_name(self, db: AsyncSession, name: str) -> MembershipPlan | None:
+    async def get_by_code(self, db: AsyncSession, code: str) -> MembershipEntitlement | None:
         """
-        根据名称获取计划
+        根据编码获取权益
 
         :param db: 数据库会话
-        :param name: 计划名称
+        :param code: 权益编码
         :return:
         """
-        return await self.select_model_by_column(db, name__eq=name)
+        return await self.select_model_by_column(db, code__eq=code)
 
-    async def get_active_plans(self, db: AsyncSession) -> Sequence[MembershipPlan]:
+    async def get_active_list(self, db: AsyncSession) -> Sequence[MembershipEntitlement]:
         """
-        获取所有上架计划
+        获取启用权益
 
         :param db: 数据库会话
         :return:
@@ -62,4 +58,4 @@ class CRUDMembershipPlan(CRUDPlus[MembershipPlan]):
         return result.scalars().all()
 
 
-membership_plan_dao: CRUDMembershipPlan = CRUDMembershipPlan(MembershipPlan)
+membership_entitlement_dao: CRUDMembershipEntitlement = CRUDMembershipEntitlement(MembershipEntitlement)

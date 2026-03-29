@@ -31,30 +31,37 @@ async def get_practice_questions(
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
     """
-    客户端刷题接口 - 获取可练习的题目列表（不含答案）
+    客户端刷题接口 - 获取可练习的题目列表，不含答案
 
-    支持按题库、章节、题型、难度筛选题目
-    只返回已启用且审核通过的题目
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param bank_id: 题库 ID
+    :param chapter_id: 章节 ID
+    :param type: 题型
+    :param difficulty: 难度
+    :return:
     """
+    if chapter_id is not None:
+        bank_id = await membership_service.resolve_bank_context_for_chapter(
+            db=db,
+            chapter_id=chapter_id,
+            bank_id=bank_id,
+            user_id=request.user.id,
+        )
+    elif bank_id is not None:
+        await membership_service.verify_bank_list_access(db=db, user_id=request.user.id, bank_id=bank_id)
+
     if bank_id:
         perm_key = f'practice:bank:{bank_id}'
         if not await verify_permission(request, perm_key):
-            raise errors.ForbiddenError(msg=f'您没有该题库的刷题权限(需权限: {perm_key})')
-
-    if bank_id and chapter_id:
-        await membership_service.verify_bank_chapter_access(
-            db=db,
-            user_id=request.user.id,
-            bank_id=bank_id,
-            chapter_id=chapter_id,
-        )
-    elif bank_id:
-        await membership_service.verify_bank_list_access(db=db, user_id=request.user.id, bank_id=bank_id)
-    elif chapter_id:
-        await membership_service.verify_chapter_access(db=db, user_id=request.user.id, chapter_id=chapter_id)
+            raise errors.ForbiddenError(msg=f'您没有该题库的刷题权限，需要权限: {perm_key}')
 
     questions = await practice_service.get_practice_questions(
-        db=db, bank_id=bank_id, chapter_id=chapter_id, type=type, difficulty=difficulty,
+        db=db,
+        bank_id=bank_id,
+        chapter_id=chapter_id,
+        type=type,
+        difficulty=difficulty,
     )
 
     result = [
@@ -72,11 +79,23 @@ async def get_bank_questions(
     type: Annotated[str | None, Query(description='题型')] = None,
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
-    """客户端刷题接口 - 获取指定题库的题目列表（不含答案）"""
+    """
+    客户端刷题接口 - 获取指定题库的题目列表，不含答案
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param bank_id: 题库 ID
+    :param type: 题型
+    :param difficulty: 难度
+    :return:
+    """
     await membership_service.verify_bank_list_access(db=db, user_id=request.user.id, bank_id=bank_id)
 
     questions = await practice_service.get_practice_questions(
-        db=db, bank_id=bank_id, type=type, difficulty=difficulty,
+        db=db,
+        bank_id=bank_id,
+        type=type,
+        difficulty=difficulty,
     )
     result = [question_service.serialize_question(question=q, bank_id=bank_id) for q in questions]
     return response_base.success(data=result)
@@ -87,16 +106,39 @@ async def get_chapter_questions(
     request: Request,
     db: CurrentSession,
     chapter_id: Annotated[int, Path(description='章节 ID')],
+    bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
     type: Annotated[str | None, Query(description='题型')] = None,
     difficulty: Annotated[str | None, Query(description='难度')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionListItem]]:
-    """客户端刷题接口 - 获取指定章节的题目列表（不含答案）"""
-    await membership_service.verify_chapter_access(db=db, user_id=request.user.id, chapter_id=chapter_id)
+    """
+    客户端刷题接口 - 获取指定章节的题目列表，不含答案
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param chapter_id: 章节 ID
+    :param bank_id: 题库 ID
+    :param type: 题型
+    :param difficulty: 难度
+    :return:
+    """
+    bank_id = await membership_service.resolve_bank_context_for_chapter(
+        db=db,
+        chapter_id=chapter_id,
+        bank_id=bank_id,
+        user_id=request.user.id,
+    )
 
     questions = await practice_service.get_practice_questions(
-        db=db, chapter_id=chapter_id, type=type, difficulty=difficulty,
+        db=db,
+        bank_id=bank_id,
+        chapter_id=chapter_id,
+        type=type,
+        difficulty=difficulty,
     )
-    result = [question_service.serialize_question(question=q, chapter_id=chapter_id) for q in questions]
+    result = [
+        question_service.serialize_question(question=q, bank_id=bank_id, chapter_id=chapter_id)
+        for q in questions
+    ]
     return response_base.success(data=result)
 
 
@@ -106,7 +148,14 @@ async def get_question(
     db: CurrentSession,
     pk: Annotated[int, Path(description='题目 ID')],
 ) -> ResponseSchemaModel[GetQuestionDetail]:
-    """客户端刷题接口 - 获取题目详情用于练习（不含答案）"""
+    """
+    客户端刷题接口 - 获取题目详情用于练习，不含答案
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param pk: 题目 ID
+    :return:
+    """
     await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
 
     question = await practice_service.get_question_for_practice(db=db, question_id=pk)
@@ -120,9 +169,12 @@ async def get_analysis(
     pk: Annotated[int, Path(description='题目 ID')],
 ) -> ResponseSchemaModel[QuestionAnalysisItem]:
     """
-    客户端刷题接口 - 查看题目解析（含答案）
+    客户端刷题接口 - 查看题目解析，含答案
 
-    通常在提交答案后查看，会自动增加解析的查看次数（需要写入，因此使用 Transaction）
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param pk: 题目 ID
+    :return:
     """
     await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
 
