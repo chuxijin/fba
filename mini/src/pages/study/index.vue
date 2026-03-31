@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import type { CoulddriveResourceListItem } from '@fba/api-sdk'
-import { computed, ref } from 'vue'
+import type { CoulddriveResourceListItem, CoulddriveResourceListParams, GetCategoryTree } from '@fba/api-sdk'
+import { computed, nextTick, ref, watch } from 'vue'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { fbaApi } from '@/api/sdk'
 
@@ -17,67 +17,234 @@ definePage({
 })
 
 const PAGE_SIZE = 20
+const POPULAR_RESOURCE_TYPES = ['笔记', '真题', '电子书'] as const
+type StudyShortcutKey = 'kaoyan' | 'guokao' | 'shengkao' | 'bianzhi'
+const STUDY_CATEGORY_TREE_PARAMS = {
+  app_code: 'youanshang',
+  type: 'resource_exam',
+  status: true,
+} as const
 
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 
-const loading = ref(false)
+const popularLoading = ref(false)
+const recentLoading = ref(false)
 const loadingMore = ref(false)
 const initialized = ref(false)
 const keyword = ref('')
-const selectedResourceType = ref('all')
-const resources = ref<CoulddriveResourceListItem[]>([])
-const total = ref(0)
+const selectedShortcut = ref<'all' | StudyShortcutKey>('all')
+const activeResourceTabIndex = ref(0)
+const recentResources = ref<CoulddriveResourceListItem[]>([])
+const popularResources = ref<CoulddriveResourceListItem[]>([])
+const studyCategoryTree = ref<GetCategoryTree[]>([])
+const popularLoaded = ref(false)
+const recentLoaded = ref(false)
+const recentTotal = ref(0)
 const page = ref(1)
+const resourceSwiperHeight = ref(320)
+const resourceTouchStartX = ref(0)
+const resourceTouchStartY = ref(0)
 
-const hasMore = computed(() => resources.value.length < total.value)
-const resourceTypeOptions = computed(() => {
-  const typeSet = new Set<string>()
-  const options = [{ label: '全部', value: 'all' }]
+const studyShortcutItems = [
+  {
+    key: 'kaoyan',
+    label: '考研',
+    icon: 'i-carbon-education',
+    iconClass: 'text-[#F59E0B]',
+    bgClass: 'from-[#FFF7ED] to-[#FFEDD5]',
+    ringClass: 'shadow-[0_10px_24px_-16px_rgba(245,158,11,0.75)]',
+  },
+  {
+    key: 'guokao',
+    label: '国考',
+    icon: 'i-carbon-document-add',
+    iconClass: 'text-[#06B6D4]',
+    bgClass: 'from-[#ECFEFF] to-[#CFFAFE]',
+    ringClass: 'shadow-[0_10px_24px_-16px_rgba(6,182,212,0.75)]',
+  },
+  {
+    key: 'shengkao',
+    label: '省考',
+    icon: 'i-carbon-document-download',
+    iconClass: 'text-[#FB7185]',
+    bgClass: 'from-[#FFF1F2] to-[#FFE4E6]',
+    ringClass: 'shadow-[0_10px_24px_-16px_rgba(251,113,133,0.75)]',
+  },
+  {
+    key: 'bianzhi',
+    label: '四六级',
+    icon: 'i-carbon-result',
+    iconClass: 'text-[#38BDF8]',
+    bgClass: 'from-[#EFF6FF] to-[#DBEAFE]',
+    ringClass: 'shadow-[0_10px_24px_-16px_rgba(56,189,248,0.75)]',
+  },
+] as const
 
-  resources.value.forEach((item) => {
-    const value = String(item.resource_type || '').trim()
-    if (!value || typeSet.has(value)) {
-      return
-    }
+const shortcutCategoryMatcherMap: Record<StudyShortcutKey, { names: string[], codes: string[] }> = {
+  kaoyan: {
+    names: ['考研'],
+    codes: ['res_kaoyan', 'kaoyan'],
+  },
+  guokao: {
+    names: ['国考', '国家公务员'],
+    codes: ['res_guokao', 'guokao'],
+  },
+  shengkao: {
+    names: ['省考', '各省公务员'],
+    codes: ['res_shengkao', 'shengkao'],
+  },
+  bianzhi: {
+    names: ['四六级', '四级', '六级'],
+    codes: ['res_cet', 'res_cet4', 'res_cet6', 'cet', 'cet4', 'cet6'],
+  },
+}
+const resourceTabs = [
+  { key: 'popular', label: '热门榜单' },
+  { key: 'recent', label: '最近更新' },
+] as const
 
-    typeSet.add(value)
-    options.push({
-      label: value,
-      value,
-    })
-  })
-
-  if (
-    selectedResourceType.value !== 'all'
-    && !options.some(item => item.value === selectedResourceType.value)
-  ) {
-    options.unshift({
-      label: selectedResourceType.value,
-      value: selectedResourceType.value,
-    })
+const hasMore = computed(() => recentResources.value.length < recentTotal.value)
+const hasAnyResources = computed(() => recentResources.value.length > 0 || popularResources.value.length > 0)
+const activeResourceTab = computed(() => resourceTabs[activeResourceTabIndex.value]?.key || 'recent')
+const selectedShortcutLabel = computed(() => {
+  if (selectedShortcut.value === 'all') {
+    return ''
   }
 
-  return options
+  return studyShortcutItems.find(item => item.key === selectedShortcut.value)?.label || ''
 })
+const selectedShortcutCategoryId = computed(() => {
+  if (selectedShortcut.value === 'all') {
+    return undefined
+  }
+
+  const matchedCategory = findStudyCategoryByShortcut(selectedShortcut.value)
+  return typeof matchedCategory?.id === 'number' ? matchedCategory.id : undefined
+})
+const selectedShortcutCategoryIds = computed(() => {
+  if (selectedShortcut.value === 'all') {
+    return []
+  }
+
+  const matchedCategory = findStudyCategoryByShortcut(selectedShortcut.value)
+  if (!matchedCategory) {
+    return []
+  }
+
+  return collectStudyCategoryIds(matchedCategory)
+})
+
+let studyCategoryLoadTask: Promise<void> | null = null
 
 function normalizeKeyword(value: string) {
   return String(value || '').trim()
 }
 
+function normalizeMatcherValue(value: unknown) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function flattenStudyCategories(nodes: GetCategoryTree[] | null | undefined): GetCategoryTree[] {
+  const result: GetCategoryTree[] = []
+
+  for (const node of nodes || []) {
+    result.push(node)
+    if (node.children?.length) {
+      result.push(...flattenStudyCategories(node.children))
+    }
+  }
+
+  return result
+}
+
+function collectStudyCategoryIds(node: GetCategoryTree | null | undefined): number[] {
+  if (!node) {
+    return []
+  }
+
+  const ids: number[] = []
+
+  const walk = (currentNode: GetCategoryTree | null | undefined) => {
+    if (!currentNode || typeof currentNode.id !== 'number') {
+      return
+    }
+
+    ids.push(currentNode.id)
+    for (const child of currentNode.children || []) {
+      walk(child)
+    }
+  }
+
+  walk(node)
+  return ids
+}
+
+function isMatchedStudyCategory(node: GetCategoryTree, key: StudyShortcutKey) {
+  const matcher = shortcutCategoryMatcherMap[key]
+  const normalizedName = normalizeMatcherValue(node.name)
+  const normalizedCode = normalizeMatcherValue(node.code)
+
+  if (matcher.codes.some(code => normalizeMatcherValue(code) === normalizedCode)) {
+    return true
+  }
+
+  return matcher.names.some((name) => {
+    const normalizedTarget = normalizeMatcherValue(name)
+    return normalizedName === normalizedTarget || normalizedName.includes(normalizedTarget)
+  })
+}
+
+function findStudyCategoryByShortcut(key: StudyShortcutKey) {
+  const rootCategory = studyCategoryTree.value.find(node => isMatchedStudyCategory(node, key))
+  if (rootCategory) {
+    return rootCategory
+  }
+
+  return flattenStudyCategories(studyCategoryTree.value).find(node => isMatchedStudyCategory(node, key)) || null
+}
+
+async function ensureStudyCategoryTreeLoaded() {
+  if (studyCategoryTree.value.length) {
+    return
+  }
+
+  if (!studyCategoryLoadTask) {
+    studyCategoryLoadTask = (async () => {
+      try {
+        studyCategoryTree.value = await fbaApi.admin.sys.category.getTree(STUDY_CATEGORY_TREE_PARAMS)
+      }
+      catch (error) {
+        console.error('加载学习分类失败:', error)
+        studyCategoryTree.value = []
+      }
+      finally {
+        studyCategoryLoadTask = null
+      }
+    })()
+  }
+
+  await studyCategoryLoadTask
+}
+
 function buildQuery(targetPage = 1) {
-  return {
+  const params: CoulddriveResourceListParams = {
     page: targetPage,
     size: PAGE_SIZE,
     status: 1,
-    keyword: normalizeKeyword(keyword.value) || undefined,
-    resource_type: selectedResourceType.value === 'all' ? undefined : selectedResourceType.value,
   }
+
+  const categoryId = selectedShortcutCategoryId.value
+  if (typeof categoryId === 'number') {
+    params.category_id = categoryId
+  }
+
+  return params
 }
 
-async function loadResources(targetPage = 1) {
+async function loadRecentResources(targetPage = 1) {
   const isFirstPage = targetPage === 1
   if (isFirstPage) {
-    loading.value = true
+    recentLoading.value = true
   }
   else {
     loadingMore.value = true
@@ -87,27 +254,127 @@ async function loadResources(targetPage = 1) {
     const data = await fbaApi.coulddrive.resource.getList(buildQuery(targetPage))
     const items = Array.isArray(data.items) ? data.items : []
 
-    resources.value = isFirstPage ? items : [...resources.value, ...items]
-    total.value = Number(data.total || 0)
+    recentResources.value = isFirstPage ? items : [...recentResources.value, ...items]
+    recentTotal.value = Number(data.total || 0)
     page.value = targetPage
-    initialized.value = true
+    if (isFirstPage) {
+      recentLoaded.value = true
+    }
   }
   catch (error) {
     console.error('加载学习资料失败:', error)
     if (isFirstPage) {
-      resources.value = []
-      total.value = 0
+      recentResources.value = []
+      recentTotal.value = 0
+      recentLoaded.value = false
     }
     uni.showToast({ title: '加载资料失败', icon: 'none' })
   }
   finally {
-    loading.value = false
+    recentLoading.value = false
     loadingMore.value = false
   }
 }
 
+async function loadPopularResources() {
+  popularLoading.value = true
+  try {
+    const allowedCategoryIds = new Set(selectedShortcutCategoryIds.value)
+    if (selectedShortcut.value !== 'all' && !allowedCategoryIds.size) {
+      popularResources.value = []
+      popularLoaded.value = true
+      return
+    }
+
+    const hotList = await fbaApi.coulddrive.resource.getHot(
+      selectedShortcutCategoryId.value,
+      10,
+      [...POPULAR_RESOURCE_TYPES],
+    )
+
+    if (!allowedCategoryIds.size) {
+      popularResources.value = hotList
+      popularLoaded.value = true
+      return
+    }
+
+    popularResources.value = hotList.filter((item) => {
+      const categoryId = Number(item.category_id || 0)
+      return allowedCategoryIds.has(categoryId)
+    })
+    popularLoaded.value = true
+  }
+  catch (error) {
+    console.error('加载热门资料失败:', error)
+    popularResources.value = []
+    popularLoaded.value = false
+  }
+  finally {
+    popularLoading.value = false
+  }
+}
+
+function resetPopularResources() {
+  popularResources.value = []
+  popularLoaded.value = false
+}
+
+function resetRecentResources() {
+  recentResources.value = []
+  recentTotal.value = 0
+  page.value = 1
+  recentLoaded.value = false
+  loadingMore.value = false
+}
+
+async function loadActiveTabResources(force = false) {
+  await ensureStudyCategoryTreeLoaded()
+
+  if (activeResourceTab.value === 'popular') {
+    if (!force && (popularLoaded.value || popularLoading.value)) {
+      initialized.value = true
+      return
+    }
+
+    await loadPopularResources()
+    initialized.value = true
+    return
+  }
+
+  if (!force && (recentLoaded.value || recentLoading.value || loadingMore.value)) {
+    initialized.value = true
+    return
+  }
+
+  await loadRecentResources(1)
+  initialized.value = true
+}
+
+function openSearchPage() {
+  const query: string[] = []
+  const normalizedKeyword = normalizeKeyword(keyword.value)
+
+  if (normalizedKeyword) {
+    query.push(`keyword=${encodeURIComponent(normalizedKeyword)}`)
+  }
+
+  if (typeof selectedShortcutCategoryId.value === 'number') {
+    query.push(`categoryId=${selectedShortcutCategoryId.value}`)
+  }
+
+  if (selectedShortcutLabel.value) {
+    query.push(`categoryName=${encodeURIComponent(selectedShortcutLabel.value)}`)
+  }
+
+  const queryString = query.length ? `?${query.join('&')}` : ''
+  uni.navigateTo({
+    url: `/pages/study/search/index${queryString}`,
+  })
+}
+
 function triggerSearch() {
-  loadResources(1)
+  keyword.value = normalizeKeyword(keyword.value)
+  openSearchPage()
 }
 
 function handleKeywordConfirm(event: { detail?: { value?: string } }) {
@@ -121,195 +388,184 @@ function clearKeyword() {
   }
 
   keyword.value = ''
-  triggerSearch()
 }
 
-function selectResourceType(value: string) {
-  if (selectedResourceType.value === value) {
+function selectShortcut(key: StudyShortcutKey) {
+  selectedShortcut.value = selectedShortcut.value === key ? 'all' : key
+  resetPopularResources()
+  resetRecentResources()
+  activeResourceTabIndex.value = 0
+  void loadActiveTabResources(true)
+}
+
+function switchResourceTab(tab: 'popular' | 'recent') {
+  const nextIndex = resourceTabs.findIndex(item => item.key === tab)
+  if (nextIndex < 0 || nextIndex === activeResourceTabIndex.value) {
     return
   }
 
-  selectedResourceType.value = value
-  loadResources(1)
+  activeResourceTabIndex.value = nextIndex
+  void loadActiveTabResources()
 }
 
-function formatFileSize(size?: number | null) {
-  const value = Number(size || 0)
-  if (!value) {
-    return ''
-  }
-  if (value < 1024 * 1024) {
-    return `${(value / 1024).toFixed(1).replace(/\.0$/, '')} KB`
-  }
-  if (value < 1024 * 1024 * 1024) {
-    return `${(value / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MB`
-  }
-  return `${(value / 1024 / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} GB`
+function onResourceSwiperChange(event: any) {
+  activeResourceTabIndex.value = Number(event?.detail?.current || 0)
+  void loadActiveTabResources()
 }
 
-function formatRelativeTime(value?: string | null) {
-  if (!value) {
-    return ''
+function handleResourceTouchStart(event: any) {
+  const touch = event?.changedTouches?.[0] || event?.touches?.[0]
+  if (!touch) {
+    return
   }
 
-  const target = new Date(value.replace(' ', 'T')).getTime()
-  if (!target) {
-    return value
-  }
-
-  const diff = Date.now() - target
-  const minute = 60 * 1000
-  const hour = 60 * minute
-  const day = 24 * hour
-
-  if (diff < hour) {
-    return `${Math.max(1, Math.floor(diff / minute))}分钟前`
-  }
-  if (diff < day) {
-    return `${Math.max(1, Math.floor(diff / hour))}小时前`
-  }
-  if (diff < day * 30) {
-    return `${Math.max(1, Math.floor(diff / day))}天前`
-  }
-
-  return value.slice(0, 10)
+  resourceTouchStartX.value = Number(touch.clientX || 0)
+  resourceTouchStartY.value = Number(touch.clientY || 0)
 }
 
-function getResourceName(item: CoulddriveResourceListItem) {
-  return item.main_name || item.title || `资料 #${item.id}`
-}
+function handleResourceTouchEnd(event: any) {
+  const touch = event?.changedTouches?.[0]
+  if (!touch) {
+    return
+  }
 
-function getResourceSubtitle(item: CoulddriveResourceListItem) {
-  return item.resource_intro || item.description || item.category_name || '暂无资料简介'
-}
+  const deltaX = Number(touch.clientX || 0) - resourceTouchStartX.value
+  const deltaY = Number(touch.clientY || 0) - resourceTouchStartY.value
 
-function getResourceMeta(item: CoulddriveResourceListItem) {
-  const parts = [
-    item.category_name || '',
-    formatFileSize(item.file_size),
-    item.view_count ? `${item.view_count} 浏览` : '',
-    formatRelativeTime(item.created_time),
-  ].filter(Boolean)
-  return parts.join(' · ')
-}
+  if (Math.abs(deltaX) < 42 || Math.abs(deltaX) <= Math.abs(deltaY)) {
+    return
+  }
 
-function getResourceIconClass(item: CoulddriveResourceListItem) {
-  const fileType = String(item.file_type || '').toLowerCase()
-  const resourceType = String(item.resource_type || '').toLowerCase()
+  if (deltaX < 0 && activeResourceTabIndex.value < resourceTabs.length - 1) {
+    activeResourceTabIndex.value += 1
+    return
+  }
 
-  if (fileType === 'pdf') {
-    return 'i-carbon-document-pdf'
-  }
-  if (fileType.includes('doc') || fileType.includes('txt') || fileType.includes('md')) {
-    return 'i-carbon-document'
-  }
-  if (fileType.includes('ppt')) {
-    return 'i-carbon-document'
-  }
-  if (fileType.includes('xls')) {
-    return 'i-carbon-table'
-  }
-  if (fileType.includes('zip') || fileType.includes('rar') || fileType.includes('7z')) {
-    return 'i-carbon-folder'
-  }
-  if (fileType.includes('mp4') || resourceType.includes('视频')) {
-    return 'i-carbon-video'
-  }
-  if (fileType.includes('mp3') || resourceType.includes('音频')) {
-    return 'i-carbon-volume-up'
-  }
-  if (fileType.includes('jpg') || fileType.includes('png') || fileType.includes('jpeg')) {
-    return 'i-carbon-image'
-  }
-  return 'i-carbon-document'
-}
-
-function getResourceIconStyle(item: CoulddriveResourceListItem) {
-  const fileType = String(item.file_type || '').toLowerCase()
-  const resourceType = String(item.resource_type || '').toLowerCase()
-
-  if (fileType === 'pdf') {
-    return {
-      wrapper: 'from-[#FEF2F2] to-[#FEE2E2] text-[#DC2626]',
-      action: 'bg-[#FEF2F2] text-[#DC2626]',
-    }
-  }
-  if (fileType.includes('mp4') || resourceType.includes('视频')) {
-    return {
-      wrapper: 'from-[#EEF2FF] to-[#E0E7FF] text-[#4F46E5]',
-      action: 'bg-[#EEF2FF] text-[#4F46E5]',
-    }
-  }
-  if (fileType.includes('jpg') || fileType.includes('png') || fileType.includes('jpeg')) {
-    return {
-      wrapper: 'from-[#ECFDF5] to-[#D1FAE5] text-[#059669]',
-      action: 'bg-[#ECFDF5] text-[#059669]',
-    }
-  }
-  return {
-    wrapper: 'from-[#EFF6FF] to-[#DBEAFE] text-[#2563EB]',
-    action: 'bg-[#EFF6FF] text-[#2563EB]',
+  if (deltaX > 0 && activeResourceTabIndex.value > 0) {
+    activeResourceTabIndex.value -= 1
   }
 }
 
-function copyResourceInfo(item: CoulddriveResourceListItem) {
-  const content = [
-    getResourceName(item),
-    item.url,
-    item.extract_code ? `提取码：${item.extract_code}` : '',
-  ].filter(Boolean).join('\n')
+function syncResourceSwiperHeight() {
+  nextTick(() => {
+    const panelClass = activeResourceTab.value === 'popular'
+      ? '.study-resource-panel-popular'
+      : '.study-resource-panel-recent'
 
-  uni.setClipboardData({
-    data: content,
-    success: () => {
-      uni.showToast({
-        title: item.extract_code ? '链接和提取码已复制' : '资料链接已复制',
-        icon: 'none',
+    uni.createSelectorQuery()
+      .select(panelClass)
+      .boundingClientRect((rect: any) => {
+        const nextHeight = Number(rect?.height || 0)
+        if (nextHeight > 0) {
+          resourceSwiperHeight.value = nextHeight
+        }
       })
-    },
+      .exec()
   })
 }
 
-function handleResourceAction(item: CoulddriveResourceListItem) {
-  const itemList = ['复制资料链接']
-  if (item.extract_code) {
-    itemList.push('仅复制提取码')
+function getResourceTitle(item: CoulddriveResourceListItem) {
+  const value = (item as CoulddriveResourceListItem & { remark?: string | null }).remark
+  const title = String(value || '').trim()
+  if (title) {
+    return title
   }
 
-  uni.showActionSheet({
-    itemList,
-    success: (res) => {
-      if (res.tapIndex === 0) {
-        copyResourceInfo(item)
-        return
-      }
+  return item.title || item.resource_intro || `资料 #${item.id}`
+}
 
-      if (item.extract_code && res.tapIndex === 1) {
-        uni.setClipboardData({
-          data: item.extract_code,
-          success: () => uni.showToast({ title: '提取码已复制', icon: 'none' }),
-        })
-      }
-    },
+function getResourceSubtitle(item: CoulddriveResourceListItem) {
+  return String(item.resource_intro || item.description || '').trim()
+}
+
+function getRankBadgeClass(index: number) {
+  if (index === 0) {
+    return 'from-[#FFF7ED] to-[#FED7AA] text-[#F97316] shadow-[0_10px_22px_-16px_rgba(249,115,22,0.9)]'
+  }
+  if (index === 1) {
+    return 'from-[#F8FAFC] to-[#E2E8F0] text-[#94A3B8] shadow-[0_10px_22px_-18px_rgba(148,163,184,0.8)]'
+  }
+  if (index === 2) {
+    return 'from-[#FFF1F2] to-[#FFE4E6] text-[#FB923C] shadow-[0_10px_22px_-18px_rgba(251,146,60,0.75)]'
+  }
+  return 'bg-[#F8FAFC] text-[#94A3B8]'
+}
+
+function getResourceListTag(tab: 'popular' | 'recent', item: CoulddriveResourceListItem, index: number) {
+  if (item.hot || (tab === 'popular' && index < 3)) {
+    return '热'
+  }
+
+  if (tab === 'recent' && index < 3) {
+    return '新'
+  }
+
+  if (tab === 'popular' && index < 6) {
+    return '新'
+  }
+
+  return ''
+}
+
+function getResourceListTagClass(tag: string) {
+  if (tag === '热') {
+    return 'bg-[#FFF1F2] text-[#F43F5E]'
+  }
+  if (tag === '新') {
+    return 'bg-[#FFF7ED] text-[#F97316]'
+  }
+  return ''
+}
+
+function openResourceDetail(item: CoulddriveResourceListItem) {
+  uni.navigateTo({
+    url: `/pages/study/resource-detail/index?id=${item.id}`,
   })
 }
 
 onLoad(() => {
-  loadResources(1)
+  void loadActiveTabResources(true)
 })
 
 onPullDownRefresh(async () => {
-  await loadResources(1)
+  if (activeResourceTab.value === 'popular') {
+    resetPopularResources()
+  }
+  else {
+    resetRecentResources()
+  }
+
+  await loadActiveTabResources(true)
   uni.stopPullDownRefresh()
 })
 
 onReachBottom(() => {
-  if (loading.value || loadingMore.value || !initialized.value || !hasMore.value) {
+  if (
+    activeResourceTab.value !== 'recent'
+    || recentLoading.value
+    || loadingMore.value
+    || !initialized.value
+    || !hasMore.value
+  ) {
     return
   }
 
-  loadResources(page.value + 1)
+  loadRecentResources(page.value + 1)
 })
+
+watch(
+  () => [
+    activeResourceTabIndex.value,
+    recentResources.value.length,
+    popularResources.value.length,
+    popularLoading.value,
+    recentLoading.value,
+    loadingMore.value,
+  ],
+  () => {
+    syncResourceSwiperHeight()
+  },
+)
 </script>
 
 <template>
@@ -326,118 +582,209 @@ onReachBottom(() => {
     </view>
 
     <view class="relative z-10 mt-4 px-4 pb-24">
-      <view class="mb-5 flex items-center border border-white rounded-full bg-white/78 px-4 py-2.5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md">
-        <view class="i-carbon-search mr-2 text-xl text-[#94A3B8]" />
-        <input
-          v-model="keyword"
-          class="h-6 flex-1 text-[15px] text-[#1E293B]"
-          confirm-type="search"
-          :maxlength="50"
-          placeholder="搜索资料名称、分类、简介"
-          placeholder-style="color: #94A3B8;"
-          @confirm="handleKeywordConfirm"
-        >
-        <view
-          v-if="keyword"
-          class="ml-2 h-6 w-6 flex items-center justify-center rounded-full bg-[#F1F5F9] text-[#94A3B8]"
-          @tap="clearKeyword"
-        >
-          <view class="i-carbon-close text-sm" />
-        </view>
-        <view class="ml-3 text-[13px] text-[#2563EB] font-bold" @tap="triggerSearch">
-          搜索
-        </view>
-      </view>
-
-      <scroll-view scroll-x class="mb-5 whitespace-nowrap">
-        <view class="flex items-center gap-3 pl-1">
-          <view
-            v-for="item in resourceTypeOptions"
-            :key="item.value"
-            class="shrink-0 border rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors"
-            :class="selectedResourceType === item.value
-              ? 'border-[#DBEAFE] bg-[#EFF6FF] text-[#2563EB] shadow-sm'
-              : 'border-[#E2E8F0] bg-white/65 text-[#475569]'"
-            @tap="selectResourceType(item.value)"
+      <view class="mb-5 rounded-[26px] border border-white bg-white/78 px-4 py-3 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md">
+        <view class="flex items-center gap-2">
+          <view class="i-carbon-search mr-2 text-xl text-[#94A3B8]" />
+          <input
+            v-model="keyword"
+            class="h-6 flex-1 text-[15px] text-[#1E293B]"
+            confirm-type="search"
+            :maxlength="50"
+            placeholder="搜索资料名称、分类、简介"
+            placeholder-style="color: #94A3B8;"
+            @confirm="handleKeywordConfirm"
           >
-            {{ item.label }}
+          <view
+            v-if="keyword"
+            class="ml-2 h-6 w-6 flex items-center justify-center rounded-full bg-[#F1F5F9] text-[#94A3B8]"
+            @tap="clearKeyword"
+          >
+            <view class="i-carbon-close text-sm" />
+          </view>
+          <view
+            class="shrink-0 text-[13px] text-[#2563EB] font-bold"
+            @tap="triggerSearch"
+          >
+            搜索
           </view>
         </view>
-      </scroll-view>
-
-      <view class="mb-3 flex items-center justify-between pl-1">
-        <text class="text-sm text-[#64748B] font-bold">最近更新资料</text>
-        <text class="text-[11px] text-[#94A3B8]">共 {{ total }} 条</text>
       </view>
 
-      <view v-if="loading && resources.length === 0" class="py-18 text-center text-[13px] text-[#94A3B8]">
-        资料加载中...
+      <view class="mb-4 overflow-hidden rounded-[28px] border border-white/70 bg-white/78 px-3 py-3 shadow-[0_12px_30px_-20px_rgba(37,99,235,0.28)] backdrop-blur-md">
+        <view class="grid grid-cols-4 gap-1.5">
+          <view
+            v-for="item in studyShortcutItems"
+            :key="item.key"
+            class="flex flex-col items-center justify-start rounded-2xl px-1 py-1.5 transition-all duration-200"
+            :class="selectedShortcut === item.key ? 'bg-[#F8FBFF]' : 'bg-transparent'"
+            @tap="selectShortcut(item.key)"
+          >
+            <view
+              class="mb-2.5 h-12 w-12 flex items-center justify-center rounded-2xl bg-gradient-to-br"
+              :class="[item.bgClass, item.ringClass]"
+            >
+              <view :class="[item.icon, item.iconClass, 'text-[24px]']" />
+            </view>
+            <text
+              class="text-center text-[12px] leading-[1.35]"
+              :class="selectedShortcut === item.key ? 'text-[#1E293B] font-bold' : 'text-[#334155]'"
+            >
+              {{ item.label }}
+            </text>
+          </view>
+        </view>
+      </view>
+
+      <view class="mb-3">
+        <view class="relative flex w-full items-center rounded-[18px] bg-white/78 p-1.5 shadow-[0_10px_28px_-18px_rgba(15,23,42,0.35)]">
+          <view
+            class="absolute bottom-1.5 top-1.5 rounded-[14px] bg-[#1E293B] shadow-sm transition-all duration-300"
+            :style="{
+              width: 'calc(50% - 6px)',
+              left: activeResourceTab === 'popular' ? '6px' : 'calc(50% + 0px)',
+            }"
+          />
+          <view
+            v-for="tab in resourceTabs"
+            :key="tab.key"
+            class="relative z-10 flex-1 text-center rounded-[14px] px-4 py-2 text-[13px] transition-all duration-200"
+            :class="activeResourceTab === tab.key
+              ? 'text-white font-bold'
+              : 'text-[#64748B]'"
+            @tap="switchResourceTab(tab.key)"
+          >
+            {{ tab.label }}
+          </view>
+        </view>
       </view>
 
       <view
-        v-else-if="resources.length > 0"
-        class="border border-white/80 rounded-2xl bg-white/80 p-4 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md"
+        v-if="((activeResourceTab === 'popular' && popularLoading) || (activeResourceTab === 'recent' && recentLoading)) && !hasAnyResources"
+        class="py-18 text-center text-[13px] text-[#94A3B8]"
       >
-        <view
-          v-for="(item, index) in resources"
-          :key="item.id"
-          class="flex items-start"
-          :class="index < resources.length - 1 ? 'mb-4 border-b border-blue-50/60 pb-4' : ''"
-          @tap="handleResourceAction(item)"
-        >
-          <view
-            class="mr-4 h-11 w-11 flex items-center justify-center rounded-xl bg-gradient-to-br shadow-inner"
-            :class="getResourceIconStyle(item).wrapper"
-          >
-            <view :class="[getResourceIconClass(item), 'text-2xl']" />
-          </view>
-
-          <view class="min-w-0 flex-1">
-            <view class="flex items-start justify-between gap-3">
-              <view class="min-w-0 flex-1">
-                <view class="line-clamp-2 text-[15px] text-[#1E293B] font-bold leading-[1.45]">
-                  {{ getResourceName(item) }}
-                </view>
-                <view class="mt-1 line-clamp-2 text-[12px] text-[#64748B] leading-[1.6]">
-                  {{ getResourceSubtitle(item) }}
-                </view>
-              </view>
-
-              <view
-                v-if="item.hot"
-                class="shrink-0 rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[10px] text-[#EA580C] font-bold"
-              >
-                HOT
-              </view>
-            </view>
-
-            <view class="mt-2 flex items-center justify-between gap-3">
-              <view class="min-w-0 flex-1 text-[11px] text-[#94A3B8] leading-[1.5]">
-                {{ getResourceMeta(item) }}
-              </view>
-              <view
-                class="h-8 w-8 flex shrink-0 items-center justify-center rounded-full transition-transform active:scale-90"
-                :class="getResourceIconStyle(item).action"
-              >
-                <view class="i-carbon-copy text-lg" />
-              </view>
-            </view>
-
-            <view v-if="item.extract_code" class="mt-2 inline-flex items-center rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[10px] text-[#64748B]">
-              提取码 {{ item.extract_code }}
-            </view>
-          </view>
-        </view>
-
-        <view v-if="loadingMore" class="pt-4 text-center text-[12px] text-[#94A3B8]">
-          正在加载更多资料...
-        </view>
+        资料加载中...
       </view>
+
+      <swiper
+        v-else-if="hasAnyResources"
+        class="study-resource-swiper"
+        :style="{ height: `${resourceSwiperHeight}px` }"
+        :current="activeResourceTabIndex"
+        :duration="280"
+        :disable-touch="false"
+        @change="onResourceSwiperChange"
+        @touchstart="handleResourceTouchStart"
+        @touchend="handleResourceTouchEnd"
+      >
+        <swiper-item>
+          <view class="study-resource-panel study-resource-panel-popular border border-white/80 rounded-2xl bg-white/80 p-3 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md">
+            <view v-if="popularLoading && !popularLoaded" class="flex items-center justify-center py-14 text-[13px] text-[#94A3B8]">
+              热门资料加载中...
+            </view>
+            <template v-else-if="popularResources.length">
+              <view
+                v-for="(item, index) in popularResources"
+                :key="`popular-${item.id}`"
+                class="flex items-center rounded-2xl px-2 py-2.5 transition-colors active:bg-[#F8FAFC]"
+                :class="index < popularResources.length - 1 ? 'border-b border-blue-50/70' : ''"
+                @tap="openResourceDetail(item)"
+              >
+                <view
+                  class="mr-3 h-7 w-7 flex shrink-0 items-center justify-center rounded-full text-[15px] font-black"
+                  :class="getRankBadgeClass(index)"
+                >
+                  {{ index + 1 }}
+                </view>
+
+                <view class="min-w-0 flex-1 pr-3">
+                  <view class="line-clamp-1 text-[15px] text-[#1E293B] leading-[1.45]">
+                    {{ getResourceTitle(item) }}
+                  </view>
+                  <view
+                    v-if="getResourceSubtitle(item)"
+                    class="mt-1 line-clamp-1 text-[12px] text-[#94A3B8] leading-[1.45]"
+                  >
+                    {{ getResourceSubtitle(item) }}
+                  </view>
+                </view>
+
+                <view
+                  v-if="getResourceListTag('popular', item, index)"
+                  class="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-bold"
+                  :class="getResourceListTagClass(getResourceListTag('popular', item, index))"
+                >
+                  {{ getResourceListTag('popular', item, index) }}
+                </view>
+              </view>
+            </template>
+            <view v-else class="flex items-center justify-center py-14 text-[13px] text-[#94A3B8]">
+              当前筛选下暂无热门资料
+            </view>
+          </view>
+        </swiper-item>
+
+        <swiper-item>
+          <view class="study-resource-panel study-resource-panel-recent border border-white/80 rounded-2xl bg-white/80 p-3 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md">
+            <view v-if="recentLoading && !recentLoaded" class="flex items-center justify-center py-14 text-[13px] text-[#94A3B8]">
+              最近更新加载中...
+            </view>
+            <template v-else-if="recentResources.length">
+              <view
+                v-for="(item, index) in recentResources"
+                :key="`recent-${item.id}`"
+                class="flex items-center rounded-2xl px-2 py-2.5 transition-colors active:bg-[#F8FAFC]"
+                :class="index < recentResources.length - 1 ? 'border-b border-blue-50/70' : ''"
+                @tap="openResourceDetail(item)"
+              >
+                <view
+                  class="mr-3 h-7 w-7 flex shrink-0 items-center justify-center rounded-full text-[15px] font-black"
+                  :class="getRankBadgeClass(index)"
+                >
+                  {{ index + 1 }}
+                </view>
+
+                <view class="min-w-0 flex-1 pr-3">
+                  <view class="line-clamp-1 text-[15px] text-[#1E293B] leading-[1.45]">
+                    {{ getResourceTitle(item) }}
+                  </view>
+                  <view
+                    v-if="getResourceSubtitle(item)"
+                    class="mt-1 line-clamp-1 text-[12px] text-[#94A3B8] leading-[1.45]"
+                  >
+                    {{ getResourceSubtitle(item) }}
+                  </view>
+                </view>
+
+                <view
+                  v-if="getResourceListTag('recent', item, index)"
+                  class="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-bold"
+                  :class="getResourceListTagClass(getResourceListTag('recent', item, index))"
+                >
+                  {{ getResourceListTag('recent', item, index) }}
+                </view>
+              </view>
+            </template>
+            <view v-else class="flex items-center justify-center py-14 text-[13px] text-[#94A3B8]">
+              当前筛选下暂无更新资料
+            </view>
+
+            <view v-if="loadingMore" class="pt-4 text-center text-[12px] text-[#94A3B8]">
+              正在加载更多资料...
+            </view>
+          </view>
+        </swiper-item>
+      </swiper>
 
       <view v-else class="flex flex-col items-center justify-center py-20">
         <view class="i-carbon-book mb-4 text-6xl text-[#CBD5E1]" />
-        <text class="text-[14px] text-[#94A3B8]">暂时没有找到相关资料，换个关键词试试</text>
+        <text class="text-[14px] text-[#94A3B8]">当前筛选下暂时没有相关资料</text>
       </view>
     </view>
   </view>
 </template>
+
+<style scoped>
+.study-resource-swiper {
+  width: 100%;
+}
+</style>

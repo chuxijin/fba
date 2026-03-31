@@ -46,6 +46,37 @@ class ResourceService:
     """资源服务类"""
 
     @staticmethod
+    def _normalize_resource_types(
+        resource_type: str | None = None,
+        resource_types: Sequence[str] | None = None,
+    ) -> list[str] | None:
+        """
+        归一化资源类型筛选条件
+
+        :param resource_type: 单个资源类型
+        :param resource_types: 多个资源类型
+        :return:
+        """
+        normalized_types: list[str] = []
+
+        if resource_type:
+            value = resource_type.strip()
+            if value:
+                normalized_types.append(value)
+
+        if resource_types:
+            for item in resource_types:
+                for value in str(item).split(','):
+                    normalized_value = value.strip()
+                    if normalized_value:
+                        normalized_types.append(normalized_value)
+
+        if not normalized_types:
+            return None
+
+        return list(dict.fromkeys(normalized_types))
+
+    @staticmethod
     async def get(*, db: AsyncSession, pk: int) -> GetResourceDetail:
         """
         获取资源详情
@@ -106,22 +137,37 @@ class ResourceService:
         *,
         db: AsyncSession,
         category_id: int | None = None,
+        resource_type: str | None = None,
+        resource_types: Sequence[str] | None = None,
         limit: int = 20
-    ) -> Sequence[ResourceListItem]:
+    ) -> list[ResourceListItem]:
         """
-        获取热门资源列表
+        获取热门资源列表（实时计算热度评分）
 
         :param db: 数据库会话
         :param category_id: 分类 ID
+        :param resource_type: 资源类型
+        :param resource_types: 资源类型列表
         :param limit: 获取数量
         :return:
         """
+        from backend.app.coulddrive.service.hot_score_service import hot_score_service
+
         category_ids = None
         if category_id:
             category_ids = await category_dao.get_all_children_ids(db, category_id)
-        
-        resources = await resource_dao.get_hot_list(db, category_ids, limit)
-        return [ResourceListItem.model_validate(r) for r in resources]
+
+        normalized_resource_types = ResourceService._normalize_resource_types(
+            resource_type=resource_type,
+            resource_types=resource_types,
+        )
+
+        return await hot_score_service.get_hot_list(
+            db=db,
+            category_ids=category_ids,
+            resource_types=normalized_resource_types,
+            limit=limit,
+        )
 
     @staticmethod
     async def get_list(

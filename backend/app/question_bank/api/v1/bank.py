@@ -55,7 +55,6 @@ async def get_bank_chapter_progress(
     pk: Annotated[int, Path(description='题库 ID')],
 ) -> ResponseSchemaModel[GetBankChapterProgress]:
     """🔒 登录接口 - 获取用户在指定题库下的章节做题进度"""
-    await membership_service.verify_bank_access(db=db, user_id=request.user.id, bank_id=pk)
     data = await bank_service.get_chapter_progress(db=db, bank_id=pk, user_id=request.user.id)
     return response_base.success(data=data)
 

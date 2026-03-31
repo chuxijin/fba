@@ -25,7 +25,7 @@ interface ReportMetric {
 
 const tokenStore = useTokenStore()
 const userStore = useUserStore()
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const loading = ref(false)
 const dashboard = ref<any>(null)
 

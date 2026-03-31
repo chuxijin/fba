@@ -12,5 +12,5 @@ v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH)
 
 v1.include_router(entitlement_router, prefix='/membership/entitlements', tags=['会员权益管理'])
 v1.include_router(tier_router, prefix='/membership/tiers', tags=['会员等级管理'])
-v1.include_router(plan_router, prefix='/membership/plans', tags=['会员计划管理'])
 v1.include_router(membership_router, prefix='/membership', tags=['会员服务'])
+v1.include_router(plan_router, prefix='/membership/plans', tags=['会员计划管理'])

@@ -53,7 +53,7 @@ const publicNotesLoadingMap = reactive<Record<number, boolean>>({})
 const noteTabMap = reactive<Record<number, 'mine' | 'public'>>({})
 const activeQuestionStartedAt = ref(Date.now())
 const nowTick = ref(Date.now())
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const topInset = statusBarHeight || 20
 let tickTimer: ReturnType<typeof setInterval> | null = null
 
@@ -232,7 +232,7 @@ function getStrokes() {
 function redrawCanvas() {
   if (!canvasCtx)
     return
-  const systemInfo = uni.getSystemInfoSync()
+  const systemInfo = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
   canvasCtx.clearRect(0, 0, systemInfo.windowWidth, systemInfo.windowHeight)
   for (const stroke of getStrokes()) {
     if (stroke.points.length < 2)

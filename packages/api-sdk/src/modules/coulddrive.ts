@@ -15,7 +15,8 @@ export interface CoulddriveModule {
   request: ScopedApiClient;
   resource: {
     getList(params?: CoulddriveResourceListParams): Promise<PageData<CoulddriveResourceListItem>>;
-    getHot(categoryId?: number, limit?: number): Promise<CoulddriveResourceListItem[]>;
+    getHot(categoryId?: number, limit?: number, resourceType?: string | string[]): Promise<CoulddriveResourceListItem[]>;
+    recordClick(resourceId: number): Promise<{ click_count: number }>;
     getDetail(resourceId: number): Promise<CoulddriveResourceListItem>;
     vectorize(params?: CoulddriveResourceVectorizeParams): Promise<CoulddriveResourceVectorizeResult>;
     vectorSearch(params: CoulddriveResourceVectorSearchParams): Promise<CoulddriveResourceVectorSearchResultItem[]>;
@@ -34,18 +35,41 @@ export function createCoulddriveModule(client: ApiClient): CoulddriveModule {
       getList(params) {
         return request.get<PageData<CoulddriveResourceListItem>>('/resources', {
           params: params as Record<string, unknown>,
+          headers: { Authorization: '' },
         });
       },
-      getHot(categoryId, limit = 20) {
+      getHot(categoryId, limit = 20, resourceType) {
+        const params: Record<string, unknown> = { limit };
+        if (typeof categoryId === 'number') {
+          params.category_id = categoryId;
+        }
+        if (Array.isArray(resourceType)) {
+          const resourceTypes = resourceType
+            .map(item => String(item || '').trim())
+            .filter(Boolean);
+
+          if (resourceTypes.length > 0) {
+            params.resource_types = resourceTypes.join(',');
+          }
+        }
+        else if (resourceType) {
+          params.resource_type = resourceType;
+        }
+
         return request.get<CoulddriveResourceListItem[]>('/resources/hot', {
-          params: {
-            category_id: categoryId,
-            limit,
-          },
+          params,
+          headers: { Authorization: '' },
+        });
+      },
+      recordClick(resourceId) {
+        return request.post<{ click_count: number }>(`/resources/${resourceId}/click`, undefined, {
+          headers: { Authorization: '' },
         });
       },
       getDetail(resourceId) {
-        return request.get<CoulddriveResourceListItem>(`/resources/${resourceId}`);
+        return request.get<CoulddriveResourceListItem>(`/resources/${resourceId}`, {
+          headers: { Authorization: '' },
+        });
       },
       vectorize(params) {
         return request.post<CoulddriveResourceVectorizeResult>('/resources/vectorize', undefined, {

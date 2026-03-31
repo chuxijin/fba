@@ -27,8 +27,10 @@ export interface BankSchemaBase {
   bank_type: BankType;
   scene_mask: number;
   parent_id: number | null;
+  chapter_source_bank_id?: number | null;
   status: number;
   scope: number;
+  access_entitlement_code?: string | null;
 }
 
 export interface GetBankDetail extends BankSchemaBase {

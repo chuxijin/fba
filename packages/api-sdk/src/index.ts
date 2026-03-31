@@ -10,6 +10,8 @@ import { createCoulddriveModule } from './modules/coulddrive';
 import type { CoulddriveModule } from './modules/coulddrive';
 import { createOssModule } from './modules/oss';
 import type { OssModule } from './modules/oss';
+import { createMembershipModule } from './modules/membership';
+import type { MembershipModule } from './modules/membership';
 import type { BankModule } from './modules/bank';
 import type { MaterialModule } from './modules/material';
 import type { PracticeModule } from './modules/practice';
@@ -21,6 +23,7 @@ export interface FbaApiSdk {
   qbank: QbankModule;
   coulddrive: CoulddriveModule;
   oss: OssModule;
+  membership: MembershipModule;
   bank: BankModule;
   material: MaterialModule;
   question: QuestionModule;
@@ -35,6 +38,7 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
   const qbank = createQbankModule(client);
   const coulddrive = createCoulddriveModule(client);
   const oss = createOssModule(client);
+  const membership = createMembershipModule(client);
 
   return {
     admin,
@@ -42,6 +46,7 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
     qbank,
     coulddrive,
     oss,
+    membership,
     bank: qbank.bank,
     material: qbank.material,
     question: qbank.question,
@@ -58,6 +63,7 @@ export type { GongkaoModule } from './modules/gongkao';
 export type { QbankModule } from './modules/qbank';
 export type { CoulddriveModule } from './modules/coulddrive';
 export type { OssModule } from './modules/oss';
+export type { MembershipModule } from './modules/membership';
 export type { BankModule } from './modules/bank';
 export type { MaterialModule } from './modules/material';
 export type { PracticeModule } from './modules/practice';
@@ -187,6 +193,8 @@ export type {
   CoulddriveResourceVectorizeResult,
   OssUploadParams,
   OssUploadResult,
+  MembershipBrief,
+  MembershipPlanBrief,
 } from './types';
 
 

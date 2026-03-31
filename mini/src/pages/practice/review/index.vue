@@ -10,7 +10,7 @@ definePage({ style: { navigationStyle: 'custom', navigationBarTextStyle: 'black'
 type UserAnswerValue = string | string[]
 
 const tokenStore = useTokenStore()
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 
 // ============ 路由参数 ============
 const source = ref<'wrong' | 'favorite' | 'note'>('wrong')

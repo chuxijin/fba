@@ -30,6 +30,7 @@ export interface CoulddriveResourceListItem {
   file_size?: number | null;
   view_count: number;
   hot: number;
+  remark?: string | null;
   status: number;
   audit_status: number;
   expired_type: number;

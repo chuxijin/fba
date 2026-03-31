@@ -38,7 +38,7 @@ const loginMethodLabel = computed(() => {
 
   return username.startsWith('wx_') ? '微信登录' : '账号密码登录'
 })
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 
 function ensureLogin() {
   if (tokenStore.updateNowTime().hasLogin) {

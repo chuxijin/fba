@@ -2,8 +2,10 @@
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
-import { useTokenStore } from '@/store'
+import MembershipModal from '@/components/MembershipModal.vue'
+import { useMembershipStore, useTokenStore } from '@/store'
 import { getAppSettings } from '@/utils/appSettings'
+import { isMembershipAccessError } from '@/utils/membershipAccess'
 
 definePage({
   style: {
@@ -33,6 +35,7 @@ interface BankDetail {
   bank_type: number
   cover_url: string | null
   difficulty: number | null
+  access_entitlement_code?: string | null
   chapters: ChapterNode[]
 }
 
@@ -54,14 +57,18 @@ interface ChapterProgress {
   chapters: ChapterProgressNode[]
 }
 
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const tokenStore = useTokenStore()
+const membershipStore = useMembershipStore()
 
 const bankId = ref(0)
 const loading = ref(false)
 const bank = ref<BankDetail | null>(null)
 const expandedChapters = ref<Set<number>>(new Set())
 const progress = ref<ChapterProgress | null>(null)
+const showMembershipModal = ref(false)
+const requiresMembership = ref(false)
+const initialized = ref(false)
 
 const totalQuestionCount = computed(() => progress.value?.total_question_count ?? bank.value?.q_count_cache ?? 0)
 const totalAnswerCount = computed(() => progress.value?.total_answer_count ?? 0)
@@ -69,6 +76,13 @@ const totalCorrectRatio = computed(() => {
   if (!totalAnswerCount.value)
     return 0
   return Math.round((progress.value?.total_correct_count ?? 0) / totalAnswerCount.value * 100)
+})
+const actionButtonLabel = computed(() => {
+  if (requiresMembership.value && !membershipStore.isVip) {
+    return '开通会员后刷题'
+  }
+
+  return '开始刷题'
 })
 
 // 章节进度 map，方便 O(1) 查找
@@ -111,6 +125,19 @@ function navigateToPracticeSession(sessionId: number, mode: PracticeMode) {
   })
 }
 
+function openMembershipModalByGuard() {
+  requiresMembership.value = true
+  showMembershipModal.value = true
+}
+
+async function syncMembershipState() {
+  if (!tokenStore.updateNowTime().hasLogin) {
+    return
+  }
+
+  await membershipStore.fetchMembership()
+}
+
 async function startPracticeByBank() {
   if (!tokenStore.updateNowTime().hasLogin) {
     uni.showToast({ title: '请先登录', icon: 'none' })
@@ -133,6 +160,11 @@ async function startPracticeByBank() {
     navigateToPracticeSession(Number((session as any)?.id || 0), mode)
   }
   catch (error) {
+    if (isMembershipAccessError(error)) {
+      openMembershipModalByGuard()
+      return
+    }
+
     console.error('创建刷题会话失败:', error)
     uni.showToast({ title: '创建刷题会话失败', icon: 'none' })
   }
@@ -159,6 +191,11 @@ async function startPracticeByChapter(chapter: ChapterNode) {
     navigateToPracticeSession(Number((session as any)?.id || 0), mode)
   }
   catch (error) {
+    if (isMembershipAccessError(error)) {
+      openMembershipModalByGuard()
+      return
+    }
+
     console.error('创建刷题会话失败:', error)
     uni.showToast({ title: '创建刷题会话失败', icon: 'none' })
   }
@@ -172,6 +209,7 @@ async function loadBankDetail() {
   try {
     const data = await fbaApi.qbank.bank.getDetail(bankId.value) as any
     bank.value = data
+    requiresMembership.value = Boolean(data?.access_entitlement_code) && !membershipStore.isVip
   }
   catch (error) {
     console.error('加载题库详情失败:', error)
@@ -188,8 +226,14 @@ async function loadProgress() {
 
   try {
     progress.value = await fbaApi.qbank.bank.getChapterProgress(bankId.value) as any
+    requiresMembership.value = Boolean(bank.value?.access_entitlement_code) && !membershipStore.isVip
   }
-  catch {
+  catch (error) {
+    if (isMembershipAccessError(error)) {
+      requiresMembership.value = true
+      return
+    }
+
     // 未登录或接口异常时不影响页面展示
   }
 }
@@ -205,18 +249,36 @@ function progressPercent(chapterId: number): number {
   return Math.round(p.answer_count / p.question_count * 100)
 }
 
+async function refreshPageData() {
+  await syncMembershipState()
+  await loadBankDetail()
+  await loadProgress()
+}
+
 onLoad((query) => {
   bankId.value = Number(query?.id || 0)
   if (bankId.value) {
-    loadBankDetail()
-    loadProgress()
+    void refreshPageData().finally(() => {
+      initialized.value = true
+    })
   }
 })
 
 onShow(() => {
   // 从刷题页返回时刷新进度
-  if (bankId.value && bank.value)
-    loadProgress()
+  if (!bankId.value || !initialized.value)
+    return
+
+  void syncMembershipState().finally(() => {
+    if (!bank.value) {
+      void loadBankDetail()
+      void loadProgress()
+      return
+    }
+
+    requiresMembership.value = Boolean(bank.value.access_entitlement_code) && !membershipStore.isVip
+    void loadProgress()
+  })
 })
 </script>
 
@@ -386,10 +448,13 @@ onShow(() => {
       <!-- 底部开始练习按钮 -->
       <view class="fixed bottom-0 left-0 right-0 z-30 border-t border-white/40 bg-white/95 px-5 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur-md">
         <view
-          class="h-12 flex items-center justify-center rounded-2xl from-[#3B82F6] to-[#2563EB] bg-gradient-to-r text-[16px] text-white font-black shadow-[0_4px_14px_rgba(59,130,246,0.35)] active:scale-[0.98]"
+          class="h-12 flex items-center justify-center rounded-2xl text-[16px] text-white font-black active:scale-[0.98]"
+          :class="requiresMembership && !membershipStore.isVip
+            ? 'from-[#F59E0B] to-[#B45309] bg-gradient-to-r shadow-[0_4px_14px_rgba(245,158,11,0.35)]'
+            : 'from-[#3B82F6] to-[#2563EB] bg-gradient-to-r shadow-[0_4px_14px_rgba(59,130,246,0.35)]'"
           @click="startPracticeByBank"
         >
-          开始刷题
+          {{ actionButtonLabel }}
         </view>
       </view>
     </template>
@@ -397,5 +462,7 @@ onShow(() => {
     <view v-else class="py-20 text-center text-[14px] text-[#94A3B8]">
       题库不存在或已下架
     </view>
+
+    <MembershipModal v-model="showMembershipModal" />
   </view>
 </template>

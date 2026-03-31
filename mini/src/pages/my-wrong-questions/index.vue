@@ -1,6 +1,8 @@
 ﻿<script lang="ts" setup>
 import { fbaApi } from '@/api/sdk'
+import MembershipModal from '@/components/MembershipModal.vue'
 import { useTokenStore } from '@/store'
+import { isMembershipAccessError } from '@/utils/membershipAccess'
 import { toLoginPage } from '@/utils/toLoginPage'
 
 defineOptions({
@@ -26,11 +28,12 @@ interface TreeNode {
 }
 
 const tokenStore = useTokenStore()
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 
 const loading = ref(false)
 const groupMode = ref<GroupMode>('knowledge_point')
 const groups = ref<TreeNode[]>([])
+const showMembershipModal = ref(false)
 const statistics = ref<any>({
   total_count: 0,
   mastered_count: 0,
@@ -134,6 +137,11 @@ async function startPractice(node: TreeNode) {
     })
   }
   catch (error: any) {
+    if (isMembershipAccessError(error)) {
+      showMembershipModal.value = true
+      return
+    }
+
     console.error('创建错题练习失败:', error)
     uni.showToast({ title: error?.message || '创建失败', icon: 'none' })
   }
@@ -260,6 +268,8 @@ onPullDownRefresh(async () => {
         <view class="i-carbon-notebook-reference mb-4 text-6xl text-[#CBD5E1]" />
         <text class="text-[14px] text-[#94A3B8]">暂时没有错题，继续保持！</text>
       </view>
+
+      <MembershipModal v-model="showMembershipModal" />
     </view>
   </view>
 </template>

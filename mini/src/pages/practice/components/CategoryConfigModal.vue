@@ -29,7 +29,7 @@ interface CategoryNode {
   children?: CategoryNode[] | null
 }
 
-type AppTabCode = 'gongkao' | '考研'
+type AppTabCode = 'kaoyan' | 'guokao' | 'shengkao'
 
 interface SelectedTabItem {
   id: number
@@ -51,30 +51,49 @@ interface VisibleCategoryItem {
   hasChildren: boolean
 }
 
+const CATEGORY_APP_CODE = 'youanshang'
 const appTabs: Array<{ code: AppTabCode, title: string, hint: string }> = [
-  { code: 'gongkao', title: '考公', hint: '行政编制 · 事业单位 · 公职类' },
-  { code: '考研', title: '考研', hint: '统考专业课 · 初复试备考' },
+  { code: 'kaoyan', title: '考研', hint: '考研题库 · 首页分类 Tab' },
+  { code: 'guokao', title: '国考', hint: '国考题库 · 首页分类 Tab' },
+  { code: 'shengkao', title: '省考', hint: '省考题库 · 首页分类 Tab' },
 ]
+const appTabRootMatcherMap: Record<AppTabCode, { names: string[], codes: string[] }> = {
+  kaoyan: {
+    names: ['考研'],
+    codes: ['kaoyan', 'catalog_kaoyan', 'product_kaoyan'],
+  },
+  guokao: {
+    names: ['国考', '国家公务员'],
+    codes: ['guokao', 'catalog_guokao', 'product_guokao'],
+  },
+  shengkao: {
+    names: ['省考', '各省公务员'],
+    codes: ['shengkao', 'catalog_shengkao', 'product_shengkao'],
+  },
+}
 
-const activeApp = ref<AppTabCode>('gongkao')
+const activeApp = ref<AppTabCode>('kaoyan')
 const tabsRef = ref<any>(null)
 const selectedTabsState = ref<SelectedTabItem[]>([])
 const expandedByApp = ref<Record<AppTabCode, number[]>>({
-  gongkao: [],
-  考研: [],
+  kaoyan: [],
+  guokao: [],
+  shengkao: [],
 })
 const collapsedSectionsByApp = ref<Record<AppTabCode, string[]>>({
-  gongkao: [],
-  考研: [],
+  kaoyan: [],
+  guokao: [],
+  shengkao: [],
 })
 
 const appTypeMap: Record<AppTabCode, string[]> = {
-  gongkao: ['subject', 'knowledge_point'],
-  考研: ['subject'],
+  kaoyan: ['product_catalog'],
+  guokao: ['product_catalog'],
+  shengkao: ['product_catalog'],
 }
 
 const typeLabelMap: Record<string, string> = {
-  subject: '科目方向',
+  product_catalog: '题库目录',
   knowledge_point: '知识点',
   exam: '考试项目',
   resource: '资料资源',
@@ -83,7 +102,7 @@ const typeLabelMap: Record<string, string> = {
 }
 
 const typeHintMap: Record<string, string> = {
-  subject: '按科目或题型浏览刷题方向',
+  product_catalog: '按题库目录挑选首页展示的刷题分类',
   knowledge_point: '按知识点脉络整理刷题分类',
   exam: '按考试场景组织练习入口',
   resource: '配套资料与学习材料分类',
@@ -117,6 +136,21 @@ function normalizeValue(value?: string | null) {
   return String(value || '').trim()
 }
 
+function isMatchedRootNode(node: CategoryNode, appCode: AppTabCode) {
+  const matcher = appTabRootMatcherMap[appCode]
+  const normalizedName = normalizeValue(node.name).toLowerCase()
+  const normalizedCode = normalizeValue(node.code).toLowerCase()
+
+  if (matcher.codes.some(code => normalizeValue(code).toLowerCase() === normalizedCode)) {
+    return true
+  }
+
+  return matcher.names.some((name) => {
+    const normalizedTarget = normalizeValue(name).toLowerCase()
+    return normalizedName === normalizedTarget || normalizedName.includes(normalizedTarget)
+  })
+}
+
 function cloneCategoryTree(nodes: CategoryNode[] | null | undefined): CategoryNode[] {
   return (nodes || []).map(node => ({
     ...node,
@@ -124,13 +158,12 @@ function cloneCategoryTree(nodes: CategoryNode[] | null | undefined): CategoryNo
   }))
 }
 
-function filterCategoryTreeByAppAndType(
+function filterCategoryTreeByType(
   nodes: CategoryNode[] | null | undefined,
-  appCode: AppTabCode,
   targetType: string,
 ) {
   const result: CategoryNode[] = []
-  const normalizedAppCode = normalizeValue(appCode)
+  const normalizedAppCode = normalizeValue(CATEGORY_APP_CODE)
   const normalizedType = normalizeValue(targetType)
 
   for (const node of nodes || []) {
@@ -145,7 +178,7 @@ function filterCategoryTreeByAppAndType(
       continue
     }
 
-    const children = filterCategoryTreeByAppAndType(node.children, appCode, targetType)
+    const children = filterCategoryTreeByType(node.children, targetType)
     if (children.length)
       result.push(...children)
   }
@@ -158,7 +191,8 @@ function getSectionsForApp(appCode: AppTabCode): TypeSection[] {
 
   return allowedTypes
     .map((type) => {
-      const nodes = filterCategoryTreeByAppAndType(props.categories || [], appCode, type)
+      const nodes = filterCategoryTreeByType(props.categories || [], type)
+        .filter(node => isMatchedRootNode(node, appCode))
       if (!nodes.length)
         return null
 
@@ -317,10 +351,6 @@ function emitSelectedTabs() {
   emit('update:selectedTabs', [...selectedTabsState.value])
 }
 
-function getSelectedTabsByApp(appCode: AppTabCode) {
-  return selectedTabsState.value.filter(item => item.appCode === appCode)
-}
-
 function getSelectedTabKey(appCode: AppTabCode, id: number) {
   return `${appCode}-${id}`
 }
@@ -351,25 +381,19 @@ function removeSelectedTab(id: number) {
   emitSelectedTabs()
 }
 
-function moveSelectedTab(appCode: AppTabCode, id: number, direction: 'up' | 'down') {
+function moveSelectedTab(id: number, direction: 'up' | 'down') {
   const currentList = [...selectedTabsState.value]
-  const appIndexes = currentList
-    .map((item, index) => item.appCode === appCode ? index : -1)
-    .filter(index => index >= 0)
-
-  const currentIndex = appIndexes.findIndex(index => currentList[index]?.id === id)
+  const currentIndex = currentList.findIndex(item => item.id === id)
   if (currentIndex < 0)
     return
 
   const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-  if (targetIndex < 0 || targetIndex >= appIndexes.length)
+  if (targetIndex < 0 || targetIndex >= currentList.length)
     return
 
-  const from = appIndexes[currentIndex]
-  const to = appIndexes[targetIndex]
-  const temp = currentList[from]
-  currentList[from] = currentList[to]
-  currentList[to] = temp
+  const temp = currentList[currentIndex]
+  currentList[currentIndex] = currentList[targetIndex]
+  currentList[targetIndex] = temp
 
   selectedTabsState.value = currentList
   emitSelectedTabs()
@@ -439,14 +463,75 @@ watch(() => props.categories, () => {
               分类配置
             </view>
             <view class="mt-1 text-[12px] text-[#648172]">
-              先按应用查看分类体系，后面我们继续接首页 tab 的自定义逻辑
+              从题库目录里挑选要展示在首页的刷题分类
             </view>
           </view>
           <view
             class="h-8 w-8 flex shrink-0 items-center justify-center rounded-full bg-white/85 text-[#6B7280] shadow-sm transition-transform active:scale-95"
-            @click="closeModal"
+            @tap="closeModal"
           >
             <view class="i-carbon-close text-[18px]" />
+          </view>
+        </view>
+
+        <view class="mt-3 overflow-hidden border border-white/70 rounded-[22px] bg-white/88 shadow-[0_10px_28px_rgba(148,163,184,0.10)]">
+          <view class="border-b border-[#ECFDF5] from-[#F6FFFA] to-[#F8FAFC] bg-gradient-to-r px-4 pb-3 pt-4">
+            <view class="flex items-center justify-between gap-3">
+              <view>
+                <view class="text-[15px] text-[#14532D] font-bold">
+                  已添加首页Tab
+                </view>
+                <view class="mt-1 text-[11px] text-[#6B7280]">
+                  {{ selectedTabsState.length ? '这里直接调整首页全局顺序，不受下方分类切换影响' : '先从下方分类里添加想展示的Tab' }}
+                </view>
+              </view>
+              <view class="shrink-0 rounded-full bg-[#ECFDF5] px-2.5 py-1 text-[11px] text-[#059669] font-semibold">
+                {{ selectedTabsState.length }} 个
+              </view>
+            </view>
+          </view>
+
+          <view v-if="selectedTabsState.length" class="flex flex-col gap-2.5 px-3 py-3">
+            <view
+              v-for="(selected, index) in selectedTabsState"
+              :key="getSelectedTabKey(selected.appCode, selected.id)"
+              class="border border-white/70 rounded-[18px] bg-[#FCFFFD] px-3.5 py-3 shadow-sm"
+            >
+              <view class="flex items-center gap-3">
+                <view class="min-w-0 flex-1">
+                  <view class="truncate text-[14px] text-[#1E293B] font-semibold leading-[20px]">
+                    {{ selected.name }}
+                  </view>
+                </view>
+
+                <view class="flex shrink-0 items-center gap-1.5">
+                  <view
+                    class="h-8 w-8 flex items-center justify-center rounded-full bg-[#F8FAFC] text-[#64748B] transition-transform active:scale-95"
+                    :class="index === 0 ? 'opacity-35' : ''"
+                    @tap.stop="moveSelectedTab(selected.id, 'up')"
+                  >
+                    <view class="i-carbon-chevron-up text-[16px]" />
+                  </view>
+                  <view
+                    class="h-8 w-8 flex items-center justify-center rounded-full bg-[#F8FAFC] text-[#64748B] transition-transform active:scale-95"
+                    :class="index === selectedTabsState.length - 1 ? 'opacity-35' : ''"
+                    @tap.stop="moveSelectedTab(selected.id, 'down')"
+                  >
+                    <view class="i-carbon-chevron-down text-[16px]" />
+                  </view>
+                  <view
+                    class="h-8 w-8 flex items-center justify-center rounded-full bg-[#FEF2F2] text-[#EF4444] transition-transform active:scale-95"
+                    @tap.stop="removeSelectedTab(selected.id)"
+                  >
+                    <view class="i-carbon-close text-[15px]" />
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <view v-else class="px-4 py-6 text-center text-[12px] text-[#94A3B8]">
+            还没有添加首页Tab
           </view>
         </view>
 
@@ -485,68 +570,6 @@ watch(() => props.categories, () => {
             style="height: 100%;"
             :show-scrollbar="false"
           >
-            <view class="overflow-hidden border border-white/70 rounded-[22px] bg-white/88 shadow-[0_10px_28px_rgba(148,163,184,0.10)]">
-              <view class="border-b border-[#ECFDF5] from-[#F6FFFA] to-[#F8FAFC] bg-gradient-to-r px-4 pb-3 pt-4">
-                <view class="flex items-center justify-between gap-3">
-                  <view>
-                    <view class="text-[15px] text-[#14532D] font-bold">
-                      已添加首页Tab
-                    </view>
-                    <view class="mt-1 text-[11px] text-[#6B7280]">
-                      {{ getSelectedTabsByApp(app.code).length ? '可以上移下移调整首页顺序' : '先从下方分类里添加想展示的Tab' }}
-                    </view>
-                  </view>
-                  <view class="shrink-0 rounded-full bg-[#ECFDF5] px-2.5 py-1 text-[11px] text-[#059669] font-semibold">
-                    {{ getSelectedTabsByApp(app.code).length }} 个
-                  </view>
-                </view>
-              </view>
-
-              <view v-if="getSelectedTabsByApp(app.code).length" class="flex flex-col gap-2.5 px-3 py-3">
-                <view
-                  v-for="(selected, index) in getSelectedTabsByApp(app.code)"
-                  :key="getSelectedTabKey(app.code, selected.id)"
-                  class="flex items-center gap-3 border border-white/70 rounded-2xl bg-[#FCFFFD] px-4 py-3 shadow-sm"
-                >
-                  <view class="h-9 w-9 flex shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#10B981] shadow-inner">
-                    <view class="i-carbon-book text-[18px]" />
-                  </view>
-                  <view class="min-w-0 flex-1">
-                    <view class="truncate text-[14px] text-[#1E293B] font-bold">
-                      {{ selected.name }}
-                    </view>
-                    <view class="mt-0.5 text-[11px] text-[#94A3B8]">
-                      首页第 {{ index + 1 }} 个Tab
-                    </view>
-                  </view>
-                  <view class="flex shrink-0 items-center gap-2">
-                    <view
-                      class="h-7 w-7 flex items-center justify-center border border-[#E2E8F0] rounded-full bg-white text-[#64748B]"
-                      @click="moveSelectedTab(app.code, selected.id, 'up')"
-                    >
-                      <view class="i-carbon-arrow-up text-[15px]" />
-                    </view>
-                    <view
-                      class="h-7 w-7 flex items-center justify-center border border-[#E2E8F0] rounded-full bg-white text-[#64748B]"
-                      @click="moveSelectedTab(app.code, selected.id, 'down')"
-                    >
-                      <view class="i-carbon-arrow-down text-[15px]" />
-                    </view>
-                    <view
-                      class="h-7 w-7 flex items-center justify-center rounded-full bg-[#FEF2F2] text-[#EF4444]"
-                      @click="removeSelectedTab(selected.id)"
-                    >
-                      <view class="i-carbon-close text-[15px]" />
-                    </view>
-                  </view>
-                </view>
-              </view>
-
-              <view v-else class="px-4 py-6 text-center text-[12px] text-[#94A3B8]">
-                还没有添加首页Tab
-              </view>
-            </view>
-
             <view v-if="loading" class="mt-4 rounded-2xl bg-white/85 px-5 py-10 text-center shadow-sm">
               <view class="text-[15px] text-[#1E293B] font-semibold">
                 分类数据加载中...
@@ -639,10 +662,10 @@ watch(() => props.categories, () => {
 
             <view v-else class="mt-4 rounded-2xl bg-white/85 px-5 py-10 text-center shadow-sm">
               <view class="text-[15px] text-[#1E293B] font-semibold">
-                这个应用下还没有分类
+                当前还没有可用的题库目录分类
               </view>
               <view class="mt-1 text-[12px] text-[#94A3B8]">
-                可以先在后台补充对应 app_code 的分类数据
+                可以先在后台补充 `youanshang / product_catalog` 分类数据
               </view>
             </view>
           </scroll-view>

@@ -210,3 +210,30 @@ async def cleanup_expired_local_shares() -> Dict[str, Any]:
             "cleanup_details": [],
             "error": str(e)
         }
+
+
+@celery_app.task(name='sync_resource_hot_scores')
+async def sync_resource_hot_scores() -> Dict[str, Any]:
+    """
+    同步资源热度评分到数据库（离线快照）
+
+    :return: 执行结果统计
+    """
+    try:
+        async with async_db_session() as db:
+            from backend.app.coulddrive.service.hot_score_service import hot_score_service
+
+            updated = await hot_score_service.sync_hot_to_db(db)
+            logger.info(f'热度快照同步完成，更新 {updated} 个资源')
+            return {
+                'updated_count': updated,
+                'status': 'success',
+            }
+
+    except Exception as e:
+        logger.error(f'热度快照同步失败: {str(e)}')
+        return {
+            'updated_count': 0,
+            'status': 'error',
+            'error': str(e),
+        }

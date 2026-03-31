@@ -12,9 +12,50 @@ let taskQueue: Array<{
   resolve: (value: any) => void
   reject: (reason?: any) => void
 }> = [] // 刷新 token 请求队列
+let handlingAuthFailure = false // 防止重复登出/跳转/提示
 
 function isRefreshRequest(url?: string) {
   return typeof url === 'string' && url.includes('/auth/refresh')
+}
+
+function extractErrorMessage(error: any): string {
+  return String(
+    error?.msg
+    || error?.message
+    || error?.data?.msg
+    || error?.data?.message
+    || '',
+  ).trim()
+}
+
+function getAuthFailureToast(error?: any): string {
+  const rawMessage = extractErrorMessage(error)
+  if (rawMessage.includes('异地登录')) {
+    return '账号已在其他设备登录，请重新登录'
+  }
+  return '登录已过期，请重新登录'
+}
+
+async function handleAuthFailure(error?: any) {
+  if (handlingAuthFailure) {
+    return
+  }
+
+  handlingAuthFailure = true
+  const tokenStore = useTokenStore()
+  try {
+    await tokenStore.logout()
+  }
+  finally {
+    uni.showToast({
+      title: getAuthFailureToast(error),
+      icon: 'none',
+    })
+    toLoginPage()
+    setTimeout(() => {
+      handlingAuthFailure = false
+    }, 1200)
+  }
 }
 
 export function http<T>(options: CustomRequestOptions) {
@@ -40,14 +81,12 @@ export function http<T>(options: CustomRequestOptions) {
           const tokenStore = useTokenStore()
           if (!isDoubleTokenMode) {
             // 未启用双token策略，清理用户信息，跳转到登录页
-            await tokenStore.logout()
-            toLoginPage()
+            await handleAuthFailure(responseData)
             return reject(res)
           }
 
           if (isRefreshRequest(options.url)) {
-            await tokenStore.logout()
-            toLoginPage()
+            await handleAuthFailure(responseData)
             return reject(res)
           }
 
@@ -82,14 +121,7 @@ export function http<T>(options: CustomRequestOptions) {
               const pendingQueue = [...taskQueue]
               taskQueue = []
               pendingQueue.forEach(task => task.reject(refreshErr))
-              // 清除用户信息
-              await tokenStore.logout()
-              // 跳转到登录页
-              uni.showToast({
-                title: '登录已过期，请重新登录',
-                icon: 'none',
-              })
-              toLoginPage()
+              await handleAuthFailure(refreshErr)
             }
           }
 
@@ -114,6 +146,11 @@ export function http<T>(options: CustomRequestOptions) {
         }
 
         // 处理其他错误
+        const isAuthError = res.statusCode === 401 || res.statusCode === 403
+        if (isAuthError && isRefreshRequest(options.url)) {
+          return reject(res)
+        }
+
         !options.hideErrorToast
         && uni.showToast({
           icon: 'none',

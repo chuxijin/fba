@@ -36,7 +36,7 @@ const routeContext = ref<FeedbackRouteContext>({
   targetText: null,
 })
 
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 
 function decodeQueryValue(value: unknown): string | null {
   if (value === undefined || value === null) {

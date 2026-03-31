@@ -14,7 +14,7 @@ from backend.database.redis import redis_client
 from backend.utils.build_tree import traversal_to_tree
 
 GROUP_TREE_CACHE_TTL = 300
-KP_CATEGORY_CACHE_KEY = 'qbank:group_tree:kp_categories:v1'
+KP_CATEGORY_CACHE_KEY = 'qbank:group_tree:kp_categories:v2'
 ALL_BANKS_CACHE_KEY = 'qbank:group_tree:all_banks:v1'
 ALL_CHAPTERS_CACHE_KEY = 'qbank:group_tree:all_chapters:v1'
 
@@ -258,7 +258,11 @@ async def load_kp_categories(db: AsyncSession) -> list[Category | dict[str, Any]
             Category.name,
             Category.sort_order,
         )
-        .where(Category.type == 'knowledge_point', Category.status == True)  # noqa: E712
+        .where(
+            Category.app_code == 'youanshang',
+            Category.type == 'knowledge_point',
+            Category.status == True,
+        )  # noqa: E712
         .order_by(Category.level, Category.sort_order)
     )
     rows = (await db.execute(stmt)).all()

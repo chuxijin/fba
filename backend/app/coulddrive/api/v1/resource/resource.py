@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Path, Request, UploadFile, File
@@ -72,6 +73,8 @@ async def get_hot_resource_list(
     request: Request,
     db: CurrentSession,
     category_id: Annotated[int | None, Query(description='分类ID')] = None,
+    resource_type: Annotated[str | None, Query(description='资源类型')] = None,
+    resource_types: Annotated[list[str] | None, Query(description='资源类型列表，可重复传参或逗号分隔')] = None,
     limit: Annotated[int, Query(description='数量限制', ge=1, le=50)] = 20
 ) -> ResponseSchemaModel[list[ResourceListItem]]:
     """
@@ -80,11 +83,39 @@ async def get_hot_resource_list(
     :param request: 请求对象
     :param db: 数据库会话
     :param category_id: 分类ID
+    :param resource_type: 资源类型
+    :param resource_types: 资源类型列表
     :param limit: 数量限制
     :return: 热门资源列表
     """
-    hot_list = await resource_service.get_hot_list(db=db, category_id=category_id, limit=limit)
+    hot_list = await resource_service.get_hot_list(
+        db=db,
+        category_id=category_id,
+        resource_type=resource_type,
+        resource_types=resource_types,
+        limit=limit,
+    )
     return response_base.success(data=hot_list)
+
+
+@router.post(
+    '/{resource_id}/click',
+    summary='记录资源点击',
+    response_model=ResponseModel,
+)
+async def record_resource_click(
+    resource_id: Annotated[int, Path(description='资源ID')],
+) -> ResponseModel:
+    """
+    记录前端资源点击事件（用于热度计算）
+
+    :param resource_id: 资源ID
+    :return:
+    """
+    from backend.app.coulddrive.service.hot_score_service import hot_score_service
+
+    count = await hot_score_service.record_click(resource_id)
+    return response_base.success(data={'click_count': count})
 
 
 @router.get(
@@ -217,6 +248,26 @@ async def vector_search_resources(
         include_content=include_content,
         category_id=category_id,
     )
+
+    # 记录搜索曝光（异步，不阻塞响应）
+    if results:
+        from backend.app.coulddrive.service.hot_score_service import hot_score_service
+
+        resource_ids: list[int] = []
+        for item in results:
+            resource = None
+            if isinstance(item, dict):
+                resource = item.get('resource')
+            elif hasattr(item, 'resource'):
+                resource = item.resource
+
+            resource_id = getattr(resource, 'id', None)
+            if isinstance(resource_id, int):
+                resource_ids.append(resource_id)
+
+        if resource_ids:
+            asyncio.create_task(hot_score_service.record_search_impressions(resource_ids))
+
     return response_base.success(data=results)
 
 
@@ -264,7 +315,6 @@ async def vectorize_resources(
     '/{resource_id}',
     summary='获取资源详情',
     response_model=ResponseSchemaModel[GetResourceDetail],
-    dependencies=[DependsJwtAuth]
 )
 async def get_resource_detail(
     request: Request,

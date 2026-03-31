@@ -31,7 +31,7 @@ type PracticeMode = (typeof practiceModeOptions)[number]['value']
 
 const tokenStore = useTokenStore()
 const userStore = useUserStore()
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const randomPracticeCount = ref(20)
 const darkThemeEnabled = ref(false)
 const practiceMode = ref<PracticeMode>('practice')

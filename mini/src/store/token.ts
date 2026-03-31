@@ -85,7 +85,10 @@ export const useTokenStore = defineStore(
 
     const updateNowTime = () => {
       nowTime.value = Date.now()
-      return useTokenStore()
+      return {
+        hasLogin: hasValidLogin.value,
+        validToken: getValidToken.value,
+      }
     }
 
     const setTokenInfo = (val: IAuthLoginRes) => {

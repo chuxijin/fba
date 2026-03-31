@@ -22,7 +22,7 @@ definePage({
 const PAGE_SIZE = 20
 
 const tokenStore = useTokenStore()
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 
 const loading = ref(false)
 const loadingMore = ref(false)

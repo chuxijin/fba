@@ -46,7 +46,7 @@ NATIONAL_BANK_CODE = "BANK_SHENLUN_NATIONAL"
 NATIONAL_BANK_NAME = "国家公务员考试申论"
 PROVINCIAL_BANK_CODE = "BANK_SHENLUN_PROVINCIAL"
 PROVINCIAL_BANK_NAME = "省公务员申论"
-DEFAULT_CATEGORY_ID = 2
+DEFAULT_CATEGORY_ID = 0
 DEFAULT_CREATED_BY = 1
 
 PROVINCIAL_REGION_RULES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
@@ -336,7 +336,9 @@ def build_run_args() -> SimpleNamespace:
     dry_run = ask_yes_no("是否 DryRun（仅演练不提交）", True)
     update_existing = ask_yes_no("已存在试卷是否覆盖更新", False)
     max_questions = ask_int("每套试卷最多导入题目数（0=不限）", 0)
-    cat_id = ask_int("题库分类 cat_id", DEFAULT_CATEGORY_ID)
+    cat_id = ask_int("题库分类 cat_id（必填，请手动输入当前有效分类）", DEFAULT_CATEGORY_ID)
+    if cat_id <= 0:
+        raise RuntimeError("cat_id 不能为空，请手动输入当前有效的题库分类 ID")
     created_by = ask_int("created_by 用户 ID", DEFAULT_CREATED_BY)
 
     mirror_images = ask_yes_no("是否镜像题干/材料/答案中的图片到 OSS", True)

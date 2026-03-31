@@ -26,6 +26,28 @@ function getStoredAccessToken(): string {
   }
 }
 
+function sanitizeRequestValue<T = unknown>(value: T): T | undefined {
+  if (value === undefined || value === 'undefined') {
+    return undefined
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(item => sanitizeRequestValue(item))
+      .filter(item => item !== undefined) as T
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => [key, sanitizeRequestValue(item)] as const)
+      .filter(([, item]) => item !== undefined)
+
+    return Object.fromEntries(entries) as T
+  }
+
+  return value
+}
+
 /**
  * 实现适用于 unibest 的网络适配器
  * 将 SDK 的请求底层转接到 unibest 的请求实现
@@ -33,10 +55,12 @@ function getStoredAccessToken(): string {
 const unibestRequestAdapter: RequestAdapter = {
   request<T = unknown>(config: RequestConfig): Promise<T> {
     return new Promise((resolve, reject) => {
+      const payload = sanitizeRequestValue(config.params ?? config.data)
+
       http<T>({
         url: config.url,
         method: (config.method || 'GET') as any,
-        data: config.params || config.data,
+        data: payload,
         header: config.headers,
         timeout: config.timeout || 15000,
       }).then((data) => {
@@ -63,6 +87,18 @@ export const fbaApi = createFbaApiSdk({
   apiPrefix: import.meta.env.VITE_API_PREFIX || '/api/v1',
   getToken: () => getStoredAccessToken(),
 })
+
+// 兼容旧版 @fba/api-sdk：运行时缺少 membership 模块时，回退到直连接口
+if (!(fbaApi as any).membership) {
+  (fbaApi as any).membership = {
+    getMyMembership() {
+      return fbaApi.client.get('/membership/me')
+    },
+    getAvailablePlans() {
+      return fbaApi.client.get('/membership/plans/available')
+    },
+  }
+}
 
 // 兼容旧 SDK 缓存：统一支持 session_id 查询（number）和旧的 question_ids 查询（number[]）
 const rawCheckFavorites = fbaApi.qbank.question.checkFavorites.bind(fbaApi.qbank.question)

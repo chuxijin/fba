@@ -1,4 +1,4 @@
-﻿export { createBankModule } from './bank';
+export { createBankModule } from './bank';
 export { createMaterialModule } from './material';
 export { createPracticeModule } from './practice';
 export { createQuestionModule } from './question';
@@ -7,6 +7,7 @@ export { createGongkaoModule } from './gongkao';
 export { createQbankModule } from './qbank';
 export { createCoulddriveModule } from './coulddrive';
 export { createOssModule } from './oss';
+export { createMembershipModule } from './membership';
 
 export type { BankModule } from './bank';
 export type { MaterialModule } from './material';
@@ -17,3 +18,4 @@ export type { GongkaoModule } from './gongkao';
 export type { QbankModule } from './qbank';
 export type { CoulddriveModule } from './coulddrive';
 export type { OssModule } from './oss';
+export type { MembershipModule } from './membership';

@@ -108,6 +108,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/auth/wx-login',  # 统一微信登录
         f'{FASTAPI_API_V1_PATH}/auth/test-login',  # 统一测试登录
         f'{FASTAPI_API_V1_PATH}/sys/categories/tree',  # 系统分类树（公开接口）
+        f'{FASTAPI_API_V1_PATH}/resources/hot',  # 热门资源（公开接口）
         f'{FASTAPI_API_V1_PATH}/qbank/banks',  # 题库列表（公开接口）
         f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',  # 百度网盘 OAuth 回调
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/login',  # 订单号直接登录
@@ -118,6 +119,7 @@ class Settings(BaseSettings):
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$',
         rf'^{FASTAPI_API_V1_PATH}/qbank/banks/\d+$',  # 题库详情（公开接口）
+        rf'^{FASTAPI_API_V1_PATH}/resources/\d+/click$',  # 资源点击统计（公开接口）
     ]
 
     # 用户安全

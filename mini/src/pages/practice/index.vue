@@ -68,7 +68,7 @@ interface PracticeTab {
 interface SelectedPracticeTab {
   id: number
   name: string
-  appCode: 'gongkao' | '考研'
+  appCode: PracticeConfigTabCode
 }
 
 interface StudyPreferenceCustomTab {
@@ -83,6 +83,7 @@ interface StudyPreferenceCustomTab {
 }
 
 type PracticeMode = 'exam' | 'practice' | 'memorize'
+type PracticeConfigTabCode = 'kaoyan' | 'guokao' | 'shengkao'
 
 interface LatestSessionBrief {
   id: number
@@ -126,8 +127,23 @@ const dashboard = ref<DashboardState>({
   overallAccuracy: '0%',
 })
 
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const navBarHeight = (statusBarHeight || 20) + 44
+
+const practiceConfigTabMatcherMap: Record<PracticeConfigTabCode, { names: string[], codes: string[] }> = {
+  kaoyan: {
+    names: ['考研'],
+    codes: ['kaoyan', 'catalog_kaoyan', 'product_kaoyan'],
+  },
+  guokao: {
+    names: ['国考', '国家公务员'],
+    codes: ['guokao', 'catalog_guokao', 'product_guokao'],
+  },
+  shengkao: {
+    names: ['省考', '各省公务员'],
+    codes: ['shengkao', 'catalog_shengkao', 'product_shengkao'],
+  },
+}
 
 const currentTab = computed(() => tabs.value[activeIndex.value] || null)
 const latestRecentSession = computed(() => recentSessions.value[0] || null)
@@ -300,19 +316,37 @@ function cloneFilteredBanksByCategoryId(
   nodes: BankNode[] | null | undefined,
   categoryId: number,
   categoryMetaMap: Map<number, CategoryMeta>,
+  flattenFirstMatched = false,
 ): BankNode[] {
   const result: BankNode[] = []
 
   for (const node of nodes || []) {
-    const children = cloneFilteredBanksByCategoryId(node.children, categoryId, categoryMetaMap)
     const path = categoryMetaMap.get(node.cat_id)?.path || []
     const selfMatched = path.includes(categoryId)
+    const children = cloneFilteredBanksByCategoryId(
+      node.children,
+      categoryId,
+      categoryMetaMap,
+      flattenFirstMatched && !selfMatched,
+    )
 
-    if (selfMatched || children.length) {
-      result.push({
-        ...node,
-        children,
-      })
+    if (selfMatched) {
+      // 仅在首次命中时隐藏自身，避免把省份层级也扁平掉
+      if (flattenFirstMatched && children.length) {
+        result.push(...children)
+      }
+      else {
+        result.push({
+          ...node,
+          children,
+        })
+      }
+      continue
+    }
+
+    if (children.length) {
+      // 父节点未命中时，直接提升已命中的子节点，避免展示上层无关卡片
+      result.push(...children)
     }
   }
 
@@ -375,7 +409,12 @@ function buildPracticeTabByCategoryId(
   banks: BankNode[],
 ) {
   const categoryMetaMap = buildCategoryMetaMap(categories)
-  const filteredBanks = cloneFilteredBanksByCategoryId(banks, categoryId, categoryMetaMap)
+  const filteredBanks = cloneFilteredBanksByCategoryId(
+    banks,
+    categoryId,
+    categoryMetaMap,
+    true,
+  )
 
   return {
     id: categoryId,
@@ -386,15 +425,52 @@ function buildPracticeTabByCategoryId(
   }
 }
 
-function resolveCategoryAppCodeById(nodes: CategoryNode[] | null | undefined, targetId: number): 'gongkao' | '考研' | null {
+function resolvePracticeConfigTabCode(node: CategoryNode): PracticeConfigTabCode | null {
+  const normalizedName = String(node.name || '').trim().toLowerCase()
+  const normalizedCode = String(node.code || '').trim().toLowerCase()
+
+  for (const [tabCode, matcher] of Object.entries(practiceConfigTabMatcherMap) as Array<
+    [PracticeConfigTabCode, { names: string[], codes: string[] }]
+  >) {
+    if (matcher.codes.some(code => String(code || '').trim().toLowerCase() === normalizedCode)) {
+      return tabCode
+    }
+
+    if (matcher.names.some((name) => {
+      const normalizedTarget = String(name || '').trim().toLowerCase()
+      return normalizedName === normalizedTarget || normalizedName.includes(normalizedTarget)
+    })) {
+      return tabCode
+    }
+  }
+
+  return null
+}
+
+function resolveCategoryAppCodeById(
+  nodes: CategoryNode[] | null | undefined,
+  targetId: number,
+  ancestors: CategoryNode[] = [],
+): PracticeConfigTabCode | null {
   for (const node of nodes || []) {
+    const currentAncestors = [...ancestors, node]
+
     if (node.id === targetId) {
-      if (node.app_code === 'gongkao' || node.app_code === '考研')
-        return node.app_code
+      if (node.app_code !== 'youanshang' || node.type !== 'product_catalog') {
+        return null
+      }
+
+      for (const currentNode of currentAncestors) {
+        const tabCode = resolvePracticeConfigTabCode(currentNode)
+        if (tabCode) {
+          return tabCode
+        }
+      }
+
       return null
     }
 
-    const childResult = resolveCategoryAppCodeById(node.children, targetId)
+    const childResult = resolveCategoryAppCodeById(node.children, targetId, currentAncestors)
     if (childResult)
       return childResult
   }
@@ -749,7 +825,11 @@ async function loadPracticeTabs() {
   try {
     const [bankTreeData, categoryTreeData] = await Promise.all([
       fbaApi.qbank.bank.getList({ status: 1 }) as Promise<BankNode[]>,
-      fbaApi.admin.sys.category.getTree({ status: true }) as Promise<CategoryNode[]>,
+      fbaApi.admin.sys.category.getTree({
+        app_code: 'youanshang',
+        type: 'product_catalog',
+        status: true,
+      }) as Promise<CategoryNode[]>,
     ])
 
     bankTree.value = bankTreeData || []
@@ -770,8 +850,10 @@ async function loadPracticeTabs() {
   }
 }
 
-function handleLoginSuccess() {
-  refreshPracticePage()
+async function handleLoginSuccess() {
+  tokenStore.updateNowTime()
+  showLoginModal.value = false
+  await refreshPracticePage()
 }
 
 async function refreshPracticePage() {

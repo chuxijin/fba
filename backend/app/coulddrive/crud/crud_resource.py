@@ -25,6 +25,28 @@ from backend.utils.timezone import timezone
 class CRUDResource(CRUDPlus[Resource]):
     """资源数据库操作类"""
 
+    @staticmethod
+    def _apply_resource_type_filter(
+        stmt: Select,
+        resource_types: list[str] | None = None,
+        resource_type: str | None = None,
+    ) -> Select:
+        """
+        应用资源类型筛选条件
+
+        :param stmt: 查询语句
+        :param resource_types: 资源类型列表
+        :param resource_type: 单个资源类型
+        :return:
+        """
+        if resource_types:
+            return stmt.where(Resource.resource_type.in_(resource_types))
+
+        if resource_type:
+            return stmt.where(Resource.resource_type == resource_type)
+
+        return stmt
+
     async def get(self, db: AsyncSession, pk: int) -> Resource | None:
         """获取资源详情"""
         stmt = select(self.model).where(self.model.id == pk).options(joinedload(self.model.category))
@@ -106,13 +128,17 @@ class CRUDResource(CRUDPlus[Resource]):
         self,
         db: AsyncSession,
         category_ids: list[int] | None = None,
+        resource_type: str | None = None,
+        resource_types: list[str] | None = None,
         limit: int = 20
     ) -> Sequence[Resource]:
         """
-        获取热门资源列表
+        获取热门资源列表（按 hot 快照降序）
 
         :param db: 数据库会话
         :param category_ids: 分类 ID 列表（包含子分类）
+        :param resource_type: 资源类型
+        :param resource_types: 资源类型列表
         :param limit: 数量限制
         :return:
         """
@@ -131,6 +157,51 @@ class CRUDResource(CRUDPlus[Resource]):
 
         if category_ids:
             stmt = stmt.where(self.model.category_id.in_(category_ids))
+
+        stmt = self._apply_resource_type_filter(
+            stmt,
+            resource_types=resource_types,
+            resource_type=resource_type,
+        )
+
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_active_resources(
+        self,
+        db: AsyncSession,
+        category_ids: list[int] | None = None,
+        resource_type: str | None = None,
+        resource_types: list[str] | None = None,
+    ) -> Sequence[Resource]:
+        """
+        获取所有活跃资源（未删除且状态正常）
+
+        :param db: 数据库会话
+        :param category_ids: 分类 ID 列表（包含子分类）
+        :param resource_type: 资源类型
+        :param resource_types: 资源类型列表
+        :return:
+        """
+        stmt = (
+            select(self.model)
+            .where(
+                and_(
+                    self.model.is_deleted == False,
+                    self.model.status == 1
+                )
+            )
+            .options(noload(Resource.user), noload(Resource.view_history))
+        )
+
+        if category_ids:
+            stmt = stmt.where(self.model.category_id.in_(category_ids))
+
+        stmt = self._apply_resource_type_filter(
+            stmt,
+            resource_types=resource_types,
+            resource_type=resource_type,
+        )
 
         result = await db.execute(stmt)
         return result.scalars().all()

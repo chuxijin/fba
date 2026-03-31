@@ -56,6 +56,7 @@ function getErrorMessage(error: any, fallback: string) {
 }
 
 function handleLoginSuccess() {
+  tokenStore.updateNowTime()
   closeModal()
   emit('success')
 }

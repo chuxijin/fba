@@ -43,7 +43,7 @@ interface AnswerCardGroup {
   items: AnswerCardItem[]
 }
 
-const { statusBarHeight } = uni.getSystemInfoSync()
+const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const resultStore = useResultStore()
 
 const loading = ref(true)

@@ -75,4 +75,8 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'check_expired_memberships',
         'schedule': TzAwareCrontab('35'),
     },
+    'sync_resource_hot_scores': {
+        'task': 'sync_resource_hot_scores',
+        'schedule': TzAwareCrontab('0', '1'),
+    },
 }

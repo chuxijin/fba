@@ -161,5 +161,11 @@ export type {
   CoulddriveResourceVectorizeResult,
 } from './coulddrive';
 
+// Membership
+export type {
+  MembershipBrief,
+  MembershipPlanBrief,
+} from './membership';
+
 // Oss
 export type { OssUploadParams, OssUploadResult } from './oss';
