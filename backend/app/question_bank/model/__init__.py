@@ -20,7 +20,7 @@ from .question import (
     QuestionStatistics,
     UserNoteVote,
 )
-from .statistics import UserCheckIn, UserDailyRank
+from .statistics import UserCheckIn, UserDailyRank, UserPracticeStats
 from .user import UserAccount
 
 __all__ = [
@@ -43,6 +43,7 @@ __all__ = [
     'UserAccount',
     'UserCheckIn',
     'UserDailyRank',
+    'UserPracticeStats',
     'Banner',
     'Notice',
 ]

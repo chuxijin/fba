@@ -189,11 +189,17 @@ async def answer_correct(
     根据 question_id + user_id 查找错题记录，增加连续答对次数，
     达到 mastery_threshold 自动标记为已掌握。
     """
+    mastery_threshold = obj.mastery_threshold
+    if mastery_threshold is None:
+        from backend.app.question_bank.service.user_settings_service import user_settings_service
+
+        mastery_threshold = await user_settings_service.get_mastery_threshold(db=db, user_id=request.user.id)
+
     data = await wrong_question_service.answer_correct(
         db=db,
         user_id=request.user.id,
         question_id=question_id,
         placement_id=obj.placement_id,
-        mastery_threshold=obj.mastery_threshold,
+        mastery_threshold=mastery_threshold,
     )
     return response_base.success(data=data)

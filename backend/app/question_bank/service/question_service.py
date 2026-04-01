@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.crud.crud_bank import bank_dao
@@ -864,21 +865,31 @@ class QuestionService:
     async def get_solution(*, db: AsyncSession, question_id: int, user_answer: str | None = None) -> dict[str, Any]:
         """
         获取题目答案和解析（练题模式专用）
+
         :param db: 数据库会话
         :param question_id: 题目 ID
         :param user_answer: 用户答案
         :return:
         """
-        question = await question_dao.get(db, question_id)
+        # 单条查询同时加载 question + analyses + statistics
+        stmt = (
+            select(Question)
+            .where(Question.id == question_id)
+            .options(
+                selectinload(Question.analyses),
+                selectinload(Question.statistics),
+            )
+        )
+        result = await db.execute(stmt)
+        question = result.scalars().first()
         if not question:
             raise errors.NotFoundError(msg='Question not found')
 
-        analysis = await question_analysis_dao.get_by_question_id(db, question_id)
+        analysis = QuestionService._pick_default_analysis(question.analyses)
         if not analysis:
             raise errors.NotFoundError(msg='Question analysis not found')
 
-        stats = await question_statistics_dao.get_or_create(db, question_id)
-
+        stats = question.statistics
         correct_answer = analysis.answer_data.get('correct', '')
 
         is_correct = None
@@ -893,8 +904,8 @@ class QuestionService:
             'correct_answer': correct_answer,
             'analysis': analysis.content,
             'is_correct': is_correct,
-            'correct_rate': stats.correct_rate,
-            'option_select_stats': stats.option_select_stats,
+            'correct_rate': stats.correct_rate if stats else Decimal('0'),
+            'option_select_stats': stats.option_select_stats if stats else {},
         }
 
     @staticmethod

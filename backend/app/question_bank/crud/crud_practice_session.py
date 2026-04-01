@@ -85,7 +85,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param source_key: 来源签名
         :return:
         """
-        filters: dict = {'user_id': user_id, 'status': 'in_progress'}
+        filters: dict = {'user_id': user_id, 'status': 'in_progress', 'del_flag': False}
         if session_type:
             filters['session_type'] = session_type
         if bank_id:
@@ -248,7 +248,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param status: 状态
         :return:
         """
-        stmt = select(PracticeSession).order_by(PracticeSession.start_time.desc())
+        stmt = select(PracticeSession).where(PracticeSession.del_flag.is_(False)).order_by(PracticeSession.start_time.desc())
 
         if user_id is not None:
             stmt = stmt.where(PracticeSession.user_id == user_id)
@@ -271,7 +271,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param session_id: 会话 ID
         :return:
         """
-        return await self.delete_model(db, session_id)
+        return await self.delete_model_by_column(db, id=session_id, logical_deletion=True, deleted_flag_column='del_flag')
 
 
 practice_session_dao: CRUDPracticeSession = CRUDPracticeSession(PracticeSession)

@@ -77,7 +77,7 @@ class QuestionBank(Base, UserMixin):
         remote_side=lambda: [QuestionBank.id],
         back_populates='children',
         foreign_keys=lambda: [QuestionBank.parent_id],
-        lazy='selectin',
+        lazy='noload',
     )
     children: Mapped[list['QuestionBank']] = relationship(
         init=False,

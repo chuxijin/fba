@@ -23,6 +23,7 @@ from backend.app.question_bank.crud.crud_question import (
 )
 from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
 from backend.app.question_bank.crud.crud_question_note import question_note_dao
+from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
     PracticeRecord,
@@ -316,12 +317,15 @@ class SessionService:
                 placements = list(result.unique().scalars().all())
         elif obj.chapter_id:
             # 按章节筛选
+            chapter_filters = [
+                QuestionPlacement.chapter_id == obj.chapter_id,
+                QuestionPlacement.is_active.is_(True),
+            ]
+            if obj.bank_id:
+                chapter_filters.append(QuestionPlacement.bank_id == obj.bank_id)
             stmt = (
                 select(QuestionPlacement)
-                .where(
-                    QuestionPlacement.chapter_id == obj.chapter_id,
-                    QuestionPlacement.is_active.is_(True),
-                )
+                .where(*chapter_filters)
                 .join(Question, Question.id == QuestionPlacement.question_id)
                 .where(Question.content_status == 10)
                 .options(
@@ -775,20 +779,25 @@ class SessionService:
         :param obj: 批量提交参数
         :return: 包含 upserted_count 和可选 judge_results 的字典
         """
-        session = await SessionService._get_owned_session(
-            db=db,
-            session_id=obj.session_id,
-            user_id=user_id,
+        # 合并查询：session + session_questions 一次加载
+        session_stmt = (
+            select(PracticeSession)
+            .where(PracticeSession.id == obj.session_id)
+            .options(selectinload(PracticeSession.session_questions))
         )
+        session_result = await db.execute(session_stmt)
+        session = session_result.scalars().first()
+        if not session:
+            raise errors.NotFoundError(msg='会话不存在')
+        if session.user_id != user_id:
+            raise errors.ForbiddenError(msg='无权访问此会话')
         if session.status != 'in_progress':
             raise errors.ForbiddenError(msg='会话已结束，不可作答')
 
         # 考试模式不允许即时判题
         allow_judge_now = obj.judge_now and session.session_type != 'exam'
 
-        # 查询会话题目快照，用于验证 question_id 合法性和取 full_score
-        session_questions = await session_question_dao.list_by_session(db=db, session_id=obj.session_id)
-        sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session_questions}
+        sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session.session_questions}
 
         records_dict: list[dict] = []
         for item in obj.records:
@@ -807,12 +816,9 @@ class SessionService:
                 'full_score': sq.full_score,
             })
 
-        if records_dict:
-            await practice_record_dao.batch_upsert(db=db, records=records_dict)
-
         result: dict[str, Any] = {'upserted_count': len(records_dict)}
 
-        # 即时判题：查询对应题目的默认解析，逐题比对
+        # 即时判题：查询对应题目的默认解析，逐题比对，并将判题结果合并到 records_dict
         if allow_judge_now and records_dict:
             question_ids = [r['question_id'] for r in records_dict]
             stmt = (
@@ -824,6 +830,7 @@ class SessionService:
             question_map: dict[int, Question] = {q.id: q for q in q_result.scalars().all()}
 
             judge_results: list[dict[str, Any]] = []
+            judge_time = datetime.now()
             for rd in records_dict:
                 question = question_map.get(rd['question_id'])
                 if not question:
@@ -850,7 +857,33 @@ class SessionService:
                     'correct_answer': correct_answer,
                 })
 
+                # 将判题结果合并到记录中，后续统一 upsert
+                full = sq_map[rd['question_id']].full_score if rd['question_id'] in sq_map else rd.get('full_score', Decimal('0'))
+                rd['is_correct'] = is_correct
+                rd['score'] = full if is_correct else Decimal('0')
+                rd['judged_at'] = judge_time
+
             result['judge_results'] = judge_results
+
+        # 统一写入（含即时判题结果）
+        if records_dict:
+            await practice_record_dao.batch_upsert(db=db, records=records_dict)
+
+        # 同步会话进度 + 增量更新用户统计快照
+        if records_dict:
+            completed_count = await practice_record_dao.count_by_session(db=db, session_id=obj.session_id)
+            await practice_session_dao.update_model(db, obj.session_id, {'completed_count': completed_count})
+
+        if allow_judge_now and records_dict:
+            judged = [r for r in records_dict if r.get('is_correct') is not None]
+            if judged:
+                await user_practice_stats_dao.increment(
+                    db=db,
+                    user_id=user_id,
+                    answered=len(judged),
+                    correct=sum(1 for r in judged if r['is_correct']),
+                    duration=sum(r.get('answer_time', 0) for r in judged),
+                )
 
         return result
 
@@ -961,6 +994,11 @@ class SessionService:
 
         submit_time = datetime.now()
         judge_version = obj.judge_version
+
+        # 读取用户错题掌握阈值
+        from backend.app.question_bank.service.user_settings_service import user_settings_service
+
+        mastery_threshold = await user_settings_service.get_mastery_threshold(db=db, user_id=user_id)
         total_score = Decimal('0')
         earned_score = Decimal('0')
         correct_count = 0
@@ -1084,7 +1122,7 @@ class SessionService:
             else:
                 if existing_wrong:
                     new_streak = existing_wrong.correct_streak + 1
-                    is_mastered = existing_wrong.is_mastered or new_streak >= 3
+                    is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
                     mastered_time = existing_wrong.mastered_time
                     if is_mastered and mastered_time is None:
                         mastered_time = submit_time
@@ -1129,6 +1167,27 @@ class SessionService:
             score=earned_score if earned_score > 0 else None,
             total_score=total_score if total_score > 0 else None,
         )
+
+        # 6. 增量更新用户统计快照（只统计本次新判的记录，避免与 upsert_records 重复）
+        newly_judged = [r for r in records if r.is_correct is None]
+        newly_judged_count = len(newly_judged) if newly_judged else completed_count
+        newly_correct = sum(
+            1 for row in judged_record_rows
+            if row['question_id'] in {r.question_id for r in newly_judged} and row['is_correct']
+        ) if newly_judged else correct_count
+        newly_duration = sum(
+            row.get('answer_time', 0) for row in judged_record_rows
+            if row['question_id'] in {r.question_id for r in newly_judged}
+        ) if newly_judged else sum(r.answer_time or 0 for r in records)
+
+        if newly_judged_count > 0:
+            await user_practice_stats_dao.increment(
+                db=db,
+                user_id=user_id,
+                answered=newly_judged_count,
+                correct=newly_correct,
+                duration=newly_duration,
+            )
 
         log.info(
             'Session submitted: id=%d user=%d completed=%d correct=%d wrong=%d score=%s',
@@ -1192,6 +1251,7 @@ class SessionService:
                     placement_id=sq.placement_id,
                     status=status,
                     answer_time=answer_time,
+                    chapter_name=sq.placement.chapter.name if sq.placement and sq.placement.chapter else None,
                 )
             )
 

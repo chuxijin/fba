@@ -106,7 +106,7 @@ class BatchDeleteWrongQuestionsParam(SchemaBase):
 class WrongQuestionAnswerCorrectParam(SchemaBase):
     """错题答对上报参数"""
 
-    mastery_threshold: int = Field(default=3, ge=1, le=20, description='连对掌握阈值')
+    mastery_threshold: int | None = Field(None, ge=1, le=20, description='连对掌握阈值（不传则读取学习偏好）')
     placement_id: int | None = Field(None, gt=0, description='挂载 ID')
 
 

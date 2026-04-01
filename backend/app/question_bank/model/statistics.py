@@ -79,3 +79,26 @@ class UserDailyRank(Base):
         server_default=sa.func.now(),
         comment='创建时间',
     )
+
+
+class UserPracticeStats(Base):
+    """用户刷题统计快照表"""
+
+    __tablename__ = 'study_user_practice_stats'
+    __table_args__ = (
+        {'comment': '用户刷题统计快照表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    user_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
+        unique=True,
+        comment='用户 ID',
+    )
+    total_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='累计答题数（已判题）')
+    correct_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='累计答对数')
+    total_duration: Mapped[int] = mapped_column(sa.Integer, default=0, comment='累计答题时长（秒）')
+    practice_days: Mapped[int] = mapped_column(sa.Integer, default=0, comment='练习天数')
+    last_practice_date: Mapped[date | None] = mapped_column(default=None, comment='最后练习日期')
+

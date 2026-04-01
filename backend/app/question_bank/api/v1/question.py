@@ -379,9 +379,6 @@ async def get_question_solution(
     user_answer: Annotated[str | None, Query(description='用户答案（用于判题）')] = None,
 ) -> ResponseSchemaModel[GetQuestionSolution]:
     """获取题目答案和解析（练题模式专用）"""
-    if not _should_bypass_membership_checks(request):
-        await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
-
     data = await question_service.get_solution(db=db, question_id=pk, user_answer=user_answer)
     return response_base.success(data=data)
 

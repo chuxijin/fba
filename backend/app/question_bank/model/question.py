@@ -154,7 +154,7 @@ class Question(Base, UserMixin):
     analyses: Mapped[list['QuestionAnalysis']] = relationship(
         init=False,
         back_populates='question',
-        lazy='selectin',
+        lazy='noload',
     )
     statistics: Mapped['QuestionStatistics | None'] = relationship(
         init=False,
@@ -166,18 +166,18 @@ class Question(Base, UserMixin):
         init=False,
         secondary=question_material_relation,
         back_populates='questions',
-        lazy='selectin',
+        lazy='noload',
     )
     placements: Mapped[list['QuestionPlacement']] = relationship(
         init=False,
         back_populates='question',
-        lazy='selectin',
+        lazy='noload',
         cascade='all, delete-orphan',
     )
     options: Mapped[list[QuestionOption]] = relationship(
         init=False,
         back_populates='question',
-        lazy='selectin',
+        lazy='noload',
         cascade='all, delete-orphan',
     )
 

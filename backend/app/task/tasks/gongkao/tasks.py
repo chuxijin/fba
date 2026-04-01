@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Gongkao scheduled tasks."""
-import json
 import logging
 import re
 from datetime import date, datetime, time
@@ -9,15 +7,11 @@ from typing import Any
 
 import httpx
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.gongkao.crud.crud_content import content_dao
 from backend.app.gongkao.schema.content import CreateContentParam, UpdateContentParam
 from backend.app.task.celery import celery_app
-from backend.core.conf import settings
 from backend.database.db import async_db_session
-from backend.plugin.email.utils.send import send_email
-from backend.utils.dynamic_config import load_task_config
 
 logger = logging.getLogger(__name__)
 
@@ -28,30 +22,6 @@ CONTENT_TYPE_SHIZHEN = 'shizhen'
 DEFAULT_TAGS = ['\u65f6\u653f', '\u65b0\u95fb\u8054\u64ad']
 
 
-async def send_task_notification(db: AsyncSession, subject: str, content: str) -> None:
-    """
-    Send task notification email.
-
-    :param db: Database session
-    :param subject: Email subject
-    :param content: Email body
-    :return:
-    """
-    try:
-        await load_task_config(db)
-        if not settings.TASK_NOTIFY_EMAIL:
-            logger.debug('Task notify email is not configured, skip notification')
-            return
-
-        await send_email(
-            db=db,
-            recipients=settings.TASK_NOTIFY_EMAIL,
-            subject=subject,
-            content=content,
-        )
-        logger.info('Task notification sent to: %s', settings.TASK_NOTIFY_EMAIL)
-    except Exception as exc:
-        logger.error('Failed to send task notification: %s', exc)
 
 
 def build_content_slug(daily_date: date) -> str:
@@ -175,9 +145,9 @@ async def fetch_news_list(page_num: int = 1, page_size: int = 10) -> dict[str, A
         return None
 
 
-@celery_app.task(name='sync_daily_news_to_shizhen')
-async def sync_daily_news_to_shizhen() -> dict[str, Any]:
-    """Sync daily news into gk_content."""
+@celery_app.task(name='sync_daily_news_to_shizhen', bind=True)
+async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
+    """同步每日新闻到时政内容"""
     result: dict[str, Any] = {
         'success': True,
         'fetched_count': 0,
@@ -188,185 +158,124 @@ async def sync_daily_news_to_shizhen() -> dict[str, Any]:
         'message': '',
     }
 
-    try:
-        api_response = await fetch_news_list(page_num=1, page_size=10)
-        if not api_response:
-            result['success'] = False
-            result['message'] = 'fetch news list failed'
-            async with async_db_session.begin() as db:
-                await send_task_notification(
-                    db=db,
-                    subject='[gongkao] sync failed',
-                    content=(
-                        f'time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
-                        f'api: {NEWS_API_URL}\n'
-                        'message: fetch news list failed'
-                    ),
-                )
-            return result
+    api_response = await fetch_news_list(page_num=1, page_size=10)
+    if not api_response:
+        raise RuntimeError(f'获取新闻列表失败: {NEWS_API_URL}')
 
-        if api_response.get('code') != 0:
-            result['success'] = False
-            result['message'] = f"api error: {api_response.get('message', 'unknown error')}"
-            async with async_db_session.begin() as db:
-                await send_task_notification(
-                    db=db,
-                    subject='[gongkao] sync failed',
-                    content=(
-                        f'time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
-                        f'message: {result["message"]}\n\n'
-                        f'payload:\n{json.dumps(api_response, ensure_ascii=False, indent=2)}'
-                    ),
-                )
-            return result
+    if api_response.get('code') != 0:
+        raise RuntimeError(f"API 返回错误: {api_response.get('message', 'unknown error')}")
 
-        records = api_response.get('result', {}).get('records', [])
-        result['fetched_count'] = len(records)
+    records = api_response.get('result', {}).get('records', [])
+    result['fetched_count'] = len(records)
 
-        if not records:
-            result['message'] = 'no news records fetched'
-            async with async_db_session.begin() as db:
-                await send_task_notification(
-                    db=db,
-                    subject='[gongkao] sync warning',
-                    content=(
-                        f'time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
-                        'message: api returned success but no records'
-                    ),
-                )
-            return result
+    if not records:
+        result['message'] = 'API 返回成功但无记录'
+        await self.on_warning(result['message'])
+        return result
 
-        async with async_db_session.begin() as db:
-            for record in records:
-                try:
-                    if int(record.get('isDelete') or 0) == 1:
-                        result['skipped_count'] += 1
-                        continue
+    async with async_db_session.begin() as db:
+        for record in records:
+            try:
+                if int(record.get('isDelete') or 0) == 1:
+                    result['skipped_count'] += 1
+                    continue
 
-                    add_time = str(record.get('addTime') or '').strip()
-                    if not add_time:
-                        result['error_count'] += 1
-                        logger.warning('Missing addTime in record: %s', record.get('title'))
-                        continue
-
-                    try:
-                        daily_date = datetime.strptime(add_time, '%Y-%m-%d').date()
-                    except ValueError:
-                        result['error_count'] += 1
-                        logger.warning('Invalid addTime format: %s', add_time)
-                        continue
-
-                    slug = build_content_slug(daily_date)
-                    title = str(record.get('title') or f'news {daily_date.isoformat()}').strip()
-                    content_html = normalize_news_html(str(record.get('intro') or ''))
-                    summary = build_summary(content_html)
-                    publish_time = datetime.combine(daily_date, time.min)
-                    extra = build_extra(record, daily_date)
-                    existing = await content_dao.get_by_slug(db, slug)
-
-                    if not existing:
-                        create_obj = CreateContentParam(
-                            title=title,
-                            slug=slug,
-                            content_html=content_html,
-                            summary=summary,
-                            tags=list(DEFAULT_TAGS),
-                            is_pinned=False,
-                            is_public=True,
-                            is_published=True,
-                            publish_time=publish_time,
-                            extra=extra,
-                        )
-                        await content_dao.create(db, create_obj, created_by=SYSTEM_USER_ID)
-                        result['created_count'] += 1
-                        continue
-
-                    update_obj = UpdateContentParam()
-                    changed = False
-
-                    if existing.title != title:
-                        update_obj.title = title
-                        changed = True
-                    if existing.content_html != content_html:
-                        update_obj.content_html = content_html
-                        changed = True
-                    if existing.summary != summary:
-                        update_obj.summary = summary
-                        changed = True
-                    if existing.tags != DEFAULT_TAGS:
-                        update_obj.tags = list(DEFAULT_TAGS)
-                        changed = True
-                    if existing.is_public is not True:
-                        update_obj.is_public = True
-                        changed = True
-                    if existing.is_published is not True:
-                        update_obj.is_published = True
-                        changed = True
-
-                    existing_publish_date = existing.publish_time.date() if existing.publish_time else None
-                    if existing_publish_date != daily_date:
-                        update_obj.publish_time = publish_time
-                        changed = True
-                    if existing.extra != extra:
-                        update_obj.extra = extra
-                        changed = True
-
-                    if not changed:
-                        result['skipped_count'] += 1
-                        continue
-
-                    await content_dao.update(db, existing.id, update_obj, updated_by=SYSTEM_USER_ID)
-                    result['updated_count'] += 1
-                except Exception as exc:
+                add_time = str(record.get('addTime') or '').strip()
+                if not add_time:
                     result['error_count'] += 1
-                    logger.error('Failed to process news record: %s', exc)
+                    logger.warning('Missing addTime in record: %s', record.get('title'))
+                    continue
 
-        result['message'] = (
-            f"sync done: fetched {result['fetched_count']}, "
-            f"created {result['created_count']}, "
-            f"updated {result['updated_count']}, "
-            f"skipped {result['skipped_count']}, "
-            f"errors {result['error_count']}"
-        )
-        logger.info(result['message'])
+                try:
+                    daily_date = datetime.strptime(add_time, '%Y-%m-%d').date()
+                except ValueError:
+                    result['error_count'] += 1
+                    logger.warning('Invalid addTime format: %s', add_time)
+                    continue
 
-        if result['error_count'] > 0:
-            async with async_db_session.begin() as db:
-                await send_task_notification(
-                    db=db,
-                    subject='[gongkao] sync warning',
-                    content=(
-                        f'time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
-                        f'message: {result["message"]}'
-                    ),
-                )
-    except Exception as exc:
-        result['success'] = False
-        result['message'] = f'sync task failed: {exc}'
-        logger.error(result['message'])
-        try:
-            async with async_db_session.begin() as db:
-                await send_task_notification(
-                    db=db,
-                    subject='[gongkao] sync failed',
-                    content=(
-                        f'time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
-                        f'message: {result["message"]}'
-                    ),
-                )
-        except Exception as notify_exc:
-            logger.error('Failed to send failure notification: %s', notify_exc)
+                slug = build_content_slug(daily_date)
+                title = str(record.get('title') or f'news {daily_date.isoformat()}').strip()
+                content_html = normalize_news_html(str(record.get('intro') or ''))
+                summary = build_summary(content_html)
+                publish_time = datetime.combine(daily_date, time.min)
+                extra = build_extra(record, daily_date)
+                existing = await content_dao.get_by_slug(db, slug)
+
+                if not existing:
+                    create_obj = CreateContentParam(
+                        title=title,
+                        slug=slug,
+                        content_html=content_html,
+                        summary=summary,
+                        tags=list(DEFAULT_TAGS),
+                        is_pinned=False,
+                        is_public=True,
+                        is_published=True,
+                        publish_time=publish_time,
+                        extra=extra,
+                    )
+                    await content_dao.create(db, create_obj, created_by=SYSTEM_USER_ID)
+                    result['created_count'] += 1
+                    continue
+
+                update_obj = UpdateContentParam()
+                changed = False
+
+                if existing.title != title:
+                    update_obj.title = title
+                    changed = True
+                if existing.content_html != content_html:
+                    update_obj.content_html = content_html
+                    changed = True
+                if existing.summary != summary:
+                    update_obj.summary = summary
+                    changed = True
+                if existing.tags != DEFAULT_TAGS:
+                    update_obj.tags = list(DEFAULT_TAGS)
+                    changed = True
+                if existing.is_public is not True:
+                    update_obj.is_public = True
+                    changed = True
+                if existing.is_published is not True:
+                    update_obj.is_published = True
+                    changed = True
+
+                existing_publish_date = existing.publish_time.date() if existing.publish_time else None
+                if existing_publish_date != daily_date:
+                    update_obj.publish_time = publish_time
+                    changed = True
+                if existing.extra != extra:
+                    update_obj.extra = extra
+                    changed = True
+
+                if not changed:
+                    result['skipped_count'] += 1
+                    continue
+
+                await content_dao.update(db, existing.id, update_obj, updated_by=SYSTEM_USER_ID)
+                result['updated_count'] += 1
+            except Exception as exc:
+                result['error_count'] += 1
+                logger.error('Failed to process news record: %s', exc)
+
+    result['message'] = (
+        f"sync done: fetched {result['fetched_count']}, "
+        f"created {result['created_count']}, "
+        f"updated {result['updated_count']}, "
+        f"skipped {result['skipped_count']}, "
+        f"errors {result['error_count']}"
+    )
+    logger.info(result['message'])
+
+    if result['error_count'] > 0:
+        await self.on_warning(result['message'])
 
     return result
 
 
 @celery_app.task(name='update_hanyu_frequency')
 async def update_hanyu_frequency() -> dict[str, Any]:
-    """
-    更新汉语词汇使用频次
-
-    统计成语在言语理解与表达题目的选项内容中出现的次数
-    """
+    """更新汉语词汇使用频次，统计成语在言语理解与表达题目的选项内容中出现的次数"""
     result: dict[str, Any] = {
         'success': True,
         'total_count': 0,
@@ -377,93 +286,71 @@ async def update_hanyu_frequency() -> dict[str, Any]:
     }
 
     start_time = datetime.now()
+    logger.info('开始统计汉语词汇使用频次（仅言语理解与表达题目）...')
 
-    try:
-        logger.info('开始统计汉语词汇使用频次（仅言语理解与表达题目）...')
+    async with async_db_session.begin() as db:
+        # 第一步：统计目标选项数量
+        logger.info('步骤 1/3: 筛选言语理解与表达题目的选项...')
+        count_options_sql = text("""
+            SELECT COUNT(DISTINCT oc.id)
+            FROM study_question q
+            INNER JOIN study_question_option qo ON qo.question_id = q.id
+            INNER JOIN study_option_content oc ON oc.id = qo.content_id
+            WHERE q.knowledge_point @> '["言语理解与表达"]'::jsonb
+        """)
+        options_count_result = await db.execute(count_options_sql)
+        target_options_count = options_count_result.scalar()
+        logger.info(f'找到 {target_options_count} 个目标选项')
 
-        async with async_db_session.begin() as db:
-            # 第一步：统计目标选项数量
-            logger.info('步骤 1/3: 筛选言语理解与表达题目的选项...')
-            count_options_sql = text("""
-                SELECT COUNT(DISTINCT oc.id)
+        # 第二步：执行频次统计
+        logger.info('步骤 2/3: 统计成语在选项中的出现次数...')
+        sql = text("""
+            WITH target_options AS (
+                SELECT DISTINCT oc.id, oc.content
                 FROM study_question q
                 INNER JOIN study_question_option qo ON qo.question_id = q.id
                 INNER JOIN study_option_content oc ON oc.id = qo.content_id
                 WHERE q.knowledge_point @> '["言语理解与表达"]'::jsonb
-            """)
-            options_count_result = await db.execute(count_options_sql)
-            target_options_count = options_count_result.scalar()
-            logger.info(f'找到 {target_options_count} 个目标选项')
+            ),
+            idiom_counts AS (
+                SELECT
+                    h.id,
+                    COUNT(DISTINCT o.id) as freq
+                FROM gk_hanyu h
+                LEFT JOIN target_options o ON o.content LIKE '%' || h.name || '%'
+                WHERE h.type = '成语'
+                GROUP BY h.id
+            )
+            UPDATE gk_hanyu
+            SET frequency = idiom_counts.freq
+            FROM idiom_counts
+            WHERE gk_hanyu.id = idiom_counts.id
+            RETURNING gk_hanyu.id
+        """)
 
-            # 第二步：执行频次统计
-            logger.info('步骤 2/3: 统计成语在选项中的出现次数...')
-            sql = text("""
-                WITH target_options AS (
-                    -- 第一步：获取所有言语理解与表达题目的选项内容
-                    SELECT DISTINCT oc.id, oc.content
-                    FROM study_question q
-                    INNER JOIN study_question_option qo ON qo.question_id = q.id
-                    INNER JOIN study_option_content oc ON oc.id = qo.content_id
-                    WHERE q.knowledge_point @> '["言语理解与表达"]'::jsonb
-                ),
-                idiom_counts AS (
-                    -- 第二步：统计每个成语在这些选项中出现的次数
-                    SELECT
-                        h.id,
-                        COUNT(DISTINCT o.id) as freq
-                    FROM gk_hanyu h
-                    LEFT JOIN target_options o ON o.content LIKE '%' || h.name || '%'
-                    WHERE h.type = '成语'
-                    GROUP BY h.id
-                )
-                UPDATE gk_hanyu
-                SET frequency = idiom_counts.freq
-                FROM idiom_counts
-                WHERE gk_hanyu.id = idiom_counts.id
-                RETURNING gk_hanyu.id
-            """)
+        result_proxy = await db.execute(sql)
+        updated_rows = result_proxy.fetchall()
+        result['updated_count'] = len(updated_rows)
+        logger.info(f'已更新 {result["updated_count"]} 条成语记录')
 
-            result_proxy = await db.execute(sql)
-            updated_rows = result_proxy.fetchall()
-            result['updated_count'] = len(updated_rows)
-            logger.info(f'已更新 {result["updated_count"]} 条成语记录')
+        # 第三步：获取总数
+        logger.info('步骤 3/3: 获取成语总数...')
+        count_sql = text("SELECT COUNT(*) FROM gk_hanyu WHERE type = '成语'")
+        count_result = await db.execute(count_sql)
+        result['total_count'] = count_result.scalar()
 
-            # 第三步：获取总数
-            logger.info('步骤 3/3: 获取成语总数...')
-            count_sql = text("SELECT COUNT(*) FROM gk_hanyu WHERE type = '成语'")
-            count_result = await db.execute(count_sql)
-            result['total_count'] = count_result.scalar()
+        await db.commit()
+        logger.info('数据库事务已提交')
 
-            await db.commit()
-            logger.info('数据库事务已提交')
+    elapsed = (datetime.now() - start_time).total_seconds()
+    result['elapsed_seconds'] = round(elapsed, 2)
 
-        elapsed = (datetime.now() - start_time).total_seconds()
-        result['elapsed_seconds'] = round(elapsed, 2)
-
-        result['message'] = (
-            f"频次统计完成（言语理解与表达）: 总计 {result['total_count']} 个成语, "
-            f"更新 {result['updated_count']} 条记录, "
-            f"耗时 {result['elapsed_seconds']} 秒"
-        )
-        logger.info(result['message'])
-
-    except Exception as exc:
-        result['success'] = False
-        result['error_count'] = 1
-        result['message'] = f'频次统计失败: {exc}'
-        logger.error(result['message'])
-
-        try:
-            async with async_db_session.begin() as db:
-                await send_task_notification(
-                    db=db,
-                    subject='[gongkao] 汉语词汇频次统计失败',
-                    content=(
-                        f'时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n'
-                        f'错误: {result["message"]}'
-                    ),
-                )
-        except Exception as notify_exc:
-            logger.error('发送失败通知失败: %s', notify_exc)
+    result['message'] = (
+        f"频次统计完成（言语理解与表达）: 总计 {result['total_count']} 个成语, "
+        f"更新 {result['updated_count']} 条记录, "
+        f"耗时 {result['elapsed_seconds']} 秒"
+    )
+    logger.info(result['message'])
 
     return result
+

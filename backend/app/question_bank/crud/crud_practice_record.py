@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
@@ -41,6 +41,12 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         )
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+    async def count_by_session(self, db: AsyncSession, session_id: int) -> int:
+        """获取会话的答题记录数"""
+        stmt = select(func.count()).where(PracticeRecord.session_id == session_id)
+        result = await db.execute(stmt)
+        return result.scalar() or 0
 
     async def get_by_user(
         self, db: AsyncSession, user_id: int, question_id: int | None = None

@@ -2,6 +2,7 @@
 import { onHide, onLoad, onPullDownRefresh, onUnload } from '@dcloudio/uni-app'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { fbaApi } from '@/api/sdk'
+import type { AnswerSheetGroup, AnswerSheetItem } from '@/components/AnswerSheet.vue'
 import FeedbackPopup from '@/components/FeedbackPopup.vue'
 import { useResultStore } from '@/store/result'
 
@@ -62,16 +63,21 @@ const pageTitle = computed(() => session.value?.practice_name || '刷题练习')
 const mode = computed<PracticeMode>(() => session.value?.session_type === 'exam' ? 'exam' : routeMode.value)
 const isCompleted = computed(() => session.value?.status === 'completed')
 const totalCount = computed(() => questions.value.length)
-const questionGroups = computed(() => {
-  const groups: Array<{ title: string, items: any[] }> = []
+const questionGroups = computed<AnswerSheetGroup[]>(() => {
+  const groups: AnswerSheetGroup[] = []
   let lastChapter = ''
-  for (const q of questions.value) {
+  for (let i = 0; i < questions.value.length; i++) {
+    const q = questions.value[i]
     const chapterName = q.chapter?.name || ''
     if (chapterName !== lastChapter) {
       groups.push({ title: chapterName, items: [] })
       lastChapter = chapterName
     }
-    groups[groups.length - 1].items.push(q)
+    groups[groups.length - 1].items.push({
+      id: q.question_id,
+      seq_no: q.seq_no,
+      status: sheetTone(q.question_id, i),
+    })
   }
   return groups
 })
@@ -714,6 +720,12 @@ async function persistAnswer(questionId: number, judgeNow: boolean, silent = fal
         answer_time: state.answerTime,
       }],
     } as any) as any
+
+    // 并行发起 solution 请求（不依赖 records 结果）
+    const solutionPromise = (judgeNow && mode.value !== 'exam')
+      ? loadSolution(questionId)
+      : null
+
     state.isAnswered = true
     if (judgeNow && mode.value !== 'exam')
       state.locked = true
@@ -727,8 +739,8 @@ async function persistAnswer(questionId: number, judgeNow: boolean, silent = fal
       state.score = null
     }
     syncRecord(questionId)
-    if (judgeNow && mode.value !== 'exam')
-      await loadSolution(questionId)
+    if (solutionPromise)
+      await solutionPromise
     return true
   }
   catch (error) {
@@ -925,6 +937,12 @@ function sheetTone(questionId: number, index: number) {
   if (state.isCorrect === false)
     return 'wrong'
   return state.isAnswered ? 'answered' : 'default'
+}
+
+function handleSheetSelect(item: AnswerSheetItem) {
+  const index = questions.value.findIndex(q => q.question_id === item.id)
+  if (index >= 0)
+    goToQuestion(index)
 }
 
 function goBack() {
@@ -1234,15 +1252,8 @@ onUnload(() => {
             </view>
           </view>
         </view>
-        <view class="grid grid-cols-5 mt-5 gap-3">
-          <template v-for="(group, gIdx) in questionGroups" :key="gIdx">
-            <view v-if="group.title" class="col-span-5 mt-2 text-[13px] text-[#475569] font-bold" :class="gIdx > 0 ? 'border-t border-[#E2E8F0] pt-3' : ''">
-              {{ group.title }}
-            </view>
-            <view v-for="q in group.items" :key="q.question_id" class="h-11 flex items-center justify-center rounded-2xl text-[13px] font-black active:scale-[0.96]" :class="`sheet-${sheetTone(q.question_id, getQuestionIndex(q.question_id))}`" @click="goToQuestion(getQuestionIndex(q.question_id))">
-              {{ q.seq_no }}
-            </view>
-          </template>
+        <view class="mt-5">
+          <AnswerSheet :groups="questionGroups" @select="handleSheetSelect" />
         </view>
         <view v-if="!isCompleted" class="mt-5 h-12 flex items-center justify-center rounded-full bg-[#F59E0B] text-[15px] text-white font-black active:scale-[0.98]" @click="submitSession">
           {{ submitting ? '提交中...' : '交卷完成' }}
@@ -1562,30 +1573,5 @@ onUnload(() => {
   color: #0f172a;
   font-size: 15px;
   line-height: 1.75;
-}
-
-.sheet-default {
-  background: #e2e8f0;
-  color: #475569;
-}
-
-.sheet-active {
-  background: #059669;
-  color: #fff;
-}
-
-.sheet-correct {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.sheet-wrong {
-  background: #ffedd5;
-  color: #ea580c;
-}
-
-.sheet-answered {
-  background: #fef3c7;
-  color: #b45309;
 }
 </style>

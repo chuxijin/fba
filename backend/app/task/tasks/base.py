@@ -48,6 +48,17 @@ class TaskBase(Task):
         # 发送外部通知（微信/Server酱等）
         asyncio.create_task(self._send_failure_notify(self.name, task_id, exc))
 
+    async def on_warning(self, message: str) -> None:
+        """
+        任务警告钩子
+
+        :param message: 警告信息
+        :return:
+        """
+        task_id = self.request.id
+        await task_notification(msg=f'任务 {task_id} 警告: {message}')
+        await self._send_warning_notify(self.name, task_id, message)
+
     @staticmethod
     async def _send_failure_notify(task_name: str, task_id: str, exc: Exception) -> None:
         """发送任务失败的外部通知"""
@@ -61,6 +72,24 @@ class TaskBase(Task):
                     f'异常: {str(exc)[:500]}'
                 ),
                 options={'tags': '定时任务|执行失败'},
+                source='celery_task',
+            )
+        except Exception:
+            pass
+
+    @staticmethod
+    async def _send_warning_notify(task_name: str, task_id: str, message: str) -> None:
+        """发送任务警告的外部通知"""
+        try:
+            from backend.plugin.notify.service.notify_service import notify_service
+
+            await notify_service.send(
+                title=f'定时任务警告: {task_name}',
+                content=(
+                    f'任务ID: {task_id}\n'
+                    f'警告: {message}'
+                ),
+                options={'tags': '定时任务|警告'},
                 source='celery_task',
             )
         except Exception:

@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
+import type { AnswerSheetGroup, AnswerSheetItem } from '@/components/AnswerSheet.vue'
 import { fbaApi } from '@/api/sdk'
 import { useResultStore } from '@/store/result'
 
@@ -38,11 +39,6 @@ interface ReportData {
   wrong_question_ids: number[]
 }
 
-interface AnswerCardGroup {
-  title: string
-  items: AnswerCardItem[]
-}
-
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const resultStore = useResultStore()
 
@@ -70,12 +66,12 @@ const formattedDuration = computed(() => {
 })
 
 // 按章节分组答题卡
-const answerGroups = computed<AnswerCardGroup[]>(() => {
+const answerGroups = computed<AnswerSheetGroup[]>(() => {
   const items = report.value?.answer_items || []
   if (!items.length)
     return []
 
-  const groups: AnswerCardGroup[] = []
+  const groups: AnswerSheetGroup[] = []
   let lastChapter = '\x00'
   for (const item of items) {
     const chapterName = item.chapter_name || ''
@@ -83,7 +79,11 @@ const answerGroups = computed<AnswerCardGroup[]>(() => {
       groups.push({ title: chapterName, items: [] })
       lastChapter = chapterName
     }
-    groups[groups.length - 1].items.push(item)
+    groups[groups.length - 1].items.push({
+      id: item.question_id,
+      seq_no: item.seq_no,
+      status: item.status,
+    })
   }
   return groups
 })
@@ -133,7 +133,7 @@ function handleViewWrong() {
   })
 }
 
-function handleSelectItem(item: AnswerCardItem) {
+function handleSelectItem(item: AnswerSheetItem) {
   if (!sessionId.value)
     return
   // seq_no 从 1 开始，gotoIndex 从 0 开始
@@ -264,25 +264,8 @@ onLoad((query) => {
           <view class="px-4 pb-1 pt-3.5">
             <text class="text-[13px] text-[#475569] font-bold">答题卡</text>
           </view>
-          <view v-for="(group, gi) in answerGroups" :key="gi" class="box-border px-4 pb-3">
-            <view v-if="group.title" class="mb-2 mt-1 text-[12px] text-[#94A3B8]">
-              {{ group.title }}
-            </view>
-            <view class="flex flex-wrap gap-2">
-              <view
-                v-for="item in group.items"
-                :key="item.seq_no"
-                class="shrink-0 h-9 w-9 flex items-center justify-center rounded-lg text-[13px] font-bold active:scale-95"
-                :class="{
-                  'bg-[#ECFDF5] text-[#10B981]': item.status === 'correct',
-                  'bg-[#FEF2F2] text-[#EF4444]': item.status === 'wrong',
-                  'bg-[#F1F5F9] text-[#94A3B8]': item.status === 'unanswered',
-                }"
-                @click="handleSelectItem(item)"
-              >
-                {{ item.seq_no }}
-              </view>
-            </view>
+          <view class="px-4">
+            <AnswerSheet :groups="answerGroups" @select="handleSelectItem" />
           </view>
         </view>
       </scroll-view>

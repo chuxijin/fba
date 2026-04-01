@@ -103,6 +103,7 @@ class PracticeSession(Base, UserMixin):
     )
     submit_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='提交时间')
     exam_config: Mapped[dict | None] = mapped_column(CompatibleJSONB, default=None, comment='考试配置')
+    del_flag: Mapped[bool] = mapped_column(default=False, comment='删除标志（False 存在 True 删除）')
 
     # ============ 关系 ============
     account: Mapped[UserAccount] = relationship(init=False, back_populates='practice_sessions', lazy='noload')

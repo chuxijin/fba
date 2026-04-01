@@ -28,7 +28,6 @@ const tokenStore = useTokenStore()
 const membershipStore = useMembershipStore()
 const showLoginModal = ref(false)
 const showMembershipModal = ref(false)
-const showVipMeta = ref(false)
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix'
 
@@ -41,24 +40,6 @@ const isSvip = computed(() => {
     return familyCode === 'SVIP'
   }
   return /^SVIP/i.test(tierName.value)
-})
-const vipExpireLabel = computed(() => {
-  const validTo = membershipStore.validTo
-  if (!validTo) return ''
-  const d = new Date(validTo)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-})
-const vipRemainingDaysLabel = computed(() => {
-  const validTo = membershipStore.validTo
-  if (!validTo) return ''
-
-  const target = new Date(validTo).getTime()
-  if (Number.isNaN(target)) return ''
-
-  const now = Date.now()
-  const diff = target - now
-  const days = Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)))
-  return `剩余 ${days} 天`
 })
 
 const displayAvatar = computed(() => {
@@ -152,10 +133,6 @@ function openMembershipModal() {
   showMembershipModal.value = true
 }
 
-function toggleVipMeta() {
-  showVipMeta.value = !showVipMeta.value
-}
-
 onShow(() => {
   void syncLoginState().finally(() => {
     maybeOpenLoginModal()
@@ -216,63 +193,6 @@ onShow(() => {
         </view>
         <view class="h-8 w-8 flex items-center justify-center text-[#1E293B]">
           <view class="i-carbon-chevron-right text-xl" />
-        </view>
-      </view>
-
-      <view
-        v-if="isVip"
-        class="relative mb-6 flex items-center justify-between overflow-hidden rounded-2xl bg-gradient-to-r p-4.5 text-white shadow-lg"
-        :class="isSvip
-          ? 'from-[#C084FC] to-[#9333EA] shadow-purple-200/50'
-          : 'from-[#60A5FA] to-[#2563EB] shadow-blue-200/50'"
-      >
-        <view class="pointer-events-none absolute bottom-0 right-0 text-8xl text-white/10 -mb-4 -mr-4">
-          <view :class="isSvip ? 'i-carbon-diamond' : 'i-carbon-badge'" />
-        </view>
-
-        <view class="relative z-10">
-          <view class="flex items-center text-lg font-bold tracking-wide">
-            <view
-              class="rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.3px] italic"
-              :class="isSvip ? 'bg-[#1E1B4B] text-[#FDE68A]' : 'bg-[#0F3B82] text-[#DBEAFE]'"
-              @click.stop="toggleVipMeta"
-            >
-              {{ tierName }}
-            </view>
-            <text class="ml-2">尊享会员</text>
-          </view>
-          <view v-if="showVipMeta" class="mt-1 text-[11px] text-white/85">
-            有效期至 {{ vipExpireLabel }}
-            <text v-if="vipRemainingDaysLabel"> · {{ vipRemainingDaysLabel }}</text>
-          </view>
-          <view v-if="showVipMeta" class="mt-1 text-[11px] text-white/85">
-            题库会员权限已解锁，支持继续刷题
-          </view>
-        </view>
-        <view
-          class="relative z-10 rounded-full bg-white px-4.5 py-2.5 text-xs font-black tracking-wider shadow-sm transition-transform active:scale-95"
-          :class="isSvip ? 'text-[#9333EA]' : 'text-[#2563EB]'"
-          @click="openMembershipModal"
-        >
-          立即续期
-        </view>
-      </view>
-
-      <view v-else class="relative mb-6 flex items-center justify-between overflow-hidden rounded-2xl from-[#C084FC] to-[#9333EA] bg-gradient-to-r p-4.5 text-white shadow-lg shadow-purple-200/50">
-        <view class="pointer-events-none absolute bottom-0 right-0 text-8xl text-white/10 -mb-4 -mr-4">
-          <view class="i-carbon-trophy" />
-        </view>
-
-        <view class="relative z-10">
-          <view class="flex items-center text-lg font-bold tracking-wide">
-            升级铂金刷题会员
-          </view>
-          <view class="mt-1 text-[11px] text-white/85">
-            解锁历年独家高分真题无限制下载
-          </view>
-        </view>
-        <view class="relative z-10 rounded-full bg-white px-4.5 py-2.5 text-xs text-[#9333EA] font-black tracking-wider shadow-sm transition-transform active:scale-95" @click="openMembershipModal">
-          立即开通
         </view>
       </view>
 

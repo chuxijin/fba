@@ -30,14 +30,30 @@ interface TreeNode {
 const tokenStore = useTokenStore()
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 
-const loading = ref(false)
 const groupMode = ref<GroupMode>('knowledge_point')
-const groups = ref<TreeNode[]>([])
+const activeModeIndex = ref(0)
 const showMembershipModal = ref(false)
-const statistics = ref<any>({
-  total_count: 0,
-  mastered_count: 0,
-  unmastered_count: 0,
+const modeTouchStartX = ref(0)
+const modeTouchStartY = ref(0)
+const groupsMap = ref<Record<GroupMode, TreeNode[]>>({
+  knowledge_point: [],
+  bank: [],
+})
+const loadingMap = ref<Record<GroupMode, boolean>>({
+  knowledge_point: false,
+  bank: false,
+})
+const statisticsMap = ref<Record<GroupMode, any>>({
+  knowledge_point: {
+    total_count: 0,
+    mastered_count: 0,
+    unmastered_count: 0,
+  },
+  bank: {
+    total_count: 0,
+    mastered_count: 0,
+    unmastered_count: 0,
+  },
 })
 
 const groupModes: Array<{ key: GroupMode, label: string }> = [
@@ -56,30 +72,90 @@ function ensureLogin() {
   return false
 }
 
-async function loadData() {
+async function loadData(mode: GroupMode = groupMode.value) {
   if (!ensureLogin())
     return
 
-  loading.value = true
+  loadingMap.value[mode] = true
   try {
-    const data = await fbaApi.qbank.wrongQuestion.getStatistics(groupMode.value) as any
-    statistics.value = data
-    groups.value = data?.groups || []
+    const data = await fbaApi.qbank.wrongQuestion.getStatistics(mode) as any
+    statisticsMap.value[mode] = {
+      total_count: Number(data?.total_count || 0),
+      mastered_count: Number(data?.mastered_count || 0),
+      unmastered_count: Number(data?.unmastered_count || 0),
+    }
+    groupsMap.value[mode] = data?.groups || []
   }
   catch (error) {
     console.error('加载错题数据失败:', error)
     uni.showToast({ title: '加载失败', icon: 'none' })
   }
   finally {
-    loading.value = false
+    loadingMap.value[mode] = false
   }
 }
 
 function switchGroupMode(mode: GroupMode) {
+  const nextIndex = groupModes.findIndex(item => item.key === mode)
+  if (nextIndex >= 0) {
+    activeModeIndex.value = nextIndex
+  }
+
   if (groupMode.value === mode)
     return
+
   groupMode.value = mode
-  loadData()
+  if (!groupsMap.value[mode].length) {
+    void loadData(mode)
+  }
+}
+
+function onModeSwiperChange(event: any) {
+  const nextIndex = Number(event?.detail?.current || 0)
+  const nextMode = groupModes[nextIndex]?.key
+  activeModeIndex.value = nextIndex
+
+  if (!nextMode || nextMode === groupMode.value) {
+    return
+  }
+
+  groupMode.value = nextMode
+  if (!groupsMap.value[nextMode].length) {
+    void loadData(nextMode)
+  }
+}
+
+function handleModeTouchStart(event: any) {
+  const touch = event?.changedTouches?.[0] || event?.touches?.[0]
+  if (!touch) {
+    return
+  }
+
+  modeTouchStartX.value = Number(touch.clientX || 0)
+  modeTouchStartY.value = Number(touch.clientY || 0)
+}
+
+function handleModeTouchEnd(event: any) {
+  const touch = event?.changedTouches?.[0]
+  if (!touch) {
+    return
+  }
+
+  const deltaX = Number(touch.clientX || 0) - modeTouchStartX.value
+  const deltaY = Number(touch.clientY || 0) - modeTouchStartY.value
+
+  if (Math.abs(deltaX) < 42 || Math.abs(deltaX) <= Math.abs(deltaY)) {
+    return
+  }
+
+  if (deltaX < 0 && activeModeIndex.value < groupModes.length - 1) {
+    activeModeIndex.value += 1
+    return
+  }
+
+  if (deltaX > 0 && activeModeIndex.value > 0) {
+    activeModeIndex.value -= 1
+  }
 }
 
 function goBack() {
@@ -92,32 +168,37 @@ function goBack() {
 }
 
 // 展开/收缩状态
-const expandedKeys = ref<Set<string>>(new Set())
+const expandedKeysMap = ref<Record<GroupMode, Set<string>>>({
+  knowledge_point: new Set(),
+  bank: new Set(),
+})
 
-function getNodeKey(node: TreeNode): string {
-  return `${node.id ?? ''}_${node.name}`
+function getNodeKey(node: TreeNode, mode: GroupMode): string {
+  return `${mode}_${node.id ?? ''}_${node.name}`
 }
 
-function onGroupClick(node: TreeNode) {
+function onGroupClick(node: TreeNode, mode: GroupMode) {
   // 有 children 的节点：切换展开/折叠
   if (node.children && node.children.length > 0) {
-    const key = getNodeKey(node)
-    if (expandedKeys.value.has(key))
-      expandedKeys.value.delete(key)
+    const key = getNodeKey(node, mode)
+    const nextSet = new Set(expandedKeysMap.value[mode])
+    if (nextSet.has(key))
+      nextSet.delete(key)
     else
-      expandedKeys.value.add(key)
+      nextSet.add(key)
+    expandedKeysMap.value[mode] = nextSet
     return
   }
 
-  startPractice(node)
+  startPractice(node, mode)
 }
 
-async function startPractice(node: TreeNode) {
+async function startPractice(node: TreeNode, mode: GroupMode) {
   const params: Record<string, any> = {
     session_type: 'wrong',
     practice_name: node.name,
   }
-  if (groupMode.value === 'bank') {
+  if (mode === 'bank') {
     if (node.bank_id) {
       params.bank_id = node.bank_id
       if (node.id) params.chapter_id = node.id
@@ -126,7 +207,7 @@ async function startPractice(node: TreeNode) {
       params.bank_id = node.id
     }
   }
-  if (groupMode.value === 'knowledge_point')
+  if (mode === 'knowledge_point')
     params.knowledge_point = [node.name]
 
   uni.showLoading({ title: '创建会话...' })
@@ -156,28 +237,37 @@ interface FlatNode extends TreeNode {
   expanded: boolean
 }
 
-function flattenTree(nodes: TreeNode[], level = 0): FlatNode[] {
+function flattenTree(nodes: TreeNode[], mode: GroupMode, level = 0): FlatNode[] {
   const result: FlatNode[] = []
+  const expandedKeys = expandedKeysMap.value[mode]
   for (const node of nodes) {
     const hasChildren = (node.children?.length || 0) > 0
-    const expanded = hasChildren && expandedKeys.value.has(getNodeKey(node))
+    const expanded = hasChildren && expandedKeys.has(getNodeKey(node, mode))
     result.push({ ...node, level, hasChildren, expanded })
     if (hasChildren && expanded)
-      result.push(...flattenTree(node.children, level + 1))
+      result.push(...flattenTree(node.children, mode, level + 1))
   }
   return result
 }
 
-const flatGroups = computed(() => flattenTree(groups.value))
+function getFlatGroups(mode: GroupMode) {
+  return flattenTree(groupsMap.value[mode] || [], mode)
+}
 
-const totalCount = computed(() => statistics.value.unmastered_count || 0)
+function getModeStatistics(mode: GroupMode) {
+  return statisticsMap.value[mode]
+}
+
+function getModeTotalCount(mode: GroupMode) {
+  return Number(getModeStatistics(mode)?.unmastered_count || 0)
+}
 
 onShow(() => {
-  loadData()
+  void loadData(groupMode.value)
 })
 
 onPullDownRefresh(async () => {
-  await loadData()
+  await loadData(groupMode.value)
   uni.stopPullDownRefresh()
 })
 </script>
@@ -198,80 +288,118 @@ onPullDownRefresh(async () => {
       <view class="mb-5 border border-white/60 rounded-2xl bg-white/85 p-5 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)] backdrop-blur-md">
         <view class="grid grid-cols-3 gap-3">
           <view class="flex flex-col items-center rounded-xl bg-[#FEF2F2] py-3">
-            <text class="text-[22px] text-[#DC2626] font-black">{{ statistics.total_count }}</text>
+            <text class="text-[22px] text-[#DC2626] font-black">{{ getModeStatistics(groupMode).total_count }}</text>
             <text class="mt-1 text-[11px] text-[#94A3B8]">错题总数</text>
           </view>
           <view class="flex flex-col items-center rounded-xl bg-[#FFF7ED] py-3">
-            <text class="text-[22px] text-[#EA580C] font-black">{{ statistics.unmastered_count }}</text>
+            <text class="text-[22px] text-[#EA580C] font-black">{{ getModeStatistics(groupMode).unmastered_count }}</text>
             <text class="mt-1 text-[11px] text-[#94A3B8]">待攻克</text>
           </view>
           <view class="flex flex-col items-center rounded-xl bg-[#ECFDF5] py-3">
-            <text class="text-[22px] text-[#16A34A] font-black">{{ statistics.mastered_count }}</text>
+            <text class="text-[22px] text-[#16A34A] font-black">{{ getModeStatistics(groupMode).mastered_count }}</text>
             <text class="mt-1 text-[11px] text-[#94A3B8]">已掌握</text>
           </view>
         </view>
       </view>
 
       <!-- 分组模式切换 -->
-      <view class="mb-4 flex items-center gap-0 rounded-full bg-white/80 p-1 shadow-sm backdrop-blur-md">
+      <view class="mb-3">
         <view
-          v-for="m in groupModes"
-          :key="m.key"
-          class="flex flex-1 items-center justify-center rounded-full py-2 text-[13px] font-bold transition-all"
-          :class="groupMode === m.key ? 'bg-[#DC2626] text-white shadow-sm' : 'text-[#64748B]'"
-          @click="switchGroupMode(m.key)"
+          class="relative flex w-full items-center rounded-[18px] bg-white/78 p-1.5 shadow-[0_10px_28px_-18px_rgba(15,23,42,0.35)]"
         >
-          {{ m.label }}
-        </view>
-      </view>
-
-      <!-- 列表标题 -->
-      <view class="mb-3 flex items-center justify-between pl-1">
-        <text class="text-[13px] text-[#475569] font-bold">错题列表</text>
-        <text class="text-[11px] text-[#94A3B8]">共 {{ totalCount }} 题</text>
-      </view>
-
-      <!-- loading -->
-      <view v-if="loading && groups.length === 0" class="py-18 text-center text-[13px] text-[#94A3B8]">
-        错题列表加载中...
-      </view>
-
-      <!-- 分组列表（树形拍平） -->
-      <view v-else-if="flatGroups.length > 0" class="border border-white/60 rounded-2xl bg-white/85 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.06)] backdrop-blur-md overflow-hidden">
-        <view
-          v-for="(node, index) in flatGroups"
-          :key="`${node.id}-${node.name}-${node.level}`"
-          class="flex items-center justify-between py-3 active:bg-[#F8FAFC]"
-          :class="index < flatGroups.length - 1 ? 'border-b border-[#F1F5F9]' : ''"
-          :style="{ paddingLeft: `${16 + node.level * 20}px`, paddingRight: '16px' }"
-          @click="onGroupClick(node)"
-        >
-          <view class="flex items-center gap-2.5 min-w-0 flex-1">
-            <view v-if="node.hasChildren" class="h-6 w-6 flex shrink-0 items-center justify-center rounded-md bg-[#DC2626]/10">
-              <view class="i-carbon-folder text-[13px] text-[#DC2626]" />
-            </view>
-            <view v-else class="h-6 w-6 flex shrink-0 items-center justify-center rounded-md" :class="groupMode === 'bank' ? 'bg-[#EFF6FF]' : 'bg-[#FFF7ED]'">
-              <view :class="groupMode === 'bank' ? 'i-carbon-document text-[13px] text-[#3B82F6]' : 'i-carbon-tag text-[13px] text-[#F59E0B]'" />
-            </view>
-            <text class="text-[13px] font-medium truncate" :class="node.hasChildren ? 'text-[#1E293B]' : 'text-[#475569]'">{{ node.name }}</text>
-          </view>
-          <view class="flex items-center gap-1.5 shrink-0 ml-2">
-            <text class="text-[12px] font-bold" :class="node.hasChildren ? 'text-[#94A3B8]' : 'text-[#3B82F6]'">{{ node.count }}题</text>
-            <view v-if="node.hasChildren" class="text-[13px] text-[#94A3B8] transition-transform" :class="node.expanded ? 'i-carbon-chevron-down' : 'i-carbon-chevron-right'" />
-            <view v-else class="i-carbon-chevron-right text-[13px] text-[#94A3B8]" />
+          <view
+            class="absolute bottom-1.5 top-1.5 rounded-[14px] bg-[#DC2626] shadow-sm transition-all duration-300"
+            :style="{
+              width: 'calc(50% - 6px)',
+              left: activeModeIndex === 0 ? '6px' : 'calc(50% + 0px)',
+            }"
+          />
+          <view
+            v-for="m in groupModes"
+            :key="m.key"
+            class="relative z-10 flex-1 text-center rounded-[14px] px-4 py-2 text-[13px] transition-all duration-200"
+            :class="groupMode === m.key ? 'text-white font-bold' : 'text-[#64748B]'"
+            @tap="switchGroupMode(m.key)"
+          >
+            {{ m.label }}
           </view>
         </view>
       </view>
 
-      <!-- 空状态 -->
-      <view v-else class="flex flex-col items-center justify-center py-20">
-        <view class="i-carbon-notebook-reference mb-4 text-6xl text-[#CBD5E1]" />
-        <text class="text-[14px] text-[#94A3B8]">暂时没有错题，继续保持！</text>
-      </view>
+      <swiper
+        class="mode-swiper"
+        :current="activeModeIndex"
+        :duration="280"
+        :disable-touch="false"
+        @change="onModeSwiperChange"
+        @touchstart="handleModeTouchStart"
+        @touchend="handleModeTouchEnd"
+      >
+        <swiper-item v-for="modeItem in groupModes" :key="modeItem.key">
+          <view class="mode-panel">
+            <view class="mb-3 flex items-center justify-between pl-1">
+              <text class="text-[13px] text-[#475569] font-bold">错题列表</text>
+              <text class="text-[11px] text-[#94A3B8]">共 {{ getModeTotalCount(modeItem.key) }} 题</text>
+            </view>
+
+            <view
+              v-if="loadingMap[modeItem.key] && getFlatGroups(modeItem.key).length === 0"
+              class="py-18 text-center text-[13px] text-[#94A3B8]"
+            >
+              错题列表加载中...
+            </view>
+
+            <view
+              v-else-if="getFlatGroups(modeItem.key).length > 0"
+              class="border border-white/60 rounded-2xl bg-white/85 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.06)] backdrop-blur-md overflow-hidden"
+            >
+              <view
+                v-for="(node, index) in getFlatGroups(modeItem.key)"
+                :key="`${modeItem.key}-${node.id}-${node.name}-${node.level}`"
+                class="flex items-center justify-between py-3 active:bg-[#F8FAFC]"
+                :class="index < getFlatGroups(modeItem.key).length - 1 ? 'border-b border-[#F1F5F9]' : ''"
+                :style="{ paddingLeft: `${16 + node.level * 20}px`, paddingRight: '16px' }"
+                @click="onGroupClick(node, modeItem.key)"
+              >
+                <view class="flex items-center gap-2.5 min-w-0 flex-1">
+                  <view v-if="node.hasChildren" class="h-6 w-6 flex shrink-0 items-center justify-center rounded-md bg-[#DC2626]/10">
+                    <view class="i-carbon-folder text-[13px] text-[#DC2626]" />
+                  </view>
+                  <view v-else class="h-6 w-6 flex shrink-0 items-center justify-center rounded-md" :class="modeItem.key === 'bank' ? 'bg-[#EFF6FF]' : 'bg-[#FFF7ED]'">
+                    <view :class="modeItem.key === 'bank' ? 'i-carbon-document text-[13px] text-[#3B82F6]' : 'i-carbon-tag text-[13px] text-[#F59E0B]'" />
+                  </view>
+                  <text class="text-[13px] font-medium truncate" :class="node.hasChildren ? 'text-[#1E293B]' : 'text-[#475569]'">{{ node.name }}</text>
+                </view>
+                <view class="flex items-center gap-1.5 shrink-0 ml-2">
+                  <text class="text-[12px] font-bold" :class="node.hasChildren ? 'text-[#94A3B8]' : 'text-[#3B82F6]'">{{ node.count }}题</text>
+                  <view v-if="node.hasChildren" class="text-[13px] text-[#94A3B8] transition-transform" :class="node.expanded ? 'i-carbon-chevron-down' : 'i-carbon-chevron-right'" />
+                  <view v-else class="i-carbon-chevron-right text-[13px] text-[#94A3B8]" />
+                </view>
+              </view>
+            </view>
+
+            <view v-else class="flex flex-col items-center justify-center py-20">
+              <view class="i-carbon-notebook-reference mb-4 text-6xl text-[#CBD5E1]" />
+              <text class="text-[14px] text-[#94A3B8]">暂时没有错题，继续保持！</text>
+            </view>
+          </view>
+        </swiper-item>
+      </swiper>
 
       <MembershipModal v-model="showMembershipModal" />
     </view>
   </view>
 </template>
+
+<style scoped>
+.mode-swiper {
+  width: 100%;
+  min-height: 520px;
+}
+
+.mode-panel {
+  min-height: 520px;
+}
+</style>
 
 

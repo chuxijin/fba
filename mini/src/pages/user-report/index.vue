@@ -151,12 +151,12 @@ onShow(() => {
         </view>
       </view>
 
-      <view class="mt-4 grid grid-cols-2 gap-3">
+      <view class="mt-4 grid grid-cols-2 gap-4">
         <view
-          v-for="item in metricCards"
+          v-for="(item, index) in metricCards"
           :key="item.label"
           class="rounded-[24px] border border-white/70 bg-gradient-to-br px-4 py-4 shadow-[0_10px_26px_rgba(148,163,184,0.10)] backdrop-blur-sm"
-          :class="item.tone"
+          :class="[item.tone, { 'col-span-2': metricCards.length % 2 !== 0 && index === metricCards.length - 1 }]"
         >
           <view class="text-[12px] opacity-70">
             {{ item.label }}

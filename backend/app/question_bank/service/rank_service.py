@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.admin.model import User
 from backend.app.question_bank.crud.crud_check_in import check_in_dao
 from backend.app.question_bank.crud.crud_daily_rank import daily_rank_dao
-from backend.app.question_bank.model import PracticeRecord, UserAccount, UserCheckIn
+from backend.app.question_bank.model import PracticeRecord, UserAccount, UserCheckIn, UserPracticeStats
 from backend.app.question_bank.schema.home import RankItem, RankListData, RankUserInfo, UserRankInfo
 
 
@@ -126,15 +126,14 @@ class RankService:
         """获取刷题数量排行榜"""
         stmt = (
             select(
-                UserAccount.user_id.label('user_id'),
+                UserPracticeStats.user_id.label('user_id'),
                 User.nickname,
                 User.avatar,
-                func.count(PracticeRecord.id).label('practice_count'),
+                UserPracticeStats.total_count.label('practice_count'),
             )
-            .join(User, User.id == UserAccount.user_id)
-            .outerjoin(PracticeRecord, PracticeRecord.user_id == UserAccount.user_id)
-            .group_by(UserAccount.user_id, User.nickname, User.avatar)
-            .order_by(func.count(PracticeRecord.id).desc())
+            .join(User, User.id == UserPracticeStats.user_id)
+            .where(UserPracticeStats.total_count > 0)
+            .order_by(UserPracticeStats.total_count.desc())
             .limit(limit)
         )
 
@@ -174,17 +173,14 @@ class RankService:
         """获取正确率排行榜"""
         stmt = (
             select(
-                UserAccount.user_id.label('user_id'),
+                UserPracticeStats.user_id.label('user_id'),
                 User.nickname,
                 User.avatar,
-                func.count(PracticeRecord.id).label('total_count'),
-                func.sum(func.cast(PracticeRecord.is_correct, sa.Integer)).label('correct_count'),
+                UserPracticeStats.total_count,
+                UserPracticeStats.correct_count,
             )
-            .join(User, User.id == UserAccount.user_id)
-            .outerjoin(PracticeRecord, PracticeRecord.user_id == UserAccount.user_id)
-            .group_by(UserAccount.user_id, User.nickname, User.avatar)
-            .having(func.count(PracticeRecord.id) >= 10)
-            .limit(limit * 2)
+            .join(User, User.id == UserPracticeStats.user_id)
+            .where(UserPracticeStats.total_count >= 10)
         )
 
         result = await db.execute(stmt)

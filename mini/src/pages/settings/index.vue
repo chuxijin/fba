@@ -128,11 +128,26 @@ function choosePracticeMode() {
 function chooseMasteryStreak() {
   uni.showActionSheet({
     itemList: masteryStreakOptions.map(n => `连续答对 ${n} 次`),
-    success: (res) => {
+    success: async (res) => {
       const streak = masteryStreakOptions[Number(res.tapIndex)]
       if (streak) {
         wrongMasteryStreak.value = streak
         saveAppSettings({ wrongMasteryStreak: streak })
+
+        if (tokenStore.updateNowTime().hasLogin) {
+          try {
+            await fbaApi.qbank.settings.updateStudyPreference({
+              mastery_threshold: streak,
+            } as any)
+            mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), {
+              mastery_threshold: streak,
+            })
+          }
+          catch (error) {
+            console.error('保存错题掌握阈值失败:', error)
+          }
+        }
+
         uni.showToast({ title: `已设为连对 ${streak} 次`, icon: 'none' })
       }
     },
