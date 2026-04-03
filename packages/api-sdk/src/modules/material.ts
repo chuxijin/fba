@@ -10,11 +10,11 @@ import type {
 } from '../types';
 
 export interface MaterialModule {
-  /** 获取材料详情（含关联信息�?*/
+  /** 获取材料详情（含关联信息�?*/
   getDetail(id: number): Promise<GetMaterialWithRelationDetail>;
   /** 获取材料列表 */
   getList(params?: MaterialListParams): Promise<GetMaterialListItem[]>;
-  /** 获取指定题库的材料列�?*/
+  /** 获取指定题库的材料列�?*/
   getByBank(bankId: number, params?: { is_active?: boolean }): Promise<GetMaterialListItem[]>;
   /** 创建材料 */
   create(data: CreateMaterialParam): Promise<GetMaterialDetail>;
@@ -22,9 +22,9 @@ export interface MaterialModule {
   update(id: number, data: UpdateMaterialParam): Promise<void>;
   /** 删除材料 */
   remove(ids: number[]): Promise<void>;
-  /** 关联题目到材�?*/
+  /** 关联题目到材�?*/
   linkQuestions(materialId: number, data: LinkQuestionParam): Promise<void>;
-  /** 解除材料与题目关�?*/
+  /** 解除材料与题目关�?*/
   unlinkQuestions(materialId: number, data: LinkQuestionParam): Promise<void>;
 }
 

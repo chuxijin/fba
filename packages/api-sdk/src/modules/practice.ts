@@ -1,4 +1,4 @@
-﻿import type { ApiClient } from '../client/types';
+import type { ApiClient } from '../client/types';
 import type {
   GetQuestionDetail,
   GetQuestionListItem,

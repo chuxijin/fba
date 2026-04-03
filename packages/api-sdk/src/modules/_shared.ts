@@ -1,4 +1,4 @@
-﻿import type { ApiClient, RequestConfig } from '../client/types';
+import type { ApiClient, RequestConfig } from '../client/types';
 
 export interface ScopedApiClient extends ApiClient {
   prefix: string;

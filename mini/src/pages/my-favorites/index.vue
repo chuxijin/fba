@@ -1,4 +1,4 @@
-﻿<script lang="ts" setup>
+<script lang="ts" setup>
 import { fbaApi } from '@/api/sdk'
 import MembershipModal from '@/components/MembershipModal.vue'
 import { useTokenStore } from '@/store'

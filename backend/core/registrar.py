@@ -267,4 +267,6 @@ def register_metrics(app: FastAPI) -> None:
     metrics_app = make_asgi_app()
     app.mount('/metrics', metrics_app)
 
-    init_otel(app)
+    # OTel 链路追踪依赖 Grafana Alloy（gRPC），仅在 prod 环境初始化
+    if settings.ENVIRONMENT == 'prod':
+        init_otel(app)

@@ -1,4 +1,4 @@
-﻿export interface ChapterBankBrief {
+export interface ChapterBankBrief {
   id: number;
   name: string;
   code: string;

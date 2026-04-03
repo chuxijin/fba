@@ -278,7 +278,7 @@ class WrongQuestionBook(Base, UserMixin):
 
     # ============ 关系 ============
     account: Mapped[UserAccount] = relationship(init=False, back_populates='wrong_questions', lazy='noload')
-    question: Mapped[Question] = relationship(init=False, lazy='joined')
+    question: Mapped[Question] = relationship(init=False, lazy='noload')
     placement: Mapped[QuestionPlacement | None] = relationship(init=False, lazy='noload')
 
     @property

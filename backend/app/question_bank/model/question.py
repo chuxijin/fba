@@ -605,7 +605,7 @@ class QuestionMaterial(Base, UserMixin):
     is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
 
     # ============ 关系 ============
-    bank: Mapped['QuestionBank'] = relationship(init=False, lazy='joined')
+    bank: Mapped['QuestionBank'] = relationship(init=False, lazy='noload')
     questions: Mapped[list['Question']] = relationship(
         init=False,
         secondary=question_material_relation,

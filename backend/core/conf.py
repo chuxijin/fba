@@ -1,4 +1,4 @@
-﻿import shutil
+import shutil
 
 from functools import cache
 from re import Pattern
@@ -290,7 +290,7 @@ class Settings(BaseSettings):
     I18N_DEFAULT_LANGUAGE: str = 'zh-CN'
 
     # Grafana
-    GRAFANA_METRICS_ENABLE: bool = False
+    GRAFANA_METRICS_ENABLE: bool = True
     GRAFANA_OTLP_GRPC_ENDPOINT: str = 'fba_alloy:4317'
 
     ##################################################

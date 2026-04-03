@@ -116,6 +116,8 @@ class CRUDQuestion(CRUDPlus[Question]):
         review_status: int | None = None,
         scene_mask: int | None = None,
         keyword: str | None = None,
+        include_analysis: bool = False,
+        include_materials: bool = False,
     ):
         """
         构建题目查询语句
@@ -129,13 +131,22 @@ class CRUDQuestion(CRUDPlus[Question]):
         :param review_status: 审核状态（挂载级别）
         :param scene_mask: 场景位标记（位与过滤）
         :param keyword: 题干关键字
+        :param include_analysis: 是否包含解析
+        :param include_materials: 是否包含材料
         :return:
         """
-        stmt = select(Question).options(
+        options_list = [
             selectinload(Question.placements).joinedload(QuestionPlacement.bank),
             selectinload(Question.placements).joinedload(QuestionPlacement.chapter),
             selectinload(Question.options).joinedload(QuestionOption.content_ref),
-        )
+        ]
+
+        if include_analysis:
+            options_list.append(selectinload(Question.analyses))
+        if include_materials:
+            options_list.append(selectinload(Question.materials))
+
+        stmt = select(Question).options(*options_list)
 
         has_placement_filter = (
             bank_id is not None
@@ -192,7 +203,7 @@ class CRUDQuestion(CRUDPlus[Question]):
         include_materials: bool = False,
     ) -> Sequence[Question]:
         """
-        查询所有题目
+        查询所有题目（复用 get_select 构建查询语句）
 
         :param db: 数据库会话
         :param bank_id: 题库 ID
@@ -208,55 +219,19 @@ class CRUDQuestion(CRUDPlus[Question]):
         :param include_materials: 是否包含材料
         :return:
         """
-        options_list = [
-            selectinload(Question.placements).joinedload(QuestionPlacement.bank),
-            selectinload(Question.placements).joinedload(QuestionPlacement.chapter),
-            selectinload(Question.options).joinedload(QuestionOption.content_ref),
-        ]
-
-        if include_analysis:
-            options_list.append(selectinload(Question.analyses))
-
-        if include_materials:
-            options_list.append(selectinload(Question.materials))
-
-        stmt = select(Question).options(*options_list)
-
-        has_placement_filter = (
-            bank_id is not None
-            or chapter_id is not None
-            or is_active is not None
-            or review_status is not None
-            or scene_mask is not None
+        stmt = await self.get_select(
+            bank_id=bank_id,
+            chapter_id=chapter_id,
+            type=type,
+            difficulty=difficulty,
+            content_status=content_status,
+            is_active=is_active,
+            review_status=review_status,
+            scene_mask=scene_mask,
+            keyword=keyword,
+            include_analysis=include_analysis,
+            include_materials=include_materials,
         )
-        if has_placement_filter:
-            stmt = stmt.join(QuestionPlacement, QuestionPlacement.question_id == Question.id)
-
-        if bank_id is not None:
-            stmt = stmt.where(QuestionPlacement.bank_id == bank_id)
-        if chapter_id is not None:
-            stmt = stmt.where(QuestionPlacement.chapter_id == chapter_id)
-        if is_active is not None:
-            stmt = stmt.where(QuestionPlacement.is_active == is_active)
-        if review_status is not None:
-            stmt = stmt.where(QuestionPlacement.review_status == review_status)
-        if scene_mask is not None:
-            stmt = stmt.join(QuestionBank, QuestionBank.id == QuestionPlacement.bank_id)
-            effective_scene = sa.func.coalesce(QuestionPlacement.scene_mask, QuestionBank.scene_mask)
-            stmt = stmt.where(effective_scene.op('&')(scene_mask) == scene_mask)
-        if type is not None:
-            stmt = stmt.where(Question.type == type)
-        if difficulty is not None:
-            stmt = stmt.where(Question.difficulty == difficulty)
-        if content_status is not None:
-            stmt = stmt.where(Question.content_status == content_status)
-        if keyword is not None:
-            stmt = stmt.where(Question.stem.like(f'%{keyword}%'))
-
-        if has_placement_filter:
-            stmt = stmt.order_by(QuestionPlacement.sort_order.asc(), Question.created_time.desc())
-        else:
-            stmt = stmt.order_by(Question.created_time.desc())
 
         result = await db.execute(stmt)
         questions = result.unique().scalars().all()

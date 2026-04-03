@@ -1,4 +1,4 @@
-﻿import type { GetQuestionWithAnswer } from './question';
+import type { GetQuestionWithAnswer } from './question';
 
 export type BankType = 1 | 2 | 3;
 

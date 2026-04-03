@@ -33,10 +33,10 @@ class HomeService:
         """
         today = date.today()
 
-        # 1. 打卡汇总：单次查询替代 3 次独立查询 (is_checked_in + streak + total_days)
-        check_in_records = await HomeService._get_check_in_records(db, user_id)
-        is_checked_in = bool(check_in_records) and check_in_records[0].check_date == today
-        streak = HomeService._calc_streak(check_in_records, today)
+        # 1. 打卡汇总
+        recent_dates, total_check_in_days = await HomeService._get_check_in_summary(db, user_id)
+        is_checked_in = bool(recent_dates) and recent_dates[0] == today
+        streak = HomeService._calc_streak(recent_dates, today)
 
         # 2. 本周统计（今日做题数从 daily_breakdown 中提取，省去独立查询）
         week_stats = await HomeService._get_week_stats(db, user_id)
@@ -44,7 +44,7 @@ class HomeService:
 
         check_in_info = CheckInInfo(
             check_in_streak=streak,
-            total_check_in_days=len(check_in_records),
+            total_check_in_days=total_check_in_days,
             is_checked_in_today=is_checked_in,
             today_practice_count=today_daily.count if today_daily else 0,
         )
@@ -84,32 +84,52 @@ class HomeService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _get_check_in_records(db: AsyncSession, user_id: int) -> list[UserCheckIn]:
-        """获取用户全部打卡记录（按日期降序）"""
-        stmt = (
-            select(UserCheckIn)
+    async def _get_check_in_summary(db: AsyncSession, user_id: int) -> tuple[list[date], int]:
+        """
+        获取打卡摘要：最近打卡日期列表 + 总打卡天数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        # 只查 check_date 列，LIMIT 365 足以计算连续打卡
+        dates_stmt = (
+            select(UserCheckIn.check_date)
             .where(UserCheckIn.user_id == user_id)
             .order_by(UserCheckIn.check_date.desc())
+            .limit(365)
         )
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        dates_result = await db.execute(dates_stmt)
+        recent_dates = list(dates_result.scalars().all())
+
+        # 总天数用 COUNT，避免加载全部记录
+        count_stmt = select(func.count()).select_from(UserCheckIn).where(UserCheckIn.user_id == user_id)
+        total_days = int((await db.scalar(count_stmt)) or 0)
+
+        return recent_dates, total_days
 
     @staticmethod
-    def _calc_streak(records: list[UserCheckIn], today: date) -> int:
-        """从已排序的打卡记录计算连续天数"""
-        if not records:
+    def _calc_streak(dates: list[date], today: date) -> int:
+        """
+        从已排序的打卡日期计算连续天数
+
+        :param dates: 打卡日期列表（降序）
+        :param today: 今日日期
+        :return:
+        """
+        if not dates:
             return 0
 
         streak = 0
         current_date = today
 
-        for record in records:
-            if record.check_date == current_date:
+        for check_date in dates:
+            if check_date == current_date:
                 streak += 1
                 current_date -= timedelta(days=1)
-            elif record.check_date == current_date - timedelta(days=1):
+            elif check_date == current_date - timedelta(days=1):
                 streak += 1
-                current_date = record.check_date - timedelta(days=1)
+                current_date = check_date - timedelta(days=1)
             else:
                 break
 

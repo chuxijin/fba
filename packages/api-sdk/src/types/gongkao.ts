@@ -1,4 +1,4 @@
-﻿import type { PaginationParams } from './common';
+import type { PaginationParams } from './common';
 
 export type GongkaoEntity = Record<string, unknown>;
 

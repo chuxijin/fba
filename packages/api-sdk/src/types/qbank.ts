@@ -1,4 +1,4 @@
-﻿export type QbankEntity = Record<string, unknown>;
+export type QbankEntity = Record<string, unknown>;
 
 export interface QbankUserAccountDetail extends QbankEntity {
   id: number | string;

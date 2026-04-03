@@ -4,13 +4,13 @@ export type QuestionType = 'single' | 'multiple' | 'judgement' | 'fill' | 'short
 /** 难度 */
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
-/** 内容状态：0=草稿, 10=已完�? 20=待修�?*/
+/** 内容状态：0=草稿, 10=已完�? 20=待修�?*/
 export type ContentStatus = 0 | 10 | 20;
 
-/** 审核状态：0=待审�? 10=已通过, 20=已驳�?*/
+/** 审核状态：0=待审�? 10=已通过, 20=已驳�?*/
 export type ReviewStatus = 0 | 10 | 20;
 
-/** 解析状态：0=未编�? 10=已编�? 20=待修�?*/
+/** 解析状态：0=未编�? 10=已编�? 20=待修�?*/
 export type AnalysisStatus = 0 | 10 | 20;
 
 /** 题目挂载信息 */
@@ -69,7 +69,7 @@ export interface GetQuestionStatisticsDetail {
   report_count: number;
 }
 
-/** 题目列表�?*/
+/** 题目列表�?*/
 export interface GetQuestionListItem {
   id: number;
   type: QuestionType;
@@ -103,7 +103,7 @@ export interface GetQuestionDetail {
   statistics: GetQuestionStatisticsDetail | null;
 }
 
-/** 题目含答案（导出格式�?*/
+/** 题目含答案（导出格式�?*/
 export interface GetQuestionWithAnswer {
   id: number;
   type: QuestionType;
@@ -122,7 +122,7 @@ export interface GetQuestionWithAnswer {
   material_ids: number[];
 }
 
-/** 题目答案与解析（练题模式�?*/
+/** 题目答案与解析（练题模式�?*/
 export interface GetQuestionSolution {
   correct_answer: string | string[];
   analysis: string;
@@ -131,7 +131,7 @@ export interface GetQuestionSolution {
   option_select_stats: Record<string, unknown> | null;
 }
 
-/** 选项统计�?*/
+/** 选项统计�?*/
 export interface QuestionOptionStatsItem {
   option_code: string;
   count: number;
