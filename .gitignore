@@ -31,3 +31,5 @@ frontend/
 .pnpm-store/
 _ref/
 backend/scripts/chinese-xinhua/
+.superpowers/
+superpowers/
