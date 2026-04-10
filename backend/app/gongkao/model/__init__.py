@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from backend.app.gongkao.model.category import GkCategory
-from backend.app.gongkao.model.content import GkContent
 from backend.app.gongkao.model.dict_major import GkDictMajor
 from backend.app.gongkao.model.dict_region import GkDictRegion
 from backend.app.gongkao.model.gangwei import GkGangwei
@@ -17,7 +16,6 @@ __all__ = [
     'GkUserProfile',
     # 业务表
     'GkCategory',
-    'GkContent',
     'GkGangwei',
     'GkHanyu',
     'GkQuestion',

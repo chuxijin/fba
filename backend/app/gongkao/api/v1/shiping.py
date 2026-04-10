@@ -1,58 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import date as date_type
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from backend.app.gongkao.schema.content import (
-    ContentParam,
+from backend.app.content.schema.content import (
     GetContentDetail,
-    GetContentListDetail,
+    GetContentListDetails as GetContentListDetail,
 )
-from backend.app.gongkao.service.content_service import content_service
-from backend.common.pagination import DependsPagination, PageData
-from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.app.content.service.content_service import content_service
+from backend.common.response.response_schema import ResponseSchemaModel, response_base
+from backend.database.db import CurrentSession
 
 router = APIRouter()
 
 
-@router.get('/{pk}', summary='获取时评详情')
+@router.get('/{pk}', summary='获取时评详情', response_model=ResponseSchemaModel[GetContentDetail])
 async def get_shiping(
     db: CurrentSession,
-    pk: Annotated[int, Path(description='时评 ID')],
-) -> ResponseSchemaModel[GetContentDetail]:
-    """获取时评详情"""
-    data = await content_service.get(db=db, pk=pk)
+    pk: Annotated[int, Path(description='内容 ID')],
+):
+    data = await content_service.get_with_incr_view(db=db, pk=pk)
     return response_base.success(data=data)
 
 
-@router.get('', summary='获取时评列表', dependencies=[DependsPagination])
+@router.get('', summary='获取时评列表', response_model=ResponseSchemaModel[list[GetContentListDetail]])
 async def get_shiping_list(
     db: CurrentSession,
-    title: Annotated[str | None, Query(description='标题')] = None,
-    category_id: Annotated[int, Query(description='分类 ID')] = 34,
-    tag: Annotated[str | None, Query(description='标签')] = None,
-    daily_date: Annotated[str | None, Query(description='日期')] = None,
-) -> ResponseSchemaModel[PageData[GetContentListDetail]]:
-    """获取时评列表（分页），默认分类 ID=34，可传子分类 ID 进一步筛选"""
-    params = ContentParam(
-        title=title,
-        category_id=category_id,
-        tag=tag,
-        is_published=True,
-        daily_date=date_type.fromisoformat(daily_date) if daily_date else None,
+    app_code: str = Query('gongkao', description='应用标识'),
+    category_id: int = Query(34, description='分类 ID'),
+    is_published: bool = Query(True, description='是否发布'),
+):
+    contents = await content_service.get_list(
+        db=db, 
+        app_code=app_code, 
+        category_id=category_id, 
+        is_published=is_published
     )
-    data = await content_service.get_list(db=db, params=params)
-    return response_base.success(data=data)
-
-
-@router.post('/{pk}/view', summary='增加时评阅读量')
-async def increment_shiping_view(
-    db: CurrentSessionTransaction,
-    pk: Annotated[int, Path(description='时评 ID')],
-) -> ResponseModel:
-    """增加时评阅读量"""
-    await content_service.increment_view(db=db, pk=pk)
-    return response_base.success()
+    return response_base.success(data=contents)

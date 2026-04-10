@@ -12,6 +12,8 @@ import { createOssModule } from './modules/oss';
 import type { OssModule } from './modules/oss';
 import { createMembershipModule } from './modules/membership';
 import type { MembershipModule } from './modules/membership';
+import { createContentModule } from './modules/content';
+import type { ContentModule } from './modules/content';
 import type { BankModule } from './modules/bank';
 import type { MaterialModule } from './modules/material';
 import type { PracticeModule } from './modules/practice';
@@ -24,6 +26,7 @@ export interface FbaApiSdk {
   coulddrive: CoulddriveModule;
   oss: OssModule;
   membership: MembershipModule;
+  content: ContentModule;
   bank: BankModule;
   material: MaterialModule;
   question: QuestionModule;
@@ -39,6 +42,7 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
   const coulddrive = createCoulddriveModule(client);
   const oss = createOssModule(client);
   const membership = createMembershipModule(client);
+  const content = createContentModule(client);
 
   return {
     admin,
@@ -47,6 +51,7 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
     coulddrive,
     oss,
     membership,
+    content,
     bank: qbank.bank,
     material: qbank.material,
     question: qbank.question,
@@ -64,6 +69,7 @@ export type { QbankModule } from './modules/qbank';
 export type { CoulddriveModule } from './modules/coulddrive';
 export type { OssModule } from './modules/oss';
 export type { MembershipModule } from './modules/membership';
+export type { ContentModule } from './modules/content';
 export type { BankModule } from './modules/bank';
 export type { MaterialModule } from './modules/material';
 export type { PracticeModule } from './modules/practice';
@@ -73,6 +79,9 @@ export type {
   PageData,
   PaginationParams,
   ResponseModel,
+  ContentResult,
+  ContentParams,
+  ContentListDetail,
   BankListParams,
   BankSchemaBase,
   BankScope,

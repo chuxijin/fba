@@ -15,6 +15,7 @@ from backend.app.jia.api.router import v1 as jia_v1
 from backend.app.mall.api.router import v1 as mall_v1
 from backend.app.membership.api.router import v1 as membership_v1
 from backend.app.trail.api.router import v1 as trail_v1
+from backend.app.content.api.router import v1 as content_v1
 
 router = APIRouter()
 
@@ -33,3 +34,4 @@ router.include_router(jia_v1)
 router.include_router(mall_v1)
 router.include_router(membership_v1)
 router.include_router(trail_v1)
+router.include_router(content_v1)

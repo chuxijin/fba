@@ -1,0 +1,302 @@
+{
+  "Version": "1.96.3-t3ffddb134-g460d8764a",
+  "TUN": true,
+  "BackendState": "Running",
+  "HaveNodeKey": true,
+  "AuthURL": "",
+  "TailscaleIPs": [
+    "100.119.226.68",
+    "fd7a:115c:a1e0::6301:e2a5"
+  ],
+  "Self": {
+    "ID": "n3g7K7thEr11CNTRL",
+    "PublicKey": "nodekey:9a757fd8ecbdbb5356eda7e3ca67ba95becc56bf045b4f9e32b32d6e6377e243",
+    "HostName": "Chuxijin",
+    "DNSName": "chuxijin.tail069685.ts.net.",
+    "OS": "windows",
+    "UserID": 6256758754464579,
+    "TailscaleIPs": [
+      "100.119.226.68",
+      "fd7a:115c:a1e0::6301:e2a5"
+    ],
+    "AllowedIPs": [
+      "100.119.226.68/32",
+      "fd7a:115c:a1e0::6301:e2a5/128"
+    ],
+    "Addrs": [
+      "192.168.1.131:41642",
+      "112.10.252.159:18624",
+      "172.31.112.1:41641",
+      "192.168.50.220:41641",
+      "198.18.0.1:41641"
+    ],
+    "CurAddr": "",
+    "Relay": "tok",
+    "PeerRelay": "",
+    "RxBytes": 0,
+    "TxBytes": 0,
+    "Created": "2026-04-04T02:50:46.425054799Z",
+    "LastWrite": "0001-01-01T00:00:00Z",
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "Online": true,
+    "ExitNode": false,
+    "ExitNodeOption": false,
+    "Active": false,
+    "PeerAPIURL": [
+      "http://100.119.226.68:45856",
+      "http://[fd7a:115c:a1e0::6301:e2a5]:62764"
+    ],
+    "TaildropTarget": 0,
+    "NoFileSharingReason": "",
+    "Capabilities": [
+      "HTTPS://TAILSCALE.COM/s/DEPRECATED-NODE-CAPS#see-https://github.com/tailscale/tailscale/issues/11508",
+      "https://tailscale.com/cap/file-sharing",
+      "https://tailscale.com/cap/is-admin",
+      "https://tailscale.com/cap/is-owner",
+      "https://tailscale.com/cap/ssh",
+      "https://tailscale.com/cap/tailnet-lock",
+      "probe-udp-lifetime",
+      "ssh-behavior-v1",
+      "ssh-env-vars",
+      "store-appc-routes",
+      "tailnet-display-name"
+    ],
+    "CapMap": {
+      "https://tailscale.com/cap/file-sharing": null,
+      "https://tailscale.com/cap/is-admin": null,
+      "https://tailscale.com/cap/is-owner": null,
+      "https://tailscale.com/cap/ssh": null,
+      "https://tailscale.com/cap/tailnet-lock": null,
+      "probe-udp-lifetime": null,
+      "ssh-behavior-v1": null,
+      "ssh-env-vars": null,
+      "store-appc-routes": null,
+      "tailnet-display-name": [
+        "chuxijin0825@gmail.com"
+      ]
+    },
+    "InNetworkMap": true,
+    "InMagicSock": false,
+    "InEngine": false,
+    "KeyExpiry": "2026-10-01T02:50:46Z"
+  },
+  "Health": [],
+  "MagicDNSSuffix": "tail069685.ts.net",
+  "CurrentTailnet": {
+    "Name": "chuxijin0825@gmail.com",
+    "MagicDNSSuffix": "tail069685.ts.net",
+    "MagicDNSEnabled": true
+  },
+  "CertDomains": null,
+  "Peer": {
+    "nodekey:20a7ba61f97d901b82687829a495d2d796d1a76252f2630a85aade0fb063543c": {
+      "ID": "nmnZpoJey321CNTRL",
+      "PublicKey": "nodekey:20a7ba61f97d901b82687829a495d2d796d1a76252f2630a85aade0fb063543c",
+      "HostName": "Xiaomi 13",
+      "DNSName": "xiaomi-13.tail069685.ts.net.",
+      "OS": "android",
+      "UserID": 6256758754464579,
+      "TailscaleIPs": [
+        "100.98.45.37",
+        "fd7a:115c:a1e0::7739:2d25"
+      ],
+      "AllowedIPs": [
+        "100.98.45.37/32",
+        "fd7a:115c:a1e0::7739:2d25/128"
+      ],
+      "Addrs": null,
+      "CurAddr": "",
+      "Relay": "tok",
+      "PeerRelay": "",
+      "RxBytes": 0,
+      "TxBytes": 0,
+      "Created": "2026-04-04T16:31:00.240597175Z",
+      "LastWrite": "2026-04-07T23:32:39.3324043+08:00",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "LastHandshake": "0001-01-01T00:00:00Z",
+      "Online": true,
+      "ExitNode": false,
+      "ExitNodeOption": false,
+      "Active": false,
+      "PeerAPIURL": [
+        "http://100.98.45.37:1",
+        "http://[fd7a:115c:a1e0::7739:2d25]:1"
+      ],
+      "TaildropTarget": 1,
+      "NoFileSharingReason": "",
+      "InNetworkMap": true,
+      "InMagicSock": true,
+      "InEngine": false,
+      "KeyExpiry": "2026-10-01T16:31:20Z"
+    },
+    "nodekey:84bea023ef5f737f21507669c67cb26dcb4131caf6e690b1b69ca8b8263aaa72": {
+      "ID": "nMYjgPFHNs11CNTRL",
+      "PublicKey": "nodekey:84bea023ef5f737f21507669c67cb26dcb4131caf6e690b1b69ca8b8263aaa72",
+      "HostName": "Jinchuxi-1",
+      "DNSName": "jinchuxi-1.tail069685.ts.net.",
+      "OS": "windows",
+      "UserID": 6256758754464579,
+      "TailscaleIPs": [
+        "100.122.170.115",
+        "fd7a:115c:a1e0::2639:aa73"
+      ],
+      "AllowedIPs": [
+        "100.122.170.115/32",
+        "fd7a:115c:a1e0::2639:aa73/128"
+      ],
+      "Addrs": null,
+      "CurAddr": "",
+      "Relay": "sfo",
+      "PeerRelay": "",
+      "RxBytes": 0,
+      "TxBytes": 0,
+      "Created": "2026-04-06T02:36:51.557987665Z",
+      "LastWrite": "0001-01-01T00:00:00Z",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "LastHandshake": "0001-01-01T00:00:00Z",
+      "Online": true,
+      "ExitNode": false,
+      "ExitNodeOption": false,
+      "Active": false,
+      "PeerAPIURL": [
+        "http://100.122.170.115:49265",
+        "http://[fd7a:115c:a1e0::2639:aa73]:62440"
+      ],
+      "TaildropTarget": 1,
+      "NoFileSharingReason": "",
+      "InNetworkMap": true,
+      "InMagicSock": true,
+      "InEngine": false,
+      "KeyExpiry": "2026-10-03T02:36:51Z"
+    },
+    "nodekey:860d6f90140f83de8d1e0eb2058e1585052ed27179a333f76c41c7fdc650007d": {
+      "ID": "nTy7oS6jn511CNTRL",
+      "PublicKey": "nodekey:860d6f90140f83de8d1e0eb2058e1585052ed27179a333f76c41c7fdc650007d",
+      "HostName": "homeserver",
+      "DNSName": "homeserver.tail069685.ts.net.",
+      "OS": "linux",
+      "UserID": 6256758754464579,
+      "TailscaleIPs": [
+        "100.80.0.126",
+        "fd7a:115c:a1e0::c601:b9"
+      ],
+      "AllowedIPs": [
+        "100.80.0.126/32",
+        "fd7a:115c:a1e0::c601:b9/128"
+      ],
+      "Addrs": null,
+      "CurAddr": "",
+      "Relay": "sfo",
+      "PeerRelay": "",
+      "RxBytes": 3371684,
+      "TxBytes": 1401976,
+      "Created": "2026-04-04T02:44:12.891295929Z",
+      "LastWrite": "2026-04-07T23:50:45.8570501+08:00",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "LastHandshake": "2026-04-07T23:50:23.1086882+08:00",
+      "Online": true,
+      "ExitNode": false,
+      "ExitNodeOption": false,
+      "Active": true,
+      "PeerAPIURL": [
+        "http://100.80.0.126:43929",
+        "http://[fd7a:115c:a1e0::c601:b9]:47117"
+      ],
+      "TaildropTarget": 1,
+      "NoFileSharingReason": "",
+      "InNetworkMap": true,
+      "InMagicSock": true,
+      "InEngine": true
+    },
+    "nodekey:93ca530b70db6433d59a2f697cf11a0a41911c92eb64f944033d476b0e3f3833": {
+      "ID": "nyUL2uNFCC21CNTRL",
+      "PublicKey": "nodekey:93ca530b70db6433d59a2f697cf11a0a41911c92eb64f944033d476b0e3f3833",
+      "HostName": "Jinchuxi",
+      "DNSName": "jinchuxi.tail069685.ts.net.",
+      "OS": "windows",
+      "UserID": 6256758754464579,
+      "TailscaleIPs": [
+        "100.127.56.52",
+        "fd7a:115c:a1e0::e01:3874"
+      ],
+      "AllowedIPs": [
+        "100.127.56.52/32",
+        "fd7a:115c:a1e0::e01:3874/128"
+      ],
+      "Addrs": null,
+      "CurAddr": "",
+      "Relay": "lax",
+      "PeerRelay": "",
+      "RxBytes": 848,
+      "TxBytes": 968,
+      "Created": "2026-04-04T06:37:06.189585934Z",
+      "LastWrite": "2026-04-07T23:38:25.8854855+08:00",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "LastHandshake": "2026-04-07T23:38:08.4989397+08:00",
+      "Online": true,
+      "ExitNode": false,
+      "ExitNodeOption": false,
+      "Active": false,
+      "PeerAPIURL": [
+        "http://100.127.56.52:48689",
+        "http://[fd7a:115c:a1e0::e01:3874]:47867"
+      ],
+      "TaildropTarget": 1,
+      "NoFileSharingReason": "",
+      "InNetworkMap": true,
+      "InMagicSock": true,
+      "InEngine": true,
+      "KeyExpiry": "2026-10-01T06:37:06Z"
+    },
+    "nodekey:f3d7273c3bcae8ab7f96f71f7b83858bba19c28bffc4da4535d64906f16b130d": {
+      "ID": "nxVxKABWgg11CNTRL",
+      "PublicKey": "nodekey:f3d7273c3bcae8ab7f96f71f7b83858bba19c28bffc4da4535d64906f16b130d",
+      "HostName": "localhost",
+      "DNSName": "iphone-14-pro-max.tail069685.ts.net.",
+      "OS": "iOS",
+      "UserID": 6256758754464579,
+      "TailscaleIPs": [
+        "100.110.229.64",
+        "fd7a:115c:a1e0::2739:e540"
+      ],
+      "AllowedIPs": [
+        "100.110.229.64/32",
+        "fd7a:115c:a1e0::2739:e540/128"
+      ],
+      "Addrs": null,
+      "CurAddr": "",
+      "Relay": "tok",
+      "PeerRelay": "",
+      "RxBytes": 0,
+      "TxBytes": 0,
+      "Created": "2026-04-07T08:12:55.531773861Z",
+      "LastWrite": "0001-01-01T00:00:00Z",
+      "LastSeen": "2026-04-07T15:40:00.1Z",
+      "LastHandshake": "0001-01-01T00:00:00Z",
+      "Online": false,
+      "ExitNode": false,
+      "ExitNodeOption": false,
+      "Active": false,
+      "PeerAPIURL": [
+        "http://100.110.229.64:63745",
+        "http://[fd7a:115c:a1e0::2739:e540]:49460"
+      ],
+      "TaildropTarget": 5,
+      "NoFileSharingReason": "",
+      "InNetworkMap": true,
+      "InMagicSock": true,
+      "InEngine": false,
+      "KeyExpiry": "2026-10-04T08:14:36Z"
+    }
+  },
+  "User": {
+    "6256758754464579": {
+      "ID": 6256758754464579,
+      "LoginName": "chuxijin0825@gmail.com",
+      "DisplayName": "金楚曦",
+      "ProfilePicURL": "https://lh3.googleusercontent.com/a/ACg8ocIymx8tVeiIPtRA5st9hOp2xmPRQ7D1foCpdrF6XY4gAklH7w=s96-c"
+    }
+  },
+  "ClientVersion": null
+}

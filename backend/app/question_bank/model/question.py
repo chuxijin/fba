@@ -109,6 +109,8 @@ class QuestionPlacement(Base, UserMixin):
     )
 
 
+from pgvector.sqlalchemy import Vector
+
 class Question(Base, UserMixin):
     """题目表"""
 
@@ -148,6 +150,12 @@ class Question(Base, UserMixin):
         sa.SmallInteger,
         default=10,
         comment='内容状态: 0=待审核, 10=已通过, 20=已拒绝',
+    )
+    content_vector: Mapped[list[float] | None] = mapped_column(
+        Vector(1536),
+        default=None,
+        deferred=True,
+        comment='内容语义向量(1536维)，统合用于自动标注、相似推荐与AI问答'
     )
 
     # ============ 关系 ============
