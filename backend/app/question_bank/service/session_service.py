@@ -13,7 +13,6 @@ from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
-from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_session_question import session_question_dao
@@ -21,20 +20,18 @@ from backend.app.question_bank.crud.crud_question import (
     question_option_stats_dao,
     question_statistics_dao,
 )
-from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
-from backend.app.question_bank.crud.crud_question_note import question_note_dao
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
     PracticeRecord,
     PracticeSession,
     Question,
-    QuestionBank,
     QuestionOption,
     QuestionPlacement,
     SessionQuestion,
     WrongQuestionBook,
 )
+from backend.app.question_bank.schema.question import QuestionCollectParam
 from backend.app.question_bank.schema.practice import (
     AnswerCardItem,
     BatchUpsertPracticeRecordsParam,
@@ -44,6 +41,7 @@ from backend.app.question_bank.schema.practice import (
     SubmitPracticeSessionParam,
     SubmitPracticeSessionResult,
 )
+from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.common.exception import errors
 
@@ -167,6 +165,38 @@ class SessionService:
         payload = json.dumps(source_snapshot, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
         return hashlib.sha1(payload.encode('utf-8')).hexdigest()
 
+    @classmethod
+    def build_session_source_key(cls, obj: CreatePracticeSessionParam) -> str:
+        """
+        基于创建会话参数生成来源签名
+
+        :param obj: 创建会话参数
+        :return:
+        """
+        source_snapshot = cls._build_session_source_snapshot(obj)
+        return cls._build_session_source_key(source_snapshot)
+
+    @classmethod
+    def _build_collect_param(
+        cls,
+        *,
+        obj: CreatePracticeSessionParam,
+        source_type: str,
+    ) -> QuestionCollectParam:
+        """将练习会话筛题参数映射为统一筛题参数。"""
+        return QuestionCollectParam(
+            source_type=source_type,
+            bank_id=obj.bank_id,
+            chapter_id=obj.chapter_id,
+            year_start=obj.year_start,
+            year_end=obj.year_end,
+            region=obj.region,
+            cat_id=obj.cat_id,
+            knowledge_point=obj.knowledge_point,
+            content_status=10,
+            is_active=True if source_type == 'placement' else None,
+        )
+
     @staticmethod
     def _dedup_placements_by_question(placements: list[QuestionPlacement]) -> list[QuestionPlacement]:
         """
@@ -249,117 +279,17 @@ class SessionService:
         :param obj: 创建会话参数
         :return:
         """
-        limit_count = obj.limit
-        shuffle_flag = obj.shuffle
-
-        # ---- 1. 确定挂载列表 ----
-        if obj.knowledge_point:
-            # ???????? name / id / {id,name} ????
-            kp_ids, kp_names = SessionService._normalize_knowledge_point_terms(obj.knowledge_point)
-            if not kp_ids and not kp_names:
-                placements = []
-            else:
-                stmt = (
-                    select(QuestionPlacement)
-                    .where(QuestionPlacement.is_active.is_(True))
-                    .join(Question, Question.id == QuestionPlacement.question_id)
-                    .where(Question.content_status == 10)
-                    .options(
-                        joinedload(QuestionPlacement.bank),
-                        joinedload(QuestionPlacement.chapter),
-                    )
-                    .order_by(QuestionPlacement.sort_order, QuestionPlacement.question_id)
-                )
-                if obj.bank_id:
-                    stmt = stmt.where(QuestionPlacement.bank_id == obj.bank_id)
-                if obj.chapter_id:
-                    stmt = stmt.where(QuestionPlacement.chapter_id == obj.chapter_id)
-
-                region_text = (obj.region or '').strip()
-                has_collection_scope = (
-                    obj.cat_id is not None
-                    or bool(region_text)
-                    or obj.year_start is not None
-                    or obj.year_end is not None
-                )
-                if has_collection_scope:
-                    stmt = stmt.join(QuestionBank, QuestionBank.id == QuestionPlacement.bank_id)
-                    stmt = stmt.where(
-                        QuestionBank.status == 1,
-                        QuestionBank.bank_type == 2,
-                    )
-
-                    if obj.cat_id is not None:
-                        cat_ids = await category_dao.get_all_children_ids(db, obj.cat_id)
-                        if cat_ids:
-                            stmt = stmt.where(QuestionBank.cat_id.in_(cat_ids))
-
-                    if region_text:
-                        stmt = stmt.where(
-                            or_(
-                                QuestionBank.name.ilike(f'%{region_text}%'),
-                                QuestionBank.code.ilike(f'%{region_text}%'),
-                                QuestionBank.desc.ilike(f'%{region_text}%'),
-                            )
-                        )
-
-                    year_start = obj.year_start
-                    year_end = obj.year_end
-                    if year_start is not None and year_end is not None and year_start > year_end:
-                        year_start, year_end = year_end, year_start
-                    if year_start is not None:
-                        stmt = stmt.where(Question.created_time >= datetime(year_start, 1, 1))
-                    if year_end is not None:
-                        stmt = stmt.where(Question.created_time < datetime(year_end + 1, 1, 1))
-
-                stmt = stmt.where(or_(*cls._build_knowledge_point_conditions(kp_ids=kp_ids, kp_names=kp_names)))
-                result = await db.execute(stmt)
-                placements = list(result.unique().scalars().all())
-        elif obj.chapter_id:
-            # 按章节筛选
-            chapter_filters = [
-                QuestionPlacement.chapter_id == obj.chapter_id,
-                QuestionPlacement.is_active.is_(True),
-            ]
-            if obj.bank_id:
-                chapter_filters.append(QuestionPlacement.bank_id == obj.bank_id)
-            stmt = (
-                select(QuestionPlacement)
-                .where(*chapter_filters)
-                .join(Question, Question.id == QuestionPlacement.question_id)
-                .where(Question.content_status == 10)
-                .options(
-                    joinedload(QuestionPlacement.bank),
-                    joinedload(QuestionPlacement.chapter),
-                )
-                .order_by(QuestionPlacement.sort_order, QuestionPlacement.question_id)
-            )
-            result = await db.execute(stmt)
-            placements = list(result.unique().scalars().all())
-        elif obj.bank_id:
-            # 按题库筛选
-            stmt = (
-                select(QuestionPlacement)
-                .where(
-                    QuestionPlacement.bank_id == obj.bank_id,
-                    QuestionPlacement.is_active.is_(True),
-                )
-                .join(Question, Question.id == QuestionPlacement.question_id)
-                .where(Question.content_status == 10)
-                .options(
-                    joinedload(QuestionPlacement.bank),
-                    joinedload(QuestionPlacement.chapter),
-                )
-                .order_by(
-                    QuestionPlacement.chapter_id,
-                    QuestionPlacement.sort_order,
-                    QuestionPlacement.question_id,
-                )
-            )
-            result = await db.execute(stmt)
-            placements = list(result.unique().scalars().all())
-        else:
-            placements = []
+        collect_result = await question_selector_service.collect_question_ids(
+            db=db,
+            params=cls._build_collect_param(obj=obj, source_type='placement'),
+            user_id=user_id,
+        )
+        placements = await cls._query_placements_by_question_ids(
+            db=db,
+            question_ids=collect_result.question_ids,
+            bank_id=obj.bank_id,
+            chapter_id=obj.chapter_id,
+        )
 
         return await cls._create_session_snapshot(
             db=db,
@@ -372,8 +302,8 @@ class SessionService:
             exam_config=obj.exam_config,
             source_key=source_key,
             source_snapshot=source_snapshot,
-            shuffle=shuffle_flag,
-            limit=limit_count,
+            shuffle=obj.shuffle,
+            limit=obj.limit,
         )
 
     @classmethod
@@ -1358,12 +1288,30 @@ class SessionService:
         :param user_id: 用户 ID
         :return: 包含 questions 和 materials 的字典
         """
-        await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
-
         # 1. 获取会话题目快照（按 seq_no 排序）
+        session = await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
         session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
         if not session_questions:
             return {'questions': [], 'materials': []}
+
+        # 获取当前题库基础信息（用于识别科目）
+        bank_info = None
+        if session.bank_id:
+            from backend.app.question_bank.model.bank import QuestionBank
+            bank_info = await db.get(QuestionBank, session.bank_id)
+
+        # 识别是否为“申论”场景：题库名称包含申论，或者特定的分类 ID (需根据实际业务调整，此处暂以名称关键字作为强依据)
+        is_shenlun = False
+        if bank_info and ("申论" in bank_info.name or (bank_info.desc and "申论" in bank_info.desc)):
+            is_shenlun = True
+
+        # 获取当前试卷/题库统一绑定的可能材料
+        bank_material_ids = []
+        if session.bank_id:
+            from backend.app.question_bank.model.question import QuestionMaterial
+            b_stmt = select(QuestionMaterial.id).where(QuestionMaterial.bank_id == session.bank_id)
+            b_result = await db.execute(b_stmt)
+            bank_material_ids = list(b_result.scalars().all())
 
         # 2. 批量查询题目详情（含选项和材料关联）
         question_ids = [sq.question_id for sq in session_questions]
@@ -1380,8 +1328,19 @@ class SessionService:
 
         # 3. 构建题目列表（按 seq_no 排序）
         questions_list: list[dict[str, Any]] = []
-        all_material_ids: set[int] = set()
+        all_referenced_material_ids: set[int] = set()
 
+        # 首先预扫描所有题目引用的材料 ID
+        for sq in session_questions:
+            question = question_map.get(sq.question_id)
+            if question and question.materials:
+                for m in question.materials:
+                    all_referenced_material_ids.add(m.id)
+
+        # 题库中未被任何题目显式引用的材料，视为“全卷通用材料”
+        unreferenced_bank_material_ids = [mid for mid in bank_material_ids if mid not in all_referenced_material_ids]
+
+        all_material_ids: set[int] = set()
         for sq in session_questions:
             question = question_map.get(sq.question_id)
             if not question:
@@ -1400,6 +1359,16 @@ class SessionService:
 
             # 提取材料 ID 列表
             material_ids = [m.id for m in question.materials] if question.materials else []
+            
+            # 继承策略：
+            # 1. 如果是申论，由于材料往往挂在 Bank 上，且题目可能未显式关联，强制把 Bank 材料塞给它
+            # 2. 如果不是申论，但本题没材料且 Bank 存在“未被引用”的通用材料，则继承之
+            if not material_ids:
+                if is_shenlun and bank_material_ids:
+                    material_ids = list(bank_material_ids)
+                elif unreferenced_bank_material_ids:
+                    material_ids = list(unreferenced_bank_material_ids)
+                
             all_material_ids.update(material_ids)
 
             questions_list.append({
@@ -1556,34 +1525,12 @@ class SessionService:
                 source_snapshot=source_snapshot,
             )
 
-        if obj.session_type == 'wrong':
-            question_ids = await wrong_question_dao.get_question_ids(
-                db=db,
-                user_id=user_id,
-                bank_id=obj.bank_id,
-                chapter_id=obj.chapter_id,
-            )
-        elif obj.session_type == 'favorite':
-            question_ids = await question_favorite_dao.get_question_ids(
-                db=db,
-                user_id=user_id,
-                bank_id=obj.bank_id,
-                chapter_id=obj.chapter_id,
-            )
-        else:
-            question_ids = await question_note_dao.get_question_ids(
-                db=db,
-                user_id=user_id,
-                bank_id=obj.bank_id,
-                chapter_id=obj.chapter_id,
-            )
-
-        question_ids = list(dict.fromkeys(question_ids))
-        question_ids = await cls._filter_question_ids_by_knowledge_point(
+        collect_result = await question_selector_service.collect_question_ids(
             db=db,
-            question_ids=question_ids,
-            knowledge_point=obj.knowledge_point,
+            params=cls._build_collect_param(obj=obj, source_type=obj.session_type),
+            user_id=user_id,
         )
+        question_ids = collect_result.question_ids
 
         from backend.app.question_bank.service.membership_service import membership_service
 
@@ -1593,27 +1540,26 @@ class SessionService:
             question_ids=question_ids,
         )
 
-        if obj.shuffle:
-            random.shuffle(question_ids)
-
-        if obj.limit is not None:
-            question_ids = question_ids[:obj.limit]
-
-        from_ids_obj = CreateSessionFromIdsParam(
+        placements = await cls._query_placements_by_question_ids(
+            db=db,
             question_ids=question_ids,
-            session_type=obj.session_type,
-            practice_name=obj.practice_name,
             bank_id=obj.bank_id,
             chapter_id=obj.chapter_id,
         )
-        return await cls.create_session_from_ids(
+        return await cls._create_session_snapshot(
             db=db,
             user_id=user_id,
-            obj=from_ids_obj,
+            session_type=obj.session_type,
+            placements=placements,
+            practice_name=obj.practice_name,
+            bank_id=obj.bank_id,
+            chapter_id=obj.chapter_id,
+            exam_config=obj.exam_config,
             source_key=source_key,
             source_snapshot=source_snapshot,
+            shuffle=obj.shuffle,
+            limit=obj.limit,
         )
 
 
 session_service: SessionService = SessionService()
-

@@ -575,6 +575,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         bank_id: int | None = None,
         chapter_id: int | None = None,
         knowledge_point: str | None = None,
+        recent_days: int | None = None,
     ) -> list[int]:
         """
         按分组条件获取未掌握错题的题目 ID 列表
@@ -617,6 +618,11 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                     kp_col.contains([{'label': knowledge_point}]),
                     kp_col.contains([{'title': knowledge_point}]),
                 )
+            )
+
+        if recent_days is not None and recent_days > 0:
+            stmt = stmt.where(
+                WrongQuestionBook.last_wrong_time >= datetime.now() - timedelta(days=recent_days)
             )
 
         rows = (await db.execute(stmt)).scalars().all()

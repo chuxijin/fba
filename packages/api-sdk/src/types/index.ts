@@ -37,13 +37,19 @@ export type {
   ContentStatus,
   CreateQuestionParam,
   Difficulty,
+  GetQuestionDynamicCollectionItem,
   GetQuestionDetail,
   GetQuestionListItem,
   GetQuestionNoteDetail,
   GetQuestionSolution,
   GetQuestionStatisticsDetail,
   GetQuestionWithAnswer,
+  QuestionCollectionParams,
   QuestionAnalysisItem,
+  QuestionCollectKnowledgePointValue,
+  QuestionCollectParam,
+  QuestionCollectResult,
+  QuestionCollectSourceType,
   QuestionCoreBase,
   QuestionListParams,
   QuestionOptionItem,
@@ -172,3 +178,28 @@ export type { OssUploadParams, OssUploadResult } from './oss';
 
 // Content
 export * from './content';
+
+// Render Book
+export type {
+  RenderAnswerLayout,
+  RenderBookKind,
+  RenderBookMode,
+  RenderBookStatus,
+  RenderContentMode,
+  RenderDeliveryMode,
+  RenderFileKind,
+  RenderFileStatus,
+  RenderJobCreatePayload,
+  RenderJobFile,
+  RenderJobListParams,
+  RenderJobPageData,
+  RenderJobResult,
+  RenderOptions,
+  RenderOutputTargets,
+  RenderStorageType,
+  RenderTemplatePreviewRequest,
+  RenderTemplatePreviewResult,
+  RenderTemplateSummary,
+  RenderVariant,
+  SolutionMode,
+} from './render-book';

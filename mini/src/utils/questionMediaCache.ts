@@ -13,6 +13,7 @@ type QuestionMediaCacheSummary = {
 
 const STORAGE_KEY = 'question_media_cache_v1'
 const pendingMap = new Map<string, Promise<string>>()
+let memCacheMap: QuestionMediaCacheMap | null = null
 
 function getWxFileSystemManager() {
   // #ifdef MP-WEIXIN
@@ -76,20 +77,28 @@ function extractHtmlMediaUrls(html: string | null | undefined) {
 }
 
 function loadCacheMap(): QuestionMediaCacheMap {
+  if (memCacheMap)
+    return memCacheMap
+
   try {
     const raw = uni.getStorageSync(STORAGE_KEY)
-    if (!raw)
-      return {}
+    if (!raw) {
+      memCacheMap = {}
+      return memCacheMap
+    }
 
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
-    return parsed && typeof parsed === 'object' ? parsed as QuestionMediaCacheMap : {}
+    memCacheMap = parsed && typeof parsed === 'object' ? parsed as QuestionMediaCacheMap : {}
+    return memCacheMap
   }
   catch {
-    return {}
+    memCacheMap = {}
+    return memCacheMap
   }
 }
 
 function saveCacheMap(cacheMap: QuestionMediaCacheMap) {
+  memCacheMap = cacheMap
   uni.setStorageSync(STORAGE_KEY, JSON.stringify(cacheMap))
 }
 
@@ -320,5 +329,25 @@ export async function clearQuestionMediaCache() {
     catch {}
   }))
 
+  memCacheMap = null
   uni.removeStorageSync(STORAGE_KEY)
+}
+
+export function replaceHtmlWithCachedMedia(html: string | null | undefined): string {
+  const normalized = normalizeHtmlMediaLayout(html)
+  if (!normalized)
+    return ''
+
+  const cacheMap = loadCacheMap()
+  const urls = extractHtmlMediaUrls(normalized)
+  if (!urls.length)
+    return normalized
+
+  let result = normalized
+  for (const url of urls) {
+    const cached = cacheMap[url]
+    if (cached?.savedFilePath)
+      result = result.split(url).join(cached.savedFilePath)
+  }
+  return result
 }

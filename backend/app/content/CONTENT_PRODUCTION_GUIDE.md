@@ -1,4 +1,4 @@
-# 知识点内容生产规范（Tiptap JSON）
+# 知识点内容生产规范（HaloEditor JSON）
 
 ## 1. 目标
 
@@ -12,7 +12,7 @@
 
 1. 表：`sys_content`
 2. 分类来源：`sys_category`（`type = knowledge_point`）
-3. 编辑器：`frontend/apps/web-antdv-next/src/components/TiptapEditor`
+3. 编辑器：`frontend/apps/web-antdv-next/src/components/HaloEditor`
 
 ## 3. 数据约定（必须遵守）
 
@@ -37,27 +37,23 @@
 推荐顺序：
 
 1. `heading`：标题
-2. `callout`：核心结论
-3. `blockMath`：关键公式
+2. `highlightBlock`：核心结论（带高亮背景）
+3. `katexBlock` / `katexInline`：关键公式
 4. `columns`：题型特征与解法动作对照
-5. `mermaidDiagram`：流程图
+5. `textDiagram` (Mermaid)：流程图
 6. 正文与例题
-7. `callout`：易错点
+7. `highlightBlock`：易错点（带醒目图标如 ⚠️）
 
 ## 5. 公式写法规范（已验证）
 
-为保证渲染稳定，优先使用教学表达式，少用集合符号。
+为保证渲染稳定，优先使用教学表达式，少用集合符号。新编辑器全面引入了 KaTeX 支持，应尽量遵循标准的 LaTeX 语法。
 
-推荐写法：
+推荐写法（使用 `katexInline` 或 `katexBlock` 节点，把公式写在 `content` 属性里）：
 
 1. `至少一个 = A + B - 都满足`
 2. `都不满足 = 总数 - 至少一个`
 3. `三集合：至少一个 = A + B + C - AB - AC - BC + ABC`
-
-不推荐写法（容易触发显示异常）：
-
-1. 复杂的 `\cup`、`\cap` 连续表达
-2. 公式块中混入过多解释性文本
+4. 遇到分式直接写 `\frac{分子}{分母}`
 
 ## 6. 编辑器节点白名单（可直接用于 JSON）
 
@@ -66,10 +62,10 @@
 1. `heading`，属性：`level`
 2. `paragraph`
 3. `bulletList` / `orderedList` / `listItem`
-4. `callout`，属性：`backgroundColor`
-5. `inlineMath`，属性：`latex`
-6. `blockMath`，属性：`latex`
-7. `mermaidDiagram`，属性：`code`
+4. `highlightBlock`（取代原来的 `callout`），属性：`icon`, `backgroundColor`, `borderColor`, `textColor`
+5. `katexInline`（取代原来的 `inlineMath`），属性：`content` (存放 LaTeX)
+6. `katexBlock`（取代原来的 `blockMath`），属性：`content` (存放 LaTeX)
+7. `textDiagram`（取代原来的 `mermaidDiagram`），属性：暂用作 Mermaid 支持
 8. `columns`，属性：`cols`
 9. `column`，属性：`index`
 
@@ -145,7 +141,7 @@ DO UPDATE SET
 1. `slug` 唯一且命名一致。
 2. `category_id` 指向正确知识点节点。
 3. `content_json` 能在前端正常打开，不报节点错误。
-4. `callout / blockMath / mermaid / columns` 显示正常。
+4. `highlightBlock / katexBlock / textDiagram / columns` 显示正常。
 5. 保存一次后可自动回填 `content_html`。
 6. 例题能完整算出结果，不只给结论。
 
@@ -153,9 +149,9 @@ DO UPDATE SET
 
 1. `view_count` 非空约束报错：SQL 中显式写 `view_count = 0`。
 2. `slug` 冲突：更换 slug 或使用 upsert 覆盖。
-3. 前端打开为空：检查 `content_json` 节点名是否在白名单内。
-4. 公式显示异常：改为教学表达式，避免复杂集合符号。
-5. 分类不显示：确认内容页使用的 `app_code` 与分类树读取策略是否一致。
+3. 前端打开为空：检查 `content_json` 节点名是否在白名单内。必须严格使用 `highlightBlock`, `katexBlock`, `katexInline` 替代老版本节点。
+4. 公式显示异常：确认 LaTeX 是否写在 `katexBlock` 的 `content` 属性里。
+5. 分类不显示：确认内容页使用的 `app_code` 与分类树读取策略是否一致（当前为 `gongkao`）。
 
 ## 10. 命名建议
 
@@ -163,4 +159,5 @@ DO UPDATE SET
 2. slug：`kp-专题-子专题`，例如 `kp-travel-meet`
 3. tags：按学习路径给，建议从大到小
 4. extra：至少保留 `content_type`、`category_code`、`source`
+
 

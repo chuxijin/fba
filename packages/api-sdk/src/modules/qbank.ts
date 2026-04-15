@@ -13,13 +13,12 @@ import type {
   GetPracticeRecordListItem,
   GetPracticeSessionDetail,
   GetPracticeSessionListItem,
+  LatestPracticeSessionQuery,
   PracticeSessionQueryParam,
   SessionReport,
   SubmitPracticeSessionParam,
   SubmitPracticeSessionResult,
 } from '../types/practice';
-
-type LatestPracticeSessionQuery = Pick<PracticeSessionQueryParam, 'session_type' | 'bank_id' | 'chapter_id'>;
 
 export interface QbankModule {
   request: ScopedApiClient;

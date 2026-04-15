@@ -670,6 +670,7 @@ class QuestionService:
                 QuestionBank.q_count_cache,
             )
             .order_by(
+                QuestionBank.name.desc(),
                 func.count(func.distinct(Question.id)).desc(),
                 QuestionBank.id.desc(),
             )

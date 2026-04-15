@@ -8,6 +8,7 @@ export { createQbankModule } from './qbank';
 export { createCoulddriveModule } from './coulddrive';
 export { createOssModule } from './oss';
 export { createMembershipModule } from './membership';
+export { createRenderBookModule } from './render-book';
 
 export type { BankModule } from './bank';
 export type { MaterialModule } from './material';
@@ -19,3 +20,4 @@ export type { QbankModule } from './qbank';
 export type { CoulddriveModule } from './coulddrive';
 export type { OssModule } from './oss';
 export type { MembershipModule } from './membership';
+export type { RenderBookModule } from './render-book';

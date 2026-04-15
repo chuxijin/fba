@@ -71,6 +71,20 @@ const appTabRootMatcherMap: Record<AppTabCode, { names: string[], codes: string[
     codes: ['shengkao', 'catalog_shengkao', 'product_shengkao'],
   },
 }
+const kpTabRootMatcherMap: Record<AppTabCode, { names: string[], codes: string[] }> = {
+  kaoyan: {
+    names: ['考研'],
+    codes: ['kaoyan', 'kp_kaoyan'],
+  },
+  guokao: {
+    names: ['行测', '申论', '面试'],
+    codes: ['xingce', 'shenlun', 'mianshi', 'kp_guokao'],
+  },
+  shengkao: {
+    names: ['行测', '申论', '面试'],
+    codes: ['xingce', 'shenlun', 'mianshi', 'kp_shengkao'],
+  },
+}
 
 const activeApp = ref<AppTabCode>('kaoyan')
 const tabsRef = ref<any>(null)
@@ -87,9 +101,9 @@ const collapsedSectionsByApp = ref<Record<AppTabCode, string[]>>({
 })
 
 const appTypeMap: Record<AppTabCode, string[]> = {
-  kaoyan: ['product_catalog'],
-  guokao: ['product_catalog'],
-  shengkao: ['product_catalog'],
+  kaoyan: ['product_catalog', 'knowledge_point'],
+  guokao: ['product_catalog', 'knowledge_point'],
+  shengkao: ['product_catalog', 'knowledge_point'],
 }
 
 const typeLabelMap: Record<string, string> = {
@@ -136,8 +150,9 @@ function normalizeValue(value?: string | null) {
   return String(value || '').trim()
 }
 
-function isMatchedRootNode(node: CategoryNode, appCode: AppTabCode) {
-  const matcher = appTabRootMatcherMap[appCode]
+function isMatchedRootNode(node: CategoryNode, appCode: AppTabCode, type?: string) {
+  const matcherMap = type === 'knowledge_point' ? kpTabRootMatcherMap : appTabRootMatcherMap
+  const matcher = matcherMap[appCode]
   const normalizedName = normalizeValue(node.name).toLowerCase()
   const normalizedCode = normalizeValue(node.code).toLowerCase()
 
@@ -192,7 +207,7 @@ function getSectionsForApp(appCode: AppTabCode): TypeSection[] {
   return allowedTypes
     .map((type) => {
       const nodes = filterCategoryTreeByType(props.categories || [], type)
-        .filter(node => isMatchedRootNode(node, appCode))
+        .filter(node => isMatchedRootNode(node, appCode, type))
       if (!nodes.length)
         return null
 
@@ -474,7 +489,7 @@ watch(() => props.categories, () => {
           </view>
         </view>
 
-        <view class="mt-3 overflow-hidden border border-white/70 rounded-[22px] bg-white/88 shadow-[0_10px_28px_rgba(148,163,184,0.10)]">
+        <view class="mt-3 overflow-hidden border border-white/70 rounded-2xl bg-white/88 shadow-[0_10px_28px_rgba(148,163,184,0.10)]">
           <view class="border-b border-[#ECFDF5] from-[#F6FFFA] to-[#F8FAFC] bg-gradient-to-r px-4 pb-3 pt-4">
             <view class="flex items-center justify-between gap-3">
               <view>
@@ -491,13 +506,14 @@ watch(() => props.categories, () => {
             </view>
           </view>
 
-          <view v-if="selectedTabsState.length" class="flex flex-col gap-2.5 px-3 py-3">
-            <view
-              v-for="(selected, index) in selectedTabsState"
-              :key="getSelectedTabKey(selected.appCode, selected.id)"
-              class="border border-white/70 rounded-[18px] bg-[#FCFFFD] px-3.5 py-3 shadow-sm"
-            >
-              <view class="flex items-center gap-3">
+          <scroll-view v-if="selectedTabsState.length" scroll-y :show-scrollbar="false" class="box-border max-h-[160px] w-full">
+            <view class="flex flex-col gap-2.5 px-3 py-3">
+              <view
+                v-for="(selected, index) in selectedTabsState"
+                :key="getSelectedTabKey(selected.appCode, selected.id)"
+                class="border border-white/70 rounded-xl bg-[#FCFFFD] px-3.5 py-3 shadow-sm"
+              >
+                <view class="flex items-center gap-3">
                 <view class="min-w-0 flex-1">
                   <view class="truncate text-[14px] text-[#1E293B] font-semibold leading-[20px]">
                     {{ selected.name }}
@@ -528,7 +544,8 @@ watch(() => props.categories, () => {
                 </view>
               </view>
             </view>
-          </view>
+            </view>
+          </scroll-view>
 
           <view v-else class="px-4 py-6 text-center text-[12px] text-[#94A3B8]">
             还没有添加首页Tab
@@ -583,7 +600,7 @@ watch(() => props.categories, () => {
               <view
                 v-for="section in getSectionsForApp(app.code)"
                 :key="section.key"
-                class="mt-4 overflow-hidden border border-white/70 rounded-[24px] bg-white/88 shadow-[0_10px_30px_rgba(148,163,184,0.10)] backdrop-blur-sm"
+                class="mt-4 overflow-hidden border border-white/70 rounded-2xl bg-white/88 shadow-[0_10px_30px_rgba(148,163,184,0.10)] backdrop-blur-sm"
               >
                 <view
                   class="from-[#F6FFFA] to-[#F8FAFC] bg-gradient-to-r px-4 pb-3 pt-4"
@@ -629,7 +646,7 @@ watch(() => props.categories, () => {
                     />
 
                     <view
-                      class="border border-white/70 rounded-2xl px-4 py-3 transition-all duration-200"
+                      class="border border-white/70 rounded-xl px-4 py-3 transition-all duration-200"
                       :class="getNodeCardClass(app.code, item)"
                       @click="toggleNode(app.code, item)"
                     >

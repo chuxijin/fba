@@ -200,7 +200,7 @@ onLoad((query) => {
     <template v-else-if="report">
       <scroll-view scroll-y class="box-border px-4 pb-28" :style="{ height: `calc(100vh - ${statusBarHeight! + 44}px)` }">
         <!-- 正确率环形卡 -->
-        <view class="mt-4 overflow-hidden border border-white/60 rounded-3xl bg-white/90 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)] backdrop-blur-md">
+        <view class="mt-4 overflow-hidden border border-white/60 rounded-2xl bg-white/90 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)] backdrop-blur-md">
           <view class="box-border flex flex-col items-center px-5 pb-6 pt-8">
             <!-- SVG 环形进度 -->
             <view class="relative h-32 w-32 flex items-center justify-center">
@@ -241,19 +241,19 @@ onLoad((query) => {
 
         <!-- 四格统计 -->
         <view class="box-border mt-4 flex gap-2.5">
-          <view class="flex flex-1 flex-col items-center gap-1 rounded-2xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
+          <view class="flex flex-1 flex-col items-center gap-1 rounded-xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
             <text class="text-2xl text-[#3B82F6] font-black">{{ report.total_count }}</text>
             <text class="text-[11px] text-[#94A3B8]">总题数</text>
           </view>
-          <view class="flex flex-1 flex-col items-center gap-1 rounded-2xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
+          <view class="flex flex-1 flex-col items-center gap-1 rounded-xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
             <text class="text-2xl text-[#10B981] font-black">{{ report.correct_count }}</text>
             <text class="text-[11px] text-[#94A3B8]">答对</text>
           </view>
-          <view class="flex flex-1 flex-col items-center gap-1 rounded-2xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
+          <view class="flex flex-1 flex-col items-center gap-1 rounded-xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
             <text class="text-2xl text-[#EF4444] font-black">{{ report.wrong_count }}</text>
             <text class="text-[11px] text-[#94A3B8]">答错</text>
           </view>
-          <view class="flex flex-1 flex-col items-center gap-1 rounded-2xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
+          <view class="flex flex-1 flex-col items-center gap-1 rounded-xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
             <text class="text-2xl text-[#94A3B8] font-black">{{ report.unanswered_count }}</text>
             <text class="text-[11px] text-[#94A3B8]">未答</text>
           </view>
@@ -274,13 +274,13 @@ onLoad((query) => {
       <view class="box-border fixed bottom-0 left-0 right-0 z-30 border-t border-white/40 bg-white/95 px-5 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur-md">
         <view class="flex gap-3">
           <view
-            class="h-12 flex flex-1 items-center justify-center rounded-2xl border-2 border-[#3B82F6] bg-white text-[15px] text-[#3B82F6] font-bold active:scale-[0.98]"
+            class="h-12 flex flex-1 items-center justify-center rounded-full border-2 border-[#3B82F6] bg-white text-[15px] text-[#3B82F6] font-bold active:scale-[0.98]"
             @click="handleViewAll"
           >
             查看全部解析
           </view>
           <view
-            class="h-12 flex flex-1 items-center justify-center rounded-2xl from-[#3B82F6] to-[#2563EB] bg-gradient-to-r text-[15px] text-white font-bold shadow-[0_4px_14px_rgba(59,130,246,0.35)] active:scale-[0.98]"
+            class="h-12 flex flex-1 items-center justify-center rounded-full from-[#3B82F6] to-[#2563EB] bg-gradient-to-r text-[15px] text-white font-bold shadow-[0_4px_14px_rgba(59,130,246,0.35)] active:scale-[0.98]"
             @click="handleViewWrong"
           >
             仅看错题

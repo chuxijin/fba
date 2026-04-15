@@ -64,7 +64,7 @@ function formatDateTime(value: string | null | undefined) {
     return '-'
   }
 
-  const normalizedValue = String(value).trim().replace(' ', 'T')
+  const normalizedValue = String(value).trim().replace(/-/g, '/').replace('T', ' ')
   const date = new Date(normalizedValue)
   if (Number.isNaN(date.getTime())) {
     return String(value)

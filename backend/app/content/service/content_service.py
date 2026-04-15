@@ -56,6 +56,13 @@ class ContentService:
         return await content_dao.update_model(db, pk, obj)
 
     @staticmethod
+    async def get_by_slug(*, db: AsyncSession, slug: str) -> Content:
+        content = await content_dao.get_by_slug(db, slug)
+        if not content:
+            raise errors.NotFoundError(msg='内容不存在')
+        return content
+
+    @staticmethod
     async def delete(*, db: AsyncSession, pk: list[int]) -> int:
         return await content_dao.delete_model(db, pk)
 
@@ -66,7 +73,13 @@ class ContentService:
         if app_code:
             stmt = stmt.where(Content.app_code == app_code)
         if category_id:
-            stmt = stmt.where(Content.category_id == category_id)
+            # 引入 category_dao 获取此分类下的所有子分类 ID
+            from backend.app.admin.crud.crud_category import category_dao
+            children_ids = await category_dao.get_all_children_ids(db, category_id)
+            if children_ids:
+                stmt = stmt.where(Content.category_id.in_(children_ids))
+            else:
+                stmt = stmt.where(Content.category_id == category_id)
         if is_published is not None:
             stmt = stmt.where(Content.is_published == is_published)
         
@@ -74,6 +87,63 @@ class ContentService:
         
         # 使用项目标准的分页处理函数
         return await paging_data(db, stmt)
+
+    @staticmethod
+    async def get_related_list(*, db: AsyncSession, pk: int, limit: int = 5) -> list[Content]:
+        """获取相关文章（按标签重合度倒排 + 同分类热度保底）"""
+        current_content = await content_dao.select_model(db, pk)
+        if not current_content:
+            return []
+
+        items: list[Content] = []
+        exclude_ids = [pk]
+
+        # 1. 策略 1：标签重合度查询
+        if current_content.tags and len(current_content.tags) > 0:
+            from sqlalchemy.dialects.postgresql import array
+            stmt = (
+                select(Content)
+                .where(
+                    Content.id != pk,
+                    Content.is_published.is_(True),
+                    Content.tags.op('?|')(array(current_content.tags))
+                )
+                .order_by(Content.view_count.desc())
+                .limit(30)  # 查出一批最近或最热的有重合标签的文章，再在内存精细排序
+            )
+            result = await db.execute(stmt)
+            tag_matches = result.scalars().all()
+
+            if tag_matches:
+                target_tags = set(current_content.tags)
+
+                def overlap_score(c: Content) -> int:
+                    c_tags = set(c.tags) if c.tags else set()
+                    return len(target_tags & c_tags)
+
+                # 按重合标签数量降序，再按浏览量降序
+                sorted_matches = sorted(tag_matches, key=lambda c: (overlap_score(c), c.view_count), reverse=True)
+                items.extend(sorted_matches[:limit])
+                exclude_ids.extend([i.id for i in items])
+
+        # 2. 策略 2：如果标签相关的文章不足，从同分类提取热门倒排补充
+        if len(items) < limit and current_content.category_id:
+            remaining = limit - len(items)
+            stmt2 = (
+                select(Content)
+                .where(
+                    Content.id.notin_(exclude_ids),
+                    Content.is_published.is_(True),
+                    Content.category_id == current_content.category_id
+                )
+                .order_by(Content.view_count.desc(), Content.created_time.desc())
+                .limit(remaining)
+            )
+            res2 = await db.execute(stmt2)
+            cat_matches = res2.scalars().all()
+            items.extend(cat_matches)
+
+        return items
 
 
 content_service = ContentService()

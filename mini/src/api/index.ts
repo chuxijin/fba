@@ -35,6 +35,18 @@ export const questionApiV2 = {
   // submitAnswers: fbaApi.qbank.practice.submitSession
 }
 
+// 题目筛选 API
+export const questionApi = {
+  getDetail: fbaApi.qbank.question.getDetail,
+  getList: fbaApi.qbank.question.getList,
+  getCollections: fbaApi.qbank.question.getCollections,
+  collect: fbaApi.qbank.question.collect,
+  getAnalysis: fbaApi.qbank.question.getAnalysis,
+  getSolution: fbaApi.qbank.question.getSolution,
+  checkFavorites: fbaApi.qbank.question.checkFavorites,
+  getNotes: fbaApi.qbank.question.getNotes,
+}
+
 // 认证 API
 export const authApi = {
   wxLogin: fbaApi.qbank.auth.wxLogin,

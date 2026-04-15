@@ -1,4 +1,3 @@
-import type { AxiosInstance } from 'axios';
 import type { ContentResult, ContentParams, ContentListDetail } from '../types/content';
 import type { ResponseModel, PageData } from '../types/common';
 import type { ApiClient } from '../client/types';

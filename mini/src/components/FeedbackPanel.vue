@@ -222,7 +222,7 @@ async function handleSubmit() {
 
 <template>
   <view class="w-full overflow-x-hidden space-y-4">
-    <view class="overflow-hidden rounded-[28px] from-[#F4E8FF] via-[#F9F3FF] to-[#FFFFFF] bg-gradient-to-b px-5 py-5 shadow-[0_12px_40px_-24px_rgba(139,92,246,0.45)]">
+    <view class="overflow-hidden rounded-2xl from-[#F4E8FF] via-[#F9F3FF] to-[#FFFFFF] bg-gradient-to-b px-5 py-5 shadow-[0_12px_40px_-24px_rgba(139,92,246,0.45)]">
       <view class="flex items-start justify-between gap-4">
         <view class="min-w-0 flex-1">
           <view class="text-[20px] text-[#1E293B] font-black tracking-wide">
@@ -233,13 +233,13 @@ async function handleSubmit() {
           </view>
         </view>
 
-        <view class="h-11 w-11 shrink-0 flex items-center justify-center rounded-2xl bg-white text-[#8B5CF6] shadow-sm">
+        <view class="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl bg-white text-[#8B5CF6] shadow-sm">
           <view class="i-carbon-idea text-[22px]" />
         </view>
       </view>
     </view>
 
-    <view class="overflow-hidden rounded-[28px] border border-white/70 bg-white/92 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.18)] backdrop-blur-md">
+    <view class="overflow-hidden rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.18)] backdrop-blur-md">
       <view class="text-[13px] text-[#475569] font-bold tracking-wide">
         反馈类型
       </view>
@@ -254,11 +254,11 @@ async function handleSubmit() {
         use-default-slot
       >
         <view
-          class="flex items-center gap-3 rounded-3xl border px-4 py-4 transition-transform active:scale-[0.98]"
+          class="flex items-center gap-3 rounded-xl border px-4 py-4 transition-transform active:scale-[0.98]"
           :class="toneClassMap[selectedTypeMeta.tone]?.chip"
         >
           <view
-            class="h-10 w-10 shrink-0 flex items-center justify-center rounded-2xl"
+            class="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl"
             :class="toneClassMap[selectedTypeMeta.tone]?.icon"
           >
             <view class="i-carbon-dot-mark text-base" />
@@ -278,12 +278,12 @@ async function handleSubmit() {
       </wd-select-picker>
     </view>
 
-    <view v-if="hasTargetContext" class="overflow-hidden rounded-[28px] border border-white/70 bg-white/92 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.16)]">
+    <view v-if="hasTargetContext" class="overflow-hidden rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.16)]">
       <view class="text-[13px] text-[#475569] font-bold tracking-wide">
         当前反馈位置
       </view>
       <view class="mt-3 space-y-3 text-[12px] text-[#64748B]">
-        <view v-if="targetText" class="rounded-2xl bg-[#F8FAFC] px-3.5 py-3">
+        <view v-if="targetText" class="rounded-xl bg-[#F8FAFC] px-3.5 py-3">
           <view class="text-[11px] text-[#94A3B8]">关联内容</view>
           <view class="mt-1 break-words text-[#334155] leading-5">
             {{ targetText }}
@@ -292,7 +292,7 @@ async function handleSubmit() {
       </view>
     </view>
 
-    <view class="overflow-hidden rounded-[28px] border border-white/70 bg-white/92 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.16)]">
+    <view class="overflow-hidden rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.16)]">
       <view class="flex items-center justify-between">
         <view class="text-[13px] text-[#475569] font-bold tracking-wide">
           详细描述
@@ -302,7 +302,7 @@ async function handleSubmit() {
         </view>
       </view>
 
-      <view class="mt-3 rounded-3xl bg-[#F8FAFC] px-4 py-4">
+      <view class="mt-3 rounded-xl bg-[#F8FAFC] px-4 py-4">
         <textarea
           v-model="content"
           class="box-border block h-38 max-w-full w-full text-[14px] text-[#334155] leading-6"
@@ -325,7 +325,7 @@ async function handleSubmit() {
         <view
           v-for="(item, index) in images"
           :key="item"
-          class="relative h-22 w-22 overflow-hidden rounded-3xl bg-[#F8FAFC]"
+          class="relative h-22 w-22 overflow-hidden rounded-xl bg-[#F8FAFC]"
         >
           <image class="h-full w-full" :src="item" mode="aspectFill" @click="previewImage(item)" />
           <view
@@ -338,7 +338,7 @@ async function handleSubmit() {
 
         <view
           v-if="images.length < FEEDBACK_MAX_IMAGES"
-          class="h-22 w-22 flex flex-col items-center justify-center rounded-3xl border border-dashed border-[#D8B4FE] bg-[#FAF5FF] text-[#8B5CF6] transition-transform active:scale-[0.98]"
+          class="h-22 w-22 flex flex-col items-center justify-center rounded-xl border border-dashed border-[#D8B4FE] bg-[#FAF5FF] text-[#8B5CF6] transition-transform active:scale-[0.98]"
           @click="chooseImages"
         >
           <view class="i-carbon-add text-2xl" />

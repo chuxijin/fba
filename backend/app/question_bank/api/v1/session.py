@@ -78,6 +78,12 @@ async def get_latest_session(
     session_type: Annotated[str | None, Query(description='会话类型')] = None,
     bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
     chapter_id: Annotated[int | None, Query(description='篇章 ID')] = None,
+    cat_id: Annotated[int | None, Query(description='分类 ID')] = None,
+    region: Annotated[str | None, Query(description='地区')] = None,
+    year_start: Annotated[int | None, Query(description='起始年份')] = None,
+    year_end: Annotated[int | None, Query(description='结束年份')] = None,
+    knowledge_point: Annotated[list[str] | None, Query(description='知识点条件')] = None,
+    practice_mode: Annotated[str | None, Query(description='刷题模式')] = None,
     source_key: Annotated[str | None, Query(description='来源签名')] = None,
 ) -> ResponseModel:
     """获取用户最新的进行中会话"""
@@ -89,13 +95,43 @@ async def get_latest_session(
             user_id=request.user.id,
         )
 
+    resolved_source_key = source_key
+    should_build_source_key = (
+        resolved_source_key is None
+        and session_type is not None
+        and any([
+            bank_id is not None,
+            chapter_id is not None,
+            cat_id is not None,
+            region is not None,
+            year_start is not None,
+            year_end is not None,
+            bool(knowledge_point),
+            practice_mode is not None,
+        ])
+    )
+    if should_build_source_key:
+        resolved_source_key = session_service.build_session_source_key(
+            CreatePracticeSessionParam(
+                session_type=session_type,
+                bank_id=bank_id,
+                chapter_id=chapter_id,
+                cat_id=cat_id,
+                region=region,
+                year_start=year_start,
+                year_end=year_end,
+                knowledge_point=knowledge_point,
+                exam_config={'practice_mode': practice_mode} if practice_mode else None,
+            )
+        )
+
     session = await session_service.get_latest_session(
         db=db,
         user_id=request.user.id,
         session_type=session_type,
         bank_id=bank_id,
         chapter_id=chapter_id,
-        source_key=source_key,
+        source_key=resolved_source_key,
     )
     if not session:
         return response_base.fail(res=CustomResponse(code=400, msg='没有进行中的会话'))

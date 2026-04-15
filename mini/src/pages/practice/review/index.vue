@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { getAppSettings } from '@/utils/appSettings'
+import { replaceHtmlWithCachedMedia } from '@/utils/questionMediaCache'
 
 defineOptions({ name: 'PracticeReviewPage' })
 definePage({ style: { navigationStyle: 'custom', navigationBarTextStyle: 'black' } })
@@ -75,23 +76,24 @@ onLoad((query: any) => {
 async function loadQuestionIds() {
   loading.value = true
   try {
-    const params: Record<string, any> = {}
+    const collectPayload: Record<string, any> = {
+      source_type: source.value,
+    }
+
     if (routeParams.value.bank_id)
-      params.bank_id = Number(routeParams.value.bank_id)
+      collectPayload.bank_id = Number(routeParams.value.bank_id)
     if (routeParams.value.chapter_id)
-      params.chapter_id = Number(routeParams.value.chapter_id)
-    if (routeParams.value.knowledge_point)
-      params.knowledge_point = routeParams.value.knowledge_point
+      collectPayload.chapter_id = Number(routeParams.value.chapter_id)
+    if (routeParams.value.knowledge_point) {
+      collectPayload.knowledge_point = String(routeParams.value.knowledge_point)
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean)
+    }
 
-    let ids: number[] = []
-    if (source.value === 'wrong')
-      ids = await fbaApi.qbank.wrongQuestion.getIds(params) as any
-    else if (source.value === 'favorite')
-      ids = await fbaApi.qbank.favorite.getIds(params) as any
-    else if (source.value === 'note')
-      ids = await fbaApi.qbank.note.getIds(params) as any
+    const result = await fbaApi.qbank.question.collect(collectPayload as any)
 
-    questionIds.value = ids || []
+    questionIds.value = Array.isArray(result?.question_ids) ? result.question_ids : []
     currentIndex.value = 0
 
     if (questionIds.value.length > 0)
@@ -304,7 +306,7 @@ function stripHtml(html: string) {
               {{ currentQuestion.difficulty_label || currentQuestion.difficulty }}
             </text>
           </view>
-          <rich-text class="text-[15px] text-[#1E293B] font-medium leading-[1.8]" :nodes="currentQuestion.stem || ''" />
+          <rich-text class="text-[15px] text-[#1E293B] font-medium leading-[1.8]" :nodes="replaceHtmlWithCachedMedia(currentQuestion.stem)" />
         </view>
 
         <!-- 选项列表 -->
@@ -351,7 +353,7 @@ function stripHtml(html: string) {
         <!-- 解析区域 -->
         <view v-if="showAnalysis && currentSolution" class="rounded-2xl bg-white p-5 shadow-sm">
           <text class="mb-3 block text-[14px] text-[#3B82F6] font-bold">解析</text>
-          <rich-text class="text-[13px] text-[#475569] leading-[1.8]" :nodes="currentSolution.analysis || currentSolution.explanation || '暂无解析'" />
+          <rich-text class="text-[13px] text-[#475569] leading-[1.8]" :nodes="replaceHtmlWithCachedMedia(currentSolution.analysis || currentSolution.explanation || '暂无解析')" />
         </view>
       </view>
     </view>

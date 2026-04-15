@@ -33,3 +33,7 @@ _ref/
 backend/scripts/chinese-xinhua/
 .superpowers/
 superpowers/
+.ace-tool/
+data/
+debug_materials.py
+backend/scripts/output/

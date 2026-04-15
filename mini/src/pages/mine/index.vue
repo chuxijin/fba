@@ -102,6 +102,10 @@ function handleLogin() {
   uni.navigateTo({ url: '/pages/profile/index' })
 }
 
+function toFenbiTest() {
+  uni.navigateTo({ url: '/pages/test-ui/index' })
+}
+
 function openServicePage(url: string) {
   tokenStore.updateNowTime()
   if (!hasLogin.value) {
@@ -141,7 +145,7 @@ onShow(() => {
 </script>
 
 <template>
-  <view class="relative min-h-screen overflow-hidden from-[#F3E8FF] via-[#F8F5FB] to-[#FAFAFA] bg-gradient-to-b text-[#334155]">
+  <view class="relative min-h-[calc(100vh-50px-env(safe-area-inset-bottom))] overflow-hidden from-[#F3E8FF] via-[#F8F5FB] to-[#FAFAFA] bg-gradient-to-b text-[#334155]">
     <view class="pointer-events-none absolute h-80 w-80 rounded-full bg-[#E9D5FF]/40 blur-[40px] -right-8 -top-12" />
     <view class="pointer-events-none absolute top-20 h-60 w-60 rounded-full bg-[#FBCFE8]/20 blur-[40px] -left-16" />
 
@@ -153,7 +157,7 @@ onShow(() => {
       </view>
     </view>
 
-    <view class="relative z-10 mt-6 px-4 pb-14">
+    <view class="relative z-10 mt-6 px-4 pb-6">
       <view class="mb-7 ml-1 flex items-center transition-transform active:scale-[0.98]" @click="handleLogin">
         <view class="relative">
           <image
@@ -243,19 +247,14 @@ onShow(() => {
             <text class="text-[11px] text-[#64748B] font-medium">设置</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-render-books/index')">
             <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FFF7ED] text-[#EA580C] shadow-inner">
-              <view class="i-carbon-trophy text-[22px]" />
+              <view class="i-carbon-book text-[22px]" />
             </view>
-            <text class="text-[11px] text-[#64748B] font-medium">刷题排行</text>
+            <text class="text-[11px] text-[#64748B] font-medium">我的题本</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95">
-            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FDF4FF] text-[#D946EF] shadow-inner">
-              <view class="i-carbon-headset text-[22px]" />
-            </view>
-            <text class="text-[11px] text-[#64748B] font-medium">专属客服</text>
-          </view>
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="toFenbiTest">`n              <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FDF4FF] text-[#D946EF] shadow-inner">`n                <view class="i-carbon-headset text-[22px]" />`n              </view>`n              <text class="text-[11px] text-[#64748B] font-medium">专属客服</text>`n            </view>
         </view>
       </view>
     </view>
@@ -264,3 +263,5 @@ onShow(() => {
     <MembershipModal v-model="showMembershipModal" />
   </view>
 </template>
+
+

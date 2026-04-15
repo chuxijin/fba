@@ -46,7 +46,7 @@ function handleSuccess() {
   <wd-popup
     :model-value="modelValue"
     position="bottom"
-    custom-class="rounded-t-3xl overflow-hidden bg-[#FAFAFA]"
+    custom-class="rounded-t-[20px] overflow-hidden bg-[#FAFAFA]"
     :safe-area-inset-bottom="true"
     :z-index="999999"
     custom-style="height:auto;max-height:88vh;"

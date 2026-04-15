@@ -4,6 +4,9 @@ export type QuestionType = 'single' | 'multiple' | 'judgement' | 'fill' | 'short
 /** 难度 */
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
+/** 统一筛题来源 */
+export type QuestionCollectSourceType = 'placement' | 'wrong' | 'favorite' | 'note';
+
 /** 内容状态：0=草稿, 10=已完�? 20=待修�?*/
 export type ContentStatus = 0 | 10 | 20;
 
@@ -147,6 +150,69 @@ export interface GetQuestionNoteDetail {
   updated_time: string | null;
 }
 
+/** 动态合集查询参数 */
+export interface QuestionCollectionParams {
+  cat_id?: number;
+  region?: string;
+  knowledge_ids?: number[] | string;
+  knowledge_names?: string[] | string;
+  stem_keyword?: string;
+  option_keyword?: string;
+  analysis_keyword?: string;
+  year_start?: number;
+  year_end?: number;
+}
+
+/** 动态合集项 */
+export interface GetQuestionDynamicCollectionItem {
+  id: number;
+  cat_id: number;
+  name: string;
+  code: string;
+  desc: null | string;
+  bank_type: number;
+  difficulty: null | number;
+  parent_id: null | number;
+  q_count_cache: number;
+  matched_q_count: number;
+}
+
+/** 统一筛题中知识点值 */
+export type QuestionCollectKnowledgePointValue =
+  | number
+  | string
+  | Record<string, unknown>;
+
+/** 统一筛题参数 */
+export interface QuestionCollectParam {
+  source_type?: QuestionCollectSourceType;
+  question_ids?: number[] | null;
+  bank_id?: number | null;
+  chapter_id?: number | null;
+  year_end?: number | null;
+  year_start?: number | null;
+  region?: null | string;
+  cat_id?: number | null;
+  knowledge_point?: QuestionCollectKnowledgePointValue[] | null;
+  question_types?: QuestionType[] | null;
+  difficulties?: Difficulty[] | null;
+  stem_keyword?: null | string;
+  option_keyword?: null | string;
+  analysis_keyword?: null | string;
+  content_status?: ContentStatus | null;
+  is_active?: boolean | null;
+  review_status?: ReviewStatus | null;
+  limit?: number | null;
+  recent_days?: number | null;
+}
+
+/** 统一筛题结果 */
+export interface QuestionCollectResult {
+  source_type: QuestionCollectSourceType;
+  question_ids: number[];
+  total: number;
+}
+
 // ── 写入参数 ──
 
 /** 创建/更新选项参数 */
@@ -239,4 +305,3 @@ export interface BatchImportResult {
   failed: number;
   errors: Record<string, unknown>[];
 }
-

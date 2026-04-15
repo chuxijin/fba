@@ -5,6 +5,7 @@ import { fbaApi } from '@/api/sdk'
 import type { AnswerSheetGroup, AnswerSheetItem } from '@/components/AnswerSheet.vue'
 import FeedbackPopup from '@/components/FeedbackPopup.vue'
 import { useResultStore } from '@/store/result'
+import { replaceHtmlWithCachedMedia, warmupQuestionMediaCache } from '@/utils/questionMediaCache'
 
 defineOptions({ name: 'PracticeSessionPage' })
 definePage({ style: { navigationStyle: 'custom', navigationBarTextStyle: 'black' } })
@@ -39,6 +40,7 @@ const isTimingPaused = ref(false)
 const session = ref<any>(null)
 const questionMap = reactive<Record<number, any>>({})
 const materialMap = reactive<Record<number, any>>({})
+const materialTabIndex = reactive<Record<number, number>>({})  // 每题当前选中的材料 tab
 const solutionMap = reactive<Record<number, any>>({})
 const solutionKeyMap = reactive<Record<number, string>>({})
 const solutionLoadingMap = reactive<Record<number, boolean>>({})
@@ -65,7 +67,7 @@ const isCompleted = computed(() => session.value?.status === 'completed')
 const totalCount = computed(() => questions.value.length)
 const questionGroups = computed<AnswerSheetGroup[]>(() => {
   const groups: AnswerSheetGroup[] = []
-  let lastChapter = ''
+  let lastChapter: string | null = null
   for (let i = 0; i < questions.value.length; i++) {
     const q = questions.value[i]
     const chapterName = q.chapter?.name || ''
@@ -165,7 +167,7 @@ function formatPercent(value: number) {
 }
 
 function html(value: unknown) {
-  return String(value || '').replace(/\n/g, '<br/>')
+  return replaceHtmlWithCachedMedia(String(value || '').replace(/\n/g, '<br/>'))
 }
 
 function typeLabel(type?: string) {
@@ -689,6 +691,17 @@ async function loadSession() {
     activeQuestionStartedAt.value = Date.now()
     await Promise.all([loadFavoriteStates(), loadNotes()])
     await maybeLoadCurrentSolution()
+
+    // 后台预热题目资源缓存（不阻塞渲染）
+    const allHtmlContent: string[] = []
+    Object.values(questionMap).forEach((q: any) => {
+      if (q.stem) allHtmlContent.push(q.stem)
+      q.options?.forEach((opt: any) => { if (opt.content) allHtmlContent.push(opt.content) })
+    })
+    Object.values(materialMap).forEach((m: any) => {
+      if (m.content) allHtmlContent.push(m.content)
+    })
+    warmupQuestionMediaCache(allHtmlContent).catch(() => {})
   }
   catch (error) {
     console.error('加载刷题会话失败:', error)
@@ -996,9 +1009,7 @@ onUnload(() => {
             {{ pageTitle }}
           </view>
         </view>
-        <view class="h-9 w-9 flex items-center justify-center rounded-full bg-white/92 text-[#8B5CF6] shadow-sm active:scale-95" @click="showFeedbackPopup = true">
-          <view class="i-carbon-idea text-[18px]" />
-        </view>
+        <view class="w-9 shrink-0" />
       </view>
     </view>
 
@@ -1048,10 +1059,37 @@ onUnload(() => {
                   </view>
                 </view>
               </view>
-              <view v-if="questionMaterials(questionMap[item.question_id]).length" class="mt-5 flex flex-col gap-3">
-                <view v-for="material in questionMaterials(questionMap[item.question_id])" :key="material.id" class="overflow-hidden border border-[#D1FAE5] rounded-[20px] bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.98))] px-4 py-4 shadow-sm">
-                  <rich-text class="session-rich text-[14px] text-[#475569] leading-[1.8]" :nodes="html(material.content)" />
-                </view>
+              <view v-if="questionMaterials(questionMap[item.question_id]).length" class="mt-5">
+                <!-- 多材料：tab 切换 -->
+                <template v-if="questionMaterials(questionMap[item.question_id]).length > 1">
+                  <scroll-view scroll-x class="flex flex-row mb-3 whitespace-nowrap" style="width:100%">
+                    <view class="flex flex-row gap-2 pb-1">
+                      <view
+                        v-for="(mat, mIdx) in questionMaterials(questionMap[item.question_id])"
+                        :key="mat.id"
+                        class="px-4 py-[6px] rounded-full text-[13px] font-medium transition-all"
+                        :class="(materialTabIndex[item.question_id] ?? 0) === mIdx
+                          ? 'bg-[#10B981] text-white shadow-sm'
+                          : 'bg-[#F0FDF4] text-[#10B981] border border-[#A7F3D0]'"
+                        @click="materialTabIndex[item.question_id] = mIdx"
+                      >
+                        材料{{ mIdx + 1 }}
+                      </view>
+                    </view>
+                  </scroll-view>
+                  <view class="overflow-hidden border border-[#D1FAE5] rounded-[20px] bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.98))] px-4 py-4 shadow-sm">
+                    <rich-text
+                      class="session-rich text-[14px] text-[#475569] leading-[1.8]"
+                      :nodes="html(questionMaterials(questionMap[item.question_id])[materialTabIndex[item.question_id] ?? 0]?.content)"
+                    />
+                  </view>
+                </template>
+                <!-- 单材料：直接展示 -->
+                <template v-else>
+                  <view class="overflow-hidden border border-[#D1FAE5] rounded-[20px] bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.98))] px-4 py-4 shadow-sm">
+                    <rich-text class="session-rich text-[14px] text-[#475569] leading-[1.8]" :nodes="html(questionMaterials(questionMap[item.question_id])[0]?.content)" />
+                  </view>
+                </template>
               </view>
               <rich-text class="session-rich mt-5 text-[17px] text-[#0F172A] font-semibold leading-[1.9]" :nodes="html(questionMap[item.question_id].stem)" />
               <view v-if="questionMap[item.question_id].options?.length" class="mt-5 flex flex-col gap-3">
@@ -1115,9 +1153,15 @@ onUnload(() => {
                   <view class="i-carbon-idea text-[16px] text-[#1D4ED8]" />
                   <view class="text-[15px] text-[#1D4ED8] font-black">答案解析</view>
                 </view>
-                <view class="flex items-center gap-1 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] px-2.5 py-1 text-[12px] text-[#2563EB] font-bold active:scale-95" @click="copyAnalysis(item.question_id)">
-                  <view class="i-carbon-copy text-[13px]" />
-                  <text>复制</text>
+                <view class="flex items-center gap-2">
+                  <view class="flex items-center gap-1 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] px-2.5 py-1 text-[12px] text-[#2563EB] font-bold active:scale-95" @click="copyAnalysis(item.question_id)">
+                    <view class="i-carbon-copy text-[13px]" />
+                    <text>复制</text>
+                  </view>
+                  <view class="flex items-center gap-1 rounded-full bg-[#F5F3FF] border border-[#DDD6FE] px-2.5 py-1 text-[12px] text-[#8B5CF6] font-bold active:scale-95" @click="showFeedbackPopup = true">
+                    <view class="i-carbon-chat text-[13px]" />
+                    <text>反馈</text>
+                  </view>
                 </view>
               </view>
               <rich-text class="session-rich mt-4 text-[14px] text-[#475569] leading-[1.8]" :nodes="html(solutionMap[item.question_id].analysis)" />
@@ -1438,7 +1482,7 @@ onUnload(() => {
 
 .section-card {
   border: 1px solid rgba(255, 255, 255, 0.70);
-  border-radius: 24px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   padding: 20px;
   box-shadow: 0 12px 24px rgba(148, 163, 184, 0.08);
@@ -1502,7 +1546,7 @@ onUnload(() => {
   align-items: flex-start;
   gap: 14px;
   padding: 14px 16px;
-  border-radius: 22px;
+  border-radius: 12px;
   border: 1px solid rgba(226, 232, 240, 0.9);
   background: rgba(255, 255, 255, 0.92);
   transition:

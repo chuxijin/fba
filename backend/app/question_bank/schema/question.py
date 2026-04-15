@@ -15,6 +15,7 @@ DifficultyEnum = Literal['easy', 'medium', 'hard']
 ContentStatusEnum = Literal[0, 10, 20]
 ReviewStatusEnum = Literal[0, 10, 20]
 AnalysisStatusEnum = Literal[0, 10, 20]
+CollectSourceType = Literal['placement', 'wrong', 'favorite', 'note']
 
 KnowledgePointValue = str | int | dict[str, Any]
 
@@ -194,6 +195,58 @@ class QuestionQueryParam(SchemaBase):
     review_status: ReviewStatusEnum | None = Field(None, description='审核状态（挂载级别）')
     scene_mask: int | None = Field(None, ge=0, description='场景位标记')
     keyword: str | None = Field(None, max_length=200, description='关键字搜索（搜索题干）')
+
+
+class QuestionCollectParam(SchemaBase):
+    """统一筛题参数"""
+
+    source_type: CollectSourceType = Field(default='placement', description='题目来源类型')
+    question_ids: list[int] | None = Field(
+        None,
+        min_length=1,
+        max_length=5000,
+        description='显式指定题目 ID 列表；传入后优先在该范围内继续过滤',
+    )
+    bank_id: int | None = Field(None, gt=0, description='题库 ID（筛题上下文）')
+    chapter_id: int | None = Field(None, gt=0, description='章节 ID（筛题上下文）')
+    year_end: int | None = Field(None, ge=1900, le=2100, description='结束年份（按试卷年份）')
+    year_start: int | None = Field(None, ge=1900, le=2100, description='起始年份（按试卷年份）')
+    region: str | None = Field(None, max_length=100, description='地区关键字（算入试卷名称/编码/描述）')
+    cat_id: int | None = Field(None, gt=0, description='分类 ID（试卷/合集筛选）')
+    knowledge_point: list[KnowledgePointValue] | None = Field(
+        None,
+        min_length=1,
+        max_length=200,
+        description='知识点/考点标签筛选',
+    )
+    question_types: list[QuestionTypeEnum] | None = Field(
+        None,
+        min_length=1,
+        max_length=20,
+        description='题型过滤',
+    )
+    difficulties: list[DifficultyEnum] | None = Field(
+        None,
+        min_length=1,
+        max_length=10,
+        description='难度过滤',
+    )
+    stem_keyword: str | None = Field(None, max_length=200, description='题干关键字')
+    option_keyword: str | None = Field(None, max_length=200, description='选项关键字')
+    analysis_keyword: str | None = Field(None, max_length=200, description='解析关键字')
+    content_status: ContentStatusEnum | None = Field(None, description='内容状态')
+    is_active: bool | None = Field(None, description='是否启用（挂载级别）')
+    review_status: ReviewStatusEnum | None = Field(None, description='审核状态（挂载级别）')
+    limit: int | None = Field(None, ge=1, le=5000, description='最终返回题量上限')
+    recent_days: int | None = Field(None, ge=1, le=3650, description='仅个人来源生效：最近天数')
+
+
+class QuestionCollectResult(SchemaBase):
+    """统一筛题结果"""
+
+    source_type: CollectSourceType = Field(description='题目来源类型')
+    question_ids: list[int] = Field(default_factory=list, description='命中的题目 ID 列表')
+    total: int = Field(default=0, ge=0, description='命中题量')
 
 
 # ===== 创建 / 更新 / 删除 =====

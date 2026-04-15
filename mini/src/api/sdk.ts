@@ -100,6 +100,19 @@ if (!(fbaApi as any).membership) {
   }
 }
 
+// 兼容知识点详情接口
+// FIXME: 等待后端 SDK 更新后移除
+if (!(fbaApi as any).qbank.knowledgePoint) {
+  (fbaApi as any).qbank.knowledgePoint = {
+    getDetail(id: number) {
+      return fbaApi.client.get(`/qbank/knowledge-points/${id}`)
+    },
+    getProgress(id: number) {
+      return fbaApi.client.get(`/qbank/knowledge-points/${id}/progress`)
+    },
+  }
+}
+
 // 兼容旧 SDK 缓存：统一支持 session_id 查询（number）和旧的 question_ids 查询（number[]）
 const rawCheckFavorites = fbaApi.qbank.question.checkFavorites.bind(fbaApi.qbank.question)
 const rawGetNotes = fbaApi.qbank.question.getNotes.bind(fbaApi.qbank.question)

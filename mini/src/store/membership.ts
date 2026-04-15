@@ -12,9 +12,14 @@ export const useMembershipStore = defineStore(
 
     /** 当前最高权重的会员记录 */
     const activeMembership = computed(() => {
+      const tokenStore = useTokenStore()
+      if (!tokenStore.hasLogin) {
+        return null
+      }
+
       const now = Date.now()
       return memberships.value
-        .filter(m => m.status === 1 && m.valid_to && new Date(m.valid_to).getTime() > now)
+        .filter(m => m.status === 1 && m.valid_to && new Date(m.valid_to.replace(/-/g, '/')).getTime() > now)
         .sort((a, b) => b.tier_weight - a.tier_weight)[0] || null
     })
 

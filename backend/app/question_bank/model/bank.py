@@ -34,6 +34,11 @@ class QuestionBank(Base, UserMixin):
     name: Mapped[str] = mapped_column(sa.String(128), comment='题库名称')
     code: Mapped[str] = mapped_column(sa.String(32), comment='业务编码')
     desc: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='描述')
+    year: Mapped[int | None] = mapped_column(
+        sa.SmallInteger,
+        default=None,
+        comment='年份（试卷用）',
+    )
     cover_url: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='封面地址')
     difficulty: Mapped[Decimal | None] = mapped_column(sa.Numeric(3, 1), default=None, comment='整体难度')
     bank_type: Mapped[int] = mapped_column(

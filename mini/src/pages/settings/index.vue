@@ -6,6 +6,7 @@ import { useTokenStore, useUserStore } from '@/store'
 import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
 import { clearQuestionMediaCache, getQuestionMediaCacheSummary } from '@/utils/questionMediaCache'
 import { mergeCachedStudyPreference } from '@/utils/studyPreferenceCache'
+import { toLoginPage } from '@/utils/toLoginPage'
 
 defineOptions({
   name: 'SettingsPage',
@@ -20,6 +21,11 @@ definePage({
 })
 
 const randomCountOptions = [10, 20, 30, 50, 100]
+const randomYearRangeOptions = [
+  { label: '不限', value: 'unlimited' },
+  { label: '近3年', value: 'last_3_years' },
+  { label: '近5年', value: 'last_5_years' },
+] as const
 const practiceModeOptions = [
   { value: 'practice', label: '刷题模式', tip: '做完一题看一题解析' },
   { value: 'exam', label: '考试模式', tip: '整套做完后统一交卷' },
@@ -28,11 +34,13 @@ const practiceModeOptions = [
 const masteryStreakOptions = [1, 2, 3, 5]
 
 type PracticeMode = (typeof practiceModeOptions)[number]['value']
+type RandomYearRange = (typeof randomYearRangeOptions)[number]['value']
 
 const tokenStore = useTokenStore()
 const userStore = useUserStore()
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const randomPracticeCount = ref(20)
+const randomPracticeYearRange = ref<RandomYearRange>('unlimited')
 const darkThemeEnabled = ref(false)
 const practiceMode = ref<PracticeMode>('practice')
 const wrongMasteryStreak = ref(3)
@@ -42,6 +50,9 @@ const clearingMediaCache = ref(false)
 
 const themeLabel = computed(() => darkThemeEnabled.value ? '暗色' : '明亮')
 const randomPracticeCountLabel = computed(() => `${randomPracticeCount.value} 题`)
+const randomPracticeYearRangeLabel = computed(() => {
+  return randomYearRangeOptions.find(item => item.value === randomPracticeYearRange.value)?.label || '不限'
+})
 const practiceModeLabel = computed(() => practiceModeOptions.find(item => item.value === practiceMode.value)?.label || '刷题模式')
 const masteryStreakLabel = computed(() => `连对 ${wrongMasteryStreak.value} 次`)
 const mediaCacheSummaryLabel = computed(() => `${mediaCacheCount.value} 个文件 · ${formatCacheSize(mediaCacheSize.value)}`)
@@ -49,6 +60,7 @@ const mediaCacheSummaryLabel = computed(() => `${mediaCacheCount.value} 个文�
 function loadSettings() {
   const settings = getAppSettings()
   randomPracticeCount.value = settings.randomPracticeCount
+  randomPracticeYearRange.value = settings.randomPracticeYearRange as RandomYearRange
   darkThemeEnabled.value = settings.themeMode === 'dark'
   practiceMode.value = settings.practiceMode
   wrongMasteryStreak.value = settings.wrongMasteryStreak
@@ -75,6 +87,19 @@ function goBack() {
   uni.switchTab({ url: '/pages/mine/index' })
 }
 
+function openMyRenderBooks() {
+  tokenStore.updateNowTime()
+  if (!tokenStore.hasLogin) {
+    uni.showToast({ title: '请先登录后查看我的题本', icon: 'none' })
+    setTimeout(() => {
+      toLoginPage()
+    }, 300)
+    return
+  }
+
+  uni.navigateTo({ url: '/pages/my-render-books/index' })
+}
+
 function updateRandomPracticeCount(count: number) {
   randomPracticeCount.value = count
   saveAppSettings({ randomPracticeCount: count })
@@ -88,6 +113,24 @@ function chooseRandomPracticeCount() {
       const count = randomCountOptions[Number(res.tapIndex)]
       if (count)
         updateRandomPracticeCount(count)
+    },
+  })
+}
+
+function updateRandomPracticeYearRange(range: RandomYearRange) {
+  randomPracticeYearRange.value = range
+  saveAppSettings({ randomPracticeYearRange: range })
+  uni.showToast({ title: `已设为 ${randomPracticeYearRangeLabel.value}`, icon: 'none' })
+}
+
+function chooseRandomPracticeYearRange() {
+  uni.showActionSheet({
+    itemList: randomYearRangeOptions.map(item => item.label),
+    success: (res) => {
+      const picked = randomYearRangeOptions[Number(res.tapIndex)]?.value
+      if (picked) {
+        updateRandomPracticeYearRange(picked)
+      }
     },
   })
 }
@@ -219,10 +262,33 @@ onShow(() => {
 
     <view class="relative z-10 mt-6 px-4 pb-24 space-y-4">
       <view class="overflow-hidden border border-white/60 rounded-2xl bg-white/80 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md">
+        <view class="h-14 flex items-center justify-between px-4 active:opacity-80" @tap="openMyRenderBooks">
+          <view class="flex items-center gap-2">
+            <view class="i-carbon-book text-[18px] text-[#EA580C]" />
+            <text class="text-[15px] text-[#1E293B] font-bold">我的题本</text>
+          </view>
+          <view class="flex items-center text-[#64748B]">
+            <text class="text-[14px]">查看导出记录</text>
+            <view class="i-carbon-chevron-right ml-1 text-lg" />
+          </view>
+        </view>
+      </view>
+
+      <view class="overflow-hidden border border-white/60 rounded-2xl bg-white/80 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md">
         <view class="h-14 flex items-center justify-between px-4 active:opacity-80" @tap="chooseRandomPracticeCount">
           <text class="text-[15px] text-[#1E293B] font-bold">随机练习题目数</text>
           <view class="flex items-center text-[#64748B]">
             <text class="text-[14px]">{{ randomPracticeCountLabel }}</text>
+            <view class="i-carbon-chevron-right ml-1 text-lg" />
+          </view>
+        </view>
+
+        <view class="ml-4 h-[1px] bg-[#F1E8FB]" />
+
+        <view class="h-14 flex items-center justify-between px-4 active:opacity-80" @tap="chooseRandomPracticeYearRange">
+          <text class="text-[15px] text-[#1E293B] font-bold">随机练习范围</text>
+          <view class="flex items-center text-[#64748B]">
+            <text class="text-[14px]">{{ randomPracticeYearRangeLabel }}</text>
             <view class="i-carbon-chevron-right ml-1 text-lg" />
           </view>
         </view>
@@ -283,7 +349,7 @@ onShow(() => {
 
       <view class="px-1">
         <view class="text-[12px] leading-[1.8] text-[#94A3B8]">
-          随机练习题目数会用于后续随机练习默认出题数量。
+          随机练习题目数与范围会用于知识点刷题的默认出题数量与年份筛选。
         </view>
         <view class="mt-1 text-[12px] leading-[1.8] text-[#94A3B8]">
           默认刷题模式会影响首页开始刷题时的判题和解析展示方式。

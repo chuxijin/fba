@@ -9,6 +9,7 @@ from backend.app.question_bank.api.v1.banner import router as banner_router
 from backend.app.question_bank.api.v1.chapter import router as chapter_router
 from backend.app.question_bank.api.v1.favorite import router as favorite_router
 from backend.app.question_bank.api.v1.home import router as home_router
+from backend.app.question_bank.api.v1.knowledge_point import router as knowledge_point_router
 from backend.app.question_bank.api.v1.material import router as material_router
 from backend.app.question_bank.api.v1.note import router as note_router
 from backend.app.question_bank.api.v1.notice import router as notice_router
@@ -37,6 +38,7 @@ router.include_router(session_router, prefix='/sessions', tags=['练习会话'])
 router.include_router(wrong_question_router, prefix='/wrong-questions', tags=['错题本'])
 router.include_router(note_router, prefix='/notes', tags=['笔记'])
 router.include_router(favorite_router, prefix='/favorites', tags=['收藏'])
+router.include_router(knowledge_point_router, prefix='/knowledge-points', tags=['知识点'])
 router.include_router(upload_router, prefix='/upload', tags=['文件上传'])
 router.include_router(parse_router, prefix='/parse', tags=['文档提取'])
 

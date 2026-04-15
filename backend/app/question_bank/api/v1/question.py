@@ -8,6 +8,8 @@ from backend.app.question_bank.schema.note import GetQuestionNoteDetail
 from backend.app.question_bank.schema.practice import GetQuestionSolution, GetSessionQuestionsResponse
 from backend.app.question_bank.schema.question import (
     CreateQuestionParam,
+    QuestionCollectParam,
+    QuestionCollectResult,
     DeleteQuestionParam,
     GetQuestionDynamicCollectionItem,
     GetQuestionDetail,
@@ -24,6 +26,7 @@ from backend.app.question_bank.schema.question_import import (
 from backend.app.question_bank.service.favorite_service import favorite_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.note_service import note_service
+from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.session_service import session_service
 from backend.common.pagination import PageData
@@ -149,6 +152,72 @@ async def get_dynamic_collections(
         analysis_keyword=analysis_keyword,
         year_start=year_start,
         year_end=year_end,
+    )
+    return response_base.success(data=data)
+
+
+@router.post(
+    '/collect',
+    summary='统一筛选题目并返回题目 ID 列表',
+    name='qbank_collect_questions',
+    dependencies=[DependsJwtAuth],
+)
+async def collect_questions(
+    request: Request,
+    db: CurrentSession,
+    obj: QuestionCollectParam,
+) -> ResponseSchemaModel[QuestionCollectResult]:
+    """统一筛题入口，适用于前端选题、会话建题与题本渲染前置筛选。"""
+    allow_admin_read = _should_bypass_membership_checks(request)
+
+    if obj.chapter_id is not None:
+        obj.bank_id = await membership_service.resolve_bank_context_for_chapter(
+            db=db,
+            chapter_id=obj.chapter_id,
+            bank_id=obj.bank_id,
+            user_id=None if allow_admin_read else request.user.id,
+        )
+
+    if not allow_admin_read:
+        if obj.source_type == 'placement' and obj.question_ids:
+            await membership_service.verify_question_ids_access(
+                db=db,
+                user_id=request.user.id,
+                question_ids=obj.question_ids,
+            )
+        elif obj.source_type == 'placement' and obj.bank_id:
+            await membership_service.verify_bank_list_access(
+                db=db,
+                user_id=request.user.id,
+                bank_id=obj.bank_id,
+            )
+
+        await membership_service.verify_filter_access(
+            db=db,
+            user_id=request.user.id,
+            cat_id=obj.cat_id,
+            region=obj.region,
+            year_start=obj.year_start,
+            year_end=obj.year_end,
+            stem_keyword=obj.stem_keyword,
+            option_keyword=obj.option_keyword,
+            analysis_keyword=obj.analysis_keyword,
+        )
+        await membership_service.verify_knowledge_access(
+            db=db,
+            user_id=request.user.id,
+            knowledge_point=obj.knowledge_point,
+        )
+
+        if obj.content_status is None:
+            obj.content_status = 10
+        if obj.source_type == 'placement' and obj.is_active is None:
+            obj.is_active = True
+
+    data = await question_selector_service.collect_question_ids(
+        db=db,
+        params=obj,
+        user_id=request.user.id,
     )
     return response_base.success(data=data)
 

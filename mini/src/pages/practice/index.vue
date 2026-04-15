@@ -3,6 +3,7 @@ import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
 import LoginModal from '@/components/LoginModal.vue'
+import PracticeNode from '@/components/PracticeNode.vue'
 import { useTokenStore, useUserStore } from '@/store'
 import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
 import { getCachedStudyPreference, setCachedStudyPreference } from '@/utils/studyPreferenceCache'
@@ -17,6 +18,7 @@ definePage({
   style: {
     navigationStyle: 'custom',
     navigationBarTextStyle: 'black',
+    disableScroll: true,
   },
 })
 
@@ -50,11 +52,16 @@ interface CategoryMeta {
 interface PracticeListItem {
   id: number
   name: string
-  type: 'collection' | 'bank'
+  type: 'collection' | 'bank' | 'kp_entry'
   desc: string
   count: number
   expanded: boolean
   children?: PracticeListItem[]
+  kpName?: string
+  progress?: number
+  total?: number
+  wrong?: number
+  hideProgress?: boolean
 }
 
 interface PracticeTab {
@@ -92,6 +99,7 @@ interface LatestSessionBrief {
   status: string
   total_count: number
   completed_count: number
+  wrong_count: number
   practice_mode: PracticeMode
 }
 
@@ -144,6 +152,20 @@ const practiceConfigTabMatcherMap: Record<PracticeConfigTabCode, { names: string
     codes: ['shengkao', 'catalog_shengkao', 'product_shengkao'],
   },
 }
+const kpPracticeConfigTabMatcherMap: Record<PracticeConfigTabCode, { names: string[], codes: string[] }> = {
+  kaoyan: {
+    names: ['考研'],
+    codes: ['kaoyan', 'kp_kaoyan'],
+  },
+  guokao: {
+    names: ['行测', '申论', '面试'],
+    codes: ['xingce', 'shenlun', 'mianshi', 'kp_guokao'],
+  },
+  shengkao: {
+    names: ['行测', '申论', '面试'],
+    codes: ['xingce', 'shenlun', 'mianshi', 'kp_shengkao'],
+  },
+}
 
 const currentTab = computed(() => tabs.value[activeIndex.value] || null)
 const latestRecentSession = computed(() => recentSessions.value[0] || null)
@@ -160,6 +182,10 @@ function rebuildDisplayedTabs() {
 
   if (activeIndex.value >= tabs.value.length)
     activeIndex.value = 0
+
+  // tabs 被重建后，重新把最近会话的进度写回到树节点上，供 PracticeNode 默认进度条使用
+  if (recentSessions.value.length)
+    applyLatestSessionMetaToTabs()
 }
 
 function toNumber(value: unknown) {
@@ -304,7 +330,7 @@ function getVisibleItems(items: PracticeListItem[], depth = 0): VisiblePracticeL
       depth,
     })
 
-    if (item.type === 'collection' && item.expanded && item.children?.length) {
+    if ((item.type === 'collection' || item.type === 'kp_entry') && item.expanded && item.children?.length) {
       result.push(...getVisibleItems(item.children, depth + 1))
     }
   }
@@ -312,22 +338,31 @@ function getVisibleItems(items: PracticeListItem[], depth = 0): VisiblePracticeL
   return result
 }
 
+const visibleTabs = computed(() => {
+  return tabs.value.map(tab => ({
+    ...tab,
+    visibleItems: getVisibleItems(tab.items),
+  }))
+})
+
 function cloneFilteredBanksByCategoryId(
   nodes: BankNode[] | null | undefined,
   categoryId: number,
   categoryMetaMap: Map<number, CategoryMeta>,
   flattenFirstMatched = false,
+  implicitMatch = false,
 ): BankNode[] {
   const result: BankNode[] = []
 
   for (const node of nodes || []) {
     const path = categoryMetaMap.get(node.cat_id)?.path || []
-    const selfMatched = path.includes(categoryId)
+    const selfMatched = implicitMatch || path.includes(categoryId)
     const children = cloneFilteredBanksByCategoryId(
       node.children,
       categoryId,
       categoryMetaMap,
       flattenFirstMatched && !selfMatched,
+      selfMatched,
     )
 
     if (selfMatched) {
@@ -402,12 +437,51 @@ function buildPracticeTabs(categories: CategoryNode[], banks: BankNode[]) {
   }]
 }
 
+function findCategoryNodeById(nodes: CategoryNode[] | null | undefined, targetId: number): CategoryNode | null {
+  for (const node of nodes || []) {
+    if (node.id === targetId)
+      return node
+    const child = findCategoryNodeById(node.children, targetId)
+    if (child)
+      return child
+  }
+  return null
+}
+
+function mapKpToListItem(node: CategoryNode): PracticeListItem {
+  const children = (node.children || []).map(mapKpToListItem)
+
+  return {
+    id: node.id,
+    name: node.name,
+    type: 'kp_entry',
+    desc: children.length ? `${children.length} 个子知识点` : '知识点练习',
+    count: children.length,
+    expanded: false,
+    kpName: node.name,
+    children: children.length ? children : undefined,
+  }
+}
+
 function buildPracticeTabByCategoryId(
   categoryId: number,
   categoryName: string,
   categories: CategoryNode[],
   banks: BankNode[],
 ) {
+  const categoryNode = findCategoryNodeById(categories, categoryId)
+
+  if (categoryNode?.type === 'knowledge_point') {
+    const kpItems = (categoryNode.children || []).map(mapKpToListItem)
+    return {
+      id: categoryId,
+      name: categoryName,
+      items: kpItems,
+      bankCount: 0,
+      questionCount: 0,
+    }
+  }
+
   const categoryMetaMap = buildCategoryMetaMap(categories)
   const filteredBanks = cloneFilteredBanksByCategoryId(
     banks,
@@ -425,11 +499,12 @@ function buildPracticeTabByCategoryId(
   }
 }
 
-function resolvePracticeConfigTabCode(node: CategoryNode): PracticeConfigTabCode | null {
+function resolvePracticeConfigTabCode(node: CategoryNode, type?: string): PracticeConfigTabCode | null {
   const normalizedName = String(node.name || '').trim().toLowerCase()
   const normalizedCode = String(node.code || '').trim().toLowerCase()
+  const matcherMap = type === 'knowledge_point' ? kpPracticeConfigTabMatcherMap : practiceConfigTabMatcherMap
 
-  for (const [tabCode, matcher] of Object.entries(practiceConfigTabMatcherMap) as Array<
+  for (const [tabCode, matcher] of Object.entries(matcherMap) as Array<
     [PracticeConfigTabCode, { names: string[], codes: string[] }]
   >) {
     if (matcher.codes.some(code => String(code || '').trim().toLowerCase() === normalizedCode)) {
@@ -456,12 +531,15 @@ function resolveCategoryAppCodeById(
     const currentAncestors = [...ancestors, node]
 
     if (node.id === targetId) {
-      if (node.app_code !== 'youanshang' || node.type !== 'product_catalog') {
+      if (node.app_code !== 'youanshang') {
+        return null
+      }
+      if (node.type !== 'product_catalog' && node.type !== 'knowledge_point') {
         return null
       }
 
       for (const currentNode of currentAncestors) {
-        const tabCode = resolvePracticeConfigTabCode(currentNode)
+        const tabCode = resolvePracticeConfigTabCode(currentNode, node.type)
         if (tabCode) {
           return tabCode
         }
@@ -581,6 +659,7 @@ function normalizeLatestSession(session: any): LatestSessionBrief | null {
     status: String(session.status || ''),
     total_count: toNumber(session.total_count ?? session.session_questions?.length),
     completed_count: toNumber(session.completed_count ?? session.records?.length),
+    wrong_count: toNumber(session.wrong_count),
     practice_mode: sessionPracticeMode,
   }
 }
@@ -628,6 +707,35 @@ function hasLatestSession(bankId: number) {
 
 function currentPracticeMode() {
   return getAppSettings().practiceMode as PracticeMode
+}
+
+function applyLatestSessionMetaToItems(items: PracticeListItem[] | undefined) {
+  for (const item of items || []) {
+    if (item.type === 'bank') {
+      const session = getLatestSessionByBankId(item.id)
+      if (session) {
+        item.progress = session.completed_count
+        item.total = session.total_count
+        item.wrong = session.wrong_count
+        item.hideProgress = false
+      }
+      else {
+        item.hideProgress = true
+      }
+    }
+    else {
+      item.hideProgress = true
+    }
+
+    if (item.children?.length)
+      applyLatestSessionMetaToItems(item.children)
+  }
+}
+
+function applyLatestSessionMetaToTabs() {
+  for (const tab of tabs.value || []) {
+    applyLatestSessionMetaToItems(tab.items)
+  }
 }
 
 function navigateToPracticeSession(sessionId: number, modeOverride?: PracticeMode) {
@@ -691,14 +799,29 @@ function handleStartQuickPractice() {
 }
 
 function handleOpenBank(item: PracticeListItem) {
-  if (item.type !== 'bank')
-    return
-
   if (!ensureLogin())
     return
 
   uni.navigateTo({
     url: `/pages/bank-detail/index?id=${item.id}`,
+  })
+}
+
+function navigateToBankDetailById(bankId: number) {
+  if (!ensureLogin())
+    return
+
+  uni.navigateTo({
+    url: `/pages/bank-detail/index?id=${bankId}`,
+  })
+}
+
+function handleOpenKpEntry(item: PracticeListItem) {
+  if (!ensureLogin())
+    return
+
+  uni.navigateTo({
+    url: `/pages/kp-detail/index?id=${item.id}`,
   })
 }
 
@@ -728,6 +851,7 @@ async function refreshVisibleLatestSessions() {
     return
 
   await fetchRecentSessionsSafe()
+  applyLatestSessionMetaToTabs()
 }
 
 async function loadDashboard() {
@@ -827,7 +951,6 @@ async function loadPracticeTabs() {
       fbaApi.qbank.bank.getList({ status: 1 }) as Promise<BankNode[]>,
       fbaApi.admin.sys.category.getTree({
         app_code: 'youanshang',
-        type: 'product_catalog',
         status: true,
       }) as Promise<CategoryNode[]>,
     ])
@@ -890,7 +1013,7 @@ onShow(() => {
 </script>
 
 <template>
-  <view class="relative h-screen flex flex-col overflow-hidden from-[#DAF0E4] via-[#F0F8F4] to-[#F8FCF9] bg-gradient-to-b text-[#334155]">
+  <view class="relative h-[calc(100vh-50px-env(safe-area-inset-bottom))] flex flex-col overflow-hidden from-[#DAF0E4] via-[#F0F8F4] to-[#F8FCF9] bg-gradient-to-b text-[#334155]">
     <view class="relative z-20 w-full shrink-0" :style="{ paddingTop: `${navBarHeight}px` }">
       <!-- 标题栏 -->
       <view class="absolute left-0 right-0 flex items-center justify-center" :style="{ top: `${statusBarHeight}px`, height: '44px' }">
@@ -943,14 +1066,14 @@ onShow(() => {
       :duration="300"
       @change="onSwiperChange"
     >
-      <template v-if="tabs.length">
-        <swiper-item v-for="tab in tabs" :key="tab.id">
-          <scroll-view scroll-y class="border-box h-full w-full pb-14" :show-scrollbar="false" refresher-enabled :refresher-triggered="refreshing" @refresherrefresh="onScrollRefresh">
+      <template v-if="visibleTabs.length">
+        <swiper-item v-for="tab in visibleTabs" :key="tab.id">
+          <scroll-view scroll-y class="absolute inset-x-0 bottom-0 top-0 box-border pb-4" :show-scrollbar="false" refresher-enabled :refresher-triggered="refreshing" @refresherrefresh="onScrollRefresh">
             <view class="mb-5 mt-5 flex gap-3 px-5">
               <view
                 hover-class="scale-95 opacity-90"
                 :hover-stay-time="150"
-                class="relative flex flex-1 flex-col justify-between overflow-hidden rounded-2xl from-[#10B981] to-[#047857] bg-gradient-to-br px-4 py-4 text-white"
+                class="relative flex flex-1 flex-col justify-between overflow-hidden rounded-xl from-[#10B981] to-[#047857] bg-gradient-to-br px-4 py-4 text-white"
                 @click="handleStartQuickPractice"
               >
                 <view class="i-carbon-rocket pointer-events-none absolute rotate-12 text-7xl text-white/10 -bottom-4 -right-4" />
@@ -966,7 +1089,7 @@ onShow(() => {
                 </view>
               </view>
 
-              <view class="flex flex-1 flex-col justify-between rounded-2xl bg-white/90 px-4 py-4 shadow-sm backdrop-blur-sm transition-transform active:scale-[0.98]" @click="openUserReport">
+              <view class="flex flex-1 flex-col justify-between rounded-xl bg-white/90 px-4 py-4 shadow-sm backdrop-blur-sm transition-transform active:scale-[0.98]" @click="openUserReport">
                 <view class="text-[11px] text-[#94A3B8]">
                   今日数据
                 </view>
@@ -985,95 +1108,45 @@ onShow(() => {
 
             <view class="flex flex-col gap-3 px-5">
               <template v-if="tab.items.length">
-                <transition-group name="practice-tree" tag="view" class="flex flex-col gap-3">
+                <view class="border-y border-[#F1F5F9]">
                   <view
-                    v-for="item in getVisibleItems(tab.items)"
-                    :key="`${item.id}-${item.depth}-${item.type}`"
-                    class="relative"
-                    :style="{
-                      marginLeft: `${item.depth * 14}px`,
-                      transitionDelay: item.depth > 0 ? `${Math.min(item.depth * 24, 72)}ms` : '0ms',
-                    }"
+                    v-for="(rootItem, idx) in tab.items"
+                    :key="`${rootItem.id}-${rootItem.type}`"
+                    :class="idx < tab.items.length - 1 ? 'border-b border-[#F1F5F9]' : ''"
                   >
-                    <view
-                      v-if="item.depth > 0"
-                      class="absolute bottom-4 left-[-9px] top-4 w-[2px] rounded-full from-[#BBF7D0] via-[#D1FAE5] to-[#E2E8F0] bg-gradient-to-b"
-                    />
-
-                    <view
-                      v-if="item.type === 'collection'"
-                      class="overflow-hidden border border-white/70 rounded-2xl backdrop-blur-sm transition-all duration-300"
-                      :class="item.expanded ? 'bg-[#F7FFFA] shadow-[0_14px_32px_rgba(16,185,129,0.12)] ring-1 ring-[#D1FAE5]' : 'bg-white/90 shadow-sm active:scale-[0.99]'"
-                      @click="toggleCollection(item.node)"
+                    <PracticeNode
+                      :node="rootItem"
+                      :depth="0"
+                      :parent-show-continue="false"
+                      :on-group-tap="(n) => {
+                        if (n.type === 'collection') { navigateToBankDetailById(n.id); return false }
+                        if (n.type === 'kp_entry') { handleOpenKpEntry(n); return false }
+                      }"
+                      :on-toggle-tap="(n) => {
+                        if (n.type === 'collection' || n.type === 'kp_entry') { toggleCollection(n); return }
+                      }"
+                      :on-leaf-tap="(n) => {
+                        if (n.type === 'bank') { handleOpenBank(n); return }
+                        if (n.type === 'kp_entry') { handleOpenKpEntry(n); return }
+                      }"
                     >
-                      <view class="flex items-center px-4 py-3.5">
-                        <view class="mr-3 h-9 w-9 flex shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] shadow-inner">
-                          <view class="i-carbon-folder text-[18px] text-[#10B981]" />
-                        </view>
-                        <view class="min-w-0 flex-1">
-                          <view class="text-[15px] text-[#1E293B] font-bold">
-                            {{ item.name }}
+                      <template #right="{ node: slotNode, hasChildren }">
+                        <template v-if="slotNode.type === 'bank' && hasLatestSession(slotNode.id)">
+                          <view class="flex items-center text-[#4A90E2] text-[13px] font-medium whitespace-nowrap" @click.stop="handleContinueLatestSession(slotNode, $event)">
+                            <text>继续上次</text>
+                            <view class="i-carbon-chevron-right ml-0.5 text-sm" />
                           </view>
-                          <view class="mt-0.5 text-[11px] text-[#94A3B8]">
-                            {{ item.desc }}
-                          </view>
-                        </view>
-                        <view
-                          class="i-carbon-chevron-down text-lg text-[#94A3B8] transition-transform duration-300"
-                          :style="{ transform: item.expanded ? 'rotate(180deg)' : 'rotate(0deg)' }"
-                        />
-                      </view>
-                      <view
-                        v-if="item.expanded && item.children?.length"
-                        class="mx-4 h-px from-transparent via-[#D1FAE5] to-transparent bg-gradient-to-r"
-                      />
-                    </view>
-
-                    <view
-                      v-else
-                      class="flex items-center border border-white/70 rounded-2xl bg-white/90 px-4 py-3.5 shadow-sm backdrop-blur-sm transition-all duration-200 active:scale-[0.99] active:bg-gray-50"
-                      :class="item.depth > 0 ? 'shadow-[0_10px_24px_rgba(148,163,184,0.08)]' : ''"
-                      @click="handleOpenBank(item.node)"
-                    >
-                      <view class="mr-3 h-9 w-9 flex shrink-0 items-center justify-center rounded-xl bg-[#EFF6FF] shadow-inner">
-                        <view class="i-carbon-document text-[18px] text-[#3B82F6]" />
-                      </view>
-                      <view class="min-w-0 flex-1">
-                        <view class="text-[15px] text-[#1E293B] font-bold">
-                          {{ item.name }}
-                        </view>
-                        <view v-if="!hasLatestSession(item.id)" class="mt-0.5 text-[11px] text-[#94A3B8]">
-                          {{ item.desc }}
-                        </view>
-                        <view
-                          v-if="hasLatestSession(item.id)"
-                          class="mt-2"
-                          @click.stop="handleContinueLatestSession(item.node, $event)"
-                        >
-                          <view class="flex items-center justify-between">
-                            <view class="flex items-center gap-1.5 text-[11px] text-[#059669] font-bold">
-                              <view class="i-carbon-in-progress text-[12px]" />
-                              <text>{{ getLatestSessionByBankId(item.id)!.completed_count }}/{{ getLatestSessionByBankId(item.id)!.total_count }}</text>
-                            </view>
-                            <view class="rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-[10px] text-[#059669] font-bold">
-                              继续上次
-                            </view>
-                          </view>
-                          <view class="mt-1.5 h-[4px] overflow-hidden rounded-full bg-[#E2E8F0]">
-                            <view
-                              class="h-full rounded-full from-[#34D399] to-[#10B981] bg-gradient-to-r transition-all duration-500"
-                              :style="{ width: `${Math.min(100, Math.round((getLatestSessionByBankId(item.id)!.completed_count / Math.max(1, getLatestSessionByBankId(item.id)!.total_count)) * 100))}%` }"
-                            />
-                          </view>
-                        </view>
-                      </view>
-                      <view class="i-carbon-chevron-right text-lg text-[#CBD5E1]" />
-                    </view>
+                        </template>
+                        <template v-else>
+                          <view class="i-carbon-chevron-right text-lg text-[#D1D5DB]" />
+                        </template>
+                      </template>
+                    </PracticeNode>
                   </view>
-                </transition-group>
+                </view>
               </template>
 
-              <view v-else class="rounded-2xl bg-white/80 px-5 py-10 text-center shadow-sm">
+              <view v-else class="rounded-xl bg-white/80 px-5 py-10 text-center shadow-sm">
                 <text class="text-[14px] text-[#94A3B8]">这个分类下暂时还没有题库。</text>
               </view>
             </view>
@@ -1083,7 +1156,7 @@ onShow(() => {
 
       <swiper-item v-else>
         <view class="h-full px-5 pt-10">
-          <view class="rounded-3xl bg-white/85 px-6 py-12 text-center shadow-sm">
+          <view class="rounded-2xl bg-white/85 px-6 py-12 text-center shadow-sm">
             <view class="mb-2 text-[16px] text-[#1E293B] font-bold">
               {{ loading ? '刷题内容加载中...' : '暂时没有可展示的题库' }}
             </view>
@@ -1107,20 +1180,4 @@ onShow(() => {
 </template>
 
 <style lang="scss" scoped>
-.practice-tree-enter-active,
-.practice-tree-leave-active {
-  transition:
-    opacity 0.28s ease,
-    transform 0.28s ease;
-}
-
-.practice-tree-enter-from,
-.practice-tree-leave-to {
-  opacity: 0;
-  transform: translateY(-10px) scale(0.985);
-}
-
-.practice-tree-move {
-  transition: transform 0.3s ease;
-}
 </style>

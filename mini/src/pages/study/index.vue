@@ -569,7 +569,7 @@ watch(
 </script>
 
 <template>
-  <view class="relative min-h-screen overflow-hidden from-[#E1F0FF] via-[#F0F7FF] to-[#F8FAFC] bg-gradient-to-b text-[#334155]">
+  <view class="relative min-h-[calc(100vh-50px-env(safe-area-inset-bottom))] overflow-hidden from-[#E1F0FF] via-[#F0F7FF] to-[#F8FAFC] bg-gradient-to-b text-[#334155]">
     <view class="pointer-events-none absolute h-72 w-72 rounded-full bg-[#BAE6FD]/40 blur-3xl -right-10 -top-10" />
     <view class="pointer-events-none absolute top-32 h-56 w-56 rounded-full bg-[#E0F2FE]/50 blur-3xl -left-12" />
 
@@ -581,7 +581,7 @@ watch(
       </view>
     </view>
 
-    <view class="relative z-10 mt-4 px-4 pb-24">
+    <view class="relative z-10 mt-4 px-4 pb-6">
       <view class="mb-5 rounded-[26px] border border-white bg-white/78 px-4 py-3 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] backdrop-blur-md">
         <view class="flex items-center gap-2">
           <view class="i-carbon-search mr-2 text-xl text-[#94A3B8]" />

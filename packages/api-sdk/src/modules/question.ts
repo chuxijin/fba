@@ -3,13 +3,17 @@ import type {
   BatchImportParam,
   BatchImportResult,
   CreateQuestionParam,
+  GetQuestionDynamicCollectionItem,
   GetQuestionDetail,
   GetQuestionListItem,
   GetQuestionNoteDetail,
   GetQuestionSolution,
   GetQuestionStatisticsDetail,
   GetSessionQuestionsResponse,
+  QuestionCollectionParams,
   QuestionAnalysisItem,
+  QuestionCollectParam,
+  QuestionCollectResult,
   QuestionListParams,
   QuestionOptionStatsItem,
   UpdateQuestionParam,
@@ -20,9 +24,24 @@ export type QuestionListResult =
   | PageData<GetQuestionListItem>
   | GetQuestionListItem[];
 
+function normalizeCsvParam(value?: number[] | string[] | string) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  const normalized = value
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+  return normalized.length > 0 ? normalized.join(',') : undefined;
+}
+
 export interface QuestionModule {
   getDetail(id: number): Promise<GetQuestionDetail>;
   getList(params?: QuestionListParams): Promise<QuestionListResult>;
+  getCollections(params?: QuestionCollectionParams): Promise<GetQuestionDynamicCollectionItem[]>;
+  collect(data: QuestionCollectParam): Promise<QuestionCollectResult>;
   getAnalysis(id: number): Promise<QuestionAnalysisItem>;
   getSolution(id: number, userAnswer?: string): Promise<GetQuestionSolution>;
   getSessionQuestions(sessionId: number): Promise<GetSessionQuestionsResponse>;
@@ -50,6 +69,23 @@ export function createQuestionModule(client: ApiClient): QuestionModule {
       return client.get<QuestionListResult>('/questions', {
         params: params as Record<string, unknown>,
       });
+    },
+
+    getCollections(params) {
+      const resolvedParams = params
+        ? {
+            ...params,
+            knowledge_ids: normalizeCsvParam(params.knowledge_ids),
+            knowledge_names: normalizeCsvParam(params.knowledge_names),
+          }
+        : undefined;
+      return client.get<GetQuestionDynamicCollectionItem[]>('/questions/collections', {
+        params: resolvedParams as Record<string, unknown> | undefined,
+      });
+    },
+
+    collect(data) {
+      return client.post<QuestionCollectResult>('/questions/collect', data);
     },
 
     getAnalysis(id) {

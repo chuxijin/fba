@@ -160,6 +160,19 @@ export interface PracticeSessionQueryParam {
   chapter_id?: number;
 }
 
+export interface LatestPracticeSessionQuery {
+  session_type?: SessionType;
+  bank_id?: number;
+  chapter_id?: number;
+  cat_id?: number;
+  region?: string | null;
+  year_start?: number | null;
+  year_end?: number | null;
+  knowledge_point?: KnowledgePointValue[] | null;
+  practice_mode?: string | null;
+  source_key?: string | null;
+}
+
 /** 鎻愪氦缁冧範浼氳瘽鍙傛暟 */
 export interface SubmitPracticeSessionParam {
   total_time: number;

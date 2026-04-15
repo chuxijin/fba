@@ -17,6 +17,7 @@ class BankSchemaBase(SchemaBase):
     name: str = Field(max_length=128, description='题库名称')
     code: str = Field(max_length=32, description='业务编码')
     desc: str | None = Field(None, description='描述')
+    year: int | None = Field(None, ge=1900, le=2100, description='年份（试卷用）')
     cover_url: str | None = Field(None, description='封面地址')
     difficulty: Decimal | None = Field(None, ge=0, description='整体难度')
     bank_type: Literal[1, 2, 3] = Field(default=1, description='内容类型: 1=题库, 2=试卷, 3=合集')

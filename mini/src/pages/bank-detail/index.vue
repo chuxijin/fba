@@ -3,7 +3,10 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
 import MembershipModal from '@/components/MembershipModal.vue'
+import RenderBookExportPopup from '@/components/RenderBookExportPopup.vue'
 import { useMembershipStore, useTokenStore } from '@/store'
+import { exportMiniRenderBook } from '@/utils/renderBook'
+import type { ExportScope, RenderBookExportSubmitPayload } from '@/utils/renderBook'
 import { getAppSettings } from '@/utils/appSettings'
 import { isMembershipAccessError } from '@/utils/membershipAccess'
 
@@ -57,6 +60,12 @@ interface ChapterProgress {
   chapters: ChapterProgressNode[]
 }
 
+interface BankExportTarget {
+  scope: ExportScope
+  state: 'bank' | 'chapter'
+  chapterId?: number | null
+}
+
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const tokenStore = useTokenStore()
 const membershipStore = useMembershipStore()
@@ -69,6 +78,10 @@ const progress = ref<ChapterProgress | null>(null)
 const showMembershipModal = ref(false)
 const requiresMembership = ref(false)
 const initialized = ref(false)
+const exportingBank = ref(false)
+const exportingChapterId = ref<number | null>(null)
+const showExportPopup = ref(false)
+const exportTarget = ref<BankExportTarget | null>(null)
 
 const totalQuestionCount = computed(() => progress.value?.total_question_count ?? bank.value?.q_count_cache ?? 0)
 const totalAnswerCount = computed(() => progress.value?.total_answer_count ?? 0)
@@ -198,6 +211,94 @@ async function startPracticeByChapter(chapter: ChapterNode) {
 
     console.error('创建刷题会话失败:', error)
     uni.showToast({ title: '创建刷题会话失败', icon: 'none' })
+  }
+}
+
+async function exportBankQuestions() {
+  if (!tokenStore.updateNowTime().hasLogin) {
+    uni.showToast({ title: '请先登录', icon: 'none' })
+    return
+  }
+  if (!bank.value || exportingBank.value) {
+    return
+  }
+
+  exportTarget.value = {
+    scope: {
+      sourceType: 'placement',
+      templateKey: 'exam_paper',
+      title: `${bank.value.name}题本`,
+      bankId: bank.value.id,
+    },
+    state: 'bank',
+  }
+  showExportPopup.value = true
+}
+
+async function exportChapterQuestions(chapter: ChapterNode) {
+  if (!tokenStore.updateNowTime().hasLogin) {
+    uni.showToast({ title: '请先登录', icon: 'none' })
+    return
+  }
+  if (!bank.value || exportingChapterId.value === chapter.id) {
+    return
+  }
+
+  exportTarget.value = {
+    scope: {
+      sourceType: 'placement',
+      templateKey: 'exam_paper',
+      title: `${chapter.name}题本`,
+      bankId: bank.value.id,
+      chapterId: chapter.id,
+    },
+    state: 'chapter',
+    chapterId: chapter.id,
+  }
+  showExportPopup.value = true
+}
+
+async function submitExport(payload: RenderBookExportSubmitPayload) {
+  const target = exportTarget.value
+  if (!target) {
+    return
+  }
+
+  if (target.state === 'bank') {
+    exportingBank.value = true
+  } else {
+    exportingChapterId.value = target.chapterId ?? null
+  }
+
+  try {
+    await exportMiniRenderBook({
+      ...target.scope,
+      settings: payload.settings,
+      questionCount: payload.questionCount,
+      yearStart: payload.yearStart,
+      yearEnd: payload.yearEnd,
+    })
+  }
+  catch (error) {
+    if (isMembershipAccessError(error)) {
+      openMembershipModalByGuard()
+    }
+  }
+  finally {
+    if (target.state === 'bank') {
+      exportingBank.value = false
+    }
+    if (target.state === 'chapter' && exportingChapterId.value === target.chapterId) {
+      exportingChapterId.value = null
+    }
+    exportTarget.value = null
+  }
+}
+
+function handleExportPopupChange(value: boolean) {
+  showExportPopup.value = value
+  if (!value) {
+    exportTarget.value = null
   }
 }
 
@@ -390,12 +491,21 @@ onShow(() => {
                   </view>
                 </view>
               </view>
-              <view
-                v-if="chapter.children?.length"
-                class="ml-2 i-carbon-chevron-down text-lg text-[#94A3B8] transition-transform duration-300"
-                :style="{ transform: expandedChapters.has(chapter.id) ? 'rotate(180deg)' : 'rotate(0deg)' }"
-              />
-              <view v-else class="ml-2 i-carbon-chevron-right text-lg text-[#CBD5E1]" />
+              <view class="ml-2 flex items-center gap-2">
+                <view
+                  class="rounded-full border border-[#DBEAFE] px-3 py-1 text-[11px] text-[#2563EB] font-semibold"
+                  :class="exportingChapterId === chapter.id ? 'bg-[#EFF6FF] opacity-70' : 'bg-white'"
+                  @click.stop="exportChapterQuestions(chapter)"
+                >
+                  {{ exportingChapterId === chapter.id ? '导出中' : '导出题本' }}
+                </view>
+                <view
+                  v-if="chapter.children?.length"
+                  class="i-carbon-chevron-down text-lg text-[#94A3B8] transition-transform duration-300"
+                  :style="{ transform: expandedChapters.has(chapter.id) ? 'rotate(180deg)' : 'rotate(0deg)' }"
+                />
+                <view v-else class="i-carbon-chevron-right text-lg text-[#CBD5E1]" />
+              </view>
             </view>
 
             <!-- 子章节 -->
@@ -431,7 +541,16 @@ onShow(() => {
                     </view>
                   </view>
                 </view>
-                <view class="ml-2 i-carbon-chevron-right text-lg text-[#CBD5E1]" />
+                <view class="ml-2 flex items-center gap-2">
+                  <view
+                    class="rounded-full border border-[#DBEAFE] px-3 py-1 text-[11px] text-[#2563EB] font-semibold"
+                    :class="exportingChapterId === sub.id ? 'bg-[#EFF6FF] opacity-70' : 'bg-white'"
+                    @click.stop="exportChapterQuestions(sub)"
+                  >
+                    {{ exportingChapterId === sub.id ? '导出中' : '导出题本' }}
+                  </view>
+                  <view class="i-carbon-chevron-right text-lg text-[#CBD5E1]" />
+                </view>
               </view>
             </template>
           </view>
@@ -447,14 +566,25 @@ onShow(() => {
 
       <!-- 底部开始练习按钮 -->
       <view class="fixed bottom-0 left-0 right-0 z-30 border-t border-white/40 bg-white/95 px-5 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur-md">
-        <view
-          class="h-12 flex items-center justify-center rounded-2xl text-[16px] text-white font-black active:scale-[0.98]"
-          :class="requiresMembership && !membershipStore.isVip
-            ? 'from-[#F59E0B] to-[#B45309] bg-gradient-to-r shadow-[0_4px_14px_rgba(245,158,11,0.35)]'
-            : 'from-[#3B82F6] to-[#2563EB] bg-gradient-to-r shadow-[0_4px_14px_rgba(59,130,246,0.35)]'"
-          @click="startPracticeByBank"
-        >
-          {{ actionButtonLabel }}
+        <view class="flex items-center gap-3">
+          <view
+            class="h-12 flex flex-1 items-center justify-center rounded-2xl border border-[#DBEAFE] bg-white text-[15px] text-[#2563EB] font-bold active:scale-[0.98]"
+            :class="exportingBank ? 'opacity-70' : ''"
+            @click="exportBankQuestions"
+          >
+            <view v-if="exportingBank" class="i-carbon-circle-dash animate-spin text-lg mr-1.5" />
+            <view v-else class="i-carbon-document-pdf text-lg mr-1.5" />
+            {{ exportingBank ? '导出中...' : '导出题本' }}
+          </view>
+          <view
+            class="h-12 flex flex-[1.35] items-center justify-center rounded-2xl text-[16px] text-white font-black active:scale-[0.98]"
+            :class="requiresMembership && !membershipStore.isVip
+              ? 'from-[#F59E0B] to-[#B45309] bg-gradient-to-r shadow-[0_4px_14px_rgba(245,158,11,0.35)]'
+              : 'from-[#3B82F6] to-[#2563EB] bg-gradient-to-r shadow-[0_4px_14px_rgba(59,130,246,0.35)]'"
+            @click="startPracticeByBank"
+          >
+            {{ actionButtonLabel }}
+          </view>
         </view>
       </view>
     </template>
@@ -464,5 +594,12 @@ onShow(() => {
     </view>
 
     <MembershipModal v-model="showMembershipModal" />
+    <RenderBookExportPopup
+      :model-value="showExportPopup"
+      template-key="exam_paper"
+      :title="exportTarget?.scope.title || '导出题本'"
+      @update:model-value="handleExportPopupChange"
+      @confirm="submitExport"
+    />
   </view>
 </template>

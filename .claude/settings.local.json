@@ -73,7 +73,8 @@
       "Bash(for plugin:*)",
       "Bash(do)",
       "Read(//d/100_Work/101_Program/Proj/fba/backend/plugin/$plugin/**)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(gh api:*)"
     ],
     "deny": [],
     "ask": []

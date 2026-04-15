@@ -1,8 +1,10 @@
 export type AppThemeMode = 'light' | 'dark'
 export type AppPracticeMode = 'practice' | 'exam' | 'memorize'
+export type RandomPracticeYearRange = 'unlimited' | 'last_3_years' | 'last_5_years'
 
 export type AppSettings = {
   randomPracticeCount: number
+  randomPracticeYearRange: RandomPracticeYearRange
   themeMode: AppThemeMode
   practiceMode: AppPracticeMode
   wrongMasteryStreak: number
@@ -10,6 +12,7 @@ export type AppSettings = {
 
 const STORAGE_KEY = 'app_settings'
 const DEFAULT_RANDOM_PRACTICE_COUNT = 20
+const DEFAULT_RANDOM_PRACTICE_YEAR_RANGE: RandomPracticeYearRange = 'unlimited'
 const DEFAULT_WRONG_MASTERY_STREAK = 3
 const VALID_MASTERY_STREAKS = [1, 2, 3, 5]
 
@@ -29,6 +32,13 @@ function normalizePracticeMode(value: unknown): AppPracticeMode {
   return value === 'exam' || value === 'memorize' ? value : 'practice'
 }
 
+function normalizeRandomPracticeYearRange(value: unknown): RandomPracticeYearRange {
+  if (value === 'last_3_years' || value === 'last_5_years') {
+    return value
+  }
+  return 'unlimited'
+}
+
 function normalizeWrongMasteryStreak(value: unknown): number {
   const num = Number(value)
   if (!Number.isFinite(num) || !VALID_MASTERY_STREAKS.includes(num))
@@ -39,6 +49,7 @@ function normalizeWrongMasteryStreak(value: unknown): number {
 export function getDefaultAppSettings(): AppSettings {
   return {
     randomPracticeCount: DEFAULT_RANDOM_PRACTICE_COUNT,
+    randomPracticeYearRange: DEFAULT_RANDOM_PRACTICE_YEAR_RANGE,
     themeMode: 'light',
     practiceMode: 'practice',
     wrongMasteryStreak: DEFAULT_WRONG_MASTERY_STREAK,
@@ -56,6 +67,7 @@ export function getAppSettings(): AppSettings {
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
     return {
       randomPracticeCount: normalizeRandomPracticeCount(parsed?.randomPracticeCount),
+      randomPracticeYearRange: normalizeRandomPracticeYearRange(parsed?.randomPracticeYearRange),
       themeMode: normalizeThemeMode(parsed?.themeMode),
       practiceMode: normalizePracticeMode(parsed?.practiceMode),
       wrongMasteryStreak: normalizeWrongMasteryStreak(parsed?.wrongMasteryStreak),
@@ -110,6 +122,7 @@ export function saveAppSettings(nextSettings: Partial<AppSettings>) {
 
   const normalized: AppSettings = {
     randomPracticeCount: normalizeRandomPracticeCount(merged.randomPracticeCount),
+    randomPracticeYearRange: normalizeRandomPracticeYearRange(merged.randomPracticeYearRange),
     themeMode: normalizeThemeMode(merged.themeMode),
     practiceMode: normalizePracticeMode(merged.practiceMode),
     wrongMasteryStreak: normalizeWrongMasteryStreak(merged.wrongMasteryStreak),

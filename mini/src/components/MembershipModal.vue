@@ -24,7 +24,7 @@ const tierName = computed(() => membershipStore.tierName)
 const vipExpireLabel = computed(() => {
   const validTo = membershipStore.validTo
   if (!validTo) return ''
-  const d = new Date(validTo)
+  const d = new Date(validTo.replace(/-/g, '/'))
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 })
 
@@ -104,7 +104,7 @@ function closeModal() {
       <!-- 标题区 -->
       <view class="relative mb-6 mt-3 text-center">
         <view class="mb-2 flex items-center justify-center gap-2">
-          <view class="i-carbon-diamond text-2xl text-[#F59E0B]" />
+          <view class="i-carbon-trophy text-2xl text-[#F59E0B]" />
           <text class="from-[#F59E0B] to-[#B45309] bg-gradient-to-r bg-clip-text text-xl text-transparent font-bold tracking-wide">
             {{ isVip ? '续期会员' : '激活会员' }}
           </text>

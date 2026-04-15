@@ -77,7 +77,7 @@ class CRUDQuestion(CRUDPlus[Question]):
         return question
 
     async def get_by_ids(
-        self, db: AsyncSession, ids: list[int], include_analysis: bool = False
+        self, db: AsyncSession, ids: list[int], include_analysis: bool = False, include_materials: bool = False
     ) -> Sequence[Question]:
         """
         批量查询题目并保持原始顺序
@@ -98,6 +98,8 @@ class CRUDQuestion(CRUDPlus[Question]):
 
         if include_analysis:
             options_list.append(selectinload(Question.analyses))
+        if include_materials:
+            options_list.append(selectinload(Question.materials))
 
         stmt = select(Question).where(Question.id.in_(ids)).options(*options_list)
 
@@ -1065,7 +1067,10 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         :param obj: 更新统计参数
         """
         if DataBaseType.postgresql == settings.DATABASE_TYPE:
-            insert_stmt = postgresql.insert(QuestionStatistics).values({'question_id': question_id})
+            insert_stmt = postgresql.insert(QuestionStatistics).values({
+                'question_id': question_id,
+                'last_updated': datetime.now(),
+            })
             insert_stmt = insert_stmt.on_conflict_do_nothing(index_elements=[QuestionStatistics.question_id])
             await db.execute(insert_stmt)
         else:
@@ -1160,6 +1165,8 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         if not values:
             return
 
+        values['last_updated'] = datetime.now()
+
         stmt = (
             sa_update(QuestionStatistics)
             .where(QuestionStatistics.question_id == question_id)
@@ -1251,8 +1258,9 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     aggregated_item['option_select_counts'][normalized_key] = current_count + int(count or 0)
 
         question_ids = list(aggregated.keys())
+        insert_time = datetime.now()
         insert_stmt = postgresql.insert(QuestionStatistics).values([
-            {'question_id': question_id} for question_id in question_ids
+            {'question_id': question_id, 'last_updated': insert_time} for question_id in question_ids
         ])
         insert_stmt = insert_stmt.on_conflict_do_nothing(index_elements=[QuestionStatistics.question_id])
         await db.execute(insert_stmt)

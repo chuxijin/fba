@@ -147,6 +147,8 @@ const sdk = createFbaApiSdk({
 |------|------|
 | `getDetail(id)` | 获取题目详情 |
 | `getList(params?)` | 获取题目列表（分页） |
+| `getCollections(params?)` | 按筛选条件获取题目合集/题库卡片 |
+| `collect(data)` | 统一筛题，返回稳定 question_ids |
 | `getAnalysis(id)` | 获取题目解析 |
 | `getSolution(id, userAnswer?)` | 获取答案和解析 |
 | `markAnalysisHelpful(id, bool)` | 标记解析是否有帮助 |
@@ -158,6 +160,31 @@ const sdk = createFbaApiSdk({
 | `update(id, data)` | 更新题目 |
 | `remove(ids)` | 删除题目 |
 | `batchImport(data)` | 批量导入 |
+
+统一筛题典型用法：
+
+```typescript
+const collections = await sdk.question.getCollections({
+  cat_id: 12,
+  region: '江苏',
+  year_start: 2021,
+  year_end: 2025,
+  knowledge_names: ['资料分析', '判断推理'],
+});
+
+const collected = await sdk.question.collect({
+  source_type: 'placement',
+  cat_id: 12,
+  region: '江苏',
+  year_start: 2021,
+  year_end: 2025,
+  question_types: ['single'],
+  difficulties: ['medium'],
+  limit: 100,
+});
+
+const questionIds = collected.question_ids;
+```
 
 ### `sdk.practice` — 刷题
 

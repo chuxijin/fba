@@ -12,6 +12,8 @@ import { createOssModule } from './modules/oss';
 import type { OssModule } from './modules/oss';
 import { createMembershipModule } from './modules/membership';
 import type { MembershipModule } from './modules/membership';
+import { createRenderBookModule } from './modules/render-book';
+import type { RenderBookModule } from './modules/render-book';
 import { createContentModule } from './modules/content';
 import type { ContentModule } from './modules/content';
 import type { BankModule } from './modules/bank';
@@ -26,6 +28,7 @@ export interface FbaApiSdk {
   coulddrive: CoulddriveModule;
   oss: OssModule;
   membership: MembershipModule;
+  renderBook: RenderBookModule;
   content: ContentModule;
   bank: BankModule;
   material: MaterialModule;
@@ -42,6 +45,7 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
   const coulddrive = createCoulddriveModule(client);
   const oss = createOssModule(client);
   const membership = createMembershipModule(client);
+  const renderBook = createRenderBookModule(client);
   const content = createContentModule(client);
 
   return {
@@ -51,6 +55,7 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
     coulddrive,
     oss,
     membership,
+    renderBook,
     content,
     bank: qbank.bank,
     material: qbank.material,
@@ -69,6 +74,7 @@ export type { QbankModule } from './modules/qbank';
 export type { CoulddriveModule } from './modules/coulddrive';
 export type { OssModule } from './modules/oss';
 export type { MembershipModule } from './modules/membership';
+export type { RenderBookModule } from './modules/render-book';
 export type { ContentModule } from './modules/content';
 export type { BankModule } from './modules/bank';
 export type { MaterialModule } from './modules/material';
@@ -204,6 +210,26 @@ export type {
   OssUploadResult,
   MembershipBrief,
   MembershipPlanBrief,
+  RenderAnswerLayout,
+  RenderBookKind,
+  RenderBookMode,
+  RenderBookStatus,
+  RenderContentMode,
+  RenderDeliveryMode,
+  RenderFileKind,
+  RenderFileStatus,
+  RenderJobCreatePayload,
+  RenderJobFile,
+  RenderJobListParams,
+  RenderJobPageData,
+  RenderJobResult,
+  RenderOptions,
+  RenderOutputTargets,
+  RenderStorageType,
+  RenderTemplatePreviewRequest,
+  RenderTemplatePreviewResult,
+  RenderTemplateSummary,
+  RenderVariant,
+  SolutionMode,
 } from './types';
-
 

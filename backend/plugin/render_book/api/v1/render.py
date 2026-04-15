@@ -1,15 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, HTTPException, status
+from pathlib import Path
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse, RedirectResponse
+
+from backend.common.pagination import DependsPagination, PageData
+from backend.common.exception import errors
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
+from backend.database.db import CurrentSession
+from backend.plugin.render_book.schema.payload import RenderDocumentPayload
 from backend.plugin.render_book.schema.render import (
+    RenderArtifactKind,
+    RenderFileKind,
     RenderJobCreate,
+    RenderJobListParams,
     RenderJobRead,
+    RenderTemplatePresetCreate,
+    RenderTemplatePresetRead,
+    RenderTemplatePresetUpdate,
+    RenderTemplatePreviewRequest,
+    RenderTemplatePreviewResponse,
     RenderJobValidationResult,
     RenderTemplateDetail,
     RenderTemplateSummary,
+    RenderVariant,
 )
+from backend.plugin.render_book.service.preset_service import preset_service
 from backend.plugin.render_book.service.render_service import render_service
 
 router = APIRouter()
@@ -32,27 +50,296 @@ async def get_render_template(template_key: str) -> ResponseSchemaModel[RenderTe
     return response_base.success(data=template)
 
 
+@router.get('/presets', summary='获取模板预设列表')
+async def get_render_template_presets(
+    db: CurrentSession,
+    template_key: str | None = None,
+    is_active: bool | None = None,
+) -> ResponseSchemaModel[list[RenderTemplatePresetRead]]:
+    presets = await preset_service.list_presets(db=db, template_key=template_key, is_active=is_active)
+    return response_base.success(data=presets)
+
+
+@router.get('/presets/{preset_id}', summary='获取模板预设详情')
+async def get_render_template_preset(
+    preset_id: int,
+    db: CurrentSession,
+) -> ResponseSchemaModel[RenderTemplatePresetRead]:
+    preset = await preset_service.get_preset(db=db, preset_id=preset_id)
+    return response_base.success(data=preset)
+
+
+@router.post('/presets', summary='创建模板预设')
+async def create_render_template_preset(
+    payload: RenderTemplatePresetCreate,
+    db: CurrentSession,
+) -> ResponseSchemaModel[RenderTemplatePresetRead]:
+    preset = await preset_service.create_preset(db=db, payload=payload)
+    return response_base.success(data=preset)
+
+
+@router.put('/presets/{preset_id}', summary='更新模板预设')
+async def update_render_template_preset(
+    preset_id: int,
+    payload: RenderTemplatePresetUpdate,
+    db: CurrentSession,
+) -> ResponseSchemaModel[RenderTemplatePresetRead]:
+    preset = await preset_service.update_preset(db=db, preset_id=preset_id, payload=payload)
+    return response_base.success(data=preset)
+
+
+@router.delete('/presets/{preset_id}', summary='删除模板预设')
+async def delete_render_template_preset(
+    preset_id: int,
+    db: CurrentSession,
+) -> ResponseSchemaModel[None]:
+    await preset_service.delete_preset(db=db, preset_id=preset_id)
+    return response_base.success()
+
+
 @router.post('/jobs/validate', summary='校验题本渲染参数')
 async def validate_render_job(payload: RenderJobCreate) -> ResponseSchemaModel[RenderJobValidationResult]:
     result = await render_service.validate_job(payload)
     return response_base.success(data=result)
 
 
-@router.post('/jobs', summary='创建题本渲染任务')
-async def create_render_job(payload: RenderJobCreate) -> ResponseSchemaModel[RenderJobRead]:
+@router.post('/jobs/payload-preview', summary='预览题本标准化渲染数据')
+async def preview_render_payload(
+    payload: RenderJobCreate, db: CurrentSession,
+) -> ResponseSchemaModel[RenderDocumentPayload]:
     try:
-        job = await render_service.create_job(payload)
+        document = await render_service.preview_payload(db=db, payload=payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return response_base.success(data=document)
+
+
+@router.post('/templates/preview', summary='生成模板预览 PDF')
+async def preview_render_template_pdf(
+    payload: RenderTemplatePreviewRequest, db: CurrentSession,
+) -> ResponseSchemaModel[RenderTemplatePreviewResponse]:
+    try:
+        preview = await render_service.preview_template_pdf(db=db, payload=payload)
+        await db.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return response_base.success(data=preview)
+
+
+import asyncio
+import httpx
+
+async def _fetch_bing_image_url() -> str | None:
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get('https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1')
+            if resp.status_code == 200:
+                data = resp.json()
+                if 'images' in data and len(data['images']) > 0:
+                    # 获取高质量基础图片并加上基础域名
+                    return f"https://www.bing.com{data['images'][0]['url']}"
+    except Exception:
+        pass
+    return None
+
+async def _fetch_hitokoto() -> str | None:
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get('https://v1.hitokoto.cn/?c=k')
+            if resp.status_code == 200:
+                return resp.json().get('hitokoto')
+    except Exception:
+        pass
+    return None
+
+@router.post('/jobs', summary='创建题本渲染任务')
+async def create_render_job(
+    request: Request,
+    payload: RenderJobCreate,
+    db: CurrentSession,
+) -> ResponseSchemaModel[RenderJobRead]:
+    try:
+        user = getattr(request, 'user', None)
+        if user:
+            if not payload.metadata.get('user_id'):
+                # 题本任务应绑定到当前用户，方便「我的题本」分页查询与权限隔离。
+                payload.metadata['user_id'] = user.id
+            if 'practice_cover_username' not in payload.metadata:
+                payload.metadata['practice_cover_username'] = getattr(user, 'nickname', None) or getattr(user, 'username', '编者')
+            if 'practice_cover_avatar' not in payload.metadata:
+                avatar = getattr(user, 'avatar', '')
+                payload.metadata['practice_cover_avatar'] = str(avatar) if avatar else ''
+
+        if payload.template_key == 'practice':
+            tasks = []
+            if not payload.metadata.get('practice_cover_img'):
+                tasks.append(_fetch_bing_image_url())
+            else:
+                tasks.append(asyncio.sleep(0))
+                
+            if not payload.metadata.get('practice_cover_motto'):
+                tasks.append(_fetch_hitokoto())
+            else:
+                tasks.append(asyncio.sleep(0))
+                
+            results = await asyncio.gather(*tasks)
+            if results and len(results) == 2:
+                bing_url, motto = results[0], results[1]
+                if bing_url:
+                    payload.metadata['practice_cover_img'] = bing_url
+                if motto:
+                    payload.metadata['practice_cover_motto'] = motto
+
+        job = await render_service.create_job(payload, db=db)
+        await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return response_base.success(data=job)
 
 
+@router.get('/jobs', summary='分页查询题本渲染任务', dependencies=[DependsPagination])
+async def list_render_jobs(
+    request: Request,
+    params: Annotated[RenderJobListParams, Depends()],
+    db: CurrentSession,
+) -> ResponseSchemaModel[PageData[RenderJobRead]]:
+    # 非超级管理员：只能查看自己的任务，避免越权查询。
+    current_user = getattr(request, 'user', None)
+    if current_user and not current_user.is_superuser:
+        if params.user_id is not None and params.user_id != current_user.id:
+            raise errors.AuthorizationError(msg='无权限查看其他用户的题本任务')
+        params.user_id = current_user.id
+    page_data = await render_service.list_jobs(db=db, params=params)
+    return response_base.success(data=page_data)
+
+
+@router.post('/jobs/{job_id}/execute', summary='执行题本渲染任务')
+async def execute_render_job(
+    job_id: str,
+    db: CurrentSession,
+    upload_to_oss: bool = True,
+) -> ResponseSchemaModel[RenderJobRead]:
+    try:
+        job = await render_service.execute_job(db=db, job_id=job_id, upload_to_oss=upload_to_oss)
+        await db.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return response_base.success(data=job)
+
+
+@router.post('/jobs/{job_id}/dispatch', summary='后台触发题本渲染任务')
+async def dispatch_render_job(
+    job_id: str,
+    db: CurrentSession,
+    upload_to_oss: bool = True,
+) -> ResponseSchemaModel[RenderJobRead]:
+    job = await render_service.get_job(job_id, db=db)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Render job '{job_id}' not found.",
+        )
+    await render_service.dispatch_job(job_id=job_id, upload_to_oss=upload_to_oss)
+    return response_base.success(data=job)
+
+
 @router.get('/jobs/{job_id}', summary='查询题本渲染任务')
-async def get_render_job(job_id: str) -> ResponseSchemaModel[RenderJobRead]:
-    job = await render_service.get_job(job_id)
+async def get_render_job(job_id: str, db: CurrentSession) -> ResponseSchemaModel[RenderJobRead]:
+    job = await render_service.get_job(job_id, db=db)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Render job '{job_id}' not found.",
         )
     return response_base.success(data=job)
+
+
+@router.get('/jobs/{job_id}/files/{file_kind}', summary='下载题本正式文件')
+async def download_render_job_file(
+    job_id: str,
+    file_kind: RenderFileKind,
+    db: CurrentSession,
+    render_variant: RenderVariant | None = Query(default=None, description='指定渲染变体'),
+    inline: bool = Query(default=False, description='是否以内联方式打开'),
+    prefer_url: bool = Query(default=False, description='若存在 OSS 地址，是否优先跳转到 OSS'),
+):
+    try:
+        file_record = await render_service.get_job_file(
+            db=db,
+            job_id=job_id,
+            file_kind=file_kind,
+            render_variant=render_variant,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if prefer_url and file_record.url:
+        return RedirectResponse(url=file_record.url, status_code=status.HTTP_302_FOUND)
+
+    file_path = Path(file_record.local_path or '')
+    if not file_path.exists() or not file_path.is_file():
+        if file_record.url:
+            return RedirectResponse(url=file_record.url, status_code=status.HTTP_302_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='文件不存在，请重新执行渲染任务。')
+
+    return FileResponse(
+        path=file_path,
+        media_type=file_record.content_type or 'application/pdf',
+        filename=file_record.filename,
+        content_disposition_type='inline' if inline else 'attachment',
+    )
+
+
+@router.get('/jobs/{job_id}/artifacts/{render_variant}/{artifact_kind}', summary='获取渲染执行产物')
+async def get_render_job_artifact(
+    job_id: str,
+    render_variant: RenderVariant,
+    artifact_kind: RenderArtifactKind,
+    db: CurrentSession,
+):
+    artifact_path = await render_service.get_job_artifact_path(
+        db=db,
+        job_id=job_id,
+        render_variant=render_variant,
+        artifact_kind=artifact_kind,
+    )
+    media_type = 'application/pdf' if artifact_kind == 'pdf' else 'text/plain; charset=utf-8'
+    return FileResponse(
+        path=artifact_path,
+        media_type=media_type,
+        filename=artifact_path.name,
+        content_disposition_type='attachment',
+    )
+
+
+@router.get('/jobs/{job_id}/preview.pdf', summary='获取题本预览 PDF')
+async def get_render_job_preview_pdf(
+    job_id: str,
+    db: CurrentSession,
+    render_variant: RenderVariant | None = Query(default=None, description='指定预览渲染变体'),
+    prefer_url: bool = Query(default=False, description='若存在 OSS 地址，是否优先跳转到 OSS'),
+):
+    try:
+        file_record = await render_service.get_preview_pdf_file(
+            db=db,
+            job_id=job_id,
+            render_variant=render_variant,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if prefer_url and file_record.url:
+        return RedirectResponse(url=file_record.url, status_code=status.HTTP_302_FOUND)
+
+    file_path = Path(file_record.local_path or '')
+    if not file_path.exists() or not file_path.is_file():
+        if file_record.url:
+            return RedirectResponse(url=file_record.url, status_code=status.HTTP_302_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='预览 PDF 文件不存在，请重新生成预览。')
+
+    return FileResponse(
+        path=file_path,
+        media_type=file_record.content_type or 'application/pdf',
+        filename=file_record.filename,
+        content_disposition_type='inline',
+    )

@@ -1629,6 +1629,24 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
             raise ImportErrorBase(f"paper bank missing: {sample}")
         print(f"[DB] paper_banks_ok count={len(bank_map)}")
 
+        # 尽量同步试卷年份到题库表，避免 year_start/year_end 被误当成入库时间过滤。
+        year_updated = 0
+        for paper in paper_map.values():
+            if paper.year is None:
+                continue
+            bank = bank_map.get(f"{args.paper_code_prefix.upper()}_{paper.paper_id}")
+            if bank is None:
+                continue
+            current_year = getattr(bank, "year", None)
+            if current_year == paper.year:
+                continue
+            bank.year = paper.year
+            bank.updated_by = args.created_by
+            year_updated += 1
+        if year_updated:
+            await db.flush()
+            print(f"[DB] paper_bank_year_updated count={year_updated}")
+
         remote_qid_to_local_id: dict[int, int] = {}
         for paper in paper_map.values():
             bank = bank_map[f"{args.paper_code_prefix.upper()}_{paper.paper_id}"]
