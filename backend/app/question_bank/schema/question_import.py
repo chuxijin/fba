@@ -24,6 +24,8 @@ class QuestionImportRow(SchemaBase):
     解析: str | None = Field(None, description='解析内容')
     一级目录: str | None = Field(None, description='一级章节名称')
     二级目录: str | None = Field(None, description='二级章节名称')
+    知识点: str | None = Field(None, description='考点标签')
+    材料编号: str | int | None = Field(None, description='关联材料编号（对应材料 Sheet）')
 
 
 class BatchImportParam(SchemaBase):
@@ -31,6 +33,14 @@ class BatchImportParam(SchemaBase):
 
     bank_id: int = Field(gt=0, description='题库 ID')
     questions: list[QuestionImportRow] = Field(min_length=1, description='题目列表')
+
+
+class MaterialImportRow(SchemaBase):
+    """单条材料导入数据"""
+
+    材料编号: str | int = Field(description='材料唯一编号')
+    材料标题: str | None = Field(None, description='材料标题')
+    材料内容: str = Field(min_length=1, description='材料正文')
 
 
 class ImportResultItem(SchemaBase):
@@ -49,3 +59,10 @@ class BatchImportResult(SchemaBase):
     success_count: int = Field(ge=0, description='成功数')
     fail_count: int = Field(ge=0, description='失败数')
     details: list[ImportResultItem] = Field(default_factory=list, description='详情列表')
+
+
+class ExcelImportResult(BatchImportResult):
+    """Excel 导入结果"""
+
+    materials_count: int = Field(default=0, ge=0, description='材料导入数')
+    dedup_count: int = Field(default=0, ge=0, description='去重复用数')

@@ -45,11 +45,6 @@ from backend.app.question_bank.schema.question import (
     UpdateQuestionStatisticsParam,
     UpsertQuestionPlacementItem,
 )
-from backend.app.question_bank.schema.question_import import (
-    BatchImportParam,
-    BatchImportResult,
-    ImportResultItem,
-)
 from backend.common.exception import errors
 from backend.common.pagination import _CustomPage, _CustomPageParams
 from backend.database.redis import redis_client
@@ -463,9 +458,16 @@ class QuestionService:
                 for q in questions
             ]
 
-            params = _CustomPageParams(page=page, size=size)
-            page_data = _CustomPage.create(items=questions_dict, params=params, total=total)
-            return page_data.model_dump()
+            from math import ceil
+            total_pages = ceil(total / size) if size > 0 else 0
+            return {
+                'items': questions_dict,
+                'total': total,
+                'page': page,
+                'size': size,
+                'total_pages': total_pages,
+                'links': {'first': '', 'last': '', 'self': '', 'next': None, 'prev': None},
+            }
 
         questions = await question_dao.get_all(
             db,
@@ -778,7 +780,7 @@ class QuestionService:
                     )
 
             # 先记录旧挂载用于计算 cache delta
-            old_placements = await question_placement_dao.get_by_question(db, pk)
+            old_placements = await question_placement_dao.list_by_question_ids(db, question_ids=[pk])
             await question_placement_dao.replace_for_question(
                 db, question_id=pk, items=obj.placements, user_id=user_id,
             )
@@ -1062,206 +1064,6 @@ class QuestionService:
         await question_statistics_dao.update_stats(db, question_id, obj)
 
     # ------------------------------------------------------------------
-    #  批量导入
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    async def batch_import(*, db: AsyncSession, obj: BatchImportParam, user_id: int) -> BatchImportResult:
-        """
-        批量导入题目（复用 create 流程）
-        :param db: 数据库会话
-        :param obj: 批量导入参数
-        :param user_id: 用户 ID
-        :return:
-        """
-        bank = await bank_dao.get(db, obj.bank_id)
-        if not bank:
-            raise errors.NotFoundError(msg='Bank not found')
-
-        # 题型映射
-        type_mapping = {
-            '单选': 'single',
-            '单选题': 'single',
-            '多选': 'multiple',
-            '多选题': 'multiple',
-            '判断': 'judgement',
-            '判断题': 'judgement',
-            '填空': 'fill',
-            '填空题': 'fill',
-            '简答': 'shortAnswer',
-            '简答题': 'shortAnswer',
-        }
-
-        # 难度映射
-        difficulty_mapping = {
-            '简单': 'easy',
-            '中等': 'medium',
-            '困难': 'hard',
-        }
-
-        chapter_cache: dict[str, int] = {}
-
-        # ============ 第一阶段：验证所有数据 ============
-        validated_rows: list[dict] = []
-        validation_errors: list[ImportResultItem] = []
-
-        for row_index, row in enumerate(obj.questions, start=2):
-            try:
-                question_type = type_mapping.get(row.题型)
-                if not question_type:
-                    raise ValueError(f'不支持的题型：{row.题型}')
-
-                difficulty = difficulty_mapping.get(row.难度 or '中等', 'medium')
-
-                chapter_id = await QuestionService._get_or_create_chapter(
-                    db=db,
-                    bank_id=obj.bank_id,
-                    level1_name=row.一级目录,
-                    level2_name=row.二级目录,
-                    chapter_cache=chapter_cache,
-                )
-
-                options_data = None
-                if question_type in ['single', 'multiple', 'judgement']:
-                    options_data = {}
-                    for option_key in ['A', 'B', 'C', 'D']:
-                        option_value = getattr(row, f'选项{option_key}', None)
-                        if option_value:
-                            options_data[option_key] = {
-                                'code': option_key,
-                                'content': option_value,
-                            }
-
-                answer_data = QuestionService._parse_answer(row.答案, question_type)
-
-                default_score = Decimal(str(row.分数 if row.分数 is not None else 1))
-
-                validated_rows.append({
-                    'row_index': row_index,
-                    'question_type': question_type,
-                    'difficulty': difficulty,
-                    'chapter_id': chapter_id,
-                    'options_data': options_data,
-                    'answer_data': answer_data,
-                    'default_score': default_score,
-                    'stem': row.题目,
-                    'analysis_content': row.解析 if row.解析 else '暂无解析',
-                    'sort_order': int(row.ID) if row.ID is not None else row_index,
-                })
-
-            except Exception as e:
-                validation_errors.append(
-                    ImportResultItem(
-                        row_number=row_index,
-                        success=False,
-                        question_id=None,
-                        error_message=str(e),
-                    )
-                )
-
-        # 有验证错误，直接返回
-        if validation_errors:
-            return BatchImportResult(
-                total=len(obj.questions),
-                success_count=0,
-                fail_count=len(validation_errors),
-                details=validation_errors,
-            )
-
-        # ============ 第二阶段：复用 create 流程写入 ============
-        from backend.app.question_bank.schema.question import (
-            QuestionCoreBase,
-            UpsertQuestionAnalysisItem,
-            UpsertQuestionOptionItem,
-            UpsertQuestionPlacementItem,
-        )
-
-        results: list[ImportResultItem] = []
-        chapter_count: dict[int, int] = {}
-
-        for row_data in validated_rows:
-            # 构造嵌套 schema
-            core = QuestionCoreBase(
-                type=row_data['question_type'],
-                stem=row_data['stem'],
-                difficulty=row_data['difficulty'],
-                default_score=row_data['default_score'],
-            )
-
-            # 选项
-            options: list[UpsertQuestionOptionItem] = []
-            if row_data['options_data']:
-                for code, opt in row_data['options_data'].items():
-                    options.append(UpsertQuestionOptionItem(
-                        option_code=code,
-                        content=opt['content'],
-                        sort_order=ord(code) - ord('A'),
-                    ))
-
-            # 挂载
-            placements = [UpsertQuestionPlacementItem(
-                bank_id=obj.bank_id,
-                chapter_id=row_data['chapter_id'],
-                sort_order=row_data['sort_order'],
-                is_active=True,
-                score=row_data['default_score'],
-            )]
-
-            # 解析
-            analyses = [UpsertQuestionAnalysisItem(
-                answer_data=row_data['answer_data'],
-                content=row_data['analysis_content'],
-                is_default=True,
-            )]
-
-            create_param = CreateQuestionParam(
-                core=core,
-                options=options,
-                placements=placements,
-                analyses=analyses,
-            )
-
-            question = await QuestionService.create(db=db, obj=create_param, user_id=user_id)
-
-            results.append(
-                ImportResultItem(
-                    row_number=row_data['row_index'],
-                    success=True,
-                    question_id=question.id,
-                    error_message=None,
-                )
-            )
-
-            if row_data['chapter_id']:
-                chapter_count[row_data['chapter_id']] = chapter_count.get(row_data['chapter_id'], 0) + 1
-
-        success_count = len(validated_rows)
-
-        # ============ 第三阶段：更新 q_count_cache ============
-        if success_count > 0:
-            for chap_id, count in chapter_count.items():
-                await db.execute(
-                    update(QuestionChapter)
-                    .where(QuestionChapter.id == chap_id)
-                    .values(q_count_cache=QuestionChapter.q_count_cache + count)
-                )
-
-            await QuestionService._update_bank_q_count_cache_recursive(
-                db=db,
-                bank_id=obj.bank_id,
-                delta=success_count,
-            )
-
-            await db.flush()
-
-        return BatchImportResult(
-            total=len(obj.questions),
-            success_count=success_count,
-            fail_count=0,
-            details=results,
-        )
-
-    # ------------------------------------------------------------------
     #  内部工具
     # ------------------------------------------------------------------
 
@@ -1458,28 +1260,6 @@ class QuestionService:
             )
             parent_id = result.scalar()
             current_id = parent_id
-
-    @staticmethod
-    def _parse_answer(answer_str: str, question_type: str) -> dict:
-        """
-        解析答案字符串
-        :param answer_str: 答案字符串
-        :param question_type: 题型
-        :return:
-        """
-        if question_type in ['single', 'judgement']:
-            codes = QuestionService._extract_option_codes(answer_str)
-            return {'correct': codes[0] if codes else ''}
-
-        if question_type == 'multiple':
-            answers = QuestionService._extract_option_codes(answer_str)
-            return {'correct': sorted(set(answers))}
-
-        if question_type in ['fill', 'shortAnswer']:
-            answers = QuestionService._split_answer_text(answer_str)
-            return {'correct': answers}
-
-        return {'correct': answer_str}
 
 
 question_service: QuestionService = QuestionService()

@@ -1,16 +1,21 @@
+import asyncio
+import json
+import logging
 import os
 import re
-import json
 from pathlib import Path
-from typing import List
+from typing import Any, AsyncGenerator
+
 import httpx
-import logging
-import asyncio
-
+from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
-from backend.core.path_conf import UPLOAD_DIR
+from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.common.exception import errors
+from backend.core.conf import settings
+from backend.core.path_conf import UPLOAD_DIR
+from backend.utils.file_ops import upload_file
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +32,7 @@ class ParseService:
         images_dir = UPLOAD_DIR / "parsed_images" / images_dir_name
         images_dir.mkdir(parents=True, exist_ok=True)
         
-        api_key = os.environ.get("LLAMA_CLOUD_API_KEY")
+        api_key = os.environ.get("LLAMA_CLOUD_API_KEY") or getattr(settings, "LLAMA_CLOUD_API_KEY", None)
         if not api_key:
             raise ValueError("环境变量 LLAMA_CLOUD_API_KEY 未配置，无法调用 LlamaParse 服务")
 
@@ -193,7 +198,7 @@ class ParseService:
   "questions": [
     {
       "type": "single", // 题型: single/multiple/judgement/fill/shortAnswer 
-      "stem": "<p>...</p>", // 包含正文题干描述、原样图片等富文本或 Markdown。去除开头的“1. / 2. ”纯数字题号标识以保持纯净。
+      "stem": "<p>...</p>", // 包含正文题干描述。请务必彻底删除正文开头的任何形式的题号标识（如“1.”、“1、”、“(1)”、“1．”、“一、”、“【1】”、“第1题”等），保证题干纯净。
       "options_data": { // 单选/多选/判断可用。如果不适用则值为 null 
         "A": {"code": "A", "content": "选项A的内容(维持Markdown图片等)"},
         "B": {"code": "B", "content": "选项B的内容"}
@@ -213,7 +218,7 @@ class ParseService:
   ]
 }
       "type": "single", // 题型: single/multiple/judgement/fill/shortAnswer 
-      "stem": "<p>...</p>", // 包含正文题干描述、原样图片等富文本或 Markdown。去除开头的“1. / 2. ”纯数字题号标识以保持纯净。
+      "stem": "<p>...</p>", // 包含正文题干描述。请务必彻底删除正文开头的任何形式的题号标识（如“1.”、“1、”、“(1)”、“1．”、“一、”、“【1】”、“第1题”等），保证题干纯净。
       "options_data": { // 单选/多选/判断可用。如果不适用则值为 null 
         "A": {"code": "A", "content": "选项A的内容(维持Markdown图片等)"},
         "B": {"code": "B", "content": "选项B的内容"}
@@ -273,7 +278,7 @@ class ParseService:
             prompt_text = f"【当前{title}】：\n{text}\n\n注意：如果发现某道题或材料被开头/结尾截断了不完整，请**只提取完整的那些题目**，不要提取残缺的题目，残缺的题目会在下一个分片中被完整提取。"
             chat_param = AIChat(
                 provider_id=provider_id,
-                model_id="gpt-4o-2024-11-20", 
+                model_id="gpt-5.4", 
                 messages=[
                     AIChatMessage(role="system", content=system_prompt),
                     AIChatMessage(role="user", content=prompt_text)
@@ -348,7 +353,7 @@ class ParseService:
   "questions": [
     {
       "type": "single", // 题型: single/multiple/judgement/fill/shortAnswer 
-      "stem": "<p>...</p>", // 包含正文题干描述、原样图片等富文本或 Markdown。去除开头的“1. / 2. ”纯数字题号标识以保持纯净。
+      "stem": "<p>...</p>", // 包含正文题干描述。请务必彻底删除正文开头的任何形式的题号标识（如“1.”、“1、”、“(1)”、“1．”、“一、”、“【1】”、“第1题”等），保证题干纯净。
       "options_data": { // 单选/多选/判断可用。如果不适用则值为 null 
         "A": {"code": "A", "content": "选项A的内容(维持Markdown图片等)"},
         "B": {"code": "B", "content": "选项B的内容"}
@@ -399,7 +404,7 @@ class ParseService:
             prompt_text = f"【当前{title}】：\n{text}\n\n注意：如果发现某道题或材料被开头/结尾截断了不完整，请**只提取完整的那些题目**，不要提取残缺的题目，残缺的题目会在下一个分片中被完整提取。"
             chat_param = AIChat(
                 provider_id=provider_id,
-                model_id="gpt-4o-2024-11-20", 
+                model_id="gpt-5.4", 
                 messages=[
                     AIChatMessage(role="system", content=system_prompt),
                     AIChatMessage(role="user", content=prompt_text)
@@ -460,138 +465,231 @@ class ParseService:
         :param user_id: 操作用户 ID
         :return:
         """
-        from decimal import Decimal
+        from backend.app.question_bank.service.question_import_service import question_import_service
 
-        from backend.app.question_bank.crud.crud_bank import bank_dao
-        from backend.app.question_bank.crud.crud_material import material_dao
-        from backend.app.question_bank.schema.material import CreateMaterialParam
-        from backend.app.question_bank.schema.question import (
-            CreateQuestionParam,
-            QuestionCoreBase,
-            UpsertQuestionAnalysisItem,
-            UpsertQuestionOptionItem,
-            UpsertQuestionPlacementItem,
+        return await question_import_service.smart_commit(
+            db=db,
+            bank_id=bank_id,
+            materials_data=materials_data,
+            questions_data=questions_data,
+            user_id=user_id,
         )
-        from backend.app.question_bank.service.question_service import QuestionService, question_service
+
+    @staticmethod
+    async def upload_and_parse_pdf_file(file: UploadFile, request_base_url: str) -> dict[str, Any]:
+        """
+        上传并解析 PDF 试卷为 Markdown
+
+        :param file: 上传的文件对象
+        :param request_base_url: 请求基础 URL
+        :return: 包含 markdown 内容的字典
+        """
+        if not file.filename.lower().endswith('.pdf'):
+            raise ValueError('请上传 .pdf 格式文件')
+
+        temp_folder = 'temp_pdf'
+        filename = await upload_file(file, folder=temp_folder)
+        file_path = UPLOAD_DIR / filename
+
+        folder_name = file.filename.rsplit('.', 1)[0]
+        md_content = await ParseService.parse_pdf_to_markdown(
+            file_path=file_path,
+            images_dir_name=folder_name,
+            request_base_url=request_base_url,
+        )
+        return {'markdown': md_content}
+
+    @staticmethod
+    async def smart_extract_file(
+        db: AsyncSession,
+        file: UploadFile,
+        bank_id: int,
+        request_base_url: str,
+    ) -> dict[str, Any]:
+        """
+        智能提取 PDF/Markdown 文件中的题目结构（不入库）
+
+        :param db: 数据库会话
+        :param file: 上传的文件对象
+        :param bank_id: 题库 ID
+        :param request_base_url: 请求基础 URL
+        :return: 提取结果字典
+        """
+        is_pdf = file.filename.lower().endswith('.pdf')
+        is_md = file.filename.lower().endswith('.md')
+        if not (is_pdf or is_md):
+            raise ValueError('请上传 .pdf 或 .md 格式文件')
+
+        temp_folder = 'temp_pdf'
+        filename = await upload_file(file, folder=temp_folder)
+        file_path = UPLOAD_DIR / filename
 
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise ValueError('题库不存在')
+        folder_name = bank.name
 
-        # -------- 1. 保存公共材料 --------
-        material_id_map: dict[str | int, int] = {}
-        for m_data in materials_data:
-            create_material = CreateMaterialParam(
-                bank_id=bank_id,
-                title=m_data.get('title', '资料分析材料'),
-                content=m_data.get('content', ''),
-                is_active=True,
+        if is_pdf:
+            md_content = await ParseService.parse_pdf_to_markdown(
+                file_path=file_path,
+                images_dir_name=folder_name,
+                request_base_url=request_base_url,
             )
-            material = await material_dao.create(db, create_material, created_by=user_id)
-            await db.flush()
+        else:
+            md_content = await run_in_threadpool(file_path.read_text, encoding='utf-8')
 
-            temp_id = m_data.get('material_id')
-            if temp_id is not None:
-                material_id_map[temp_id] = material.id
+        extract_result = await ParseService.extract_questions_from_md(
+            db=db, md_content=md_content, provider_id=4,
+        )
 
-        # -------- 2. 逐题构建 CreateQuestionParam 并调用 service --------
-        chapter_cache: dict[str, int] = {}
-        success_count = 0
-
-        for q_data in questions_data:
-            # 2a. 章节处理
-            chapter_id = None
-            c_name = q_data.get('chapter_name')
-            if c_name:
-                chapter_id = await QuestionService._get_or_create_chapter(
-                    db=db, bank_id=bank_id, level1_name=c_name, level2_name=None, chapter_cache=chapter_cache,
-                )
-
-            # 2b. 基本字段
-            q_type = q_data.get('type') or 'single'
-            q_diff = q_data.get('difficulty') or 'medium'
-            q_default_score = Decimal(str(q_data.get('score') or '1.0'))
-
-            sort_order = q_data.get('sort_order')
-            if sort_order is None:
-                sort_order = success_count + 1
-            elif isinstance(sort_order, str) and sort_order.isdigit():
-                sort_order = int(sort_order)
-            elif not isinstance(sort_order, int):
-                sort_order = success_count + 1
-
-            knowledge_point = q_data.get('knowledge_point')
-            if isinstance(knowledge_point, str):
-                knowledge_point = [knowledge_point] if knowledge_point else None
-
-            # 2c. 构建 core
-            core = QuestionCoreBase(
-                type=q_type,
-                stem=q_data.get('stem') or '',
-                difficulty=q_diff,
-                default_score=q_default_score,
-                knowledge_point=knowledge_point,
-            )
-
-            # 2d. 构建选项
-            options: list[UpsertQuestionOptionItem] = []
-            raw_options = q_data.get('options_data')
-            if isinstance(raw_options, dict):
-                for code, opt in raw_options.items():
-                    content = opt.get('content', '') if isinstance(opt, dict) else str(opt)
-                    options.append(UpsertQuestionOptionItem(
-                        option_code=code.upper(),
-                        content=content,
-                        sort_order=ord(code.upper()) - ord('A'),
-                    ))
-
-            # 2e. 构建挂载（一题一挂载，挂到 bank + chapter）
-            placements = [UpsertQuestionPlacementItem(
-                bank_id=bank_id,
-                chapter_id=chapter_id,
-                sort_order=sort_order,
-                is_active=True,
-                score=q_default_score,
-                review_status=10,
-            )]
-
-            # 2f. 构建解析
-            answer_data = q_data.get('answer_data') or {}
-            analysis_content = q_data.get('analysis_content') or ''
-            analyses = [UpsertQuestionAnalysisItem(
-                type='official',
-                is_default=True,
-                answer_data=answer_data,
-                content=analysis_content or '暂无解析',
-            )]
-
-            # 2g. 材料关联
-            material_ids: list[int] | None = None
-            temp_mid = q_data.get('material_id')
-            if temp_mid is not None and temp_mid in material_id_map:
-                material_ids = [material_id_map[temp_mid]]
-
-            # 2h. 组装并调用 service.create
-            create_param = CreateQuestionParam(
-                core=core,
-                options=options,
-                placements=placements,
-                analyses=analyses,
-                material_ids=material_ids,
-            )
-            await question_service.create(db=db, obj=create_param, user_id=user_id)
-            success_count += 1
-
-        # -------- 3. 更新题库 q_count_cache --------
-        if success_count > 0:
-            await QuestionService._update_bank_q_count_cache_recursive(
-                db=db, bank_id=bank_id, delta=success_count,
-            )
-            await db.flush()
-
+        materials_data = extract_result.get('materials', [])
+        questions_data = extract_result.get('questions', [])
         return {
+            'materials': materials_data,
+            'questions': questions_data,
+            'raw_md_length': len(md_content),
             'materials_count': len(materials_data),
-            'questions_count': success_count,
+            'questions_count': len(questions_data),
         }
+
+    @staticmethod
+    async def smart_extract_file_stream(
+        db: AsyncSession,
+        file: UploadFile,
+        bank_id: int,
+        request_base_url: str,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """
+        智能流式提取 PDF/Markdown 中的题目结构
+
+        :param db: 数据库会话
+        :param file: 上传的文件对象
+        :param bank_id: 题库 ID
+        :param request_base_url: 请求基础 URL
+        :return: 流式生成器
+        """
+        is_pdf = file.filename.lower().endswith('.pdf')
+        is_md = file.filename.lower().endswith('.md')
+        if not (is_pdf or is_md):
+            raise ValueError('请上传 .pdf 或 .md 格式文件')
+
+        temp_folder = 'temp_pdf'
+        filename = await upload_file(file, folder=temp_folder)
+        file_path = UPLOAD_DIR / filename
+
+        bank = await bank_dao.get(db, bank_id)
+        if not bank:
+            raise ValueError('题库不存在')
+        folder_name = bank.name
+
+        if is_pdf:
+            md_content = await ParseService.parse_pdf_to_markdown(
+                file_path=file_path,
+                images_dir_name=folder_name,
+                request_base_url=request_base_url,
+            )
+        else:
+            md_content = await run_in_threadpool(file_path.read_text, encoding='utf-8')
+
+        async for chunk_result in ParseService.extract_questions_stream(db, md_content, provider_id=4):
+            yield chunk_result
+
+    @staticmethod
+    async def save_segments_to_disk(db: AsyncSession, bank_id: int, segments: list[dict]) -> dict[str, Any]:
+        """
+        将前端编辑后的分段 Markdown 保存到服务器文件系统
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :param segments: 分段数据列表
+        :return: 保存结果字典
+        """
+        bank = await bank_dao.get(db, bank_id)
+        if not bank:
+            raise ValueError('题库不存在')
+
+        base_dir = UPLOAD_DIR / 'parsed_md' / bank.name
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        saved_files = []
+        for seg in segments:
+            name = seg.get('name', '未命名分片')
+            content = seg.get('content', '')
+
+            safe_name = ''.join([c for c in name if c.isalnum() or c in (' ', '_', '-')]).rstrip()
+            file_path = base_dir / f'{safe_name}.md'
+
+            await run_in_threadpool(file_path.write_text, content, encoding='utf-8')
+            saved_files.append(str(file_path))
+
+        return {'count': len(saved_files), 'path': str(base_dir)}
+
+    @staticmethod
+    async def run_pipeline_with_file(
+        db: AsyncSession,
+        file: UploadFile,
+        bank_id: int,
+        request_base_url: str,
+        provider_id: int = 4,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """
+        智能导入流水线（PDF/MD → Excel）
+
+        :param db: 数据库会话
+        :param file: 上传的文件对象
+        :param bank_id: 题库 ID
+        :param request_base_url: 请求基础 URL
+        :param provider_id: AI 供应商 ID
+        :return: SSE 事件生成器
+        """
+        from backend.app.question_bank.service.pipeline_service import pipeline_service
+
+        is_pdf = file.filename.lower().endswith('.pdf')
+        is_md = file.filename.lower().endswith('.md')
+        if not (is_pdf or is_md):
+            raise ValueError('请上传 .pdf 或 .md 格式文件')
+
+        temp_folder = 'temp_pdf'
+        filename = await upload_file(file, folder=temp_folder)
+        file_path = UPLOAD_DIR / filename
+
+        bank = await bank_dao.get(db, bank_id)
+        if not bank:
+            raise ValueError('题库不存在')
+
+        file_type = 'pdf' if is_pdf else 'md'
+
+        async for event in pipeline_service.run_pipeline(
+            db=db,
+            file_path=file_path,
+            file_type=file_type,
+            bank_name=bank.name,
+            request_base_url=request_base_url,
+            provider_id=provider_id,
+        ):
+            yield event
+
+    @staticmethod
+    async def preview_segments_from_file(file: UploadFile) -> dict[str, Any]:
+        """
+        预览 Markdown 分段结果（兜底）
+
+        :param file: 上传的文件对象
+        :return: 分段预览结果
+        """
+        from backend.app.question_bank.service.pipeline_service import pipeline_service
+
+        if not file.filename.lower().endswith('.md'):
+            raise ValueError('请上传 .md 格式文件')
+
+        content = await file.read()
+        md_content = content.decode('utf-8')
+
+        segments = await run_in_threadpool(pipeline_service.preview_segments, md_content)
+        return {
+            'segments': segments,
+            'total_count': len(segments),
+        }
+
 
 parse_service = ParseService()

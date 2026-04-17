@@ -4,11 +4,9 @@ import json
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import StreamingResponse
-from starlette.concurrency import run_in_threadpool
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 
-from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.schema.parse import SaveSegmentsParam, SmartCommitParam
 from backend.app.question_bank.service.parse_service import parse_service
 from backend.common.response.response_code import CustomResponse
@@ -16,7 +14,6 @@ from backend.common.response.response_schema import ResponseSchemaModel, respons
 from backend.common.security.jwt import DependsJwtAuth
 from backend.core.path_conf import UPLOAD_DIR
 from backend.database.db import CurrentSessionTransaction
-from backend.utils.file_ops import upload_file
 
 log = logging.getLogger(__name__)
 
@@ -29,21 +26,14 @@ async def upload_and_parse_pdf(
     file: Annotated[UploadFile, File()],
 ) -> Any:
     """上传 PDF 试卷，用 LlamaParse 智能提取 Markdown 和图片"""
-    if not file.filename.lower().endswith('.pdf'):
-        return response_base.fail(res=CustomResponse(code=400, msg='请上传 .pdf 格式文件'))
-
-    temp_folder = 'temp_pdf'
-    filename = await upload_file(file, folder=temp_folder)
-    file_path = UPLOAD_DIR / filename
-
     try:
-        folder_name = file.filename.rsplit('.', 1)[0]
-        md_content = await parse_service.parse_pdf_to_markdown(
-            file_path=file_path,
-            images_dir_name=folder_name,
+        data = await parse_service.upload_and_parse_pdf_file(
+            file=file,
             request_base_url=str(request.base_url),
         )
-        return response_base.success(data={'markdown': md_content})
+        return response_base.success(data=data)
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=str(e)))
     except Exception as e:
         log.exception('解析 PDF 失败')
         return response_base.fail(res=CustomResponse(code=400, msg=f'解析失败: {e}'))
@@ -62,43 +52,16 @@ async def smart_extract_pdf(
     file: Annotated[UploadFile, File(...)],
 ) -> Any:
     """智能提取 PDF/Markdown 文件中的题目结构（不入库）"""
-    is_pdf = file.filename.lower().endswith('.pdf')
-    is_md = file.filename.lower().endswith('.md')
-    if not (is_pdf or is_md):
-        return response_base.fail(res=CustomResponse(code=400, msg='请上传 .pdf 或 .md 格式文件'))
-
-    temp_folder = 'temp_pdf'
-    filename = await upload_file(file, folder=temp_folder)
-    file_path = UPLOAD_DIR / filename
-
-    bank = await bank_dao.get(db, bank_id)
-    if not bank:
-        return response_base.fail(res=CustomResponse(code=400, msg='题库不存在'))
-    folder_name = bank.name
-
     try:
-        if is_pdf:
-            md_content = await parse_service.parse_pdf_to_markdown(
-                file_path=file_path,
-                images_dir_name=folder_name,
-                request_base_url=str(request.base_url),
-            )
-        else:
-            md_content = await run_in_threadpool(file_path.read_text, encoding='utf-8')
-
-        extract_result = await parse_service.extract_questions_from_md(
-            db=db, md_content=md_content, provider_id=4,
+        data = await parse_service.smart_extract_file(
+            db=db,
+            file=file,
+            bank_id=bank_id,
+            request_base_url=str(request.base_url),
         )
-
-        materials_data = extract_result.get('materials', [])
-        questions_data = extract_result.get('questions', [])
-        return response_base.success(data={
-            'materials': materials_data,
-            'questions': questions_data,
-            'raw_md_length': len(md_content),
-            'materials_count': len(materials_data),
-            'questions_count': len(questions_data),
-        })
+        return response_base.success(data=data)
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=str(e)))
     except Exception as e:
         log.exception('智能提取失败')
         return response_base.fail(res=CustomResponse(code=400, msg=f'智能提取失败: {e}'))
@@ -117,36 +80,20 @@ async def smart_extract_pdf_stream(
     file: Annotated[UploadFile, File(...)],
 ) -> Any:
     """智能流式提取 PDF/Markdown 中的题目结构"""
-    is_pdf = file.filename.lower().endswith('.pdf')
-    is_md = file.filename.lower().endswith('.md')
-    if not (is_pdf or is_md):
-        return response_base.fail(res=CustomResponse(code=400, msg='请上传 .pdf 或 .md 格式文件'))
-
-    temp_folder = 'temp_pdf'
-    filename = await upload_file(file, folder=temp_folder)
-    file_path = UPLOAD_DIR / filename
-
-    bank = await bank_dao.get(db, bank_id)
-    if not bank:
-        return response_base.fail(res=CustomResponse(code=400, msg='题库不存在'))
-    folder_name = bank.name
-
     try:
-        if is_pdf:
-            md_content = await parse_service.parse_pdf_to_markdown(
-                file_path=file_path,
-                images_dir_name=folder_name,
-                request_base_url=str(request.base_url),
-            )
-        else:
-            md_content = await run_in_threadpool(file_path.read_text, encoding='utf-8')
-
         async def event_generator():
-            async for chunk_result in parse_service.extract_questions_stream(db, md_content, provider_id=4):
+            async for chunk_result in parse_service.smart_extract_file_stream(
+                db=db,
+                file=file,
+                bank_id=bank_id,
+                request_base_url=str(request.base_url),
+            ):
                 yield f"data: {json.dumps(chunk_result, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(event_generator(), media_type='text/event-stream')
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=str(e)))
     except Exception as e:
         log.exception('智能流式提取失败')
         return response_base.fail(res=CustomResponse(code=400, msg=f'智能流式提取失败: {e}'))
@@ -191,25 +138,100 @@ async def save_segments(
 ) -> ResponseSchemaModel:
     """将前端编辑后的分段 Markdown 保存到服务器文件系统"""
     try:
-        bank = await bank_dao.get(db, param.bank_id)
-        if not bank:
-            return response_base.fail(res=CustomResponse(code=400, msg='题库不存在'))
-
-        base_dir = UPLOAD_DIR / 'parsed_md' / bank.name
-        base_dir.mkdir(parents=True, exist_ok=True)
-
-        saved_files = []
-        for seg in param.segments:
-            name = seg.get('name', '未命名分片')
-            content = seg.get('content', '')
-
-            safe_name = ''.join([c for c in name if c.isalnum() or c in (' ', '_', '-')]).rstrip()
-            file_path = base_dir / f'{safe_name}.md'
-
-            await run_in_threadpool(file_path.write_text, content, encoding='utf-8')
-            saved_files.append(str(file_path))
-
-        return response_base.success(data={'count': len(saved_files), 'path': str(base_dir)})
+        data = await parse_service.save_segments_to_disk(
+            db=db,
+            bank_id=param.bank_id,
+            segments=param.segments,
+        )
+        return response_base.success(data=data)
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=str(e)))
     except Exception as e:
         log.exception('保存分段失败')
         return response_base.fail(res=CustomResponse(code=400, msg=f'保存失败: {e}'))
+
+
+# ============ 智能导入流水线 ============
+
+
+@router.post(
+    '/pipeline',
+    summary='智能导入流水线（PDF/MD → Excel）',
+    name='qbank_pipeline',
+    dependencies=[DependsJwtAuth],
+)
+async def run_pipeline(
+    request: Request,
+    db: CurrentSessionTransaction,
+    bank_id: Annotated[int, Form(...)],
+    file: Annotated[UploadFile, File(...)],
+    provider_id: Annotated[int, Form()] = 4,
+) -> Any:
+    """主流水线接口：上传 PDF/MD → SSE 流式推送进度 → 最终返回 Excel 下载链接"""
+    try:
+        async def event_generator():
+            try:
+                async for event in parse_service.run_pipeline_with_file(
+                    db=db,
+                    file=file,
+                    bank_id=bank_id,
+                    request_base_url=str(request.base_url),
+                    provider_id=provider_id,
+                ):
+                    yield f'data: {json.dumps(event, ensure_ascii=False)}\n\n'
+                yield 'data: [DONE]\n\n'
+            except Exception as e:
+                log.exception('流水线执行异常中断')
+                yield f'data: {json.dumps({"type": "error", "message": f"系统发生崩溃: {str(e)}"}, ensure_ascii=False)}\n\n'
+
+        return StreamingResponse(event_generator(), media_type='text/event-stream')
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=str(e)))
+    except Exception as e:
+        log.exception('流水线启动失败')
+        return response_base.fail(res=CustomResponse(code=400, msg=f'流水线启动失败: {e}'))
+
+
+@router.get(
+    '/pipeline/download',
+    summary='下载流水线生成的 Excel',
+    name='qbank_pipeline_download',
+    dependencies=[DependsJwtAuth],
+)
+async def download_pipeline_excel(
+    filename: Annotated[str, Query(description='Excel 文件名（如 pipeline_export/xxx.xlsx）')],
+) -> Any:
+    """下载流水线生成的 Excel 文件"""
+    safe_name = filename.replace('\\', '/').replace('..', '')
+    if not safe_name.startswith('pipeline_export/'):
+        return response_base.fail(res=CustomResponse(code=400, msg='非法文件路径'))
+
+    file_path = UPLOAD_DIR / safe_name
+    if not file_path.exists():
+        return response_base.fail(res=CustomResponse(code=404, msg='文件不存在'))
+
+    return FileResponse(
+        path=file_path,
+        filename=file_path.name,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+@router.post(
+    '/preview-segments',
+    summary='预览 Markdown 分段结果（兜底）',
+    name='qbank_preview_segments',
+    dependencies=[DependsJwtAuth],
+)
+async def preview_segments(
+    file: Annotated[UploadFile, File(...)],
+) -> Any:
+    """仅预览分段结果，不调用 AI。用于校验正则分段质量。支持上传 .md 文件，返回按题号切割的分段列表。"""
+    try:
+        data = await parse_service.preview_segments_from_file(file=file)
+        return response_base.success(data=data)
+    except ValueError as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=str(e)))
+    except Exception as e:
+        log.exception('预览分段失败')
+        return response_base.fail(res=CustomResponse(code=400, msg=f'预览分段失败: {e}'))

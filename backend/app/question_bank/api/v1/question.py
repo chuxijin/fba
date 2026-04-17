@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Path, Query, Request
+from fastapi import APIRouter, Body, File, Form, Path, Query, Request, UploadFile
+from fastapi.responses import StreamingResponse
 
 from backend.app.question_bank.schema.note import GetQuestionNoteDetail
 from backend.app.question_bank.schema.practice import GetQuestionSolution, GetSessionQuestionsResponse
@@ -22,14 +23,17 @@ from backend.app.question_bank.schema.question import (
 from backend.app.question_bank.schema.question_import import (
     BatchImportParam,
     BatchImportResult,
+    ExcelImportResult,
 )
 from backend.app.question_bank.service.favorite_service import favorite_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.note_service import note_service
 from backend.app.question_bank.service.question_selector_service import question_selector_service
+from backend.app.question_bank.service.question_import_service import question_import_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.session_service import session_service
 from backend.common.pagination import PageData
+from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.rbac import DependsRBAC
@@ -534,8 +538,150 @@ async def batch_import_questions(
     - 同时创建题目和解析记录
     - 返回详细的导入结果
     """
-    data = await question_service.batch_import(db=db, obj=obj, user_id=request.user.id)
+    data = await question_import_service.batch_import(db=db, obj=obj, user_id=request.user.id)
     return response_base.success(data=data)
+
+
+@router.post(
+    '/import-excel',
+    summary='从 Excel 文件导入题目',
+    name='qbank_import_from_excel',
+    dependencies=[DependsRBAC],
+)
+async def import_from_excel(
+    request: Request,
+    db: CurrentSessionTransaction,
+    bank_id: Annotated[int, Form(description='目标题库 ID')],
+    file: Annotated[UploadFile, File(description='Excel 文件（.xlsx）')],
+) -> ResponseSchemaModel[ExcelImportResult]:
+    """
+    从 Excel 导入题目
+
+    - Sheet1「题目」：必填，包含题目数据
+    - Sheet2「材料」：可选，包含公共材料
+    - 支持题干去重：已存在的题目仅新增挂载
+    """
+    import io
+
+    import pandas as pd
+    from starlette.concurrency import run_in_threadpool
+
+    from backend.app.question_bank.schema.question_import import MaterialImportRow, QuestionImportRow
+
+    if not file.filename or not file.filename.lower().endswith(('.xlsx', '.xls')):
+        return response_base.fail(res=CustomResponse(code=400, msg='请上传 .xlsx 格式文件'))
+
+    content = await file.read()
+    excel_bytes = io.BytesIO(content)
+
+    # 读取 Sheet1（题目）
+    try:
+        df_questions = await run_in_threadpool(pd.read_excel, excel_bytes, sheet_name=0)
+    except Exception as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=f'读取 Excel 题目页失败: {e}'))
+
+    df_questions = df_questions.where(df_questions.notna(), None)
+    question_rows: list[QuestionImportRow] = []
+    for _, pandas_row in df_questions.iterrows():
+        row_dict = {}
+        col_map = {
+            '序号': 'ID', '题型': '题型', '题目': '题目',
+            '选项A': '选项A', '选项B': '选项B', '选项C': '选项C', '选项D': '选项D',
+            '答案': '答案', '解析': '解析', '难度': '难度', '分数': '分数',
+            '一级目录': '一级目录', '二级目录': '二级目录',
+            '知识点': '知识点', '材料编号': '材料编号',
+        }
+        for excel_col, schema_col in col_map.items():
+            if excel_col in pandas_row.index:
+                val = pandas_row[excel_col]
+                if pd.notna(val) and val is not None:
+                    row_dict[schema_col] = val
+        if not row_dict.get('题目') or not row_dict.get('答案'):
+            continue
+        if not row_dict.get('题型'):
+            row_dict['题型'] = '单选'
+        question_rows.append(QuestionImportRow(**row_dict))
+
+    if not question_rows:
+        return response_base.fail(res=CustomResponse(code=400, msg='Excel 中没有有效题目数据'))
+
+    # 读取 Sheet2（材料，可选）
+    material_rows: list[MaterialImportRow] = []
+    try:
+        excel_bytes.seek(0)
+        df_materials = await run_in_threadpool(pd.read_excel, excel_bytes, sheet_name=1)
+        df_materials = df_materials.where(df_materials.notna(), None)
+        for _, pandas_row in df_materials.iterrows():
+            mat_id = pandas_row.get('材料编号')
+            mat_content = pandas_row.get('材料内容')
+            if pd.notna(mat_id) and pd.notna(mat_content) and mat_id:
+                mat_title = pandas_row.get('材料标题')
+                material_rows.append(MaterialImportRow(
+                    材料编号=str(mat_id),
+                    材料标题=mat_title if pd.notna(mat_title) else None,
+                    材料内容=str(mat_content),
+                ))
+    except Exception:
+        pass
+
+    data = await question_import_service.import_from_excel(
+        db=db,
+        bank_id=bank_id,
+        question_rows=question_rows,
+        material_rows=material_rows,
+        user_id=request.user.id,
+    )
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/import-template',
+    summary='下载题目导入 Excel 模板',
+    name='qbank_import_template',
+    dependencies=[DependsJwtAuth],
+)
+async def download_import_template() -> StreamingResponse:
+    """下载空白 Excel 导入模板"""
+    import io
+
+    from openpyxl import Workbook
+    from starlette.concurrency import run_in_threadpool
+
+    def build_template() -> bytes:
+        """构建 Excel 模板"""
+        wb = Workbook()
+
+        # Sheet1: 题目
+        ws1 = wb.active
+        ws1.title = '题目'
+        ws1.append([
+            '序号', '题型', '题目', '选项A', '选项B', '选项C', '选项D',
+            '答案', '解析', '难度', '分数', '一级目录', '二级目录',
+            '知识点', '材料编号',
+        ])
+        ws1.append([
+            1, '单选', '下列关于宪法的说法，正确的是（ ）',
+            '宪法具有最高法律效力', '宪法由全国人大常委会制定',
+            '宪法修改由国务院提议', '宪法不具有直接法律效力',
+            'A', '根据《宪法》规定，宪法具有最高法律效力。',
+            '中等', 1, '常识判断', None, '宪法学', None,
+        ])
+
+        # Sheet2: 材料
+        ws2 = wb.create_sheet('材料')
+        ws2.append(['材料编号', '材料标题', '材料内容'])
+        ws2.append(['M1', '资料分析材料一', '根据以下资料，回答 1-5 题。（材料正文...）'])
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+    content = await run_in_threadpool(build_template)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': 'attachment; filename=question_import_template.xlsx'},
+    )
 
 
 # ============ 会话题目批量获取接口 ============

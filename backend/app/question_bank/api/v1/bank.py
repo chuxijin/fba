@@ -126,6 +126,7 @@ async def get_bank_list(
     summary='创建题库',
     name='qbank_create_bank',
     dependencies=[
+        DependsJwtAuth,
         Depends(RequestPermission('question_bank:bank:create')),
         DependsRBAC,
     ],
@@ -141,6 +142,7 @@ async def create_bank(request: Request, db: CurrentSessionTransaction, obj: Crea
     summary='更新题库',
     name='qbank_update_bank',
     dependencies=[
+        DependsJwtAuth,
         Depends(RequestPermission('question_bank:bank:update')),
         DependsRBAC,
     ],
@@ -160,6 +162,7 @@ async def update_bank(
     summary='删除题库',
     name='qbank_delete_bank',
     dependencies=[
+        DependsJwtAuth,
         Depends(RequestPermission('question_bank:bank:delete')),
         DependsRBAC,
     ],

@@ -44,7 +44,7 @@ def normalize_html_text(text: str) -> str:
     return "".join(f"<p>{html.escape(line)}</p>" for line in lines)
 
 
-async def fetch_materials(client: httpx.AsyncClient, token: str, decoded_id: str) -> list[str]:
+async def fetch_materials(client: httpx.AsyncClient, token: str, cookie: str, decoded_id: str) -> list[str]:
     """从 SaDuck 拉取一套试卷的材料列表"""
     resp = await client.post(
         SADUCK_DETAIL_URL,
@@ -56,7 +56,8 @@ async def fetch_materials(client: httpx.AsyncClient, token: str, decoded_id: str
             "Origin": "https://saduck.top",
             "Referer": "https://saduck.top/my/sl.html",
             "token": token,
-            "User-Agent": "Mozilla/5.0",
+            "Cookie": cookie,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         },
     )
     resp.raise_for_status()
@@ -68,10 +69,10 @@ async def fetch_materials(client: httpx.AsyncClient, token: str, decoded_id: str
 
 
 async def get_target_banks(db: AsyncSession) -> list[QuestionBank]:
-    """找到所有 cat_id=34（申论）的试卷级 bank，且有题但没有材料的"""
+    """找到所有包含“申论”字样的试卷级 bank，且有题但没有材料的"""
     res = await db.execute(
         select(QuestionBank)
-        .where(QuestionBank.cat_id == 34, QuestionBank.bank_type == 2)
+        .where(QuestionBank.name.like("%申论%"), QuestionBank.bank_type == 2)
         .order_by(QuestionBank.id)
     )
     banks = res.scalars().all()
@@ -90,11 +91,9 @@ async def get_target_banks(db: AsyncSession) -> list[QuestionBank]:
 
 
 async def main() -> None:
-    token = input("请输入 SaDuck token: ").strip()
-    if not token:
-        raise SystemExit("token 不能为空")
-
-    dry_run = input("是否 DryRun（仅演练不写入）[y/N]: ").strip().lower() in ("y", "yes")
+    token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ2aXBFbmRUaW1lIjoiMTc2ODU1Mzc0MTAwMCIsInNpZ24iOiIxNTE3NjY3OTMxIiwidmlwVHlwZSI6IjAiLCJ2aXBTdGFydFRpbWUiOiIxNzY4Mjk0NTQxMDAwIiwiZXhwIjoxNzc3NzgxMjQ1LCJlbWFpbCI6IjE5Mzk2NjU0ODZAcXEuY29tIn0.w7CvQInzIYEe-nApq2bdpVc1Vt9ox2hXRSXe_pRwtTc"
+    cookie = "Hm_lvt_d3ab3946905b5536bc580f3f6b637c21=1776053223,1776309570; Hm_lpvt_d3ab3946905b5536bc580f3f6b637c21=1776309570; HMACCOUNT=58055C267AFDEC95"
+    dry_run = False
 
     async with async_db_session() as db:
         print("\n[DB] 扫描申论 bank...")
@@ -121,7 +120,7 @@ async def main() -> None:
                 print(f"[{i}/{len(targets)}] bank={bank.id} | {bank.name}")
 
                 try:
-                    materials_raw = await fetch_materials(client, token, decoded_id)
+                    materials_raw = await fetch_materials(client, token, cookie, decoded_id)
                 except Exception as exc:
                     print(f"  [ERROR] 拉取失败: {exc}")
                     skip_count += 1
