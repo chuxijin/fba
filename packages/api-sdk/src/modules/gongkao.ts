@@ -7,16 +7,12 @@ import type {
   GkCiyuResult,
   GkGangweiParams,
   GkGangweiResult,
-  GkGuanmeiParams,
-  GkGuanmeiResult,
   GkMaterialParams,
   GkMaterialResult,
   GkQuestionAnswerResult,
   GkQuestionOptionResult,
   GkQuestionParams,
   GkQuestionResult,
-  GkShipingParams,
-  GkShipingResult,
   GkShizhenParams,
   GkShizhenResult,
   GongkaoEntity,
@@ -41,23 +37,6 @@ export interface GongkaoModule {
     create(data: GongkaoEntity): Promise<void>;
     update(id: number, data: GongkaoEntity): Promise<void>;
     remove(ids: number[]): Promise<void>;
-  };
-  guanmei: {
-    getDetail(id: number): Promise<GkGuanmeiResult>;
-    getList(params?: GkGuanmeiParams): Promise<PageData<GkGuanmeiResult>>;
-    create(data: GongkaoEntity): Promise<void>;
-    update(id: number, data: GongkaoEntity): Promise<void>;
-    remove(ids: number[]): Promise<void>;
-    incrementView(id: number): Promise<void>;
-  };
-  shiping: {
-    getDetail(id: number): Promise<GkShipingResult>;
-    getList(params?: GkShipingParams): Promise<PageData<GkShipingResult>>;
-    create(data: GongkaoEntity): Promise<void>;
-    update(id: number, data: GongkaoEntity): Promise<void>;
-    remove(ids: number[]): Promise<void>;
-    incrementView(id: number): Promise<void>;
-    exportPdf<T = unknown>(id: number): Promise<T>;
   };
   zhenti: {
     question: {
@@ -174,23 +153,6 @@ export function createGongkaoModule(client: ApiClient): GongkaoModule {
       create(data) { return request.post('/shizhen', data); },
       update(id, data) { return request.put(`/shizhen/${id}`, data); },
       remove(ids) { return request.delete('/shizhen', { ids }); },
-    },
-    guanmei: {
-      getDetail(id) { return request.get<GkGuanmeiResult>(`/guanmei/${id}`); },
-      getList(params) { return request.get<PageData<GkGuanmeiResult>>('/guanmei', { params: params as Record<string, unknown> }); },
-      create(data) { return request.post('/guanmei', data); },
-      update(id, data) { return request.put(`/guanmei/${id}`, data); },
-      remove(ids) { return request.delete('/guanmei', { ids }); },
-      incrementView(id) { return request.post(`/guanmei/${id}/view`); },
-    },
-    shiping: {
-      getDetail(id) { return request.get<GkShipingResult>(`/shiping/${id}`); },
-      getList(params) { return request.get<PageData<GkShipingResult>>('/shiping', { params: params as Record<string, unknown> }); },
-      create(data) { return request.post('/shiping', data); },
-      update(id, data) { return request.put(`/shiping/${id}`, data); },
-      remove(ids) { return request.delete('/shiping', { ids }); },
-      incrementView(id) { return request.post(`/shiping/${id}/view`); },
-      exportPdf(id) { return request.raw({ method: 'GET', url: `/shiping/${id}/pdf` }); },
     },
     zhenti: {
       question: {

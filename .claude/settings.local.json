@@ -74,7 +74,8 @@
       "Bash(do)",
       "Read(//d/100_Work/101_Program/Proj/fba/backend/plugin/$plugin/**)",
       "Bash(done)",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "Bash(node --check 'D:/100_Work/101_Program/Proj/youanshang/app/api/gongkao.ts')"
     ],
     "deny": [],
     "ask": []

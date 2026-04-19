@@ -46,42 +46,6 @@ export interface GkCiyuParams extends PaginationParams {
   frequency?: number;
 }
 
-export interface GkGuanmeiResult {
-  id: number;
-  daily_date: string;
-  left_content: string;
-  right_content: string;
-  view_count: number;
-  created_time: string;
-  updated_time?: string;
-}
-
-export interface GkGuanmeiParams extends PaginationParams {
-  daily_date?: string;
-}
-
-export interface GkShipingResult {
-  id: number;
-  title?: string;
-  source?: string;
-  author?: string;
-  keywords?: string;
-  content?: string;
-  summary?: string;
-  daily_date?: string;
-  view_count?: number;
-  created_time?: string;
-  updated_time?: string;
-}
-
-export interface GkShipingParams extends PaginationParams {
-  title?: string;
-  source?: string;
-  author?: string;
-  keywords?: string;
-  daily_date?: string;
-}
-
 export interface GkQuestionResult {
   id: number;
   title: string;
