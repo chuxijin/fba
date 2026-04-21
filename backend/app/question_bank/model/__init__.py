@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """题库模型导出"""
 
+from .ai_evaluation import PracticeAIEvaluation
 from .bank import QuestionBank
 from .banner import Banner
 from .chapter import QuestionChapter
@@ -24,6 +25,7 @@ from .statistics import UserCheckIn, UserDailyRank, UserPracticeStats
 from .user import UserAccount
 
 __all__ = [
+    'PracticeAIEvaluation',
     'QuestionBank',
     'QuestionChapter',
     'Question',

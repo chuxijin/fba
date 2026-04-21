@@ -1,9 +1,14 @@
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import { fbaApi } from '@/api/sdk'
 import LoginModal from '@/components/LoginModal.vue'
 import MembershipModal from '@/components/MembershipModal.vue'
+import { useCachedAvatar } from '@/hooks/useCachedAvatar'
 import { useMembershipStore, useTokenStore, useUserStore } from '@/store'
+import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
+import { STUDY_DOMAIN_OPTIONS, getStudyDomainOption, type StudyDomainCode } from '@/utils/studyDomain'
+import { mergeCachedStudyPreference } from '@/utils/studyPreferenceCache'
 import {
   clearLoginRedirect,
   consumeLoginAutoOpen,
@@ -28,8 +33,9 @@ const tokenStore = useTokenStore()
 const membershipStore = useMembershipStore()
 const showLoginModal = ref(false)
 const showMembershipModal = ref(false)
+const currentDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
-const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix'
+const DEFAULT_AVATAR = '/static/images/default-avatar.png'
 
 const hasLogin = computed(() => tokenStore.hasLogin)
 const isVip = computed(() => membershipStore.isVip)
@@ -41,14 +47,16 @@ const isSvip = computed(() => {
   }
   return /^SVIP/i.test(tierName.value)
 })
+const currentDomainLabel = computed(() => getStudyDomainOption(currentDomain.value).label)
 
-const displayAvatar = computed(() => {
+const avatarSource = computed(() => {
   if (!hasLogin.value) {
     return DEFAULT_AVATAR
   }
 
   return userStore.userInfo.avatar || DEFAULT_AVATAR
 })
+const displayAvatar = useCachedAvatar(avatarSource, DEFAULT_AVATAR)
 
 const displayNickname = computed(() => {
   if (!hasLogin.value) {
@@ -102,9 +110,6 @@ function handleLogin() {
   uni.navigateTo({ url: '/pages/profile/index' })
 }
 
-function toFenbiTest() {
-  uni.navigateTo({ url: '/pages/test-ui/index' })
-}
 
 function openServicePage(url: string) {
   tokenStore.updateNowTime()
@@ -137,7 +142,39 @@ function openMembershipModal() {
   showMembershipModal.value = true
 }
 
+function chooseStudyDomain() {
+  uni.showActionSheet({
+    itemList: STUDY_DOMAIN_OPTIONS.map(item => item.label),
+    success: async (res) => {
+      const nextDomain = STUDY_DOMAIN_OPTIONS[Number(res.tapIndex)]?.code
+      if (!nextDomain || nextDomain === currentDomain.value) {
+        return
+      }
+
+      currentDomain.value = nextDomain
+      saveAppSettings({ currentDomain: nextDomain })
+
+      if (tokenStore.updateNowTime().hasLogin) {
+        try {
+          await fbaApi.qbank.settings.updateStudyPreference({
+            current_domain: nextDomain,
+          } as any)
+          mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), {
+            current_domain: nextDomain,
+          })
+        }
+        catch (error) {
+          console.error('保存当前领域失败:', error)
+        }
+      }
+
+      uni.showToast({ title: `已切换到${getStudyDomainOption(nextDomain).shortLabel}`, icon: 'none' })
+    },
+  })
+}
+
 onShow(() => {
+  currentDomain.value = getAppSettings().currentDomain
   void syncLoginState().finally(() => {
     maybeOpenLoginModal()
   })
@@ -185,14 +222,22 @@ onShow(() => {
               </text>
             </view>
           </view>
-          <view
-            class="mt-1.5 inline-block rounded-md px-2.5 py-0.5 text-[11px] font-bold"
-            :class="isVip
-              ? 'border border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]'
-              : 'border border-[#E9D5FF] bg-[#F3E8FF] text-[#7E22CE]'"
-            @click.stop="openMembershipModal"
-          >
-            {{ isVip ? '查看会员权益' : '完善目标院校，资料推荐更准' }}
+          <view class="mt-1.5 flex flex-wrap items-center gap-2">
+            <view
+              class="inline-flex items-center rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-0.5 text-[11px] text-[#1D4ED8] font-bold"
+              @click.stop="chooseStudyDomain"
+            >
+              当前领域：{{ currentDomainLabel }}
+            </view>
+            <view
+              class="inline-block rounded-md px-2.5 py-0.5 text-[11px] font-bold"
+              :class="isVip
+                ? 'border border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]'
+                : 'border border-[#E9D5FF] bg-[#F3E8FF] text-[#7E22CE]'"
+              @click.stop="openMembershipModal"
+            >
+              {{ isVip ? '查看会员权益' : '完善目标院校，资料推荐更准' }}
+            </view>
           </view>
         </view>
         <view class="h-8 w-8 flex items-center justify-center text-[#1E293B]">
@@ -233,20 +278,6 @@ onShow(() => {
             <text class="text-[11px] text-[#64748B] font-medium">我的笔记</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openFeedbackPage">
-            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#8B5CF6] shadow-inner">
-              <view class="i-carbon-idea text-[22px]" />
-            </view>
-            <text class="text-[11px] text-[#64748B] font-medium">意见反馈</text>
-          </view>
-
-          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/settings/index')">
-            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#8B5CF6] shadow-inner">
-              <view class="i-carbon-settings text-[22px]" />
-            </view>
-            <text class="text-[11px] text-[#64748B] font-medium">设置</text>
-          </view>
-
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-render-books/index')">
             <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FFF7ED] text-[#EA580C] shadow-inner">
               <view class="i-carbon-book text-[22px]" />
@@ -254,7 +285,26 @@ onShow(() => {
             <text class="text-[11px] text-[#64748B] font-medium">我的题本</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95" @click="toFenbiTest">`n              <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FDF4FF] text-[#D946EF] shadow-inner">`n                <view class="i-carbon-headset text-[22px]" />`n              </view>`n              <text class="text-[11px] text-[#64748B] font-medium">专属客服</text>`n            </view>
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openFeedbackPage">
+            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#8B5CF6] shadow-inner">
+              <view class="i-carbon-idea text-[22px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">意见反馈</text>
+          </view>
+
+          <button open-type="contact" class="m-0 flex flex-col items-center bg-transparent p-0 leading-normal transition-transform active:scale-95 after:border-0">
+            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FDF4FF] text-[#D946EF] shadow-inner">
+              <view class="i-carbon-headset text-[22px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">专属客服</text>
+          </button>
+
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/settings/index')">
+            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#8B5CF6] shadow-inner">
+              <view class="i-carbon-settings text-[22px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">设置</text>
+          </view>
         </view>
       </view>
     </view>
@@ -263,5 +313,3 @@ onShow(() => {
     <MembershipModal v-model="showMembershipModal" />
   </view>
 </template>
-
-

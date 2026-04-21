@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import cast, or_, select
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload, load_only, selectinload
 
 from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
@@ -25,7 +25,9 @@ from backend.app.question_bank.crud.crud_wrong_question import wrong_question_da
 from backend.app.question_bank.model import (
     PracticeRecord,
     PracticeSession,
+    OptionContent,
     Question,
+    QuestionAnalysis,
     QuestionOption,
     QuestionPlacement,
     SessionQuestion,
@@ -41,8 +43,13 @@ from backend.app.question_bank.schema.practice import (
     SubmitPracticeSessionParam,
     SubmitPracticeSessionResult,
 )
+from backend.app.question_bank.service.ai_evaluation_service import (
+    SUBJECTIVE_QUESTION_TYPES,
+    practice_ai_evaluation_service,
+)
 from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
+from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.common.exception import errors
 
 log = logging.getLogger(__name__)
@@ -759,19 +766,29 @@ class SessionService:
             q_result = await db.execute(stmt)
             question_map: dict[int, Question] = {q.id: q for q in q_result.scalars().all()}
 
-            judge_results: list[dict[str, Any]] = []
+            judge_results_map: dict[int, dict[str, Any]] = {}
             judge_time = datetime.now()
             for rd in records_dict:
                 question = question_map.get(rd['question_id'])
                 if not question:
-                    judge_results.append({
-                        'question_id': rd['question_id'], 'is_correct': None, 'correct_answer': None,
-                    })
+                    judge_results_map[rd['question_id']] = {
+                        'question_id': rd['question_id'],
+                        'is_correct': None,
+                        'correct_answer': None,
+                    }
                     continue
 
                 analysis = None
                 if question.analyses:
                     analysis = next((a for a in question.analyses if a.is_default), question.analyses[0])
+
+                if question.type in SUBJECTIVE_QUESTION_TYPES:
+                    judge_results_map[rd['question_id']] = {
+                        'question_id': rd['question_id'],
+                        'is_correct': None,
+                        'correct_answer': None,
+                    }
+                    continue
 
                 is_correct = False
                 correct_answer = None
@@ -781,23 +798,90 @@ class SessionService:
                         question.type, rd['user_answer'], analysis.answer_data,
                     )
 
-                judge_results.append({
+                full = sq_map[rd['question_id']].full_score if rd['question_id'] in sq_map else rd.get('full_score', Decimal('0'))
+
+                judge_results_map[rd['question_id']] = {
                     'question_id': rd['question_id'],
                     'is_correct': is_correct,
                     'correct_answer': correct_answer,
-                })
+                    'score': full if is_correct else Decimal('0'),
+                    'full_score': full,
+                }
 
                 # 将判题结果合并到记录中，后续统一 upsert
-                full = sq_map[rd['question_id']].full_score if rd['question_id'] in sq_map else rd.get('full_score', Decimal('0'))
                 rd['is_correct'] = is_correct
                 rd['score'] = full if is_correct else Decimal('0')
                 rd['judged_at'] = judge_time
 
-            result['judge_results'] = judge_results
+            result['judge_results'] = list(judge_results_map.values())
 
-        # 统一写入（含即时判题结果）
+        # 统一写入（含即时判题结果），并复用返回记录避免再次拉取整套会话记录
+        upserted_records: list[PracticeRecord] = []
         if records_dict:
-            await practice_record_dao.batch_upsert(db=db, records=records_dict)
+            upserted_records = await practice_record_dao.batch_upsert(db=db, records=records_dict)
+
+        if allow_judge_now and records_dict:
+            upserted_record_map = {record.question_id: record for record in upserted_records}
+
+            judge_results_list = result.get('judge_results', [])
+            for judge_item in judge_results_list:
+                question_id = judge_item.get('question_id')
+                upserted_record = upserted_record_map.get(question_id)
+                if upserted_record:
+                    judge_item['record_id'] = upserted_record.id
+
+            subjective_question_ids = {
+                rd['question_id']
+                for rd in records_dict
+                if (question_map.get(rd['question_id']) and question_map[rd['question_id']].type in SUBJECTIVE_QUESTION_TYPES)
+            }
+            if subjective_question_ids:
+                target_records = [record for record in upserted_records if record.question_id in subjective_question_ids]
+                try:
+                    subjective_evaluations = await practice_ai_evaluation_service.evaluate_subjective_records(
+                        db=db,
+                        session=session,
+                        records=target_records,
+                        question_map=question_map,
+                        trigger_source='auto',
+                        force_regenerate=True,
+                        judge_version=None,
+                    )
+                except Exception as exc:
+                    log.exception('即时 AI 判分失败: session_id=%s error=%s', obj.session_id, exc)
+                    subjective_evaluations = {}
+
+                judge_results_by_question = {item['question_id']: item for item in judge_results_list}
+                for record in target_records:
+                    evaluation = subjective_evaluations.get(record.id)
+                    target_result = judge_results_by_question.get(record.question_id)
+                    if not target_result:
+                        target_result = {'question_id': record.question_id}
+                        judge_results_list.append(target_result)
+                        judge_results_by_question[record.question_id] = target_result
+
+                    if not evaluation:
+                        target_result['is_correct'] = None
+                        target_result['error_message'] = 'AI 判分暂时失败，请稍后重试'
+                        continue
+
+                    target_result['ai_evaluation_id'] = evaluation.id
+                    target_result['correct_answer'] = (
+                        evaluation.result_payload.get('reference_answer')
+                        if evaluation.result_payload else None
+                    )
+                    if evaluation.status == 'succeeded':
+                        target_result['is_correct'] = (evaluation.score or Decimal('0')) >= (
+                            (evaluation.max_score or Decimal('1')) * Decimal('0.60')
+                        )
+                        target_result['score'] = evaluation.score
+                        target_result['full_score'] = evaluation.max_score
+                        target_result['summary_text'] = evaluation.summary_text
+                    else:
+                        target_result['is_correct'] = None
+                        target_result['error_message'] = evaluation.error_message
+
+                result['judge_results'] = judge_results_list
 
         # 同步会话进度 + 增量更新用户统计快照
         if records_dict:
@@ -805,14 +889,17 @@ class SessionService:
             await practice_session_dao.update_model(db, obj.session_id, {'completed_count': completed_count})
 
         if allow_judge_now and records_dict:
-            judged = [r for r in records_dict if r.get('is_correct') is not None]
+            judged = [
+                record for record in upserted_records
+                if record.is_correct is not None
+            ]
             if judged:
                 await user_practice_stats_dao.increment(
                     db=db,
                     user_id=user_id,
                     answered=len(judged),
-                    correct=sum(1 for r in judged if r['is_correct']),
-                    duration=sum(r.get('answer_time', 0) for r in judged),
+                    correct=sum(1 for record in judged if record.is_correct),
+                    duration=sum(record.answer_time for record in judged),
                 )
 
         return result
@@ -923,7 +1010,7 @@ class SessionService:
         sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session_questions}
 
         submit_time = datetime.now()
-        judge_version = obj.judge_version
+        judge_version = obj.judge_version or 'rule_v1'
 
         # 读取用户错题掌握阈值
         from backend.app.question_bank.service.user_settings_service import user_settings_service
@@ -947,6 +1034,34 @@ class SessionService:
             (wrong.question_id, wrong.placement_id): wrong for wrong in existing_wrongs
         }
 
+        subjective_records = [
+            record
+            for record in records
+            if (question_map.get(record.question_id) and question_map[record.question_id].type in SUBJECTIVE_QUESTION_TYPES)
+        ]
+        subjective_eval_map: dict[int, Any] = {}
+        if subjective_records:
+            subjective_eval_map = await practice_ai_evaluation_service.evaluate_subjective_records(
+                db=db,
+                session=session,
+                records=subjective_records,
+                question_map=question_map,
+                trigger_source='auto',
+                force_regenerate=True,
+                judge_version=judge_version,
+            )
+            failed_subjective_records = [
+                record.seq_no
+                for record in subjective_records
+                if (
+                    record.id not in subjective_eval_map
+                    or subjective_eval_map[record.id].status != 'succeeded'
+                )
+            ]
+            if failed_subjective_records:
+                seq_text = '、'.join(str(item) for item in failed_subjective_records[:10])
+                raise errors.RequestError(msg=f'主观题 AI 判分失败，请稍后重试。题序：{seq_text}')
+
         # 3. 遍历判题
         for record in records:
             question = question_map.get(record.question_id)
@@ -958,18 +1073,27 @@ class SessionService:
             if question.analyses:
                 analysis = next((a for a in question.analyses if a.is_default), question.analyses[0])
 
-            is_correct = False
-            if analysis and analysis.answer_data:
-                is_correct = question_service.check_answer(
-                    question.type,
-                    record.user_answer,
-                    analysis.answer_data,
-                )
-
             # 计算得分
             sq = sq_map.get(record.question_id)
             full = sq.full_score if sq else record.full_score
-            score = full if is_correct else Decimal('0')
+            if question.type in SUBJECTIVE_QUESTION_TYPES:
+                evaluation = subjective_eval_map.get(record.id)
+                if not evaluation or evaluation.status != 'succeeded':
+                    raise errors.RequestError(msg=f'题目 {record.seq_no} AI 判分失败，请稍后重试')
+                score = evaluation.score or Decimal('0')
+                full = evaluation.max_score or full
+                is_correct = score >= (full * Decimal('0.60'))
+                record_judge_version = evaluation.prompt_version or 'subjective_eval_v1'
+            else:
+                is_correct = False
+                if analysis and analysis.answer_data:
+                    is_correct = question_service.check_answer(
+                        question.type,
+                        record.user_answer,
+                        analysis.answer_data,
+                    )
+                score = full if is_correct else Decimal('0')
+                record_judge_version = judge_version
             total_score += full
             earned_score += score
             if is_correct:
@@ -988,7 +1112,7 @@ class SessionService:
                 'is_correct': is_correct,
                 'score': score,
                 'judged_at': submit_time,
-                'judge_version': judge_version,
+                'judge_version': record_judge_version,
             })
 
             # 3a. 提取选中的选项编码
@@ -1216,14 +1340,16 @@ class SessionService:
         :param user_id: 用户 ID
         :return: 逐题解析列表
         """
-        session = await SessionService._get_owned_session_detail(
+        session = await SessionService._get_owned_session(
             db=db,
             session_id=session_id,
             user_id=user_id,
         )
+        session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
+        records = await practice_record_dao.get_by_session(db=db, session_id=session_id)
 
         # 批量查题目 + 解析 + 选项
-        question_ids = [sq.question_id for sq in session.session_questions]
+        question_ids = [sq.question_id for sq in session_questions]
         if not question_ids:
             return []
 
@@ -1231,17 +1357,33 @@ class SessionService:
             select(Question)
             .where(Question.id.in_(question_ids))
             .options(
-                selectinload(Question.analyses),
-                selectinload(Question.options).joinedload(QuestionOption.content_ref),
+                load_only(Question.id, Question.stem, Question.type),
+                selectinload(Question.analyses).load_only(
+                    QuestionAnalysis.id,
+                    QuestionAnalysis.question_id,
+                    QuestionAnalysis.answer_data,
+                    QuestionAnalysis.content,
+                    QuestionAnalysis.is_default,
+                ),
+                selectinload(Question.options)
+                .load_only(
+                    QuestionOption.id,
+                    QuestionOption.question_id,
+                    QuestionOption.option_code,
+                    QuestionOption.sort_order,
+                    QuestionOption.is_active,
+                )
+                .joinedload(QuestionOption.content_ref)
+                .load_only(OptionContent.content),
             )
         )
         result = await db.execute(stmt)
         question_map: dict[int, Question] = {q.id: q for q in result.scalars().all()}
 
-        record_map: dict[int, PracticeRecord] = {r.question_id: r for r in session.records}
+        record_map: dict[int, PracticeRecord] = {record.question_id: record for record in records}
 
         solutions: list[dict] = []
-        for sq in session.session_questions:
+        for sq in session_questions:
             q = question_map.get(sq.question_id)
             if not q:
                 continue
@@ -1294,24 +1436,37 @@ class SessionService:
         if not session_questions:
             return {'questions': [], 'materials': []}
 
-        # 获取当前题库基础信息（用于识别科目）
-        bank_info = None
-        if session.bank_id:
+        placement_ids = [sq.placement_id for sq in session_questions if sq.placement_id]
+        placement_bank_map: dict[int, int] = {}
+        if placement_ids:
+            placement_stmt = select(QuestionPlacement.id, QuestionPlacement.bank_id).where(
+                QuestionPlacement.id.in_(placement_ids)
+            )
+            placement_rows = (await db.execute(placement_stmt)).all()
+            placement_bank_map = {row.id: row.bank_id for row in placement_rows}
+
+        bank_ids = sorted(set(placement_bank_map.values()))
+        bank_info_map: dict[int, Any] = {}
+        bank_material_map: dict[int, list[int]] = {}
+        if bank_ids:
             from backend.app.question_bank.model.bank import QuestionBank
-            bank_info = await db.get(QuestionBank, session.bank_id)
-
-        # 识别是否为“申论”场景：题库名称包含申论，或者特定的分类 ID (需根据实际业务调整，此处暂以名称关键字作为强依据)
-        is_shenlun = False
-        if bank_info and ("申论" in bank_info.name or (bank_info.desc and "申论" in bank_info.desc)):
-            is_shenlun = True
-
-        # 获取当前试卷/题库统一绑定的可能材料
-        bank_material_ids = []
-        if session.bank_id:
             from backend.app.question_bank.model.question import QuestionMaterial
-            b_stmt = select(QuestionMaterial.id).where(QuestionMaterial.bank_id == session.bank_id)
-            b_result = await db.execute(b_stmt)
-            bank_material_ids = list(b_result.scalars().all())
+
+            bank_stmt = select(QuestionBank).where(QuestionBank.id.in_(bank_ids))
+            bank_rows = (await db.execute(bank_stmt)).scalars().all()
+            bank_info_map = {bank.id: bank for bank in bank_rows}
+
+            bank_material_stmt = (
+                select(QuestionMaterial.id, QuestionMaterial.bank_id)
+                .where(
+                    QuestionMaterial.bank_id.in_(bank_ids),
+                    QuestionMaterial.is_active.is_(True),
+                )
+                .order_by(QuestionMaterial.bank_id.asc(), QuestionMaterial.sort_order.asc(), QuestionMaterial.id.asc())
+            )
+            bank_material_rows = (await db.execute(bank_material_stmt)).all()
+            for row in bank_material_rows:
+                bank_material_map.setdefault(row.bank_id, []).append(row.id)
 
         # 2. 批量查询题目详情（含选项和材料关联）
         question_ids = [sq.question_id for sq in session_questions]
@@ -1328,18 +1483,6 @@ class SessionService:
 
         # 3. 构建题目列表（按 seq_no 排序）
         questions_list: list[dict[str, Any]] = []
-        all_referenced_material_ids: set[int] = set()
-
-        # 首先预扫描所有题目引用的材料 ID
-        for sq in session_questions:
-            question = question_map.get(sq.question_id)
-            if question and question.materials:
-                for m in question.materials:
-                    all_referenced_material_ids.add(m.id)
-
-        # 题库中未被任何题目显式引用的材料，视为“全卷通用材料”
-        unreferenced_bank_material_ids = [mid for mid in bank_material_ids if mid not in all_referenced_material_ids]
-
         all_material_ids: set[int] = set()
         for sq in session_questions:
             question = question_map.get(sq.question_id)
@@ -1359,15 +1502,13 @@ class SessionService:
 
             # 提取材料 ID 列表
             material_ids = [m.id for m in question.materials] if question.materials else []
-            
-            # 继承策略：
-            # 1. 如果是申论，由于材料往往挂在 Bank 上，且题目可能未显式关联，强制把 Bank 材料塞给它
-            # 2. 如果不是申论，但本题没材料且 Bank 存在“未被引用”的通用材料，则继承之
             if not material_ids:
-                if is_shenlun and bank_material_ids:
-                    material_ids = list(bank_material_ids)
-                elif unreferenced_bank_material_ids:
-                    material_ids = list(unreferenced_bank_material_ids)
+                placement_bank_id = placement_bank_map.get(sq.placement_id or 0)
+                bank_info = bank_info_map.get(placement_bank_id or 0)
+                bank_name = str(getattr(bank_info, 'name', '') or '')
+                bank_desc = str(getattr(bank_info, 'desc', '') or '')
+                if '申论' in bank_name or '申论' in bank_desc:
+                    material_ids = list(bank_material_map.get(placement_bank_id or 0, []))
                 
             all_material_ids.update(material_ids)
 
@@ -1411,20 +1552,31 @@ class SessionService:
     @staticmethod
     async def get_session_list_select(
         *,
+        db: AsyncSession,
         user_id: int,
         session_type: str | None = None,
+        bank_ids: list[int] | None = None,
         status: str | None = None,
+        study_domain: str | None = None,
     ) -> select:
         """
         获取会话列表查询表达式
 
+        :param db: 数据库会话
         :param user_id: 用户 ID
         :param session_type: 会话类型
+        :param bank_ids: 题库 ID 列表
         :param status: 状态
+        :param study_domain: 学习领域编码
         :return:
         """
+        resolved_bank_ids = bank_ids
+        if study_domain and not resolved_bank_ids:
+            domain_filter = await study_domain_service.get_question_filter(db=db, code=study_domain)
+            resolved_bank_ids = list(domain_filter.bank_ids)
+
         return await practice_session_dao.get_select(
-            user_id=user_id, session_type=session_type, status=status,
+            user_id=user_id, session_type=session_type, bank_ids=resolved_bank_ids, status=status,
         )
 
     @staticmethod

@@ -117,7 +117,7 @@ function patchProgressToTree(nodes: KpItem[]) {
 async function loadKpProgress() {
   if (!categoryId.value || !tokenStore.hasLogin) return
   try {
-    const res = await (fbaApi as any).qbank.knowledgePoint.getProgress(categoryId.value)
+    const res = await fbaApi.qbank.knowledgePoint.getProgress(categoryId.value)
     totalAnswerCount.value = res.total_answer_count || 0
     totalCorrectCount.value = res.total_correct_count || 0
     
@@ -138,7 +138,7 @@ async function loadKpDetail() {
 
   loading.value = true
   try {
-    const res = await (fbaApi as any).qbank.knowledgePoint.getDetail(categoryId.value)
+    const res = await fbaApi.qbank.knowledgePoint.getDetail(categoryId.value)
     
     categoryName.value = res.name
     kpItems.value = res.children || []

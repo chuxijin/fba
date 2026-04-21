@@ -1,8 +1,11 @@
 <script lang="ts" setup>
 import type { CoulddriveResourceListItem, CoulddriveResourceListParams, GetCategoryTree } from '@fba/api-sdk'
 import { computed, nextTick, ref, watch } from 'vue'
-import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { fbaApi } from '@/api/sdk'
+import { getAppSettings } from '@/utils/appSettings'
+import { getStudyDomainOption, type StudyDomainCode } from '@/utils/studyDomain'
+import { getStudyDomainCategoryRoots } from '@/utils/studyDomainQuestionScope'
 
 defineOptions({
   name: 'Study',
@@ -18,21 +21,53 @@ definePage({
 
 const PAGE_SIZE = 20
 const POPULAR_RESOURCE_TYPES = ['笔记', '真题', '电子书'] as const
-type StudyShortcutKey = 'kaoyan' | 'guokao' | 'shengkao' | 'bianzhi'
-const STUDY_CATEGORY_TREE_PARAMS = {
-  app_code: 'youanshang',
-  type: 'resource_exam',
-  status: true,
-} as const
+
+interface StudyShortcutItem {
+  id: number
+  label: string
+  icon: string
+  iconClass: string
+  bgClass: string
+  ringClass: string
+}
+
+const STUDY_SHORTCUT_STYLE_LIST = [
+  {
+    icon: 'i-carbon-education',
+    iconClass: 'text-[#F59E0B]',
+    bgClass: 'from-[#FFF7ED] to-[#FFEDD5]',
+    ringClass: 'shadow-[0_10px_24px_-16px_rgba(245,158,11,0.75)]',
+  },
+  {
+    icon: 'i-carbon-document-add',
+    iconClass: 'text-[#06B6D4]',
+    bgClass: 'from-[#ECFEFF] to-[#CFFAFE]',
+    ringClass: 'shadow-[0_10px_24px_-16px_rgba(6,182,212,0.75)]',
+  },
+  {
+    icon: 'i-carbon-notebook-reference',
+    iconClass: 'text-[#FB7185]',
+    bgClass: 'from-[#FFF1F2] to-[#FFE4E6]',
+    ringClass: 'shadow-[0_10px_24px_-16px_rgba(251,113,133,0.75)]',
+  },
+  {
+    icon: 'i-carbon-result',
+    iconClass: 'text-[#38BDF8]',
+    bgClass: 'from-[#EFF6FF] to-[#DBEAFE]',
+    ringClass: 'shadow-[0_10px_24px_-16px_rgba(56,189,248,0.75)]',
+  },
+] as const
 
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 
+const currentDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
+const lastLoadedDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
 const popularLoading = ref(false)
 const recentLoading = ref(false)
 const loadingMore = ref(false)
 const initialized = ref(false)
 const keyword = ref('')
-const selectedShortcut = ref<'all' | StudyShortcutKey>('all')
+const selectedShortcut = ref<number | null>(null)
 const activeResourceTabIndex = ref(0)
 const recentResources = ref<CoulddriveResourceListItem[]>([])
 const popularResources = ref<CoulddriveResourceListItem[]>([])
@@ -44,60 +79,6 @@ const page = ref(1)
 const resourceSwiperHeight = ref(320)
 const resourceTouchStartX = ref(0)
 const resourceTouchStartY = ref(0)
-
-const studyShortcutItems = [
-  {
-    key: 'kaoyan',
-    label: '考研',
-    icon: 'i-carbon-education',
-    iconClass: 'text-[#F59E0B]',
-    bgClass: 'from-[#FFF7ED] to-[#FFEDD5]',
-    ringClass: 'shadow-[0_10px_24px_-16px_rgba(245,158,11,0.75)]',
-  },
-  {
-    key: 'guokao',
-    label: '国考',
-    icon: 'i-carbon-document-add',
-    iconClass: 'text-[#06B6D4]',
-    bgClass: 'from-[#ECFEFF] to-[#CFFAFE]',
-    ringClass: 'shadow-[0_10px_24px_-16px_rgba(6,182,212,0.75)]',
-  },
-  {
-    key: 'shengkao',
-    label: '省考',
-    icon: 'i-carbon-document-download',
-    iconClass: 'text-[#FB7185]',
-    bgClass: 'from-[#FFF1F2] to-[#FFE4E6]',
-    ringClass: 'shadow-[0_10px_24px_-16px_rgba(251,113,133,0.75)]',
-  },
-  {
-    key: 'bianzhi',
-    label: '四六级',
-    icon: 'i-carbon-result',
-    iconClass: 'text-[#38BDF8]',
-    bgClass: 'from-[#EFF6FF] to-[#DBEAFE]',
-    ringClass: 'shadow-[0_10px_24px_-16px_rgba(56,189,248,0.75)]',
-  },
-] as const
-
-const shortcutCategoryMatcherMap: Record<StudyShortcutKey, { names: string[], codes: string[] }> = {
-  kaoyan: {
-    names: ['考研'],
-    codes: ['res_kaoyan', 'kaoyan'],
-  },
-  guokao: {
-    names: ['国考', '国家公务员'],
-    codes: ['res_guokao', 'guokao'],
-  },
-  shengkao: {
-    names: ['省考', '各省公务员'],
-    codes: ['res_shengkao', 'shengkao'],
-  },
-  bianzhi: {
-    names: ['四六级', '四级', '六级'],
-    codes: ['res_cet', 'res_cet4', 'res_cet6', 'cet', 'cet4', 'cet6'],
-  },
-}
 const resourceTabs = [
   { key: 'popular', label: '热门榜单' },
   { key: 'recent', label: '最近更新' },
@@ -106,32 +87,35 @@ const resourceTabs = [
 const hasMore = computed(() => recentResources.value.length < recentTotal.value)
 const hasAnyResources = computed(() => recentResources.value.length > 0 || popularResources.value.length > 0)
 const activeResourceTab = computed(() => resourceTabs[activeResourceTabIndex.value]?.key || 'recent')
+const currentDomainLabel = computed(() => getStudyDomainOption(currentDomain.value).label)
+const studyShortcutItems = computed<StudyShortcutItem[]>(() => {
+  return studyCategoryTree.value.map((node, index) => {
+    const style = STUDY_SHORTCUT_STYLE_LIST[index % STUDY_SHORTCUT_STYLE_LIST.length]
+    return {
+      id: Number(node.id),
+      label: node.name,
+      ...style,
+    }
+  })
+})
 const selectedShortcutLabel = computed(() => {
-  if (selectedShortcut.value === 'all') {
-    return ''
-  }
-
-  return studyShortcutItems.find(item => item.key === selectedShortcut.value)?.label || ''
+  return studyShortcutItems.value.find(item => item.id === selectedShortcutCategoryId.value)?.label || ''
 })
 const selectedShortcutCategoryId = computed(() => {
-  if (selectedShortcut.value === 'all') {
-    return undefined
+  if (typeof selectedShortcut.value === 'number' && selectedShortcut.value > 0) {
+    return selectedShortcut.value
   }
 
-  const matchedCategory = findStudyCategoryByShortcut(selectedShortcut.value)
-  return typeof matchedCategory?.id === 'number' ? matchedCategory.id : undefined
+  const firstItem = studyShortcutItems.value[0]
+  return firstItem?.id
 })
 const selectedShortcutCategoryIds = computed(() => {
-  if (selectedShortcut.value === 'all') {
+  const categoryId = selectedShortcutCategoryId.value
+  if (!categoryId) {
     return []
   }
 
-  const matchedCategory = findStudyCategoryByShortcut(selectedShortcut.value)
-  if (!matchedCategory) {
-    return []
-  }
-
-  return collectStudyCategoryIds(matchedCategory)
+  return collectStudyCategoryIds(findStudyCategoryById(categoryId))
 })
 
 let studyCategoryLoadTask: Promise<void> | null = null
@@ -140,8 +124,9 @@ function normalizeKeyword(value: string) {
   return String(value || '').trim()
 }
 
-function normalizeMatcherValue(value: unknown) {
-  return String(value || '').trim().toLowerCase()
+function syncCurrentDomain() {
+  currentDomain.value = getAppSettings().currentDomain
+  return currentDomain.value
 }
 
 function flattenStudyCategories(nodes: GetCategoryTree[] | null | undefined): GetCategoryTree[] {
@@ -179,28 +164,8 @@ function collectStudyCategoryIds(node: GetCategoryTree | null | undefined): numb
   return ids
 }
 
-function isMatchedStudyCategory(node: GetCategoryTree, key: StudyShortcutKey) {
-  const matcher = shortcutCategoryMatcherMap[key]
-  const normalizedName = normalizeMatcherValue(node.name)
-  const normalizedCode = normalizeMatcherValue(node.code)
-
-  if (matcher.codes.some(code => normalizeMatcherValue(code) === normalizedCode)) {
-    return true
-  }
-
-  return matcher.names.some((name) => {
-    const normalizedTarget = normalizeMatcherValue(name)
-    return normalizedName === normalizedTarget || normalizedName.includes(normalizedTarget)
-  })
-}
-
-function findStudyCategoryByShortcut(key: StudyShortcutKey) {
-  const rootCategory = studyCategoryTree.value.find(node => isMatchedStudyCategory(node, key))
-  if (rootCategory) {
-    return rootCategory
-  }
-
-  return flattenStudyCategories(studyCategoryTree.value).find(node => isMatchedStudyCategory(node, key)) || null
+function findStudyCategoryById(categoryId: number) {
+  return flattenStudyCategories(studyCategoryTree.value).find(node => Number(node.id) === categoryId) || null
 }
 
 async function ensureStudyCategoryTreeLoaded() {
@@ -211,11 +176,24 @@ async function ensureStudyCategoryTreeLoaded() {
   if (!studyCategoryLoadTask) {
     studyCategoryLoadTask = (async () => {
       try {
-        studyCategoryTree.value = await fbaApi.admin.sys.category.getTree(STUDY_CATEGORY_TREE_PARAMS)
+        studyCategoryTree.value = await getStudyDomainCategoryRoots(
+          currentDomain.value,
+          ['resource_exam'],
+        ) as GetCategoryTree[]
+
+        const selectedId = selectedShortcut.value
+        const exists = typeof selectedId === 'number'
+          ? studyCategoryTree.value.some(item => Number(item.id) === selectedId)
+          : false
+
+        if (!exists) {
+          selectedShortcut.value = studyCategoryTree.value[0]?.id || null
+        }
       }
       catch (error) {
         console.error('加载学习分类失败:', error)
         studyCategoryTree.value = []
+        selectedShortcut.value = null
       }
       finally {
         studyCategoryLoadTask = null
@@ -280,7 +258,7 @@ async function loadPopularResources() {
   popularLoading.value = true
   try {
     const allowedCategoryIds = new Set(selectedShortcutCategoryIds.value)
-    if (selectedShortcut.value !== 'all' && !allowedCategoryIds.size) {
+    if (!allowedCategoryIds.size) {
       popularResources.value = []
       popularLoaded.value = true
       return
@@ -291,12 +269,6 @@ async function loadPopularResources() {
       10,
       [...POPULAR_RESOURCE_TYPES],
     )
-
-    if (!allowedCategoryIds.size) {
-      popularResources.value = hotList
-      popularLoaded.value = true
-      return
-    }
 
     popularResources.value = hotList.filter((item) => {
       const categoryId = Number(item.category_id || 0)
@@ -390,8 +362,12 @@ function clearKeyword() {
   keyword.value = ''
 }
 
-function selectShortcut(key: StudyShortcutKey) {
-  selectedShortcut.value = selectedShortcut.value === key ? 'all' : key
+function selectShortcut(categoryId: number) {
+  if (selectedShortcut.value === categoryId) {
+    return
+  }
+
+  selectedShortcut.value = categoryId
   resetPopularResources()
   resetRecentResources()
   activeResourceTabIndex.value = 0
@@ -524,6 +500,22 @@ function openResourceDetail(item: CoulddriveResourceListItem) {
 }
 
 onLoad(() => {
+  syncCurrentDomain()
+  void loadActiveTabResources(true)
+})
+
+onShow(() => {
+  const nextDomain = syncCurrentDomain()
+  if (nextDomain === lastLoadedDomain.value) {
+    return
+  }
+
+  lastLoadedDomain.value = nextDomain
+  selectedShortcut.value = null
+  studyCategoryTree.value = []
+  studyCategoryLoadTask = null
+  resetPopularResources()
+  resetRecentResources()
   void loadActiveTabResources(true)
 })
 
@@ -576,7 +568,7 @@ watch(
     <view class="relative z-10 w-full" :style="{ paddingTop: `${statusBarHeight}px` }">
       <view class="h-11 flex items-center justify-between px-4">
         <view class="w-20" />
-        <text class="text-lg text-[#1E293B] font-bold tracking-widest">资料大厅</text>
+        <text class="text-lg text-[#1E293B] font-bold tracking-widest">{{ currentDomainLabel }}资料</text>
         <view class="w-20" />
       </view>
     </view>
@@ -610,14 +602,14 @@ watch(
         </view>
       </view>
 
-      <view class="mb-4 overflow-hidden rounded-[28px] border border-white/70 bg-white/78 px-3 py-3 shadow-[0_12px_30px_-20px_rgba(37,99,235,0.28)] backdrop-blur-md">
+      <view v-if="studyShortcutItems.length" class="mb-4 overflow-hidden rounded-[28px] border border-white/70 bg-white/78 px-3 py-3 shadow-[0_12px_30px_-20px_rgba(37,99,235,0.28)] backdrop-blur-md">
         <view class="grid grid-cols-4 gap-1.5">
           <view
             v-for="item in studyShortcutItems"
-            :key="item.key"
+            :key="item.id"
             class="flex flex-col items-center justify-start rounded-2xl px-1 py-1.5 transition-all duration-200"
-            :class="selectedShortcut === item.key ? 'bg-[#F8FBFF]' : 'bg-transparent'"
-            @tap="selectShortcut(item.key)"
+            :class="selectedShortcutCategoryId === item.id ? 'bg-[#F8FBFF]' : 'bg-transparent'"
+            @tap="selectShortcut(item.id)"
           >
             <view
               class="mb-2.5 h-12 w-12 flex items-center justify-center rounded-2xl bg-gradient-to-br"
@@ -627,7 +619,7 @@ watch(
             </view>
             <text
               class="text-center text-[12px] leading-[1.35]"
-              :class="selectedShortcut === item.key ? 'text-[#1E293B] font-bold' : 'text-[#334155]'"
+              :class="selectedShortcutCategoryId === item.id ? 'text-[#1E293B] font-bold' : 'text-[#334155]'"
             >
               {{ item.label }}
             </text>

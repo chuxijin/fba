@@ -4,7 +4,9 @@ import { computed, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { useResultStore } from '@/store/result'
+import { getAppSettings } from '@/utils/appSettings'
 import { formatDateTime, formatDuration, getSessionStatusLabel, getSessionTypeLabel } from '@/utils/mine'
+import { getStudyDomainOption } from '@/utils/studyDomain'
 import { toLoginPage } from '@/utils/toLoginPage'
 
 defineOptions({
@@ -30,6 +32,7 @@ const deletingId = ref(0)
 const records = ref<GetPracticeSessionListItem[]>([])
 const total = ref(0)
 const page = ref(1)
+const currentDomainLabel = ref(getStudyDomainOption(getAppSettings().currentDomain).label)
 
 const hasMore = computed(() => records.value.length < total.value)
 
@@ -71,10 +74,14 @@ async function loadRecords(targetPage = 1) {
   }
 
   try {
+    const currentDomain = getAppSettings().currentDomain
+    currentDomainLabel.value = getStudyDomainOption(currentDomain).label
+
     const data = await fbaApi.qbank.request.get<PageData<GetPracticeSessionListItem>>('/sessions', {
       params: {
         page: targetPage,
         size: PAGE_SIZE,
+        study_domain: currentDomain,
       },
     })
 
@@ -102,15 +109,12 @@ function practiceModeOf(record: GetPracticeSessionListItem) {
 
 async function openSession(record: GetPracticeSessionListItem) {
   if (record.status === 'completed') {
-    // 已完成：预取 report + solution → 跳结算页
+    // 已完成：结果页只需要报告，整套解析进入复盘页后再按需加载。
     uni.showLoading({ title: '加载中...', mask: true })
     try {
-      const [reportData, solutionData] = await Promise.all([
-        fbaApi.qbank.session.getReport(record.id).catch(() => null),
-        fbaApi.qbank.session.getSolution(record.id).catch(() => null),
-      ])
+      const reportData = await fbaApi.qbank.session.getReport(record.id).catch(() => null)
       const resultStore = useResultStore()
-      resultStore.setResult(record.id, reportData, solutionData)
+      resultStore.setResult(record.id, reportData, null)
       uni.navigateTo({
         url: `/pages/practice/result/index?sessionId=${record.id}`,
       })
@@ -228,7 +232,10 @@ onReachBottom(() => {
       </view>
 
       <view class="mb-3 flex items-center justify-between pl-1">
-        <text class="text-[13px] text-[#475569] font-bold">练习历史</text>
+        <view class="flex items-center gap-2">
+          <text class="text-[13px] text-[#475569] font-bold">练习历史</text>
+          <text class="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[10px] text-[#475569] font-semibold">当前领域：{{ currentDomainLabel }}</text>
+        </view>
         <text class="text-[11px] text-[#94A3B8]">共 {{ total }} 条</text>
       </view>
 
@@ -290,7 +297,7 @@ onReachBottom(() => {
 
       <view v-else class="flex flex-col items-center justify-center py-20">
         <view class="i-carbon-document mb-4 text-6xl text-[#CBD5E1]" />
-        <text class="text-[14px] text-[#94A3B8]">暂无刷题记录，快去练习吧！</text>
+        <text class="text-[14px] text-[#94A3B8]">{{ currentDomainLabel }}领域下暂无刷题记录，快去练习吧！</text>
       </view>
     </view>
   </view>

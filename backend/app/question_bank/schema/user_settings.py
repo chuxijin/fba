@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-用户设置相关 Schema
-"""
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+StudyDomainCode = Literal['cet', 'kaoyan', 'gongkao', 'jiaozhi']
 
 
 class CustomTab(BaseModel):
@@ -22,6 +23,7 @@ class CustomTab(BaseModel):
 class StudyPreferenceSettings(BaseModel):
     """学习偏好设置"""
 
+    current_domain: StudyDomainCode = Field(default='gongkao', description='当前学习领域')
     practice_mode: str = Field(default='practice', description='做题模式：practice/exercise/memorize')
     custom_tabs: list[CustomTab] = Field(default_factory=list, description='自定义 Tab 列表')
     mastery_threshold: int = Field(default=3, ge=1, le=20, description='错题连续答对掌握阈值')
@@ -30,6 +32,7 @@ class StudyPreferenceSettings(BaseModel):
 class UpdateStudyPreferenceParam(BaseModel):
     """更新学习偏好设置参数"""
 
+    current_domain: StudyDomainCode | None = Field(None, description='当前学习领域')
     practice_mode: str | None = Field(None, description='做题模式：practice/exercise/memorize')
     custom_tabs: list[CustomTab] | None = Field(None, description='自定义 Tab 列表')
     mastery_threshold: int | None = Field(None, ge=1, le=20, description='错题连续答对掌握阈值')
@@ -38,6 +41,7 @@ class UpdateStudyPreferenceParam(BaseModel):
 class GetStudyPreferenceResponse(BaseModel):
     """获取学习偏好设置响应"""
 
+    current_domain: StudyDomainCode = Field(default='gongkao', description='当前学习领域')
     practice_mode: str = Field(description='做题模式：practice/exercise/memorize')
     custom_tabs: list[CustomTab] = Field(default_factory=list, description='自定义 Tab 列表')
     mastery_threshold: int = Field(default=3, description='错题连续答对掌握阈值')

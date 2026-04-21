@@ -30,9 +30,9 @@ const {
   getFlatGroups,
   getTreeGroups,
   handleGroupTap,
-  statistics,
-  getStatistics,
+  displayStatistics,
   getModeTotalCount,
+  currentDomainLabel,
   exportMode,
   selectedExportKeys,
   toggleExportMode,
@@ -60,7 +60,15 @@ const {
     <view class="mt-4 px-4" :class="exportMode ? 'pb-40' : 'pb-24'">
       <!-- 统计卡片 -->
       <view class="mb-5 border border-white/60 rounded-2xl bg-white/85 p-5 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)] backdrop-blur-md">
-        <slot name="stats" :statistics="statistics" />
+        <view class="mb-3 flex items-center justify-between">
+          <view class="rounded-full bg-[#F8FAFC] px-3 py-1 text-[11px] text-[#475569] font-semibold">
+            当前领域：{{ currentDomainLabel }}
+          </view>
+          <view class="text-[11px] text-[#94A3B8]">
+            列表与导出按当前领域筛选
+          </view>
+        </view>
+        <slot name="stats" :statistics="displayStatistics" />
       </view>
 
       <!-- 分组模式切换 -->

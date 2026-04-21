@@ -34,6 +34,7 @@ async def update_study_preference(
     await user_settings_service.update_study_preference(
         db=db,
         user_id=request.user.id,
+        current_domain=param.current_domain,
         practice_mode=param.practice_mode,
         custom_tabs=param.custom_tabs,
         mastery_threshold=param.mastery_threshold,

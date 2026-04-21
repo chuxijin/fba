@@ -42,6 +42,34 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_by_session_question_ids(
+        self,
+        db: AsyncSession,
+        session_id: int,
+        question_ids: list[int],
+    ) -> list[PracticeRecord]:
+        """
+        获取会话中指定题目的答题记录
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param question_ids: 题目 ID 列表
+        :return:
+        """
+        if not question_ids:
+            return []
+
+        stmt = (
+            select(PracticeRecord)
+            .where(
+                PracticeRecord.session_id == session_id,
+                PracticeRecord.question_id.in_(question_ids),
+            )
+            .order_by(PracticeRecord.seq_no.asc())
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     async def count_by_session(self, db: AsyncSession, session_id: int) -> int:
         """获取会话的答题记录数"""
         stmt = select(func.count()).where(PracticeRecord.session_id == session_id)
@@ -107,15 +135,16 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
         await db.refresh(new_record)
         return new_record
 
-    async def batch_upsert(self, db: AsyncSession, records: list[dict]) -> None:
+    async def batch_upsert(self, db: AsyncSession, records: list[dict]) -> list[PracticeRecord]:
         """
         批量创建或更新答题记录（按 session_id + question_id 冲突更新，数据库级 upsert）
 
         :param db: 数据库会话
         :param records: 记录数据列表
+        :return:
         """
         if not records:
-            return
+            return []
 
         # 为所有记录添加时间戳
         now = datetime.now()
@@ -141,6 +170,10 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
                 constraint='uq_practice_record_session_question',
                 set_={col: stmt.excluded[col] for col in update_cols},
             )
+            stmt = stmt.returning(PracticeRecord)
+            result = await db.execute(stmt)
+            await db.flush()
+            return list(result.scalars().all())
         else:
             from sqlalchemy.dialects.mysql import insert as mysql_insert
 
@@ -151,6 +184,10 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
 
         await db.execute(stmt)
         await db.flush()
+
+        session_id = records[0]['session_id']
+        question_ids = [record['question_id'] for record in records]
+        return await self.get_by_session_question_ids(db, session_id, question_ids)
 
     async def delete_by_session(self, db: AsyncSession, session_id: int) -> int:
         """

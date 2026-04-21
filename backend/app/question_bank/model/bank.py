@@ -22,7 +22,7 @@ class QuestionBank(Base, UserMixin):
     __table_args__ = (
         sa.UniqueConstraint('code', name='uq_study_question_bank_code'),
         sa.Index('idx_study_question_bank_category_status', 'cat_id', 'status'),
-        sa.Index('idx_study_question_bank_parent', 'parent_id'),
+        sa.Index('idx_study_question_bank_parent_sort', 'parent_id', 'sort_order'),
         sa.Index('idx_study_question_bank_chapter_source', 'chapter_source_bank_id'),
         sa.Index('idx_study_question_bank_access_entitlement', 'access_entitlement_code'),
         sa.Index('idx_study_question_bank_type_scene_status', 'bank_type', 'scene_mask', 'status'),
@@ -57,6 +57,7 @@ class QuestionBank(Base, UserMixin):
         default=None,
         comment='父题库 ID',
     )
+    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序权重')
     chapter_source_bank_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_question_bank.id', ondelete='RESTRICT'),

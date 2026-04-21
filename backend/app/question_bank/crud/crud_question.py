@@ -739,6 +739,7 @@ class CRUDQuestionOptionStats(CRUDPlus[QuestionOptionStats]):
 
         payloads: list[dict] = []
         insert_rows: list[dict] = []
+        current_time = datetime.now()
         for item in aggregated.values():
             option_row = option_map.get((item['question_id'], item['option_code']))
             if option_row is None:
@@ -761,6 +762,7 @@ class CRUDQuestionOptionStats(CRUDPlus[QuestionOptionStats]):
                 'selected_count': 0,
                 'correct_selected_count': 0,
                 'wrong_selected_count': 0,
+                'created_time': current_time,
             })
 
         if not payloads:
@@ -773,7 +775,7 @@ class CRUDQuestionOptionStats(CRUDPlus[QuestionOptionStats]):
         await db.execute(insert_stmt)
 
         update_stmt = (
-            sa_update(QuestionOptionStats)
+            sa_update(QuestionOptionStats.__table__)
             .where(
                 QuestionOptionStats.placement_id == bindparam('filter_placement_id'),
                 QuestionOptionStats.option_code == bindparam('filter_option_code'),
@@ -789,6 +791,7 @@ class CRUDQuestionOptionStats(CRUDPlus[QuestionOptionStats]):
                     QuestionOptionStats.wrong_selected_count + bindparam('wrong_delta')
                 ),
             )
+            .execution_options(synchronize_session=False)
         )
         await db.execute(update_stmt, payloads)
         await db.flush()
@@ -1067,9 +1070,11 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         :param obj: 更新统计参数
         """
         if DataBaseType.postgresql == settings.DATABASE_TYPE:
+            current_time = datetime.now()
             insert_stmt = postgresql.insert(QuestionStatistics).values({
                 'question_id': question_id,
-                'last_updated': datetime.now(),
+                'created_time': current_time,
+                'last_updated': current_time,
             })
             insert_stmt = insert_stmt.on_conflict_do_nothing(index_elements=[QuestionStatistics.question_id])
             await db.execute(insert_stmt)
@@ -1260,7 +1265,12 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         question_ids = list(aggregated.keys())
         insert_time = datetime.now()
         insert_stmt = postgresql.insert(QuestionStatistics).values([
-            {'question_id': question_id, 'last_updated': insert_time} for question_id in question_ids
+            {
+                'question_id': question_id,
+                'created_time': insert_time,
+                'last_updated': insert_time,
+            }
+            for question_id in question_ids
         ])
         insert_stmt = insert_stmt.on_conflict_do_nothing(index_elements=[QuestionStatistics.question_id])
         await db.execute(insert_stmt)
@@ -1340,7 +1350,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
             return
 
         update_stmt = (
-            sa_update(QuestionStatistics)
+            sa_update(QuestionStatistics.__table__)
             .where(QuestionStatistics.question_id == bindparam('filter_question_id'))
             .values(
                 attempt_count=bindparam('set_attempt_count'),
@@ -1353,6 +1363,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                 report_count=bindparam('set_report_count'),
                 last_updated=bindparam('set_last_updated'),
             )
+            .execution_options(synchronize_session=False)
         )
         await db.execute(update_stmt, payloads)
         await db.flush()

@@ -5,7 +5,16 @@ import { createPracticeModule, type PracticeModule } from './practice';
 import { createQuestionModule, type QuestionModule } from './question';
 import { createScopedClient, type ScopedApiClient } from './_shared';
 import type { PageData } from '../types/common';
-import type { QbankCheckInParam, QbankEntity, QbankUserAccountDetail, QbankWxLoginParam, QbankWxLoginResponse } from '../types/qbank';
+import type {
+  QbankCheckInParam,
+  QbankEntity,
+  QbankKnowledgePointDetail,
+  QbankKnowledgePointProgress,
+  QbankStatisticsParams,
+  QbankUserAccountDetail,
+  QbankWxLoginParam,
+  QbankWxLoginResponse,
+} from '../types/qbank';
 import type {
   BatchUpsertPracticeRecordsParam,
   CreatePracticeSessionParam,
@@ -19,6 +28,17 @@ import type {
   SubmitPracticeSessionParam,
   SubmitPracticeSessionResult,
 } from '../types/practice';
+
+function buildStatisticsParams(groupByOrParams?: string | QbankStatisticsParams, params?: QbankStatisticsParams) {
+  if (typeof groupByOrParams === 'string') {
+    return {
+      ...params,
+      group_by: groupByOrParams,
+    };
+  }
+
+  return groupByOrParams;
+}
 
 export interface QbankModule {
   request: ScopedApiClient;
@@ -44,6 +64,10 @@ export interface QbankModule {
     update(id: number, data: QbankEntity): Promise<void>;
     remove(ids: number[]): Promise<void>;
   };
+  knowledgePoint: {
+    getDetail(id: number): Promise<QbankKnowledgePointDetail>;
+    getProgress(id: number): Promise<QbankKnowledgePointProgress>;
+  };
   session: {
     create(data: CreatePracticeSessionParam): Promise<GetPracticeSessionDetail>;
     getLatest(params?: LatestPracticeSessionQuery): Promise<GetPracticeSessionDetail | null>;
@@ -66,7 +90,7 @@ export interface QbankModule {
     getFolders(): Promise<QbankEntity[]>;
     clearFolder(data: QbankEntity): Promise<void>;
     check(data: QbankEntity): Promise<QbankEntity>;
-    getStatistics(groupBy?: string): Promise<QbankEntity>;
+    getStatistics(groupByOrParams?: string | QbankStatisticsParams, params?: QbankStatisticsParams): Promise<QbankEntity>;
     getGrouped(groupBy?: string): Promise<QbankEntity[]>;
     getIds(params?: QbankEntity): Promise<number[]>;
     getDetail(id: number): Promise<QbankEntity>;
@@ -85,12 +109,12 @@ export interface QbankModule {
     unvote(id: number): Promise<void>;
     getMyVote(id: number): Promise<QbankEntity>;
     getVoteStatistics(id: number): Promise<QbankEntity>;
-    getStatistics(groupBy?: string): Promise<QbankEntity>;
+    getStatistics(groupByOrParams?: string | QbankStatisticsParams, params?: QbankStatisticsParams): Promise<QbankEntity>;
     getGrouped(groupBy?: string): Promise<QbankEntity[]>;
     getIds(params?: QbankEntity): Promise<number[]>;
   };
   wrongQuestion: {
-    getStatistics(groupBy?: string): Promise<QbankEntity>;
+    getStatistics(groupByOrParams?: string | QbankStatisticsParams, params?: QbankStatisticsParams): Promise<QbankEntity>;
     getDetail(id: number): Promise<QbankEntity>;
     getList(params?: QbankEntity): Promise<QbankEntity>;
     pin(id: number, data: QbankEntity): Promise<void>;
@@ -164,6 +188,10 @@ export function createQbankModule(client: ApiClient): QbankModule {
       update(id, data) { return request.put(`/chapters/${id}`, data); },
       remove(ids) { return request.delete('/chapters', { ids }); },
     },
+    knowledgePoint: {
+      getDetail(id) { return request.get<QbankKnowledgePointDetail>(`/knowledge-points/${id}`); },
+      getProgress(id) { return request.get<QbankKnowledgePointProgress>(`/knowledge-points/${id}/progress`); },
+    },
     session: {
       create(data) { return request.post<GetPracticeSessionDetail>('/sessions', data); },
       getLatest(params) { return request.get<GetPracticeSessionDetail | null>('/sessions/latest', { params: params as Record<string, unknown> | undefined }); },
@@ -186,7 +214,11 @@ export function createQbankModule(client: ApiClient): QbankModule {
       getFolders() { return request.get<QbankEntity[]>('/favorites/folders'); },
       clearFolder(data) { return request.post('/favorites/folders/clear', data); },
       check(data) { return request.post<QbankEntity>('/favorites/questions/check', data); },
-      getStatistics(groupBy) { return request.get<QbankEntity>('/favorites/statistics', { params: groupBy ? { group_by: groupBy } : undefined }); },
+      getStatistics(groupByOrParams, params) {
+        return request.get<QbankEntity>('/favorites/statistics', {
+          params: buildStatisticsParams(groupByOrParams, params) as Record<string, unknown> | undefined,
+        });
+      },
       getDetail(id) { return request.get<QbankEntity>(`/favorites/${id}`); },
       update(id, data) { return request.put(`/favorites/${id}`, data); },
       pin(id, data) { return request.put(`/favorites/${id}/pin`, data); },
@@ -205,12 +237,20 @@ export function createQbankModule(client: ApiClient): QbankModule {
       unvote(id) { return request.delete(`/notes/${id}/vote`); },
       getMyVote(id) { return request.get<QbankEntity>(`/notes/${id}/vote/my`); },
       getVoteStatistics(id) { return request.get<QbankEntity>(`/notes/${id}/vote/statistics`); },
-      getStatistics(groupBy) { return request.get<QbankEntity>('/notes/statistics', { params: groupBy ? { group_by: groupBy } : undefined }); },
+      getStatistics(groupByOrParams, params) {
+        return request.get<QbankEntity>('/notes/statistics', {
+          params: buildStatisticsParams(groupByOrParams, params) as Record<string, unknown> | undefined,
+        });
+      },
       getGrouped(groupBy = 'bank') { return request.get<QbankEntity[]>('/notes/grouped', { params: { group_by: groupBy } }); },
       getIds(params) { return request.get<number[]>('/notes/ids', { params: params as Record<string, unknown> }); },
     },
     wrongQuestion: {
-      getStatistics(groupBy) { return request.get<QbankEntity>('/wrong-questions/statistics', { params: groupBy ? { group_by: groupBy } : undefined }); },
+      getStatistics(groupByOrParams, params) {
+        return request.get<QbankEntity>('/wrong-questions/statistics', {
+          params: buildStatisticsParams(groupByOrParams, params) as Record<string, unknown> | undefined,
+        });
+      },
       getDetail(id) { return request.get<QbankEntity>(`/wrong-questions/${id}`); },
       getList(params) { return request.get<QbankEntity>('/wrong-questions', { params: params as Record<string, unknown> }); },
       pin(id, data) { return request.put(`/wrong-questions/${id}/pin`, data); },

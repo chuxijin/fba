@@ -235,6 +235,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         user_id: int | None = None,
         session_type: str | None = None,
         bank_id: int | None = None,
+        bank_ids: list[int] | None = None,
         chapter_id: int | None = None,
         status: str | None = None,
     ) -> Select:
@@ -244,6 +245,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param user_id: 用户 ID
         :param session_type: 会话类型
         :param bank_id: 题库 ID
+        :param bank_ids: 题库 ID 列表
         :param chapter_id: 章节 ID
         :param status: 状态
         :return:
@@ -256,6 +258,8 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
             stmt = stmt.where(PracticeSession.session_type == session_type)
         if bank_id is not None:
             stmt = stmt.where(PracticeSession.bank_id == bank_id)
+        if bank_ids:
+            stmt = stmt.where(PracticeSession.bank_id.in_(bank_ids))
         if chapter_id is not None:
             stmt = stmt.where(PracticeSession.chapter_id == chapter_id)
         if status:

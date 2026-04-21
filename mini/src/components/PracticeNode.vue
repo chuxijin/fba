@@ -153,8 +153,7 @@ function checkIsLastLeaf(child: any, idx: number) {
     <!-- 如果是目录节点 -->
       <view 
         v-if="hasChildren" 
-        class="py-4 border-[#F4F4F4] active:bg-gray-50 transition-colors"
-        :class="{ 'border-b': depth > 0 }"
+        class="py-4 border-b border-[#F4F4F4] transition-colors"
         :style="{ paddingLeft: '20px', paddingRight: '20px' }"
         @click="handleRowTap"
       >
@@ -242,11 +241,8 @@ function checkIsLastLeaf(child: any, idx: number) {
     <!-- 叶子节点 -->
     <view 
       v-else
-      class="relative py-4 bg-[#F8FAFC] active:bg-[#F1F5F9] transition-colors"
-      :class="[
-        isFirstLeaf ? 'rounded-t-[16px] mt-2' : '',
-        isLastLeaf ? 'rounded-b-[16px] mb-2 border-none' : 'border-b border-[#F1F5F9]'
-      ]"
+      class="relative py-4 transition-colors border-b border-[#F4F4F4]"
+      :class="{ 'border-none': isLastLeaf && depth === 0 }"
       :style="{ paddingLeft: '20px', paddingRight: '20px' }"
       @click="handleRowTap"
     >

@@ -297,8 +297,15 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 )
             return
 
-        rows_with_placement = [row for row in rows if row.get('placement_id') is not None]
-        rows_without_placement = [row for row in rows if row.get('placement_id') is None]
+        current_time = datetime.now()
+        normalized_rows: list[dict] = []
+        for row in rows:
+            normalized_row = dict(row)
+            normalized_row.setdefault('created_time', current_time)
+            normalized_rows.append(normalized_row)
+
+        rows_with_placement = [row for row in normalized_rows if row.get('placement_id') is not None]
+        rows_without_placement = [row for row in normalized_rows if row.get('placement_id') is None]
 
         if rows_with_placement:
             stmt = postgresql.insert(WrongQuestionBook).values(rows_with_placement)
@@ -337,7 +344,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             return
 
         stmt = (
-            sa_update(WrongQuestionBook)
+            sa_update(WrongQuestionBook.__table__)
             .where(WrongQuestionBook.id == bindparam('filter_wrong_id'))
             .values(
                 wrong_count=bindparam('set_wrong_count'),
@@ -347,6 +354,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 is_mastered=bindparam('set_is_mastered'),
                 mastered_time=bindparam('set_mastered_time'),
             )
+            .execution_options(synchronize_session=False)
         )
         await db.execute(stmt, rows)
         await db.flush()
@@ -385,6 +393,58 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             func.avg(WrongQuestionBook.correct_streak).label('avg_correct_streak'),
         ).where(WrongQuestionBook.user_id == user_id)
 
+        result = await db.execute(stmt)
+        row = result.first()
+
+        return {
+            'total': row.total or 0,
+            'mastered': int(row.mastered or 0),
+            'unmastered': int(row.unmastered or 0),
+            'pinned': int(row.pinned or 0),
+            'avg_wrong_count': round(float(row.avg_wrong_count or 0), 2),
+            'avg_correct_streak': round(float(row.avg_correct_streak or 0), 2),
+        }
+
+    async def get_statistics_by_bank_ids(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        bank_ids: set[int],
+    ) -> dict[str, int | float]:
+        """
+        按题库范围获取错题统计概览
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_ids: 题库 ID 集合
+        :return:
+        """
+        if not bank_ids:
+            return {
+                'total': 0,
+                'mastered': 0,
+                'unmastered': 0,
+                'pinned': 0,
+                'avg_wrong_count': 0.0,
+                'avg_correct_streak': 0.0,
+            }
+
+        stmt = (
+            select(
+                func.count().label('total'),
+                func.sum(case((WrongQuestionBook.is_mastered == True, 1), else_=0)).label('mastered'),  # noqa: E712
+                func.sum(case((WrongQuestionBook.is_mastered == False, 1), else_=0)).label('unmastered'),  # noqa: E712
+                func.sum(case((WrongQuestionBook.is_pinned == True, 1), else_=0)).label('pinned'),  # noqa: E712
+                func.avg(WrongQuestionBook.wrong_count).label('avg_wrong_count'),
+                func.avg(WrongQuestionBook.correct_streak).label('avg_correct_streak'),
+            )
+            .select_from(WrongQuestionBook)
+            .join(QuestionPlacement, QuestionPlacement.id == WrongQuestionBook.placement_id)
+            .where(
+                WrongQuestionBook.user_id == user_id,
+                QuestionPlacement.bank_id.in_(bank_ids),
+            )
+        )
         result = await db.execute(stmt)
         row = result.first()
 

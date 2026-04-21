@@ -68,10 +68,12 @@ class CRUDFeedback(CRUDPlus[Feedback]):
         :param user_agent: 用户代理
         :return:
         """
-        create_data = obj.model_dump()
-        create_data['ip_address'] = ip_address
-        create_data['user_agent'] = user_agent[:512] if user_agent else None
-        return await self.create_model(db, create_data)
+        return await self.create_model(
+            db,
+            obj,
+            ip_address=ip_address,
+            user_agent=user_agent[:512] if user_agent else None,
+        )
 
     async def update(self, db: AsyncSession, pk: int, values: dict[str, object]) -> int:
         """

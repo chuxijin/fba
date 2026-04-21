@@ -5,6 +5,15 @@ import { fbaApi } from '@/api/sdk'
 import type { AnswerSheetGroup, AnswerSheetItem } from '@/components/AnswerSheet.vue'
 import FeedbackPopup from '@/components/FeedbackPopup.vue'
 import { useResultStore } from '@/store/result'
+import {
+  formatEvaluationScore,
+  getPracticeRecordAIEvaluation,
+  isSubjectiveQuestionType,
+  normalizeStringList,
+  recognizeSubjectiveAnswerImage,
+  regeneratePracticeRecordAIEvaluation,
+  type PracticeAIEvaluation,
+} from '@/utils/aiEvaluation'
 import { replaceHtmlWithCachedMedia, warmupQuestionMediaCache } from '@/utils/questionMediaCache'
 
 defineOptions({ name: 'PracticeSessionPage' })
@@ -35,6 +44,11 @@ const strokesMap = reactive<Record<number, Array<{ points: Array<{ x: number, y:
 const sessionId = ref(0)
 const autoDestroy = ref(false)
 const routeMode = ref<PracticeMode>('practice')
+const routeViewMode = ref<'all' | 'wrong'>('all')
+const routeWrongQuestionIds = ref<number[]>([])
+const routeDisplayTotalCount = ref(0)
+const pendingGotoIndex = ref<number | null>(null)
+const pendingGotoQuestionId = ref<number | null>(null)
 const currentIndex = ref(0)
 const isTimingPaused = ref(false)
 const session = ref<any>(null)
@@ -44,6 +58,10 @@ const materialTabIndex = reactive<Record<number, number>>({})  // 每题当前�
 const solutionMap = reactive<Record<number, any>>({})
 const solutionKeyMap = reactive<Record<number, string>>({})
 const solutionLoadingMap = reactive<Record<number, boolean>>({})
+const aiEvaluationMap = reactive<Record<number, PracticeAIEvaluation | null>>({})
+const aiEvaluationLoadingMap = reactive<Record<number, boolean>>({})
+const aiEvaluationErrorMap = reactive<Record<number, string>>({})
+const ocrLoadingMap = reactive<Record<number, boolean>>({})
 const favoritedMap = reactive<Record<number, boolean>>({})
 const answerStateMap = reactive<Record<number, AnswerState>>({})
 const draftMap = reactive<Record<number, boolean>>({})
@@ -61,15 +79,37 @@ const topInset = statusBarHeight || 20
 let tickTimer: ReturnType<typeof setInterval> | null = null
 
 const questions = computed(() => [...(session.value?.session_questions || [])].sort((a, b) => Number(a.seq_no) - Number(b.seq_no)))
+const routeWrongQuestionIdSet = computed(() => new Set(routeWrongQuestionIds.value))
+const visibleQuestions = computed(() => {
+  if (routeViewMode.value !== 'wrong')
+    return questions.value
+  if (routeWrongQuestionIdSet.value.size > 0)
+    return questions.value.filter(item => routeWrongQuestionIdSet.value.has(Number(item.question_id)))
+  return questions.value.filter(item => getState(item.question_id).isCorrect === false)
+})
 const pageTitle = computed(() => session.value?.practice_name || '刷题练习')
 const mode = computed<PracticeMode>(() => session.value?.session_type === 'exam' ? 'exam' : routeMode.value)
 const isCompleted = computed(() => session.value?.status === 'completed')
-const totalCount = computed(() => questions.value.length)
+const totalCount = computed(() => visibleQuestions.value.length)
+const displayTotalCount = computed(() => {
+  if (routeViewMode.value === 'wrong')
+    return totalCount.value
+
+  const routeCount = toNumber(routeDisplayTotalCount.value)
+  if (routeCount > 0)
+    return routeCount
+
+  const configCount = toNumber(session.value?.exam_config?.display_total_count)
+  if (configCount > 0)
+    return configCount
+
+  return totalCount.value
+})
 const questionGroups = computed<AnswerSheetGroup[]>(() => {
   const groups: AnswerSheetGroup[] = []
   let lastChapter: string | null = null
-  for (let i = 0; i < questions.value.length; i++) {
-    const q = questions.value[i]
+  for (let i = 0; i < visibleQuestions.value.length; i++) {
+    const q = visibleQuestions.value[i]
     const chapterName = q.chapter?.name || ''
     if (chapterName !== lastChapter) {
       groups.push({ title: chapterName, items: [] })
@@ -85,9 +125,9 @@ const questionGroups = computed<AnswerSheetGroup[]>(() => {
 })
 
 function getQuestionIndex(questionId: number) {
-  return questions.value.findIndex(q => q.question_id === questionId)
+  return visibleQuestions.value.findIndex(q => q.question_id === questionId)
 }
-const currentSnap = computed(() => questions.value[currentIndex.value] || null)
+const currentSnap = computed(() => visibleQuestions.value[currentIndex.value] || null)
 const currentQuestionId = computed(() => Number(currentSnap.value?.question_id || 0))
 const currentQuestion = computed(() => questionMap[currentQuestionId.value] || null)
 const feedbackTargetText = computed(() => {
@@ -99,9 +139,9 @@ const currentSolution = computed(() => solutionMap[currentQuestionId.value] || n
 const materials = computed(() => (currentQuestion.value?.material_ids || []).map((id: number) => materialMap[id]).filter(Boolean))
 const selectedCodes = computed(() => toCodes(currentState.value?.userAnswer))
 const correctCodes = computed(() => toCodes(currentSolution.value?.correct_answer))
-const answeredCount = computed(() => questions.value.filter(item => getState(item.question_id).isAnswered).length)
-const correctCount = computed(() => questions.value.filter(item => getState(item.question_id).isCorrect === true).length)
-const wrongCount = computed(() => questions.value.filter(item => getState(item.question_id).isCorrect === false).length)
+const answeredCount = computed(() => visibleQuestions.value.filter(item => getState(item.question_id).isAnswered).length)
+const correctCount = computed(() => visibleQuestions.value.filter(item => getState(item.question_id).isCorrect === true).length)
+const wrongCount = computed(() => visibleQuestions.value.filter(item => getState(item.question_id).isCorrect === false).length)
 const totalSeconds = computed(() => {
   const base = Object.values(answerStateMap).reduce((sum, item) => sum + toNumber(item.answerTime), 0)
   if (!currentQuestionId.value || isCompleted.value || isTimingPaused.value)
@@ -329,6 +369,10 @@ function isQuestionText(question: any) {
   return ['fill', 'shortAnswer'].includes(question?.type || '')
 }
 
+function isQuestionSubjective(question: any) {
+  return isSubjectiveQuestionType(question?.type)
+}
+
 function isQuestionLocked(questionId: number) {
   const state = getState(questionId)
   return isCompleted.value || (mode.value !== 'exam' && state.locked)
@@ -347,7 +391,7 @@ function questionShouldShowSolution(questionId: number) {
     return Boolean(solutionMap[questionId])
   if (mode.value === 'memorize')
     return Boolean(solutionMap[questionId])
-  return mode.value === 'practice' && Boolean(getState(questionId).locked && solutionMap[questionId])
+  return mode.value === 'practice' && Boolean(getState(questionId).locked)
 }
 
 function questionSeconds(questionId: number) {
@@ -362,7 +406,7 @@ function questionSeconds(questionId: number) {
 function questionOptionTone(questionId: number, code: string) {
   const selected = questionSelectedCodes(questionId)
   const correct = questionCorrectCodes(questionId)
-  if (questionShouldShowSolution(questionId)) {
+  if (questionShouldShowSolution(questionId) && correct.length) {
     if (correct.includes(code))
       return 'correct'
     if (selected.includes(code) && !correct.includes(code))
@@ -440,10 +484,121 @@ function snapshotOf(questionId: number) {
   return questions.value.find(item => item.question_id === questionId)
 }
 
+function resolveInitialQuestionIndex() {
+  if (!visibleQuestions.value.length)
+    return 0
+
+  if (pendingGotoQuestionId.value) {
+    const questionIndex = visibleQuestions.value.findIndex(
+      item => Number(item.question_id) === pendingGotoQuestionId.value,
+    )
+    if (questionIndex >= 0)
+      return questionIndex
+  }
+
+  if (pendingGotoIndex.value !== null)
+    return Math.min(Math.max(pendingGotoIndex.value, 0), visibleQuestions.value.length - 1)
+
+  if (routeViewMode.value === 'wrong')
+    return 0
+
+  const firstUnanswered = visibleQuestions.value.findIndex(item => !getState(item.question_id).isAnswered)
+  return firstUnanswered >= 0 ? firstUnanswered : 0
+}
+
+function questionProgressLabel(item: any, index: number) {
+  if (routeViewMode.value === 'wrong')
+    return `错题 ${index + 1}/${totalCount.value}`
+  return `${item.seq_no}/${displayTotalCount.value}`
+}
+
+function parseNumberList(value: unknown) {
+  return String(value || '')
+    .split(',')
+    .map(item => Number(item))
+    .filter(item => Number.isFinite(item) && item > 0)
+}
+
+function recordOf(questionId: number) {
+  return session.value?.records?.find((item: any) => Number(item?.question_id) === questionId) || null
+}
+
+function recordIdOf(questionId: number) {
+  const recordId = Number(recordOf(questionId)?.id || 0)
+  return recordId > 0 ? recordId : 0
+}
+
+function getAIEvaluation(questionId: number) {
+  return aiEvaluationMap[questionId] || null
+}
+
+function aiEvaluationFailed(questionId: number) {
+  return getAIEvaluation(questionId)?.status === 'failed'
+}
+
+function aiEvaluationMessage(questionId: number) {
+  const loading = aiEvaluationLoadingMap[questionId]
+  if (loading)
+    return '生成中'
+  if (aiEvaluationErrorMap[questionId])
+    return '生成失败'
+  if (aiEvaluationFailed(questionId))
+    return '无法生成'
+  if (getAIEvaluation(questionId))
+    return '已生成'
+  return '待生成'
+}
+
+function aiEvaluationPayload(questionId: number) {
+  return getAIEvaluation(questionId)?.result_payload || null
+}
+
+function subjectiveScoreText(questionId: number) {
+  const evaluation = getAIEvaluation(questionId)
+  return formatEvaluationScore(evaluation?.score, evaluation?.max_score)
+}
+
+function subjectiveStrengths(questionId: number) {
+  return normalizeStringList(aiEvaluationPayload(questionId)?.strengths)
+}
+
+function subjectiveMissingPoints(questionId: number) {
+  return normalizeStringList(aiEvaluationPayload(questionId)?.missing_points)
+}
+
+function subjectiveSuggestions(questionId: number) {
+  return normalizeStringList(aiEvaluationPayload(questionId)?.improvement_suggestions)
+}
+
+function subjectiveReferenceAnswer(questionId: number) {
+  const payload = aiEvaluationPayload(questionId)
+  return String(payload?.reference_answer || '').trim()
+}
+
+function subjectiveGradingSummary(questionId: number) {
+  const payload = aiEvaluationPayload(questionId)
+  return String(payload?.grading_summary || getAIEvaluation(questionId)?.summary_text || '').trim()
+}
+
+function subjectiveEncouragement(questionId: number) {
+  const payload = aiEvaluationPayload(questionId)
+  return String(payload?.encouragement || '').trim()
+}
+
 function clearMap(target: Record<number, any>) {
   Object.keys(target).forEach((key) => {
     delete target[Number(key)]
   })
+}
+
+function mergeRecognizedText(originalText: string, nextText: string) {
+  const current = originalText.trim()
+  const incoming = nextText.trim()
+  if (!incoming)
+    return current
+  if (!current)
+    return incoming
+  return `${current}\n${incoming}`
 }
 
 function commitTime(questionId = currentQuestionId.value) {
@@ -521,7 +676,6 @@ async function loadSolution(questionId: number) {
         solutionKeyMap[questionId] = cacheKey
         if (found.is_correct != null) {
           state.isCorrect = found.is_correct
-          state.score = found.is_correct ? toNumber(snapshotOf(questionId)?.full_score) : 0
           syncRecord(questionId)
         }
         return found
@@ -535,7 +689,6 @@ async function loadSolution(questionId: number) {
 
     if (solutionMap[questionId]?.is_correct != null) {
       state.isCorrect = solutionMap[questionId].is_correct
-      state.score = solutionMap[questionId].is_correct ? toNumber(snapshotOf(questionId)?.full_score) : 0
       syncRecord(questionId)
     }
 
@@ -549,9 +702,139 @@ async function loadSolution(questionId: number) {
   }
 }
 
+async function loadAIEvaluation(questionId: number, forceRegenerate = false) {
+  if (!questionId)
+    return null
+
+  const question = questionMap[questionId]
+  if (!isQuestionSubjective(question))
+    return null
+
+  const recordId = recordIdOf(questionId)
+  if (!recordId)
+    return null
+
+  if (!forceRegenerate && aiEvaluationMap[questionId])
+    return aiEvaluationMap[questionId]
+
+  if (aiEvaluationLoadingMap[questionId])
+    return aiEvaluationMap[questionId] || null
+
+  aiEvaluationLoadingMap[questionId] = true
+  aiEvaluationErrorMap[questionId] = ''
+  try {
+    const evaluation = forceRegenerate
+      ? await regeneratePracticeRecordAIEvaluation(recordId)
+      : await getPracticeRecordAIEvaluation(recordId)
+    aiEvaluationMap[questionId] = evaluation || null
+    return evaluation || null
+  }
+  catch (error: any) {
+    const status = Number(error?.response?.status || error?.statusCode || 0)
+    if (status === 404) {
+      aiEvaluationMap[questionId] = null
+      return null
+    }
+
+    const message = String(error?.response?.data?.msg || error?.message || 'AI 点评加载失败').trim()
+    aiEvaluationErrorMap[questionId] = message
+    return null
+  }
+  finally {
+    aiEvaluationLoadingMap[questionId] = false
+  }
+}
+
 async function maybeLoadCurrentSolution() {
   if (currentQuestionId.value && shouldShowSolution.value)
     await loadSolution(currentQuestionId.value)
+}
+
+async function maybeLoadCurrentAIEvaluation() {
+  if (!currentQuestionId.value || !shouldShowSolution.value)
+    return
+  await loadAIEvaluation(currentQuestionId.value)
+}
+
+async function regenerateAIEvaluation(questionId: number) {
+  try {
+    const evaluation = await loadAIEvaluation(questionId, true)
+    if (!evaluation) {
+      uni.showToast({ title: '当前暂无可生成的 AI 点评', icon: 'none' })
+      return
+    }
+    uni.showToast({ title: 'AI 点评已更新', icon: 'success' })
+  }
+  catch {
+    uni.showToast({ title: 'AI 点评更新失败', icon: 'none' })
+  }
+}
+
+async function recognizeAnswerFromImages(questionId: number) {
+  const question = questionMap[questionId]
+  if (!question || !isQuestionSubjective(question) || isQuestionLocked(questionId))
+    return
+  if (ocrLoadingMap[questionId])
+    return
+
+  try {
+    const chooseResult = await new Promise<UniApp.ChooseMediaSuccessCallbackResult>((resolve, reject) => {
+      uni.chooseMedia({
+        count: 3,
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        success: resolve,
+        fail: reject,
+      })
+    })
+
+    const filePaths = (chooseResult.tempFiles || [])
+      .map((item: any) => item.tempFilePath || item.path || '')
+      .filter(Boolean)
+
+    if (!filePaths.length)
+      return
+
+    ocrLoadingMap[questionId] = true
+    const state = getState(questionId)
+    const recognizedParts: string[] = []
+
+    for (const filePath of filePaths) {
+      const result = await recognizeSubjectiveAnswerImage(filePath)
+      if (result?.text?.trim())
+        recognizedParts.push(result.text.trim())
+    }
+
+    if (!recognizedParts.length) {
+      uni.showToast({ title: '未识别到文字，请重试', icon: 'none' })
+      return
+    }
+
+    state.userAnswer = mergeRecognizedText(
+      typeof state.userAnswer === 'string' ? state.userAnswer : '',
+      recognizedParts.join('\n'),
+    )
+    state.isCorrect = null
+    state.score = null
+    state.isAnswered = hasAnswer(state.userAnswer)
+    syncRecord(questionId)
+    uni.showToast({ title: '识别结果已填入', icon: 'success' })
+  }
+  catch (error: any) {
+    if (error?.errMsg?.includes('cancel'))
+      return
+
+    if (error?.message === 'SUBJECTIVE_OCR_LOGIN_REQUIRED') {
+      uni.showToast({ title: '登录后可使用拍照识别', icon: 'none' })
+      return
+    }
+
+    console.error('主观题 OCR 失败:', error)
+    uni.showToast({ title: String(error?.message || '识别失败，请手动输入').slice(0, 20), icon: 'none' })
+  }
+  finally {
+    ocrLoadingMap[questionId] = false
+  }
 }
 
 async function loadFavoriteStates() {
@@ -661,13 +944,17 @@ async function loadSession() {
   try {
     const [detail, content] = await Promise.all([
       fbaApi.qbank.session.getDetail(sessionId.value),
-      fbaApi.qbank.request.get(`/questions/sessions/${sessionId.value}`),
+      fbaApi.qbank.question.getSessionQuestions(sessionId.value),
     ]) as any
     session.value = detail
     clearMap(answerStateMap)
     clearMap(solutionMap)
     clearMap(solutionKeyMap)
     clearMap(solutionLoadingMap)
+    clearMap(aiEvaluationMap)
+    clearMap(aiEvaluationLoadingMap)
+    clearMap(aiEvaluationErrorMap)
+    clearMap(ocrLoadingMap)
     detail.session_questions.forEach((item: any) => {
       answerStateMap[item.question_id] = { userAnswer: undefined, answerTime: 0, isAnswered: false, isCorrect: null, score: null, locked: false }
     })
@@ -685,12 +972,12 @@ async function loadSession() {
     clearMap(materialMap)
     content.questions.forEach((item: any) => { questionMap[item.question_id] = item })
     content.materials.forEach((item: any) => { materialMap[item.id] = item })
-    const firstUnanswered = questions.value.findIndex(item => !getState(item.question_id).isAnswered)
-    currentIndex.value = firstUnanswered >= 0 ? firstUnanswered : 0
+    currentIndex.value = resolveInitialQuestionIndex()
     isTimingPaused.value = false
     activeQuestionStartedAt.value = Date.now()
     await Promise.all([loadFavoriteStates(), loadNotes()])
     await maybeLoadCurrentSolution()
+    await maybeLoadCurrentAIEvaluation()
 
     // 后台预热题目资源缓存（不阻塞渲染）
     const allHtmlContent: string[] = []
@@ -734,26 +1021,39 @@ async function persistAnswer(questionId: number, judgeNow: boolean, silent = fal
       }],
     } as any) as any
 
-    // 并行发起 solution 请求（不依赖 records 结果）
-    const solutionPromise = (judgeNow && mode.value !== 'exam')
-      ? loadSolution(questionId)
-      : null
-
     state.isAnswered = true
     if (judgeNow && mode.value !== 'exam')
       state.locked = true
     const judge = Array.isArray(result?.judge_results) ? result.judge_results.find((item: any) => Number(item?.question_id) === questionId) : null
     if (judge) {
       state.isCorrect = typeof judge.is_correct === 'boolean' ? judge.is_correct : null
-      state.score = judge.is_correct ? toNumber(snap.full_score) : 0
+      if (judge.score != null)
+        state.score = toNumber(judge.score)
+      else if (typeof judge.is_correct === 'boolean')
+        state.score = judge.is_correct ? toNumber(snap.full_score) : 0
+      else
+        state.score = null
+
+      aiEvaluationErrorMap[questionId] = judge.error_message ? String(judge.error_message) : ''
     }
     else if (!judgeNow) {
       state.isCorrect = null
       state.score = null
     }
     syncRecord(questionId)
-    if (solutionPromise)
-      await solutionPromise
+    if (judge?.record_id) {
+      const record = recordOf(questionId)
+      if (record)
+        record.id = Number(judge.record_id)
+    }
+
+    if (judgeNow && mode.value !== 'exam') {
+      void loadSolution(questionId)
+
+      if (isQuestionSubjective(questionMap[questionId]) && judge?.record_id)
+        void loadAIEvaluation(questionId, true)
+    }
+
     return true
   }
   catch (error) {
@@ -891,14 +1191,11 @@ async function submitSession() {
   try {
     await fbaApi.qbank.session.submit(sessionId.value, { total_time: totalSeconds.value } as any)
 
-    // 并行预取 report + solution，存入内存 store
-    const [reportData, solutionData] = await Promise.all([
-      fbaApi.qbank.session.getReport(sessionId.value).catch(() => null),
-      fbaApi.qbank.session.getSolution(sessionId.value).catch(() => null),
-    ])
+    // 结果页只需要报告数据，整套解析按需进入复盘页后再加载，避免提交后被大接口阻塞。
+    const reportData = await fbaApi.qbank.session.getReport(sessionId.value).catch(() => null)
 
     const resultStore = useResultStore()
-    resultStore.setResult(sessionId.value, reportData, solutionData)
+    resultStore.setResult(sessionId.value, reportData, null)
     uni.redirectTo({
       url: `/pages/practice/result/index?sessionId=${sessionId.value}`,
     })
@@ -953,7 +1250,7 @@ function sheetTone(questionId: number, index: number) {
 }
 
 function handleSheetSelect(item: AnswerSheetItem) {
-  const index = questions.value.findIndex(q => q.question_id === item.id)
+  const index = visibleQuestions.value.findIndex(q => q.question_id === item.id)
   if (index >= 0)
     goToQuestion(index)
 }
@@ -966,14 +1263,24 @@ watch(currentQuestionId, async (newId, oldId) => {
   if (oldId)
     commitTime(oldId)
   activeQuestionStartedAt.value = Date.now()
-  if (newId)
+  if (newId) {
     await maybeLoadCurrentSolution()
+    await maybeLoadCurrentAIEvaluation()
+  }
 })
 
 onLoad((query) => {
   sessionId.value = Number(query?.sessionId || 0)
   const nextMode = String(query?.mode || 'practice')
   routeMode.value = nextMode === 'exam' || nextMode === 'memorize' ? nextMode : 'practice'
+  routeWrongQuestionIds.value = parseNumberList(query?.wrongQuestionIds)
+  routeDisplayTotalCount.value = toNumber(query?.displayTotalCount)
+  const shouldShowWrongOnly = query?.viewMode === 'wrong' || query?.wrongOnly === '1' || routeWrongQuestionIds.value.length > 0
+  routeViewMode.value = shouldShowWrongOnly ? 'wrong' : 'all'
+  const gotoIndex = Number(query?.gotoIndex)
+  pendingGotoIndex.value = Number.isFinite(gotoIndex) && gotoIndex >= 0 ? gotoIndex : null
+  const gotoQuestionId = Number(query?.gotoQuestionId)
+  pendingGotoQuestionId.value = Number.isFinite(gotoQuestionId) && gotoQuestionId > 0 ? gotoQuestionId : null
   autoDestroy.value = query?.autoDestroy === '1'
   if (!sessionId.value) {
     uni.showToast({ title: '会话参数不完整', icon: 'none' })
@@ -1022,13 +1329,13 @@ onUnload(() => {
     </view>
 
     <swiper
-      v-else-if="questions.length"
+      v-else-if="visibleQuestions.length"
       class="flex-1"
       :current="currentIndex"
       :duration="260"
       @change="handleSwiperChange"
     >
-      <swiper-item v-for="(item, idx) in questions" :key="item.question_id">
+      <swiper-item v-for="(item, idx) in visibleQuestions" :key="item.question_id">
         <scroll-view scroll-y class="box-border h-full px-3 pb-8" :show-scrollbar="false">
           <view v-if="questionMap[item.question_id] && Math.abs(idx - currentIndex) <= 1" class="mt-3 flex flex-col gap-3">
 
@@ -1040,7 +1347,7 @@ onUnload(() => {
                     {{ typeLabel(questionMap[item.question_id].type) }}
                   </view>
                   <view class="text-[15px] text-[#2563EB] font-black">
-                    {{ item.seq_no }}/{{ totalCount }}
+                    {{ questionProgressLabel(item, idx) }}
                   </view>
                 </view>
                 <view class="flex shrink-0 items-center gap-2 text-[12px] text-[#64748B]">
@@ -1079,7 +1386,7 @@ onUnload(() => {
                   </scroll-view>
                   <view class="overflow-hidden border border-[#D1FAE5] rounded-[20px] bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.98))] px-4 py-4 shadow-sm">
                     <rich-text
-                      class="session-rich text-[14px] text-[#475569] leading-[1.8]"
+                      class="session-rich text-[15px] text-[#475569] leading-[1.8]"
                       :nodes="html(questionMaterials(questionMap[item.question_id])[materialTabIndex[item.question_id] ?? 0]?.content)"
                     />
                   </view>
@@ -1087,11 +1394,11 @@ onUnload(() => {
                 <!-- 单材料：直接展示 -->
                 <template v-else>
                   <view class="overflow-hidden border border-[#D1FAE5] rounded-[20px] bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.98))] px-4 py-4 shadow-sm">
-                    <rich-text class="session-rich text-[14px] text-[#475569] leading-[1.8]" :nodes="html(questionMaterials(questionMap[item.question_id])[0]?.content)" />
+                    <rich-text class="session-rich text-[15px] text-[#475569] leading-[1.8]" :nodes="html(questionMaterials(questionMap[item.question_id])[0]?.content)" />
                   </view>
                 </template>
               </view>
-              <rich-text class="session-rich mt-5 text-[17px] text-[#0F172A] font-semibold leading-[1.9]" :nodes="html(questionMap[item.question_id].stem)" />
+              <rich-text class="session-rich mt-5 text-[16px] text-[#0F172A] font-medium leading-[1.85]" :nodes="html(questionMap[item.question_id].stem)" />
               <view v-if="questionMap[item.question_id].options?.length" class="mt-5 flex flex-col gap-3">
                 <view v-for="option in questionMap[item.question_id].options" :key="option.option_code" class="option-card" :class="`tone-${questionOptionTone(item.question_id, option.option_code)}`" @click="handleQuestionOptionClick(item.question_id, questionMap[item.question_id], option.option_code)">
                   <view class="option-code" :class="questionMap[item.question_id].type === 'multiple' ? 'option-code-square' : ''">
@@ -1102,6 +1409,27 @@ onUnload(() => {
               </view>
               <view v-else-if="isQuestionText(questionMap[item.question_id])" class="mt-5">
                 <textarea :value="questionTextAnswer(item.question_id)" class="box-border min-h-[180px] w-full rounded-[20px] bg-[#F8FAFC] px-4 py-4 text-[14px] text-[#0F172A] leading-[1.8]" placeholder="请输入你的答案" :disabled="isQuestionLocked(item.question_id)" :maxlength="-1" auto-height @input="handleQuestionTextInput(item.question_id, $event)" />
+                <view
+                  v-if="isQuestionSubjective(questionMap[item.question_id]) && !isQuestionLocked(item.question_id)"
+                  class="mt-3 flex items-center justify-between gap-3 rounded-[16px] border border-[#D1FAE5] bg-[#F0FDF4] px-4 py-3"
+                >
+                  <view class="min-w-0">
+                    <view class="text-[13px] text-[#166534] font-bold">
+                      拍照识别 / 相册识别
+                    </view>
+                    <view class="mt-1 text-[12px] text-[#15803D] leading-[1.6]">
+                      支持拍照或相册导入，最多 3 张，识别后会直接填入答案框，你还可以继续编辑。
+                    </view>
+                  </view>
+                  <view
+                    class="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#059669] px-3 py-1.5 text-[12px] text-white font-bold active:scale-95"
+                    @click="recognizeAnswerFromImages(item.question_id)"
+                  >
+                    <view v-if="ocrLoadingMap[item.question_id]" class="i-carbon-circle-dash animate-spin text-[13px]" />
+                    <view v-else class="i-carbon-camera text-[13px]" />
+                    <text>{{ ocrLoadingMap[item.question_id] ? '识别中...' : '开始识别' }}</text>
+                  </view>
+                </view>
               </view>
               <view v-if="(isQuestionMulti(questionMap[item.question_id]) || isQuestionText(questionMap[item.question_id])) && !isQuestionLocked(item.question_id)" class="mt-5">
                 <view class="h-11 flex items-center justify-center rounded-full bg-[#059669] text-[14px] text-white font-black active:scale-[0.98]" @click="submitQuestion(item.question_id)">
@@ -1111,6 +1439,19 @@ onUnload(() => {
             </view>
 
             <!-- 卡片 2：选择数据 -->
+            <view
+              v-if="questionShouldShowSolution(item.question_id) && solutionLoadingMap[item.question_id] && !solutionMap[item.question_id]"
+              class="section-card"
+            >
+              <view class="flex items-center gap-2">
+                <view class="i-carbon-circle-dash animate-spin text-[16px] text-[#2563EB]" />
+                <view class="text-[15px] text-[#2563EB] font-black">正在加载答案解析</view>
+              </view>
+              <view class="mt-4 rounded-[16px] bg-[#F8FAFC] px-4 py-4 text-[13px] text-[#64748B] leading-[1.7]">
+                本题已提交，正在补充正确答案、解析和统计数据...
+              </view>
+            </view>
+
             <view v-if="questionShouldShowSolution(item.question_id) && solutionMap[item.question_id]" class="section-card">
               <view class="flex items-center gap-2">
                 <view class="i-carbon-chart-bar text-[16px] text-[#7C3AED]" />
@@ -1143,6 +1484,143 @@ onUnload(() => {
                   易错项：<text class="font-black">{{ errorProneOption(solutionMap[item.question_id].option_select_stats, solutionMap[item.question_id].correct_answer)?.code }}</text>
                   <text class="ml-1 text-[#B45309]">({{ errorProneOption(solutionMap[item.question_id].option_select_stats, solutionMap[item.question_id].correct_answer)?.rate }}% 选择率)</text>
                 </view>
+              </view>
+            </view>
+
+            <view
+              v-if="questionShouldShowSolution(item.question_id) && isQuestionSubjective(questionMap[item.question_id])"
+              class="section-card"
+            >
+              <view class="flex items-center justify-between gap-3">
+                <view class="flex items-center gap-2">
+                  <view class="i-carbon-ai-generate text-[16px] text-[#0F766E]" />
+                  <view class="text-[15px] text-[#0F766E] font-black">AI 主观题点评</view>
+                </view>
+                <view
+                  class="rounded-full px-3 py-1 text-[11px] font-black"
+                  :class="aiEvaluationLoadingMap[item.question_id]
+                    ? 'bg-[#EFF6FF] text-[#2563EB]'
+                    : aiEvaluationErrorMap[item.question_id]
+                      ? 'bg-[#FEF2F2] text-[#DC2626]'
+                      : aiEvaluationFailed(item.question_id)
+                        ? 'bg-[#FEF2F2] text-[#DC2626]'
+                        : getAIEvaluation(item.question_id)
+                        ? 'bg-[#ECFDF5] text-[#059669]'
+                        : 'bg-[#F8FAFC] text-[#64748B]'"
+                >
+                  {{ aiEvaluationMessage(item.question_id) }}
+                </view>
+              </view>
+
+              <view v-if="aiEvaluationLoadingMap[item.question_id]" class="mt-4 rounded-[16px] bg-[#F8FAFC] px-4 py-4 text-[13px] text-[#64748B]">
+                AI 正在整理这道主观题的评分和建议...
+              </view>
+
+              <view v-else-if="aiEvaluationErrorMap[item.question_id]" class="mt-4 rounded-[16px] bg-[#FEF2F2] px-4 py-4">
+                <view class="text-[13px] text-[#B91C1C] leading-[1.7]">
+                  {{ aiEvaluationErrorMap[item.question_id] }}
+                </view>
+                <view
+                  v-if="recordIdOf(item.question_id)"
+                  class="mt-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[12px] text-[#DC2626] font-bold active:scale-95"
+                  @click="regenerateAIEvaluation(item.question_id)"
+                >
+                  <view class="i-carbon-renew text-[13px]" />
+                  <text>重新生成</text>
+                </view>
+              </view>
+
+              <view v-else-if="aiEvaluationFailed(item.question_id)" class="mt-4 rounded-[16px] bg-[#FEF2F2] px-4 py-4">
+                <view class="text-[13px] text-[#B91C1C] leading-[1.7]">
+                  {{ getAIEvaluation(item.question_id)?.error_message || '当前题目暂时无法生成稳定的 AI 点评' }}
+                </view>
+                <view
+                  v-if="recordIdOf(item.question_id)"
+                  class="mt-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[12px] text-[#DC2626] font-bold active:scale-95"
+                  @click="regenerateAIEvaluation(item.question_id)"
+                >
+                  <view class="i-carbon-renew text-[13px]" />
+                  <text>重新生成</text>
+                </view>
+              </view>
+
+              <view v-else-if="getAIEvaluation(item.question_id)" class="mt-4 flex flex-col gap-4">
+                <view class="grid grid-cols-2 gap-3">
+                  <view class="data-cell">
+                    <view class="data-cell-label">AI 得分</view>
+                    <view class="data-cell-value text-[#0F766E]">{{ subjectiveScoreText(item.question_id) }}</view>
+                  </view>
+                  <view class="data-cell">
+                    <view class="data-cell-label">评分置信度</view>
+                    <view class="data-cell-value text-[#2563EB]">
+                      {{ getAIEvaluation(item.question_id)?.confidence != null ? `${Math.round(Number(getAIEvaluation(item.question_id)?.confidence || 0) * 100)}%` : '--' }}
+                    </view>
+                  </view>
+                </view>
+
+                <view v-if="subjectiveReferenceAnswer(item.question_id)" class="rounded-[16px] bg-[#F0FDF4] px-4 py-4">
+                  <view class="text-[12px] text-[#16A34A] font-bold">
+                    参考答案
+                  </view>
+                  <AiRichContent class="mt-2 text-[14px] text-[#166534]" :content="subjectiveReferenceAnswer(item.question_id)" />
+                </view>
+
+                <view v-if="subjectiveGradingSummary(item.question_id)" class="rounded-[16px] bg-[#F8FAFC] px-4 py-4">
+                  <view class="text-[12px] text-[#475569] font-bold">
+                    综合点评
+                  </view>
+                  <AiRichContent class="mt-2 text-[14px] text-[#334155]" :content="subjectiveGradingSummary(item.question_id)" />
+                </view>
+
+                <view v-if="subjectiveStrengths(item.question_id).length" class="rounded-[16px] bg-[#ECFDF5] px-4 py-4">
+                  <view class="text-[12px] text-[#15803D] font-bold">
+                    回答亮点
+                  </view>
+                  <view class="mt-2 flex flex-col gap-2 text-[13px] text-[#166534]">
+                    <view v-for="(line, lineIndex) in subjectiveStrengths(item.question_id)" :key="lineIndex">
+                      {{ line }}
+                    </view>
+                  </view>
+                </view>
+
+                <view v-if="subjectiveMissingPoints(item.question_id).length" class="rounded-[16px] bg-[#FFF7ED] px-4 py-4">
+                  <view class="text-[12px] text-[#C2410C] font-bold">
+                    失分点
+                  </view>
+                  <view class="mt-2 flex flex-col gap-2 text-[13px] text-[#9A3412]">
+                    <view v-for="(line, lineIndex) in subjectiveMissingPoints(item.question_id)" :key="lineIndex">
+                      {{ line }}
+                    </view>
+                  </view>
+                </view>
+
+                <view v-if="subjectiveSuggestions(item.question_id).length" class="rounded-[16px] bg-[#EFF6FF] px-4 py-4">
+                  <view class="text-[12px] text-[#1D4ED8] font-bold">
+                    改进建议
+                  </view>
+                  <view class="mt-2 flex flex-col gap-2 text-[13px] text-[#1E3A8A]">
+                    <view v-for="(line, lineIndex) in subjectiveSuggestions(item.question_id)" :key="lineIndex">
+                      {{ line }}
+                    </view>
+                  </view>
+                </view>
+
+                <view v-if="subjectiveEncouragement(item.question_id)" class="rounded-[16px] bg-[#F5F3FF] px-4 py-4 text-[13px] text-[#6D28D9]">
+                  <AiRichContent :content="subjectiveEncouragement(item.question_id)" />
+                </view>
+
+                <view
+                  v-if="recordIdOf(item.question_id)"
+                  class="inline-flex items-center gap-1 self-start rounded-full bg-[#0F766E] px-3 py-1.5 text-[12px] text-white font-bold active:scale-95"
+                  @click="regenerateAIEvaluation(item.question_id)"
+                >
+                  <view class="i-carbon-renew text-[13px]" />
+                  <text>重新点评</text>
+                </view>
+              </view>
+
+              <view v-else class="mt-4 rounded-[16px] bg-[#F8FAFC] px-4 py-4 text-[13px] text-[#64748B]">
+                暂无 AI 主观题点评，可稍后重试。
               </view>
             </view>
 
@@ -1259,7 +1737,7 @@ onUnload(() => {
               答题卡
             </view>
             <view class="mt-1 text-[12px] text-[#64748B]">
-              已作答 {{ answeredCount }} / {{ totalCount }} 题
+              {{ routeViewMode === 'wrong' ? `仅展示错题，共 ${totalCount} 题` : `已作答 ${answeredCount} / ${totalCount} 题` }}
             </view>
           </view>
           <view class="h-8 w-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 active:scale-90" @click="showAnswerSheet = false">
@@ -1544,8 +2022,8 @@ onUnload(() => {
 .option-card {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 13px 15px;
   border-radius: 12px;
   border: 1px solid rgba(226, 232, 240, 0.9);
   background: rgba(255, 255, 255, 0.92);
@@ -1616,6 +2094,6 @@ onUnload(() => {
   min-width: 0;
   color: #0f172a;
   font-size: 15px;
-  line-height: 1.75;
+  line-height: 1.78;
 }
 </style>

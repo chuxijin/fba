@@ -69,14 +69,15 @@ async def get_statistics(
     request: Request,
     db: CurrentSession,
     group_by: str | None = None,
+    study_domain: str | None = None,
 ) -> ResponseSchemaModel:
     """获取用户的笔记统计数据，传 group_by 时返回树形分组"""
     if group_by:
         data = await note_service.get_statistics_with_groups(
-            db=db, user_id=request.user.id, group_by=group_by,
+            db=db, user_id=request.user.id, group_by=group_by, study_domain=study_domain,
         )
         return response_base.success(data=data)
-    stats = await question_note_dao.get_statistics(db=db, user_id=request.user.id)
+    stats = await note_service.get_statistics(db=db, user_id=request.user.id, study_domain=study_domain)
     return response_base.success(data=stats)
 
 
@@ -85,9 +86,15 @@ async def get_grouped(
     request: Request,
     db: CurrentSession,
     group_by: str = 'bank',
+    study_domain: str | None = None,
 ) -> ResponseSchemaModel[list[WrongQuestionGroupItem]]:
     """按题库或知识点分组聚合笔记数量"""
-    data = await note_service.get_grouped(db=db, user_id=request.user.id, group_by=group_by)
+    data = await note_service.get_grouped(
+        db=db,
+        user_id=request.user.id,
+        group_by=group_by,
+        study_domain=study_domain,
+    )
     return response_base.success(data=data)
 
 

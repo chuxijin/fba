@@ -1,8 +1,15 @@
+import {
+  DEFAULT_STUDY_DOMAIN,
+  normalizeStudyDomainCode,
+  type StudyDomainCode,
+} from './studyDomain'
+
 export type AppThemeMode = 'light' | 'dark'
 export type AppPracticeMode = 'practice' | 'exam' | 'memorize'
 export type RandomPracticeYearRange = 'unlimited' | 'last_3_years' | 'last_5_years'
 
 export type AppSettings = {
+  currentDomain: StudyDomainCode
   randomPracticeCount: number
   randomPracticeYearRange: RandomPracticeYearRange
   themeMode: AppThemeMode
@@ -48,6 +55,7 @@ function normalizeWrongMasteryStreak(value: unknown): number {
 
 export function getDefaultAppSettings(): AppSettings {
   return {
+    currentDomain: DEFAULT_STUDY_DOMAIN,
     randomPracticeCount: DEFAULT_RANDOM_PRACTICE_COUNT,
     randomPracticeYearRange: DEFAULT_RANDOM_PRACTICE_YEAR_RANGE,
     themeMode: 'light',
@@ -66,6 +74,7 @@ export function getAppSettings(): AppSettings {
 
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
     return {
+      currentDomain: normalizeStudyDomainCode(parsed?.currentDomain),
       randomPracticeCount: normalizeRandomPracticeCount(parsed?.randomPracticeCount),
       randomPracticeYearRange: normalizeRandomPracticeYearRange(parsed?.randomPracticeYearRange),
       themeMode: normalizeThemeMode(parsed?.themeMode),
@@ -121,6 +130,7 @@ export function saveAppSettings(nextSettings: Partial<AppSettings>) {
   }
 
   const normalized: AppSettings = {
+    currentDomain: normalizeStudyDomainCode(merged.currentDomain),
     randomPracticeCount: normalizeRandomPracticeCount(merged.randomPracticeCount),
     randomPracticeYearRange: normalizeRandomPracticeYearRange(merged.randomPracticeYearRange),
     themeMode: normalizeThemeMode(merged.themeMode),

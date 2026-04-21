@@ -198,6 +198,7 @@ class RenderJobListParams(_CustomPageParams):
     mode: JobMode | None = Field(default=None, description='任务模式')
     user_id: int | None = Field(default=None, ge=1, description='用户 ID')
     keyword: str | None = Field(default=None, description='标题/副标题/任务 ID 模糊查询')
+    study_domain: str | None = Field(default=None, description='学习领域编码')
 
 
 class RenderTemplatePreviewResponse(BaseModel):

@@ -5,11 +5,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import WrongQuestionBook
 from backend.app.question_bank.schema.wrong_question import WrongQuestionStatistics
+from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
 from backend.common.exception import errors
 
 
 class WrongQuestionService:
     """错题本服务类"""
+
+    @staticmethod
+    async def _get_study_domain_filter(
+        *,
+        db: AsyncSession,
+        study_domain: str | None,
+    ) -> StudyDomainQuestionFilter | None:
+        """
+        获取领域过滤上下文
+
+        :param db: 数据库会话
+        :param study_domain: 领域编码
+        :return:
+        """
+        if not study_domain:
+            return None
+        return await study_domain_service.get_question_filter(db=db, code=study_domain)
 
     @staticmethod
     async def get_wrong_question(*, db: AsyncSession, wrong_id: int, user_id: int) -> WrongQuestionBook:
@@ -102,7 +120,12 @@ class WrongQuestionService:
         return count
 
     @staticmethod
-    async def get_statistics(*, db: AsyncSession, user_id: int) -> WrongQuestionStatistics:
+    async def get_statistics(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        study_domain: str | None = None,
+    ) -> WrongQuestionStatistics:
         """
         获取用户的错题本统计数据
 
@@ -110,7 +133,15 @@ class WrongQuestionService:
         :param user_id: 用户 ID
         :return:
         """
-        stats = await wrong_question_dao.get_statistics(db=db, user_id=user_id)
+        domain_filter = await WrongQuestionService._get_study_domain_filter(db=db, study_domain=study_domain)
+        if domain_filter:
+            stats = await wrong_question_dao.get_statistics_by_bank_ids(
+                db=db,
+                user_id=user_id,
+                bank_ids=domain_filter.bank_ids,
+            )
+        else:
+            stats = await wrong_question_dao.get_statistics(db=db, user_id=user_id)
 
         return WrongQuestionStatistics(
             total_count=stats['total'],
@@ -123,7 +154,11 @@ class WrongQuestionService:
 
     @staticmethod
     async def get_statistics_with_groups(
-        *, db: AsyncSession, user_id: int, group_by: str = 'knowledge_point'
+        *,
+        db: AsyncSession,
+        user_id: int,
+        group_by: str = 'knowledge_point',
+        study_domain: str | None = None,
     ) -> dict:
         """
         获取错题统计与树形分组数据
@@ -140,15 +175,33 @@ class WrongQuestionService:
             load_kp_categories,
         )
 
-        stats = await wrong_question_dao.get_statistics(db=db, user_id=user_id)
+        domain_filter = await WrongQuestionService._get_study_domain_filter(db=db, study_domain=study_domain)
+        if domain_filter:
+            stats = await wrong_question_dao.get_statistics_by_bank_ids(
+                db=db,
+                user_id=user_id,
+                bank_ids=domain_filter.bank_ids,
+            )
+        else:
+            stats = await wrong_question_dao.get_statistics(db=db, user_id=user_id)
 
         if group_by == 'knowledge_point':
             flat_counts = await wrong_question_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
+            if domain_filter:
+                flat_counts = [
+                    item for item in flat_counts
+                    if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+                ]
             count_map = {item['group_name']: item['count'] for item in flat_counts}
             categories = await load_kp_categories(db)
             groups = build_kp_tree(categories, count_map)
         else:
             flat_counts = await wrong_question_dao.get_bank_chapter_counts(db=db, user_id=user_id)
+            if domain_filter:
+                flat_counts = [
+                    row for row in flat_counts
+                    if row['bank_id'] is not None and int(row['bank_id']) in domain_filter.bank_ids
+                ]
             count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
             bank_ids = {row['bank_id'] for row in flat_counts if row['bank_id'] is not None}
             chapter_ids = {row['chapter_id'] for row in flat_counts if row['chapter_id'] is not None}
@@ -166,7 +219,13 @@ class WrongQuestionService:
         }
 
     @staticmethod
-    async def get_grouped(*, db: AsyncSession, user_id: int, group_by: str) -> list[dict]:
+    async def get_grouped(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        group_by: str,
+        study_domain: str | None = None,
+    ) -> list[dict]:
         """
         按题库或知识点分组聚合错题数量
 
@@ -175,9 +234,23 @@ class WrongQuestionService:
         :param group_by: 分组方式
         :return:
         """
+        domain_filter = await WrongQuestionService._get_study_domain_filter(db=db, study_domain=study_domain)
         if group_by == 'knowledge_point':
-            return await wrong_question_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
-        return await wrong_question_dao.get_grouped_by_bank(db=db, user_id=user_id)
+            rows = await wrong_question_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
+            if not domain_filter:
+                return rows
+            return [
+                item for item in rows
+                if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+            ]
+
+        rows = await wrong_question_dao.get_grouped_by_bank(db=db, user_id=user_id)
+        if not domain_filter:
+            return rows
+        return [
+            item for item in rows
+            if item['group_id'] is not None and int(item['group_id']) in domain_filter.bank_ids
+        ]
 
     @staticmethod
     async def answer_correct(

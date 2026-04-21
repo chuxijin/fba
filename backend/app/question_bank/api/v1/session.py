@@ -17,6 +17,7 @@ from backend.app.question_bank.schema.practice import (
 )
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.session_service import session_service
+from backend.app.question_bank.service.study_domain_config import normalize_study_domain_code
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -150,10 +151,28 @@ async def get_sessions(
     db: CurrentSession,
     session_type: Annotated[str | None, Query(description='会话类型')] = None,
     status: Annotated[str | None, Query(description='状态')] = None,
+    bank_ids: Annotated[str | None, Query(description='题库 ID 列表，逗号分隔')] = None,
+    study_domain: Annotated[str | None, Query(description='学习领域编码')] = None,
 ) -> ResponseSchemaModel[PageData[GetPracticeSessionListItem]]:
     """获取用户的练习会话列表"""
+    parsed_bank_ids: list[int] | None = None
+    if bank_ids:
+        parsed_bank_ids = []
+        for item in bank_ids.split(','):
+            text = item.strip()
+            if not text:
+                continue
+            if text.isdigit():
+                parsed_bank_ids.append(int(text))
+
+    resolved_study_domain = normalize_study_domain_code(study_domain) if study_domain else None
     stmt = await session_service.get_session_list_select(
-        user_id=request.user.id, session_type=session_type, status=status
+        db=db,
+        user_id=request.user.id,
+        session_type=session_type,
+        bank_ids=parsed_bank_ids,
+        status=status,
+        study_domain=resolved_study_domain,
     )
     page_data = await paging_data(db, stmt, GetPracticeSessionListItem)
     return response_base.success(data=page_data)

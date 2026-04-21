@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 from typing import Any
 
-from sqlalchemy import Select, select
+import sqlalchemy as sa
+
+from sqlalchemy import Select, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy_crud_plus import CRUDPlus
@@ -57,6 +59,8 @@ class CRUDRenderBookJob(CRUDPlus[RenderBookJob]):
         mode: str | None = None,
         user_id: int | None = None,
         keyword: str | None = None,
+        study_domain: str | None = None,
+        bank_ids: set[int] | None = None,
         with_files: bool = True,
     ) -> Select[tuple[RenderBookJob]]:
         stmt = select(self.model)
@@ -80,6 +84,13 @@ class CRUDRenderBookJob(CRUDPlus[RenderBookJob]):
                 | self.model.subtitle.ilike(like_keyword)
                 | self.model.job_id.ilike(like_keyword)
             )
+        if study_domain:
+            conditions = [self.model.metadata_json['study_domain'].as_string() == study_domain]
+            if bank_ids:
+                conditions.append(
+                    cast(self.model.metadata_json['bank_id'].as_string(), sa.BigInteger).in_(bank_ids)
+                )
+            stmt = stmt.where(or_(*conditions))
 
         return stmt.order_by(self.model.created_time.desc(), self.model.id.desc())
 

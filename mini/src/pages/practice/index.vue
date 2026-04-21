@@ -6,7 +6,11 @@ import LoginModal from '@/components/LoginModal.vue'
 import PracticeNode from '@/components/PracticeNode.vue'
 import { useTokenStore, useUserStore } from '@/store'
 import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
-import { getCachedStudyPreference, setCachedStudyPreference } from '@/utils/studyPreferenceCache'
+import { getCachedStudyPreference, mergeCachedStudyPreference, setCachedStudyPreference } from '@/utils/studyPreferenceCache'
+import { getStudyDomainOption, type StudyDomainCode } from '@/utils/studyDomain'
+import {
+  getStudyDomainCategoryRoots,
+} from '@/utils/studyDomainQuestionScope'
 import CategoryConfigModal from './components/CategoryConfigModal.vue'
 
 defineOptions({
@@ -75,7 +79,6 @@ interface PracticeTab {
 interface SelectedPracticeTab {
   id: number
   name: string
-  appCode: PracticeConfigTabCode
 }
 
 interface StudyPreferenceCustomTab {
@@ -90,7 +93,6 @@ interface StudyPreferenceCustomTab {
 }
 
 type PracticeMode = 'exam' | 'practice' | 'memorize'
-type PracticeConfigTabCode = 'kaoyan' | 'guokao' | 'shengkao'
 
 interface LatestSessionBrief {
   id: number
@@ -98,6 +100,7 @@ interface LatestSessionBrief {
   practice_name: string
   status: string
   total_count: number
+  display_total_count: number
   completed_count: number
   wrong_count: number
   practice_mode: PracticeMode
@@ -123,6 +126,8 @@ const dashboardLoading = ref(false)
 const savingPreference = ref(false)
 const activeIndex = ref(0)
 const practiceMode = ref<PracticeMode>(getAppSettings().practiceMode as PracticeMode)
+const currentDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
+const lastLoadedDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
 const recentSessionsLoading = ref(false)
 const allTabs = ref<PracticeTab[]>([])
 const tabs = ref<PracticeTab[]>([])
@@ -138,37 +143,14 @@ const dashboard = ref<DashboardState>({
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const navBarHeight = (statusBarHeight || 20) + 44
 
-const practiceConfigTabMatcherMap: Record<PracticeConfigTabCode, { names: string[], codes: string[] }> = {
-  kaoyan: {
-    names: ['考研'],
-    codes: ['kaoyan', 'catalog_kaoyan', 'product_kaoyan'],
-  },
-  guokao: {
-    names: ['国考', '国家公务员'],
-    codes: ['guokao', 'catalog_guokao', 'product_guokao'],
-  },
-  shengkao: {
-    names: ['省考', '各省公务员'],
-    codes: ['shengkao', 'catalog_shengkao', 'product_shengkao'],
-  },
-}
-const kpPracticeConfigTabMatcherMap: Record<PracticeConfigTabCode, { names: string[], codes: string[] }> = {
-  kaoyan: {
-    names: ['考研'],
-    codes: ['kaoyan', 'kp_kaoyan'],
-  },
-  guokao: {
-    names: ['行测', '申论', '面试'],
-    codes: ['xingce', 'shenlun', 'mianshi', 'kp_guokao'],
-  },
-  shengkao: {
-    names: ['行测', '申论', '面试'],
-    codes: ['xingce', 'shenlun', 'mianshi', 'kp_shengkao'],
-  },
-}
-
 const currentTab = computed(() => tabs.value[activeIndex.value] || null)
 const latestRecentSession = computed(() => recentSessions.value[0] || null)
+const currentDomainLabel = computed(() => getStudyDomainOption(currentDomain.value).label)
+
+function syncCurrentDomain() {
+  currentDomain.value = getAppSettings().currentDomain
+  return currentDomain.value
+}
 
 function rebuildDisplayedTabs() {
   if (!selectedPracticeTabs.value.length) {
@@ -499,77 +481,19 @@ function buildPracticeTabByCategoryId(
   }
 }
 
-function resolvePracticeConfigTabCode(node: CategoryNode, type?: string): PracticeConfigTabCode | null {
-  const normalizedName = String(node.name || '').trim().toLowerCase()
-  const normalizedCode = String(node.code || '').trim().toLowerCase()
-  const matcherMap = type === 'knowledge_point' ? kpPracticeConfigTabMatcherMap : practiceConfigTabMatcherMap
-
-  for (const [tabCode, matcher] of Object.entries(matcherMap) as Array<
-    [PracticeConfigTabCode, { names: string[], codes: string[] }]
-  >) {
-    if (matcher.codes.some(code => String(code || '').trim().toLowerCase() === normalizedCode)) {
-      return tabCode
-    }
-
-    if (matcher.names.some((name) => {
-      const normalizedTarget = String(name || '').trim().toLowerCase()
-      return normalizedName === normalizedTarget || normalizedName.includes(normalizedTarget)
-    })) {
-      return tabCode
-    }
-  }
-
-  return null
-}
-
-function resolveCategoryAppCodeById(
-  nodes: CategoryNode[] | null | undefined,
-  targetId: number,
-  ancestors: CategoryNode[] = [],
-): PracticeConfigTabCode | null {
-  for (const node of nodes || []) {
-    const currentAncestors = [...ancestors, node]
-
-    if (node.id === targetId) {
-      if (node.app_code !== 'youanshang') {
-        return null
-      }
-      if (node.type !== 'product_catalog' && node.type !== 'knowledge_point') {
-        return null
-      }
-
-      for (const currentNode of currentAncestors) {
-        const tabCode = resolvePracticeConfigTabCode(currentNode, node.type)
-        if (tabCode) {
-          return tabCode
-        }
-      }
-
-      return null
-    }
-
-    const childResult = resolveCategoryAppCodeById(node.children, targetId, currentAncestors)
-    if (childResult)
-      return childResult
-  }
-
-  return null
-}
-
 function mapPreferenceToSelectedTabs(customTabs: StudyPreferenceCustomTab[] | null | undefined) {
   return (customTabs || [])
     .slice()
     .sort((a, b) => toNumber(a.order) - toNumber(b.order))
     .map((item) => {
       const categoryId = toNumber(item.category_id)
-      const appCode = resolveCategoryAppCodeById(categoryTree.value, categoryId)
-      if (!categoryId || !appCode)
+      const categoryNode = findCategoryNodeById(categoryTree.value, categoryId)
+      if (!categoryId || !categoryNode)
         return null
 
       return {
         id: categoryId,
         name: item.category_name || item.name,
-        appCode,
       }
     })
     .filter((item): item is SelectedPracticeTab => Boolean(item))
@@ -658,6 +582,7 @@ function normalizeLatestSession(session: any): LatestSessionBrief | null {
     practice_name: String(session.practice_name || ''),
     status: String(session.status || ''),
     total_count: toNumber(session.total_count ?? session.session_questions?.length),
+    display_total_count: toNumber(session?.exam_config?.display_total_count),
     completed_count: toNumber(session.completed_count ?? session.records?.length),
     wrong_count: toNumber(session.wrong_count),
     practice_mode: sessionPracticeMode,
@@ -714,8 +639,9 @@ function applyLatestSessionMetaToItems(items: PracticeListItem[] | undefined) {
     if (item.type === 'bank') {
       const session = getLatestSessionByBankId(item.id)
       if (session) {
+        const displayTotal = session.display_total_count || item.count || session.total_count
         item.progress = session.completed_count
-        item.total = session.total_count
+        item.total = displayTotal
         item.wrong = session.wrong_count
         item.hideProgress = false
       }
@@ -738,12 +664,16 @@ function applyLatestSessionMetaToTabs() {
   }
 }
 
-function navigateToPracticeSession(sessionId: number, modeOverride?: PracticeMode) {
+function navigateToPracticeSession(sessionId: number, modeOverride?: PracticeMode, displayTotalCount?: number) {
   if (!sessionId)
     return
 
+  const params = [`sessionId=${sessionId}`, `mode=${modeOverride || currentPracticeMode()}`]
+  if (displayTotalCount && displayTotalCount > 0)
+    params.push(`displayTotalCount=${displayTotalCount}`)
+
   uni.navigateTo({
-    url: `/pages/practice/session/index?sessionId=${sessionId}&mode=${modeOverride || currentPracticeMode()}`,
+    url: `/pages/practice/session/index?${params.join('&')}`,
   })
 }
 
@@ -762,11 +692,12 @@ async function createPracticeSessionByBank(item: PracticeListItem) {
       exam_config: {
         practice_mode: nextPracticeMode,
         entry: 'mini-home',
+        display_total_count: item.count,
       },
       cat_id: currentTab.value?.id,
     } as any)
 
-    navigateToPracticeSession(Number((session as any)?.id || 0), nextPracticeMode)
+    navigateToPracticeSession(Number((session as any)?.id || 0), nextPracticeMode, item.count)
   }
   catch (error) {
     console.error('创建刷题会话失败:', error)
@@ -783,7 +714,11 @@ async function continueLatestSessionByBank(item: PracticeListItem) {
     return
 
   practiceMode.value = latestSession.practice_mode
-  navigateToPracticeSession(latestSession.id, latestSession.practice_mode)
+  navigateToPracticeSession(
+    latestSession.id,
+    latestSession.practice_mode,
+    latestSession.display_total_count || item.count || latestSession.total_count,
+  )
 }
 
 function handleStartQuickPractice() {
@@ -795,7 +730,11 @@ function handleStartQuickPractice() {
     return
   }
 
-  navigateToPracticeSession(latestRecentSession.value.id, latestRecentSession.value.practice_mode)
+  navigateToPracticeSession(
+    latestRecentSession.value.id,
+    latestRecentSession.value.practice_mode,
+    latestRecentSession.value.display_total_count || latestRecentSession.value.total_count,
+  )
 }
 
 function handleOpenBank(item: PracticeListItem) {
@@ -906,11 +845,27 @@ async function loadStudyPreference() {
     const userId = Number(userStore.userInfo?.id || 0)
     const cached = getCachedStudyPreference(userId)
     if (cached) {
+      const nextDomain = cached?.current_domain
+        ? getStudyDomainOption(cached.current_domain).code
+        : currentDomain.value
+      if (nextDomain !== currentDomain.value) {
+        currentDomain.value = nextDomain
+        saveAppSettings({ currentDomain: nextDomain })
+        await loadPracticeTabs()
+      }
       applyStudyPreference(cached)
       return
     }
 
     const data = await fbaApi.qbank.settings.getStudyPreference() as any
+    const nextDomain = data?.current_domain
+      ? getStudyDomainOption(data.current_domain).code
+      : currentDomain.value
+    if (nextDomain !== currentDomain.value) {
+      currentDomain.value = nextDomain
+      saveAppSettings({ currentDomain: nextDomain })
+      await loadPracticeTabs()
+    }
     setCachedStudyPreference(userId, data)
     applyStudyPreference(data)
   }
@@ -929,11 +884,12 @@ async function saveStudyPreference() {
   savingPreference.value = true
   try {
     const payload = {
+      current_domain: currentDomain.value,
       practice_mode: practiceMode.value,
       custom_tabs: buildPreferencePayload(),
     } as any
     await fbaApi.qbank.settings.updateStudyPreference(payload)
-    setCachedStudyPreference(Number(userStore.userInfo?.id || 0), payload)
+    mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), payload)
   }
   catch (error) {
     console.error('保存学习偏好失败:', error)
@@ -947,16 +903,14 @@ async function saveStudyPreference() {
 async function loadPracticeTabs() {
   loading.value = true
   try {
-    const [bankTreeData, categoryTreeData] = await Promise.all([
+    syncCurrentDomain()
+    const [bankTreeData, categoryRoots] = await Promise.all([
       fbaApi.qbank.bank.getList({ status: 1 }) as Promise<BankNode[]>,
-      fbaApi.admin.sys.category.getTree({
-        app_code: 'youanshang',
-        status: true,
-      }) as Promise<CategoryNode[]>,
+      getStudyDomainCategoryRoots(currentDomain.value, ['product_catalog', 'knowledge_point']) as Promise<CategoryNode[]>,
     ])
 
     bankTree.value = bankTreeData || []
-    categoryTree.value = categoryTreeData || []
+    categoryTree.value = categoryRoots || []
     allTabs.value = buildPracticeTabs(categoryTree.value, bankTree.value)
     rebuildDisplayedTabs()
   }
@@ -980,6 +934,7 @@ async function handleLoginSuccess() {
 }
 
 async function refreshPracticePage() {
+  syncCurrentDomain()
   await loadPracticeTabs()
   loadDashboard()
   await loadStudyPreference()
@@ -999,9 +954,11 @@ async function onScrollRefresh() {
 const initialized = ref(false)
 
 onShow(() => {
-  if (!initialized.value) {
+  const nextDomain = syncCurrentDomain()
+  if (!initialized.value || nextDomain !== lastLoadedDomain.value) {
     // 首次进入：完整加载
     initialized.value = true
+    lastLoadedDomain.value = nextDomain
     refreshPracticePage()
   }
   else {
@@ -1017,7 +974,7 @@ onShow(() => {
     <view class="relative z-20 w-full shrink-0" :style="{ paddingTop: `${navBarHeight}px` }">
       <!-- 标题栏 -->
       <view class="absolute left-0 right-0 flex items-center justify-center" :style="{ top: `${statusBarHeight}px`, height: '44px' }">
-        <text class="text-lg text-[#1E293B] font-bold tracking-widest">有岸上刷题</text>
+        <text class="text-lg text-[#1E293B] font-bold tracking-widest">{{ currentDomainLabel }}刷题</text>
       </view>
       <view class="relative w-full flex items-center border-b border-white/40 pb-2 pt-1">
         <scroll-view
@@ -1171,6 +1128,7 @@ onShow(() => {
     <LoginModal v-model="showLoginModal" @success="handleLoginSuccess" />
     <CategoryConfigModal
       v-model="showCategoryConfigModal"
+      :current-domain="currentDomain"
       :categories="categoryTree"
       :selected-tabs="selectedPracticeTabs"
       :loading="loading"

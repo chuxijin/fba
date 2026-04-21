@@ -240,6 +240,10 @@ async function handleClearMediaCache() {
   }
 }
 
+function handleOpenProtocol(name: string) {
+  uni.showToast({ title: `${name} 系统接入中...`, icon: 'none' })
+}
+
 onShow(() => {
   loadSettings()
 })
@@ -344,6 +348,39 @@ onShow(() => {
             <text class="text-[14px] text-[#DC2626]">{{ clearingMediaCache ? '清理中...' : '立即清空' }}</text>
             <view class="i-carbon-chevron-right ml-1 text-lg" />
           </view>
+        </view>
+      </view>
+
+      <!-- 协议与清单 -->
+      <view class="overflow-hidden border border-white/60 rounded-2xl bg-white/80 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md">
+        <view class="bg-[#F8FAFC]/50 px-4 pt-4 pb-2 border-b border-transparent">
+          <text class="text-[12px] text-[#94A3B8] font-bold">协议与清单</text>
+        </view>
+
+        <view class="h-14 flex items-center justify-between px-4 active:opacity-80" @tap="handleOpenProtocol('用户协议')">
+          <text class="text-[15px] text-[#1E293B] font-bold">用户协议</text>
+          <view class="i-carbon-chevron-right text-lg text-[#64748B]" />
+        </view>
+
+        <view class="ml-4 h-[1px] bg-[#F1E8FB]" />
+
+        <view class="h-14 flex items-center justify-between px-4 active:opacity-80" @tap="handleOpenProtocol('隐私政策')">
+          <text class="text-[15px] text-[#1E293B] font-bold">隐私政策</text>
+          <view class="i-carbon-chevron-right text-lg text-[#64748B]" />
+        </view>
+        
+        <view class="ml-4 h-[1px] bg-[#F1E8FB]" />
+
+        <view class="h-14 flex items-center justify-between px-4 active:opacity-80" @tap="handleOpenProtocol('个人信息收集清单')">
+          <text class="text-[15px] text-[#1E293B] font-bold">个人信息收集清单</text>
+          <view class="i-carbon-chevron-right text-lg text-[#64748B]" />
+        </view>
+
+        <view class="ml-4 h-[1px] bg-[#F1E8FB]" />
+
+        <view class="h-14 flex items-center justify-between px-4 active:opacity-80" @tap="handleOpenProtocol('第三方信息数据共享')">
+          <text class="text-[15px] text-[#1E293B] font-bold">第三方信息数据共享</text>
+          <view class="i-carbon-chevron-right text-lg text-[#64748B]" />
         </view>
       </view>
 

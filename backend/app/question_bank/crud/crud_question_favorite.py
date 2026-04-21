@@ -98,6 +98,38 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         rows = (await db.execute(stmt)).all()
         return [{'folder_name': row.folder_name, 'count': row.count} for row in rows]
 
+    async def get_folder_counts_by_bank_ids(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        bank_ids: set[int],
+    ) -> list[dict[str, str | int | None]]:
+        """
+        按题库范围获取用户收藏夹计数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_ids: 题库 ID 集合
+        :return:
+        """
+        if not bank_ids:
+            return []
+
+        stmt = (
+            select(
+                QuestionFavorite.folder_name,
+                func.count().label('count'),
+            )
+            .where(
+                QuestionFavorite.user_id == user_id,
+                QuestionFavorite.bank_id.in_(bank_ids),
+            )
+            .group_by(QuestionFavorite.folder_name)
+            .order_by(func.count().desc(), QuestionFavorite.folder_name.asc().nullsfirst())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [{'folder_name': row.folder_name, 'count': row.count} for row in rows]
+
     async def create(
         self,
         db: AsyncSession,

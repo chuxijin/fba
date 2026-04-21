@@ -5,6 +5,7 @@ import type {
   RenderJobResult,
 } from '@fba/api-sdk'
 import { fbaApi } from '@/api/sdk'
+import { getAppSettings } from '@/utils/appSettings'
 import { getEnvBaseUrl } from '@/utils'
 
 export type ExportSourceType = 'placement' | 'wrong' | 'favorite' | 'note'
@@ -428,6 +429,7 @@ function buildRenderPayload(
     metadata: {
       client: 'mini',
       source_type: scope.sourceType,
+      study_domain: getAppSettings().currentDomain,
       paper_size: isExam ? 'B5' : 'A4',
       cover_style: isExam ? 'exam' : 'practice',
       bank_id: scope.bankId ?? null,

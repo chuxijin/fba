@@ -12,16 +12,35 @@ from backend.app.question_bank.crud.crud_session_question import session_questio
 from backend.app.question_bank.model import QuestionNote, UserNoteVote
 from backend.app.question_bank.schema.note import (
     CreateQuestionNoteParam,
+    GetQuestionNoteDetail,
     GetQuestionNoteListItem,
     NoteVoteStatistics,
     UpdateQuestionNoteParam,
 )
 from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
+from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
 from backend.common.exception import errors
 
 
 class NoteService:
     """笔记服务类"""
+
+    @staticmethod
+    async def _get_study_domain_filter(
+        *,
+        db: AsyncSession,
+        study_domain: str | None,
+    ) -> StudyDomainQuestionFilter | None:
+        """
+        获取领域过滤上下文
+
+        :param db: 数据库会话
+        :param study_domain: 领域编码
+        :return:
+        """
+        if not study_domain:
+            return None
+        return await study_domain_service.get_question_filter(db=db, code=study_domain)
 
     @staticmethod
     async def create_note(*, db: AsyncSession, user_id: int, obj: CreateQuestionNoteParam) -> QuestionNote:
@@ -346,8 +365,6 @@ class NoteService:
         :param session_id: 会话 ID
         :return:
         """
-        from backend.app.question_bank.schema.note import GetQuestionNoteDetail
-
         question_ids = await NoteService._get_owned_session_question_ids(
             db=db,
             user_id=user_id,
@@ -393,8 +410,6 @@ class NoteService:
         :param question_ids_str: 题目 ID 字符串
         :return:
         """
-        from backend.app.question_bank.schema.note import GetQuestionNoteDetail
-
         try:
             ids = [int(qid.strip()) for qid in question_ids_str.split(',') if qid.strip()]
         except ValueError:
@@ -426,7 +441,37 @@ class NoteService:
         return note_map
 
     @staticmethod
-    async def get_grouped(*, db: AsyncSession, user_id: int, group_by: str) -> list[dict]:
+    async def get_statistics(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        study_domain: str | None = None,
+    ) -> dict:
+        """
+        获取笔记统计数据
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param study_domain: 领域编码
+        :return:
+        """
+        domain_filter = await NoteService._get_study_domain_filter(db=db, study_domain=study_domain)
+        if domain_filter:
+            return await question_note_dao.get_statistics_by_bank_ids(
+                db=db,
+                user_id=user_id,
+                bank_ids=domain_filter.bank_ids,
+            )
+        return await question_note_dao.get_statistics(db=db, user_id=user_id)
+
+    @staticmethod
+    async def get_grouped(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        group_by: str,
+        study_domain: str | None = None,
+    ) -> list[dict]:
         """
         获取分组统计
 
@@ -435,9 +480,23 @@ class NoteService:
         :param group_by: 分组方式
         :return:
         """
+        domain_filter = await NoteService._get_study_domain_filter(db=db, study_domain=study_domain)
         if group_by == 'knowledge_point':
-            return await question_note_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
-        return await question_note_dao.get_grouped_by_bank(db=db, user_id=user_id)
+            rows = await question_note_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
+            if not domain_filter:
+                return rows
+            return [
+                item for item in rows
+                if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+            ]
+
+        rows = await question_note_dao.get_grouped_by_bank(db=db, user_id=user_id)
+        if not domain_filter:
+            return rows
+        return [
+            item for item in rows
+            if item['group_id'] is not None and int(item['group_id']) in domain_filter.bank_ids
+        ]
 
     @staticmethod
     async def get_statistics_with_groups(
@@ -445,6 +504,7 @@ class NoteService:
         db: AsyncSession,
         user_id: int,
         group_by: str = 'knowledge_point',
+        study_domain: str | None = None,
     ) -> dict:
         """
         获取统计和树形分组
@@ -461,15 +521,26 @@ class NoteService:
             load_kp_categories,
         )
 
-        stats = await question_note_dao.get_statistics(db=db, user_id=user_id)
+        domain_filter = await NoteService._get_study_domain_filter(db=db, study_domain=study_domain)
+        stats = await NoteService.get_statistics(db=db, user_id=user_id, study_domain=study_domain)
 
         if group_by == 'knowledge_point':
             flat_counts = await question_note_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
+            if domain_filter:
+                flat_counts = [
+                    item for item in flat_counts
+                    if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+                ]
             count_map = {item['group_name']: item['count'] for item in flat_counts}
             categories = await load_kp_categories(db)
             groups = build_kp_tree(categories, count_map)
         else:
             flat_counts = await question_note_dao.get_bank_chapter_counts(db=db, user_id=user_id)
+            if domain_filter:
+                flat_counts = [
+                    row for row in flat_counts
+                    if row['bank_id'] is not None and int(row['bank_id']) in domain_filter.bank_ids
+                ]
             count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
             bank_ids = {row['bank_id'] for row in flat_counts if row['bank_id'] is not None}
             chapter_ids = {row['chapter_id'] for row in flat_counts if row['chapter_id'] is not None}

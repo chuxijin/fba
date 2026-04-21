@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import shutil
 
 from functools import cache
@@ -290,7 +292,7 @@ class Settings(BaseSettings):
     I18N_DEFAULT_LANGUAGE: str = 'zh-CN'
 
     # Grafana
-    GRAFANA_METRICS_ENABLE: bool = True
+    GRAFANA_METRICS_ENABLE: bool = False
     GRAFANA_OTLP_GRPC_ENDPOINT: str = 'fba_alloy:4317'
 
     ##################################################
@@ -373,6 +375,21 @@ class Settings(BaseSettings):
     QINIU_KODO_BUCKET_NAME: str = ''
     QINIU_KODO_DOMAIN: str = ''
     QINIU_KODO_USE_HTTPS: bool = True
+
+    ##################################################
+    # [ Plugin ] ocr 图片文字识别
+    ##################################################
+    OCR_PROVIDER: str = 'baidu'
+    OCR_IMAGE_MAX_COUNT: int = 3
+    OCR_REQUEST_TIMEOUT: int = 20
+    OCR_TOKEN_REDIS_PREFIX: str = 'fba:ocr:token'
+
+    BAIDU_OCR_API_KEY: str = ''
+    BAIDU_OCR_SECRET_KEY: str = ''
+    BAIDU_OCR_HANDWRITING_URL: str = 'https://aip.baidubce.com/rest/2.0/ocr/v1/handwriting'
+    BAIDU_OCR_ACCURATE_BASIC_URL: str = 'https://aip.baidubce.com/rest/2.0/ocr/v1/accurate_basic'
+    BAIDU_OCR_GENERAL_BASIC_URL: str = 'https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic'
+    BAIDU_OCR_SUBJECTIVE_FALLBACK_ENABLED: bool = True
 
     ##################################################
     # [ Plugin ] task
@@ -504,7 +521,7 @@ class Settings(BaseSettings):
             values['CELERY_BROKER'] = 'rabbitmq'
 
             # Grafana
-            values['GRAFANA_METRICS_ENABLE'] = True
+            values['GRAFANA_METRICS_ENABLE'] = False
 
         return values
 

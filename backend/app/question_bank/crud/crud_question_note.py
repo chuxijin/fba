@@ -352,6 +352,45 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
             'featured_count': int(row.featured_count or 0),
         }
 
+    async def get_statistics_by_bank_ids(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        bank_ids: set[int],
+    ) -> dict:
+        """
+        按题库范围获取用户笔记统计数据
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_ids: 题库 ID 集合
+        :return:
+        """
+        if not bank_ids:
+            return {
+                'total': 0,
+                'public_count': 0,
+                'featured_count': 0,
+            }
+
+        stmt = (
+            select(
+                func.count().label('total'),
+                func.sum(case((QuestionNote.is_public == True, 1), else_=0)).label('public_count'),  # noqa: E712
+                func.sum(case((QuestionNote.is_featured == True, 1), else_=0)).label('featured_count'),  # noqa: E712
+            )
+            .where(
+                QuestionNote.user_id == user_id,
+                QuestionNote.bank_id.in_(bank_ids),
+            )
+        )
+        row = (await db.execute(stmt)).one()
+        return {
+            'total': row.total or 0,
+            'public_count': int(row.public_count or 0),
+            'featured_count': int(row.featured_count or 0),
+        }
+
 
 class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
     """笔记投票数据库操作类"""

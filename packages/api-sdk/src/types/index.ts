@@ -144,7 +144,12 @@ export type {
 export type {
   QbankCheckInParam,
   QbankEntity,
+  QbankKnowledgePointChild,
+  QbankKnowledgePointDetail,
+  QbankKnowledgePointProgress,
+  QbankKnowledgePointProgressItem,
   QbankRoleExpiry,
+  QbankStatisticsParams,
   QbankUserAccountDetail,
   QbankWxLoginParam,
   QbankWxLoginResponse,
@@ -199,3 +204,11 @@ export type {
   RenderVariant,
   SolutionMode,
 } from './render-book';
+
+// Actcode
+export type {
+  ActcodeOrderActivateResult,
+  ActcodeOrderLoginResult,
+  ActcodeOrderPayload,
+  ActcodeOrderVerifyResult,
+} from './actcode';

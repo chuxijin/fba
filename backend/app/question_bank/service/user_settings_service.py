@@ -6,11 +6,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank.crud.crud_user import user_account_dao
 from backend.app.question_bank.schema.user_settings import CustomTab, GetStudyPreferenceResponse
+from backend.app.question_bank.service.study_domain_config import normalize_study_domain_code
 from backend.common.exception import errors
 
 
 class UserSettingsService:
     """用户设置服务类"""
+
+    @staticmethod
+    def _load_settings(raw_settings: str | None) -> dict:
+        """
+        解析学习偏好设置
+
+        :param raw_settings: 原始设置 JSON
+        :return:
+        """
+        try:
+            return json.loads(raw_settings or '{}')
+        except Exception:
+            return {}
 
     @staticmethod
     async def get_mastery_threshold(*, db: AsyncSession, user_id: int) -> int:
@@ -19,12 +33,28 @@ class UserSettingsService:
         if not user:
             return 3
 
+        settings = UserSettingsService._load_settings(user.study_preference_settings)
         try:
-            settings = json.loads(user.study_preference_settings or '{}')
             value = settings.get('mastery_threshold', 3)
             return max(1, min(20, int(value)))
         except Exception:
             return 3
+
+    @staticmethod
+    async def get_current_domain(*, db: AsyncSession, user_id: int) -> str:
+        """
+        获取当前学习领域
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        user = await user_account_dao.get_by_sys_user_id(db, user_id)
+        if not user:
+            return normalize_study_domain_code(None)
+
+        settings = UserSettingsService._load_settings(user.study_preference_settings)
+        return normalize_study_domain_code(settings.get('current_domain'))
 
     @staticmethod
     async def get_study_preference(*, db: AsyncSession, user_id: int) -> GetStudyPreferenceResponse:
@@ -39,17 +69,14 @@ class UserSettingsService:
         if not user:
             raise errors.NotFoundError(msg='用户不存在')
 
-        try:
-            settings = json.loads(user.study_preference_settings or '{}')
-            practice_mode = settings.get('practice_mode', 'practice')
-            custom_tabs = settings.get('custom_tabs', [])
-            mastery_threshold = settings.get('mastery_threshold', 3)
-        except Exception:
-            practice_mode = 'practice'
-            custom_tabs = []
-            mastery_threshold = 3
+        settings = UserSettingsService._load_settings(user.study_preference_settings)
+        practice_mode = settings.get('practice_mode', 'practice')
+        custom_tabs = settings.get('custom_tabs', [])
+        mastery_threshold = settings.get('mastery_threshold', 3)
+        current_domain = normalize_study_domain_code(settings.get('current_domain'))
 
         return GetStudyPreferenceResponse(
+            current_domain=current_domain,
             practice_mode=practice_mode,
             custom_tabs=custom_tabs,
             mastery_threshold=mastery_threshold,
@@ -60,6 +87,7 @@ class UserSettingsService:
         *,
         db: AsyncSession,
         user_id: int,
+        current_domain: str | None,
         practice_mode: str | None,
         custom_tabs: list[CustomTab] | None,
         mastery_threshold: int | None,
@@ -77,10 +105,10 @@ class UserSettingsService:
         if not user:
             raise errors.NotFoundError(msg='用户不存在')
 
-        try:
-            current_settings = json.loads(user.study_preference_settings or '{}')
-        except Exception:
-            current_settings = {}
+        current_settings = UserSettingsService._load_settings(user.study_preference_settings)
+
+        if current_domain is not None:
+            current_settings['current_domain'] = normalize_study_domain_code(current_domain)
 
         if practice_mode is not None:
             current_settings['practice_mode'] = practice_mode

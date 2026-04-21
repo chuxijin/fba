@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
+import { useCachedAvatar } from '@/hooks/useCachedAvatar'
 import { useTokenStore, useUserStore } from '@/store'
 import { toLoginPage } from '@/utils/toLoginPage'
 import { getEnvBaseUrl } from '@/utils'
@@ -17,7 +18,7 @@ definePage({
   },
 })
 
-const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix'
+const DEFAULT_AVATAR = '/static/images/default-avatar.png'
 
 const userStore = useUserStore()
 const tokenStore = useTokenStore()
@@ -27,7 +28,8 @@ const updatingNickname = ref(false)
 const switchingAccount = ref(false)
 
 const userInfo = computed(() => userStore.userInfo || {})
-const displayAvatar = computed(() => userInfo.value.avatar || DEFAULT_AVATAR)
+const avatarSource = computed(() => userInfo.value.avatar || DEFAULT_AVATAR)
+const displayAvatar = useCachedAvatar(avatarSource, DEFAULT_AVATAR)
 const displayNickname = computed(() => userInfo.value.nickname || '微信用户')
 const displayUsername = computed(() => userInfo.value.username || '-')
 const loginMethodLabel = computed(() => {

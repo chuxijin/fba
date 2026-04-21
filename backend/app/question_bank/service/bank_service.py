@@ -302,7 +302,7 @@ class BankService:
             bank_type=bank_type,
             parent_id=parent_id,
         )
-        tree_data = get_tree_data(bank_select, sort_key='id')
+        tree_data = get_tree_data(bank_select, sort_key='sort_order')
 
         if bank_type == 3 or (bank_type is None and parent_id is None and not keyword):
             collection_ids = [item['id'] for item in tree_data if item.get('bank_type') == 3]

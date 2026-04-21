@@ -43,3 +43,39 @@ export interface QbankCheckInParam {
   practice_count: number;
   practice_duration: number;
 }
+
+export interface QbankStatisticsParams {
+  group_by?: string;
+  study_domain?: string;
+}
+
+export interface QbankKnowledgePointChild {
+  id: number;
+  name: string;
+  question_count: number;
+  children: QbankKnowledgePointChild[];
+}
+
+export interface QbankKnowledgePointDetail {
+  id: number;
+  name: string;
+  total_question_count: number;
+  children: QbankKnowledgePointChild[];
+}
+
+export interface QbankKnowledgePointProgressItem {
+  name: string;
+  question_count: number;
+  answer_count: number;
+  correct_count: number;
+  correct_ratio: number;
+}
+
+export interface QbankKnowledgePointProgress {
+  id: number;
+  name: string;
+  total_question_count: number;
+  total_answer_count: number;
+  total_correct_count: number;
+  items: QbankKnowledgePointProgressItem[];
+}

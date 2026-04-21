@@ -15,7 +15,7 @@ const emit = defineEmits<{
 const tokenStore = useTokenStore()
 
 const loginType = ref<'wechat' | 'account' | 'order'>('wechat')
-const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix'
+const DEFAULT_AVATAR = '/static/images/default-avatar.png'
 
 const loginForm = ref({
   avatar: DEFAULT_AVATAR,
@@ -249,7 +249,7 @@ async function confirmOrderLogin() {
   })
 
   try {
-    await fbaApi.client.post('/actcode/agiso/verify', {
+    await fbaApi.actcode.verifyAgisoOrder({
       order_input: orderNo,
     })
     await tokenStore.orderLogin(orderNo)

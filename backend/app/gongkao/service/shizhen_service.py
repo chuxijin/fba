@@ -26,13 +26,13 @@ class ShizhenService:
         stmt = select(Content).where(
             Content.app_code == APP_CODE_GONGKAO,
             Content.is_published.is_(True),
-            Content.extra['content_type'].astext == CONTENT_TYPE_SHIZHEN,
+            Content.extra['content_type'].as_string() == CONTENT_TYPE_SHIZHEN,
         )
         if daily_date:
-            stmt = stmt.where(Content.extra['daily_date'].astext == daily_date)
+            stmt = stmt.where(Content.extra['daily_date'].as_string() == daily_date)
 
         stmt = stmt.order_by(
-            Content.extra['daily_date'].astext.desc().nullslast(),
+            Content.extra['daily_date'].as_string().desc().nullslast(),
             Content.created_time.desc(),
         )
         return await paging_data(db, stmt, schema_cls=GetShizhenListDetail)

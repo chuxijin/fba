@@ -55,9 +55,9 @@ async function handleActivateOrder() {
   activating.value = true
   uni.showLoading({ title: '激活中...', mask: true })
   try {
-    const result = await fbaApi.client.post('/actcode/agiso/activate', {
+    const result = await fbaApi.actcode.activateAgisoOrder({
       order_input: normalizedOrderInput,
-    }) as { message?: string }
+    })
 
     await membershipStore.fetchMembership()
     orderInput.value = ''

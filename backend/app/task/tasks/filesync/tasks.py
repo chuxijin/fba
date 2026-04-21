@@ -90,27 +90,17 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                         continue
 
                     # 执行同步任务
-                    sync_result = await file_sync_service.execute_sync_by_config_id(config.id, db)
+                    # 【核心修复】：不要直接 execute 阻塞，否则共用一个 DB Session 必断开连接！
+                    # 应交给专门处理单条配置的 Celery task 去执行
+                    execute_filesync_task_by_config_id.delay(config.id)
 
-                    if sync_result.get("success"):
-                        result["executed_tasks"] += 1
-                        temp_details.append({
-                            "config_id": config.id,
-                            "status": "success",
-                            "task_id": sync_result.get("task_id"),
-                            "stats": sync_result.get("stats"),
-                            "elapsed_time": sync_result.get("elapsed_time")
-                        })
-                        logger.info(f"配置 {config.remark} 执行成功")
-                    else:
-                        result["failed_tasks"] += 1
-                        temp_details.append({
-                            "config_id": config.id,
-                            "status": "failed",
-                            "error": sync_result.get("error"),
-                            "task_id": sync_result.get("task_id")
-                        })
-                        logger.error(f"配置 {config.id} 同步任务执行失败: {sync_result.get('error')}")
+                    result["executed_tasks"] += 1
+                    temp_details.append({
+                        "config_id": config.id,
+                        "status": "dispatched",
+                        "reason": "已推送至后台队列异步执行"
+                    })
+                    logger.info(f"配置 {config.remark} 的同步任务已成功派发到 Celery 队列")
 
                 except Exception as e:
                     logger.error(f"处理配置 {config.id} 时发生错误: {str(e)}")

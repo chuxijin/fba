@@ -15,11 +15,29 @@ from backend.app.question_bank.schema.favorite import (
     GetQuestionFavoriteDetail,
 )
 from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
+from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
 from backend.common.exception import errors
 
 
 class FavoriteService:
     """收藏服务类"""
+
+    @staticmethod
+    async def _get_study_domain_filter(
+        *,
+        db: AsyncSession,
+        study_domain: str | None,
+    ) -> StudyDomainQuestionFilter | None:
+        """
+        获取领域过滤上下文
+
+        :param db: 数据库会话
+        :param study_domain: 领域编码
+        :return:
+        """
+        if not study_domain:
+            return None
+        return await study_domain_service.get_question_filter(db=db, code=study_domain)
 
     @staticmethod
     async def create_favorite(
@@ -274,7 +292,12 @@ class FavoriteService:
         return await FavoriteService.check_favorited(db=db, user_id=user_id, question_ids=ids)
 
     @staticmethod
-    async def get_statistics(*, db: AsyncSession, user_id: int) -> FavoriteStatistics:
+    async def get_statistics(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        study_domain: str | None = None,
+    ) -> FavoriteStatistics:
         """
         获取收藏统计
 
@@ -282,7 +305,15 @@ class FavoriteService:
         :param user_id: 用户 ID
         :return:
         """
-        folder_rows = await question_favorite_dao.get_folder_counts(db=db, user_id=user_id)
+        domain_filter = await FavoriteService._get_study_domain_filter(db=db, study_domain=study_domain)
+        if domain_filter:
+            folder_rows = await question_favorite_dao.get_folder_counts_by_bank_ids(
+                db=db,
+                user_id=user_id,
+                bank_ids=domain_filter.bank_ids,
+            )
+        else:
+            folder_rows = await question_favorite_dao.get_folder_counts(db=db, user_id=user_id)
 
         total_count = 0
         folder_count = 0
@@ -307,7 +338,11 @@ class FavoriteService:
 
     @staticmethod
     async def get_statistics_with_groups(
-        *, db: AsyncSession, user_id: int, group_by: str = 'knowledge_point'
+        *,
+        db: AsyncSession,
+        user_id: int,
+        group_by: str = 'knowledge_point',
+        study_domain: str | None = None,
     ) -> dict:
         """
         获取收藏统计与树形分组数据
@@ -324,15 +359,26 @@ class FavoriteService:
             load_kp_categories,
         )
 
-        stats = await FavoriteService.get_statistics(db=db, user_id=user_id)
+        domain_filter = await FavoriteService._get_study_domain_filter(db=db, study_domain=study_domain)
+        stats = await FavoriteService.get_statistics(db=db, user_id=user_id, study_domain=study_domain)
 
         if group_by == 'knowledge_point':
             flat_counts = await question_favorite_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
+            if domain_filter:
+                flat_counts = [
+                    item for item in flat_counts
+                    if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+                ]
             count_map = {item['group_name']: item['count'] for item in flat_counts}
             categories = await load_kp_categories(db)
             groups = build_kp_tree(categories, count_map)
         else:
             flat_counts = await question_favorite_dao.get_bank_chapter_counts(db=db, user_id=user_id)
+            if domain_filter:
+                flat_counts = [
+                    row for row in flat_counts
+                    if row['bank_id'] is not None and int(row['bank_id']) in domain_filter.bank_ids
+                ]
             count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
             bank_ids = {row['bank_id'] for row in flat_counts if row['bank_id'] is not None}
             chapter_ids = {row['chapter_id'] for row in flat_counts if row['chapter_id'] is not None}
@@ -346,7 +392,13 @@ class FavoriteService:
         }
 
     @staticmethod
-    async def get_grouped(*, db: AsyncSession, user_id: int, group_by: str) -> list[dict]:
+    async def get_grouped(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        group_by: str,
+        study_domain: str | None = None,
+    ) -> list[dict]:
         """
         按题库或知识点分组聚合收藏数量
 
@@ -355,9 +407,23 @@ class FavoriteService:
         :param group_by: 分组方式
         :return:
         """
+        domain_filter = await FavoriteService._get_study_domain_filter(db=db, study_domain=study_domain)
         if group_by == 'knowledge_point':
-            return await question_favorite_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
-        return await question_favorite_dao.get_grouped_by_bank(db=db, user_id=user_id)
+            rows = await question_favorite_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
+            if not domain_filter:
+                return rows
+            return [
+                item for item in rows
+                if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+            ]
+
+        rows = await question_favorite_dao.get_grouped_by_bank(db=db, user_id=user_id)
+        if not domain_filter:
+            return rows
+        return [
+            item for item in rows
+            if item['group_id'] is not None and int(item['group_id']) in domain_filter.bank_ids
+        ]
 
 
 favorite_service = FavoriteService()

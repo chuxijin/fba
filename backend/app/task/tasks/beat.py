@@ -1,24 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from celery.schedules import schedule
-
 from backend.app.task.utils.tzcrontab import TzAwareCrontab
 
 LOCAL_BEAT_SCHEDULE = {
-    'task_demo_sync': {
-        'task': 'task_demo',
-        'schedule': schedule(30),
-    },
-    'task_demo_async': {
-        'task': 'task_demo_async',
-        'schedule': TzAwareCrontab('1'),
-    },
-    'task_demo_params': {
-        'task': 'task_demo_params',
-        'schedule': TzAwareCrontab('1'),
-        'args': ['你好，'],
-        'kwargs': {'world': '世界'},
-    },
     'delete_db_opera_log': {
         'task': 'delete_db_opera_log',
         'schedule': TzAwareCrontab('0', '0', day_of_week='6'),

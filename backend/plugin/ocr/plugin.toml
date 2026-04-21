@@ -1,0 +1,21 @@
+[plugin]
+summary = 'OCR'
+version = '0.0.1'
+description = '图片文字识别插件'
+author = 'wu-clan'
+tags = ['other']
+database = ['mysql', 'postgresql']
+
+[app]
+router = ['v1']
+
+[settings]
+OCR_PROVIDER = 'baidu'
+OCR_IMAGE_MAX_COUNT = 3
+OCR_REQUEST_TIMEOUT = 20
+OCR_TOKEN_REDIS_PREFIX = 'fba:ocr:token'
+
+BAIDU_OCR_HANDWRITING_URL = 'https://aip.baidubce.com/rest/2.0/ocr/v1/handwriting'
+BAIDU_OCR_ACCURATE_BASIC_URL = 'https://aip.baidubce.com/rest/2.0/ocr/v1/accurate_basic'
+BAIDU_OCR_GENERAL_BASIC_URL = 'https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic'
+BAIDU_OCR_SUBJECTIVE_FALLBACK_ENABLED = true

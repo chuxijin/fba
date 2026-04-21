@@ -222,22 +222,7 @@ async function handleSubmit() {
 
 <template>
   <view class="w-full overflow-x-hidden space-y-4">
-    <view class="overflow-hidden rounded-2xl from-[#F4E8FF] via-[#F9F3FF] to-[#FFFFFF] bg-gradient-to-b px-5 py-5 shadow-[0_12px_40px_-24px_rgba(139,92,246,0.45)]">
-      <view class="flex items-start justify-between gap-4">
-        <view class="min-w-0 flex-1">
-          <view class="text-[20px] text-[#1E293B] font-black tracking-wide">
-            {{ title }}
-          </view>
-          <view class="mt-1 break-words text-[12px] text-[#64748B] leading-5">
-            {{ subtitle }}
-          </view>
-        </view>
 
-        <view class="h-11 w-11 shrink-0 flex items-center justify-center rounded-xl bg-white text-[#8B5CF6] shadow-sm">
-          <view class="i-carbon-idea text-[22px]" />
-        </view>
-      </view>
-    </view>
 
     <view class="overflow-hidden rounded-2xl border border-white/70 bg-white/92 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.18)] backdrop-blur-md">
       <view class="text-[13px] text-[#475569] font-bold tracking-wide">
@@ -257,12 +242,6 @@ async function handleSubmit() {
           class="flex items-center gap-3 rounded-xl border px-4 py-4 transition-transform active:scale-[0.98]"
           :class="toneClassMap[selectedTypeMeta.tone]?.chip"
         >
-          <view
-            class="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl"
-            :class="toneClassMap[selectedTypeMeta.tone]?.icon"
-          >
-            <view class="i-carbon-dot-mark text-base" />
-          </view>
           <view class="min-w-0 flex-1">
             <view class="text-[14px] font-black">
               {{ selectedTypeMeta.label }}

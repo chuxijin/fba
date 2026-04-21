@@ -228,7 +228,7 @@ export const useTokenStore = defineStore(
 
     const orderLogin = async (orderInput: string) => {
       try {
-        const res = await fbaApi.client.post('/actcode/agiso/login', {
+        const res = await fbaApi.actcode.loginByAgisoOrder({
           order_input: orderInput,
         })
 

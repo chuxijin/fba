@@ -130,11 +130,14 @@ function currentPracticeMode(): PracticeMode {
   return getAppSettings().practiceMode as PracticeMode
 }
 
-function navigateToPracticeSession(sessionId: number, mode: PracticeMode) {
+function navigateToPracticeSession(sessionId: number, mode: PracticeMode, displayTotalCount?: number) {
   if (!sessionId)
     return
+  const params = [`sessionId=${sessionId}`, `mode=${mode}`]
+  if (displayTotalCount && displayTotalCount > 0)
+    params.push(`displayTotalCount=${displayTotalCount}`)
   uni.navigateTo({
-    url: `/pages/practice/session/index?sessionId=${sessionId}&mode=${mode}`,
+    url: `/pages/practice/session/index?${params.join('&')}`,
   })
 }
 
@@ -168,9 +171,10 @@ async function startPracticeByBank() {
       exam_config: {
         practice_mode: mode,
         entry: 'mini-bank-detail',
+        display_total_count: totalQuestionCount.value,
       },
     } as any)
-    navigateToPracticeSession(Number((session as any)?.id || 0), mode)
+    navigateToPracticeSession(Number((session as any)?.id || 0), mode, totalQuestionCount.value)
   }
   catch (error) {
     if (isMembershipAccessError(error)) {
@@ -199,9 +203,11 @@ async function startPracticeByChapter(chapter: ChapterNode) {
       exam_config: {
         practice_mode: mode,
         entry: 'mini-bank-detail',
+        display_total_count: totalQuestionCount.value,
+        chapter_question_count: chapter.q_count_cache,
       },
     } as any)
-    navigateToPracticeSession(Number((session as any)?.id || 0), mode)
+    navigateToPracticeSession(Number((session as any)?.id || 0), mode, totalQuestionCount.value)
   }
   catch (error) {
     if (isMembershipAccessError(error)) {

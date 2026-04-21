@@ -33,8 +33,10 @@ const config: GroupedListPageConfig = {
   gradientVia: '#FFF8F8',
   exportBorderColor: '#FECACA',
   exportActiveBg: '#FEF2F2',
-  fetchStatistics: mode => fbaApi.qbank.wrongQuestion.getStatistics(mode),
-  totalCountGetter: stats => Number(stats?.unmastered_count || 0),
+  fetchStatistics: (mode, studyDomain) => fbaApi.qbank.wrongQuestion.getStatistics({
+    group_by: mode,
+    study_domain: studyDomain,
+  }),
 }
 
 const ctx = useGroupedListPage(config)

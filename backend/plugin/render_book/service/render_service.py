@@ -18,6 +18,7 @@ from backend.common.log import log
 from backend.common.pagination import _CustomPageParams, paging_list_data
 from backend.core.conf import settings
 from backend.database.db import async_db_session
+from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.plugin.render_book.crud import render_book_job_dao, render_book_job_file_dao
 from backend.plugin.render_book.model import RenderBookJob, RenderBookJobFile
 from backend.plugin.render_book.schema.payload import RenderDocumentPayload
@@ -424,6 +425,14 @@ class RenderService:
         db: AsyncSession,
         params: RenderJobListParams,
     ) -> dict:
+        bank_ids: set[int] | None = None
+        if params.study_domain:
+            domain_filter = await study_domain_service.get_question_filter(
+                db=db,
+                code=params.study_domain,
+            )
+            bank_ids = domain_filter.bank_ids
+
         stmt = render_book_job_dao.build_list_stmt(
             job_id=params.job_id,
             status=params.status,
@@ -431,6 +440,8 @@ class RenderService:
             mode=params.mode,
             user_id=params.user_id,
             keyword=params.keyword,
+            study_domain=params.study_domain,
+            bank_ids=bank_ids,
             with_files=True,
         )
         result = await db.execute(stmt)

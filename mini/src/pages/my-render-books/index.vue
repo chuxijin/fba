@@ -5,7 +5,9 @@ import { onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { fbaApi } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { getEnvBaseUrl } from '@/utils'
+import { getAppSettings } from '@/utils/appSettings'
 import { formatDateTime } from '@/utils/mine'
+import { getStudyDomainOption } from '@/utils/studyDomain'
 import { toLoginPage } from '@/utils/toLoginPage'
 
 defineOptions({
@@ -32,6 +34,8 @@ const downloadingJobId = ref('')
 const jobs = ref<RenderJobResult[]>([])
 const total = ref(0)
 const page = ref(1)
+const currentDomainCode = ref(getAppSettings().currentDomain)
+const currentDomainLabel = ref(getStudyDomainOption(currentDomainCode.value).label)
 
 const hasMore = computed(() => jobs.value.length < total.value)
 
@@ -53,8 +57,12 @@ async function loadJobs(targetPage = 1) {
     return
   }
 
-  const isFirstPage = targetPage === 1
-  if (isFirstPage) {
+  const nextDomainCode = getAppSettings().currentDomain
+  const domainChanged = currentDomainCode.value !== nextDomainCode
+  currentDomainCode.value = nextDomainCode
+  currentDomainLabel.value = getStudyDomainOption(nextDomainCode).label
+
+  if (targetPage === 1) {
     loading.value = true
   }
   else {
@@ -65,17 +73,23 @@ async function loadJobs(targetPage = 1) {
     const data = await fbaApi.renderBook.listJobs({
       page: targetPage,
       size: PAGE_SIZE,
+      study_domain: currentDomainCode.value,
     } as any) as PageData<RenderJobResult>
-    jobs.value = isFirstPage ? data.items : [...jobs.value, ...data.items]
-    total.value = data.total
+
+    const pageItems = data.items || []
+    total.value = Number(data.total || 0)
     page.value = targetPage
+    if (targetPage === 1 || domainChanged) {
+      jobs.value = pageItems
+      return
+    }
+
+    jobs.value = [...jobs.value, ...pageItems]
   }
   catch (error) {
     console.error('加载我的题本失败:', error)
-    if (isFirstPage) {
-      jobs.value = []
-      total.value = 0
-    }
+    jobs.value = []
+    total.value = 0
     uni.showToast({ title: '加载我的题本失败', icon: 'none' })
   }
   finally {
@@ -316,7 +330,10 @@ onReachBottom(() => {
 
     <view class="mt-4 px-4 pb-24">
       <view class="mb-3 flex items-center justify-between pl-1">
-        <text class="text-[13px] text-[#475569] font-bold">导出记录</text>
+        <view class="flex items-center gap-2">
+          <text class="text-[13px] text-[#475569] font-bold">导出记录</text>
+          <text class="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[10px] text-[#475569] font-semibold">当前领域：{{ currentDomainLabel }}</text>
+        </view>
         <text class="text-[11px] text-[#94A3B8]">共 {{ total }} 条</text>
       </view>
 
@@ -325,7 +342,7 @@ onReachBottom(() => {
       </view>
 
       <view v-else-if="jobs.length === 0" class="py-18 text-center text-[13px] text-[#94A3B8]">
-        暂无题本记录，先去刷题页导出一份吧。
+        {{ currentDomainLabel }}领域下暂无题本记录，先去刷题页导出一份吧。
       </view>
 
       <view v-else class="flex flex-col gap-3">

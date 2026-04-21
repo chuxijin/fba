@@ -16,6 +16,8 @@ import { createRenderBookModule } from './modules/render-book';
 import type { RenderBookModule } from './modules/render-book';
 import { createContentModule } from './modules/content';
 import type { ContentModule } from './modules/content';
+import { createActcodeModule } from './modules/actcode';
+import type { ActcodeModule } from './modules/actcode';
 import type { BankModule } from './modules/bank';
 import type { MaterialModule } from './modules/material';
 import type { PracticeModule } from './modules/practice';
@@ -30,6 +32,7 @@ export interface FbaApiSdk {
   membership: MembershipModule;
   renderBook: RenderBookModule;
   content: ContentModule;
+  actcode: ActcodeModule;
   bank: BankModule;
   material: MaterialModule;
   question: QuestionModule;
@@ -47,6 +50,7 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
   const membership = createMembershipModule(client);
   const renderBook = createRenderBookModule(client);
   const content = createContentModule(client);
+  const actcode = createActcodeModule(client);
 
   return {
     admin,
@@ -57,6 +61,7 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
     membership,
     renderBook,
     content,
+    actcode,
     bank: qbank.bank,
     material: qbank.material,
     question: qbank.question,
@@ -76,6 +81,7 @@ export type { OssModule } from './modules/oss';
 export type { MembershipModule } from './modules/membership';
 export type { RenderBookModule } from './modules/render-book';
 export type { ContentModule } from './modules/content';
+export type { ActcodeModule } from './modules/actcode';
 export type { BankModule } from './modules/bank';
 export type { MaterialModule } from './modules/material';
 export type { PracticeModule } from './modules/practice';
@@ -189,7 +195,12 @@ export type {
   UpdateFeedbackParam,
   QbankCheckInParam,
   QbankEntity,
+  QbankKnowledgePointChild,
+  QbankKnowledgePointDetail,
+  QbankKnowledgePointProgress,
+  QbankKnowledgePointProgressItem,
   QbankRoleExpiry,
+  QbankStatisticsParams,
   QbankUserAccountDetail,
   QbankWxLoginParam,
   QbankWxLoginResponse,
@@ -227,5 +238,8 @@ export type {
   RenderTemplateSummary,
   RenderVariant,
   SolutionMode,
+  ActcodeOrderActivateResult,
+  ActcodeOrderLoginResult,
+  ActcodeOrderPayload,
+  ActcodeOrderVerifyResult,
 } from './types';
-

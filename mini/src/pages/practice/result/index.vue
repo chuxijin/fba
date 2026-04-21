@@ -4,6 +4,12 @@ import { computed, ref } from 'vue'
 import type { AnswerSheetGroup, AnswerSheetItem } from '@/components/AnswerSheet.vue'
 import { fbaApi } from '@/api/sdk'
 import { useResultStore } from '@/store/result'
+import {
+  generatePracticeSessionAISummary,
+  getPracticeSessionAISummary,
+  normalizeStringList,
+  type PracticeAIEvaluation,
+} from '@/utils/aiEvaluation'
 
 definePage({
   style: {
@@ -45,6 +51,12 @@ const resultStore = useResultStore()
 const loading = ref(true)
 const sessionId = ref(0)
 const report = ref<ReportData | null>(null)
+const aiSummary = ref<PracticeAIEvaluation | null>(null)
+const aiSummaryLoading = ref(false)
+const aiSummaryGenerating = ref(false)
+const aiSummaryError = ref('')
+const aiSummaryCollapsed = ref(true)
+const answerCardFilter = ref<'all' | 'wrong'>('all')
 
 const accuracy = computed(() => {
   if (!report.value || report.value.total_count === 0)
@@ -66,8 +78,23 @@ const formattedDuration = computed(() => {
 })
 
 // 按章节分组答题卡
-const answerGroups = computed<AnswerSheetGroup[]>(() => {
+const wrongQuestionIdSet = computed(() => {
+  return new Set((report.value?.wrong_question_ids || []).map(item => Number(item)))
+})
+
+const wrongQuestionIdsParam = computed(() => {
+  return Array.from(wrongQuestionIdSet.value).join(',')
+})
+
+const answerCardItems = computed(() => {
   const items = report.value?.answer_items || []
+  if (answerCardFilter.value === 'wrong')
+    return items.filter(item => wrongQuestionIdSet.value.has(Number(item.question_id)))
+  return items
+})
+
+const answerGroups = computed<AnswerSheetGroup[]>(() => {
+  const items = answerCardItems.value
   if (!items.length)
     return []
 
@@ -106,6 +133,34 @@ function accuracyColor() {
   return '#EF4444'
 }
 
+function summaryPayload() {
+  return aiSummary.value?.result_payload || null
+}
+
+function summaryStrengths() {
+  return normalizeStringList(summaryPayload()?.strengths)
+}
+
+function summaryIssues() {
+  return normalizeStringList(summaryPayload()?.high_frequency_issues)
+}
+
+function summaryNextActions() {
+  return normalizeStringList(summaryPayload()?.next_actions)
+}
+
+function summaryWeakPoints() {
+  const raw = summaryPayload()?.weak_knowledge_points
+  if (!Array.isArray(raw))
+    return []
+  return raw
+    .map((item) => ({
+      name: String(item?.name || '').trim(),
+      reason: String(item?.reason || '').trim(),
+    }))
+    .filter(item => item.name || item.reason)
+}
+
 function goBack() {
   uni.navigateBack()
 }
@@ -129,16 +184,17 @@ function handleViewWrong() {
   }
 
   uni.navigateTo({
-    url: `/pages/practice/session/index?sessionId=${sessionId.value}&mode=review&viewMode=wrong`,
+    url: `/pages/practice/session/index?sessionId=${sessionId.value}&mode=review&viewMode=wrong&wrongOnly=1&wrongQuestionIds=${wrongQuestionIdsParam.value}`,
   })
 }
 
 function handleSelectItem(item: AnswerSheetItem) {
   if (!sessionId.value)
     return
-  // seq_no 从 1 开始，gotoIndex 从 0 开始
+  const viewMode = answerCardFilter.value === 'wrong' ? 'wrong' : 'all'
+  const wrongQuery = viewMode === 'wrong' ? `&wrongOnly=1&wrongQuestionIds=${wrongQuestionIdsParam.value}` : ''
   uni.navigateTo({
-    url: `/pages/practice/session/index?sessionId=${sessionId.value}&mode=review&viewMode=all&gotoIndex=${item.seq_no - 1}`,
+    url: `/pages/practice/session/index?sessionId=${sessionId.value}&mode=review&viewMode=${viewMode}&gotoQuestionId=${item.id}${wrongQuery}`,
   })
 }
 
@@ -169,6 +225,48 @@ async function loadReport() {
   }
 }
 
+async function loadAISummary() {
+  if (!sessionId.value)
+    return
+
+  aiSummaryLoading.value = true
+  aiSummaryError.value = ''
+  try {
+    aiSummary.value = await getPracticeSessionAISummary(sessionId.value)
+    aiSummaryCollapsed.value = Boolean(aiSummary.value)
+  }
+  catch (error: any) {
+    const status = Number(error?.response?.status || error?.statusCode || 0)
+    if (status !== 404) {
+      aiSummaryError.value = String(error?.response?.data?.msg || error?.message || 'AI 总结加载失败').trim()
+    }
+    aiSummary.value = null
+  }
+  finally {
+    aiSummaryLoading.value = false
+  }
+}
+
+async function generateAISummary(forceRegenerate = false) {
+  if (!sessionId.value || aiSummaryGenerating.value)
+    return
+
+  aiSummaryGenerating.value = true
+  aiSummaryError.value = ''
+  try {
+    aiSummary.value = await generatePracticeSessionAISummary(sessionId.value, forceRegenerate)
+    aiSummaryCollapsed.value = false
+    uni.showToast({ title: forceRegenerate ? 'AI 总结已更新' : 'AI 总结已生成', icon: 'success' })
+  }
+  catch (error: any) {
+    aiSummaryError.value = String(error?.response?.data?.msg || error?.message || 'AI 总结生成失败').trim()
+    uni.showToast({ title: 'AI 总结生成失败', icon: 'none' })
+  }
+  finally {
+    aiSummaryGenerating.value = false
+  }
+}
+
 onLoad((query) => {
   sessionId.value = Number(query?.sessionId || resultStore.state.sessionId || 0)
   if (!sessionId.value) {
@@ -176,7 +274,7 @@ onLoad((query) => {
     setTimeout(() => uni.navigateBack(), 1500)
     return
   }
-  loadReport()
+  Promise.all([loadReport(), loadAISummary()])
 })
 </script>
 
@@ -259,13 +357,150 @@ onLoad((query) => {
           </view>
         </view>
 
+        <view class="box-border mt-4 overflow-hidden border border-white/60 rounded-2xl bg-white/90 shadow-sm backdrop-blur-sm">
+          <view class="flex items-center justify-between px-4 pb-1 pt-3.5" @click="aiSummary && (aiSummaryCollapsed = !aiSummaryCollapsed)">
+            <view class="flex items-center gap-2">
+              <view class="i-carbon-ai-generate text-[16px] text-[#0F766E]" />
+              <text class="text-[13px] text-[#0F766E] font-bold">AI 练习总结</text>
+            </view>
+            <view class="flex items-center gap-2">
+              <view
+                class="rounded-full px-3 py-1 text-[11px] font-bold"
+                :class="aiSummaryGenerating
+                  ? 'bg-[#EFF6FF] text-[#2563EB]'
+                  : aiSummary
+                    ? 'bg-[#ECFDF5] text-[#059669]'
+                    : 'bg-[#F8FAFC] text-[#64748B]'"
+              >
+                {{ aiSummaryGenerating ? '生成中' : aiSummary ? '已生成' : '未生成' }}
+              </view>
+              <view v-if="aiSummary" class="h-7 w-7 flex items-center justify-center rounded-full bg-[#F1F5F9] text-[#64748B]">
+                <view :class="aiSummaryCollapsed ? 'i-carbon-chevron-down' : 'i-carbon-chevron-up'" class="text-[15px]" />
+              </view>
+            </view>
+          </view>
+
+          <view v-if="aiSummary && aiSummaryCollapsed" class="px-4 pb-4 pt-2">
+            <view class="rounded-2xl bg-[#F8FAFC] px-4 py-3 text-[13px] text-[#64748B] leading-[1.7]">
+              AI 总结已收起，点击标题栏展开查看。
+            </view>
+          </view>
+
+          <view v-else-if="aiSummaryLoading" class="px-4 pb-4 pt-2 text-[13px] text-[#64748B]">
+            正在加载 AI 总结...
+          </view>
+
+          <view v-else-if="aiSummary" class="px-4 pb-4 pt-2">
+            <view v-if="aiSummary.summary_text" class="rounded-2xl bg-[#F8FAFC] px-4 py-4 text-[14px] text-[#334155]">
+              <AiRichContent :content="aiSummary.summary_text" />
+            </view>
+
+            <view v-if="summaryStrengths().length" class="mt-3 rounded-2xl bg-[#ECFDF5] px-4 py-4">
+              <view class="text-[12px] text-[#15803D] font-bold">
+                本次表现亮点
+              </view>
+              <view class="mt-2 flex flex-col gap-2 text-[13px] text-[#166534]">
+                <view v-for="(line, lineIndex) in summaryStrengths()" :key="`strength-${lineIndex}`">
+                  {{ line }}
+                </view>
+              </view>
+            </view>
+
+            <view v-if="summaryIssues().length" class="mt-3 rounded-2xl bg-[#FFF7ED] px-4 py-4">
+              <view class="text-[12px] text-[#C2410C] font-bold">
+                高频问题
+              </view>
+              <view class="mt-2 flex flex-col gap-2 text-[13px] text-[#9A3412]">
+                <view v-for="(line, lineIndex) in summaryIssues()" :key="`issue-${lineIndex}`">
+                  {{ line }}
+                </view>
+              </view>
+            </view>
+
+            <view v-if="summaryWeakPoints().length" class="mt-3 rounded-2xl bg-[#EFF6FF] px-4 py-4">
+              <view class="text-[12px] text-[#1D4ED8] font-bold">
+                薄弱知识点
+              </view>
+              <view class="mt-2 flex flex-col gap-3 text-[13px] text-[#1E3A8A]">
+                <view v-for="(item, index) in summaryWeakPoints()" :key="`weak-${index}`">
+                  <view class="font-bold">
+                    {{ item.name || '待补强' }}
+                  </view>
+                  <view v-if="item.reason" class="mt-1 leading-[1.7]">
+                    {{ item.reason }}
+                  </view>
+                </view>
+              </view>
+            </view>
+
+            <view v-if="summaryNextActions().length" class="mt-3 rounded-2xl bg-[#F5F3FF] px-4 py-4">
+              <view class="text-[12px] text-[#6D28D9] font-bold">
+                下一步建议
+              </view>
+              <view class="mt-2 flex flex-col gap-2 text-[13px] text-[#6D28D9]">
+                <view v-for="(line, lineIndex) in summaryNextActions()" :key="`action-${lineIndex}`">
+                  {{ line }}
+                </view>
+              </view>
+            </view>
+
+            <view v-if="summaryPayload()?.encouragement" class="mt-3 rounded-2xl bg-[#FDF4FF] px-4 py-4 text-[13px] text-[#A21CAF]">
+              <AiRichContent :content="summaryPayload()?.encouragement || ''" />
+            </view>
+
+            <view class="mt-4 flex justify-end">
+              <view
+                class="inline-flex items-center gap-1 rounded-full bg-[#0F766E] px-3 py-1.5 text-[12px] text-white font-bold active:scale-95"
+                @click="generateAISummary(true)"
+              >
+                <view class="i-carbon-renew text-[13px]" />
+                <text>{{ aiSummaryGenerating ? '生成中...' : '重新生成' }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view v-else class="px-4 pb-4 pt-2">
+            <view class="rounded-2xl bg-[#F8FAFC] px-4 py-4 text-[13px] text-[#64748B] leading-[1.8]">
+              {{ aiSummaryError || '这次练习还没有 AI 总结。你可以手动生成一份，看看整体表现、薄弱点和下一步建议。' }}
+            </view>
+            <view class="mt-4 flex justify-end">
+              <view
+                class="inline-flex items-center gap-1 rounded-full bg-[#0F766E] px-3 py-1.5 text-[12px] text-white font-bold active:scale-95"
+                @click="generateAISummary()"
+              >
+                <view class="i-carbon-ai-generate text-[13px]" />
+                <text>{{ aiSummaryGenerating ? '生成中...' : '生成 AI 总结' }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
         <!-- 答题卡（按章节分组） -->
-        <view v-if="answerGroups.length" class="box-border mt-4 overflow-hidden border border-white/60 rounded-2xl bg-white/90 shadow-sm backdrop-blur-sm">
-          <view class="px-4 pb-1 pt-3.5">
+        <view v-if="report.answer_items?.length" class="box-border mt-4 overflow-hidden border border-white/60 rounded-2xl bg-white/90 shadow-sm backdrop-blur-sm">
+          <view class="flex items-center justify-between px-4 pb-1 pt-3.5">
             <text class="text-[13px] text-[#475569] font-bold">答题卡</text>
+            <view class="flex items-center rounded-full bg-[#F1F5F9] p-0.5">
+              <view
+                class="rounded-full px-3 py-1 text-[11px] font-bold"
+                :class="answerCardFilter === 'all' ? 'bg-white text-[#2563EB] shadow-sm' : 'text-[#64748B]'"
+                @click="answerCardFilter = 'all'"
+              >
+                全部
+              </view>
+              <view
+                class="rounded-full px-3 py-1 text-[11px] font-bold"
+                :class="answerCardFilter === 'wrong' ? 'bg-white text-[#EF4444] shadow-sm' : 'text-[#64748B]'"
+                @click="answerCardFilter = 'wrong'"
+              >
+                错题
+              </view>
+            </view>
           </view>
           <view class="px-4">
             <AnswerSheet :groups="answerGroups" @select="handleSelectItem" />
+            <view v-if="!answerGroups.length" class="py-8 text-center text-[13px] text-[#94A3B8]">
+              当前没有错题，继续保持。
+            </view>
           </view>
         </view>
       </scroll-view>

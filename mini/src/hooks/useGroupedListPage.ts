@@ -1,9 +1,11 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { exportMiniRenderBook } from '@/utils/renderBook'
 import type { ExportScope, RenderBookExportSubmitPayload } from '@/utils/renderBook'
 import { isMembershipAccessError } from '@/utils/membershipAccess'
+import { getAppSettings } from '@/utils/appSettings'
+import { getStudyDomainOption } from '@/utils/studyDomain'
 import { toLoginPage } from '@/utils/toLoginPage'
 
 export type GroupMode = 'knowledge_point' | 'bank'
@@ -41,8 +43,7 @@ export interface GroupedListPageConfig {
   gradientVia: string
   exportBorderColor: string
   exportActiveBg: string
-  fetchStatistics: (mode: GroupMode) => Promise<any>
-  totalCountGetter: (stats: any) => number
+  fetchStatistics: (mode: GroupMode, studyDomain: string) => Promise<any>
 }
 
 export const groupModes: Array<{ key: GroupMode, label: string }> = [
@@ -68,6 +69,10 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
     knowledge_point: false,
     bank: false,
   })
+  const loadedMap = ref<Record<GroupMode, boolean>>({
+    knowledge_point: false,
+    bank: false,
+  })
   const statistics = ref<any>({})
   const expandedKeysMap = ref<Record<GroupMode, Set<string>>>({
     knowledge_point: new Set(),
@@ -77,6 +82,38 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
   // 导出选择模式
   const exportMode = ref(false)
   const selectedExportKeys = ref<Set<string>>(new Set())
+  const currentDomainCode = ref(getAppSettings().currentDomain)
+  const currentDomainLabel = ref(getStudyDomainOption(currentDomainCode.value).label)
+
+  const displayStatistics = computed(() => ({ ...(statistics.value || {}) }))
+
+  function resetDomainScopedState(): void {
+    groupsMap.value = {
+      knowledge_point: [],
+      bank: [],
+    }
+    loadedMap.value = {
+      knowledge_point: false,
+      bank: false,
+    }
+    expandedKeysMap.value = {
+      knowledge_point: new Set(),
+      bank: new Set(),
+    }
+    exportMode.value = false
+    selectedExportKeys.value = new Set()
+  }
+
+  function syncCurrentDomain(): void {
+    const nextDomainCode = getAppSettings().currentDomain
+    if (currentDomainCode.value === nextDomainCode) {
+      return
+    }
+
+    currentDomainCode.value = nextDomainCode
+    currentDomainLabel.value = getStudyDomainOption(nextDomainCode).label
+    resetDomainScopedState()
+  }
 
   function ensureLogin(): boolean {
     if (tokenStore.updateNowTime().hasLogin)
@@ -90,9 +127,10 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
     if (!ensureLogin())
       return
 
+    syncCurrentDomain()
     loadingMap.value[mode] = true
     try {
-      const data = await config.fetchStatistics(mode) as any
+      const data = await config.fetchStatistics(mode, currentDomainCode.value) as any
       const { groups, ...stats } = data || {}
       statistics.value = stats
       groupsMap.value[mode] = groups || []
@@ -103,6 +141,7 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
     }
     finally {
       loadingMap.value[mode] = false
+      loadedMap.value[mode] = true
     }
   }
 
@@ -115,7 +154,7 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
       return
 
     groupMode.value = mode
-    if (!groupsMap.value[mode].length)
+    if (!loadedMap.value[mode])
       void loadData(mode)
   }
 
@@ -128,7 +167,7 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
       return
 
     groupMode.value = nextMode
-    if (!groupsMap.value[nextMode].length)
+    if (!loadedMap.value[nextMode])
       void loadData(nextMode)
   }
 
@@ -377,11 +416,15 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
   // 统计
 
   function getStatistics(): any {
-    return statistics.value
+    return displayStatistics.value
   }
 
   function getModeTotalCount(mode: GroupMode): number {
-    return config.totalCountGetter(statistics.value)
+    return sumGroupCounts(groupsMap.value[mode])
+  }
+
+  function sumGroupCounts(nodes: TreeNode[] | null | undefined): number {
+    return (nodes || []).reduce((sum, node) => sum + Number(node.count || 0), 0)
   }
 
   // 批量导出
@@ -495,10 +538,12 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
     getTreeGroups,
     handleGroupTap,
     statistics,
+    displayStatistics,
     getStatistics,
     getModeTotalCount,
     exportMode,
     selectedExportKeys,
+    currentDomainLabel,
     toggleExportMode() {
       exportMode.value = !exportMode.value
       if (!exportMode.value)
