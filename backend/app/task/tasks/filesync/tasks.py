@@ -16,9 +16,14 @@ from backend.app.task.tasks.filesync.debug_logger import (
     log_task_end,
 )
 from backend.database.db import async_db_session
+from backend.database.redis import redis_client
 from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
+
+# Redis 锁相关常量
+FILESYNC_EXEC_LOCK_PREFIX = 'filesync:exec_lock:'
+FILESYNC_EXEC_LOCK_TTL = 600  # 锁过期时间 10 分钟，防止异常退出后死锁
 
 
 @celery_app.task(name='check_and_execute_filesync_cron_tasks')
@@ -95,6 +100,18 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                         })
                         continue
 
+                    # 派发前检查 Redis 锁，避免重复派发
+                    lock_key = f"{FILESYNC_EXEC_LOCK_PREFIX}{config.id}"
+                    if await redis_client.exists(lock_key):
+                        result["skipped_tasks"] += 1
+                        temp_details.append({
+                            "config_id": config.id,
+                            "status": "skipped",
+                            "reason": "已有任务正在执行（Redis 锁存在）"
+                        })
+                        log_task_skipped(config.id, f"Redis 锁存在, key={lock_key}")
+                        continue
+
                     # 执行同步任务
                     # 【核心修复】：不要直接 execute 阻塞，否则共用一个 DB Session 必断开连接！
                     # 应交给专门处理单条配置的 Celery task 去执行
@@ -140,38 +157,63 @@ async def execute_filesync_task_by_config_id(self, config_id: int) -> Dict[str, 
     :return: 执行结果
     """
     celery_task_id = self.request.id
+    lock_key = f"{FILESYNC_EXEC_LOCK_PREFIX}{config_id}"
 
     try:
-        async with async_db_session() as db:
-            # 幂等性检查：如果同配置已有正在运行的任务，跳过本次执行
-            if await sync_task_dao.has_running_task(db, config_id=config_id):
-                logger.warning(f"配置 {config_id} 已有正在运行的同步任务，跳过本次执行")
-                log_task_skipped(config_id, f"已有 running 任务, celery_id={celery_task_id}")
-                return {
-                    "success": True,
-                    "config_id": config_id,
-                    "skipped": True,
-                    "message": "已有正在运行的同步任务，跳过本次执行"
-                }
+        # 原子性分布式锁：SET NX + EX，保证同一 config_id 只有一个 worker 在执行
+        lock_acquired = await redis_client.set(
+            lock_key, celery_task_id, nx=True, ex=FILESYNC_EXEC_LOCK_TTL
+        )
+        if not lock_acquired:
+            logger.warning(f"配置 {config_id} 获取 Redis 锁失败，已有任务正在执行，跳过本次")
+            log_task_skipped(config_id, f"Redis 锁竞争失败, celery_id={celery_task_id}")
+            return {
+                "success": True,
+                "config_id": config_id,
+                "skipped": True,
+                "message": "已有正在执行的同步任务（Redis 锁），跳过本次执行"
+            }
 
-            log_task_start(config_id, task_id=None, celery_task_id=celery_task_id)
+        try:
+            async with async_db_session() as db:
+                # 二级防护：数据库幂等性检查
+                if await sync_task_dao.has_running_task(db, config_id=config_id):
+                    logger.warning(f"配置 {config_id} 已有正在运行的同步任务，跳过本次执行")
+                    log_task_skipped(config_id, f"已有 running 任务, celery_id={celery_task_id}")
+                    return {
+                        "success": True,
+                        "config_id": config_id,
+                        "skipped": True,
+                        "message": "已有正在运行的同步任务，跳过本次执行"
+                    }
 
-            result = await file_sync_service.execute_sync_by_config_id(config_id, db)
+                log_task_start(config_id, task_id=None, celery_task_id=celery_task_id)
 
-            if not result.get("success"):
-                logger.error(f"配置 {config_id} 同步任务执行失败: {result.get('error')}")
+                result = await file_sync_service.execute_sync_by_config_id(config_id, db)
 
-            log_task_end(
-                config_id,
-                task_id=result.get('task_id'),
-                success=result.get('success', False),
-                stats=result.get('stats'),
-                error=result.get('error'),
-            )
+                if not result.get("success"):
+                    logger.error(f"配置 {config_id} 同步任务执行失败: {result.get('error')}")
 
-            return result
+                log_task_end(
+                    config_id,
+                    task_id=result.get('task_id'),
+                    success=result.get('success', False),
+                    stats=result.get('stats'),
+                    error=result.get('error'),
+                )
+
+                return result
+
+        finally:
+            # 无论成功或失败，释放 Redis 锁
+            await redis_client.delete(lock_key)
 
     except Exception as e:
+        # 异常时也要尝试释放锁
+        try:
+            await redis_client.delete(lock_key)
+        except Exception:
+            pass
         error_msg = f"执行配置 {config_id} 同步任务时发生错误: {str(e)}"
         logger.error(error_msg)
         log_task_end(config_id, task_id=None, success=False, error=error_msg)

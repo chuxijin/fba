@@ -3,63 +3,63 @@
 from backend.app.task.utils.tzcrontab import TzAwareCrontab
 
 LOCAL_BEAT_SCHEDULE = {
-    'delete_db_opera_log': {
+    '清理操作日志': {
         'task': 'delete_db_opera_log',
         'schedule': TzAwareCrontab('0', '0', day_of_week='6'),
     },
-    'delete_db_login_log': {
+    '清理登录日志': {
         'task': 'delete_db_login_log',
         'schedule': TzAwareCrontab('0', '0', day_of_month='15'),
     },
-    'delete_celery_task_results': {
+    '清理 Celery 任务结果': {
         'task': 'delete_celery_task_results',
         'schedule': TzAwareCrontab('0', '3'),
     },
-    'check_filesync_cron_tasks': {
+    '文件同步定时任务检查': {
         'task': 'check_and_execute_filesync_cron_tasks',
         'schedule': TzAwareCrontab('*/5'),
     },
-    'refresh_all_valid_drive_users': {
+    '刷新网盘用户信息': {
         'task': 'refresh_all_valid_drive_users',
         'schedule': TzAwareCrontab('0', '22'),
     },
-    'check_and_refresh_expiring_resources': {
+    '检查并刷新过期资源': {
         'task': 'check_and_refresh_expiring_resources',
         'schedule': TzAwareCrontab('0', '23'),
     },
-    'cleanup_expired_local_shares': {
+    '清理本地失效分享': {
         'task': 'cleanup_expired_local_shares',
         'schedule': TzAwareCrontab('0', '5'),
     },
-    'refresh_resources_with_update_mode': {
+    '刷新更新模式资源': {
         'task': 'refresh_resources_with_update_mode',
         'schedule': TzAwareCrontab('0', '7'),
     },
-    'delete_filesync_data_older_than_30_days': {
+    '清理过期文件同步数据': {
         'task': 'delete_filesync_data_older_than_30_days',
         'schedule': TzAwareCrontab('0', '2'),
     },
-    'update_daily_user_ranks': {
+    '更新用户每日排名': {
         'task': 'update_daily_user_ranks',
         'schedule': TzAwareCrontab('5', '0'),
     },
-    'sync_daily_news_to_shizhen': {
+    '同步每日时政新闻': {
         'task': 'sync_daily_news_to_shizhen',
         'schedule': TzAwareCrontab('0', '8'),
     },
-    'update_jia_item_status': {
+    '更新物品状态': {
         'task': 'update_jia_item_status',
         'schedule': TzAwareCrontab('0'),
     },
-    'check_expired_user_roles': {
+    '检查过期用户角色': {
         'task': 'check_expired_user_roles',
         'schedule': TzAwareCrontab('30'),
     },
-    'check_expired_memberships': {
+    '检查过期会员': {
         'task': 'check_expired_memberships',
         'schedule': TzAwareCrontab('35'),
     },
-    'sync_resource_hot_scores': {
+    '同步资源热度评分': {
         'task': 'sync_resource_hot_scores',
         'schedule': TzAwareCrontab('0', '1'),
     },
