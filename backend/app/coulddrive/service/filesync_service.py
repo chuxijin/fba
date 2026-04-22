@@ -54,6 +54,11 @@ from backend.app.coulddrive.service.utils_service import (
     get_filename,
     build_full_path
 )
+from backend.app.task.tasks.filesync.debug_logger import (
+    log_overwrite_scan,
+    log_api_call,
+    log_target_verify,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1803,6 +1808,16 @@ class FileSyncService:
             transfer_result = await service.transfer_files(params=params)
             self.logger.info(f"[任务{task_id}] 转存API调用结果: {transfer_result}")
 
+            # 调试日志
+            log_api_call(
+                task_id, 'transfer', len(files), transfer_result,
+                extra={
+                    'target_path': target_definition.file_path,
+                    'target_id': target_definition.file_id,
+                    'files_sample': [f.get('file_name', '') for f in files[:10]],
+                }
+            )
+
             # 写后安静期，等待上游平台落盘/索引收敛
             await asyncio.sleep(2)
 
@@ -1899,7 +1914,13 @@ class FileSyncService:
 
             self.logger.info(f"[任务{task_id}] 执行文件删除（已由上层获取账户锁）")
             result = await service.remove(params=params)
-            
+
+            # 调试日志
+            log_api_call(
+                task_id, 'delete', len(files), result,
+                extra={'file_paths_sample': file_paths[:5], 'file_ids_sample': file_ids[:5]}
+            )
+
             if result:
                 stats["files_deleted"] += len(files)
                 self.logger.info(f"[任务{task_id or 'unknown'}] 批量删除成功: {len(files)} 个文件")
@@ -2157,6 +2178,12 @@ class FileSyncService:
                 f"耗时: {elapsed:.2f}秒，找到 {len(source_file_map)} 个文件/目录"
             )
 
+            # 调试日志：记录源扫描结果
+            log_overwrite_scan(
+                task_id, 'source_scan', source_definition.file_path,
+                len(source_file_map), list(source_file_map.keys())
+            )
+
             if not source_file_map:
                 error_msg = f"源目录为空或不存在: {source_definition.file_path}，跳过覆盖同步以保护目标数据"
                 self.logger.error(f"[任务{task_id or 'unknown'}] {error_msg}")
@@ -2198,6 +2225,19 @@ class FileSyncService:
                 )
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
                 if db: await db.commit()
+
+                # 调试日志：删除后回查目标目录，确认是否真正清空
+                try:
+                    post_delete_map = await self.list_dir(
+                        service, target_definition.file_path, False, None, False,
+                        target_definition, target_definition.file_id, task_id, db, account_key=account_key
+                    )
+                    log_overwrite_scan(
+                        task_id, 'target_after_delete', target_definition.file_path,
+                        len(post_delete_map), list(post_delete_map.keys())
+                    )
+                except Exception as verify_err:
+                    log_api_call(task_id, 'delete_verify_failed', 0, str(verify_err))
             else:
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：目标目录为空，无需删除。")
 
@@ -2231,6 +2271,22 @@ class FileSyncService:
                 f"[任务{task_id or 'unknown'}] 覆盖同步：批量转存完成，"
                 f"成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒"
             )
+
+            # 调试日志：转存后回查目标目录，验证文件是否真正到位
+            try:
+                await asyncio.sleep(3)  # 等网盘索引更新
+                post_transfer_map = await self.list_dir(
+                    service, target_definition.file_path, False, None, False,
+                    target_definition, target_definition.file_id, task_id, db, account_key=account_key
+                )
+                log_target_verify(
+                    task_id, target_definition.file_path,
+                    expected_count=len(all_files_to_transfer),
+                    actual_count=len(post_transfer_map),
+                    actual_files=list(post_transfer_map.keys())
+                )
+            except Exception as verify_err:
+                log_api_call(task_id, 'transfer_verify_failed', 0, str(verify_err))
 
             if not transfer_result:
                 self.logger.warning(

@@ -218,6 +218,29 @@ class CRUDSyncTask(CRUDPlus[SyncTask]):
         """
         return await self.select_model(db, pk)
 
+    async def has_running_task(self, db: AsyncSession, *, config_id: int) -> bool:
+        """
+        检查指定配置是否有正在运行的任务
+
+        :param db: 数据库会话
+        :param config_id: 配置 ID
+        :return:
+        """
+        from sqlalchemy import select
+
+        stmt = (
+            select(func.count(SyncTask.id))
+            .where(
+                and_(
+                    SyncTask.config_id == config_id,
+                    SyncTask.status == 'running'
+                )
+            )
+        )
+        result = await db.execute(stmt)
+        count = result.scalar() or 0
+        return count > 0
+
     async def create(self, db: AsyncSession, *, obj_in: CreateSyncTaskParam, current_user_id: int = 1) -> SyncTask:
         """
         创建同步任务

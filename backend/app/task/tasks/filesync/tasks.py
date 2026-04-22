@@ -6,9 +6,15 @@ from typing import Dict, Any, List
 
 from croniter import croniter
 
-from backend.app.coulddrive.crud.crud_filesync import sync_config_dao
+from backend.app.coulddrive.crud.crud_filesync import sync_config_dao, sync_task_dao
 from backend.app.coulddrive.service.filesync_service import file_sync_service
 from backend.app.task.celery import celery_app
+from backend.app.task.tasks.filesync.debug_logger import (
+    log_task_dispatch,
+    log_task_start,
+    log_task_skipped,
+    log_task_end,
+)
 from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
 
@@ -92,7 +98,11 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                     # 执行同步任务
                     # 【核心修复】：不要直接 execute 阻塞，否则共用一个 DB Session 必断开连接！
                     # 应交给专门处理单条配置的 Celery task 去执行
-                    execute_filesync_task_by_config_id.delay(config.id)
+                    async_result = execute_filesync_task_by_config_id.delay(config.id)
+                    celery_task_id = async_result.id if async_result else 'unknown'
+
+                    # 调试日志
+                    log_task_dispatch('execute_filesync_task_by_config_id', config.id, celery_task_id)
 
                     result["executed_tasks"] += 1
                     temp_details.append({
@@ -121,26 +131,50 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
     return result
 
 
-@celery_app.task(name='execute_filesync_task_by_config_id')
-async def execute_filesync_task_by_config_id(config_id: int) -> Dict[str, Any]:
+@celery_app.task(name='execute_filesync_task_by_config_id', bind=True)
+async def execute_filesync_task_by_config_id(self, config_id: int) -> Dict[str, Any]:
     """
     根据配置ID执行单个文件同步任务
 
     :param config_id: 同步配置ID
     :return: 执行结果
     """
+    celery_task_id = self.request.id
+
     try:
         async with async_db_session() as db:
+            # 幂等性检查：如果同配置已有正在运行的任务，跳过本次执行
+            if await sync_task_dao.has_running_task(db, config_id=config_id):
+                logger.warning(f"配置 {config_id} 已有正在运行的同步任务，跳过本次执行")
+                log_task_skipped(config_id, f"已有 running 任务, celery_id={celery_task_id}")
+                return {
+                    "success": True,
+                    "config_id": config_id,
+                    "skipped": True,
+                    "message": "已有正在运行的同步任务，跳过本次执行"
+                }
+
+            log_task_start(config_id, task_id=None, celery_task_id=celery_task_id)
+
             result = await file_sync_service.execute_sync_by_config_id(config_id, db)
 
             if not result.get("success"):
                 logger.error(f"配置 {config_id} 同步任务执行失败: {result.get('error')}")
+
+            log_task_end(
+                config_id,
+                task_id=result.get('task_id'),
+                success=result.get('success', False),
+                stats=result.get('stats'),
+                error=result.get('error'),
+            )
 
             return result
 
     except Exception as e:
         error_msg = f"执行配置 {config_id} 同步任务时发生错误: {str(e)}"
         logger.error(error_msg)
+        log_task_end(config_id, task_id=None, success=False, error=error_msg)
         return {
             "success": False,
             "error": error_msg,
