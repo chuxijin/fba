@@ -57,12 +57,20 @@ git reset --hard origin/$CURRENT_BRANCH || error "git reset 失败"
 # 记录新的 commit
 NEW_COMMIT=$(git rev-parse HEAD)
 
+# 如果 commit 没变化，直接退出
+if [ "$OLD_COMMIT" = "$NEW_COMMIT" ]; then
+    success "代码已是最新 (分支: $CURRENT_BRANCH, commit: ${NEW_COMMIT:0:8})，无需部署"
+    echo ""
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}       ✔ 无更新，跳过部署${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    exit 0
+fi
+
 # 检查依赖文件是否有变化
 DEPS_CHANGED=false
-if [ "$OLD_COMMIT" != "$NEW_COMMIT" ]; then
-    if git diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" | grep -qE "(pyproject\.toml|uv\.lock)$"; then
-        DEPS_CHANGED=true
-    fi
+if git diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" | grep -qE "(pyproject\.toml|uv\.lock)$"; then
+    DEPS_CHANGED=true
 fi
 
 # 拉取子模块（如果有）
@@ -70,7 +78,7 @@ if [ -f ".gitmodules" ]; then
     git submodule update --init --recursive || error "git submodule update 失败"
 fi
 
-success "代码拉取完成 (分支: $CURRENT_BRANCH)"
+success "代码更新完成 (分支: $CURRENT_BRANCH, ${OLD_COMMIT:0:8} → ${NEW_COMMIT:0:8})"
 echo ""
 
 # 步骤 2: 激活虚拟环境

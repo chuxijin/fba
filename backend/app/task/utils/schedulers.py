@@ -303,8 +303,6 @@ class DatabaseScheduler(Scheduler):
     def setup_schedule(self) -> None:
         """重写父函数"""
         logger.info('setup_schedule')
-        tasks = self.schedule
-        self.install_default_entries(tasks)
         self.update_from_dict(self.app.conf.beat_schedule)
 
     def sync(self) -> None:
