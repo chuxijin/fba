@@ -3,29 +3,25 @@ import urllib.parse
 
 import celery
 import celery_aio_pool
-import sys
 
 from celery.signals import worker_process_init
 from opentelemetry.instrumentation.celery import CeleryInstrumentor
 
 from backend.app.task.tasks.beat import LOCAL_BEAT_SCHEDULE
 from backend.common.enums import DataBaseType
-from backend.common.observability.otel import init_resource, init_tracer
 from backend.core.conf import settings
 from backend.core.path_conf import BASE_PATH
 
 
 @worker_process_init.connect(weak=False)
-def init_celery_worker_tracing(*args, **kwargs) -> None:
+def init_celery_tracing(*args, **kwargs) -> None:
     """初始化 Celery Worker"""
-    # 初始化追踪
     if settings.GRAFANA_METRICS_ENABLE:
-        resource = init_resource('fba_celery_worker')
-        init_tracer(resource)
         CeleryInstrumentor().instrument()
 
     # 初始化 Firebase 推送服务
     from backend.app.jia.service.push_service import PushService
+
     PushService.initialize()
 
 
