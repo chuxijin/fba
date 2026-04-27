@@ -28,6 +28,7 @@ class UserMembership(Base):
     tier_weight: Mapped[int] = mapped_column(sa.SmallInteger, comment='等级权重快照')
     tier_grade: Mapped[int] = mapped_column(sa.SmallInteger, default=0, comment='等级快照')
     exp: Mapped[int] = mapped_column(default=0, comment='经验值')
+    available_exp: Mapped[int] = mapped_column(default=0, comment='可用经验值')
     valid_from: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='有效期开始')
     valid_to: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='有效期结束')
     source: Mapped[str] = mapped_column(sa.String(32), default='admin', comment='来源')

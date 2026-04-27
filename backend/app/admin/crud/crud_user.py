@@ -82,6 +82,16 @@ class CRUDUser(CRUDPlus[User]):
         result = await db.execute(stmt)
         return result.scalars().first()
 
+    async def get_by_phone(self, db: AsyncSession, phone: str) -> User | None:
+        """
+        通过手机号获取用户
+
+        :param db: 数据库会话
+        :param phone: 手机号
+        :return:
+        """
+        return await self.select_model_by_column(db, phone=phone)
+
     async def get_by_nickname(self, db: AsyncSession, nickname: str) -> User | None:
         """
         通过昵称获取用户
@@ -248,6 +258,17 @@ class CRUDUser(CRUDPlus[User]):
         :return:
         """
         return await self.update_model(db, user_id, {'email': email})
+
+    async def update_phone(self, db: AsyncSession, user_id: int, phone: str) -> int:
+        """
+        更新用户手机号
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param phone: 手机号
+        :return:
+        """
+        return await self.update_model(db, user_id, {'phone': phone})
 
     async def reset_password(self, db: AsyncSession, pk: int, password: str) -> int:
         """

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -27,7 +27,7 @@ class CRUDUserMembership(CRUDPlus[UserMembership]):
             .where(
                 self.model.user_id == user_id,
                 self.model.status == 1,
-                self.model.valid_to > now,
+                or_(self.model.valid_to.is_(None), self.model.valid_to > now),
             )
             .order_by(self.model.tier_weight.desc(), self.model.valid_to.desc())
         )
@@ -46,7 +46,7 @@ class CRUDUserMembership(CRUDPlus[UserMembership]):
         stmt: Select = select(func.max(self.model.tier_weight)).where(
             self.model.user_id == user_id,
             self.model.status == 1,
-            self.model.valid_to > now,
+            or_(self.model.valid_to.is_(None), self.model.valid_to > now),
         )
         result = await db.execute(stmt)
         max_weight = result.scalar_one_or_none()

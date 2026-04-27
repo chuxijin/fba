@@ -24,6 +24,7 @@ from backend.common.response.response_code import CustomErrorCode
 from backend.common.security.jwt import get_token, jwt_decode
 from backend.core.conf import settings
 from backend.database.redis import redis_client
+from backend.utils.sensitive_words import validate_no_sensitive_words
 from backend.utils.serializers import select_join_serialize
 
 
@@ -225,6 +226,8 @@ class UserService:
         :param nickname: 用户昵称
         :return:
         """
+        validate_no_sensitive_words(nickname, '昵称')
+
         count = await user_dao.update_nickname(db, user_id, nickname)
         await redis_client.delete(f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}')
         return count
@@ -261,6 +264,60 @@ class UserService:
             raise errors.CustomError(error=CustomErrorCode.CAPTCHA_ERROR)
         await redis_client.delete(f'{settings.EMAIL_CAPTCHA_REDIS_PREFIX}:{ctx.ip}')
         count = await user_dao.update_email(db, user_id, email)
+        await redis_client.delete(f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}')
+        return count
+
+    @staticmethod
+    async def update_phone(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        old_phone_code: str | None,
+        new_phone: str,
+        new_phone_code: str,
+    ) -> int:
+        """
+        更换手机号（双重验证）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param old_phone_code: 旧手机验证码
+        :param new_phone: 新手机号
+        :param new_phone_code: 新手机验证码
+        :return:
+        """
+        user = await user_dao.get(db, user_id)
+        if not user:
+            raise errors.NotFoundError(msg='用户不存在')
+
+        # 1. 验证旧手机（如果已绑定手机号）
+        if user.phone:
+            if not old_phone_code:
+                raise errors.RequestError(msg='请输入旧手机验证码')
+            old_key = f'{settings.SMS_PHONE_CHANGE_REDIS_PREFIX}:{user.phone}'
+            cached_old_code = await redis_client.get(old_key)
+            if not cached_old_code:
+                raise errors.RequestError(msg='旧手机验证码已过期，请重新获取')
+            if cached_old_code != old_phone_code:
+                raise errors.RequestError(msg='旧手机验证码错误')
+            await redis_client.delete(old_key)
+
+        # 2. 验证新手机
+        new_key = f'{settings.SMS_PHONE_CHANGE_REDIS_PREFIX}:{new_phone}'
+        cached_new_code = await redis_client.get(new_key)
+        if not cached_new_code:
+            raise errors.RequestError(msg='新手机验证码已过期，请重新获取')
+        if cached_new_code != new_phone_code:
+            raise errors.RequestError(msg='新手机验证码错误')
+        await redis_client.delete(new_key)
+
+        # 3. 检查新手机号是否已被其他用户绑定
+        existing_user = await user_dao.get_by_phone(db, new_phone)
+        if existing_user and existing_user.id != user_id:
+            raise errors.ConflictError(msg='该手机号已被其他用户绑定')
+
+        # 4. 更新手机号
+        count = await user_dao.update_phone(db, user_id, new_phone)
         await redis_client.delete(f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}')
         return count
 

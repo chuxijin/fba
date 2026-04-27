@@ -223,6 +223,15 @@ class SubmitPracticeSessionResult(SchemaBase):
     accuracy_rate: Decimal = Field(ge=Decimal('0'), le=Decimal('100'), description='正确率（%）')
     score: Decimal | None = Field(None, ge=Decimal('0'), description='总得分')
     total_score: Decimal | None = Field(None, ge=Decimal('0'), description='总满分')
+    reward_exp: int = Field(default=0, ge=0, description='本次奖励经验')
+    practice_reward_exp: int = Field(default=0, ge=0, description='本次答题奖励经验')
+    check_in_reward_exp: int = Field(default=0, ge=0, description='本次自动签到奖励经验')
+    is_auto_checked_in: bool = Field(default=False, description='本次是否自动签到')
+    check_in_streak: int | None = Field(default=None, description='连续签到天数')
+    family_code: str | None = Field(default=None, description='入账等级族群')
+    tier_grade: int | None = Field(default=None, description='当前等级')
+    exp: int | None = Field(default=None, description='累计经验')
+    available_exp: int | None = Field(default=None, description='可用经验')
 
 
 # ===== settlement/report =====

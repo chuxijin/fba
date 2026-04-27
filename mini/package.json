@@ -9,7 +9,9 @@
     "uiLibrary": "wot-ui",
     "loginStrategy": false,
     "i18n": false,
-    "chartLibraries": [],
+    "chartLibraries": [
+      "echarts"
+    ],
     "cliVersion": "4.0.15",
     "unibestVersion": "4.3.0",
     "unibestUpdateTime": "2026-01-10",
@@ -135,6 +137,8 @@
     "abortcontroller-polyfill": "^1.7.8",
     "alova": "^3.3.3",
     "dayjs": "1.11.10",
+    "echarts": "^5.5.1",
+    "echarts-for-weixin": "^1.0.2",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",
     "mp-html": "^2.5.2",

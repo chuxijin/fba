@@ -471,6 +471,120 @@ class QuestionImportService:
         )
 
     @staticmethod
+    async def parse_excel_file(
+        *,
+        content: bytes,
+        filename: str | None,
+    ) -> tuple[list[QuestionImportRow], list[MaterialImportRow]]:
+        """
+        解析 Excel 文件，返回题目行和材料行
+
+        :param content: 文件二进制内容
+        :param filename: 文件名
+        :return:
+        """
+        import io
+
+        import pandas as pd
+        from starlette.concurrency import run_in_threadpool
+
+        if not filename or not filename.lower().endswith(('.xlsx', '.xls')):
+            raise errors.RequestError(msg='请上传 .xlsx 格式文件')
+
+        excel_bytes = io.BytesIO(content)
+
+        # 读取 Sheet1（题目）
+        try:
+            df_questions = await run_in_threadpool(pd.read_excel, excel_bytes, sheet_name=0)
+        except Exception as e:
+            raise errors.RequestError(msg=f'读取 Excel 题目页失败: {e}')
+
+        df_questions = df_questions.where(df_questions.notna(), None)
+        question_rows: list[QuestionImportRow] = []
+        col_map = {
+            '序号': 'ID', '题型': '题型', '题目': '题目',
+            '选项A': '选项A', '选项B': '选项B', '选项C': '选项C', '选项D': '选项D',
+            '答案': '答案', '解析': '解析', '难度': '难度', '分数': '分数',
+            '一级目录': '一级目录', '二级目录': '二级目录',
+            '知识点': '知识点', '材料编号': '材料编号',
+        }
+        for _, pandas_row in df_questions.iterrows():
+            row_dict: dict[str, Any] = {}
+            for excel_col, schema_col in col_map.items():
+                if excel_col in pandas_row.index:
+                    val = pandas_row[excel_col]
+                    if pd.notna(val) and val is not None:
+                        row_dict[schema_col] = val
+            if not row_dict.get('题目') or not row_dict.get('答案'):
+                continue
+            if not row_dict.get('题型'):
+                row_dict['题型'] = '单选'
+            question_rows.append(QuestionImportRow(**row_dict))
+
+        if not question_rows:
+            raise errors.RequestError(msg='Excel 中没有有效题目数据')
+
+        # 读取 Sheet2（材料，可选）
+        material_rows: list[MaterialImportRow] = []
+        try:
+            excel_bytes.seek(0)
+            df_materials = await run_in_threadpool(pd.read_excel, excel_bytes, sheet_name=1)
+            df_materials = df_materials.where(df_materials.notna(), None)
+            for _, pandas_row in df_materials.iterrows():
+                mat_id = pandas_row.get('材料编号')
+                mat_content = pandas_row.get('材料内容')
+                if pd.notna(mat_id) and pd.notna(mat_content) and mat_id:
+                    mat_title = pandas_row.get('材料标题')
+                    material_rows.append(MaterialImportRow(
+                        材料编号=str(mat_id),
+                        材料标题=mat_title if pd.notna(mat_title) else None,
+                        材料内容=str(mat_content),
+                    ))
+        except Exception:
+            pass
+
+        return question_rows, material_rows
+
+    @staticmethod
+    async def build_import_template() -> bytes:
+        """构建 Excel 导入模板"""
+        import io
+
+        from openpyxl import Workbook
+        from starlette.concurrency import run_in_threadpool
+
+        def _build() -> bytes:
+            """构建 Excel 模板"""
+            wb = Workbook()
+
+            # Sheet1: 题目
+            ws1 = wb.active
+            ws1.title = '题目'
+            ws1.append([
+                '序号', '题型', '题目', '选项A', '选项B', '选项C', '选项D',
+                '答案', '解析', '难度', '分数', '一级目录', '二级目录',
+                '知识点', '材料编号',
+            ])
+            ws1.append([
+                1, '单选', '下列关于宪法的说法，正确的是（ ）',
+                '宪法具有最高法律效力', '宪法由全国人大常委会制定',
+                '宪法修改由国务院提议', '宪法不具有直接法律效力',
+                'A', '根据《宪法》规定，宪法具有最高法律效力。',
+                '中等', 1, '常识判断', None, '宪法学', None,
+            ])
+
+            # Sheet2: 材料
+            ws2 = wb.create_sheet('材料')
+            ws2.append(['材料编号', '材料标题', '材料内容'])
+            ws2.append(['M1', '资料分析材料一', '根据以下资料，回答 1-5 题。（材料正文...）'])
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            return buf.getvalue()
+
+        return await run_in_threadpool(_build)
+
+    @staticmethod
     async def smart_commit(
         *,
         db: AsyncSession,

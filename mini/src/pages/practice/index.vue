@@ -275,6 +275,39 @@ function countLeafBanks(nodes: BankNode[] | null | undefined): number {
   return total
 }
 
+function findBankById(nodes: BankNode[] | null | undefined, bankId: number): BankNode | null {
+  for (const node of nodes || []) {
+    if (node.id === bankId)
+      return node
+
+    const matched = findBankById(node.children, bankId)
+    if (matched)
+      return matched
+  }
+
+  return null
+}
+
+function buildSessionDisplayName(rawName: string, bankId: number, mode: PracticeMode, totalCount: number) {
+  const cleanName = rawName.trim()
+  const bankName = findBankById(bankTree.value, bankId)?.name?.trim() || ''
+  let name = cleanName || bankName || '刷题练习'
+
+  if (bankName && cleanName && cleanName !== bankName && !cleanName.includes(bankName))
+    name = `${bankName} · ${cleanName}`
+
+  if (mode === 'exam' && !name.startsWith('模拟考试'))
+    name = `模拟考试 · ${name}`
+
+  if (mode === 'memorize' && !name.includes('背题'))
+    name = `${name} · 背题`
+
+  if (!cleanName && totalCount > 0)
+    name = `${name} · ${totalCount}题`
+
+  return name
+}
+
 function mapBankToListItem(bank: BankNode): PracticeListItem {
   const childItems = (bank.children || []).map(mapBankToListItem)
 
@@ -575,13 +608,15 @@ function normalizeLatestSession(session: any): LatestSessionBrief | null {
     : sessionType === 'exam'
       ? 'exam'
     : 'practice'
+  const bankId = toNumber(session.bank_id)
+  const totalCount = toNumber(session.total_count ?? session.session_questions?.length)
 
   return {
     id: toNumber(session.id),
-    bank_id: toNumber(session.bank_id),
-    practice_name: String(session.practice_name || ''),
+    bank_id: bankId,
+    practice_name: buildSessionDisplayName(String(session.practice_name || ''), bankId, sessionPracticeMode, totalCount),
     status: String(session.status || ''),
-    total_count: toNumber(session.total_count ?? session.session_questions?.length),
+    total_count: totalCount,
     display_total_count: toNumber(session?.exam_config?.display_total_count),
     completed_count: toNumber(session.completed_count ?? session.records?.length),
     wrong_count: toNumber(session.wrong_count),

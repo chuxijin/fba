@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from backend.core.conf import settings
+from backend.common.exception import errors
 
 
 def contains_sensitive_words(text: str | None) -> bool:
@@ -18,7 +19,8 @@ def contains_sensitive_words(text: str | None) -> bool:
 
     # 检查是否包含任何敏感词
     for sensitive_word in settings.SENSITIVE_WORDS:
-        if sensitive_word.lower() in text_lower:
+        word = sensitive_word.strip()
+        if word and word.lower() in text_lower:
             return True
 
     return False
@@ -40,7 +42,22 @@ def get_matched_sensitive_words(text: str | None) -> list[str]:
 
     # 收集所有匹配的敏感词
     for sensitive_word in settings.SENSITIVE_WORDS:
-        if sensitive_word.lower() in text_lower:
-            matched_words.append(sensitive_word)
+        word = sensitive_word.strip()
+        if word and word.lower() in text_lower:
+            matched_words.append(word)
 
     return matched_words
+
+
+def validate_no_sensitive_words(text: str | None, field_name: str = '内容') -> None:
+    """
+    校验文本不包含敏感词
+
+    :param text: 待检测文本
+    :param field_name: 字段名称
+    :return:
+    """
+    if not get_matched_sensitive_words(text):
+        return
+
+    raise errors.RequestError(msg=f'{field_name}包含敏感词，请修改后提交')

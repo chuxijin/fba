@@ -4,6 +4,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { fbaApi } from '@/api/sdk'
 import type { AnswerSheetGroup, AnswerSheetItem } from '@/components/AnswerSheet.vue'
 import FeedbackPopup from '@/components/FeedbackPopup.vue'
+import { useMembershipStore } from '@/store'
 import { useResultStore } from '@/store/result'
 import {
   formatEvaluationScore,
@@ -1189,13 +1190,21 @@ async function submitSession() {
     return
   submitting.value = true
   try {
-    await fbaApi.qbank.session.submit(sessionId.value, { total_time: totalSeconds.value } as any)
+    const submitResult = await fbaApi.qbank.session.submit(sessionId.value, { total_time: totalSeconds.value } as any) as any
+    if (Number(submitResult?.reward_exp || 0) > 0) {
+      void useMembershipStore().fetchMembership()
+      const checkInReward = Number(submitResult?.check_in_reward_exp || 0)
+      const title = checkInReward > 0
+        ? `本次 +${submitResult.reward_exp} 经验，已自动签到`
+        : `本次 +${submitResult.reward_exp} 经验`
+      uni.showToast({ title, icon: 'none' })
+    }
 
     // 结果页只需要报告数据，整套解析按需进入复盘页后再加载，避免提交后被大接口阻塞。
     const reportData = await fbaApi.qbank.session.getReport(sessionId.value).catch(() => null)
 
     const resultStore = useResultStore()
-    resultStore.setResult(sessionId.value, reportData, null)
+    resultStore.setResult(sessionId.value, reportData, null, submitResult)
     uni.redirectTo({
       url: `/pages/practice/result/index?sessionId=${sessionId.value}`,
     })

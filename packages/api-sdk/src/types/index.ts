@@ -172,6 +172,10 @@ export type {
 export type {
   MembershipBrief,
   MembershipPlanBrief,
+  MembershipProgress,
+  MembershipRecordBrief,
+  MembershipRecordListParams,
+  MembershipTierBrief,
 } from './membership';
 
 // Oss

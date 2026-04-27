@@ -45,6 +45,18 @@ interface ReportData {
   wrong_question_ids: number[]
 }
 
+interface SubmitResultData {
+  reward_exp?: number
+  practice_reward_exp?: number
+  check_in_reward_exp?: number
+  is_auto_checked_in?: boolean
+  check_in_streak?: number | null
+  family_code?: string | null
+  tier_grade?: number | null
+  exp?: number | null
+  available_exp?: number | null
+}
+
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const resultStore = useResultStore()
 
@@ -57,6 +69,22 @@ const aiSummaryGenerating = ref(false)
 const aiSummaryError = ref('')
 const aiSummaryCollapsed = ref(true)
 const answerCardFilter = ref<'all' | 'wrong'>('all')
+const submitResult = computed<SubmitResultData | null>(() => {
+  if (resultStore.state.sessionId !== sessionId.value) {
+    return null
+  }
+  return resultStore.state.submitResult || null
+})
+const rewardExp = computed(() => Number(submitResult.value?.reward_exp || 0))
+const practiceRewardExp = computed(() => Number(submitResult.value?.practice_reward_exp || 0))
+const checkInRewardExp = computed(() => Number(submitResult.value?.check_in_reward_exp || 0))
+const rewardSubtitle = computed(() => {
+  if (practiceRewardExp.value > 0 && checkInRewardExp.value > 0)
+    return '答题奖励和自动签到已计入会员成长经验'
+  if (checkInRewardExp.value > 0)
+    return '达到今日条件，已自动完成签到'
+  return '答对题目已计入会员成长经验'
+})
 
 const accuracy = computed(() => {
   if (!report.value || report.value.total_count === 0)
@@ -354,6 +382,43 @@ onLoad((query) => {
           <view class="flex flex-1 flex-col items-center gap-1 rounded-xl bg-white/90 py-4 shadow-sm backdrop-blur-sm">
             <text class="text-2xl text-[#94A3B8] font-black">{{ report.unanswered_count }}</text>
             <text class="text-[11px] text-[#94A3B8]">未答</text>
+          </view>
+        </view>
+
+        <view v-if="rewardExp > 0" class="mt-4 overflow-hidden rounded-2xl border border-[#FDE68A] from-[#FFFBEB] to-[#EFF6FF] bg-gradient-to-br px-4 py-4 shadow-sm">
+          <view class="flex items-center justify-between">
+            <view class="flex items-center gap-3">
+              <view class="h-11 w-11 flex items-center justify-center rounded-2xl bg-[#0F172A] text-[#FDE68A]">
+                <view class="i-carbon-trophy text-[22px]" />
+              </view>
+              <view>
+                <view class="text-[14px] text-[#0F172A] font-black">
+                  本次练习奖励
+                </view>
+                <view class="mt-1 text-[11px] text-[#64748B]">
+                  {{ rewardSubtitle }}
+                </view>
+              </view>
+            </view>
+            <view class="text-right">
+              <view class="text-[24px] text-[#B45309] font-black">
+                +{{ rewardExp }}
+              </view>
+              <view class="text-[11px] text-[#92400E]">
+                经验
+              </view>
+            </view>
+          </view>
+          <view v-if="practiceRewardExp > 0 || checkInRewardExp > 0" class="mt-3 flex flex-wrap gap-2">
+            <view v-if="practiceRewardExp > 0" class="rounded-full bg-white/80 px-3 py-1 text-[11px] text-[#92400E] font-bold">
+              答题 +{{ practiceRewardExp }}
+            </view>
+            <view v-if="checkInRewardExp > 0" class="rounded-full bg-[#ECFDF5] px-3 py-1 text-[11px] text-[#047857] font-bold">
+              自动签到 +{{ checkInRewardExp }}
+            </view>
+          </view>
+          <view v-if="submitResult?.available_exp !== null && submitResult?.available_exp !== undefined" class="mt-3 rounded-xl bg-white/70 px-3 py-2 text-[11px] text-[#64748B]">
+            当前可用经验 {{ submitResult.available_exp }}，累计经验 {{ submitResult.exp || 0 }}
           </view>
         </view>
 

@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { fbaApi } from '@/api/sdk'
 import LoginModal from '@/components/LoginModal.vue'
-import MembershipModal from '@/components/MembershipModal.vue'
 import { useCachedAvatar } from '@/hooks/useCachedAvatar'
 import { useMembershipStore, useTokenStore, useUserStore } from '@/store'
 import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
@@ -32,8 +31,8 @@ const userStore = useUserStore()
 const tokenStore = useTokenStore()
 const membershipStore = useMembershipStore()
 const showLoginModal = ref(false)
-const showMembershipModal = ref(false)
 const currentDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
+const unreadMessageCount = ref(0)
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const DEFAULT_AVATAR = '/static/images/default-avatar.png'
 
@@ -126,20 +125,40 @@ function openFeedbackPage() {
   uni.navigateTo({ url: '/pages/feedback/index' })
 }
 
+async function loadUnreadMessageCount() {
+  tokenStore.updateNowTime()
+  if (!hasLogin.value) {
+    unreadMessageCount.value = 0
+    return
+  }
+
+  try {
+    const data = await fbaApi.qbank.request.get<{ count: number }>('/messages/unread-count')
+    unreadMessageCount.value = Number(data?.count || 0)
+  }
+  catch (error) {
+    console.error('加载未读消息数失败:', error)
+    unreadMessageCount.value = 0
+  }
+}
+
 async function handleLoginSuccess() {
   tokenStore.updateNowTime()
   showLoginModal.value = false
   await syncLoginState()
+  await loadUnreadMessageCount()
   redirectAfterLogin()
 }
 
-function openMembershipModal() {
+function openMembershipCenter() {
   tokenStore.updateNowTime()
   if (!hasLogin.value) {
+    setLoginRedirect('/pages/membership-center/index')
     showLoginModal.value = true
     return
   }
-  showMembershipModal.value = true
+
+  uni.navigateTo({ url: '/pages/membership-center/index' })
 }
 
 function chooseStudyDomain() {
@@ -176,6 +195,7 @@ function chooseStudyDomain() {
 onShow(() => {
   currentDomain.value = getAppSettings().currentDomain
   void syncLoginState().finally(() => {
+    void loadUnreadMessageCount()
     maybeOpenLoginModal()
   })
 })
@@ -211,8 +231,9 @@ onShow(() => {
             </text>
             <view
               v-if="isVip"
-              class="ml-2 inline-flex items-center rounded-full px-2.5 py-0.5 shadow-sm"
+              class="ml-2 inline-flex items-center rounded-full px-2.5 py-0.5 shadow-sm transition-transform active:scale-95"
               :class="isSvip ? 'bg-[#1E1B4B]' : 'bg-[#0F3B82]'"
+              @click.stop="openMembershipCenter"
             >
               <text
                 class="text-[10px] font-semibold tracking-[0.3px] italic"
@@ -234,7 +255,7 @@ onShow(() => {
               :class="isVip
                 ? 'border border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]'
                 : 'border border-[#E9D5FF] bg-[#F3E8FF] text-[#7E22CE]'"
-              @click.stop="openMembershipModal"
+              @click.stop="openMembershipCenter"
             >
               {{ isVip ? '查看会员权益' : '完善目标院校，资料推荐更准' }}
             </view>
@@ -247,42 +268,62 @@ onShow(() => {
 
       <view class="border border-white/60 rounded-2xl bg-white/80 p-5 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md">
         <view class="mb-5 pl-1 text-[13px] text-[#475569] font-bold tracking-wide">
-          我的服务
+          学习资产
         </view>
-        <view class="grid grid-cols-4 gap-y-7">
+        <view class="grid grid-cols-5 gap-y-6">
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/practice-record/index')">
-            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#F0FDF4] text-[#16A34A] shadow-inner">
-              <view class="i-carbon-chart-line text-[22px]" />
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#F0FDF4] text-[#16A34A] shadow-inner">
+              <view class="i-carbon-chart-line text-[20px]" />
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">刷题记录</text>
           </view>
 
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-wrong-questions/index')">
-            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FEF2F2] text-[#EF4444] shadow-inner">
-              <view class="i-carbon-close-outline text-[22px]" />
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#FEF2F2] text-[#EF4444] shadow-inner">
+              <view class="i-carbon-close-outline text-[20px]" />
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">我的错题</text>
           </view>
 
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-favorites/index')">
-            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FFFBEB] text-[#F59E0B] shadow-inner">
-              <view class="i-carbon-star text-[22px]" />
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#FFFBEB] text-[#F59E0B] shadow-inner">
+              <view class="i-carbon-star text-[20px]" />
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">我的收藏</text>
           </view>
 
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-notes/index')">
-            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#EFF6FF] text-[#3B82F6] shadow-inner">
-              <view class="i-carbon-notebook text-[22px]" />
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#EFF6FF] text-[#3B82F6] shadow-inner">
+              <view class="i-carbon-notebook text-[20px]" />
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">我的笔记</text>
           </view>
 
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-render-books/index')">
-            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FFF7ED] text-[#EA580C] shadow-inner">
-              <view class="i-carbon-book text-[22px]" />
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#FFF7ED] text-[#EA580C] shadow-inner">
+              <view class="i-carbon-book text-[20px]" />
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">我的题本</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="mt-4 border border-white/60 rounded-2xl bg-white/80 p-5 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md">
+        <view class="mb-5 pl-1 text-[13px] text-[#475569] font-bold tracking-wide">
+          账户服务
+        </view>
+        <view class="grid grid-cols-4 gap-y-7">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-messages/index')">
+            <view class="relative mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#EEF2FF] text-[#4F46E5] shadow-inner">
+              <view class="i-carbon-notification text-[22px]" />
+              <view
+                v-if="unreadMessageCount > 0"
+                class="absolute min-w-[17px] h-[17px] flex items-center justify-center rounded-full bg-[#EF4444] px-1 text-[9px] text-white font-black shadow-sm -right-1 -top-1"
+              >
+                {{ unreadMessageCount > 99 ? '99+' : unreadMessageCount }}
+              </view>
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">我的消息</text>
           </view>
 
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openFeedbackPage">
@@ -310,6 +351,5 @@ onShow(() => {
     </view>
 
     <LoginModal v-model="showLoginModal" @success="handleLoginSuccess" />
-    <MembershipModal v-model="showMembershipModal" />
   </view>
 </template>

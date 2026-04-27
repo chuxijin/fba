@@ -187,6 +187,15 @@ export interface SubmitPracticeSessionResult {
   accuracy_rate: number;
   score: number | null;
   total_score: number | null;
+  reward_exp: number;
+  practice_reward_exp?: number;
+  check_in_reward_exp?: number;
+  is_auto_checked_in?: boolean;
+  check_in_streak?: number | null;
+  family_code?: string | null;
+  tier_grade?: number | null;
+  exp?: number | null;
+  available_exp?: number | null;
 }
 
 /** 绛旈鍗￠項 */

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, Request
 from backend.app.question_bank.schema.home import (
     CheckInCalendarData,
     CheckInParam,
+    CheckInResult,
     HomeDashboardData,
     RankListData,
 )
@@ -43,19 +44,19 @@ async def check_in(
     request: Request,
     db: CurrentSessionTransaction,
     obj: CheckInParam,
-) -> ResponseSchemaModel:
+) -> ResponseSchemaModel[CheckInResult]:
     """
     👤 客户端首页 - 用户打卡
 
     在用户完成一定数量的做题后触发打卡
     """
-    await check_in_service.check_in(
+    data = await check_in_service.check_in(
         db=db,
         user_id=request.user.id,
         practice_count=obj.practice_count,
         practice_duration=obj.practice_duration,
     )
-    return response_base.success()
+    return response_base.success(data=data)
 
 
 @router.get('/check-in-calendar', summary='获取打卡日历', name='home_check_in_calendar', dependencies=[DependsJwtAuth])

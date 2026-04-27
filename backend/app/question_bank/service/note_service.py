@@ -20,6 +20,7 @@ from backend.app.question_bank.schema.note import (
 from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
 from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
 from backend.common.exception import errors
+from backend.utils.sensitive_words import validate_no_sensitive_words
 
 
 class NoteService:
@@ -53,6 +54,8 @@ class NoteService:
         :return:
         """
         from backend.app.question_bank.model.question import QuestionPlacement
+
+        validate_no_sensitive_words(obj.content, '笔记内容')
 
         placement_stmt = (
             select(QuestionPlacement)
@@ -194,6 +197,8 @@ class NoteService:
         update_data = obj.model_dump(exclude_none=True)
         if not update_data:
             return 0
+
+        validate_no_sensitive_words(update_data.get('content'), '笔记内容')
 
         return await question_note_dao.update(db=db, note_id=note_id, **update_data)
 

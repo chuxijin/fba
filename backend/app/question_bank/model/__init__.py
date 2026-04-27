@@ -23,6 +23,7 @@ from .question import (
 )
 from .statistics import UserCheckIn, UserDailyRank, UserPracticeStats
 from .user import UserAccount
+from .user_message import UserMessage, UserMessageRead
 
 __all__ = [
     'PracticeAIEvaluation',
@@ -48,4 +49,6 @@ __all__ = [
     'UserPracticeStats',
     'Banner',
     'Notice',
+    'UserMessage',
+    'UserMessageRead',
 ]

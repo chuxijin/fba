@@ -14,6 +14,7 @@ from backend.app.admin.schema.feedback import (
 )
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
+from backend.utils.sensitive_words import validate_no_sensitive_words
 from backend.utils.timezone import timezone
 
 
@@ -37,6 +38,9 @@ class FeedbackService:
         :param user_agent: 用户代理
         :return:
         """
+        validate_no_sensitive_words(obj.content, '反馈内容')
+        validate_no_sensitive_words(obj.target_text, '反馈关联内容')
+
         return await feedback_dao.create(
             db=db,
             obj=obj,
@@ -94,6 +98,8 @@ class FeedbackService:
         update_data = obj.model_dump(exclude_unset=True)
         if not update_data:
             return 0
+
+        validate_no_sensitive_words(update_data.get('reply_content'), '反馈回复')
 
         if update_data.get('status') == FeedbackStatus.PENDING:
             update_data['handled_by'] = None

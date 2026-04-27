@@ -67,5 +67,6 @@ class GetMembershipTierBrief(SchemaBase):
     code: str = Field(description='等级编码')
     name: str = Field(description='等级名称')
     grade: int = Field(description='族群内等级')
+    exp_required: int = Field(description='达到该等级所需经验')
     weight: int = Field(description='等级权重')
     is_default: bool = Field(description='是否默认等级')

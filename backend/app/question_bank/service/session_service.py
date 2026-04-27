@@ -13,6 +13,8 @@ from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, load_only, selectinload
 
+from backend.app.membership.crud.crud_experience_rule import membership_experience_rule_dao
+from backend.app.membership.service.experience_service import membership_experience_service
 from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_session_question import session_question_dao
@@ -26,6 +28,8 @@ from backend.app.question_bank.model import (
     PracticeRecord,
     PracticeSession,
     OptionContent,
+    QuestionBank,
+    QuestionChapter,
     Question,
     QuestionAnalysis,
     QuestionOption,
@@ -47,6 +51,7 @@ from backend.app.question_bank.service.ai_evaluation_service import (
     SUBJECTIVE_QUESTION_TYPES,
     practice_ai_evaluation_service,
 )
+from backend.app.question_bank.service.check_in_service import check_in_service
 from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.study_domain_service import study_domain_service
@@ -57,6 +62,147 @@ log = logging.getLogger(__name__)
 
 class SessionService:
     """练习会话服务类（唯一刷题写入入口）"""
+
+    @staticmethod
+    def _clean_session_name(value: Any) -> str | None:
+        """
+        清理练习名称片段
+
+        :param value: 原始值
+        :return:
+        """
+        text = str(value or '').strip()
+        if not text:
+            return None
+        return ' '.join(text.split())
+
+    @staticmethod
+    def _truncate_session_name(value: str, max_length: int = 255) -> str:
+        """
+        截断练习名称
+
+        :param value: 练习名称
+        :param max_length: 最大长度
+        :return:
+        """
+        if len(value) <= max_length:
+            return value
+        return f'{value[:max_length - 1]}…'
+
+    @classmethod
+    def _build_knowledge_point_name(cls, source_snapshot: dict[str, Any] | None) -> str | None:
+        """
+        生成知识点名称片段
+
+        :param source_snapshot: 来源快照
+        :return:
+        """
+        kp_names = source_snapshot.get('knowledge_point_names') if source_snapshot else None
+        if not isinstance(kp_names, list) or not kp_names:
+            return None
+
+        names = [cls._clean_session_name(item) for item in kp_names]
+        names = [item for item in names if item]
+        if not names:
+            return None
+        if len(names) == 1:
+            return names[0]
+        return f'{names[0]}等{len(names)}个考点'
+
+    @staticmethod
+    def _resolve_practice_mode(
+        *,
+        session_type: str,
+        exam_config: dict[str, Any] | None,
+        source_snapshot: dict[str, Any] | None,
+    ) -> str:
+        """
+        解析练习模式
+
+        :param session_type: 会话类型
+        :param exam_config: 考试配置
+        :param source_snapshot: 来源快照
+        :return:
+        """
+        config_mode = (exam_config or {}).get('practice_mode')
+        snapshot_mode = (source_snapshot or {}).get('practice_mode')
+        mode = str(config_mode or snapshot_mode or '').strip()
+        if mode:
+            return mode
+        if session_type == 'exam':
+            return 'exam'
+        return 'practice'
+
+    @classmethod
+    def _build_contextual_practice_name(
+        cls,
+        *,
+        provided_name: str | None,
+        session_type: str,
+        bank: QuestionBank | None,
+        chapter: QuestionChapter | None,
+        exam_config: dict[str, Any] | None,
+        source_snapshot: dict[str, Any] | None,
+        total_count: int,
+    ) -> str | None:
+        """
+        生成上下文完整的练习名称
+
+        :param provided_name: 前端传入名称
+        :param session_type: 会话类型
+        :param bank: 题库
+        :param chapter: 篇章
+        :param exam_config: 考试配置
+        :param source_snapshot: 来源快照
+        :param total_count: 题量
+        :return:
+        """
+        clean_provided = cls._clean_session_name(provided_name)
+        bank_name = cls._clean_session_name(getattr(bank, 'name', None))
+        chapter_name = cls._clean_session_name(getattr(chapter, 'name', None))
+        kp_name = cls._build_knowledge_point_name(source_snapshot)
+
+        if session_type == 'random' and kp_name:
+            context_name = kp_name
+        elif bank_name and chapter_name and chapter_name not in bank_name:
+            context_name = f'{bank_name} · {chapter_name}'
+        elif bank_name:
+            context_name = bank_name
+        elif chapter_name:
+            context_name = chapter_name
+        elif kp_name:
+            context_name = kp_name
+        else:
+            context_name = clean_provided
+
+        mode = cls._resolve_practice_mode(
+            session_type=session_type,
+            exam_config=exam_config,
+            source_snapshot=source_snapshot,
+        )
+
+        if session_type == 'wrong':
+            base = f'{context_name} · 错题重练' if context_name else '错题重练'
+            return cls._truncate_session_name(f'{base} · {total_count}题')
+        if session_type == 'favorite':
+            base = f'{context_name} · 收藏练习' if context_name else '收藏练习'
+            return cls._truncate_session_name(f'{base} · {total_count}题')
+        if session_type == 'note':
+            base = f'{context_name} · 笔记练习' if context_name else '笔记练习'
+            return cls._truncate_session_name(f'{base} · {total_count}题')
+        if session_type == 'random':
+            base = context_name or clean_provided or '随机练习'
+            return cls._truncate_session_name(f'{base} · 随机练习 · {total_count}题')
+        if mode == 'exam':
+            base = context_name or clean_provided or '练习'
+            return cls._truncate_session_name(f'模拟考试 · {base}')
+        if mode == 'memorize':
+            base = context_name or clean_provided or '练习'
+            return cls._truncate_session_name(f'{base} · 背题')
+
+        if context_name:
+            return cls._truncate_session_name(context_name)
+        return clean_provided
 
     @staticmethod
     def _parse_kp_id(value: Any) -> int | None:
@@ -475,11 +621,15 @@ class SessionService:
         resolved_bank_id = bank_id or first_placement.bank_id
         resolved_chapter_id = chapter_id or first_placement.chapter_id
 
-        if not practice_name:
-            if first_placement.chapter and first_placement.chapter.name:
-                practice_name = first_placement.chapter.name
-            elif first_placement.bank and first_placement.bank.name:
-                practice_name = first_placement.bank.name
+        practice_name = SessionService._build_contextual_practice_name(
+            provided_name=practice_name,
+            session_type=session_type,
+            bank=first_placement.bank,
+            chapter=first_placement.chapter,
+            exam_config=exam_config,
+            source_snapshot=source_snapshot,
+            total_count=len(placements),
+        )
 
         question_type_map = await SessionService._get_question_type_map(
             db=db,
@@ -941,6 +1091,63 @@ class SessionService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    async def _grant_practice_correct_experience(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        session_id: int,
+        completed_count: int,
+        correct_count: int,
+        total_time: int,
+    ) -> dict[str, int | str | None]:
+        """
+        按答对题数发放练习经验
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param session_id: 会话 ID
+        :param completed_count: 完成题数
+        :param correct_count: 答对题数
+        :param total_time: 总耗时
+        :return:
+        """
+        if correct_count <= 0:
+            return {'reward_exp': 0}
+
+        family_code = await membership_experience_service.resolve_reward_family(db, user_id=user_id)
+        reward_rule = await membership_experience_rule_dao.get_active_rule(
+            db,
+            event_code='practice_correct',
+            family_code=family_code,
+        )
+        if not reward_rule:
+            return {'reward_exp': 0, 'family_code': family_code}
+
+        if completed_count < reward_rule.min_practice_count:
+            return {'reward_exp': 0, 'family_code': family_code}
+
+        if total_time < reward_rule.min_practice_duration:
+            return {'reward_exp': 0, 'family_code': family_code}
+
+        reward_exp = reward_rule.exp_delta * correct_count
+        progress = await membership_experience_service.add_experience(
+            db,
+            user_id=user_id,
+            family_code=family_code,
+            exp_delta=reward_exp,
+            source='practice_correct',
+            source_key=f'practice_correct:{session_id}',
+            remark=f'完成练习答对 {correct_count} 题奖励',
+        )
+        return {
+            'reward_exp': reward_exp,
+            'family_code': family_code,
+            'tier_grade': progress.get('tier_grade'),
+            'exp': progress.get('exp'),
+            'available_exp': progress.get('available_exp'),
+        }
+
+    @staticmethod
     async def submit_session(
         *,
         db: AsyncSession,
@@ -981,6 +1188,7 @@ class SessionService:
                 accuracy_rate=session.accuracy_rate,
                 score=session.score,
                 total_score=session.total_score,
+                reward_exp=0,
             )
         if session.status != 'in_progress':
             raise errors.ForbiddenError(msg='会话状态异常，无法提交')
@@ -1243,9 +1451,31 @@ class SessionService:
                 duration=newly_duration,
             )
 
+        reward_progress = await SessionService._grant_practice_correct_experience(
+            db=db,
+            user_id=user_id,
+            session_id=session_id,
+            completed_count=completed_count,
+            correct_count=correct_count,
+            total_time=obj.total_time,
+        )
+        check_in_result = await check_in_service.try_auto_check_in(db=db, user_id=user_id)
+        practice_reward_exp = int(reward_progress.get('reward_exp') or 0)
+        check_in_reward_exp = int(check_in_result.reward_exp) if check_in_result else 0
+        reward_exp = practice_reward_exp + check_in_reward_exp
+        latest_progress: dict[str, int | str | None] = reward_progress
+        if check_in_result and check_in_result.reward_exp > 0:
+            latest_progress = {
+                'family_code': check_in_result.family_code,
+                'tier_grade': check_in_result.tier_grade,
+                'exp': check_in_result.exp,
+                'available_exp': check_in_result.available_exp,
+            }
+
         log.info(
-            'Session submitted: id=%d user=%d completed=%d correct=%d wrong=%d score=%s',
+            'Session submitted: id=%d user=%d completed=%d correct=%d wrong=%d score=%s reward_exp=%s check_in=%s',
             session_id, user_id, completed_count, correct_count, wrong_count, earned_score,
+            reward_exp, bool(check_in_result),
         )
         return SubmitPracticeSessionResult(
             completed_count=completed_count,
@@ -1257,6 +1487,15 @@ class SessionService:
             ),
             score=earned_score if earned_score > 0 else None,
             total_score=total_score if total_score > 0 else None,
+            reward_exp=reward_exp,
+            practice_reward_exp=practice_reward_exp,
+            check_in_reward_exp=check_in_reward_exp,
+            is_auto_checked_in=bool(check_in_result),
+            check_in_streak=check_in_result.check_in_streak if check_in_result else None,
+            family_code=latest_progress.get('family_code'),
+            tier_grade=latest_progress.get('tier_grade'),
+            exp=latest_progress.get('exp'),
+            available_exp=latest_progress.get('available_exp'),
         )
 
     # ------------------------------------------------------------------

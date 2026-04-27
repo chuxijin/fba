@@ -78,6 +78,22 @@ class CheckInParam(SchemaBase):
     practice_duration: int = Field(description='当日练习时长（秒）')
 
 
+class CheckInResult(SchemaBase):
+    """打卡结果"""
+
+    is_checked_in_today: bool = Field(description='今日是否已打卡')
+    is_already_checked_in: bool = Field(description='是否重复打卡')
+    check_in_streak: int = Field(description='连续打卡天数')
+    total_check_in_days: int = Field(description='累计打卡天数')
+    practice_count: int = Field(description='当日做题数')
+    practice_duration: int = Field(description='当日练习时长（秒）')
+    reward_exp: int = Field(description='本次奖励经验')
+    family_code: str | None = Field(default=None, description='入账等级族群')
+    tier_grade: int | None = Field(default=None, description='当前等级')
+    exp: int | None = Field(default=None, description='累计经验')
+    available_exp: int | None = Field(default=None, description='可用经验')
+
+
 class CheckInCalendarDay(SchemaBase):
     """打卡日历单日数据"""
 

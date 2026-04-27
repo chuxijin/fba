@@ -7,7 +7,7 @@ from backend.app.admin.crud.crud_menu import menu_dao
 from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.model import User
 from backend.app.admin.schema.token import GetLoginToken, GetNewToken
-from backend.app.admin.schema.user import AuthLoginParam
+from backend.app.admin.schema.user import AuthLoginParam, SmsLoginParam
 from backend.app.admin.service.login_log_service import login_log_service
 from backend.app.admin.service.user_password_history_service import password_security_service
 from backend.app.admin.utils.password_security import password_verify
@@ -308,6 +308,72 @@ class AuthService:
         await redis_client.delete(f'{settings.TOKEN_EXTRA_INFO_REDIS_PREFIX}:{user_id}:{session_uuid}')
         if refresh_token:
             await redis_client.delete(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}:{session_uuid}')
+
+    async def login_by_sms(
+        self,
+        *,
+        db: AsyncSession,
+        response: Response,
+        obj: SmsLoginParam,
+        background_tasks: BackgroundTasks,
+    ) -> GetLoginToken:
+        """
+        短信验证码登录（用户不存在则自动注册）
+
+        :param db: 数据库会话
+        :param response: 响应对象
+        :param obj: 短信登录参数
+        :param background_tasks: 后台任务
+        :return:
+        """
+        # 1. 验证短信验证码
+        redis_key = f'{settings.SMS_LOGIN_REDIS_PREFIX}:{obj.phone}'
+        cached_code = await redis_client.get(redis_key)
+        if not cached_code:
+            raise errors.RequestError(msg='验证码已过期，请重新获取')
+        if cached_code != obj.code:
+            raise errors.RequestError(msg='验证码错误')
+
+        await redis_client.delete(redis_key)
+
+        # 2. 查找用户，不存在则自动注册
+        user = await user_dao.get_by_phone(db, obj.phone)
+        if not user:
+            import bcrypt
+            import secrets
+
+            from backend.app.admin.utils.password_security import get_hash_password
+
+            salt = bcrypt.gensalt()
+            random_password = secrets.token_urlsafe(16)
+            nickname = f'用户_{obj.phone[-4:]}'
+
+            user = await user_dao.create_user_with_roles(
+                db,
+                user_data={
+                    'username': obj.phone,
+                    'password': get_hash_password(random_password, salt),
+                    'salt': salt,
+                    'phone': obj.phone,
+                    'nickname': nickname,
+                    'status': 1,
+                },
+            )
+            await db.flush()
+            log.info(f'短信登录自动注册用户: {obj.phone}')
+
+        # 3. 检查用户状态
+        if not user.status:
+            raise errors.AuthorizationError(msg='用户已被锁定，请联系管理员')
+
+        # 4. 签发令牌
+        return await self.issue_login_token(
+            db=db,
+            response=response,
+            user=user,
+            background_tasks=background_tasks,
+            success_msg=f'短信验证码登录成功: {obj.phone}',
+        )
 
 
 auth_service: AuthService = AuthService()

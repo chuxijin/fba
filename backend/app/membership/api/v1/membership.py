@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from backend.app.membership.schema.membership import (
     AddDaysParam,
     AddExperienceParam,
+    ConsumeExperienceParam,
     GetUserMembershipBrief,
     OpenMembershipParam,
 )
@@ -154,6 +155,31 @@ async def add_membership_experience(
 ) -> ResponseSchemaModel[dict[str, int | str | None]]:
     """管理员为用户增加会员经验"""
     data = await membership_experience_service.add_experience(
+        db,
+        user_id=obj.user_id,
+        family_code=obj.family_code,
+        exp_delta=obj.exp_delta,
+        source=obj.source,
+        source_key=obj.source_key,
+        remark=obj.remark,
+    )
+    return response_base.success(data=data)
+
+
+@router.post(
+    '/consume-exp',
+    summary='为用户消耗会员经验',
+    dependencies=[
+        Depends(RequestPermission('membership:user:consume-exp')),
+        DependsRBAC,
+    ],
+)
+async def consume_membership_experience(
+    db: CurrentSessionTransaction,
+    obj: ConsumeExperienceParam,
+) -> ResponseSchemaModel[dict[str, int | str | None]]:
+    """管理员为用户消耗会员经验"""
+    data = await membership_experience_service.consume_experience(
         db,
         user_id=obj.user_id,
         family_code=obj.family_code,

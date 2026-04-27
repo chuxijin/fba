@@ -117,6 +117,8 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/verify',  # 验证订单号
         f'{FASTAPI_API_V1_PATH}/mall/pay/notify',  # 微信支付回调
         f'{FASTAPI_API_V1_PATH}/mall/pay/refund-notify',  # 微信退款回调
+        f'{FASTAPI_API_V1_PATH}/sms/send_login_code',  # 发送短信验证码
+        f'{FASTAPI_API_V1_PATH}/sms/login/sms',  # 短信验证码登录
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$',
@@ -507,6 +509,29 @@ class Settings(BaseSettings):
     # [ App ] Jia 文档加密
     ##################################################
     DOC_ENCRYPT_SECRET_KEY: str = ''
+
+    ##################################################
+    # [ Plugin ] sms 短信服务
+    ##################################################
+    # 服务商选择: tencent / smsbao
+    SMS_PROVIDER: str = 'tencent'
+
+    # 通用配置
+    SMS_LOGIN_REDIS_PREFIX: str = 'fba:sms:login'
+    SMS_LOGIN_EXPIRE_SECONDS: int = 300  # 短信验证码有效期，5 分钟
+    SMS_PHONE_CHANGE_REDIS_PREFIX: str = 'fba:sms:phone_change'  # 更换手机号验证码前缀
+    SMS_LOGIN_TEMPLATE_ID: str = ''  # 短信登录模板 ID
+    SMS_SIGN_NAME: str = ''  # 短信签名
+    SMS_SDK_APP_ID: str = ''  # 短信应用 ID
+
+    # .env 腾讯云短信
+    TENCENTCLOUD_SECRET_ID: str = ''
+    TENCENTCLOUD_SECRET_KEY: str = ''
+
+    # .env 短信宝
+    SMSBAO_USERNAME: str = ''  # 短信宝账号
+    SMSBAO_API_KEY: str = ''  # 短信宝 ApiKey（后台获取，比密码 MD5 更安全）
+    SMSBAO_CONTENT_TEMPLATE: str = ''  # 自定义短信内容模板（可选）
 
     @model_validator(mode='before')
     @classmethod

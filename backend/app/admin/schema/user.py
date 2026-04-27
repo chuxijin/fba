@@ -25,6 +25,21 @@ class AuthLoginParam(AuthSchemaBase):
     captcha: str | None = Field(None, description='验证码')
 
 
+class SmsLoginParam(SchemaBase):
+    """短信验证码登录参数"""
+
+    phone: str = Field(min_length=11, max_length=11, description='手机号码')
+    code: str = Field(min_length=4, max_length=8, description='短信验证码')
+
+
+class ChangePhoneParam(SchemaBase):
+    """更换手机号参数"""
+
+    old_phone_code: str | None = Field(None, min_length=4, max_length=8, description='旧手机验证码')
+    new_phone: str = Field(min_length=11, max_length=11, description='新手机号码')
+    new_phone_code: str = Field(min_length=4, max_length=8, description='新手机验证码')
+
+
 class AddUserParam(AuthSchemaBase):
     """添加用户参数"""
 
