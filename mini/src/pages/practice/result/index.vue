@@ -231,7 +231,8 @@ async function loadReport() {
     return
 
   // 优先从内存 store 取（提交时已预取）
-  if (resultStore.state.reportData && resultStore.state.sessionId === sessionId.value) {
+  const sameResultSession = resultStore.state.sessionId === sessionId.value
+  if (resultStore.state.reportData && sameResultSession) {
     report.value = resultStore.state.reportData
     loading.value = false
     return
@@ -242,6 +243,13 @@ async function loadReport() {
   try {
     const data = await fbaApi.qbank.session.getReport(sessionId.value) as any
     report.value = data
+    const currentSameResultSession = resultStore.state.sessionId === sessionId.value
+    resultStore.setResult(
+      sessionId.value,
+      data,
+      currentSameResultSession ? resultStore.state.solutionData : null,
+      currentSameResultSession ? resultStore.state.submitResult : null,
+    )
   }
   catch (error) {
     console.error('加载报告失败:', error)
@@ -250,6 +258,29 @@ async function loadReport() {
   }
   finally {
     loading.value = false
+  }
+}
+
+async function loadSessionSolution() {
+  if (!sessionId.value)
+    return
+
+  const sameResultSession = resultStore.state.sessionId === sessionId.value
+  if (sameResultSession && Array.isArray(resultStore.state.solutionData))
+    return
+
+  try {
+    const data = await fbaApi.qbank.session.getSolution(sessionId.value)
+    const currentSameResultSession = resultStore.state.sessionId === sessionId.value
+    resultStore.setResult(
+      sessionId.value,
+      currentSameResultSession ? resultStore.state.reportData : report.value,
+      data,
+      currentSameResultSession ? resultStore.state.submitResult : null,
+    )
+  }
+  catch (error) {
+    console.error('加载整套解析失败:', error)
   }
 }
 
@@ -302,7 +333,7 @@ onLoad((query) => {
     setTimeout(() => uni.navigateBack(), 1500)
     return
   }
-  Promise.all([loadReport(), loadAISummary()])
+  Promise.all([loadReport(), loadSessionSolution(), loadAISummary()])
 })
 </script>
 

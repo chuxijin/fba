@@ -19,6 +19,7 @@ definePage({
     navigationStyle: 'custom',
     navigationBarTextStyle: 'black',
     navigationBarTitleText: '我的题本',
+    enablePullDownRefresh: true,
   },
 })
 
@@ -31,6 +32,7 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const previewingJobId = ref('')
 const downloadingJobId = ref('')
+const retryingJobId = ref('')
 const jobs = ref<RenderJobResult[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -103,18 +105,63 @@ function statusLabel(status: string) {
     accepted: '排队中',
     running: '生成中',
     succeeded: '已完成',
-    failed: '失败',
+    failed: '生成失败',
   }
   return labelMap[status] || '未知状态'
 }
 
+function statusBadgeClass(status: string) {
+  const classMap: Record<string, string> = {
+    accepted: 'bg-[#EFF6FF] text-[#2563EB]',
+    running: 'bg-[#FFF7ED] text-[#EA580C]',
+    succeeded: 'bg-[#ECFDF5] text-[#16A34A]',
+    failed: 'bg-[#FEF2F2] text-[#DC2626]',
+  }
+  return classMap[status] || 'bg-[#F8FAFC] text-[#64748B]'
+}
+
 function templateLabel(templateKey: string) {
   const labelMap: Record<string, string> = {
-    exam_paper: '试卷',
-    practice: '练习',
-    wrong_question: '错题',
+    basic_calculation: '基础计算',
+    exam_paper: '整卷题本',
+    practice: '练习题本',
+    wrong_question: '错题本',
   }
   return labelMap[templateKey] || templateKey
+}
+
+function templateBadgeClass(templateKey: string) {
+  const classMap: Record<string, string> = {
+    basic_calculation: 'bg-[#FFF7ED] text-[#C2410C]',
+    exam_paper: 'bg-[#EFF6FF] text-[#2563EB]',
+    practice: 'bg-[#F0FDF4] text-[#16A34A]',
+    wrong_question: 'bg-[#FEF2F2] text-[#DC2626]',
+  }
+  return classMap[templateKey] || 'bg-[#F8FAFC] text-[#64748B]'
+}
+
+function friendlyErrorMessage(message?: string | null) {
+  if (!message) {
+    return '生成过程中出现异常，请稍后重试。'
+  }
+
+  const normalized = message.toLowerCase()
+  if (
+    normalized.includes('all connection attempts failed')
+    || normalized.includes('connection refused')
+    || normalized.includes('connection reset')
+    || normalized.includes('timeout')
+  ) {
+    return '渲染服务连接失败，请稍后重试。'
+  }
+  if (normalized.includes('latex') || normalized.includes('pdf')) {
+    return 'PDF 生成失败，请检查题目内容后重试。'
+  }
+
+  if (message.length > 48) {
+    return `${message.slice(0, 48)}...`
+  }
+  return message
 }
 
 function clickPreviewImage(urls: string[], current: string) {
@@ -290,6 +337,36 @@ async function downloadJob(job: RenderJobResult) {
   }
 }
 
+async function retryJob(job: RenderJobResult) {
+  if (retryingJobId.value) {
+    return
+  }
+
+  if (job.status !== 'failed') {
+    uni.showToast({ title: '当前任务不需要重试', icon: 'none' })
+    return
+  }
+
+  retryingJobId.value = job.job_id
+  try {
+    await fbaApi.renderBook.dispatchJob(job.job_id, true)
+    jobs.value = jobs.value.map(item => item.job_id === job.job_id
+      ? { ...item, status: 'running', error_message: null }
+      : item)
+    uni.showToast({ title: '已重新提交生成', icon: 'none' })
+    setTimeout(() => {
+      void loadJobs()
+    }, 800)
+  }
+  catch (error) {
+    console.error('重试生成题本失败:', error)
+    uni.showToast({ title: (error as any)?.message || '重试失败', icon: 'none' })
+  }
+  finally {
+    retryingJobId.value = ''
+  }
+}
+
 function goBack() {
   const pages = getCurrentPages()
   if (pages.length > 1) {
@@ -356,15 +433,14 @@ onReachBottom(() => {
               <view class="flex flex-wrap items-center gap-2">
                 <text
                   class="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold"
-                  :class="job.status === 'succeeded'
-                    ? 'bg-[#ECFDF5] text-[#16A34A]'
-                    : job.status === 'failed'
-                      ? 'bg-[#FEF2F2] text-[#DC2626]'
-                      : 'bg-[#EFF6FF] text-[#2563EB]'"
+                  :class="statusBadgeClass(job.status)"
                 >
                   {{ statusLabel(job.status) }}
                 </text>
-                <text class="shrink-0 rounded-full bg-[#FFF7ED] px-2.5 py-1 text-[10px] text-[#EA580C] font-bold">
+                <text
+                  class="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold"
+                  :class="templateBadgeClass(job.template_key)"
+                >
                   {{ templateLabel(job.template_key) }}
                 </text>
               </view>
@@ -378,8 +454,14 @@ onReachBottom(() => {
                 <text v-if="job.question_count">题量 {{ job.question_count }}</text>
               </view>
 
-              <view v-if="job.status === 'failed' && job.error_message" class="mt-2 text-[12px] text-[#DC2626] leading-5">
-                {{ job.error_message }}
+              <view
+                v-if="job.status === 'failed'"
+                class="mt-2 inline-flex max-w-full items-start gap-1.5 rounded-lg bg-[#FEF2F2] px-2.5 py-2 text-[12px] text-[#B91C1C] leading-5"
+              >
+                <view class="i-carbon-warning-alt-filled mt-0.5 shrink-0 text-[13px]" />
+                <text class="min-w-0">
+                  {{ friendlyErrorMessage(job.error_message) }}
+                </text>
               </view>
 
               <!-- 新增的高清导览大图预览流 -->
@@ -405,6 +487,15 @@ onReachBottom(() => {
             <view class="shrink-0 pt-2">
               <view class="flex flex-col gap-2">
                 <button
+                  v-if="job.status === 'failed'"
+                  class="m-0 h-8 rounded-full border border-[#FECACA] bg-[#FEF2F2] px-4 text-[12px] text-[#DC2626] font-bold leading-[32px] w-full active:bg-[#FEE2E2]"
+                  :disabled="retryingJobId === job.job_id"
+                  @click="retryJob(job)"
+                >
+                  {{ retryingJobId === job.job_id ? '提交中' : '重试' }}
+                </button>
+                <button
+                  v-else
                   class="m-0 h-8 rounded-full px-4 text-[12px] text-white font-bold leading-[32px] w-full"
                   :class="job.status === 'succeeded'
                     ? 'bg-gradient-to-r from-[#EA580C] to-[#F97316] shadow-sm'
@@ -415,6 +506,7 @@ onReachBottom(() => {
                   {{ previewingJobId === job.job_id ? '打开中' : '全本PDF' }}
                 </button>
                 <button
+                  v-if="job.status !== 'failed'"
                   class="m-0 h-8 rounded-full px-4 text-[12px] text-[#C2410C] border border-[#FED7AA] bg-[#FFF7ED] font-bold leading-[32px] w-full"
                   :class="job.status === 'succeeded'
                     ? 'active:bg-[#FFEDD5]'

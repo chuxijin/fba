@@ -109,12 +109,14 @@ function practiceModeOf(record: GetPracticeSessionListItem) {
 
 async function openSession(record: GetPracticeSessionListItem) {
   if (record.status === 'completed') {
-    // 已完成：结果页只需要报告，整套解析进入复盘页后再按需加载。
     uni.showLoading({ title: '加载中...', mask: true })
     try {
-      const reportData = await fbaApi.qbank.session.getReport(record.id).catch(() => null)
+      const [reportData, solutionData] = await Promise.all([
+        fbaApi.qbank.session.getReport(record.id).catch(() => null),
+        fbaApi.qbank.session.getSolution(record.id).catch(() => null),
+      ])
       const resultStore = useResultStore()
-      resultStore.setResult(record.id, reportData, null)
+      resultStore.setResult(record.id, reportData, solutionData)
       uni.navigateTo({
         url: `/pages/practice/result/index?sessionId=${record.id}`,
       })

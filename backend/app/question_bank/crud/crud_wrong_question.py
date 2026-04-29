@@ -598,8 +598,12 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         :param user_id: 用户 ID
         :return:
         """
-        # 展开 Question.knowledge_point JSONB 数组
-        kp_element = func.jsonb_array_elements(Question.knowledge_point).table_valued('value')
+        kp_json = cast(Question.knowledge_point, PGJSONB)
+        kp_array = case(
+            (func.jsonb_typeof(kp_json) == 'array', kp_json),
+            else_=func.jsonb_build_array(kp_json),
+        )
+        kp_element = func.jsonb_array_elements(kp_array).table_valued('value')
         # 提取知识点名称：纯字符串 elem 或 dict 的 name / label / title 字段
         kp_name = func.coalesce(
             kp_element.c.value.op('->>')(literal_column("'name'")),

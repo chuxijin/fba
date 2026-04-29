@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.jia.service.copilot_service import copilot_service
 from backend.app.jia.crud.crud_copilot import copilot_session_dao, copilot_message_dao
-from backend.app.jia.schema.copilot import ChatRequest, ChatResponse, GetSessionListResponse, MessageSchema, AnalyzeItemRequest, AnalyzeItemResponse, RecognizeFormulaRequest, RecognizeFormulaResponse
+from backend.app.jia.schema.copilot import ChatRequest, ChatResponse, GetSessionListResponse, MessageSchema, AnalyzeItemRequest, AnalyzeItemResponse, RecognizeFormulaRequest, RecognizeFormulaResponse, AnalyzeFoodRequest, AnalyzeFoodResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import get_db
@@ -70,4 +70,15 @@ async def recognize_formula(
 ):
     """通过图片识别数学公式，返回 LaTeX"""
     data = await copilot_service.recognize_formula(db, request.user.id, req)
+    return response_base.success(data=data)
+
+
+@router.post("/analyze-food", summary="智能识别食物", response_model=ResponseSchemaModel[AnalyzeFoodResponse], dependencies=[DependsJwtAuth])
+async def analyze_food(
+    req: AnalyzeFoodRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """通过图片或文字描述智能识别食物营养信息"""
+    data = await copilot_service.analyze_food(db, request.user.id, req)
     return response_base.success(data=data)

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import json
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
@@ -7,10 +9,77 @@ from backend.app.question_bank.model import WrongQuestionBook
 from backend.app.question_bank.schema.wrong_question import WrongQuestionStatistics
 from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
 from backend.common.exception import errors
+from backend.common.log import log
+from backend.database.redis import redis_client
+
+
+WRONG_QUESTION_STATISTICS_CACHE_TTL = 30
 
 
 class WrongQuestionService:
     """错题本服务类"""
+
+    @staticmethod
+    def _statistics_cache_key(*, user_id: int, study_domain: str | None, group_by: str | None = None) -> str:
+        """
+        构建错题统计缓存 key
+
+        :param user_id: 用户 ID
+        :param study_domain: 学习领域
+        :param group_by: 分组方式
+        :return:
+        """
+        domain = study_domain or 'all'
+        group = group_by or 'summary'
+        return f'qbank:wrong:statistics:{user_id}:{domain}:{group}'
+
+    @staticmethod
+    async def _get_cached_statistics(key: str) -> dict | None:
+        """
+        获取错题统计缓存
+
+        :param key: 缓存 key
+        :return:
+        """
+        try:
+            cached = await redis_client.get(key)
+        except Exception as e:
+            log.warning('读取错题统计缓存失败: {}', e)
+            return None
+
+        if not cached:
+            return None
+        try:
+            return json.loads(cached)
+        except json.JSONDecodeError:
+            return None
+
+    @staticmethod
+    async def _set_cached_statistics(key: str, data: dict) -> None:
+        """
+        写入错题统计缓存
+
+        :param key: 缓存 key
+        :param data: 缓存数据
+        :return:
+        """
+        try:
+            await redis_client.setex(key, WRONG_QUESTION_STATISTICS_CACHE_TTL, json.dumps(data, ensure_ascii=False))
+        except Exception as e:
+            log.warning('写入错题统计缓存失败: {}', e)
+
+    @staticmethod
+    async def _clear_statistics_cache(user_id: int) -> None:
+        """
+        清理用户错题统计缓存
+
+        :param user_id: 用户 ID
+        :return:
+        """
+        try:
+            await redis_client.delete_prefix(f'qbank:wrong:statistics:{user_id}:')
+        except Exception as e:
+            log.warning('清理错题统计缓存失败: {}', e)
 
     @staticmethod
     async def _get_study_domain_filter(
@@ -65,6 +134,8 @@ class WrongQuestionService:
             raise errors.ForbiddenError(msg='无权操作此错题')
 
         count = await wrong_question_dao.set_pin(db=db, wrong_id=wrong_id, is_pinned=is_pinned)
+        if count > 0:
+            await WrongQuestionService._clear_statistics_cache(user_id)
         return count
 
     @staticmethod
@@ -84,6 +155,8 @@ class WrongQuestionService:
             raise errors.ForbiddenError(msg='无权操作此错题')
 
         count = await wrong_question_dao.delete(db=db, wrong_id=wrong_id)
+        if count > 0:
+            await WrongQuestionService._clear_statistics_cache(user_id)
         return count
 
     @staticmethod
@@ -105,7 +178,10 @@ class WrongQuestionService:
                 raise errors.ForbiddenError(msg=f'无权操作错题 {wrong_id}')
 
         deletable_ids = [wrong_id for wrong_id in wrong_ids if wrong_id in wrong_map]
-        return await wrong_question_dao.batch_delete(db=db, wrong_ids=deletable_ids)
+        count = await wrong_question_dao.batch_delete(db=db, wrong_ids=deletable_ids)
+        if count > 0:
+            await WrongQuestionService._clear_statistics_cache(user_id)
+        return count
 
     @staticmethod
     async def clear_mastered(*, db: AsyncSession, user_id: int) -> int:
@@ -117,6 +193,8 @@ class WrongQuestionService:
         :return:
         """
         count = await wrong_question_dao.clear_mastered(db=db, user_id=user_id)
+        if count > 0:
+            await WrongQuestionService._clear_statistics_cache(user_id)
         return count
 
     @staticmethod
@@ -133,6 +211,11 @@ class WrongQuestionService:
         :param user_id: 用户 ID
         :return:
         """
+        cache_key = WrongQuestionService._statistics_cache_key(user_id=user_id, study_domain=study_domain)
+        cached = await WrongQuestionService._get_cached_statistics(cache_key)
+        if cached:
+            return WrongQuestionStatistics(**cached)
+
         domain_filter = await WrongQuestionService._get_study_domain_filter(db=db, study_domain=study_domain)
         if domain_filter:
             stats = await wrong_question_dao.get_statistics_by_bank_ids(
@@ -143,7 +226,7 @@ class WrongQuestionService:
         else:
             stats = await wrong_question_dao.get_statistics(db=db, user_id=user_id)
 
-        return WrongQuestionStatistics(
+        data = WrongQuestionStatistics(
             total_count=stats['total'],
             mastered_count=stats['mastered'],
             unmastered_count=stats['unmastered'],
@@ -151,6 +234,8 @@ class WrongQuestionService:
             avg_wrong_count=stats['avg_wrong_count'],
             avg_correct_streak=stats['avg_correct_streak'],
         )
+        await WrongQuestionService._set_cached_statistics(cache_key, data.model_dump())
+        return data
 
     @staticmethod
     async def get_statistics_with_groups(
@@ -168,6 +253,15 @@ class WrongQuestionService:
         :param group_by: 分组方式
         :return:
         """
+        cache_key = WrongQuestionService._statistics_cache_key(
+            user_id=user_id,
+            study_domain=study_domain,
+            group_by=group_by,
+        )
+        cached = await WrongQuestionService._get_cached_statistics(cache_key)
+        if cached:
+            return cached
+
         from backend.app.question_bank.service.group_tree import (
             build_bank_tree,
             build_kp_tree,
@@ -208,7 +302,7 @@ class WrongQuestionService:
             banks, chapters = await load_banks_and_chapters(db, bank_ids, chapter_ids)
             groups = build_bank_tree(banks, chapters, count_map)
 
-        return {
+        data = {
             'total_count': stats['total'],
             'mastered_count': stats['mastered'],
             'unmastered_count': stats['unmastered'],
@@ -217,6 +311,8 @@ class WrongQuestionService:
             'avg_correct_streak': stats['avg_correct_streak'],
             'groups': groups,
         }
+        await WrongQuestionService._set_cached_statistics(cache_key, data)
+        return data
 
     @staticmethod
     async def get_grouped(
@@ -297,6 +393,7 @@ class WrongQuestionService:
             )
             await db.refresh(wrong)
 
+        await WrongQuestionService._clear_statistics_cache(user_id)
         return {
             'is_mastered': all(item.is_mastered for item in wrong_records),
             'correct_streak': max(item.correct_streak for item in wrong_records),

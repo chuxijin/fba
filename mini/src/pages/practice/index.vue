@@ -6,12 +6,11 @@ import LoginModal from '@/components/LoginModal.vue'
 import PracticeNode from '@/components/PracticeNode.vue'
 import { useTokenStore, useUserStore } from '@/store'
 import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
-import { getCachedStudyPreference, mergeCachedStudyPreference, setCachedStudyPreference } from '@/utils/studyPreferenceCache'
+import { getCachedStudyPreference, setCachedStudyPreference } from '@/utils/studyPreferenceCache'
 import { getStudyDomainOption, type StudyDomainCode } from '@/utils/studyDomain'
 import {
   getStudyDomainCategoryRoots,
 } from '@/utils/studyDomainQuestionScope'
-import CategoryConfigModal from './components/CategoryConfigModal.vue'
 
 defineOptions({
   name: 'Practice',
@@ -119,11 +118,9 @@ interface DashboardState {
 const tokenStore = useTokenStore()
 const userStore = useUserStore()
 const showLoginModal = ref(false)
-const showCategoryConfigModal = ref(false)
 const loading = ref(false)
 const refreshing = ref(false)
 const dashboardLoading = ref(false)
-const savingPreference = ref(false)
 const activeIndex = ref(0)
 const practiceMode = ref<PracticeMode>(getAppSettings().practiceMode as PracticeMode)
 const currentDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
@@ -532,19 +529,6 @@ function mapPreferenceToSelectedTabs(customTabs: StudyPreferenceCustomTab[] | nu
     .filter((item): item is SelectedPracticeTab => Boolean(item))
 }
 
-function buildPreferencePayload() {
-  return selectedPracticeTabs.value.map((item, index) => ({
-    id: String(item.id),
-    name: item.name,
-    category_id: item.id,
-    category_name: item.name,
-    bank_id: null,
-    bank_name: null,
-    is_fixed: false,
-    order: index,
-  }))
-}
-
 function ensureLogin() {
   if (!tokenStore.updateNowTime().hasLogin) {
     showLoginModal.value = true
@@ -569,13 +553,9 @@ function openSubjectSettings() {
   if (!ensureLogin())
     return
 
-  showCategoryConfigModal.value = true
-}
-
-function handleSelectedTabsUpdate(value: SelectedPracticeTab[]) {
-  selectedPracticeTabs.value = value
-  rebuildDisplayedTabs()
-  saveStudyPreference()
+  uni.navigateTo({
+    url: '/pages/category-config/index',
+  })
 }
 
 function startQuickPractice() {
@@ -912,29 +892,6 @@ async function loadStudyPreference() {
   }
 }
 
-async function saveStudyPreference() {
-  if (!tokenStore.updateNowTime().hasLogin || savingPreference.value)
-    return
-
-  savingPreference.value = true
-  try {
-    const payload = {
-      current_domain: currentDomain.value,
-      practice_mode: practiceMode.value,
-      custom_tabs: buildPreferencePayload(),
-    } as any
-    await fbaApi.qbank.settings.updateStudyPreference(payload)
-    mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), payload)
-  }
-  catch (error) {
-    console.error('保存学习偏好失败:', error)
-    uni.showToast({ title: '保存首页Tab失败', icon: 'none' })
-  }
-  finally {
-    savingPreference.value = false
-  }
-}
-
 async function loadPracticeTabs() {
   loading.value = true
   try {
@@ -997,7 +954,8 @@ onShow(() => {
     refreshPracticePage()
   }
   else {
-    // 从子页面返回：只刷新统计和进度，不重建 tabs
+    // 从配置页返回时本地偏好可能已变化，需要重建 tabs；分类树本身不重复请求
+    void loadStudyPreference()
     loadDashboard()
     refreshVisibleLatestSessions()
   }
@@ -1161,14 +1119,6 @@ onShow(() => {
     </swiper>
 
     <LoginModal v-model="showLoginModal" @success="handleLoginSuccess" />
-    <CategoryConfigModal
-      v-model="showCategoryConfigModal"
-      :current-domain="currentDomain"
-      :categories="categoryTree"
-      :selected-tabs="selectedPracticeTabs"
-      :loading="loading"
-      @update:selected-tabs="handleSelectedTabsUpdate"
-    />
   </view>
 </template>
 

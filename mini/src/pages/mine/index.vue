@@ -33,8 +33,11 @@ const membershipStore = useMembershipStore()
 const showLoginModal = ref(false)
 const currentDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
 const unreadMessageCount = ref(0)
+const unreadMessageFetchedAt = ref(0)
+let unreadMessagePromise: Promise<void> | null = null
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const DEFAULT_AVATAR = '/static/images/default-avatar.png'
+const UNREAD_MESSAGE_REFRESH_TTL = 30 * 1000
 
 const hasLogin = computed(() => tokenStore.hasLogin)
 const isVip = computed(() => membershipStore.isVip)
@@ -129,17 +132,34 @@ async function loadUnreadMessageCount() {
   tokenStore.updateNowTime()
   if (!hasLogin.value) {
     unreadMessageCount.value = 0
+    unreadMessageFetchedAt.value = 0
     return
   }
 
-  try {
-    const data = await fbaApi.qbank.request.get<{ count: number }>('/messages/unread-count')
-    unreadMessageCount.value = Number(data?.count || 0)
+  const now = Date.now()
+  if (unreadMessageFetchedAt.value > 0 && now - unreadMessageFetchedAt.value < UNREAD_MESSAGE_REFRESH_TTL) {
+    return
   }
-  catch (error) {
-    console.error('加载未读消息数失败:', error)
-    unreadMessageCount.value = 0
+  if (unreadMessagePromise) {
+    return unreadMessagePromise
   }
+
+  unreadMessagePromise = (async () => {
+    try {
+      const data = await fbaApi.qbank.request.get<{ count: number }>('/messages/unread-count')
+      unreadMessageCount.value = Number(data?.count || 0)
+      unreadMessageFetchedAt.value = Date.now()
+    }
+    catch (error) {
+      console.error('加载未读消息数失败:', error)
+      unreadMessageCount.value = 0
+      unreadMessageFetchedAt.value = 0
+    }
+    finally {
+      unreadMessagePromise = null
+    }
+  })()
+  return unreadMessagePromise
 }
 
 async function handleLoginSuccess() {
@@ -312,7 +332,14 @@ onShow(() => {
         <view class="mb-5 pl-1 text-[13px] text-[#475569] font-bold tracking-wide">
           账户服务
         </view>
-        <view class="grid grid-cols-4 gap-y-7">
+        <view class="grid grid-cols-5 gap-y-7">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/ability-practice/index')">
+            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#ECFDF5] text-[#059669] shadow-inner">
+              <view class="i-carbon-rocket text-[22px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">能力练习</text>
+          </view>
+
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-messages/index')">
             <view class="relative mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#EEF2FF] text-[#4F46E5] shadow-inner">
               <view class="i-carbon-notification text-[22px]" />

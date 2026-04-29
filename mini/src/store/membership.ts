@@ -4,11 +4,15 @@ import { computed, ref } from 'vue'
 import { fbaApi } from '@/api/sdk'
 import { useTokenStore } from './token'
 
+const MEMBERSHIP_REFRESH_TTL = 30 * 1000
+
 export const useMembershipStore = defineStore(
   'membership',
   () => {
     const memberships = ref<MembershipBrief[]>([])
     const loading = ref(false)
+    const lastFetchedAt = ref(0)
+    let fetchingPromise: Promise<void> | null = null
 
     /** 当前最高权重的会员记录 */
     const activeMembership = computed(() => {
@@ -36,29 +40,45 @@ export const useMembershipStore = defineStore(
     const validTo = computed(() => activeMembership.value?.valid_to ?? null)
 
     /** 拉取当前用户会员信息 */
-    async function fetchMembership() {
+    async function fetchMembership(force = false) {
       const tokenStore = useTokenStore()
       if (!tokenStore.hasLogin) {
         memberships.value = []
+        lastFetchedAt.value = 0
         return
       }
 
+      const now = Date.now()
+      if (!force && lastFetchedAt.value > 0 && now - lastFetchedAt.value < MEMBERSHIP_REFRESH_TTL) {
+        return
+      }
+      if (fetchingPromise) {
+        return fetchingPromise
+      }
+
       loading.value = true
-      try {
-        memberships.value = await fbaApi.membership.getMyMembership()
-      }
-      catch (error) {
-        console.error('获取会员信息失败:', error)
-        memberships.value = []
-      }
-      finally {
-        loading.value = false
-      }
+      fetchingPromise = (async () => {
+        try {
+          memberships.value = await fbaApi.membership.getMyMembership()
+          lastFetchedAt.value = Date.now()
+        }
+        catch (error) {
+          console.error('获取会员信息失败:', error)
+          memberships.value = []
+          lastFetchedAt.value = 0
+        }
+        finally {
+          loading.value = false
+          fetchingPromise = null
+        }
+      })()
+      return fetchingPromise
     }
 
     /** 清空会员信息 */
     function clearMembership() {
       memberships.value = []
+      lastFetchedAt.value = 0
     }
 
     /**

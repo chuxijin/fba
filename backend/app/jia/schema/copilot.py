@@ -97,3 +97,26 @@ class RecognizeFormulaRequest(BaseModel):
 class RecognizeFormulaResponse(BaseModel):
     formula: str = Field(default='', description="识别出的 LaTeX 公式")
     confidence: str | None = Field(default=None, description="置信度描述")
+
+
+# --- 智能识别食物 Schemas ---
+
+class AnalyzeFoodRequest(BaseModel):
+    image_url: str | None = Field(default=None, description="图片完整URL")
+    text: str | None = Field(default=None, description="用户文字描述")
+
+
+class AnalyzeFoodResponse(BaseModel):
+    name: str | None = Field(default=None, description="食物名称")
+    alias: str | None = Field(default=None, description="别名（逗号分隔）")
+    description: str | None = Field(default=None, description="详细描述")
+    serving_size: float | None = Field(default=None, description="份量大小")
+    serving_unit: str | None = Field(default=None, description="份量单位 (g/ml)")
+    energy: float | None = Field(default=None, description="能量 (kcal)")
+    protein: float | None = Field(default=None, description="蛋白质 (g)")
+    carbohydrate: float | None = Field(default=None, description="碳水化合物 (g)")
+    fat: float | None = Field(default=None, description="脂肪 (g)")
+    water: float | None = Field(default=None, description="水分 (g)")
+    fiber: float | None = Field(default=None, description="膳食纤维 (g)")
+    sodium: float | None = Field(default=None, description="钠 (mg)")
+    notes: str | None = Field(default=None, description="备注")

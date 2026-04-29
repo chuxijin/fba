@@ -159,6 +159,7 @@ class RenderPayloadService:
         'exam_paper': 'exam',
         'practice': 'custom',
         'wrong_question': 'wrong',
+        'basic_calculation': 'custom',
     }
 
     @staticmethod
@@ -393,6 +394,112 @@ class RenderPayloadService:
             return ['combined_appendix']
         return ['questions_only']
 
+    @staticmethod
+    def _normalize_basic_calculation_questions(raw_questions: Any) -> list[dict[str, Any]]:
+        if not isinstance(raw_questions, list):
+            return []
+
+        questions: list[dict[str, Any]] = []
+        for index, item in enumerate(raw_questions, start=1):
+            if not isinstance(item, dict):
+                continue
+
+            expression = str(item.get('expression') or '').strip()
+            if not expression:
+                continue
+
+            answer = item.get('answer')
+            answer_text = '' if answer is None else str(answer).strip()
+            section_title = str(item.get('section_title') or item.get('type_title') or '基础计算').strip()
+            questions.append(
+                {
+                    'number': index,
+                    'expression': expression,
+                    'answer_text': answer_text,
+                    'section_title': section_title or '基础计算',
+                }
+            )
+
+        return questions[:200]
+
+    @classmethod
+    def _build_basic_calculation_payload(cls, payload: RenderJobCreate) -> RenderDocumentPayload:
+        questions = cls._normalize_basic_calculation_questions(payload.metadata.get('questions'))
+        if not questions:
+            raise ValueError('未找到可导出的计算题，请先生成题目。')
+
+        book_kind = cls.resolve_book_kind(payload)
+        content_mode, answer_layout, delivery_mode = cls.resolve_export_config(payload)
+        solution_mode = cls.resolve_solution_mode(payload)
+        render_variants = cls.resolve_render_variants(payload, solution_mode)
+        type_title = str(payload.metadata.get('type_title') or payload.subtitle or '基础计算').strip()
+        type_hint = str(payload.metadata.get('type_hint') or '').strip()
+
+        section_map: OrderedDict[str, RenderSectionPayload] = OrderedDict()
+        for item in questions:
+            section_title = item['section_title']
+            if section_title not in section_map:
+                section_map[section_title] = RenderSectionPayload(
+                    key=f'basic_calculation_{len(section_map) + 1}',
+                    title=section_title,
+                    questions=[],
+                )
+
+            section_map[section_title].questions.append(
+                RenderQuestionPayload(
+                    number=item['number'],
+                    question_id=item['number'],
+                    type='calculation',
+                    type_label='计算题',
+                    stem_text=item['expression'],
+                    answer_text=item['answer_text'],
+                    tags=['基础计算', section_title],
+                )
+            )
+
+        meta_lines = [f'题量：{len(questions)}', f'类型：{type_title}']
+        if type_hint:
+            meta_lines.append(type_hint)
+
+        return RenderDocumentPayload(
+            template_key=payload.template_key,
+            render_plan=RenderPlanPayload(
+                book_kind=book_kind,
+                content_mode=content_mode,
+                answer_layout=answer_layout,
+                delivery_mode=delivery_mode,
+                solution_mode=solution_mode,
+                output_targets=payload.output_targets,
+                render_variants=render_variants,
+            ),
+            book=RenderBookMeta(
+                title=payload.title.strip(),
+                subtitle=payload.subtitle,
+                meta_lines=meta_lines,
+            ),
+            options=payload.options,
+            paper=RenderPaperPayload(
+                question_count=len(questions),
+                material_count=0,
+                sections=list(section_map.values()),
+                materials=[],
+            ),
+            metadata={
+                **payload.metadata,
+                'filters': payload.filters,
+                'subject': payload.subject,
+                'template_key': payload.template_key,
+                'book_kind': book_kind,
+                'content_mode': content_mode,
+                'answer_layout': answer_layout,
+                'delivery_mode': delivery_mode,
+                'solution_mode': solution_mode,
+                'render_variants': render_variants,
+                'question_ids': [item['number'] for item in questions],
+                'generated_at': datetime.now().isoformat(),
+            },
+        )
+
     @classmethod
     def _build_source_text(
         cls, *, question: Question, bank_id: int | None, chapter_id: int | None
@@ -547,6 +654,9 @@ class RenderPayloadService:
 
     @classmethod
     async def build_payload(cls, *, db: AsyncSession, payload: RenderJobCreate) -> RenderDocumentPayload:
+        if payload.template_key == 'basic_calculation':
+            return cls._build_basic_calculation_payload(payload)
+
         questions = await cls._load_questions(db=db, payload=payload)
         if not questions:
             raise ValueError('未找到符合条件的题目，无法生成题本渲染数据。')

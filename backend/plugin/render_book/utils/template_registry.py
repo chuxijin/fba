@@ -184,4 +184,19 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
             default_options=RenderOptions(include_answer=True, theme='orange'),
             notes=['需要传入 metadata.user_id 作为用户错题来源。'],
         ),
+        'basic_calculation': RenderTemplateDetail(
+            key='basic_calculation',
+            name='基础计算练习',
+            description='根据即时生成的口算、估算、除法等训练题生成打印题单。',
+            scene='能力训练',
+            subject='基础计算',
+            estimated_latency='fast',
+            filter_fields=[
+                RenderFieldSpec(key='question_count', label='题量', field_type='integer', default=20),
+                RenderFieldSpec(key='type_title', label='训练类型', field_type='string', description='由小程序写入 metadata'),
+            ],
+            option_fields=base_option_fields,
+            default_options=RenderOptions(theme='amber', show_source=False),
+            notes=['题目由 metadata.questions 直传，不依赖题库题目表。'],
+        ),
     }

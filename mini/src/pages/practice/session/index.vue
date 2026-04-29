@@ -20,7 +20,7 @@ import { replaceHtmlWithCachedMedia, warmupQuestionMediaCache } from '@/utils/qu
 defineOptions({ name: 'PracticeSessionPage' })
 definePage({ style: { navigationStyle: 'custom', navigationBarTextStyle: 'black' } })
 
-type PracticeMode = 'exam' | 'practice' | 'memorize'
+type PracticeMode = 'exam' | 'practice' | 'memorize' | 'review'
 type UserAnswerValue = string | string[]
 
 interface AnswerState {
@@ -89,7 +89,12 @@ const visibleQuestions = computed(() => {
   return questions.value.filter(item => getState(item.question_id).isCorrect === false)
 })
 const pageTitle = computed(() => session.value?.practice_name || '刷题练习')
-const mode = computed<PracticeMode>(() => session.value?.session_type === 'exam' ? 'exam' : routeMode.value)
+const mode = computed<PracticeMode>(() => {
+  if (routeMode.value === 'review')
+    return 'review'
+  return session.value?.session_type === 'exam' ? 'exam' : routeMode.value
+})
+const isReviewMode = computed(() => mode.value === 'review')
 const isCompleted = computed(() => session.value?.status === 'completed')
 const totalCount = computed(() => visibleQuestions.value.length)
 const displayTotalCount = computed(() => {
@@ -145,21 +150,21 @@ const correctCount = computed(() => visibleQuestions.value.filter(item => getSta
 const wrongCount = computed(() => visibleQuestions.value.filter(item => getState(item.question_id).isCorrect === false).length)
 const totalSeconds = computed(() => {
   const base = Object.values(answerStateMap).reduce((sum, item) => sum + toNumber(item.answerTime), 0)
-  if (!currentQuestionId.value || isCompleted.value || isTimingPaused.value)
+  if (!currentQuestionId.value || isReviewMode.value || isCompleted.value || isTimingPaused.value)
     return base
   return base + Math.max(0, Math.floor((nowTick.value - activeQuestionStartedAt.value) / 1000))
 })
 const currentSeconds = computed(() => {
   if (!currentState.value)
     return 0
-  if (isCompleted.value || isTimingPaused.value)
+  if (isReviewMode.value || isCompleted.value || isTimingPaused.value)
     return currentState.value.answerTime
   return currentState.value.answerTime + Math.max(0, Math.floor((nowTick.value - activeQuestionStartedAt.value) / 1000))
 })
 const isMulti = computed(() => currentQuestion.value?.type === 'multiple')
 const isText = computed(() => ['fill', 'shortAnswer'].includes(currentQuestion.value?.type || ''))
-const locked = computed(() => !currentState.value || isCompleted.value || (mode.value !== 'exam' && currentState.value.locked))
-const shouldShowSolution = computed(() => isCompleted.value || mode.value === 'memorize' || (mode.value === 'practice' && currentState.value?.locked))
+const locked = computed(() => !currentState.value || isReviewMode.value || isCompleted.value || (mode.value !== 'exam' && currentState.value.locked))
+const shouldShowSolution = computed(() => isReviewMode.value || isCompleted.value || mode.value === 'memorize' || (mode.value === 'practice' && currentState.value?.locked))
 const textAnswer = computed({
   get: () => typeof currentState.value?.userAnswer === 'string' ? currentState.value.userAnswer : '',
   set: (value: string) => {
@@ -376,7 +381,7 @@ function isQuestionSubjective(question: any) {
 
 function isQuestionLocked(questionId: number) {
   const state = getState(questionId)
-  return isCompleted.value || (mode.value !== 'exam' && state.locked)
+  return isReviewMode.value || isCompleted.value || (mode.value !== 'exam' && state.locked)
 }
 
 function questionSelectedCodes(questionId: number) {
@@ -388,6 +393,8 @@ function questionCorrectCodes(questionId: number) {
 }
 
 function questionShouldShowSolution(questionId: number) {
+  if (isReviewMode.value)
+    return Boolean(solutionMap[questionId])
   if (isCompleted.value)
     return Boolean(solutionMap[questionId])
   if (mode.value === 'memorize')
@@ -397,7 +404,7 @@ function questionShouldShowSolution(questionId: number) {
 
 function questionSeconds(questionId: number) {
   const state = getState(questionId)
-  if (isCompleted.value || isTimingPaused.value)
+  if (isReviewMode.value || isCompleted.value || isTimingPaused.value)
     return state.answerTime
   if (questionId !== currentQuestionId.value)
     return state.answerTime
@@ -603,7 +610,7 @@ function mergeRecognizedText(originalText: string, nextText: string) {
 }
 
 function commitTime(questionId = currentQuestionId.value) {
-  if (!questionId || isCompleted.value || isTimingPaused.value)
+  if (!questionId || isReviewMode.value || isCompleted.value || isTimingPaused.value)
     return
   const delta = Math.max(0, Math.floor((Date.now() - activeQuestionStartedAt.value) / 1000))
   if (delta > 0)
@@ -612,7 +619,7 @@ function commitTime(questionId = currentQuestionId.value) {
 }
 
 function toggleTimerPause() {
-  if (!currentQuestionId.value || isCompleted.value)
+  if (!currentQuestionId.value || isReviewMode.value || isCompleted.value)
     return
 
   if (isTimingPaused.value) {
@@ -653,6 +660,27 @@ function syncRecord(questionId: number) {
     session.value.records.push(record)
 }
 
+function applySessionSolutions(items: any[]) {
+  items.forEach((item) => {
+    const questionId = Number(item?.question_id || 0)
+    if (!questionId)
+      return
+
+    const state = getState(questionId)
+    const answer = normalizeAnswer(item.user_answer)
+    state.userAnswer = answer
+    state.answerTime = toNumber(item.answer_time)
+    state.isAnswered = hasAnswer(answer)
+    state.isCorrect = typeof item.is_correct === 'boolean' ? item.is_correct : null
+    state.score = item.score == null ? null : toNumber(item.score)
+    state.locked = true
+
+    solutionMap[questionId] = item
+    solutionKeyMap[questionId] = solutionCacheKey(answer)
+    syncRecord(questionId)
+  })
+}
+
 async function loadSolution(questionId: number) {
   if (!questionId)
     return
@@ -670,7 +698,7 @@ async function loadSolution(questionId: number) {
     // 优先从 result store 的预取整卷数据中取
     const resultStore = useResultStore()
     const prefetched = resultStore.state.solutionData
-    if (Array.isArray(prefetched)) {
+    if (resultStore.state.sessionId === sessionId.value && Array.isArray(prefetched)) {
       const found = prefetched.find((item: any) => item.question_id === questionId)
       if (found) {
         solutionMap[questionId] = found
@@ -682,6 +710,9 @@ async function loadSolution(questionId: number) {
         return found
       }
     }
+
+    if (isReviewMode.value)
+      return solutionMap[questionId] || null
 
     // 降级：请求单题 API
     solutionLoadingMap[questionId] = true
@@ -943,9 +974,25 @@ function switchNoteTab(questionId: number, tab: 'mine' | 'public') {
 async function loadSession() {
   loading.value = true
   try {
-    const [detail, content] = await Promise.all([
+    const shouldLoadReviewSolution = routeMode.value === 'review'
+    const resultStore = useResultStore()
+    const sameResultSession = resultStore.state.sessionId === sessionId.value
+    const cachedSolutions = sameResultSession && Array.isArray(resultStore.state.solutionData)
+      ? resultStore.state.solutionData
+      : null
+    const solutionPromise = shouldLoadReviewSolution
+      ? cachedSolutions
+        ? Promise.resolve(cachedSolutions)
+        : fbaApi.qbank.session.getSolution(sessionId.value).catch((error) => {
+          console.error('加载整套解析失败:', error)
+          uni.showToast({ title: '加载整套解析失败', icon: 'none' })
+          return []
+        })
+      : Promise.resolve([])
+    const [detail, content, reviewSolutions] = await Promise.all([
       fbaApi.qbank.session.getDetail(sessionId.value),
       fbaApi.qbank.question.getSessionQuestions(sessionId.value),
+      solutionPromise,
     ]) as any
     session.value = detail
     clearMap(answerStateMap)
@@ -967,8 +1014,17 @@ async function loadSession() {
       state.isAnswered = hasAnswer(answer)
       state.isCorrect = typeof record.is_correct === 'boolean' ? record.is_correct : null
       state.score = record.score == null ? null : toNumber(record.score)
-      state.locked = mode.value !== 'exam' && hasAnswer(answer)
+      state.locked = isReviewMode.value || (mode.value !== 'exam' && hasAnswer(answer))
     })
+    if (shouldLoadReviewSolution && Array.isArray(reviewSolutions)) {
+      applySessionSolutions(reviewSolutions)
+      resultStore.setResult(
+        sessionId.value,
+        sameResultSession ? resultStore.state.reportData : null,
+        reviewSolutions,
+        sameResultSession ? resultStore.state.submitResult : null,
+      )
+    }
     clearMap(questionMap)
     clearMap(materialMap)
     content.questions.forEach((item: any) => { questionMap[item.question_id] = item })
@@ -1002,6 +1058,9 @@ async function loadSession() {
 }
 
 async function persistAnswer(questionId: number, judgeNow: boolean, silent = false) {
+  if (isReviewMode.value)
+    return false
+
   const snap = snapshotOf(questionId)
   const state = getState(questionId)
   if (!snap || !hasAnswer(state.userAnswer))
@@ -1069,6 +1128,8 @@ async function persistAnswer(questionId: number, judgeNow: boolean, silent = fal
 }
 
 async function persistDraftIfNeeded() {
+  if (isReviewMode.value)
+    return true
   if (!currentQuestionId.value || locked.value || !currentQuestion.value || !hasAnswer(currentState.value?.userAnswer))
     return true
   if (isMulti.value || isText.value)
@@ -1077,6 +1138,8 @@ async function persistDraftIfNeeded() {
 }
 
 async function persistDraftForQuestion(questionId: number, silent = true) {
+  if (isReviewMode.value)
+    return true
   const question = questionMap[questionId]
   if (!question || isQuestionLocked(questionId) || !hasAnswer(getState(questionId).userAnswer))
     return true
@@ -1131,6 +1194,8 @@ function handleQuestionOptionClick(questionId: number, question: any, code: stri
 }
 
 async function submitCurrentQuestion() {
+  if (isReviewMode.value)
+    return
   if (!currentQuestionId.value || !hasAnswer(currentState.value?.userAnswer)) {
     uni.showToast({ title: '先完成本题作答', icon: 'none' })
     return
@@ -1141,6 +1206,8 @@ async function submitCurrentQuestion() {
 }
 
 async function submitQuestion(questionId: number) {
+  if (isReviewMode.value)
+    return
   const state = getState(questionId)
   if (!hasAnswer(state.userAnswer)) {
     uni.showToast({ title: '先完成本题作答', icon: 'none' })
@@ -1154,9 +1221,11 @@ async function submitQuestion(questionId: number) {
 async function goToQuestion(index: number) {
   if (index < 0 || index >= totalCount.value || index === currentIndex.value)
     return
-  const ok = await persistDraftIfNeeded()
-  if (!ok)
-    return
+  if (!isReviewMode.value) {
+    const ok = await persistDraftIfNeeded()
+    if (!ok)
+      return
+  }
   currentIndex.value = index
   showAnswerSheet.value = false
 }
@@ -1164,14 +1233,14 @@ async function goToQuestion(index: number) {
 async function handleSwiperChange(event: any) {
   const nextIndex = Number(event?.detail?.current || 0)
   const previousQuestionId = currentQuestionId.value
-  if (previousQuestionId)
+  if (!isReviewMode.value && previousQuestionId)
     await persistDraftForQuestion(previousQuestionId, true)
   currentIndex.value = nextIndex
   showAnswerSheet.value = false
 }
 
 async function submitSession() {
-  if (submitting.value || isCompleted.value)
+  if (submitting.value || isReviewMode.value || isCompleted.value)
     return
   const ok = await persistDraftIfNeeded()
   if (!ok)
@@ -1200,11 +1269,13 @@ async function submitSession() {
       uni.showToast({ title, icon: 'none' })
     }
 
-    // 结果页只需要报告数据，整套解析按需进入复盘页后再加载，避免提交后被大接口阻塞。
-    const reportData = await fbaApi.qbank.session.getReport(sessionId.value).catch(() => null)
+    const [reportData, solutionData] = await Promise.all([
+      fbaApi.qbank.session.getReport(sessionId.value).catch(() => null),
+      fbaApi.qbank.session.getSolution(sessionId.value).catch(() => null),
+    ])
 
     const resultStore = useResultStore()
-    resultStore.setResult(sessionId.value, reportData, null, submitResult)
+    resultStore.setResult(sessionId.value, reportData, solutionData, submitResult)
     uni.redirectTo({
       url: `/pages/practice/result/index?sessionId=${sessionId.value}`,
     })
@@ -1281,7 +1352,7 @@ watch(currentQuestionId, async (newId, oldId) => {
 onLoad((query) => {
   sessionId.value = Number(query?.sessionId || 0)
   const nextMode = String(query?.mode || 'practice')
-  routeMode.value = nextMode === 'exam' || nextMode === 'memorize' ? nextMode : 'practice'
+  routeMode.value = nextMode === 'exam' || nextMode === 'memorize' || nextMode === 'review' ? nextMode : 'practice'
   routeWrongQuestionIds.value = parseNumberList(query?.wrongQuestionIds)
   routeDisplayTotalCount.value = toNumber(query?.displayTotalCount)
   const shouldShowWrongOnly = query?.viewMode === 'wrong' || query?.wrongOnly === '1' || routeWrongQuestionIds.value.length > 0

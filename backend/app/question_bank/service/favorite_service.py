@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import json
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,10 +19,77 @@ from backend.app.question_bank.schema.favorite import (
 from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
 from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
 from backend.common.exception import errors
+from backend.common.log import log
+from backend.database.redis import redis_client
+
+
+FAVORITE_STATISTICS_CACHE_TTL = 30
 
 
 class FavoriteService:
     """收藏服务类"""
+
+    @staticmethod
+    def _statistics_cache_key(*, user_id: int, study_domain: str | None, group_by: str | None = None) -> str:
+        """
+        构建收藏统计缓存 key
+
+        :param user_id: 用户 ID
+        :param study_domain: 学习领域
+        :param group_by: 分组方式
+        :return:
+        """
+        domain = study_domain or 'all'
+        group = group_by or 'summary'
+        return f'qbank:favorite:statistics:{user_id}:{domain}:{group}'
+
+    @staticmethod
+    async def _get_cached_statistics(key: str) -> dict | None:
+        """
+        获取收藏统计缓存
+
+        :param key: 缓存 key
+        :return:
+        """
+        try:
+            cached = await redis_client.get(key)
+        except Exception as e:
+            log.warning('读取收藏统计缓存失败: {}', e)
+            return None
+
+        if not cached:
+            return None
+        try:
+            return json.loads(cached)
+        except json.JSONDecodeError:
+            return None
+
+    @staticmethod
+    async def _set_cached_statistics(key: str, data: dict) -> None:
+        """
+        写入收藏统计缓存
+
+        :param key: 缓存 key
+        :param data: 缓存数据
+        :return:
+        """
+        try:
+            await redis_client.setex(key, FAVORITE_STATISTICS_CACHE_TTL, json.dumps(data, ensure_ascii=False))
+        except Exception as e:
+            log.warning('写入收藏统计缓存失败: {}', e)
+
+    @staticmethod
+    async def _clear_statistics_cache(user_id: int) -> None:
+        """
+        清理用户收藏统计缓存
+
+        :param user_id: 用户 ID
+        :return:
+        """
+        try:
+            await redis_client.delete_prefix(f'qbank:favorite:statistics:{user_id}:')
+        except Exception as e:
+            log.warning('清理收藏统计缓存失败: {}', e)
 
     @staticmethod
     async def _get_study_domain_filter(
@@ -70,6 +139,7 @@ class FavoriteService:
         await question_statistics_dao.update_stats(
             db, obj.question_id, UpdateQuestionStatisticsParam(collect_delta=1)
         )
+        await FavoriteService._clear_statistics_cache(user_id)
         return new_favorite
 
     @staticmethod
@@ -93,6 +163,7 @@ class FavoriteService:
             await question_statistics_dao.update_stats(
                 db, question_id, UpdateQuestionStatisticsParam(collect_delta=-1)
             )
+            await FavoriteService._clear_statistics_cache(user_id)
         return count
 
     @staticmethod
@@ -139,13 +210,16 @@ class FavoriteService:
         if favorite.user_id != user_id:
             raise errors.AuthorizationError(msg='无权操作此收藏')
 
-        return await question_favorite_dao.update(
+        count = await question_favorite_dao.update(
             db=db,
             favorite_id=favorite_id,
             folder_name=folder_name,
             tags=tags,
             remark=remark,
         )
+        if count > 0:
+            await FavoriteService._clear_statistics_cache(user_id)
+        return count
 
     @staticmethod
     async def set_pin(*, db: AsyncSession, favorite_id: int, user_id: int, is_pinned: bool) -> int:
@@ -164,11 +238,14 @@ class FavoriteService:
         if favorite.user_id != user_id:
             raise errors.AuthorizationError(msg='无权操作此收藏')
 
-        return await question_favorite_dao.set_pin(
+        count = await question_favorite_dao.set_pin(
             db=db,
             favorite_id=favorite_id,
             is_pinned=is_pinned,
         )
+        if count > 0:
+            await FavoriteService._clear_statistics_cache(user_id)
+        return count
 
     @staticmethod
     async def delete_favorites(*, db: AsyncSession, favorite_ids: list[int], user_id: int) -> int:
@@ -203,6 +280,8 @@ class FavoriteService:
                 ],
             )
 
+        if count > 0:
+            await FavoriteService._clear_statistics_cache(user_id)
         return count
 
     @staticmethod
@@ -305,6 +384,11 @@ class FavoriteService:
         :param user_id: 用户 ID
         :return:
         """
+        cache_key = FavoriteService._statistics_cache_key(user_id=user_id, study_domain=study_domain)
+        cached = await FavoriteService._get_cached_statistics(cache_key)
+        if cached:
+            return FavoriteStatistics(**cached)
+
         domain_filter = await FavoriteService._get_study_domain_filter(db=db, study_domain=study_domain)
         if domain_filter:
             folder_rows = await question_favorite_dao.get_folder_counts_by_bank_ids(
@@ -330,11 +414,13 @@ class FavoriteService:
 
             folder_stats.insert(0, FolderInfo(folder_name='未分组', count=count))
 
-        return FavoriteStatistics(
+        stats = FavoriteStatistics(
             total_count=total_count,
             folder_count=folder_count,
             folders=folder_stats,
         )
+        await FavoriteService._set_cached_statistics(cache_key, stats.model_dump())
+        return stats
 
     @staticmethod
     async def get_statistics_with_groups(
@@ -352,6 +438,15 @@ class FavoriteService:
         :param group_by: 分组方式
         :return:
         """
+        cache_key = FavoriteService._statistics_cache_key(
+            user_id=user_id,
+            study_domain=study_domain,
+            group_by=group_by,
+        )
+        cached = await FavoriteService._get_cached_statistics(cache_key)
+        if cached:
+            return cached
+
         from backend.app.question_bank.service.group_tree import (
             build_bank_tree,
             build_kp_tree,
@@ -385,11 +480,13 @@ class FavoriteService:
             banks, chapters = await load_banks_and_chapters(db, bank_ids, chapter_ids)
             groups = build_bank_tree(banks, chapters, count_map)
 
-        return {
+        data = {
             'total_count': stats.total_count,
             'folder_count': stats.folder_count,
             'groups': groups,
         }
+        await FavoriteService._set_cached_statistics(cache_key, data)
+        return data
 
     @staticmethod
     async def get_grouped(

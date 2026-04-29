@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, RedirectResponse
@@ -31,6 +32,79 @@ from backend.plugin.render_book.service.preset_service import preset_service
 from backend.plugin.render_book.service.render_service import render_service
 
 router = APIRouter()
+
+_INTERNAL_METADATA_KEYS = {
+    'executor_mode',
+    'executor_url',
+    'user_id',
+}
+
+
+def _is_internal_url(value: str | None) -> bool:
+    if not value:
+        return False
+
+    parsed = urlparse(value)
+    hostname = parsed.hostname or ''
+    return hostname in {'127.0.0.1', 'localhost', '0.0.0.0'}
+
+
+def _is_public_url(value: str | None) -> bool:
+    if not value:
+        return False
+
+    parsed = urlparse(value)
+    return parsed.scheme in {'http', 'https'} and not _is_internal_url(value)
+
+
+def _sanitize_render_job_for_client(job: RenderJobRead) -> RenderJobRead:
+    record = job.model_copy(deep=True)
+    metadata = dict(record.metadata or {})
+    for key in _INTERNAL_METADATA_KEYS:
+        metadata.pop(key, None)
+
+    preview_urls = metadata.get('preview_urls')
+    if isinstance(preview_urls, list):
+        public_preview_urls = [url for url in preview_urls if isinstance(url, str) and _is_public_url(url)]
+        if public_preview_urls:
+            metadata['preview_urls'] = public_preview_urls
+        else:
+            metadata.pop('preview_urls', None)
+
+    record.metadata = metadata
+    if record.output_path and not _is_public_url(record.output_path):
+        record.output_path = None
+
+    for file_record in record.files:
+        file_record.local_path = None
+        if file_record.url and not _is_public_url(file_record.url):
+            file_record.url = None
+
+    return record
+
+
+def _sanitize_render_page_for_client(page_data: dict) -> dict:
+    page_data['items'] = [
+        _sanitize_render_job_for_client(item) if isinstance(item, RenderJobRead) else item
+        for item in page_data.get('items', [])
+    ]
+    return page_data
+
+
+def _ensure_render_job_access(request: Request, job: RenderJobRead) -> None:
+    current_user = getattr(request, 'user', None)
+    if getattr(current_user, 'is_superuser', False):
+        return
+
+    owner_id = job.metadata.get('user_id')
+    if owner_id is None:
+        return
+
+    current_user_id = getattr(current_user, 'id', None)
+    if current_user_id is not None and str(owner_id) == str(current_user_id):
+        return
+
+    raise errors.AuthorizationError(msg='无权限访问其他用户的题本任务')
 
 
 @router.get('/templates', summary='获取题本模板列表')
@@ -120,6 +194,7 @@ async def preview_render_template_pdf(
 ) -> ResponseSchemaModel[RenderTemplatePreviewResponse]:
     try:
         preview = await render_service.preview_template_pdf(db=db, payload=payload)
+        preview.job = _sanitize_render_job_for_client(preview.job)
         await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -194,7 +269,7 @@ async def create_render_job(
         await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return response_base.success(data=job)
+    return response_base.success(data=_sanitize_render_job_for_client(job))
 
 
 @router.get('/jobs', summary='分页查询题本渲染任务', dependencies=[DependsPagination])
@@ -210,25 +285,36 @@ async def list_render_jobs(
             raise errors.AuthorizationError(msg='无权限查看其他用户的题本任务')
         params.user_id = current_user.id
     page_data = await render_service.list_jobs(db=db, params=params)
+    page_data = _sanitize_render_page_for_client(page_data)
     return response_base.success(data=page_data)
 
 
 @router.post('/jobs/{job_id}/execute', summary='执行题本渲染任务')
 async def execute_render_job(
+    request: Request,
     job_id: str,
     db: CurrentSession,
     upload_to_oss: bool = True,
 ) -> ResponseSchemaModel[RenderJobRead]:
+    existing_job = await render_service.get_job(job_id, db=db)
+    if existing_job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Render job '{job_id}' not found.",
+        )
+    _ensure_render_job_access(request, existing_job)
+
     try:
         job = await render_service.execute_job(db=db, job_id=job_id, upload_to_oss=upload_to_oss)
         await db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return response_base.success(data=job)
+    return response_base.success(data=_sanitize_render_job_for_client(job))
 
 
 @router.post('/jobs/{job_id}/dispatch', summary='后台触发题本渲染任务')
 async def dispatch_render_job(
+    request: Request,
     job_id: str,
     db: CurrentSession,
     upload_to_oss: bool = True,
@@ -239,23 +325,32 @@ async def dispatch_render_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Render job '{job_id}' not found.",
         )
+    _ensure_render_job_access(request, job)
+    job = await render_service.mark_job_running(db=db, job_id=job_id)
+    await db.commit()
     await render_service.dispatch_job(job_id=job_id, upload_to_oss=upload_to_oss)
-    return response_base.success(data=job)
+    return response_base.success(data=_sanitize_render_job_for_client(job))
 
 
 @router.get('/jobs/{job_id}', summary='查询题本渲染任务')
-async def get_render_job(job_id: str, db: CurrentSession) -> ResponseSchemaModel[RenderJobRead]:
+async def get_render_job(
+    request: Request,
+    job_id: str,
+    db: CurrentSession,
+) -> ResponseSchemaModel[RenderJobRead]:
     job = await render_service.get_job(job_id, db=db)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Render job '{job_id}' not found.",
         )
-    return response_base.success(data=job)
+    _ensure_render_job_access(request, job)
+    return response_base.success(data=_sanitize_render_job_for_client(job))
 
 
 @router.get('/jobs/{job_id}/files/{file_kind}', summary='下载题本正式文件')
 async def download_render_job_file(
+    request: Request,
     job_id: str,
     file_kind: RenderFileKind,
     db: CurrentSession,
@@ -263,6 +358,14 @@ async def download_render_job_file(
     inline: bool = Query(default=False, description='是否以内联方式打开'),
     prefer_url: bool = Query(default=False, description='若存在 OSS 地址，是否优先跳转到 OSS'),
 ):
+    job = await render_service.get_job(job_id, db=db)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Render job '{job_id}' not found.",
+        )
+    _ensure_render_job_access(request, job)
+
     try:
         file_record = await render_service.get_job_file(
             db=db,
@@ -292,11 +395,20 @@ async def download_render_job_file(
 
 @router.get('/jobs/{job_id}/artifacts/{render_variant}/{artifact_kind}', summary='获取渲染执行产物')
 async def get_render_job_artifact(
+    request: Request,
     job_id: str,
     render_variant: RenderVariant,
     artifact_kind: RenderArtifactKind,
     db: CurrentSession,
 ):
+    job = await render_service.get_job(job_id, db=db)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Render job '{job_id}' not found.",
+        )
+    _ensure_render_job_access(request, job)
+
     artifact_path = await render_service.get_job_artifact_path(
         db=db,
         job_id=job_id,
@@ -314,11 +426,20 @@ async def get_render_job_artifact(
 
 @router.get('/jobs/{job_id}/preview.pdf', summary='获取题本预览 PDF')
 async def get_render_job_preview_pdf(
+    request: Request,
     job_id: str,
     db: CurrentSession,
     render_variant: RenderVariant | None = Query(default=None, description='指定预览渲染变体'),
     prefer_url: bool = Query(default=False, description='若存在 OSS 地址，是否优先跳转到 OSS'),
 ):
+    job = await render_service.get_job(job_id, db=db)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Render job '{job_id}' not found.",
+        )
+    _ensure_render_job_access(request, job)
+
     try:
         file_record = await render_service.get_preview_pdf_file(
             db=db,

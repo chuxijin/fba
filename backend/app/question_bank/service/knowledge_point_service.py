@@ -73,9 +73,12 @@ class KnowledgePointService:
         if not kp_names:
             return {}
 
-        kp_elem = func.jsonb_array_elements(
-            cast(Question.knowledge_point, PGJSONB)
-        ).table_valued('value')
+        kp_json = cast(Question.knowledge_point, PGJSONB)
+        kp_array = sa.case(
+            (func.jsonb_typeof(kp_json) == 'array', kp_json),
+            else_=func.jsonb_build_array(kp_json),
+        )
+        kp_elem = func.jsonb_array_elements(kp_array).table_valued('value')
 
         kp_name_expr = func.coalesce(
             kp_elem.c.value.op('->>')(literal_column("'name'")),
@@ -115,9 +118,12 @@ class KnowledgePointService:
         if not kp_names:
             return {}
 
-        kp_elem = func.jsonb_array_elements(
-            cast(Question.knowledge_point, PGJSONB)
-        ).table_valued('value')
+        kp_json = cast(Question.knowledge_point, PGJSONB)
+        kp_array = sa.case(
+            (func.jsonb_typeof(kp_json) == 'array', kp_json),
+            else_=func.jsonb_build_array(kp_json),
+        )
+        kp_elem = func.jsonb_array_elements(kp_array).table_valued('value')
 
         kp_name_expr = func.coalesce(
             kp_elem.c.value.op('->>')(literal_column("'name'")),

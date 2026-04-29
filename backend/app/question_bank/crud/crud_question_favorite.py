@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 
-from sqlalchemy import cast, delete, func, literal_column, or_, select
+from sqlalchemy import case, cast, delete, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -385,7 +385,12 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         :param user_id: 用户 ID
         :return:
         """
-        kp_element = func.jsonb_array_elements(Question.knowledge_point).table_valued('value')
+        kp_json = cast(Question.knowledge_point, PGJSONB)
+        kp_array = case(
+            (func.jsonb_typeof(kp_json) == 'array', kp_json),
+            else_=func.jsonb_build_array(kp_json),
+        )
+        kp_element = func.jsonb_array_elements(kp_array).table_valued('value')
         kp_name = func.coalesce(
             kp_element.c.value.op('->>')(literal_column("'name'")),
             kp_element.c.value.op('->>')(literal_column("'label'")),

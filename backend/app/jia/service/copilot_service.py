@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.jia.crud.crud_copilot import copilot_session_dao, copilot_message_dao
 from backend.app.jia.model.copilot import JiaCopilotMessage
-from backend.app.jia.schema.copilot import CreateSessionParam, ChatRequest, ChatResponse, AnalyzeItemRequest, AnalyzeItemResponse, RecognizeFormulaRequest, RecognizeFormulaResponse
+from backend.app.jia.schema.copilot import CreateSessionParam, ChatRequest, ChatResponse, AnalyzeItemRequest, AnalyzeItemResponse, RecognizeFormulaRequest, RecognizeFormulaResponse, AnalyzeFoodRequest, AnalyzeFoodResponse
 from backend.app.jia.service.exercise_service import exercise_service
 from backend.app.jia.service.food_service import food_service
 from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
@@ -620,6 +620,109 @@ class CopilotService:
             import traceback
             traceback.print_exc()
             return RecognizeFormulaResponse(formula='', confidence=f'识别失败: {str(e)}')
+
+    async def analyze_food(self, db: AsyncSession, user_id: int, req: AnalyzeFoodRequest) -> AnalyzeFoodResponse:
+        """
+        智能识别食物营养信息
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param req: 请求参数
+        :return:
+        """
+        from backend.app.jia.service.user_setting_service import user_setting_service
+        user_settings = await user_setting_service.get_my_settings(db=db, user_id=user_id)
+        current_provider_id = user_settings.copilot_provider or 4
+
+        system_prompt = """你是一位专业的食品营养分析师。请根据用户提供的图片或文字描述，返回详细的食物营养信息 JSON。
+
+**识别要求**（所有营养数据基于每 100g 可食部分）：
+1. **name**: 准确的食物名称（如"鸡胸肉"而非"鸡肉"）
+2. **alias**: 常见别名，逗号分隔（如"鸡脯肉,鸡胸脯"）
+3. **description**: 简短描述，包括口感、常见做法
+4. **serving_size**: 通常为 100（每 100g）
+5. **serving_unit**: 通常为 "g"
+6. **energy**: 能量 (kcal)
+7. **protein**: 蛋白质 (g)
+8. **carbohydrate**: 碳水化合物 (g)
+9. **fat**: 脂肪 (g)
+10. **water**: 水分 (g)
+11. **fiber**: 膳食纤维 (g)
+12. **sodium**: 钠 (mg)
+13. **notes**: 饮食建议、注意事项
+
+请严格按以下 JSON 格式返回（不要返回其他内容）：
+{
+    "name": "食物名称",
+    "alias": "别名1,别名2",
+    "description": "简短描述",
+    "serving_size": 100,
+    "serving_unit": "g",
+    "energy": 0,
+    "protein": 0,
+    "carbohydrate": 0,
+    "fat": 0,
+    "water": 0,
+    "fiber": 0,
+    "sodium": 0,
+    "notes": null
+}"""
+
+        if req.image_url:
+            user_content = [
+                {"type": "text", "text": "请识别这张图片中的食物，给出完整的营养信息"},
+                {"type": "image_url", "image_url": {"url": req.image_url}},
+            ]
+            if req.text:
+                user_content[0]["text"] = f"请识别这张图片中的食物。用户补充说明：{req.text}"
+            messages = [
+                AIChatMessage(role="system", content=system_prompt),
+                AIChatMessage(role="user", content=user_content),
+            ]
+        elif req.text:
+            messages = [
+                AIChatMessage(role="system", content=system_prompt),
+                AIChatMessage(role="user", content=f"用户描述的食物：{req.text}"),
+            ]
+        else:
+            return AnalyzeFoodResponse(name="输入错误", notes="请提供图片或文字描述")
+
+        chat_param = AIChat(
+            provider_id=current_provider_id,
+            model_id="gpt-4o-2024-11-20",
+            messages=messages,
+            temperature=0.3,
+        )
+
+        try:
+            ai_resp = await ai_chat_service.raw_chat(db=db, chat=chat_param)
+            resp_content = ai_resp.get('content', '')
+
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', resp_content)
+            if json_match:
+                result = json.loads(json_match.group())
+                return AnalyzeFoodResponse(
+                    name=result.get('name'),
+                    alias=result.get('alias'),
+                    description=result.get('description'),
+                    serving_size=result.get('serving_size'),
+                    serving_unit=result.get('serving_unit'),
+                    energy=result.get('energy'),
+                    protein=result.get('protein'),
+                    carbohydrate=result.get('carbohydrate'),
+                    fat=result.get('fat'),
+                    water=result.get('water'),
+                    fiber=result.get('fiber'),
+                    sodium=result.get('sodium'),
+                    notes=result.get('notes'),
+                )
+            return AnalyzeFoodResponse(name="未能识别", notes=resp_content)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return AnalyzeFoodResponse(name="识别失败", notes=str(e))
 
     async def _transcribe_audio(self, db: AsyncSession, provider_id: int, audio_path: str) -> str:
         """
