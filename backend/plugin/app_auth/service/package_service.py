@@ -99,8 +99,9 @@ class PackageService:
     @staticmethod
     async def get_pagination_list(db, application_id: int = None, name: str = None, is_active: bool = None):
         """获取套餐分页列表，包含应用信息"""
-        from backend.plugin.app_auth.model import AppApplication
         from sqlalchemy import select
+
+        from backend.plugin.app_auth.model import AppApplication
         from backend.utils.timezone import timezone
         
         stmt = select(

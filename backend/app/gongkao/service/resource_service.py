@@ -28,6 +28,7 @@ class ResourceService:
     ) -> Select:
         """获取资料列表"""
         from sqlalchemy import select
+
         from backend.app.gongkao.model.category import GkCategory
 
         category_ids = []
@@ -82,14 +83,16 @@ class ResourceService:
         :return: { 'url': 相对路径, 'filename': 文件名 }
         """
         import re
+
         from anyio import open_file
         from sqlalchemy import select
+
+        from backend.app.gongkao.model.category import GkCategory
+        from backend.common.exception import errors
+        from backend.common.log import log
         from backend.core.conf import settings
         from backend.core.path_conf import STATIC_DIR
-        from backend.common.log import log
-        from backend.common.exception import errors
         from backend.utils.timezone import timezone
-        from backend.app.gongkao.model.category import GkCategory
         
         # 解析分类路径
         safe_parts = []

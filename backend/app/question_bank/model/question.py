@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
+
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -110,6 +111,7 @@ class QuestionPlacement(Base, UserMixin):
 
 
 from pgvector.sqlalchemy import Vector
+
 
 class Question(Base, UserMixin):
     """题目表"""

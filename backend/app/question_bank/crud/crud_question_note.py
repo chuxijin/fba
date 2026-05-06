@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
 
-from sqlalchemy import case, cast, func, literal_column, or_, select, update as sa_update
+from sqlalchemy import case, cast, func, literal_column, or_, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
@@ -10,6 +10,7 @@ from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import QuestionNote, UserNoteVote
 from backend.app.question_bank.model.question import Question
+from backend.utils.timezone import timezone
 
 
 class CRUDQuestionNote(CRUDPlus[QuestionNote]):
@@ -170,7 +171,7 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         """
         update_data: dict = {'is_featured': is_featured}
         if is_featured:
-            update_data['featured_time'] = datetime.now()
+            update_data['featured_time'] = timezone.now()
         else:
             update_data['featured_time'] = None
 

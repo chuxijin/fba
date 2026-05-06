@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -24,7 +26,7 @@ class TypedContextProtocol(Protocol):
     user_id: int | None
 
 
-class TypedContext(TypedContextProtocol, _Context):
+class TypedContext(_Context):
     def __getattr__(self, name: str) -> Any:
         return context.get(name)
 
@@ -32,4 +34,4 @@ class TypedContext(TypedContextProtocol, _Context):
         context[name] = value
 
 
-ctx = TypedContext()
+ctx: TypedContextProtocol = TypedContext()

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+
 from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,18 +17,13 @@ from backend.app.coulddrive.schema.file import (
     RenameParam,
     RenameRuleDefinition,
 )
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
 from backend.app.coulddrive.service.rule_template_service import (
     MatchTarget,
     RenameRule,
     parse_rename_rules,
 )
-from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
-from backend.app.coulddrive.service.utils_service import (
-    get_parent_path,
-    get_filename,
-    build_full_path
-)
-
+from backend.app.coulddrive.service.utils_service import build_full_path, get_filename, get_parent_path
 
 logger = logging.getLogger(__name__)
 

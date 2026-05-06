@@ -2,22 +2,22 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-import json
 import logging
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import timedelta
+from typing import Any, Dict
+
 from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.coulddrive.schema.filesync import (
-    GetSyncTaskDetail,
-    GetSyncTaskWithRelationDetail,
-    GetSyncTaskItemDetail,
-)
 from backend.app.coulddrive.crud.crud_filesync import sync_task_dao, sync_task_item_dao
 from backend.app.coulddrive.model.filesync import SyncTask, SyncTaskItem
-from backend.common.log import log
+from backend.app.coulddrive.schema.filesync import (
+    GetSyncTaskDetail,
+    GetSyncTaskItemDetail,
+    GetSyncTaskWithRelationDetail,
+)
+from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class SyncTaskService:
         """
         try:
             # 计算30天前的日期
-            cutoff_date = datetime.now() - timedelta(days=30)
+            cutoff_date = timezone.now() - timedelta(days=30)
             
             # 先删除30天以外的同步任务项（因为外键约束）
             task_items_stmt = delete(SyncTaskItem).where(

@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 from .account_service import SocialAccountService
-from .work_service import SocialWorkService
 from .metric_service import SocialWorkMetricService
+from .work_service import SocialWorkService
 
 __all__ = [
     "SocialAccountService",

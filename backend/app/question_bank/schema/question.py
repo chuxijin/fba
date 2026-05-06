@@ -8,7 +8,6 @@ from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
 
-
 # ===== 枚举字面值 =====
 QuestionTypeEnum = Literal['single', 'multiple', 'judgement', 'fill', 'shortAnswer']
 DifficultyEnum = Literal['easy', 'medium', 'hard']

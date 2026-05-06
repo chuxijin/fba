@@ -4,13 +4,16 @@ import argparse
 import asyncio
 import json
 import re
+
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
 import httpx
+
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select, update as sa_update
+from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +29,6 @@ from backend.app.question_bank.model import (
 from backend.app.question_bank.model.question import Question
 from backend.app.question_bank.schema.question import UpsertQuestionOptionItem
 from backend.database.db import async_db_session
-
 
 SOURCE = 'yunyxzx'
 API_URL = 'https://www.yunyxzx.com/huikao_pc/queryoPaperSubjectList'
@@ -582,6 +584,7 @@ async def replace_analysis(
             answer_data={
                 'source': SOURCE,
                 'source_question_id': remote.source_id,
+                'correct': remote.answer,
                 'answer': remote.answer,
                 'paper_id': remote.raw.get('paperId'),
                 'structure_id': remote.raw.get('structureId'),

@@ -1,4 +1,3 @@
-from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +7,7 @@ from backend.app.content.model.content import Content
 from backend.app.content.schema.content import CreateContentParam, UpdateContentParam
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
+from backend.utils.timezone import timezone
 
 
 class ContentService:
@@ -51,7 +51,7 @@ class ContentService:
         # 如果是发布操作且之前未发布过，设置发布时间
         if obj.is_published and not content.is_published:
             if not obj.publish_time:
-                obj.publish_time = datetime.now()
+                obj.publish_time = timezone.now()
 
         return await content_dao.update_model(db, pk, obj)
 

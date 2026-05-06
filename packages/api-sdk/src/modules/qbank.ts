@@ -17,6 +17,7 @@ import type {
 } from '../types/qbank';
 import type {
   BatchUpsertPracticeRecordsParam,
+  BatchUpsertPracticeRecordsResult,
   CreatePracticeSessionParam,
   GetPracticeRecordDetail,
   GetPracticeRecordListItem,
@@ -76,7 +77,7 @@ export interface QbankModule {
     submit(id: number, data: SubmitPracticeSessionParam): Promise<SubmitPracticeSessionResult>;
     abandon(id: number): Promise<void>;
     remove(id: number): Promise<void>;
-    upsertRecords(id: number, data: BatchUpsertPracticeRecordsParam): Promise<QbankEntity>;
+    upsertRecords(id: number, data: BatchUpsertPracticeRecordsParam): Promise<BatchUpsertPracticeRecordsResult>;
     getRecord(id: number): Promise<GetPracticeRecordDetail>;
     getRecords(params?: { session_id?: number; question_id?: number }): Promise<PageData<GetPracticeRecordListItem>>;
     getSessionRecords(id: number): Promise<GetPracticeRecordDetail[]>;
@@ -200,7 +201,7 @@ export function createQbankModule(client: ApiClient): QbankModule {
       submit(id, data) { return request.post<SubmitPracticeSessionResult>(`/sessions/${id}/submit`, data); },
       abandon(id) { return request.post(`/sessions/${id}/abandon`); },
       remove(id) { return request.delete(`/sessions/${id}`); },
-      upsertRecords(id, data) { return request.post<QbankEntity>(`/sessions/${id}/records`, data); },
+      upsertRecords(id, data) { return request.post<BatchUpsertPracticeRecordsResult>(`/sessions/${id}/records`, data); },
       getRecord(id) { return request.get<GetPracticeRecordDetail>(`/sessions/records/${id}`); },
       getRecords(params) { return request.get<PageData<GetPracticeRecordListItem>>('/sessions/records', { params: params as Record<string, unknown> | undefined }); },
       getSessionRecords(id) { return request.get<GetPracticeRecordDetail[]>(`/sessions/${id}/records`); },

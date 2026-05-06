@@ -2,22 +2,18 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Path, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Path, Query, Request
 
 from backend.app.coulddrive.schema.rule_template import (
+    BatchDeleteRuleTemplateParam,
     CreateRuleTemplateParam,
-    UpdateRuleTemplateParam,
     GetRuleTemplateDetail,
     GetRuleTemplateListParam,
     RuleTemplateListItem,
-    UseRuleTemplateParam,
-    BatchDeleteRuleTemplateParam,
-    RuleTemplateStatsDetail,
-    TemplateType
+    TemplateType,
+    UpdateRuleTemplateParam,
 )
 from backend.app.coulddrive.service.rule_template_service import rule_template_service
-from backend.common.pagination import DependsPagination, PageData, paging_data, _CustomPageParams
 from backend.common.response.response_schema import ResponseModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession

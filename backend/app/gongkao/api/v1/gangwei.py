@@ -16,7 +16,6 @@ from backend.app.gongkao.schema.gangwei import (
 )
 from backend.app.gongkao.service.gangwei_service import gangwei_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -131,7 +130,7 @@ async def delete_gangwei(db: CurrentSessionTransaction, obj: DeleteGangweiParam)
     ],
 )
 async def parse_import_file(
-    file: UploadFile = File(..., description='Excel 或 CSV 文件'),
+    file: Annotated[UploadFile, File(description='Excel 或 CSV 文件')],
 ) -> ResponseSchemaModel[dict]:
     """
     解析上传文件的表头，返回表头列表、预览数据和智能匹配建议
@@ -189,7 +188,7 @@ async def execute_import_with_mapping(
     ],
 )
 async def parse_score_import_file(
-    file: UploadFile = File(..., description='Excel 或 CSV 文件'),
+    file: Annotated[UploadFile, File(description='Excel 或 CSV 文件')],
 ) -> ResponseSchemaModel[dict]:
     """解析分数导入文件的表头，返回表头列表、预览数据和智能匹配建议"""
     result = await gangwei_service.parse_score_file_header(file=file)

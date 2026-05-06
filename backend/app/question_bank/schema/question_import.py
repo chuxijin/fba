@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from pydantic import Field
 
 from backend.common.schema import SchemaBase
-
 
 # ===== CSV 批量导入 Schema =====
 
@@ -24,6 +22,7 @@ class QuestionImportRow(SchemaBase):
     解析: str | None = Field(None, description='解析内容')
     一级目录: str | None = Field(None, description='一级章节名称')
     二级目录: str | None = Field(None, description='二级章节名称')
+    三级目录: str | None = Field(None, description='三级章节名称')
     知识点: str | None = Field(None, description='考点标签')
     材料编号: str | int | None = Field(None, description='关联材料编号（对应材料 Sheet）')
 
@@ -50,6 +49,7 @@ class ImportResultItem(SchemaBase):
     success: bool = Field(description='是否成功')
     question_id: int | None = Field(None, description='题目 ID')
     error_message: str | None = Field(None, description='错误信息')
+    action: str | None = Field(None, description='处理动作')
 
 
 class BatchImportResult(SchemaBase):
@@ -66,3 +66,6 @@ class ExcelImportResult(BatchImportResult):
 
     materials_count: int = Field(default=0, ge=0, description='材料导入数')
     dedup_count: int = Field(default=0, ge=0, description='去重复用数')
+    existing_count: int = Field(default=0, ge=0, description='已存在数')
+    skipped_count: int = Field(default=0, ge=0, description='跳过数')
+    conflict_count: int = Field(default=0, ge=0, description='冲突提示数')

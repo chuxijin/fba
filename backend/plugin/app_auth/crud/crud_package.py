@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.plugin.app_auth.model import AppPackage, AppApplication
+from backend.plugin.app_auth.model import AppApplication, AppPackage
 from backend.plugin.app_auth.schema.package import CreatePackageParam, UpdatePackageParam
 
 
@@ -56,7 +56,7 @@ class CRUDPackage(CRUDPlus[AppPackage]):
         """
         stmt = select(self.model).where(
             self.model.application_id == application_id,
-            self.model.is_active == True
+            self.model.is_active.is_(True)
         ).order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 

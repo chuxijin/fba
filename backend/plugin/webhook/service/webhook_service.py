@@ -7,7 +7,9 @@ import json
 import re
 import time
 import uuid
+
 from datetime import datetime
+from datetime import timezone as datetime_timezone
 from typing import Any, Sequence
 
 from fastapi import Request
@@ -16,21 +18,21 @@ from sqlalchemy import Select
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.database.db import async_db_session
-from backend.plugin.webhook.crud.crud_webhook import webhook_dao, webhook_config_dao
+from backend.plugin.webhook.crud.crud_webhook import webhook_config_dao, webhook_dao
 from backend.plugin.webhook.model import Webhook
 from backend.plugin.webhook.model.webhook_config import WebhookConfig
 from backend.plugin.webhook.schema.webhook import (
+    CreateWebhookConfigParam,
     CreateWebhookParam,
+    DeleteWebhookConfigParam,
     DeleteWebhookParam,
+    GetWebhookConfigDetail,
     HeaderValidationRule,
+    UpdateWebhookConfigParam,
     UpdateWebhookParam,
+    WebhookConfigListParam,
     WebhookListParam,
     WebhookReceiveParam,
-    CreateWebhookConfigParam,
-    UpdateWebhookConfigParam,
-    WebhookConfigListParam,
-    GetWebhookConfigDetail,
-    DeleteWebhookConfigParam,
 )
 
 
@@ -232,7 +234,7 @@ class WebhookService:
                 'headers': headers,
                 'payload': payload_str,
                 'status': 1,  # 使用整数状态
-                'processed_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                'processed_at': datetime.now(datetime_timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
                 'retry_count': 0,
                 'error_message': None,
             }
@@ -370,7 +372,7 @@ class WebhookService:
                         # 更新状态为成功
                         await webhook_dao.update(db, webhook.id, UpdateWebhookParam(
                             status=1,  # 成功状态
-                            processed_at=datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                            processed_at=datetime.now(datetime_timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
                             retry_count=webhook.retry_count + 1,
                             error_message=None
                         ))
@@ -732,7 +734,7 @@ class WebhookService:
                 'headers': headers,
                 'payload': payload_str,
                 'status': 1,  # 成功状态
-                'processed_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                'processed_at': datetime.now(datetime_timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
                 'retry_count': 0,
                 'error_message': None,
             }
@@ -763,7 +765,7 @@ class WebhookService:
                 headers = dict(request.headers)
                 user_agent = headers.get('user-agent', 'unknown')
                 event_type = 'unknown'
-            except:
+            except Exception:
                 body_str = '{}'
                 headers = {}
                 user_agent = 'unknown'
@@ -862,7 +864,6 @@ class WebhookService:
         """
         # 获取请求来源
         host = request.client.host if request.client else 'unknown'
-        user_agent = headers.get('user-agent', '')
         
         # 检查是否是本地测试请求
         if host in ['127.0.0.1', 'localhost', '::1']:
@@ -951,7 +952,7 @@ class WebhookService:
                 'headers': headers,
                 'payload': body_str,
                 'status': 1,
-                'processed_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                'processed_at': datetime.now(datetime_timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
                 'retry_count': 0,
                 'error_message': None,
             }

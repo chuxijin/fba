@@ -339,8 +339,9 @@ class AuthService:
         # 2. 查找用户，不存在则自动注册
         user = await user_dao.get_by_phone(db, obj.phone)
         if not user:
-            import bcrypt
             import secrets
+
+            import bcrypt
 
             from backend.app.admin.utils.password_security import get_hash_password
 

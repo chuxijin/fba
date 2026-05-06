@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Annotated, Dict, Any
+from typing import Annotated, Any, Dict
 
 from fastapi import APIRouter, Path
 
+from backend.app.task.tasks.db_log.tasks import (
+    delete_filesync_data_older_than_30_days,
+)
 from backend.app.task.tasks.filesync.tasks import (
     check_and_execute_filesync_cron_tasks,
     execute_filesync_task_by_config_id,
     get_filesync_configs_with_cron,
-)
-from backend.app.task.tasks.db_log.tasks import (
-    delete_filesync_data_older_than_30_days,
 )
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Sequence
 
 from sqlalchemy import Select
 
@@ -9,12 +8,8 @@ from backend.app.social.model.account import SocialAccount
 from backend.app.social.schema.account import (
     CreateSocialAccountParam,
     UpdateSocialAccountParam,
-    SocialAccountBase,
-    GetSocialAccountDetail,
 )
 from backend.common.exception import errors
-from backend.common.pagination import paging_data
-from backend.common.response.response_schema import ResponseSchemaModel
 from backend.database.db import async_db_session
 
 

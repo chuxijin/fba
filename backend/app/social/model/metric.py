@@ -2,11 +2,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, UserMixin, id_key
 from backend.utils.timezone import timezone
+
+if TYPE_CHECKING:
+    from .work import SocialWork
 
 
 class SocialWorkMetric(Base, UserMixin):
@@ -32,5 +37,4 @@ class SocialWorkMetric(Base, UserMixin):
         Index("idx_social_work_metric_work_time", "work_id", "record_time"),
         UniqueConstraint("work_id", "record_time", name="uk_social_work_metric_work_time"),
     )
-
 

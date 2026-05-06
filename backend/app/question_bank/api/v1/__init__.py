@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
-from backend.app.question_bank.api.v1.ai_evaluation import router as ai_evaluation_router
 from backend.app.question_bank.api.v1.activation import router as activation_router
+from backend.app.question_bank.api.v1.ai_evaluation import router as ai_evaluation_router
 from backend.app.question_bank.api.v1.auth import router as auth_router
 from backend.app.question_bank.api.v1.bank import router as bank_router
 from backend.app.question_bank.api.v1.banner import router as banner_router
@@ -14,12 +14,12 @@ from backend.app.question_bank.api.v1.knowledge_point import router as knowledge
 from backend.app.question_bank.api.v1.material import router as material_router
 from backend.app.question_bank.api.v1.note import router as note_router
 from backend.app.question_bank.api.v1.notice import router as notice_router
+from backend.app.question_bank.api.v1.parse import router as parse_router
 from backend.app.question_bank.api.v1.practice import router as practice_router
 from backend.app.question_bank.api.v1.question import router as question_router
 from backend.app.question_bank.api.v1.session import router as session_router
 from backend.app.question_bank.api.v1.study_domain import router as study_domain_router
 from backend.app.question_bank.api.v1.upload import router as upload_router
-from backend.app.question_bank.api.v1.parse import router as parse_router
 from backend.app.question_bank.api.v1.user_message import router as user_message_router
 from backend.app.question_bank.api.v1.user_settings import router as user_settings_router
 from backend.app.question_bank.api.v1.wrong_question import router as wrong_question_router

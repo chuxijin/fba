@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Integer, String, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from backend.common.model import Base, UserMixin, id_key
 
 if TYPE_CHECKING:
-    from backend.app.coulddrive.model.user import DriveAccount
     from backend.app.coulddrive.model.rule_template import RuleTemplate
+    from backend.app.coulddrive.model.user import DriveAccount
 
 class SyncConfig(Base, UserMixin):
     """文件同步配置表"""

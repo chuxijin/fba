@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from collections import defaultdict
 import json
+
+from collections import defaultdict
 from typing import Any
 
 from sqlalchemy import select
@@ -261,7 +262,7 @@ async def load_kp_categories(db: AsyncSession) -> list[Category | dict[str, Any]
         .where(
             Category.app_code == 'youanshang',
             Category.type == 'knowledge_point',
-            Category.status == True,
+            Category.status.is_(True),
         )  # noqa: E712
         .order_by(Category.level, Category.sort_order)
     )

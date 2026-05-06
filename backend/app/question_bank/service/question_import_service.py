@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import logging
 import re
+
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select, update, func
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.question_bank.crud.crud_bank import bank_dao
-from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.crud.crud_material import material_dao
 from backend.app.question_bank.model import (
     Question,
+    QuestionAnalysis,
     QuestionChapter,
+    QuestionOption,
     QuestionPlacement,
 )
 from backend.app.question_bank.model.question import question_material_relation
@@ -34,6 +36,7 @@ from backend.app.question_bank.schema.question_import import (
     QuestionImportRow,
 )
 from backend.common.exception import errors
+from backend.utils.answer_parser import extract_option_codes, split_answer_text
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +96,7 @@ class QuestionImportService:
                     level1_name=row.一级目录,
                     level2_name=row.二级目录,
                     chapter_cache=chapter_cache,
+                    level3_name=row.三级目录,
                 )
 
                 options_data = None
@@ -126,7 +130,7 @@ class QuestionImportService:
                     'answer_data': answer_data,
                     'default_score': default_score,
                     'stem': row.题目,
-                    'analysis_content': row.解析 if row.解析 else '暂无解析',
+                    'analysis_content': row.解析 or '暂无解析',
                     'sort_order': int(row.ID) if row.ID is not None else row_index,
                     'material_ids': material_ids,
                 })
@@ -152,8 +156,6 @@ class QuestionImportService:
 
         # ============ 第二阶段：复用 create 流程写入 ============
         results: list[ImportResultItem] = []
-        chapter_count: dict[int, int] = {}
-
         for row_data in validated_rows:
             core = QuestionCoreBase(
                 type=row_data['question_type'],
@@ -204,27 +206,7 @@ class QuestionImportService:
                 )
             )
 
-            if row_data['chapter_id']:
-                chapter_count[row_data['chapter_id']] = chapter_count.get(row_data['chapter_id'], 0) + 1
-
         success_count = len(validated_rows)
-
-        # ============ 第三阶段：更新 q_count_cache ============
-        if success_count > 0:
-            for chap_id, count in chapter_count.items():
-                await db.execute(
-                    update(QuestionChapter)
-                    .where(QuestionChapter.id == chap_id)
-                    .values(q_count_cache=QuestionChapter.q_count_cache + count)
-                )
-
-            await QuestionService._update_bank_q_count_cache_recursive(
-                db=db,
-                bank_id=obj.bank_id,
-                delta=success_count,
-            )
-
-            await db.flush()
 
         return BatchImportResult(
             total=len(obj.questions),
@@ -274,20 +256,24 @@ class QuestionImportService:
             await db.flush()
             material_id_map[key] = material.id
 
-        # ============ 第二阶段：构建题干去重索引 ============
-        existing_stmt = (
-            select(Question.id, Question.stem)
-            .join(QuestionPlacement, QuestionPlacement.question_id == Question.id)
-            .where(QuestionPlacement.bank_id == bank_id)
+        # ============ 第二阶段：构建全库复用索引 ============
+        row_types = {
+            TYPE_MAPPING.get(row.题型)
+            for row in question_rows
+            if TYPE_MAPPING.get(row.题型)
+        }
+        normalized_stems = {
+            QuestionImportService._normalize_stem(row.题目)
+            for row in question_rows
+            if QuestionImportService._normalize_stem(row.题目)
+        }
+        fingerprint_index, stem_fingerprint_index = await QuestionImportService._load_reuse_index(
+            db=db,
+            question_types={item for item in row_types if item},
+            normalized_stems=normalized_stems,
+            bank_id=bank_id,
         )
-        existing_rows = (await db.execute(existing_stmt)).all()
-        stem_to_question_id: dict[str, int] = {}
-        for q_id, q_stem in existing_rows:
-            normalized = QuestionImportService._normalize_stem(q_stem)
-            if normalized:
-                stem_to_question_id[normalized] = int(q_id)
 
-        # 获取当前题库的最大 sort_order
         max_order_stmt = select(func.coalesce(func.max(QuestionPlacement.sort_order), 0)).where(
             QuestionPlacement.bank_id == bank_id
         )
@@ -298,7 +284,10 @@ class QuestionImportService:
         results: list[ImportResultItem] = []
         success_count = 0
         dedup_count = 0
-        chapter_count: dict[int, int] = {}
+        existing_count = 0
+        skipped_count = 0
+        conflict_count = 0
+        batch_mounted_question_ids: set[int] = set()
 
         for row_index, row in enumerate(question_rows, start=2):
             try:
@@ -317,6 +306,7 @@ class QuestionImportService:
                     level1_name=row.一级目录,
                     level2_name=row.二级目录,
                     chapter_cache=chapter_cache,
+                    level3_name=row.三级目录,
                 )
 
                 # 选项
@@ -356,42 +346,113 @@ class QuestionImportService:
                                 material_ids = []
                             material_ids.append(material_id_map[mat_key])
 
-                # ============ 去重检查 ============
+                # ============ 内容复用检查 ============
                 stem = row.题目
                 normalized_stem = QuestionImportService._normalize_stem(stem)
-                existing_qid = stem_to_question_id.get(normalized_stem) if normalized_stem else None
+                fingerprint = QuestionImportService._build_question_fingerprint(
+                    question_type=question_type,
+                    stem=stem,
+                    options=options,
+                )
+                reuse_item = fingerprint_index.get(fingerprint)
+                has_same_stem = bool(
+                    normalized_stem
+                    and normalized_stem in stem_fingerprint_index
+                    and fingerprint not in stem_fingerprint_index[normalized_stem]
+                )
+                row_message = None
+                if has_same_stem:
+                    conflict_count += 1
+                    row_message = '题干相同但题型或选项不同，已按新题导入，请人工核对'
 
-                if existing_qid is not None:
-                    # 题目已存在，仅新增挂载
-                    db.add(QuestionPlacement(
+                if reuse_item is not None:
+                    answer_conflict = not QuestionImportService._same_answer(
+                        reuse_item.get('answer_data'),
+                        answer_data,
+                    )
+                    analysis_conflict = not QuestionImportService._same_text(
+                        reuse_item.get('analysis_content'),
+                        row.解析 or '暂无解析',
+                    )
+                    if answer_conflict or analysis_conflict:
+                        conflict_count += 1
+                        row_message = '复用已有题目，但答案或解析与已有版本不一致，请人工核对'
+
+                    existing_qid = int(reuse_item['question_id'])
+                    target_placement = await QuestionImportService._get_target_placement(
+                        db=db,
                         question_id=existing_qid,
+                        bank_id=bank_id,
+                    )
+
+                    if target_placement and existing_qid in batch_mounted_question_ids:
+                        skipped_count += 1
+                        success_count += 1
+                        await QuestionImportService._attach_materials(
+                            db=db,
+                            question_id=existing_qid,
+                            material_ids=material_ids,
+                        )
+                        results.append(ImportResultItem(
+                            row_number=row_index,
+                            success=True,
+                            question_id=existing_qid,
+                            error_message=row_message or '本批次重复题目，已复用首条记录',
+                            action='skipped',
+                        ))
+                        continue
+
+                    placement_item = UpsertQuestionPlacementItem(
                         bank_id=bank_id,
                         chapter_id=chapter_id,
                         sort_order=sort_order,
                         is_active=True,
                         score=default_score,
-                        review_status=10,
-                        created_by=user_id,
-                    ))
-                    await db.flush()
+                    )
+                    if target_placement:
+                        await QuestionImportService._update_existing_placement(
+                            db=db,
+                            placement=target_placement,
+                            item=placement_item,
+                            user_id=user_id,
+                        )
+                        existing_count += 1
+                        action = 'exists'
+                        message = row_message or '当前题库已存在，已更新挂载信息'
+                    else:
+                        db.add(QuestionPlacement(
+                            question_id=existing_qid,
+                            bank_id=bank_id,
+                            chapter_id=chapter_id,
+                            sort_order=sort_order,
+                            is_active=True,
+                            score=default_score,
+                            review_status=10,
+                            created_by=user_id,
+                        ))
+                        await db.flush()
+                        await QuestionService._update_placement_caches(
+                            db=db,
+                            placements=[placement_item],
+                            delta=1,
+                        )
+                        batch_mounted_question_ids.add(existing_qid)
+                        dedup_count += 1
+                        action = 'reused'
+                        message = row_message or '复用已有题目'
 
-                    # 材料关联
-                    if material_ids:
-                        for mid in material_ids:
-                            await db.execute(
-                                question_material_relation.insert().values(
-                                    question_id=existing_qid,
-                                    material_id=mid,
-                                    sort_order=0,
-                                )
-                            )
+                    await QuestionImportService._attach_materials(
+                        db=db,
+                        question_id=existing_qid,
+                        material_ids=material_ids,
+                    )
 
-                    dedup_count += 1
                     results.append(ImportResultItem(
                         row_number=row_index,
                         success=True,
                         question_id=existing_qid,
-                        error_message='去重复用',
+                        error_message=message,
+                        action=action,
                     ))
                 else:
                     # 新建题目
@@ -411,7 +472,7 @@ class QuestionImportService:
                     )]
                     analyses = [UpsertQuestionAnalysisItem(
                         answer_data=answer_data,
-                        content=row.解析 if row.解析 else '暂无解析',
+                        content=row.解析 or '暂无解析',
                         is_default=True,
                     )]
                     create_param = CreateQuestionParam(
@@ -423,19 +484,27 @@ class QuestionImportService:
                     )
                     question = await QuestionService.create(db=db, obj=create_param, user_id=user_id)
 
-                    # 加入去重索引
-                    if normalized_stem:
-                        stem_to_question_id[normalized_stem] = question.id
+                    QuestionImportService._remember_reuse_item(
+                        fingerprint_index=fingerprint_index,
+                        stem_fingerprint_index=stem_fingerprint_index,
+                        fingerprint=fingerprint,
+                        normalized_stem=normalized_stem,
+                        question_id=question.id,
+                        answer_data=answer_data,
+                        analysis_content=row.解析 or '暂无解析',
+                        bank_id=bank_id,
+                    )
+                    batch_mounted_question_ids.add(question.id)
 
                     results.append(ImportResultItem(
                         row_number=row_index,
                         success=True,
                         question_id=question.id,
+                        error_message=row_message,
+                        action='created',
                     ))
 
                 success_count += 1
-                if chapter_id:
-                    chapter_count[chapter_id] = chapter_count.get(chapter_id, 0) + 1
 
             except Exception as e:
                 log.warning(f'Excel 导入第 {row_index} 行失败: {e}')
@@ -446,20 +515,6 @@ class QuestionImportService:
                     error_message=str(e),
                 ))
 
-        # ============ 第四阶段：更新缓存计数 ============
-        new_count = success_count - dedup_count
-        if new_count > 0:
-            for chap_id, count in chapter_count.items():
-                await db.execute(
-                    update(QuestionChapter)
-                    .where(QuestionChapter.id == chap_id)
-                    .values(q_count_cache=QuestionChapter.q_count_cache + count)
-                )
-            await QuestionService._update_bank_q_count_cache_recursive(
-                db=db, bank_id=bank_id, delta=new_count,
-            )
-            await db.flush()
-
         fail_count = len(question_rows) - success_count
         return ExcelImportResult(
             total=len(question_rows),
@@ -468,7 +523,342 @@ class QuestionImportService:
             details=results,
             materials_count=len(material_id_map),
             dedup_count=dedup_count,
+            existing_count=existing_count,
+            skipped_count=skipped_count,
+            conflict_count=conflict_count,
         )
+
+    @staticmethod
+    async def _load_reuse_index(
+        *,
+        db: AsyncSession,
+        question_types: set[str],
+        normalized_stems: set[str],
+        bank_id: int,
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, set[str]]]:
+        """
+        加载全库题目复用索引
+
+        :param db: 数据库会话
+        :param question_types: 题型集合
+        :param normalized_stems: 本次导入题干集合
+        :param bank_id: 当前题库 ID
+        :return:
+        """
+        if not question_types or not normalized_stems:
+            return {}, {}
+
+        stem_stmt = select(Question.id, Question.stem).where(Question.type.in_(question_types))
+        stem_rows = (await db.execute(stem_stmt)).all()
+        candidate_ids: list[int] = []
+        for question_id, stem in stem_rows:
+            normalized_stem = QuestionImportService._normalize_stem(stem)
+            if normalized_stem in normalized_stems:
+                candidate_ids.append(int(question_id))
+
+        if not candidate_ids:
+            return {}, {}
+
+        detail_stmt = (
+            select(Question)
+            .where(Question.id.in_(candidate_ids))
+            .options(
+                selectinload(Question.options).joinedload(QuestionOption.content_ref),
+                selectinload(Question.analyses),
+                selectinload(Question.placements),
+            )
+        )
+        questions = (await db.execute(detail_stmt)).unique().scalars().all()
+        fingerprint_index: dict[str, dict[str, Any]] = {}
+        stem_fingerprint_index: dict[str, set[str]] = {}
+
+        for question in questions:
+            fingerprint = QuestionImportService._build_existing_question_fingerprint(question)
+            if not fingerprint:
+                continue
+
+            normalized_stem = QuestionImportService._normalize_stem(question.stem)
+            if normalized_stem:
+                stem_fingerprint_index.setdefault(normalized_stem, set()).add(fingerprint)
+
+            answer_data, analysis_content = QuestionImportService._pick_analysis_snapshot(question.analyses)
+            in_current_bank = any(item.bank_id == bank_id for item in question.placements or [])
+            reuse_item = {
+                'question_id': question.id,
+                'answer_data': answer_data,
+                'analysis_content': analysis_content,
+                'in_current_bank': in_current_bank,
+            }
+            old_item = fingerprint_index.get(fingerprint)
+            if QuestionImportService._should_replace_reuse_item(old_item, reuse_item):
+                fingerprint_index[fingerprint] = reuse_item
+
+        return fingerprint_index, stem_fingerprint_index
+
+    @staticmethod
+    def _should_replace_reuse_item(old_item: dict[str, Any] | None, new_item: dict[str, Any]) -> bool:
+        """
+        判断是否替换复用候选
+
+        :param old_item: 旧候选
+        :param new_item: 新候选
+        :return:
+        """
+        if old_item is None:
+            return True
+
+        if not old_item.get('in_current_bank') and new_item.get('in_current_bank'):
+            return True
+
+        if old_item.get('in_current_bank') and not new_item.get('in_current_bank'):
+            return False
+
+        return int(new_item['question_id']) < int(old_item['question_id'])
+
+    @staticmethod
+    def _remember_reuse_item(
+        *,
+        fingerprint_index: dict[str, dict[str, Any]],
+        stem_fingerprint_index: dict[str, set[str]],
+        fingerprint: str,
+        normalized_stem: str,
+        question_id: int,
+        answer_data: dict,
+        analysis_content: str,
+        bank_id: int,
+    ) -> None:
+        """
+        记录本次新建题用于后续行复用
+
+        :param fingerprint_index: 指纹索引
+        :param stem_fingerprint_index: 题干索引
+        :param fingerprint: 题目指纹
+        :param normalized_stem: 规范化题干
+        :param question_id: 题目 ID
+        :param answer_data: 答案数据
+        :param analysis_content: 解析内容
+        :param bank_id: 题库 ID
+        """
+        fingerprint_index[fingerprint] = {
+            'question_id': question_id,
+            'answer_data': answer_data,
+            'analysis_content': analysis_content,
+            'in_current_bank': True,
+            'bank_id': bank_id,
+        }
+        if normalized_stem:
+            stem_fingerprint_index.setdefault(normalized_stem, set()).add(fingerprint)
+
+    @staticmethod
+    def _build_existing_question_fingerprint(question: Question) -> str:
+        """
+        构建已有题目指纹
+
+        :param question: 题目对象
+        :return:
+        """
+        options: list[UpsertQuestionOptionItem] = []
+        for option in question.options or []:
+            if not option.is_active:
+                continue
+            if not option.content_ref:
+                continue
+            options.append(UpsertQuestionOptionItem(
+                option_code=option.option_code,
+                content=option.content_ref.content,
+                sort_order=option.sort_order,
+                is_active=option.is_active,
+            ))
+
+        return QuestionImportService._build_question_fingerprint(
+            question_type=question.type,
+            stem=question.stem,
+            options=options,
+        )
+
+    @staticmethod
+    def _build_question_fingerprint(
+        *,
+        question_type: str,
+        stem: str,
+        options: list[UpsertQuestionOptionItem],
+    ) -> str:
+        """
+        构建题目内容指纹
+
+        :param question_type: 题型
+        :param stem: 题干
+        :param options: 选项列表
+        :return:
+        """
+        normalized_stem = QuestionImportService._normalize_stem(stem)
+        option_parts: list[str] = []
+        sorted_options = sorted(options, key=lambda item: item.option_code.strip().upper())
+        for option in sorted_options:
+            option_code = option.option_code.strip().upper()
+            option_content = QuestionImportService._normalize_content_text(option.content)
+            option_parts.append(f'{option_code}:{option_content}')
+
+        options_text = '|'.join(option_parts)
+        return f'{question_type}|{normalized_stem}|{options_text}'
+
+    @staticmethod
+    def _pick_analysis_snapshot(
+        analyses: list[QuestionAnalysis] | None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """
+        选择默认解析快照
+
+        :param analyses: 解析列表
+        :return:
+        """
+        if not analyses:
+            return None, None
+
+        default_items = [item for item in analyses if item.is_default]
+        candidates = default_items or analyses
+        analysis = min(candidates, key=lambda item: item.id)
+        return analysis.answer_data, analysis.content
+
+    @staticmethod
+    async def _get_target_placement(
+        *,
+        db: AsyncSession,
+        question_id: int,
+        bank_id: int,
+    ) -> QuestionPlacement | None:
+        """
+        获取当前题库挂载
+
+        :param db: 数据库会话
+        :param question_id: 题目 ID
+        :param bank_id: 题库 ID
+        :return:
+        """
+        stmt = select(QuestionPlacement).where(
+            QuestionPlacement.question_id == question_id,
+            QuestionPlacement.bank_id == bank_id,
+        )
+        return (await db.execute(stmt)).scalars().first()
+
+    @staticmethod
+    async def _update_existing_placement(
+        *,
+        db: AsyncSession,
+        placement: QuestionPlacement,
+        item: UpsertQuestionPlacementItem,
+        user_id: int,
+    ) -> None:
+        """
+        更新已有挂载并修正章节缓存
+
+        :param db: 数据库会话
+        :param placement: 已有挂载
+        :param item: 新挂载信息
+        :param user_id: 用户 ID
+        """
+        old_chapter_id = placement.chapter_id
+        new_chapter_id = item.chapter_id
+        if old_chapter_id != new_chapter_id:
+            if old_chapter_id:
+                await db.execute(
+                    update(QuestionChapter)
+                    .where(QuestionChapter.id == old_chapter_id)
+                    .values(q_count_cache=QuestionChapter.q_count_cache - 1)
+                )
+            if new_chapter_id:
+                await db.execute(
+                    update(QuestionChapter)
+                    .where(QuestionChapter.id == new_chapter_id)
+                    .values(q_count_cache=QuestionChapter.q_count_cache + 1)
+                )
+
+        placement.chapter_id = new_chapter_id
+        placement.sort_order = item.sort_order
+        placement.is_active = item.is_active
+        placement.score = item.score
+        placement.review_status = item.review_status
+        placement.scene_mask = item.scene_mask
+        placement.updated_by = user_id
+        await db.flush()
+
+    @staticmethod
+    async def _attach_materials(
+        *,
+        db: AsyncSession,
+        question_id: int,
+        material_ids: list[int] | None,
+    ) -> None:
+        """
+        追加题目材料关联
+
+        :param db: 数据库会话
+        :param question_id: 题目 ID
+        :param material_ids: 材料 ID 列表
+        """
+        if not material_ids:
+            return
+
+        existing_stmt = select(question_material_relation.c.material_id).where(
+            question_material_relation.c.question_id == question_id,
+            question_material_relation.c.material_id.in_(material_ids),
+        )
+        existing_ids = set((await db.execute(existing_stmt)).scalars().all())
+        for material_id in material_ids:
+            if material_id in existing_ids:
+                continue
+            await db.execute(
+                question_material_relation.insert().values(
+                    question_id=question_id,
+                    material_id=material_id,
+                    sort_order=0,
+                )
+            )
+        await db.flush()
+
+    @staticmethod
+    def _same_answer(old_answer: Any, new_answer: dict) -> bool:
+        """
+        比较答案是否一致
+
+        :param old_answer: 已有答案
+        :param new_answer: 新答案
+        :return:
+        """
+        if old_answer is None:
+            return True
+        return old_answer == new_answer
+
+    @staticmethod
+    def _same_text(old_text: Any, new_text: str) -> bool:
+        """
+        比较文本是否一致
+
+        :param old_text: 已有文本
+        :param new_text: 新文本
+        :return:
+        """
+        if old_text is None:
+            return True
+        old_normalized = QuestionImportService._normalize_content_text(old_text)
+        new_normalized = QuestionImportService._normalize_content_text(new_text)
+        return old_normalized == new_normalized
+
+    @staticmethod
+    def _normalize_content_text(value: Any) -> str:
+        """
+        规范化内容文本
+
+        :param value: 原始内容
+        :return:
+        """
+        if value is None:
+            return ''
+        text = re.sub(r'<[^>]+>', '', str(value))
+        text = text.replace('&nbsp;', ' ')
+        text = re.sub(r'\s+', '', text)
+        text = re.sub(r'[（(）)【】\[\]{}《》""。，、；：？！]', '', text)
+        return text.strip()
 
     @staticmethod
     async def parse_excel_file(
@@ -486,6 +876,7 @@ class QuestionImportService:
         import io
 
         import pandas as pd
+
         from starlette.concurrency import run_in_threadpool
 
         if not filename or not filename.lower().endswith(('.xlsx', '.xls')):
@@ -505,7 +896,7 @@ class QuestionImportService:
             '序号': 'ID', '题型': '题型', '题目': '题目',
             '选项A': '选项A', '选项B': '选项B', '选项C': '选项C', '选项D': '选项D',
             '答案': '答案', '解析': '解析', '难度': '难度', '分数': '分数',
-            '一级目录': '一级目录', '二级目录': '二级目录',
+            '一级目录': '一级目录', '二级目录': '二级目录', '三级目录': '三级目录',
             '知识点': '知识点', '材料编号': '材料编号',
         }
         for _, pandas_row in df_questions.iterrows():
@@ -541,7 +932,7 @@ class QuestionImportService:
                         材料内容=str(mat_content),
                     ))
         except Exception:
-            pass
+            log.warning('读取材料 sheet 失败，跳过材料导入', exc_info=True)
 
         return question_rows, material_rows
 
@@ -563,14 +954,14 @@ class QuestionImportService:
             ws1.append([
                 '序号', '题型', '题目', '选项A', '选项B', '选项C', '选项D',
                 '答案', '解析', '难度', '分数', '一级目录', '二级目录',
-                '知识点', '材料编号',
+                '三级目录', '知识点', '材料编号',
             ])
             ws1.append([
                 1, '单选', '下列关于宪法的说法，正确的是（ ）',
                 '宪法具有最高法律效力', '宪法由全国人大常委会制定',
                 '宪法修改由国务院提议', '宪法不具有直接法律效力',
                 'A', '根据《宪法》规定，宪法具有最高法律效力。',
-                '中等', 1, '常识判断', None, '宪法学', None,
+                '中等', 1, '常识判断', '宪法基础', None, '宪法学', None,
             ])
 
             # Sheet2: 材料
@@ -632,10 +1023,21 @@ class QuestionImportService:
         for q_data in questions_data:
             # 2a. 章节处理
             chapter_id = None
-            c_name = q_data.get('chapter_name')
-            if c_name:
+            level1_name = (
+                q_data.get('chapter_level1_name')
+                or q_data.get('一级目录')
+                or q_data.get('chapter_name')
+            )
+            level2_name = q_data.get('chapter_level2_name') or q_data.get('二级目录')
+            level3_name = q_data.get('chapter_level3_name') or q_data.get('三级目录')
+            if level1_name:
                 chapter_id = await QuestionService._get_or_create_chapter(
-                    db=db, bank_id=bank_id, level1_name=c_name, level2_name=None, chapter_cache=chapter_cache,
+                    db=db,
+                    bank_id=bank_id,
+                    level1_name=level1_name,
+                    level2_name=level2_name,
+                    chapter_cache=chapter_cache,
+                    level3_name=level3_name,
                 )
 
             # 2b. 基本字段
@@ -713,13 +1115,6 @@ class QuestionImportService:
             await question_service.create(db=db, obj=create_param, user_id=user_id)
             success_count += 1
 
-        # -------- 3. 更新题库 q_count_cache --------
-        if success_count > 0:
-            await QuestionService._update_bank_q_count_cache_recursive(
-                db=db, bank_id=bank_id, delta=success_count,
-            )
-            await db.flush()
-
         return {
             'materials_count': len(materials_data),
             'questions_count': success_count,
@@ -741,7 +1136,7 @@ class QuestionImportService:
             return ''
         text = re.sub(r'<[^>]+>', '', stem)
         text = re.sub(r'\s+', '', text)
-        text = re.sub(r'[（(）)【】\[\]{}《》""''。，、；：？！]', '', text)
+        text = re.sub(r'[（(）)【】\[\]{}《》""。，、；：？！]', '', text)
         return text.strip()
 
     @staticmethod
@@ -767,56 +1162,8 @@ class QuestionImportService:
 
         return {'correct': answer_str}
 
-    @staticmethod
-    def _extract_option_codes(text: str | list[str]) -> list[str]:
-        """
-        提取选项编码
-
-        :param text: 答案文本
-        :return:
-        """
-        if isinstance(text, list):
-            raw = ','.join([str(item) for item in text if str(item).strip()])
-        else:
-            raw = str(text or '')
-
-        raw = raw.strip().upper()
-        if not raw:
-            return []
-
-        parts = re.split(r'[\s,，、|]+', raw)
-        codes: list[str] = []
-        for part in parts:
-            token = part.strip()
-            if not token:
-                continue
-            if token.isalpha():
-                codes.extend(list(token)) if len(token) > 1 else codes.append(token)
-                continue
-            letters = [ch for ch in token if ch.isalpha()]
-            if not letters:
-                continue
-            if len(letters) == 1:
-                codes.append(letters[0])
-            else:
-                codes.extend(letters)
-
-        return codes
-
-    @staticmethod
-    def _split_answer_text(answer_str: str) -> list[str]:
-        """
-        分割答案文本
-
-        :param answer_str: 答案字符串
-        :return:
-        """
-        if not answer_str:
-            return []
-        text = str(answer_str)
-        for sep in ['\r\n', '\n', '\r', '，', ';', '；', '|', '\\', '、']:
-            text = text.replace(sep, ',')
-        return [item.strip() for item in text.split(',') if item.strip()]
+    _extract_option_codes = staticmethod(extract_option_codes)
+    _split_answer_text = staticmethod(split_answer_text)
 
 
 question_import_service: QuestionImportService = QuestionImportService()

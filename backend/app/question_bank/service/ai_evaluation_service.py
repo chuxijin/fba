@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 import json
 import re
+
 from collections.abc import Iterable, Sequence
-from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from html import unescape
 from typing import Any
 
@@ -22,6 +22,7 @@ from backend.plugin.ai.model.model import AIModel
 from backend.plugin.ai.model.provider import AIProvider
 from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
 from backend.plugin.ai.service.chat_service import ai_chat_service
+from backend.utils.timezone import timezone
 
 SUBJECTIVE_QUESTION_TYPES = {'shortAnswer'}
 AI_DEFAULT_MODEL_NAME = 'gpt-5.4'
@@ -416,7 +417,7 @@ class PracticeAIEvaluationService:
         :return:
         """
         await practice_ai_evaluation_dao.mark_record_not_latest(db=db, practice_record_id=record.id)
-        now = datetime.now()
+        now = timezone.now()
         return await practice_ai_evaluation_dao.create(
             db=db,
             obj={
@@ -546,7 +547,7 @@ class PracticeAIEvaluationService:
 
         for chunk in cls._chunk_items(prepared_items, QUESTION_EVAL_CHUNK_SIZE):
             prompt_items = [item['prompt_item'] for item in chunk]
-            started_at = datetime.now()
+            started_at = timezone.now()
             payload = await cls._invoke_json_chat(
                 db=db,
                 provider=provider,
@@ -554,7 +555,7 @@ class PracticeAIEvaluationService:
                 messages=cls._build_question_eval_messages(prompt_items),
                 max_tokens=2500,
             )
-            finished_at = datetime.now()
+            finished_at = timezone.now()
             evaluations = payload.get('evaluations')
             if not isinstance(evaluations, list):
                 raise errors.ServerError(msg='AI 判分返回格式异常，缺少 evaluations 列表')
@@ -920,7 +921,7 @@ class PracticeAIEvaluationService:
             'total_score': str(session_detail.total_score or Decimal('0')),
             'wrong_items': wrong_items,
         }
-        started_at = datetime.now()
+        started_at = timezone.now()
         payload = await cls._invoke_json_chat(
             db=db,
             provider=provider,
@@ -928,7 +929,7 @@ class PracticeAIEvaluationService:
             messages=cls._build_session_summary_messages(request_payload),
             max_tokens=2200,
         )
-        finished_at = datetime.now()
+        finished_at = timezone.now()
         summary_text = str(payload.get('overview') or '').strip() or None
         result_payload = {
             'overview': payload.get('overview'),

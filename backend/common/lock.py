@@ -6,7 +6,8 @@ import uuid
 from typing import Optional
 
 from redis.asyncio import Redis
-from backend.common.log import log # Import log
+
+from backend.common.log import log  # Import log
 
 
 class AccountMutex:

@@ -9,17 +9,19 @@ import mimetypes
 import random
 import re
 import time
+
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.common.log import log
 from backend.common.cache.local import local_cache_manager
+from backend.common.log import log
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 from backend.plugin.oss.service.providers.base import ProviderUploadContext, StorageProvider
@@ -434,7 +436,7 @@ class QbankImageMirror:
             return str(cached['url']), True
 
         binary, content_type = await self._download_binary(client, source_url)
-        image_hash = hashlib.sha1(source_url.encode('utf-8')).hexdigest()[:10]
+        image_hash = hashlib.sha256(source_url.encode('utf-8')).hexdigest()[:10]
         extension = self._guess_extension(source_url, content_type)
 
         safe_bank = self._sanitize_segment(bank_code, default='bank')

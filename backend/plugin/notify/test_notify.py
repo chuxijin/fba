@@ -5,6 +5,7 @@ import json
 import requests
 
 BASE_URL = "http://127.0.0.1:8000/api/v1/notify"
+REQUEST_TIMEOUT = 10
 
 
 def test_send_basic():
@@ -17,6 +18,7 @@ def test_send_basic():
                 "title": "测试通知",
                 "content": "这是一条来自 notify 插件的测试通知，如果你看到了说明 Server 酱通道正常工作！",
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
@@ -35,6 +37,7 @@ def test_send_with_tags():
                 "content": "这是一条带 tags 的测试通知",
                 "options": {"tags": "测试|通知"},
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
@@ -53,6 +56,7 @@ def test_send_specify_channel():
                 "content": "这条通知指定了 serverchan 渠道",
                 "channels": ["serverchan"],
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")

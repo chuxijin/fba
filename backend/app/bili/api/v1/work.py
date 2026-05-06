@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Path, Query
+from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, Field
 
 from backend.app.bili.crud import bili_work_dao

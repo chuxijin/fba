@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Any, List
+from typing import Annotated, Any, List
 
 from fastapi import APIRouter, Depends
 
+from backend.app.mcp.schema.resource import McpSearchResult, SearchResourceParam
 from backend.app.mcp.service.mcp_server_builder import get_registered_tools
-from backend.app.mcp.schema.resource import SearchResourceParam, McpSearchResult
 from backend.app.mcp.service.resource_search_service import perform_resource_search
-from backend.common.response.response_schema import ResponseModel, ResponseBase, ResponseSchemaModel, response_base
-
+from backend.common.response.response_schema import ResponseSchemaModel, response_base
 
 router = APIRouter()
 
@@ -27,7 +26,7 @@ async def mcp_info() -> dict[str, str]:
 
 @router.post("/search", summary="搜索资源", response_model=ResponseSchemaModel[List[McpSearchResult]])
 async def search_mcp_resources(
-    search_param: SearchResourceParam = Depends(),
+    search_param: Annotated[SearchResourceParam, Depends()],
 ) -> ResponseSchemaModel[List[McpSearchResult]]:
     """根据查询参数搜索 MCP 资源库"""
     results = await perform_resource_search(
@@ -37,5 +36,4 @@ async def search_mcp_resources(
         enable_external_search=search_param.external_search,
     )
     return response_base.success(data=results)
-
 

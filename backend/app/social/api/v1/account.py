@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Path, Query, Request
 
 from backend.app.social.schema.account import (
     CreateSocialAccountParam,
-    UpdateSocialAccountParam,
     GetSocialAccountDetail,
+    UpdateSocialAccountParam,
 )
 from backend.app.social.service.account_service import SocialAccountService
-from backend.common.pagination import DependsPagination, PageData, _CustomPageParams, paging_data
+from backend.common.pagination import DependsPagination, _CustomPageParams, paging_data
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession

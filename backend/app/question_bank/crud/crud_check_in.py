@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import UserCheckIn
+from backend.utils.timezone import timezone
 
 
 class CRUDCheckIn(CRUDPlus[UserCheckIn]):
@@ -33,7 +34,7 @@ class CRUDCheckIn(CRUDPlus[UserCheckIn]):
         :param user_id: 用户 ID
         :return:
         """
-        today = date.today()
+        today = timezone.now().date()
         record = await self.get_by_user_and_date(db, user_id, today)
         return record is not None
 
@@ -49,7 +50,7 @@ class CRUDCheckIn(CRUDPlus[UserCheckIn]):
         :param practice_duration: 当日练习时长
         :return:
         """
-        today = date.today()
+        today = timezone.now().date()
         existing = await self.get_by_user_and_date(db, user_id, today)
 
         if existing:
@@ -95,7 +96,7 @@ class CRUDCheckIn(CRUDPlus[UserCheckIn]):
             return 0
 
         streak = 0
-        current_date = date.today()
+        current_date = timezone.now().date()
 
         for record in records:
             if record.check_date == current_date:

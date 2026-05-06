@@ -7,6 +7,7 @@ import html
 import os
 import re
 import sys
+
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -14,8 +15,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import httpx
+
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select, text as sa_text, update as sa_update
+from sqlalchemy import func, select
+from sqlalchemy import text as sa_text
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

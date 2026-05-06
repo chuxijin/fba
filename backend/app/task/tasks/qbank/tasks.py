@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """题库相关定时任务"""
-import asyncio
 import logging
-from datetime import date, datetime, timedelta
+
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import sqlalchemy as sa
+
 from sqlalchemy import func, select
 
 from backend.app.question_bank.crud.crud_daily_rank import daily_rank_dao
 from backend.app.question_bank.model import PracticeRecord, UserAccount
 from backend.app.task.celery import celery_app
 from backend.database.db import async_db_session
+from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +38,10 @@ async def update_daily_user_ranks() -> dict:
 async def _update_daily_user_ranks() -> dict:
     """更新每日用户排名的异步实现"""
     async with async_db_session() as db:
-        yesterday = date.today() - timedelta(days=1)
+        today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
         yesterday_start = datetime.combine(yesterday, datetime.min.time())
-        today_start = datetime.combine(date.today(), datetime.min.time())
+        today_start = datetime.combine(today, datetime.min.time())
 
         stmt = (
             select(

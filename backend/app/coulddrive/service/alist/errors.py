@@ -1,5 +1,6 @@
-from functools import wraps
 import inspect
+
+from functools import wraps
 from typing import Any, Optional
 
 ERRORS = {

@@ -58,6 +58,26 @@ def normalize_study_domain_code(value: Any) -> str:
     return STUDY_DOMAIN_DEFAULT_CODE
 
 
+def validate_study_domain_code(value: Any) -> str:
+    """
+    校验领域编码
+
+    :param value: 原始领域值
+    :return:
+    """
+    if not isinstance(value, str):
+        raise ValueError('学习领域编码不能为空')
+
+    text = value.strip().lower()
+    if not text:
+        raise ValueError('学习领域编码不能为空')
+    if text not in STUDY_DOMAIN_CONFIG:
+        allowed_codes = '、'.join(STUDY_DOMAIN_CONFIG.keys())
+        raise ValueError(f'无效的学习领域编码: {value}，允许值: {allowed_codes}')
+
+    return text
+
+
 def get_study_domain_label(code: str) -> str:
     """
     获取领域名称

@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, timedelta
 
-from sqlalchemy import bindparam, case, cast, delete, func, literal_column, or_, select, update as sa_update
+from sqlalchemy import bindparam, case, cast, delete, func, literal_column, or_, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from backend.app.question_bank.model.bank import QuestionBank
 from backend.app.question_bank.model.question import Question, QuestionPlacement
 from backend.common.enums import DataBaseType
 from backend.core.conf import settings
+from backend.utils.timezone import timezone
 
 
 class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
@@ -244,7 +246,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         """
         update_data: dict = {'is_pinned': is_pinned}
         if is_pinned:
-            update_data['pinned_time'] = datetime.now()
+            update_data['pinned_time'] = timezone.now()
         else:
             update_data['pinned_time'] = None
 
@@ -297,7 +299,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 )
             return
 
-        current_time = datetime.now()
+        current_time = timezone.now()
         normalized_rows: list[dict] = []
         for row in rows:
             normalized_row = dict(row)
@@ -465,7 +467,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         :param user_id: 用户 ID
         :return:
         """
-        now = datetime.now()
+        now = timezone.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_ago = today_start - timedelta(days=7)
 
@@ -686,7 +688,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
 
         if recent_days is not None and recent_days > 0:
             stmt = stmt.where(
-                WrongQuestionBook.last_wrong_time >= datetime.now() - timedelta(days=recent_days)
+                WrongQuestionBook.last_wrong_time >= timezone.now() - timedelta(days=recent_days)
             )
 
         rows = (await db.execute(stmt)).scalars().all()

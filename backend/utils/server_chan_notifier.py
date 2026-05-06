@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import httpx
-from backend.core.conf import settings
-from backend.common.log import log
 from typing import Literal
+
+import httpx
+
+from backend.common.log import log
+from backend.core.conf import settings
 
 
 class ServerChanNotifier:
@@ -94,8 +96,8 @@ if __name__ == "__main__":
     # 在运行此示例之前，请确保已在 backend/core/conf.py 中配置 SERVER_CHAN_SEND_KEY。
 
     import asyncio
-    import os
     import sys
+
     from pathlib import Path
 
     # 确保项目根目录在 sys.path 中，以便可以导入 backend 模块

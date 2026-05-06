@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import hashlib
+import hmac
 
 
 def verify_agiso_signature(json_str: str, timestamp: str, sign: str, app_secret: str) -> bool:
@@ -14,8 +15,8 @@ def verify_agiso_signature(json_str: str, timestamp: str, sign: str, app_secret:
     :return:
     """
     sign_str = f'{app_secret}json{json_str}timestamp{timestamp}{app_secret}'
-    calculated_sign = hashlib.md5(sign_str.encode('utf-8')).hexdigest()
-    return calculated_sign.lower() == sign.lower()
+    calculated_sign = hashlib.md5(sign_str.encode('utf-8'), usedforsecurity=False).hexdigest()
+    return hmac.compare_digest(calculated_sign.lower(), sign.lower())
 
 
 def generate_agiso_signature(json_str: str, timestamp: str, app_secret: str) -> str:
@@ -28,4 +29,4 @@ def generate_agiso_signature(json_str: str, timestamp: str, app_secret: str) -> 
     :return:
     """
     sign_str = f'{app_secret}json{json_str}timestamp{timestamp}{app_secret}'
-    return hashlib.md5(sign_str.encode('utf-8')).hexdigest()
+    return hashlib.md5(sign_str.encode('utf-8'), usedforsecurity=False).hexdigest()

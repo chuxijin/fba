@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from typing import Any
 
-from pydantic import ConfigDict, Field, model_validator
-from typing_extensions import Self
+from pydantic import ConfigDict, Field
 
 from backend.app.job.schema.internship_application import InternshipApplicationSchema
 from backend.common.pagination import _CustomPageParams

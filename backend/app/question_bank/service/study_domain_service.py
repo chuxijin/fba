@@ -20,7 +20,9 @@ from backend.app.question_bank.service.study_domain_config import (
     get_study_domain_label,
     get_study_domain_root_codes,
     normalize_study_domain_code,
+    validate_study_domain_code,
 )
+from backend.common.exception import errors
 from backend.utils.build_tree import get_tree_data
 
 
@@ -36,6 +38,19 @@ class StudyDomainQuestionFilter:
 
 class StudyDomainService:
     """学习领域服务类"""
+
+    @staticmethod
+    def _validate_code(code: str) -> str:
+        """
+        校验领域编码
+
+        :param code: 领域编码
+        :return:
+        """
+        try:
+            return validate_study_domain_code(code)
+        except ValueError as exc:
+            raise errors.RequestError(msg=str(exc)) from None
 
     @staticmethod
     def _filter_root_nodes(
@@ -125,7 +140,7 @@ class StudyDomainService:
         :param code: 领域编码
         :return:
         """
-        normalized_code = normalize_study_domain_code(code)
+        normalized_code = cls._validate_code(code)
         root_codes = get_study_domain_root_codes(normalized_code)
 
         categories = await category_dao.get_all(
@@ -200,6 +215,23 @@ class StudyDomainService:
             bank_ids=bank_ids,
             knowledge_names=knowledge_names,
         )
+
+    @classmethod
+    async def get_product_catalog_category_ids(
+        cls,
+        *,
+        db: AsyncSession,
+        code: str,
+    ) -> set[int]:
+        """
+        获取领域题库目录分类 ID 集合
+
+        :param db: 数据库会话
+        :param code: 领域编码
+        :return:
+        """
+        scope = await cls.get_scope(db=db, code=code)
+        return cls._collect_category_ids(scope.product_catalog_roots)
 
 
 study_domain_service = StudyDomainService()

@@ -1,40 +1,85 @@
+# === IDE / 编辑器 ===
 .idea/
 .vscode/
 .cursor/
+.claude/
+.serena/
+.agents/
+.ace-tool/
+.superpowers/
+superpowers/
+.logs/
+
+# === OS 生成文件 ===
 .DS_Store
+Thumbs.db
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
 venv/
 .venv/
 .python-version
 .ruff_cache/
 .pytest_cache/
-backend/dist/
-frontend/apps/dist/
-frontend/apps/node_modules/
-config.json
+.mypy_cache/
+.mypy_cache_*/
+htmlcov/
+.coverage
+*.pyo
+
+# === Node.js ===
+node_modules/
+.pnpm-store/
 dist/
 build/
-.__pycache__/
-node_modules/
+
+# === Flutter / Mobile ===
 android/
 ios/
 linux/
 macos/
 web/
 windows/
-.claude/
-.serena/
-.agents/
-.logs/
+
+# === 项目特定 ===
+config.json
 *-firebase-adminsdk-*.json
 static/
-frontend/
-.pnpm-store/
-_ref/
-backend/scripts/chinese-xinhua/
 logs/
-.superpowers/
-superpowers/
-.ace-tool/
 data/
-debug_materials.py
+uploads/
+_ref/
+
+# 前端（单独管理或不需要跟踪）
+frontend/
+
+# 后端构建/脚本产物
+backend/dist/
+backend/scripts/chinese-xinhua/
 backend/scripts/output/
+
+# 调试/测试脚本
+debug_materials.py
+status.json
+claude.md
+
+# CI/质量检查工具缓存
+.playwright-mcp/
+.schemas/
+
+# 小程序临时文件
+mini/_tmp_*
+mini/dist/
+
+# 质量检查
+requirements-quality.txt
+scripts/check-quality.ps1
+backend/scripts/quality.sh
+.github/workflows/quality.yml
+
+# uv lock 文件（如需跟踪可移除此行）
+# uv.lock

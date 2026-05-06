@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Any
 
 from sqlalchemy import Select
 
 from backend.common.exception import errors
 from backend.database.db import async_db_session
-from backend.plugin.app_auth.crud.crud_version import CRUDVersion, version_dao
-from backend.plugin.app_auth.model.version import AppVersion
+from backend.plugin.app_auth.crud.crud_version import version_dao
 from backend.plugin.app_auth.schema.version import CreateVersionParam, GetVersionDetail, UpdateVersionParam
 
 

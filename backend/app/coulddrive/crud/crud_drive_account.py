@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 from sqlalchemy import Select, and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.user import DriveAccount
 from backend.app.coulddrive.schema.user import CreateDriveAccountParam, UpdateDriveAccountParam
+
 if TYPE_CHECKING:
     from backend.app.coulddrive.schema.user import BaseUserInfo
 
@@ -94,7 +95,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         """
         stmt = select(self.model).where(
             self.model.type == type, 
-            self.model.is_valid == True
+            self.model.is_valid.is_(True)
         ).options(noload(DriveAccount.sync_configs), noload(DriveAccount.resources))
         result = await db.execute(stmt)
         return result.scalars().all()

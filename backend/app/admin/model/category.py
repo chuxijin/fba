@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 import sqlalchemy as sa
+
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

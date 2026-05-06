@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from enum import Enum
 from enum import IntEnum as SourceIntEnum
 from typing import Any, TypeVar
@@ -11,17 +13,20 @@ class _EnumBase:
     @classmethod
     def get_member_keys(cls) -> list[str]:
         """获取枚举成员名称列表"""
-        return list(cls.__members__.keys())
+        members = getattr(cls, '__members__')
+        return list(members.keys())
 
     @classmethod
-    def get_member_values(cls) -> list:
+    def get_member_values(cls) -> list[Any]:
         """获取枚举成员值列表"""
-        return [item.value for item in cls.__members__.values()]
+        members = getattr(cls, '__members__')
+        return [item.value for item in members.values()]
 
     @classmethod
     def get_member_dict(cls) -> dict[str, Any]:
         """获取枚举成员字典"""
-        return {name: item.value for name, item in cls.__members__.items()}
+        members = getattr(cls, '__members__')
+        return {name: item.value for name, item in members.items()}
 
 
 class IntEnum(_EnumBase, SourceIntEnum):

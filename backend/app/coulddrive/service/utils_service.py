@@ -8,18 +8,21 @@
 """
 
 # 标准库
-from hashlib import md5
 import json
 import math
-import string
-import time
-import struct
-import random
 import os
+import random
 import re
-from functools import partial
+import string
+import struct
+import time
+
 from datetime import datetime
-from typing import Union, Optional, Any, Dict
+from functools import partial
+from hashlib import md5
+from typing import Any, Union
+
+from backend.utils.timezone import timezone
 
 # ==================== JSON处理函数 ====================
 
@@ -155,26 +158,24 @@ def format_time(time_input: Union[int, float, str]) -> str:
         >>> format_time("2021-04-03T18:00:00")  # ISO 8601
         '2021-04-03 18:00:00'
     """
-    from datetime import datetime
-    
     try:
         if isinstance(time_input, (int, float)):
             # 处理时间戳（秒级或毫秒级）
             if time_input > 9999999999:  # 毫秒级时间戳
                 time_input = time_input / 1000
-            return datetime.fromtimestamp(time_input).strftime("%Y-%m-%d %H:%M:%S")
+            return datetime.fromtimestamp(time_input, tz=timezone.tz_info).strftime("%Y-%m-%d %H:%M:%S")
         elif isinstance(time_input, str):
             # 处理日期时间字符串
             # 尝试解析ISO 8601格式
             if "T" in time_input:
                 try:
-                    dt = datetime.strptime(time_input, "%Y-%m-%dT%H:%M:%S")
+                    dt = datetime.strptime(time_input, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.tz_info)
                     return dt.strftime("%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     pass
             else:
                 try:
-                    dt = datetime.strptime(time_input, "%Y-%m-%d %H:%M:%S")
+                    dt = datetime.strptime(time_input, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.tz_info)
                     return dt.strftime("%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     pass
@@ -200,7 +201,7 @@ def calu_md5(buf: Union[str, bytes], encoding="utf-8") -> str:
 
     if isinstance(buf, str):
         buf = buf.encode(encoding)
-    return md5(buf).hexdigest()
+    return md5(buf, usedforsecurity=False).hexdigest()
         
 def normalize_path(path: str) -> str:
     """

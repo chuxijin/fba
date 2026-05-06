@@ -8,7 +8,6 @@ from backend.app.question_bank.crud.crud_question_favorite import question_favor
 from backend.app.question_bank.schema.favorite import (
     ClearFolderParam,
     CreateQuestionFavoriteParam,
-    FavoriteStatistics,
     GetQuestionFavoriteDetail,
     GetQuestionFavoriteListItem,
     UpdateQuestionFavoriteParam,

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database.db import async_db_session
 from backend.plugin.app_auth.model.application import AppApplication
@@ -70,7 +69,7 @@ class StatisticsService:
             orders_count = orders_result.scalar() or 0
 
             # 套餐总数
-            packages_stmt = select(func.count(AppPackage.id)).where(AppPackage.is_active == True)
+            packages_stmt = select(func.count(AppPackage.id)).where(AppPackage.is_active.is_(True))
             packages_result = await db.execute(packages_stmt)
             packages_count = packages_result.scalar() or 0
 

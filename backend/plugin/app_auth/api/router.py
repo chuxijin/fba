@@ -2,8 +2,17 @@
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
-from backend.plugin.app_auth.api.v1 import application, authorization, device, order, package, redeem_code, statistics, version
 from backend.core.conf import settings
+from backend.plugin.app_auth.api.v1 import (
+    application,
+    authorization,
+    device,
+    order,
+    package,
+    redeem_code,
+    statistics,
+    version,
+)
 
 v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH)
 

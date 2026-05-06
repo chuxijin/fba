@@ -8,7 +8,6 @@ from backend.common.exception import errors
 from backend.plugin.ai.enums import AIProviderType
 
 if TYPE_CHECKING:
-    from openai import AsyncOpenAI
     from pydantic_ai.models.anthropic import AnthropicModel
     from pydantic_ai.models.bedrock import BedrockConverseModel
     from pydantic_ai.models.cerebras import CerebrasModel

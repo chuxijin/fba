@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
+from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 

@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.question_bank.model import PracticeRecord, PracticeSession, SessionQuestion
+from backend.app.question_bank.model import PracticeSession, SessionQuestion
 from backend.app.question_bank.model.question import QuestionPlacement
 
 

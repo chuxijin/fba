@@ -13,7 +13,6 @@ API 接口响应时间批量检测脚本
     JWT token 可从浏览器 DevTools → Network → 任意请求的 Authorization header 中复制
 """
 import argparse
-import sys
 import time
 
 import httpx

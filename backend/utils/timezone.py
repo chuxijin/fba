@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import zoneinfo
 
-from datetime import datetime
+from datetime import datetime, tzinfo
 from datetime import timezone as datetime_timezone
 
 from backend.core.conf import settings
@@ -12,6 +14,7 @@ _UTC_IDENTIFIERS = frozenset({'Etc/UCT', 'Etc/Universal', 'Etc/UTC', 'Etc/Zulu',
 class TimeZone:
     def __init__(self) -> None:
         """初始化时区转换器"""
+        self.tz_info: tzinfo
         if settings.DATETIME_TIMEZONE in _UTC_IDENTIFIERS:
             self.tz_info = datetime_timezone.utc
         else:

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.jia.crud.crud_user_setting import user_setting_dao
 from backend.app.jia.model.user_setting import JiaUserSetting
 from backend.app.jia.schema.user_setting import UpdateUserSettingParam
-from backend.common.exception import errors
+
 
 class UserSettingService:
     """用户设置服务"""

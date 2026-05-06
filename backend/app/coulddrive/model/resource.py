@@ -6,16 +6,16 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Numeric, String, Text, Integer, Date, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, UserMixin, id_key
 from backend.utils.timezone import timezone
 
 if TYPE_CHECKING:
-    from backend.app.coulddrive.model.user import DriveAccount
     from backend.app.admin.model.category import Category
+    from backend.app.coulddrive.model.user import DriveAccount
 
 
 class Resource(Base, UserMixin):

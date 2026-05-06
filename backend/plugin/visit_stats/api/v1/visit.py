@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Query, Request
 
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -21,7 +21,7 @@ async def record_visit(
     """
     记录一次页面访问（公开接口，用于前端埋点）
     """
-    ip = request.client.host if request.client else '0.0.0.0'
+    ip = request.client.host if request.client else 'unknown'
     user_agent = request.headers.get('user-agent')
     referer = request.headers.get('referer')
 

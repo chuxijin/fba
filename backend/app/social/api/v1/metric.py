@@ -2,20 +2,19 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Path, Query, Request
 
 from backend.app.social.schema.metric import (
     CreateSocialWorkMetricParam,
-    UpdateSocialWorkMetricParam,
     GetSocialWorkMetricDetail,
     SocialWorkTrendPoint,
+    UpdateSocialWorkMetricParam,
 )
 from backend.app.social.service.metric_service import SocialWorkMetricService
-from backend.common.pagination import DependsPagination, PageData, _CustomPageParams, paging_data
+from backend.common.pagination import DependsPagination, _CustomPageParams, paging_data
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
-from fastapi import Request
 
 router = APIRouter(prefix='/social/metric', tags=['social:metric'])
 
@@ -77,6 +76,7 @@ async def get_social_work_trend(
 ) -> ResponseSchemaModel[list[SocialWorkTrendPoint]]:
     """按时间升序返回各指标趋势"""
     from sqlalchemy import select
+
     from backend.app.social.model.metric import SocialWorkMetric
     from backend.database.db import async_db_session
 

@@ -56,7 +56,7 @@ class CRUDVersion(CRUDPlus[AppVersion]):
         """
         stmt = select(self.model).where(
             self.model.application_id == application_id,
-            self.model.is_active == True
+            self.model.is_active.is_(True)
         ).order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 
@@ -70,8 +70,8 @@ class CRUDVersion(CRUDPlus[AppVersion]):
         """
         stmt = select(self.model).where(
             self.model.application_id == application_id,
-            self.model.is_latest == True,
-            self.model.is_active == True
+            self.model.is_latest.is_(True),
+            self.model.is_active.is_(True)
         )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()

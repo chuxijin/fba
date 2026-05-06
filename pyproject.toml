@@ -124,8 +124,8 @@ path = "backend/__init__.py"
 [tool.ruff]
 line-length = 120
 preview = true
-fix = true
-unsafe-fixes = true
+fix = false
+unsafe-fixes = false
 show-fixes = true
 required-version = ">=0.15.0"
 
@@ -261,6 +261,7 @@ ignore = [
   "RUF006",
   "RUF012",
   "RUF067",
+  "UP009",
   "TRY400",
   "TRY003",
   "TRY301"
@@ -270,6 +271,9 @@ ignore = [
 "**/model/*.py" = ["TC003"]
 "backend/common/socketio/server.py" = ["ANN001"]
 "backend/common/exception/exception_handler.py" = ["ANN202", "RUF029"]
+"backend/app/coulddrive/tests/test_baidu_link_transfer_interactive.py" = ["ASYNC250"]
+"backend/test_api.py" = ["ASYNC230"]
+"backend/test_pdf_parse.py" = ["ASYNC230"]
 
 [tool.ruff.lint.flake8-pytest-style]
 parametrize-names-type = "list"
@@ -300,6 +304,79 @@ allow-dunder-method-names = ["__tablename__", "__table_args__"]
 docstring-code-format = true
 preview = true
 quote-style = "single"
+
+[tool.mypy]
+python_version = "3.10"
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true
+ignore_missing_imports = true
+show_error_codes = true
+pretty = true
+namespace_packages = true
+explicit_package_bases = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unreachable = true
+sqlite_cache = false
+disable_error_code = [
+  "import-untyped",
+]
+exclude = [
+  "^backend/alembic/",
+  "^backend/migrations/",
+  "^backend/static/",
+  "^backend/locale/",
+  "^backend/log/",
+  "^backend/tests/",
+  "^backend/scripts/",
+  "^backend/test_.*\\.py$",
+  ".*/test_.*\\.py$",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short -v"
+testpaths = ["backend"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.coverage.run]
+branch = true
+source = ["backend"]
+omit = [
+  "backend/alembic/*",
+  "backend/migrations/*",
+  "backend/static/*",
+  "backend/locale/*",
+  "backend/tests/*",
+  "backend/log/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 60
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+]
+
+[tool.bandit]
+exclude_dirs = [
+  "backend/alembic",
+  "backend/migrations",
+  "backend/static",
+  "backend/tests",
+  ".venv",
+]
+skips = [
+  "B101",
+]
 
 [tool.tombi]
 toml-version = "v1.1.0"

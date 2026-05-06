@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
 from enum import Enum as PyEnum
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, String, Index, UniqueConstraint, Enum
+from sqlalchemy import JSON, Enum, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, UserMixin, id_key

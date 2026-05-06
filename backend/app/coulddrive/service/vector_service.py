@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from openai import AsyncOpenAI

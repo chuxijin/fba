@@ -2,14 +2,12 @@
 # -*- coding: utf-8 -*-
 """评论监控任务"""
 import json
-import random
 
-from bilibili_api import Credential, comment, video
+from bilibili_api import Credential, comment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.bili.model.account import BiliAccount
-from backend.app.bili.model.duplicate_check import BiliDuplicateCheck
 from backend.app.bili.model.task_config import BiliTaskConfig
 from backend.app.bili.model.template import BiliTemplate
 from backend.app.bili.model.work import BiliWork
@@ -67,11 +65,6 @@ async def comment_monitor_task(task_config: BiliTaskConfig) -> int:
             log.warning('⚠️ 没有可用的评论模板')
             return 0
 
-        # 解析筛选条件
-        filter_config = json.loads(task_config.filter_config) if task_config.filter_config else {}
-        exclude_levels = filter_config.get('exclude_levels', [])
-        exclude_months = filter_config.get('exclude_months', 0)
-
         # 使用第一个账号获取评论
         account = accounts[0]
 
@@ -85,7 +78,6 @@ async def comment_monitor_task(task_config: BiliTaskConfig) -> int:
             )
 
             # 获取视频评论
-            v = video.Video(bvid=work.work_id, credential=credential)
             comments_data = await comment.get_comments(
                 oid=work.aid,
                 type_=comment.CommentResourceType.VIDEO,

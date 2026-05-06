@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -385,11 +386,14 @@ async def update_fk_columns(
     """
     total = 0
     for ref in refs:
+        column_identifier = quote_ident(ref.column_name)
+        source_identifier = quote_ident(source_col)
+        target_identifier = quote_ident(target_col)
         sql = (
-            f"UPDATE {ref.full_table_name} t "
-            f"SET {quote_ident(ref.column_name)} = m.{target_col} "
+            f"UPDATE {ref.full_table_name} t "  # nosec B608
+            f"SET {column_identifier} = m.{target_identifier} "
             f"FROM tmp_question_id_map m "
-            f"WHERE t.{quote_ident(ref.column_name)} = m.{source_col}"
+            f"WHERE t.{column_identifier} = m.{source_identifier}"
         )
         result = await db.execute(sa_text(sql))
         affected = int(result.rowcount or 0)
@@ -406,11 +410,12 @@ async def validate_fk_integrity(db: AsyncSession, refs: list[QuestionFkRef]) -> 
     :return:
     """
     for ref in refs:
+        column_identifier = quote_ident(ref.column_name)
         sql = (
-            f"SELECT COUNT(*)::BIGINT AS c "
+            f"SELECT COUNT(*)::BIGINT AS c "  # nosec B608
             f"FROM {ref.full_table_name} t "
-            f"LEFT JOIN study_question q ON q.id = t.{quote_ident(ref.column_name)} "
-            f"WHERE t.{quote_ident(ref.column_name)} IS NOT NULL "
+            f"LEFT JOIN study_question q ON q.id = t.{column_identifier} "
+            f"WHERE t.{column_identifier} IS NOT NULL "
             f"AND q.id IS NULL"
         )
         count = await db.scalar(sa_text(sql))

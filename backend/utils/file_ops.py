@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from anyio import open_file
 from fastapi import UploadFile

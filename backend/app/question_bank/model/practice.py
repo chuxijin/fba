@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
+
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +17,7 @@ from backend.utils.timezone import timezone
 CompatibleJSONB = sa.JSON().with_variant(JSONB, 'postgresql')
 
 if TYPE_CHECKING:
+    from .chapter import QuestionChapter
     from .question import Question, QuestionPlacement
     from .user import UserAccount
 

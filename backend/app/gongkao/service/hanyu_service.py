@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Any
-from urllib.parse import quote
 
 import httpx
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.gongkao.crud.crud_hanyu import hanyu_dao

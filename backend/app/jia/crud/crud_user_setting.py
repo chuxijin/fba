@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.jia.model.user_setting import JiaUserSetting
-from backend.app.jia.schema.user_setting import UpdateUserSettingParam, UserSettingSchemaBase
+from backend.app.jia.schema.user_setting import UpdateUserSettingParam
+
 
 class CRUDUserSetting(CRUDPlus[JiaUserSetting]):
     """用户设置 CRUD"""

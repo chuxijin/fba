@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, JSON, select
-from sqlalchemy.orm import Mapped, mapped_column, relationship, column_property
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, select
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
-from backend.common.model import Base, UserMixin, id_key
 from backend.app.social.model.metric import SocialWorkMetric
+from backend.common.model import Base, UserMixin, id_key
 
 if TYPE_CHECKING:
     from backend.app.social.model.account import SocialAccount

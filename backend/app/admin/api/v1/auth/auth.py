@@ -2,7 +2,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.security import HTTPBasicCredentials
-from fastapi_limiter.depends import RateLimiter
 from pyrate_limiter import Duration, Rate
 from starlette.background import BackgroundTasks
 

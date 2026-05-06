@@ -5,27 +5,26 @@ import hashlib
 import json
 import re
 import time
+
 from typing import Any, List
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import jieba
-from fastapi import Request
+
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import and_, or_, select
 
-from backend.app.coulddrive.model.resource import Resource
- 
-from backend.app.mcp.schema.resource import CreateMcpSearchLogParam
-from backend.app.mcp.crud.crud_search_log import mcp_search_log_dao
-from backend.app.mcp.crud.crud_config import mcp_config_dao
-from backend.app.coulddrive.schema.enum import DriveType
-from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
-from backend.app.coulddrive.schema.file import ListFilesParam, ListShareFilesParam, TransferParam, ShareParam
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
-from backend.database.db import async_db_session
+from backend.app.coulddrive.model.resource import Resource
+from backend.app.coulddrive.schema.enum import DriveType
+from backend.app.coulddrive.schema.file import ListFilesParam, ListShareFilesParam, ShareParam, TransferParam
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
+from backend.app.mcp.crud.crud_config import mcp_config_dao
+from backend.app.mcp.crud.crud_search_log import mcp_search_log_dao
+from backend.app.mcp.schema.resource import CreateMcpSearchLogParam
 from backend.app.mcp.service.drive_constants import ALLOWED_PROVIDERS
+from backend.database.db import async_db_session
 from backend.database.redis import redis_client
-from urllib.parse import urlparse, parse_qs, urlencode
-
 
 field_weights: dict[str, int] = {
     "resource_intro": 10,
@@ -124,12 +123,12 @@ def build_cache_key(query: str, final_limit: int, cloud_types: str | None) -> st
     normalized = (query or "").strip().lower()
     cloud_key = (cloud_types or "").strip().lower()
     full_key = f"{normalized}-{cloud_key}-{final_limit}"
-    digest = hashlib.sha1(full_key.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(full_key.encode("utf-8")).hexdigest()
     return f"mcp:search:resp:{digest}"
 
 def build_lock_key(query: str, final_limit: int) -> str:
     normalized = (query or "").strip().lower()
-    digest = hashlib.md5(normalized.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     return f"mcp:search:lock:{digest}:{final_limit}"
 
 def calc_score(resource: Resource, keywords: list[str], field_weights: dict[str, int]) -> float:
@@ -148,8 +147,9 @@ def calc_score(resource: Resource, keywords: list[str], field_weights: dict[str,
 
 async def _fallback_external_search(query: str, final_limit: int, providers: list[str] | None = None) -> List[dict[str, Any]]:
     """当本地无结果时回退外部搜索，返回精简结果列表"""
-    import httpx
     from datetime import datetime
+
+    import httpx
 
     url = "https://resource.yzxj.vip/api/search"
     params = {"kw": query, "res": "merge", "conc": 5}
@@ -157,7 +157,7 @@ async def _fallback_external_search(query: str, final_limit: int, providers: lis
         params["cloud_types"] = ",".join(providers)
     results: list[dict[str, Any]] = []
     try:
-        async with httpx.AsyncClient(timeout=8, verify=False) as client:
+        async with httpx.AsyncClient(timeout=8) as client:
             resp = await client.get(url, params=params)
             if resp.status_code != 200:
                 return results
@@ -384,7 +384,7 @@ async def _save_baidu_and_share(account_id: int, target_folder_path: str, share_
 
         print(f"[MCP] Initiating Baidu transfer to {target_folder_path} for fs_ids: {fs_ids}")
         try:
-            transfer_success = await service.transfer_files(params=transfer_params)
+            await service.transfer_files(params=transfer_params)
         except Exception as e:
             print(f"[MCP] Baidu transfer failed: {e}")
             return None
@@ -717,5 +717,3 @@ def register_resource_search_tools(mcp: FastMCP) -> None:
         :return:
         """
         return await perform_resource_search(query, limit, cloud_types, enable_external_search)
-
-

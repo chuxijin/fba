@@ -8,7 +8,6 @@ import httpx
 
 from fast_captcha import text_captcha
 from fastapi import BackgroundTasks, Response, UploadFile
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_user import user_dao

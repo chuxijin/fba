@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import re
-from typing import Sequence, Optional, List
+
 from enum import Enum
+from typing import List, Optional, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.coulddrive.crud.crud_rule_template import rule_template_dao
 from backend.app.coulddrive.model.rule_template import RuleTemplate
+from backend.app.coulddrive.schema.file import ExclusionRuleDefinition, RenameRuleDefinition
 from backend.app.coulddrive.schema.rule_template import (
     CreateRuleTemplateParam,
-    UpdateRuleTemplateParam,
     GetRuleTemplateListParam,
+    RuleTemplateStatsDetail,
     TemplateType,
-    RuleTemplateStatsDetail
+    UpdateRuleTemplateParam,
 )
-from backend.app.coulddrive.schema.file import ExclusionRuleDefinition, RenameRuleDefinition
-from backend.common.exception.errors import NotFoundError, ForbiddenError
+from backend.common.exception.errors import ForbiddenError, NotFoundError
 
 
 class MatchTarget(Enum):
@@ -389,7 +390,7 @@ def parse_exclusion_rules(rules_def: Optional[List[ExclusionRuleDefinition]]) ->
                 case_sensitive=rule_def.case_sensitive
             )
             rules.append(rule)
-        except (ValueError, AttributeError) as e:
+        except (ValueError, AttributeError):
             # 跳过无效的规则定义
             continue
     

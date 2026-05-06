@@ -62,6 +62,26 @@ from backend.utils.timezone import timezone
 output_help = "\n更多信息，尝试 '[cyan]--help[/]'"
 
 
+def _quote_mysql_identifier(value: str) -> str:
+    """
+    转义 MySQL 标识符
+
+    :param value: 标识符
+    :return:
+    """
+    return f'`{value.replace("`", "``")}`'
+
+
+def _quote_postgresql_identifier(value: str) -> str:
+    """
+    转义 PostgreSQL 标识符
+
+    :param value: 标识符
+    :return:
+    """
+    return f'"{value.replace(chr(34), chr(34) * 2)}"'
+
+
 class CustomReloadFilter(PythonFilter):
     """自定义重载过滤器"""
 
@@ -139,28 +159,31 @@ async def create_database(conn: AsyncConnection) -> bool:
     """创建或重建数据库"""
     try:
         terminate_sql = None
+        query_params = {'database_schema': settings.DATABASE_SCHEMA}
         if DataBaseType.mysql == settings.DATABASE_TYPE:
-            check_sql = f"SHOW DATABASES LIKE '{settings.DATABASE_SCHEMA}'"
-            drop_sql = f'DROP DATABASE IF EXISTS `{settings.DATABASE_SCHEMA}`'
+            database_identifier = _quote_mysql_identifier(settings.DATABASE_SCHEMA)
+            check_sql = 'SHOW DATABASES LIKE :database_schema'
+            drop_sql = f'DROP DATABASE IF EXISTS {database_identifier}'
             create_sql = (
-                f'CREATE DATABASE `{settings.DATABASE_SCHEMA}` CHARACTER SET {settings.DATABASE_CHARSET} '
+                f'CREATE DATABASE {database_identifier} CHARACTER SET {settings.DATABASE_CHARSET} '
                 f'COLLATE {settings.DATABASE_CHARSET}_unicode_ci'
             )
         else:
-            check_sql = f"SELECT 1 FROM pg_database WHERE datname = '{settings.DATABASE_SCHEMA}'"
-            drop_sql = f'DROP DATABASE IF EXISTS {settings.DATABASE_SCHEMA}'
-            create_sql = f'CREATE DATABASE {settings.DATABASE_SCHEMA}'
+            database_identifier = _quote_postgresql_identifier(settings.DATABASE_SCHEMA)
+            check_sql = 'SELECT 1 FROM pg_database WHERE datname = :database_schema'
+            drop_sql = f'DROP DATABASE IF EXISTS {database_identifier}'
+            create_sql = f'CREATE DATABASE {database_identifier}'
             terminate_sql = (
-                f'SELECT pg_terminate_backend(pid) FROM pg_stat_activity '
-                f"WHERE datname = '{settings.DATABASE_SCHEMA}' AND pid <> pg_backend_pid()"
+                'SELECT pg_terminate_backend(pid) FROM pg_stat_activity '
+                'WHERE datname = :database_schema AND pid <> pg_backend_pid()'
             )
 
-        result = await conn.execute(text(check_sql))
+        result = await conn.execute(text(check_sql), query_params)
         exists = result.fetchone() is not None
         console.note(f'重建 {settings.DATABASE_SCHEMA} 数据库...')
         if exists:
             if terminate_sql:
-                await conn.execute(text(terminate_sql))
+                await conn.execute(text(terminate_sql), query_params)
             await conn.execute(text(drop_sql))
         await conn.execute(text(create_sql))
         console.tip('数据库创建成功')

@@ -6,26 +6,26 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
 
 from backend.app.coulddrive.schema.file import (
-    BaseFileInfo, 
+    BaseFileInfo,
     BaseShareInfo,
+    BatchRenameParam,  # 导入批量重命名参数
+    CancelShareParam,
     CopyParam,
-    ListFilesParam, 
+    ListFilesParam,
     ListShareFilesParam,
     ListShareInfoParam,
     MkdirParam,
     MoveParam,
     RemoveParam,
+    RenameParam,
     ShareParam,
     TransferParam,
-    CancelShareParam,
-    RenameParam,
-    BatchRenameParam # 导入批量重命名参数
 )
-from backend.app.coulddrive.service.fileoprate_service import FileOperateService
 from backend.app.coulddrive.service.coulddrive_service import CouldDriveService, DriveAuthError
-from backend.common.pagination import DependsPagination, PageData, paging_list_data, _CustomPageParams
-from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.app.coulddrive.service.fileoprate_service import FileOperateService
+from backend.common.pagination import DependsPagination, PageData, _CustomPageParams, paging_list_data
 from backend.common.response.response_code import CustomResponse
+from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
 

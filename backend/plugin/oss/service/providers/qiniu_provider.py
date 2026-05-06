@@ -5,8 +5,9 @@ from __future__ import annotations
 import tempfile
 import traceback
 
-from asgiref.sync import sync_to_async
 from pathlib import Path
+
+from asgiref.sync import sync_to_async
 
 from backend.common.exception import errors
 from backend.common.log import log

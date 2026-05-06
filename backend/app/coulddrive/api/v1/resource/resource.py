@@ -1,33 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import asyncio
+
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Path, Request, UploadFile, File
+import anyio
+
+from fastapi import APIRouter, Depends, File, Path, Query, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from backend.app.coulddrive.schema.resource import (
+    BatchDeleteResourceParam,
     CreateResourceParam,
-    UpdateResourceParam,
-    GetResourceListParam,
-    ResourceStatistics,
     CreateResourceViewHistoryParam,
+    GetOverallStatisticsTrendParam,
+    GetResourceDetail,
+    GetResourceListParam,
     GetResourceViewHistoryDetail,
     GetResourceViewHistoryListParam,
-    ResourceViewTrendResponse,
     GetResourceViewTrendParam,
-    UpdateResourceViewCountParam,
-    GetResourceDetail,
-    ResourceListItem,
-    UpdateResourceUserParam,
     OverallStatisticsTrendResponse,
-    GetOverallStatisticsTrendParam,
-    VectorSearchResultItem,
-    VectorSearchKnowledgeResultItem,
-    BatchDeleteResourceParam
-)
-from backend.app.coulddrive.schema.enum import (
-    DriveType
+    ResourceListItem,
+    ResourceStatistics,
+    ResourceViewTrendResponse,
+    UpdateResourceParam,
+    UpdateResourceUserParam,
+    UpdateResourceViewCountParam,
 )
 from backend.app.coulddrive.service.resource_service import resource_service, resource_view_history_service
 from backend.common.pagination import DependsPagination
@@ -35,6 +33,7 @@ from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
+from backend.utils.timezone import timezone
 
 router = APIRouter()
 
@@ -509,18 +508,9 @@ async def upload_resource_file(
     :return: 文件路径和类型
     """
     try:
-        from backend.core.path_conf import UPLOAD_DIR
-        import shutil
-        import os
-        from datetime import datetime
         import uuid
-        
-        # 允许的文件类型
-        ALLOWED_EXTENSIONS = {
-            'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 
-            'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 
-            'mp4', 'mp3', 'zip', 'rar', '7z'
-        }
+
+        from backend.core.path_conf import UPLOAD_DIR
         
         filename = file.filename
         ext = filename.split('.')[-1].lower() if '.' in filename else ''
@@ -530,19 +520,17 @@ async def upload_resource_file(
         #     return response_base.fail(res=CustomResponse(code=400, msg='不支持的文件类型'))
             
         # 生成保存路径: uploads/resources/YYYYMMDD/uuid.ext
-        today = datetime.now().strftime('%Y%m%d')
+        today = timezone.now().strftime('%Y%m%d')
         save_dir = UPLOAD_DIR / 'resources' / today
         
-        if not save_dir.exists():
-            save_dir.mkdir(parents=True, exist_ok=True)
+        await anyio.Path(save_dir).mkdir(parents=True, exist_ok=True)
             
         base_name = filename.rsplit('.', 1)[0]
         new_filename = f"{base_name}_{uuid.uuid4().hex[:8]}.{ext}"
         save_path = save_dir / new_filename
         
         # 保存文件
-        with open(save_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        await anyio.Path(save_path).write_bytes(await file.read())
             
         # 生成相对路径（用于前端访问）
         # 假设静态文件挂载在 /static/upload

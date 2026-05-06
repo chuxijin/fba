@@ -2,14 +2,18 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, Request
 
 from backend.app.coulddrive.crud.crud_filesync import sync_config_dao
-from backend.app.coulddrive.schema.filesync import GetSyncConfigListParam, GetSyncConfigDetail, CreateSyncConfigParam, UpdateSyncConfigParam
 from backend.app.coulddrive.schema.enum import DriveType
-from backend.common.pagination import DependsPagination, PageData, paging_data, _CustomPageParams
-from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.app.coulddrive.schema.filesync import (
+    CreateSyncConfigParam,
+    GetSyncConfigDetail,
+    GetSyncConfigListParam,
+    UpdateSyncConfigParam,
+)
+from backend.common.pagination import DependsPagination, PageData, _CustomPageParams, paging_data
+from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
 

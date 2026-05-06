@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 from typing import Sequence
 
-from sqlalchemy import Select, and_, desc, or_
+from sqlalchemy import Select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.plugin.webhook.model import Webhook
 from backend.plugin.webhook.model.webhook_config import WebhookConfig
 from backend.plugin.webhook.schema.webhook import (
-    CreateWebhookParam,
-    UpdateWebhookParam,
-    WebhookListParam,
     CreateWebhookConfigParam,
+    CreateWebhookParam,
     UpdateWebhookConfigParam,
+    UpdateWebhookParam,
     WebhookConfigListParam,
+    WebhookListParam,
 )
 
 
@@ -217,7 +217,7 @@ class CRUDWebhookConfig(CRUDPlus[WebhookConfig]):
         :param db: 数据库会话
         :return: 启用的WebhookConfig列表
         """
-        return await self.select_models(db, self.model.is_active == True)
+        return await self.select_models(db, self.model.is_active.is_(True))
 
     async def update_status(self, db: AsyncSession, pk: int, is_active: bool) -> int:
         """

@@ -7,7 +7,11 @@ from sqlalchemy.sql import Select
 from backend.app.job.crud.crud_internship_application import internship_application_dao
 from backend.app.job.crud.crud_internship_posting import internship_posting_dao
 from backend.app.job.model.internship_application import InternshipApplication
-from backend.app.job.schema.internship_application import CreateInternshipApplication, UpdateInternshipApplication, DeleteInternshipApplicationParam
+from backend.app.job.schema.internship_application import (
+    CreateInternshipApplication,
+    DeleteInternshipApplicationParam,
+    UpdateInternshipApplication,
+)
 from backend.common.enums import ApplicationStatus
 from backend.common.exception import errors
 from backend.database.db import async_db_session

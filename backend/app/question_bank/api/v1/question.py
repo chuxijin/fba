@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from typing import Annotated
 
 from fastapi import APIRouter, Body, File, Form, Path, Query, Request, UploadFile
@@ -9,14 +8,14 @@ from backend.app.question_bank.schema.note import GetQuestionNoteDetail
 from backend.app.question_bank.schema.practice import GetQuestionSolution, GetSessionQuestionsResponse
 from backend.app.question_bank.schema.question import (
     CreateQuestionParam,
-    QuestionCollectParam,
-    QuestionCollectResult,
     DeleteQuestionParam,
-    GetQuestionDynamicCollectionItem,
     GetQuestionDetail,
+    GetQuestionDynamicCollectionItem,
     GetQuestionListItem,
     GetQuestionStatisticsDetail,
     QuestionAnalysisItem,
+    QuestionCollectParam,
+    QuestionCollectResult,
     QuestionOptionStatsItem,
     UpdateQuestionParam,
 )
@@ -28,8 +27,8 @@ from backend.app.question_bank.schema.question_import import (
 from backend.app.question_bank.service.favorite_service import favorite_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.note_service import note_service
-from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_import_service import question_import_service
+from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.session_service import session_service
 from backend.common.pagination import PageData
@@ -265,6 +264,24 @@ async def get_session_notes(
         session_id=session_id,
     )
     return response_base.success(data=note_map)
+
+
+@router.get(
+    '/import-template',
+    summary='下载题目导入 Excel 模板',
+    name='qbank_import_template',
+    dependencies=[DependsJwtAuth],
+)
+async def download_import_template() -> StreamingResponse:
+    """下载空白 Excel 导入模板"""
+    import io
+
+    content = await question_import_service.build_import_template()
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': 'attachment; filename=question_import_template.xlsx'},
+    )
 
 
 # ============ 题目相关接口 ============
@@ -572,24 +589,6 @@ async def import_from_excel(
         user_id=request.user.id,
     )
     return response_base.success(data=data)
-
-
-@router.get(
-    '/import-template',
-    summary='下载题目导入 Excel 模板',
-    name='qbank_import_template',
-    dependencies=[DependsJwtAuth],
-)
-async def download_import_template() -> StreamingResponse:
-    """下载空白 Excel 导入模板"""
-    import io
-
-    content = await question_import_service.build_import_template()
-    return StreamingResponse(
-        io.BytesIO(content),
-        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers={'Content-Disposition': 'attachment; filename=question_import_template.xlsx'},
-    )
 
 
 # ============ 会话题目批量获取接口 ============

@@ -1,4 +1,4 @@
-import type { QuestionType } from './question';
+import type { GetQuestionSolution, QuestionType } from './question';
 
 /** 缁冧範浼氳瘽绫诲瀷 */
 export type SessionType = 'chapter' | 'bank' | 'random' | 'exam' | 'wrong' | 'favorite' | 'note';
@@ -63,6 +63,21 @@ export interface BatchUpsertPracticeRecordsParam {
   session_id: number;
   records: UpsertPracticeRecordItem[];
   judge_now?: boolean;
+}
+
+export interface PracticeJudgeResultItem extends GetQuestionSolution {
+  question_id: number;
+  record_id?: number | null;
+  score?: number | null;
+  full_score?: number | null;
+  ai_evaluation_id?: number | null;
+  summary_text?: string | null;
+  error_message?: string | null;
+}
+
+export interface BatchUpsertPracticeRecordsResult {
+  upserted_count: number;
+  judge_results: PracticeJudgeResultItem[];
 }
 
 /** 浣滅瓟璁板綍璇︽儏 */

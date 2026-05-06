@@ -46,17 +46,6 @@ async def mall_get_order_detail(
     return response_base.success(data=GetOrderDetail.model_validate(order))
 
 
-@router.post('/{order_id}/pay', summary='支付订单', dependencies=[DependsJwtAuth])
-async def mall_pay_order(
-    request: Request,
-    db: CurrentSessionTransaction,
-    order_id: Annotated[int, Path(description='订单 ID')],
-) -> ResponseSchemaModel[GetOrderDetail]:
-    """支付订单（模拟支付）"""
-    order = await order_service.pay_order(db=db, order_id=order_id, user_id=request.user.id)
-    return response_base.success(data=GetOrderDetail.model_validate(order))
-
-
 @router.post('/{order_id}/cancel', summary='取消订单', dependencies=[DependsJwtAuth])
 async def mall_cancel_order(
     request: Request,

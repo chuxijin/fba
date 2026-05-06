@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import logging
-from datetime import datetime
-from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

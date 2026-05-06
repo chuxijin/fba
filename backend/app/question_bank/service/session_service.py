@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 import random
-from datetime import datetime
+
 from decimal import Decimal
 from typing import Any
 
@@ -17,27 +17,26 @@ from backend.app.membership.crud.crud_experience_rule import membership_experien
 from backend.app.membership.service.experience_service import membership_experience_service
 from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
-from backend.app.question_bank.crud.crud_session_question import session_question_dao
 from backend.app.question_bank.crud.crud_question import (
     question_option_stats_dao,
     question_statistics_dao,
 )
+from backend.app.question_bank.crud.crud_session_question import session_question_dao
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
+    OptionContent,
     PracticeRecord,
     PracticeSession,
-    OptionContent,
-    QuestionBank,
-    QuestionChapter,
     Question,
     QuestionAnalysis,
+    QuestionBank,
+    QuestionChapter,
     QuestionOption,
     QuestionPlacement,
     SessionQuestion,
     WrongQuestionBook,
 )
-from backend.app.question_bank.schema.question import QuestionCollectParam
 from backend.app.question_bank.schema.practice import (
     AnswerCardItem,
     BatchUpsertPracticeRecordsParam,
@@ -47,6 +46,7 @@ from backend.app.question_bank.schema.practice import (
     SubmitPracticeSessionParam,
     SubmitPracticeSessionResult,
 )
+from backend.app.question_bank.schema.question import QuestionCollectParam
 from backend.app.question_bank.service.ai_evaluation_service import (
     SUBJECTIVE_QUESTION_TYPES,
     practice_ai_evaluation_service,
@@ -56,6 +56,7 @@ from backend.app.question_bank.service.question_selector_service import question
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.common.exception import errors
+from backend.utils.timezone import timezone
 
 log = logging.getLogger(__name__)
 
@@ -316,7 +317,7 @@ class SessionService:
         :return:
         """
         payload = json.dumps(source_snapshot, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-        return hashlib.sha1(payload.encode('utf-8')).hexdigest()
+        return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
     @classmethod
     def build_session_source_key(cls, obj: CreatePracticeSessionParam) -> str:
@@ -647,7 +648,7 @@ class SessionService:
             'source_snapshot': source_snapshot,
             'total_count': len(placements),
             'total_score': total_score if total_score > 0 else None,
-            'start_time': datetime.now(),
+            'start_time': timezone.now(),
             'exam_config': exam_config,
             'created_by': user_id,
         }
@@ -903,7 +904,7 @@ class SessionService:
                 'full_score': sq.full_score,
             })
 
-        result: dict[str, Any] = {'upserted_count': len(records_dict)}
+        result: dict[str, Any] = {'upserted_count': len(records_dict), 'judge_results': []}
 
         # 即时判题：查询对应题目的默认解析，逐题比对，并将判题结果合并到 records_dict
         if allow_judge_now and records_dict:
@@ -911,20 +912,33 @@ class SessionService:
             stmt = (
                 select(Question)
                 .where(Question.id.in_(question_ids))
-                .options(selectinload(Question.analyses))
+                .options(
+                    selectinload(Question.analyses),
+                    selectinload(Question.statistics),
+                )
             )
             q_result = await db.execute(stmt)
             question_map: dict[int, Question] = {q.id: q for q in q_result.scalars().all()}
 
             judge_results_map: dict[int, dict[str, Any]] = {}
-            judge_time = datetime.now()
+            judge_time = timezone.now()
             for rd in records_dict:
+                full = sq_map[rd['question_id']].full_score if rd['question_id'] in sq_map else rd.get('full_score', Decimal('0'))
                 question = question_map.get(rd['question_id'])
                 if not question:
                     judge_results_map[rd['question_id']] = {
                         'question_id': rd['question_id'],
+                        'record_id': None,
+                        'correct_answer': '',
+                        'analysis': '',
                         'is_correct': None,
-                        'correct_answer': None,
+                        'correct_rate': Decimal('0'),
+                        'option_select_stats': {},
+                        'score': None,
+                        'full_score': full,
+                        'ai_evaluation_id': None,
+                        'summary_text': None,
+                        'error_message': None,
                     }
                     continue
 
@@ -932,31 +946,44 @@ class SessionService:
                 if question.analyses:
                     analysis = next((a for a in question.analyses if a.is_default), question.analyses[0])
 
+                solution_payload = {
+                    'correct_answer': '',
+                    'analysis': '',
+                    'is_correct': None,
+                    'correct_rate': Decimal('0'),
+                    'option_select_stats': {},
+                }
+                if analysis:
+                    solution_payload = question_service.build_solution_payload(
+                        question=question,
+                        analysis=analysis,
+                        is_correct=None,
+                    )
+
+                judge_result = {
+                    'question_id': rd['question_id'],
+                    'record_id': None,
+                    'score': None,
+                    'full_score': full,
+                    'ai_evaluation_id': None,
+                    'summary_text': None,
+                    'error_message': None,
+                    **solution_payload,
+                }
+
                 if question.type in SUBJECTIVE_QUESTION_TYPES:
-                    judge_results_map[rd['question_id']] = {
-                        'question_id': rd['question_id'],
-                        'is_correct': None,
-                        'correct_answer': None,
-                    }
+                    judge_results_map[rd['question_id']] = judge_result
                     continue
 
                 is_correct = False
-                correct_answer = None
                 if analysis and analysis.answer_data:
-                    correct_answer = analysis.answer_data.get('correct')
                     is_correct = question_service.check_answer(
                         question.type, rd['user_answer'], analysis.answer_data,
                     )
 
-                full = sq_map[rd['question_id']].full_score if rd['question_id'] in sq_map else rd.get('full_score', Decimal('0'))
-
-                judge_results_map[rd['question_id']] = {
-                    'question_id': rd['question_id'],
-                    'is_correct': is_correct,
-                    'correct_answer': correct_answer,
-                    'score': full if is_correct else Decimal('0'),
-                    'full_score': full,
-                }
+                judge_result['is_correct'] = is_correct
+                judge_result['score'] = full if is_correct else Decimal('0')
+                judge_results_map[rd['question_id']] = judge_result
 
                 # 将判题结果合并到记录中，后续统一 upsert
                 rd['is_correct'] = is_correct
@@ -1217,7 +1244,7 @@ class SessionService:
         session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
         sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session_questions}
 
-        submit_time = datetime.now()
+        submit_time = timezone.now()
         judge_version = obj.judge_version or 'rule_v1'
 
         # 读取用户错题掌握阈值
@@ -1579,7 +1606,7 @@ class SessionService:
         :param user_id: 用户 ID
         :return: 逐题解析列表
         """
-        session = await SessionService._get_owned_session(
+        await SessionService._get_owned_session(
             db=db,
             session_id=session_id,
             user_id=user_id,
@@ -1670,7 +1697,7 @@ class SessionService:
         :return: 包含 questions 和 materials 的字典
         """
         # 1. 获取会话题目快照（按 seq_no 排序）
-        session = await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
+        await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
         session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
         if not session_questions:
             return {'questions': [], 'materials': []}
@@ -1794,7 +1821,6 @@ class SessionService:
         db: AsyncSession,
         user_id: int,
         session_type: str | None = None,
-        bank_ids: list[int] | None = None,
         status: str | None = None,
         study_domain: str | None = None,
     ) -> select:
@@ -1804,13 +1830,12 @@ class SessionService:
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param session_type: 会话类型
-        :param bank_ids: 题库 ID 列表
         :param status: 状态
         :param study_domain: 学习领域编码
         :return:
         """
-        resolved_bank_ids = bank_ids
-        if study_domain and not resolved_bank_ids:
+        resolved_bank_ids = None
+        if study_domain is not None:
             domain_filter = await study_domain_service.get_question_filter(db=db, code=study_domain)
             resolved_bank_ids = list(domain_filter.bank_ids)
 

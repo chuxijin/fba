@@ -3,12 +3,14 @@
 import asyncio
 import logging
 import random
-from datetime import datetime, timedelta
-from typing import Dict, Any, List
+
+from datetime import timedelta
+from typing import Any, Dict, List
 
 from backend.app.coulddrive.crud.crud_resource import resource_dao
 from backend.app.task.celery import celery_app
 from backend.database.db import async_db_session
+from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +155,7 @@ async def get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
     """
     try:
         async with async_db_session() as db:
-            current_time = datetime.now()
+            current_time = timezone.now()
             expiring_threshold = current_time + timedelta(hours=hours)
 
             expiring_resources = await resource_dao.get_expiring_resources(

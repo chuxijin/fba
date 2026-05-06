@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
-from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +8,7 @@ from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import Notice
 from backend.app.question_bank.schema.notice import CreateNoticeParam, UpdateNoticeParam
+from backend.utils.timezone import timezone
 
 
 class CRUDNotice(CRUDPlus[Notice]):
@@ -60,7 +60,7 @@ class CRUDNotice(CRUDPlus[Notice]):
         :param scene: 展示场景筛选
         :return:
         """
-        now = datetime.now()
+        now = timezone.now()
         stmt = (
             select(self.model)
             .where(self.model.status == 1)

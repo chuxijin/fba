@@ -2,14 +2,11 @@
 # -*- coding: utf-8 -*-
 """私信监控任务"""
 import json
-import random
 
-from bilibili_api import Credential, user
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.bili.model.account import BiliAccount
-from backend.app.bili.model.duplicate_check import BiliDuplicateCheck
 from backend.app.bili.model.task_config import BiliTaskConfig
 from backend.app.bili.model.template import BiliTemplate
 from backend.common.log import log
@@ -53,24 +50,10 @@ async def message_monitor_task(task_config: BiliTaskConfig) -> int:
             log.warning('⚠️ 没有可用的私信模板')
             return 0
 
-        # 解析筛选条件
-        filter_config = json.loads(task_config.filter_config) if task_config.filter_config else {}
-        exclude_levels = filter_config.get('exclude_levels', [])
-        exclude_months = filter_config.get('exclude_months', 0)
-
         # 遍历账号
         for account in accounts:
             try:
-                # 解析 Cookie
-                cookie_dict = _parse_cookie(account.cookie)
-                credential = Credential(
-                    sessdata=cookie_dict.get('SESSDATA'),
-                    bili_jct=cookie_dict.get('bili_jct'),
-                    buvid3=cookie_dict.get('buvid3'),
-                )
-
                 # 获取私信列表
-                u = user.User(int(account.mid), credential=credential)
                 # TODO: 这里需要使用 bilibili-api 的私信接口
                 # messages = await u.get_messages()  # 示例，实际接口可能不同
 

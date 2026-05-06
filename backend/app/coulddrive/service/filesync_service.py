@@ -2,63 +2,59 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
-import asyncio
+
+from collections import defaultdict
 from datetime import datetime
 from types import SimpleNamespace
-
 from typing import Any
-from collections import defaultdict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
+from backend.app.coulddrive.crud.crud_filesync import sync_config_dao, sync_task_dao, sync_task_item_dao
 from backend.app.coulddrive.schema.enum import DriveType, RecursionSpeed, SyncMethod
-from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
-from backend.app.coulddrive.service.rule_template_service import (
-    ItemFilter,
-    parse_exclusion_rules,
-    parse_rule_templates
-)
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     DiskTargetDefinition,
     ExclusionRuleDefinition,
-    ListFilesParam,
-    ListShareFilesParam,
-    MkdirParam,
-    RemoveParam,
     RenameParam,
-    RenameRuleDefinition,
     ShareSourceDefinition,
     TransferParam,
 )
 from backend.app.coulddrive.schema.filesync import (
-    CreateSyncTaskParam, 
-    UpdateSyncTaskParam,
-    UpdateSyncConfigParam,
     CreateSyncTaskItemParam,
+    CreateSyncTaskParam,
+    UpdateSyncConfigParam,
+    UpdateSyncTaskParam,
 )
-from backend.app.coulddrive.crud.crud_filesync import sync_task_dao, sync_config_dao, sync_task_item_dao
-from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
-from backend.common.log import log
-from backend.common.db_lock import DatabaseMutex
-from backend.database.db import async_db_session
-from backend.app.coulddrive.service.rule_template_service import MatchTarget, RenameRule
-from backend.plugin.notify.service.notify_service import notify_service
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
+from backend.app.coulddrive.service.rule_template_service import (
+    ItemFilter,
+    MatchTarget,
+    RenameRule,
+    parse_exclusion_rules,
+    parse_rule_templates,
+)
 from backend.app.coulddrive.service.utils_service import (
-    join_path,
-    ensure_dir_path,
-    get_parent_path,
+    build_full_path,
     get_filename,
-    build_full_path
+    get_parent_path,
+    join_path,
 )
 from backend.app.task.tasks.filesync.debug_logger import (
-    log_overwrite_scan,
     log_api_call,
+    log_overwrite_scan,
     log_target_verify,
 )
+from backend.common.db_lock import DatabaseMutex
+from backend.common.log import log
+from backend.database.db import async_db_session
+from backend.plugin.notify.service.notify_service import notify_service
+from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +249,7 @@ class FileSyncService:
             config.end_time if isinstance(config.end_time, datetime)
             else datetime.fromisoformat(str(config.end_time))
         )
-        if datetime.now() > end_time_dt:
+        if timezone.now() > end_time_dt:
             self.logger.info(f"[任务unknown] 同步任务已过期，截止时间: {config.end_time}")
             return {
                 "success": True,
@@ -294,7 +290,7 @@ class FileSyncService:
         """
         task_params = CreateSyncTaskParam(
             config_id=config_id,
-            start_time=datetime.now(),
+            start_time=timezone.now(),
             status="running",
             err_msg=None,
             task_num="{}",
@@ -316,7 +312,7 @@ class FileSyncService:
         :return:
         """
         try:
-            config_update = UpdateSyncConfigParam(last_sync=datetime.now())
+            config_update = UpdateSyncConfigParam(last_sync=timezone.now())
             await sync_config_dao.update(db, db_obj=config, obj_in=config_update)
             await db.commit()
             self.logger.info(f"[任务{task_id}] 配置 {config_id} 的last_sync已更新")
@@ -925,7 +921,7 @@ class FileSyncService:
             "files_skipped": 0,
             "errors": [],
             "sync_method": sync_method,
-            "start_time": datetime.fromtimestamp(start_perform_sync_time).isoformat(),
+            "start_time": datetime.fromtimestamp(start_perform_sync_time, tz=timezone.tz_info).isoformat(),
             "transferred_files_info": [], # 新增：用于存储成功转存的文件信息
             "pending_task_items": [], # 新增：用于收集待记录的任务项
         }
@@ -957,7 +953,7 @@ class FileSyncService:
         # 计算总耗时
         elapsed_time = time.time() - start_perform_sync_time
         stats["elapsed_time"] = elapsed_time
-        stats["end_time"] = datetime.fromtimestamp(time.time()).isoformat()
+        stats["end_time"] = datetime.fromtimestamp(time.time(), tz=timezone.tz_info).isoformat()
         
         # 判断同步是否成功 - 有错误就是失败
         success = len(stats["errors"]) == 0
@@ -1214,8 +1210,6 @@ class FileSyncService:
         :param account_key: 账户锁键
         :return:
         """
-        start_sync_with_have_time = time.time()
-
         # 检查是否请求取消
         if task_id and db:
             if await self._check_cancel_requested(db, task_id):
@@ -1338,8 +1332,6 @@ class FileSyncService:
         :param account_key: 账户锁键
         :return:
         """
-        start_sync_without_have_time = time.time()
-
         # 检查是否请求取消
         if task_id and db:
             if await self._check_cancel_requested(db, task_id):
@@ -1352,7 +1344,6 @@ class FileSyncService:
         
         # 创建目标目录
         dir_name = target_path.rstrip('/').split('/')[-1]
-        create_dir_start_time = time.time()
 
         created_dir_info = await self.create_directory(
             service, target_definition, dir_name, task_id, db, account_key=account_key,
@@ -1478,8 +1469,6 @@ class FileSyncService:
         
         # 批量转存当前目录下的所有文件
         if files_to_transfer:
-            transfer_start_time = time.time()
-
             transfer_result = await self.transfer_files(
                 service, source_definition, target_definition,
                 files_to_transfer,
@@ -1490,7 +1479,8 @@ class FileSyncService:
             if not transfer_result:
                 self.logger.warning(f"[任务{task_id or 'unknown'}] 批量转存失败，跳过当前目录后续处理: {target_path}")
                 return
-            if db: await db.commit()
+            if db:
+                await db.commit()
 
     async def list_dir(
         self,
@@ -1519,8 +1509,6 @@ class FileSyncService:
         :param db: 数据库会话
         :return:
         """
-        start_list_dir_time = time.time()
-
         try:
             # 获取驱动类型
             drive_type = await service.get_drive_type()
@@ -2077,7 +2065,8 @@ class FileSyncService:
                 for file_info in files_to_rename
             ]
             await asyncio.gather(*rename_tasks)
-            if db: await db.commit() # 每次批量重命名后提交
+            if db:
+                await db.commit()  # 每次批量重命名后提交
         else:
             self.logger.info(f"[任务{task_id}] 没有文件符合重命名条件")
 
@@ -2224,7 +2213,8 @@ class FileSyncService:
                     recursion_speed, stats, task_id, db, account_key=account_key
                 )
                 self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：批量删除完成，耗时: {time.time() - delete_start_time:.2f}秒")
-                if db: await db.commit()
+                if db:
+                    await db.commit()
 
                 # 调试日志：删除后回查目标目录，确认是否真正清空
                 try:
@@ -2299,7 +2289,8 @@ class FileSyncService:
                     f"(因批量转存失败), 耗时: {elapsed:.2f}秒"
                 )
                 return
-            if db: await db.commit()
+            if db:
+                await db.commit()
                 
         except Exception as e:
             error_msg = f"覆盖同步失败: {str(e)}"

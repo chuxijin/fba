@@ -1,20 +1,19 @@
 import json
-import random
-import re
-import time
-import urllib
-from base64 import standard_b64encode
-from enum import Enum
-from pathlib import Path
-from typing import IO, Any, Callable, Dict, List, Optional, Union, Tuple
-from urllib.error import HTTPError
-from urllib.parse import quote_plus, urlparse
-
-import requests  # type: ignore
-from typing_extensions import Literal
 
 # 添加日志模块导入
 import logging
+import random
+import re
+
+from base64 import standard_b64encode
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+from urllib.parse import urlparse
+
+import requests  # type: ignore
+
+from typing_extensions import Literal
 
 from ..utils_service import calu_md5, dump_json, now_timestamp
 from .errors import BaiduApiError, assert_ok
@@ -190,14 +189,17 @@ class BaiduApi:
         self,
         method: Method,
         url: str,
-        params: Optional[Dict[str, str]] = {},
+        params: Optional[Dict[str, str]] = None,
         headers: Optional[Dict[str, str]] = None,
         data: Union[str, bytes, Dict[str, str], Any] = None,
         files: Optional[Dict[str, Any]] = None,
         timeout: Optional[Union[float, Tuple[float, float]]] = None,
         **kwargs,
     ) -> requests.Response:
-        if params and isinstance(params, dict):
+        if params is None:
+            params = {}
+
+        if isinstance(params, dict):
             app_id = self._app_id(url)
             params["app_id"] = app_id
 
@@ -229,7 +231,7 @@ class BaiduApi:
     async def _request_get(
         self,
         url: str,
-        params: Optional[Dict[str, str]] = {},
+        params: Optional[Dict[str, str]] = None,
         headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ) -> requests.Response:
@@ -1085,5 +1087,5 @@ class BaiduApi:
         try:
             resp = await self._request(Method.Post, url, params=params, data=data)
             return resp.json()
-        except Exception as e:
+        except Exception:
             raise

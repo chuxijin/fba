@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.membership.constants import MembershipEntitlementCode
 from backend.app.membership.crud.crud_entitlement import membership_entitlement_dao
 from backend.app.membership.security import check_membership_entitlement
 from backend.app.question_bank.crud.crud_bank import bank_dao
@@ -20,8 +21,8 @@ from backend.common.exception import errors
 class MembershipService:
     """题库会员权限服务"""
 
-    QBANK_FILTER_ENTITLEMENT_CODE: str = 'qbank_premium_filter_access'
-    KNOWLEDGE_ACCESS_ENTITLEMENT_CODE: str = 'knowledge_premium_access'
+    QBANK_FILTER_ENTITLEMENT_CODE: str = MembershipEntitlementCode.QBANK_ADVANCED_FILTER
+    KNOWLEDGE_ACCESS_ENTITLEMENT_CODE: str = MembershipEntitlementCode.QBANK_KNOWLEDGE_PRACTICE
 
     @staticmethod
     def _normalize_entitlement_code(value: str | None) -> str | None:

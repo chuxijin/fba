@@ -1,8 +1,8 @@
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.common.schema import SchemaBase
-
 
 # --- Session Schemas ---
 

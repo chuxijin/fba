@@ -4,9 +4,10 @@
 import asyncio
 import json
 import random
-from datetime import datetime, timedelta
 
-from bilibili_api import Credential, comment, session, user, video
+from datetime import datetime
+
+from bilibili_api import Credential, comment, session, user
 from bilibili_api.comment import CommentResourceType, OrderType
 from bilibili_api.session import EventType
 from sqlalchemy import select
@@ -20,6 +21,7 @@ from backend.app.bili.model.template import BiliTemplate
 from backend.app.bili.model.work import BiliWork
 from backend.common.log import log
 from backend.database.db import async_engine
+from backend.utils.timezone import timezone
 
 
 class PrivateMessageError(Exception):
@@ -37,7 +39,7 @@ async def send_to_others_comment_task(task_config: BiliTaskConfig) -> int:
     """
     async with AsyncSession(async_engine) as db:
         # 创建任务执行记录
-        task_start_time = datetime.now()
+        task_start_time = timezone.now()
         execution_log = BiliTaskExecutionLog(
             task_config_id=task_config.id,
             task_name=task_config.task_name,
@@ -108,7 +110,7 @@ async def send_to_others_comment_task(task_config: BiliTaskConfig) -> int:
             if not comments_to_process:
                 log.info('✅ 没有新评论需要处理')
                 # 更新执行记录
-                execution_log.end_time = datetime.now()
+                execution_log.end_time = timezone.now()
                 execution_log.duration_seconds = int((execution_log.end_time - task_start_time).total_seconds())
                 execution_log.comments_fetched = comments_fetched
                 execution_log.execution_status = 'SUCCESS'
@@ -188,7 +190,7 @@ async def send_to_others_comment_task(task_config: BiliTaskConfig) -> int:
                     )
 
                     # 更新执行记录为 FATAL
-                    execution_log.end_time = datetime.now()
+                    execution_log.end_time = timezone.now()
                     execution_log.duration_seconds = int(
                         (execution_log.end_time - task_start_time).total_seconds()
                     )
@@ -227,7 +229,7 @@ async def send_to_others_comment_task(task_config: BiliTaskConfig) -> int:
                 await db.commit()
 
             # 9. 更新执行记录为 SUCCESS
-            execution_log.end_time = datetime.now()
+            execution_log.end_time = timezone.now()
             execution_log.duration_seconds = int((execution_log.end_time - task_start_time).total_seconds())
             execution_log.comments_fetched = comments_fetched
             execution_log.users_processed = users_processed
@@ -244,7 +246,7 @@ async def send_to_others_comment_task(task_config: BiliTaskConfig) -> int:
             log.error(f'❌ 任务执行异常: {str(e)}')
 
             # 更新执行记录为 FAIL
-            execution_log.end_time = datetime.now()
+            execution_log.end_time = timezone.now()
             execution_log.duration_seconds = int((execution_log.end_time - task_start_time).total_seconds())
             execution_log.comments_fetched = comments_fetched
             execution_log.users_processed = users_processed
@@ -356,7 +358,7 @@ async def _fetch_new_comments_since_last(
 
             # 筛选出比上次处理时间更新的评论
             for reply in replies:
-                comment_time = datetime.fromtimestamp(reply.get('ctime', 0))
+                comment_time = datetime.fromtimestamp(reply.get('ctime', 0), tz=timezone.tz_info)
                 if comment_time > last_processed_time:
                     new_comments.append(reply)
                 else:
@@ -405,7 +407,7 @@ async def _is_user_in_records(db: AsyncSession, mid: int) -> bool:
     """
     stmt = select(BiliDuplicateCheck).where(
         BiliDuplicateCheck.mid == str(mid),
-        BiliDuplicateCheck.is_active == True,
+        BiliDuplicateCheck.is_active.is_(True),
         BiliDuplicateCheck.send_result == 'SUCCESS',  # 只检查成功的记录
     )
     result = await db.execute(stmt)
@@ -523,7 +525,7 @@ async def _update_task_progress(db: AsyncSession, task_id: int, comment_id: int,
 
     if task:
         task.last_processed_id = str(comment_id)
-        task.last_processed_time = datetime.fromtimestamp(comment_time)
+        task.last_processed_time = datetime.fromtimestamp(comment_time, tz=timezone.tz_info)
         await db.commit()
 
 

@@ -4,8 +4,8 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
-from backend.app.admin.schema.token import GetLoginToken
 from backend.app.actcode.schema.code_config import CodeGeneratorConfig
+from backend.app.admin.schema.token import GetLoginToken
 from backend.common.schema import SchemaBase
 
 

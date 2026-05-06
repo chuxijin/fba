@@ -39,7 +39,6 @@ class GetPushLogDetail(BaseModel):
     push_type: int | None = Field(default=None, description='推送类型')
     seller_nick: str | None = Field(default=None, description='卖家昵称')
     seller_id: str | None = Field(default=None, description='卖家ID')
-    buyer_nick: str | None = Field(default=None, description='买家昵称')
     buyer_id: str | None = Field(default=None, description='买家ID')
     trade_type: str | None = Field(default=None, description='交易类型')
     goods_name: str | None = Field(default=None, description='商品名称')

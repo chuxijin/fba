@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
+
 from backend.plugin.visit_stats.api.v1.visit import router as visit_router
 
 # 定义插件的主路由变量，名为 v1

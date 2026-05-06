@@ -3,13 +3,14 @@
 import asyncio
 import logging
 import random
+
 from typing import Any
 
 from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
-from backend.app.coulddrive.service.coulddrive_service import CouldDriveService, DriveAuthError
-from backend.app.coulddrive.schema.file import UserInfoParam
 from backend.app.coulddrive.schema.enum import DriveType
+from backend.app.coulddrive.schema.file import UserInfoParam
 from backend.app.coulddrive.schema.user import UpdateDriveAccountParam
+from backend.app.coulddrive.service.coulddrive_service import CouldDriveService, DriveAuthError
 from backend.app.task.celery import celery_app
 from backend.database.db import async_db_session
 

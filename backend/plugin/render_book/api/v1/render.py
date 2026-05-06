@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import ipaddress
+
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
 
+import anyio
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, RedirectResponse
 
-from backend.common.pagination import DependsPagination, PageData
 from backend.common.exception import errors
+from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.database.db import CurrentSession
 from backend.plugin.render_book.schema.payload import RenderDocumentPayload
@@ -18,13 +22,13 @@ from backend.plugin.render_book.schema.render import (
     RenderJobCreate,
     RenderJobListParams,
     RenderJobRead,
+    RenderJobValidationResult,
+    RenderTemplateDetail,
     RenderTemplatePresetCreate,
     RenderTemplatePresetRead,
     RenderTemplatePresetUpdate,
     RenderTemplatePreviewRequest,
     RenderTemplatePreviewResponse,
-    RenderJobValidationResult,
-    RenderTemplateDetail,
     RenderTemplateSummary,
     RenderVariant,
 )
@@ -46,7 +50,13 @@ def _is_internal_url(value: str | None) -> bool:
 
     parsed = urlparse(value)
     hostname = parsed.hostname or ''
-    return hostname in {'127.0.0.1', 'localhost', '0.0.0.0'}
+    if hostname in {'127.0.0.1', 'localhost'}:
+        return True
+
+    try:
+        return ipaddress.ip_address(hostname).is_unspecified
+    except ValueError:
+        return False
 
 
 def _is_public_url(value: str | None) -> bool:
@@ -202,7 +212,9 @@ async def preview_render_template_pdf(
 
 
 import asyncio
+
 import httpx
+
 
 async def _fetch_bing_image_url() -> str | None:
     try:
@@ -354,9 +366,9 @@ async def download_render_job_file(
     job_id: str,
     file_kind: RenderFileKind,
     db: CurrentSession,
-    render_variant: RenderVariant | None = Query(default=None, description='指定渲染变体'),
-    inline: bool = Query(default=False, description='是否以内联方式打开'),
-    prefer_url: bool = Query(default=False, description='若存在 OSS 地址，是否优先跳转到 OSS'),
+    render_variant: Annotated[RenderVariant | None, Query(description='指定渲染变体')] = None,
+    inline: Annotated[bool, Query(description='是否以内联方式打开')] = False,
+    prefer_url: Annotated[bool, Query(description='若存在 OSS 地址，是否优先跳转到 OSS')] = False,
 ):
     job = await render_service.get_job(job_id, db=db)
     if job is None:
@@ -380,7 +392,8 @@ async def download_render_job_file(
         return RedirectResponse(url=file_record.url, status_code=status.HTTP_302_FOUND)
 
     file_path = Path(file_record.local_path or '')
-    if not file_path.exists() or not file_path.is_file():
+    async_file_path = anyio.Path(file_path)
+    if not await async_file_path.exists() or not await async_file_path.is_file():
         if file_record.url:
             return RedirectResponse(url=file_record.url, status_code=status.HTTP_302_FOUND)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='文件不存在，请重新执行渲染任务。')
@@ -429,8 +442,8 @@ async def get_render_job_preview_pdf(
     request: Request,
     job_id: str,
     db: CurrentSession,
-    render_variant: RenderVariant | None = Query(default=None, description='指定预览渲染变体'),
-    prefer_url: bool = Query(default=False, description='若存在 OSS 地址，是否优先跳转到 OSS'),
+    render_variant: Annotated[RenderVariant | None, Query(description='指定预览渲染变体')] = None,
+    prefer_url: Annotated[bool, Query(description='若存在 OSS 地址，是否优先跳转到 OSS')] = False,
 ):
     job = await render_service.get_job(job_id, db=db)
     if job is None:
@@ -453,7 +466,8 @@ async def get_render_job_preview_pdf(
         return RedirectResponse(url=file_record.url, status_code=status.HTTP_302_FOUND)
 
     file_path = Path(file_record.local_path or '')
-    if not file_path.exists() or not file_path.is_file():
+    async_file_path = anyio.Path(file_path)
+    if not await async_file_path.exists() or not await async_file_path.is_file():
         if file_record.url:
             return RedirectResponse(url=file_record.url, status_code=status.HTTP_302_FOUND)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='预览 PDF 文件不存在，请重新生成预览。')

@@ -50,5 +50,5 @@ __all__ = [
     'Banner',
     'Notice',
     'UserMessage',
-    'UserMessageRead',
+    'UserMessageRead', 'QuestionMaterial',
 ]

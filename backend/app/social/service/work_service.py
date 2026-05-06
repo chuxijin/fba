@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Sequence
 
 from sqlalchemy import Select
 
+from backend.app.social.crud.crud_metric import social_work_metric_dao
 from backend.app.social.crud.crud_work import social_work_dao
+from backend.app.social.model.account import SocialAccount
 from backend.app.social.model.work import SocialWork
 from backend.app.social.schema.work import (
     CreateSocialWorkParam,
     UpdateSocialWorkParam,
-    GetSocialWorkDetail,
 )
-from backend.common.exception import errors
-from backend.common.pagination import paging_data
-from backend.database.db import async_db_session
 from backend.app.social.service.metrics_provider import fetch_metrics_for_work
-from backend.app.social.crud.crud_metric import social_work_metric_dao
-from backend.app.social.model.account import SocialAccount
+from backend.common.exception import errors
+from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
 
 

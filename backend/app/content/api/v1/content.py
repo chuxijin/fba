@@ -1,12 +1,22 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Query
-from fastapi.responses import JSONResponse
-from fastapi.concurrency import run_in_threadpool
-import urllib.request
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import re
 
-from backend.app.content.schema.content import CreateContentParam, UpdateContentParam, GetContentDetail, GetContentListDetails
+from typing import Annotated
+from urllib.parse import urljoin, urlparse
+
+import requests
+
+from fastapi import APIRouter, Query
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
+
+from backend.app.content.schema.content import (
+    CreateContentParam,
+    GetContentDetail,
+    GetContentListDetails,
+    UpdateContentParam,
+)
 from backend.app.content.service.content_service import content_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
@@ -20,22 +30,29 @@ router = APIRouter()
 @router.get('/list', summary='获取内容列表(分页)', response_model=ResponseSchemaModel[PageData[GetContentListDetails]], dependencies=[DependsPagination])
 async def get_sys_content_list(
     db: CurrentSession,
-    app_code: str = Query(None, description='应用标识'),
-    category_id: int = Query(None, description='分类 ID'),
-    is_published: bool = Query(None, description='是否发布'),
+    app_code: Annotated[str | None, Query(description='应用标识')] = None,
+    category_id: Annotated[int | None, Query(description='分类 ID')] = None,
+    is_published: Annotated[bool | None, Query(description='是否发布')] = None,
 ):
     page_data = await content_service.get_list_paged(db=db, app_code=app_code, category_id=category_id, is_published=is_published)
     return response_base.success(data=page_data)
 
 
 @router.get('/link-detail', summary='获取链接详情')
-async def get_link_detail(url: str = Query(..., description='解析URL')):
+async def get_link_detail(url: Annotated[str, Query(description='解析URL')]):
     def fetch_tdk(target_url: str):
         try:
-            req = urllib.request.Request(target_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-            with urllib.request.urlopen(req, timeout=5) as response:
-                html_bytes = response.read()
-                html = html_bytes.decode('utf-8', errors='ignore')
+            parsed_url = urlparse(target_url)
+            if parsed_url.scheme not in {'http', 'https'}:
+                raise ValueError('Unsupported URL scheme')
+
+            response = requests.get(
+                target_url,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+                timeout=5,
+            )
+            response.raise_for_status()
+            html = response.content.decode('utf-8', errors='ignore')
 
             title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
             title = title_match.group(1).strip() if title_match else ''
@@ -51,7 +68,6 @@ async def get_link_detail(url: str = Query(..., description='解析URL')):
             icon_match = re.search(r'<link\s+rel=[\"\'].*?icon.*?[\"\']\s+href=[\"\']([^\"\']+)[\"\']', html, re.IGNORECASE)
             icon = icon_match.group(1).strip() if icon_match else ''
             if icon and not icon.startswith('http'):
-                from urllib.parse import urljoin
                 icon = urljoin(target_url, icon)
 
             img_match = re.search(r'<meta\s+property=[\"\']og:image[\"\']\s+content=[\"\']([^\"\']+)[\"\']', html, re.IGNORECASE)
@@ -79,10 +95,11 @@ async def get_link_detail(url: str = Query(..., description='解析URL')):
 @router.get('/tags', summary='获取内容标签', response_model=ResponseSchemaModel[list[str]])
 async def get_sys_content_tags(
     db: CurrentSession,
-    limit: int = Query(50, description='返回数量限制')
+    limit: Annotated[int, Query(description='返回数量限制')] = 50,
 ):
     # 这里是一个简单的标签提取逻辑，实际可能需要更复杂的聚合查询
     from sqlalchemy import select
+
     from backend.app.content.model.content import Content
     stmt = select(Content.tags).where(Content.tags.isnot(None))
     result = await db.execute(stmt)
@@ -102,7 +119,7 @@ async def get_sys_content_by_slug(db: CurrentSession, slug: str):
 async def get_related_content_list(
     db: CurrentSession,
     pk: int,
-    limit: int = Query(5, description='限制条数')
+    limit: Annotated[int, Query(description='限制条数')] = 5,
 ):
     items = await content_service.get_related_list(db=db, pk=pk, limit=limit)
     return response_base.success(data=items)

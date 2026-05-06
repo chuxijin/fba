@@ -13,7 +13,7 @@ from backend.common.model import Base, id_key
 from backend.utils.timezone import timezone
 
 if TYPE_CHECKING:
-    from backend.plugin.app_auth.model import AppPackage, AppDevice
+    from backend.plugin.app_auth.model import AppDevice, AppPackage
 
 class AppOrder(Base):
     """订单表"""

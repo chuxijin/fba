@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import Request
 from sqlalchemy import func, select
@@ -9,7 +9,7 @@ from backend.common.exception import errors
 from backend.common.security.jwt import superuser_verify
 from backend.database.db import async_db_session
 from backend.plugin.app_auth.crud import application_dao, authorization_dao, device_dao, redeem_code_dao
-from backend.plugin.app_auth.model import AppAuthorization, AppApplication, AppDevice
+from backend.plugin.app_auth.model import AppApplication, AppAuthorization
 from backend.plugin.app_auth.schema.authorization import (
     AuthorizationCheckResult,
     AuthorizeDeviceParam,
@@ -17,7 +17,7 @@ from backend.plugin.app_auth.schema.authorization import (
     CreateAuthorizationParam,
     RedeemCodeAuthParam,
     UpdateAuthorizationParam,
-    UpdateAuthorizationTimeParam
+    UpdateAuthorizationTimeParam,
 )
 from backend.plugin.app_auth.schema.redeem_code import RedeemCodeParam
 from backend.plugin.app_auth.service.device_service import device_service

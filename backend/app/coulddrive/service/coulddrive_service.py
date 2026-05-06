@@ -29,7 +29,6 @@ from backend.app.coulddrive.schema.file import (
 from backend.app.coulddrive.schema.user import BaseUserInfo, RelationshipItem
 from backend.common.log import log
 
-
 # ============================================================
 # 第一部分：配置项定义（学习 Alist Items）
 # ============================================================
@@ -597,6 +596,6 @@ class CouldDriveService:
 # ============================================================
 
 # 导入所有驱动模块，触发 @DriverRegistry.register() 装饰器
+from backend.app.coulddrive.service.alist.client import AlistClient  # noqa: F401, E402
 from backend.app.coulddrive.service.baidu.client import BaiduClient  # noqa: F401, E402
 from backend.app.coulddrive.service.quark.client import QuarkClient  # noqa: F401, E402
-from backend.app.coulddrive.service.alist.client import AlistClient  # noqa: F401, E402

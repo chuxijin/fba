@@ -2,18 +2,20 @@
 # -*- coding: utf-8 -*-
 """打卡服务类"""
 import calendar
-from datetime import date, datetime, timedelta
+
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.membership.crud.crud_experience_rule import membership_experience_rule_dao
 from backend.app.membership.model.experience_rule import MembershipExperienceRule
+from backend.app.membership.service.experience_service import membership_experience_service
 from backend.app.question_bank.crud.crud_check_in import check_in_dao
 from backend.app.question_bank.model import PracticeRecord, UserCheckIn
 from backend.app.question_bank.schema.home import CheckInCalendarData, CheckInCalendarDay, CheckInInfo, CheckInResult
-from backend.app.membership.crud.crud_experience_rule import membership_experience_rule_dao
-from backend.app.membership.service.experience_service import membership_experience_service
 from backend.common.exception import errors
+from backend.utils.timezone import timezone
 
 
 class CheckInService:
@@ -71,8 +73,9 @@ class CheckInService:
         :param user_id: 用户 ID
         :return:
         """
+        today = timezone.now().date()
         today_summary = await CheckInService._get_today_practice_summary(db, user_id)
-        existing = await check_in_dao.get_by_user_and_date(db, user_id, date.today())
+        existing = await check_in_dao.get_by_user_and_date(db, user_id, today)
         if existing:
             return None
 
@@ -106,11 +109,12 @@ class CheckInService:
         :param practice_count: 当日做题数
         :param practice_duration: 当日练习时长
         """
+        today = timezone.now().date()
         today_summary = await CheckInService._get_today_practice_summary(db, user_id)
         practice_count = today_summary['practice_count']
         practice_duration = today_summary['practice_duration']
 
-        existing = await check_in_dao.get_by_user_and_date(db, user_id, date.today())
+        existing = await check_in_dao.get_by_user_and_date(db, user_id, today)
         if existing:
             streak = await check_in_dao.get_streak(db, user_id)
             total_days = await check_in_dao.get_total_days(db, user_id)
@@ -142,7 +146,7 @@ class CheckInService:
                 family_code=family_code,
                 exp_delta=reward_exp,
                 source='check_in',
-                source_key=f'check_in:{user_id}:{date.today().isoformat()}',
+                source_key=f'check_in:{user_id}:{today.isoformat()}',
                 remark=f'连续签到第 {cycle_day} 天奖励',
             )
 
@@ -218,7 +222,7 @@ class CheckInService:
         :param user_id: 用户 ID
         :return:
         """
-        today_start = datetime.combine(date.today(), datetime.min.time())
+        today_start = datetime.combine(timezone.now().date(), datetime.min.time())
         stmt = (
             select(func.count(PracticeRecord.id))
             .where(
@@ -238,7 +242,7 @@ class CheckInService:
         :param user_id: 用户 ID
         :return:
         """
-        today_start = datetime.combine(date.today(), datetime.min.time())
+        today_start = datetime.combine(timezone.now().date(), datetime.min.time())
         stmt = select(
             func.count(PracticeRecord.id).label('practice_count'),
             func.coalesce(func.sum(PracticeRecord.answer_time), 0).label('practice_duration'),

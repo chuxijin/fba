@@ -897,7 +897,7 @@ async function loadPracticeTabs() {
   try {
     syncCurrentDomain()
     const [bankTreeData, categoryRoots] = await Promise.all([
-      fbaApi.qbank.bank.getList({ status: 1 }) as Promise<BankNode[]>,
+      fbaApi.qbank.bank.getList({ status: 1, study_domain: currentDomain.value }) as Promise<BankNode[]>,
       getStudyDomainCategoryRoots(currentDomain.value, ['product_catalog', 'knowledge_point']) as Promise<CategoryNode[]>,
     ])
 

@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Sequence, Tuple
-from datetime import datetime, timedelta, time
+from datetime import datetime, time, timedelta
+from typing import Sequence
 
-from sqlalchemy import Select, and_, desc, select, func, or_, case, text
+from sqlalchemy import Select, and_, case, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import noload, defer, joinedload
+from sqlalchemy.orm import joinedload, noload
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.coulddrive.model.resource import Resource, ResourceViewHistory
 from backend.app.admin.model.category import Category
+from backend.app.coulddrive.model.resource import Resource, ResourceViewHistory
 from backend.app.coulddrive.schema.resource import (
     CreateResourceParam,
-    UpdateResourceParam,
-    GetResourceListParam,
     CreateResourceViewHistoryParam,
-    GetResourceViewHistoryListParam
+    GetResourceListParam,
+    GetResourceViewHistoryListParam,
+    UpdateResourceParam,
 )
-from backend.utils.embedding import embed, batch_embed
 from backend.common.log import log
+from backend.utils.embedding import batch_embed, embed
 from backend.utils.timezone import timezone
 
 
@@ -146,7 +146,7 @@ class CRUDResource(CRUDPlus[Resource]):
             select(self.model)
             .where(
                 and_(
-                    self.model.is_deleted == False,
+                    self.model.is_deleted.is_(False),
                     self.model.status == 1
                 )
             )
@@ -187,7 +187,7 @@ class CRUDResource(CRUDPlus[Resource]):
             select(self.model)
             .where(
                 and_(
-                    self.model.is_deleted == False,
+                    self.model.is_deleted.is_(False),
                     self.model.status == 1
                 )
             )
@@ -230,7 +230,7 @@ class CRUDResource(CRUDPlus[Resource]):
         """
         stmt = select(self.model).where(
             self.model.user_id == user_id,
-            self.model.is_deleted == False
+            self.model.is_deleted.is_(False)
         ).options(noload(Resource.user), noload(Resource.view_history))
         result = await db.execute(stmt)
         return result.scalars().all()
@@ -325,7 +325,7 @@ class CRUDResource(CRUDPlus[Resource]):
             .where(
                 and_(
                     # 资源未删除且状态正常
-                    self.model.is_deleted == False,
+                    self.model.is_deleted.is_(False),
                     self.model.status == 1,
                     # 有过期时间设置
                     self.model.expired_at.is_not(None),
@@ -359,7 +359,7 @@ class CRUDResource(CRUDPlus[Resource]):
             .where(
                 and_(
                     # 资源未删除且状态正常
-                    self.model.is_deleted == False,
+                    self.model.is_deleted.is_(False),
                     self.model.status == 1,
                     # 有过期时间设置
                     self.model.expired_at.is_not(None),
@@ -391,7 +391,7 @@ class CRUDResource(CRUDPlus[Resource]):
             select(self.model)
             .where(
                 and_(
-                    self.model.is_deleted == False,
+                    self.model.is_deleted.is_(False),
                     self.model.status == 1,
                     self.model.is_temp_file == temp_mode,
                 )
@@ -453,7 +453,8 @@ class CRUDResource(CRUDPlus[Resource]):
         :param user_id: 用户ID
         :return:
         """
-        from datetime import datetime, time
+        from datetime import datetime
+
         from backend.app.coulddrive.model.resource import ResourceViewHistory
         
         # 基础统计查询
@@ -463,7 +464,7 @@ class CRUDResource(CRUDPlus[Resource]):
             func.sum(case((self.model.audit_status == 0, 1), else_=0)).label('pending_audit_count'),
             func.sum(case((self.model.audit_status == 1, 1), else_=0)).label('approved_count'),
             func.sum(case((self.model.audit_status == 2, 1), else_=0)).label('rejected_count'),
-            func.sum(case((self.model.is_deleted == True, 1), else_=0)).label('deleted_count'),
+            func.sum(case((self.model.is_deleted.is_(True), 1), else_=0)).label('deleted_count'),
             func.sum(self.model.view_count).label('total_views')
         )
         
@@ -474,7 +475,7 @@ class CRUDResource(CRUDPlus[Resource]):
         row = result.first()
         
         # 简化今日增长计算：获取今日0点前的总浏览量
-        today = datetime.now().date()
+        today = timezone.now().date()
         today_start = datetime.combine(today, time.min)
         
         # 查询今日0点前的总浏览量（简化版本）
@@ -575,7 +576,7 @@ class CRUDResource(CRUDPlus[Resource]):
         """
         stmt = select(func.count(self.model.id)).where(
             self.model.created_time <= date_end,
-            self.model.is_deleted == False
+            self.model.is_deleted.is_(False)
         )
         result = await db.execute(stmt)
         return result.scalar() or 0
@@ -590,7 +591,7 @@ class CRUDResource(CRUDPlus[Resource]):
         """
         stmt = select(func.count(self.model.id)).where(
             self.model.created_time <= date_end,
-            self.model.is_deleted == False,
+            self.model.is_deleted.is_(False),
             self.model.status == 1
         )
         result = await db.execute(stmt)
@@ -608,7 +609,7 @@ class CRUDResource(CRUDPlus[Resource]):
         stmt = select(func.count(self.model.id)).where(
             self.model.created_time >= date_start,
             self.model.created_time <= date_end,
-            self.model.is_deleted == False
+            self.model.is_deleted.is_(False)
         )
         result = await db.execute(stmt)
         return result.scalar() or 0
@@ -643,7 +644,7 @@ class CRUDResource(CRUDPlus[Resource]):
 
         # 构建过滤条件
         filters = [
-            self.model.is_deleted == False,
+            self.model.is_deleted.is_(False),
             self.model.status == 1,
             self.model.content_vector.isnot(None)
         ]
@@ -738,7 +739,7 @@ class CRUDResource(CRUDPlus[Resource]):
         # 获取所有需要向量化的资源（未删除且向量为空）
         stmt = select(self.model).where(
             and_(
-                self.model.is_deleted == False,
+                self.model.is_deleted.is_(False),
                 self.model.content_vector.is_(None)
             )
         )
@@ -891,7 +892,7 @@ class CRUDResourceViewHistory(CRUDPlus[ResourceViewHistory]):
         :param days: 保留天数
         :return:
         """
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = timezone.now() - timedelta(days=days)
         result = await self.delete_model_by_column(
             db, 
             allow_multiple=True, 

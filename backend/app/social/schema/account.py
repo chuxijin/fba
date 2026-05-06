@@ -6,8 +6,8 @@ from typing import Any
 
 from pydantic import Field
 
+from backend.app.social.model.account import DomainEnum, PlatformEnum
 from backend.common.schema import SchemaBase
-from backend.app.social.model.account import PlatformEnum, DomainEnum
 
 
 class SocialAccountBase(SchemaBase):

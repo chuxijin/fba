@@ -13,7 +13,7 @@ from backend.common.model import Base, id_key
 from backend.utils.timezone import timezone
 
 if TYPE_CHECKING:
-    from backend.plugin.app_auth.model import AppVersion, AppPackage, AppAuthorization
+    from backend.plugin.app_auth.model import AppAuthorization, AppPackage, AppVersion
 
 
 class AppApplication(Base):

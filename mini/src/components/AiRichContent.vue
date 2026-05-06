@@ -1,6 +1,4 @@
 <script lang="ts" setup>
-import MarkdownIt from 'markdown-it'
-import hljs from 'highlight.js'
 import { computed } from 'vue'
 // @ts-expect-error mp-html uni-app package does not ship TS declarations for this entry.
 import mpHtml from 'mp-html/dist/uni-app/components/mp-html/mp-html'
@@ -20,24 +18,6 @@ const props = withDefaults(defineProps<{
   selectable: true,
 })
 
-const markdownIt = new MarkdownIt({
-  html: false,
-  linkify: true,
-  breaks: true,
-  typographer: false,
-  highlight(code, language) {
-    let highlighted = ''
-    if (language && hljs.getLanguage(language)) {
-      highlighted = hljs.highlight(code, { language, ignoreIllegals: true }).value
-    }
-    else {
-      highlighted = hljs.highlightAuto(code).value
-    }
-
-    return `<pre class="ai-code-block"><code class="hljs${language ? ` language-${language}` : ''}">${highlighted}</code></pre>`
-  },
-})
-
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, '&amp;')
@@ -55,6 +35,219 @@ function looksLikeMarkdown(value: string) {
   return /(^|\n)\s{0,3}(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```|~~~|\|.+\|)/m.test(value)
     || /\[[^\]]+\]\([^)]+\)/.test(value)
     || /`[^`]+`/.test(value)
+}
+
+function isTableDivider(value: string) {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(value)
+}
+
+function isTableRow(value: string) {
+  return value.includes('|') && !isTableDivider(value)
+}
+
+function isUnorderedList(value: string) {
+  return /^\s*[-*+]\s+/.test(value)
+}
+
+function isOrderedList(value: string) {
+  return /^\s*\d+\.\s+/.test(value)
+}
+
+function isBlockBoundary(value: string) {
+  return !value.trim()
+    || /^\s*(```|~~~)/.test(value)
+    || /^\s{0,3}#{1,6}\s+/.test(value)
+    || /^\s*>/.test(value)
+    || isUnorderedList(value)
+    || isOrderedList(value)
+    || isTableRow(value)
+}
+
+function renderInlineMarkdown(value: string) {
+  let nextValue = escapeHtml(value)
+  const tokens: string[] = []
+  const stashHtml = (html: string) => {
+    const token = `@@AI_HTML_TOKEN_${tokens.length}@@`
+    tokens.push(html)
+    return token
+  }
+
+  nextValue = nextValue.replace(
+    /`([^`]+)`/g,
+    (_, code: string) => stashHtml(`<code class="ai-inline-code">${code}</code>`),
+  )
+  nextValue = nextValue.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+    (_, label: string, url: string) => stashHtml(`<a href="${url}">${label}</a>`),
+  )
+
+  nextValue = nextValue.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  nextValue = nextValue.replace(/__([^_]+)__/g, '<strong>$1</strong>')
+  nextValue = nextValue.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+  nextValue = nextValue.replace(/_([^_]+)_/g, '<em>$1</em>')
+  nextValue = nextValue.replace(
+    /(^|[\s>])(https?:\/\/[^\s<]+)/g,
+    '$1<a href="$2">$2</a>',
+  )
+
+  return tokens.reduce((html, tokenHtml, index) => {
+    return html.replace(`@@AI_HTML_TOKEN_${index}@@`, tokenHtml)
+  }, nextValue)
+}
+
+function splitTableCells(value: string) {
+  return value
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map(item => item.trim())
+}
+
+function renderTable(lines: string[], startIndex: number) {
+  const headers = splitTableCells(lines[startIndex])
+  const rows: string[][] = []
+  let index = startIndex + 2
+
+  while (index < lines.length && isTableRow(lines[index])) {
+    rows.push(splitTableCells(lines[index]))
+    index += 1
+  }
+
+  const headerHtml = headers
+    .map(item => `<th>${renderInlineMarkdown(item)}</th>`)
+    .join('')
+  const rowsHtml = rows
+    .map((row) => {
+      const cellsHtml = row
+        .map(item => `<td>${renderInlineMarkdown(item)}</td>`)
+        .join('')
+      return `<tr>${cellsHtml}</tr>`
+    })
+    .join('')
+
+  return {
+    html: `<table><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`,
+    nextIndex: index,
+  }
+}
+
+function renderList(lines: string[], startIndex: number, ordered: boolean) {
+  const tag = ordered ? 'ol' : 'ul'
+  const matcher = ordered ? /^\s*\d+\.\s+/ : /^\s*[-*+]\s+/
+  const items: string[] = []
+  let index = startIndex
+
+  while (index < lines.length) {
+    const line = lines[index]
+    if (ordered && !isOrderedList(line)) {
+      break
+    }
+    if (!ordered && !isUnorderedList(line)) {
+      break
+    }
+
+    items.push(`<li>${renderInlineMarkdown(line.replace(matcher, '').trim())}</li>`)
+    index += 1
+  }
+
+  return {
+    html: `<${tag}>${items.join('')}</${tag}>`,
+    nextIndex: index,
+  }
+}
+
+function renderMarkdown(value: string) {
+  const lines = value.replace(/\r\n/g, '\n').split('\n')
+  const blocks: string[] = []
+  let index = 0
+
+  while (index < lines.length) {
+    const line = lines[index]
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      index += 1
+      continue
+    }
+
+    const fence = trimmed.match(/^(```|~~~)\s*(\w+)?/)
+    if (fence) {
+      const fenceMark = fence[1]
+      const language = fence[2] || ''
+      const codeLines: string[] = []
+      index += 1
+
+      while (index < lines.length && !lines[index].trim().startsWith(fenceMark)) {
+        codeLines.push(lines[index])
+        index += 1
+      }
+
+      if (index < lines.length) {
+        index += 1
+      }
+
+      blocks.push(
+        `<pre class="ai-code-block"><code class="ai-code-text${language ? ` language-${language}` : ''}">${escapeHtml(codeLines.join('\n'))}</code></pre>`,
+      )
+      continue
+    }
+
+    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/)
+    if (heading) {
+      const level = Math.min(heading[1].length, 4)
+      blocks.push(`<h${level}>${renderInlineMarkdown(heading[2].trim())}</h${level}>`)
+      index += 1
+      continue
+    }
+
+    if (trimmed.startsWith('>')) {
+      const quoteLines: string[] = []
+      while (index < lines.length && lines[index].trim().startsWith('>')) {
+        quoteLines.push(lines[index].replace(/^\s*>\s?/, ''))
+        index += 1
+      }
+      blocks.push(`<blockquote>${quoteLines.map(item => renderInlineMarkdown(item)).join('<br/>')}</blockquote>`)
+      continue
+    }
+
+    if (isUnorderedList(line)) {
+      const result = renderList(lines, index, false)
+      blocks.push(result.html)
+      index = result.nextIndex
+      continue
+    }
+
+    if (isOrderedList(line)) {
+      const result = renderList(lines, index, true)
+      blocks.push(result.html)
+      index = result.nextIndex
+      continue
+    }
+
+    if (isTableRow(line) && index + 1 < lines.length && isTableDivider(lines[index + 1])) {
+      const result = renderTable(lines, index)
+      blocks.push(result.html)
+      index = result.nextIndex
+      continue
+    }
+
+    const paragraphLines: string[] = []
+    while (index < lines.length && !isBlockBoundary(lines[index])) {
+      paragraphLines.push(lines[index].trim())
+      index += 1
+    }
+
+    if (paragraphLines.length > 0) {
+      blocks.push(`<p>${paragraphLines.map(item => renderInlineMarkdown(item)).join('<br/>')}</p>`)
+      continue
+    }
+
+    blocks.push(`<p>${renderInlineMarkdown(trimmed)}</p>`)
+    index += 1
+  }
+
+  return blocks.join('')
 }
 
 function renderPlainText(value: string) {
@@ -84,7 +277,7 @@ const renderedHtml = computed(() => {
     nextHtml = raw
   }
   else if (props.format === 'markdown' || (props.format === 'auto' && looksLikeMarkdown(raw))) {
-    nextHtml = markdownIt.render(raw)
+    nextHtml = renderMarkdown(raw)
   }
   else {
     nextHtml = renderPlainText(raw)
@@ -143,59 +336,12 @@ const tagStyle = {
   overflow-x: auto;
 }
 
-.ai-rich-content :deep(.ai-code-block code) {
+.ai-rich-content :deep(.ai-code-text) {
   display: block;
   font-size: 12px;
   line-height: 1.8;
   color: #e2e8f0;
   word-break: break-word;
   white-space: pre;
-}
-
-.ai-rich-content :deep(.hljs-comment),
-.ai-rich-content :deep(.hljs-quote) {
-  color: #94a3b8;
-}
-
-.ai-rich-content :deep(.hljs-keyword),
-.ai-rich-content :deep(.hljs-selector-tag),
-.ai-rich-content :deep(.hljs-literal),
-.ai-rich-content :deep(.hljs-section),
-.ai-rich-content :deep(.hljs-link) {
-  color: #f472b6;
-}
-
-.ai-rich-content :deep(.hljs-string),
-.ai-rich-content :deep(.hljs-title),
-.ai-rich-content :deep(.hljs-name),
-.ai-rich-content :deep(.hljs-attribute),
-.ai-rich-content :deep(.hljs-symbol),
-.ai-rich-content :deep(.hljs-bullet),
-.ai-rich-content :deep(.hljs-addition) {
-  color: #86efac;
-}
-
-.ai-rich-content :deep(.hljs-number),
-.ai-rich-content :deep(.hljs-built_in),
-.ai-rich-content :deep(.hljs-builtin-name),
-.ai-rich-content :deep(.hljs-type),
-.ai-rich-content :deep(.hljs-variable),
-.ai-rich-content :deep(.hljs-template-variable) {
-  color: #fbbf24;
-}
-
-.ai-rich-content :deep(.hljs-title.class_),
-.ai-rich-content :deep(.hljs-class .hljs-title),
-.ai-rich-content :deep(.hljs-function .hljs-title),
-.ai-rich-content :deep(.hljs-params) {
-  color: #93c5fd;
-}
-
-.ai-rich-content :deep(.hljs-emphasis) {
-  font-style: italic;
-}
-
-.ai-rich-content :deep(.hljs-strong) {
-  font-weight: 700;
 }
 </style>

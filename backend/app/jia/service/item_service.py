@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.jia.crud import item_dao
 from backend.app.jia.model import JiaItem
-from backend.app.jia.schema import CreateItemParam, UpdateItemParam, GetItemList
+from backend.app.jia.schema import CreateItemParam, GetItemList, UpdateItemParam
 from backend.app.jia.service.push_service import push_service
 from backend.common.exception import errors
 from backend.common.log import log
@@ -119,7 +119,7 @@ class ItemService:
         :param user_id: 用户 ID
         :return:
         """
-        from sqlalchemy import select, func
+        from sqlalchemy import func, select
 
         stmt = (
             select(JiaItem.status, func.count(JiaItem.id))
@@ -143,11 +143,15 @@ class ItemService:
         vector = None
         # 优化：采用带标签的结构化文本，增加 category 和 location
         text_parts = []
-        if obj.category: text_parts.append(f"分类: {obj.category}")
+        if obj.category:
+            text_parts.append(f"分类: {obj.category}")
         text_parts.append(f"名称: {obj.name or ''}")
-        if obj.description: text_parts.append(f"描述: {obj.description}")
-        if obj.location: text_parts.append(f"位置: {obj.location}")
-        if obj.notes: text_parts.append(f"备注: {obj.notes}")
+        if obj.description:
+            text_parts.append(f"描述: {obj.description}")
+        if obj.location:
+            text_parts.append(f"位置: {obj.location}")
+        if obj.notes:
+            text_parts.append(f"备注: {obj.notes}")
         
         text_to_embed = ", ".join(text_parts).strip()
         
@@ -189,11 +193,15 @@ class ItemService:
             new_notes = obj.notes if obj.notes is not None else item.notes
 
             text_parts = []
-            if new_cat: text_parts.append(f"分类: {new_cat}")
+            if new_cat:
+                text_parts.append(f"分类: {new_cat}")
             text_parts.append(f"名称: {new_name or ''}")
-            if new_desc: text_parts.append(f"描述: {new_desc}")
-            if new_loc: text_parts.append(f"位置: {new_loc}")
-            if new_notes: text_parts.append(f"备注: {new_notes}")
+            if new_desc:
+                text_parts.append(f"描述: {new_desc}")
+            if new_loc:
+                text_parts.append(f"位置: {new_loc}")
+            if new_notes:
+                text_parts.append(f"备注: {new_notes}")
             
             text_to_embed = ", ".join(text_parts).strip()
             

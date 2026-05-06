@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from typing import Any
 from enum import Enum
+from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator
 

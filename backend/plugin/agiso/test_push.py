@@ -9,12 +9,13 @@ import requests
 BASE_URL = "http://127.0.0.1:8000/api/v1/agiso/webhooks"
 ACTIVATE_URL = "http://127.0.0.1:8000/api/v1/actcode/agiso/activate"
 APP_SECRET = "gnm26ydsneuredywn642vvc4mbrvcrn6"
+REQUEST_TIMEOUT = 10
 
 
 def make_sign(json_str: str, timestamp: str, app_secret: str) -> str:
     """生成签名"""
     sign_str = f'{app_secret}json{json_str}timestamp{timestamp}{app_secret}'
-    return hashlib.md5(sign_str.encode('utf-8')).hexdigest()
+    return hashlib.md5(sign_str.encode('utf-8'), usedforsecurity=False).hexdigest()
 
 
 # =============================================
@@ -48,6 +49,7 @@ def test_tb_payment():
                 "fromPlatform": "TbAlds",
                 "aopic": 2097152,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
@@ -82,6 +84,7 @@ def test_tb_delivery():
                 "fromPlatform": "TbAlds",
                 "aopic": 2048,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
@@ -116,6 +119,7 @@ def test_xhs_payment():
                 "fromPlatform": "AldsXhs",
                 "aopic": 4,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
@@ -160,6 +164,7 @@ def test_xhs_delivery():
                 "fromPlatform": "AldsXhs",
                 "aopic": 1,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
@@ -190,6 +195,7 @@ def test_xhs_duplicate():
                 "fromPlatform": "AldsXhs",
                 "aopic": 4,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
@@ -223,6 +229,7 @@ def test_xhs_refund():
                 "fromPlatform": "AldsXhs",
                 "aopic": 16,
             },
+            timeout=REQUEST_TIMEOUT,
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
@@ -242,7 +249,7 @@ def test_activate():
             "order_input": "P999000000000000002",
             "username": "test_xhs_user",
             "password": "Test123456",
-        })
+        }, timeout=REQUEST_TIMEOUT)
         print(f"Status: {response.status_code}")
         print(f"Response: {json.dumps(response.json(), ensure_ascii=False, indent=2)}")
     except Exception as e:

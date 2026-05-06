@@ -4,11 +4,12 @@ from datetime import date
 from decimal import Decimal
 
 import sqlalchemy as sa
+
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, UserMixin, id_key
 from backend.utils.timezone import timezone
-from pgvector.sqlalchemy import Vector
 
 
 class JiaItem(Base, UserMixin):

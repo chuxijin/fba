@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Optional, List, Dict, NamedTuple, Any
 from collections import namedtuple
+from typing import Any, Dict, List, NamedTuple, Optional
 
 
 class QuarkFile(NamedTuple):

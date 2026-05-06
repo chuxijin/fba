@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Sequence
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.social.model.account import SocialAccount, PlatformEnum, DomainEnum
+from backend.app.social.model.account import DomainEnum, PlatformEnum, SocialAccount
 from backend.app.social.schema.account import (
     CreateSocialAccountParam,
     UpdateSocialAccountParam,

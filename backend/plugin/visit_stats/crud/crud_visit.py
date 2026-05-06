@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from datetime import date, timedelta
-from collections.abc import Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.plugin.visit_stats.model.visit import VisitLog, VisitStats
+from backend.utils.timezone import timezone
 
 
 class CRUDVisitLog(CRUDPlus[VisitLog]):
@@ -34,14 +34,14 @@ class CRUDVisitLog(CRUDPlus[VisitLog]):
 
     async def count_today_pv(self, db: AsyncSession) -> int:
         """统计今日 PV"""
-        today = date.today()
+        today = timezone.now().date()
         stmt = select(func.count(VisitLog.id)).where(VisitLog.visit_date == today)
         result = await db.execute(stmt)
         return result.scalar() or 0
 
     async def count_today_uv(self, db: AsyncSession) -> int:
         """统计今日 UV（独立IP数）"""
-        today = date.today()
+        today = timezone.now().date()
         stmt = select(func.count(func.distinct(VisitLog.ip_address))).where(
             VisitLog.visit_date == today
         )
@@ -50,7 +50,6 @@ class CRUDVisitLog(CRUDPlus[VisitLog]):
 
     async def count_recent_active(self, db: AsyncSession, minutes: int = 5) -> int:
         """统计最近活跃访客数（最近N分钟内有访问的独立IP）"""
-        from backend.utils.timezone import timezone
         threshold = timezone.now() - timedelta(minutes=minutes)
         stmt = select(func.count(func.distinct(VisitLog.ip_address))).where(
             VisitLog.created_time >= threshold
@@ -92,7 +91,7 @@ class CRUDVisitStats(CRUDPlus[VisitStats]):
 
     async def get_month_pv(self, db: AsyncSession) -> int:
         """获取本月 PV"""
-        today = date.today()
+        today = timezone.now().date()
         first_day = today.replace(day=1)
         stmt = select(func.sum(VisitStats.pv)).where(VisitStats.stats_date >= first_day)
         result = await db.execute(stmt)

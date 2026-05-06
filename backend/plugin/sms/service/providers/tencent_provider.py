@@ -4,7 +4,7 @@ from tencentcloud.common import credential
 from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
 from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
-from tencentcloud.sms.v20210111 import sms_client, models
+from tencentcloud.sms.v20210111 import models, sms_client
 
 from backend.common.log import log
 from backend.core.conf import settings

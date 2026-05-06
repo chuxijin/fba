@@ -4,12 +4,14 @@ import hashlib
 import hmac
 import time
 import urllib.parse
+
 from base64 import b64encode
 from collections.abc import Callable, Coroutine
 from email.mime.text import MIMEText
 from typing import Any
 
 import httpx
+
 from aiosmtplib import SMTP
 from starlette.concurrency import run_in_threadpool
 

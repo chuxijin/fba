@@ -1,450 +1,154 @@
-import asyncio
+#!/usr/bin/env python3
 import json
 import logging
-import os
-import re
-from pathlib import Path
-from typing import Any, AsyncGenerator
+import uuid
 
-import httpx
+from collections.abc import AsyncGenerator
+from pathlib import Path
+from typing import Any
+
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from backend.app.question_bank.crud.crud_bank import bank_dao
-from backend.common.exception import errors
-from backend.core.conf import settings
+from backend.app.question_bank.schema.parse import ReviewJobUpdateParam
 from backend.core.path_conf import UPLOAD_DIR
+from backend.plugin.ocr.service.ocr_service import ocr_service
+from backend.plugin.ocr.service.providers.base import OCRDocumentParseResultData
 from backend.utils.file_ops import upload_file
+from backend.utils.path_safety import safe_path_segment
 
 log = logging.getLogger(__name__)
 
+
 class ParseService:
     @staticmethod
-    async def parse_pdf_to_markdown(file_path: Path, images_dir_name: str, request_base_url: str = "") -> str:
+    async def parse_pdf_to_ocr_result(file_path: Path, images_dir_name: str) -> OCRDocumentParseResultData:
         """
-        纯 API 方式调用 LlamaParse（避免 Pydantic v1 与 v2 冲突），提取内容的 Markdown 和图片
+        调用 OCR 插件解析 PDF
+
+        :param file_path: PDF 文件路径
+        :param images_dir_name: 图片保存目录名
+        :return:
         """
         if not images_dir_name:
             raise ValueError("必须提供 images_dir_name 参数")
-            
-        # 图片保存的相对子目录: upload/parsed_images/传的参数/
-        images_dir = UPLOAD_DIR / "parsed_images" / images_dir_name
-        images_dir.mkdir(parents=True, exist_ok=True)
-        
-        api_key = os.environ.get("LLAMA_CLOUD_API_KEY") or getattr(settings, "LLAMA_CLOUD_API_KEY", None)
-        if not api_key:
-            raise ValueError("环境变量 LLAMA_CLOUD_API_KEY 未配置，无法调用 LlamaParse 服务")
 
-        log.info(f"开始使用纯 HTTP API 上传并解析 PDF: {file_path}")
-
-        # LlamaParse V2 标准两阶段流程地址
-        files_url = "https://api.cloud.llamaindex.ai/api/v1/beta/files"
-        parse_url = "https://api.cloud.llamaindex.ai/api/v2/parse"
-        headers = {"Authorization": f"Bearer {api_key}", "accept": "application/json"}
-        
-        async with httpx.AsyncClient(timeout=120) as client:
-            try:
-                # --- 第一步：上传文件获取 file_id ---
-                file_bytes = await asyncio.to_thread(file_path.read_bytes)
-                files = {"file": (file_path.name, file_bytes, "application/pdf")}
-                # purpose=parse 是文档建议的用途
-                upload_res = await client.post(files_url, headers=headers, files=files, data={"purpose": "parse"})
-                upload_res.raise_for_status()
-                file_id = upload_res.json()["id"]
-                log.info(f"文件上传成功，FileID: {file_id}")
-
-                # --- 第二步：提交解析请求获取 job_id ---
-                parse_payload = {
-                    "file_id": file_id,
-                    "tier": "agentic",
-                    "version": "latest",
-                    "agentic_options": {
-                        "custom_prompt": "你是一个专业的公考题目提取助手。请在解析文档时，确保所有公式、题目描述、选项内容都完整保留。遇到表格时，无须识别直接改成图片。"
-                    },
-                    "output_options": {
-                        "images_to_save": ["embedded", "layout"],
-                        "markdown": {
-                            "annotate_links": True,
-                            "inline_images": True,
-                            "tables": {
-                                "output_tables_as_markdown": False
-                            }
-                        }
-                    },
-                    "processing_options": {
-                        "cost_optimizer": {"enable": True},
-                        "ocr_parameters": {
-                            "languages": ["ch_sim"]
-                        }
-                    }
-                }
-                
-                job_res = await client.post(parse_url, headers=headers, json=parse_payload)
-                if job_res.status_code == 422:
-                    log.error(f"LlamaParse 提交解析失败 (422): {job_res.text}")
-                job_res.raise_for_status()
-                job_id = job_res.json()["id"]
-
-                log.info(f"PDF 已提交，正在云端进行解析，JobID: {job_id}")
-                
-                # 2. 轮询等待任务完成 (使用 LlamaParse V2 API 结构)
-                md_content = ""
-                for i in range(120): # 最长等待十分钟
-                    await asyncio.sleep(5)
-                    # 轮询时不要加 expand，避免由于带着大负载查询导致服务端状态被锁或卡缓存机制
-                    status_res = await client.get(f"{parse_url}/{job_id}", headers=headers)
-                    status_res.raise_for_status()
-                    status_data = status_res.json()
-                    
-                    # V2 Status 响应: 状态嵌套在 job 对象中
-                    status = status_data.get("job", {}).get("status")
-                    
-                    if status == "COMPLETED":
-                        log.info(f"JobID: {job_id} 状态已 COMPLETED。开始拉取全内容和图片元数据...")
-                        
-                        # 解析彻底完成后，再通过 expand 取出巨大的 Markdown 文本和图片 URL 列表
-                        # V2 的 REST API 常规模式为逗号分隔字符串，或者同名数组。我们用标准做法
-                        params = {
-                            "expand": "markdown,images_content_metadata,text"
-                        }
-                        full_res = await client.get(f"{parse_url}/{job_id}", headers=headers, params=params)
-                        full_data = full_res.json()
-                        
-                        # 如果逗号格式支持不好引发空数据，则尝试数组模式（兜底）
-                        if not full_data.get("markdown_full") and not full_data.get("markdown"):
-                            params_list = [("expand", "markdown"), ("expand", "images_content_metadata"), ("expand", "text")]
-                            full_res = await client.get(f"{parse_url}/{job_id}", headers=headers, params=params_list)
-                            full_data = full_res.json()
-                        
-                        status_data = full_data  # 覆盖回 status_data 以便复用下游解析
-                         
-                        # 1. 确定 Markdown 内容
-                        md_content = status_data.get("markdown_full")
-                        if not md_content:
-                            log.warning(f"JobID: {job_id} 未找到 markdown_full，尝试从分页 markdown 拼接...")
-                            md_pages = status_data.get("markdown", {}).get("pages", [])
-                            if md_pages:
-                                md_content = "\n\n".join([p.get("markdown", "") for p in md_pages])
-                        
-                        if not md_content:
-                            log.error(f"JobID: {job_id} 解析已完成但未获取到任何 Markdown 内容")
-                            raise Exception("云端已完成解析，但未返回 Markdown 内容（markdown_full 或 pages 均为空）。")
-
-                        # 2. 处理图片 (无论从哪拿的内容，元数据都在 images_content_metadata)
-                        images_metadata = status_data.get("images_content_metadata", {}).get("images", [])
-                        if images_metadata:
-                            log.info(f"探测到 {len(images_metadata)} 张图片，开始下载...")
-                            for img_info in images_metadata:
-                                img_name = img_info.get("filename")
-                                presigned_url = img_info.get("presigned_url")
-                                
-                                if img_name and presigned_url:
-                                    try:
-                                        img_res = await client.get(presigned_url)
-                                        if img_res.status_code == 200:
-                                            img_path = images_dir / img_name
-                                            await asyncio.to_thread(img_path.write_bytes, img_res.content)
-                                    except Exception as e:
-                                        log.warning(f"下载图片 {img_name} 失败: {e}")
-                        else:
-                            log.info("该文档未检测到图片。")
-                        
-                        # 3. 保存 Markdown 文本
-                        md_file_path = images_dir / f"{images_dir_name}.md"
-                        await asyncio.to_thread(md_file_path.write_text, md_content, encoding="utf-8")
-                            
-                        log.info(f"JobID: {job_id} 内容与图片处理完毕，解析成功退出。")
-                        break
-                    elif status in ["ERROR", "FAILED"]:
-                        log.error(f"解析任务失败: {status_data}")
-                        raise Exception(f"云端解析出错: {status_data.get('error_message', '未知错误')}")
-                if not md_content:
-                    raise Exception("任务超时未完成")
-
-                log.info("PDF API 解析成功，任务完成。")
-                return md_content
-                
-            except httpx.HTTPError as he:
-                log.error(f"HTTP 调用 LlamaParse API 失败: {he}")
-                raise Exception(f"请求失败: {he}")
-            except Exception as e:
-                log.error(f"解析 PDF 失败: {e}")
-                raise
+        file_bytes = await run_in_threadpool(file_path.read_bytes)
+        result = await ocr_service.parse_document_bytes(
+            filename=file_path.name,
+            content=file_bytes,
+            content_type='application/pdf',
+            output_format='markdown',
+            images_dir_name=images_dir_name,
+            wait=True,
+        )
+        log.info(f'OCR 插件解析 PDF 成功，provider={result.provider}, job_id={result.job_id}')
+        return result
 
     @staticmethod
-    async def extract_questions_from_md(db: AsyncSession, md_content: str, provider_id: int = 3) -> dict:
+    async def parse_pdf_to_markdown(file_path: Path, images_dir_name: str) -> str:
         """
-        利用 AI 提供商进行全文题目的自动切割、提取、格式化。
-        将长文本按照 Markdown 的 `## 标题` 或长度分片异步推给提供商大模型，再合并为包含材料和题目的结构集合。
+        调用 OCR 插件将 PDF 转为 Markdown
+
+        :param file_path: PDF 文件路径
+        :param images_dir_name: 图片保存目录名
+        :return:
         """
-        import json
-        from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
-        from backend.plugin.ai.service.chat_service import ai_chat_service
-
-        system_prompt = """你是一个专业的公考题库结构化数据提取工具（API）。
-你的唯一任务是将用户输入的Markdown格式的公考试卷片段，转换为严格的 JSON 格式。
-【最高指令】绝对不要回答试卷中的问题！绝对不要进行评价、解释、分析对错、纠错或寒暄！只做客观的结构化抽取！
-这是一份由 Markdown 组成的试卷文本截断（其中的图片链接如 `![图](URL)` 和公式如 `$$...$$` 请完完整整、一字不落的原样保留！严禁改动链接和表格）。
-
-公考中尤其是【资料分析】或【文章阅读】通常会有一大段**公共材料**，接着连续出5道左右选择题。
-请提取文本中的所有考题（包括选项、标注的老答案和老解析等），按题号次序严格提取出，并输出为严谨的 JSON。如果没有找到任何题目，必须返回 {"questions": []}。
-【注意】如果发现长篇“公共材料（如资料分析文章、表格）”，请**完全忽略并丢弃它们**，本系统的材料将由人工后续录入，你只需要专门提取每一道“单选题”、“多选题”本身！
-如果题目附近有明显的所属章节大标题（比如“第一部分 政治理论”、“第二部分 常识判断”等），请一并推断并填入章节名。
-
-**输出 JSON 格式要求规范：**
-```json
-{
-  "questions": [
-    {
-      "type": "single", // 题型: single/multiple/judgement/fill/shortAnswer 
-      "stem": "<p>...</p>", // 包含正文题干描述。请务必彻底删除正文开头的任何形式的题号标识（如“1.”、“1、”、“(1)”、“1．”、“一、”、“【1】”、“第1题”等），保证题干纯净。
-      "options_data": { // 单选/多选/判断可用。如果不适用则值为 null 
-        "A": {"code": "A", "content": "选项A的内容(维持Markdown图片等)"},
-        "B": {"code": "B", "content": "选项B的内容"}
-      },
-      "answer_data": {
-        "correct": "A" // 单选为"A", 多选为["A","C"], 判断为"正确", 填空为["填空处1", "填空处2"]
-      },
-      "analysis_content": "解析正文的 Markdown 原文片段...", // 将原文中关联该题的解析抽取于此
-      "difficulty": "medium", // 预测难度: easy/medium/hard
-      "knowledge_point": "xx考点", // 提取或推断该题考察知识点
-      "score": 1.0, // 默认1
-      "sort_order": 1, // 提取出的原题号（纯数字），如果没有则依据顺序递增，必须是数字
-      "source": "卷名来源",
-      "year": 2026, // 提取出的年份或设null
-      "chapter_name": "所属章节标题，比如 第一部分 政治理论（如果没有则填null）"
-    }
-  ]
-}
-      "type": "single", // 题型: single/multiple/judgement/fill/shortAnswer 
-      "stem": "<p>...</p>", // 包含正文题干描述。请务必彻底删除正文开头的任何形式的题号标识（如“1.”、“1、”、“(1)”、“1．”、“一、”、“【1】”、“第1题”等），保证题干纯净。
-      "options_data": { // 单选/多选/判断可用。如果不适用则值为 null 
-        "A": {"code": "A", "content": "选项A的内容(维持Markdown图片等)"},
-        "B": {"code": "B", "content": "选项B的内容"}
-      },
-      "answer_data": {
-        "correct": "A" // 单选为"A", 多选为["A","C"], 判断为"正确", 填空为["填空处1", "填空处2"]
-      },
-      "analysis_content": "解析正文的 Markdown 原文片段...", // 将原文中关联该题的解析抽取于此
-      "difficulty": "medium", // 预测难度: easy/medium/hard
-      "knowledge_point": "xx考点", // 提取或推断该题考察知识点
-      "score": 1.0, // 默认1
-      "sort_order": 1, // 提取出的原题号（纯数字），如果没有则依据顺序递增，必须是数字
-      "source": "卷名来源",
-      "year": 2026 // 提取出的年份或设null
-    }
-  ]
-}
-```
-**千万注意**:
-1. 仅仅输出合法且闭合的 JSON 数据对象，必须以 `{` 开始，以 `}` 结束。
-2. 不要加任何类似于 ```json ``` 的代码块标记！绝对不要包含任何其它总结、提示性的人类寒暄（比如“这是整理好的内容”、“答案是有笔误的”等等）。
-3. 即使你发现原文有逻辑错误或笔误，也不要去修复它，你要做的是原样抓取并JSON化！
-"""
-
-        # 新的分片逻辑：固定字数滑动窗口 + 上下文重叠
-        # 每块尽量取 1000 字符，前后重叠 200 字符，以防止刚好把一道题或材料切断
-        # 实际处理时，第一块：0~1000；第二块：800~1800；依此类推。
-        chunk_size = 1000
-        overlap = 200
-        
-        parsed_chunks = []
-        md_len = len(md_content)
-        
-        if md_len == 0:
-            return {"materials": [], "questions": []}
-            
-        start = 0
-        chunk_index = 0
-        while start < md_len:
-            end = min(start + chunk_size, md_len)
-            
-            # 如果不是第一块，我们在文本开头加上提示语，防止 AI 误判被截断的开头
-            prefix_context = "(接上文)...\n" if start > 0 else ""
-            suffix_context = "\n...(未完待续)" if end < md_len else ""
-            
-            text_slice = md_content[start:end]
-            final_text = f"{prefix_context}{text_slice}{suffix_context}"
-            
-            # 使用类似于旧版的结构保存，title 简单用分片索引代替
-            parsed_chunks.append((f"分片_{chunk_index}", final_text))
-            
-            chunk_index += 1
-            # 步长为 size - overlap
-            start += (chunk_size - overlap)
-            
-        async def process_chunk(title, text, chunk_index):
-            prompt_text = f"【当前{title}】：\n{text}\n\n注意：如果发现某道题或材料被开头/结尾截断了不完整，请**只提取完整的那些题目**，不要提取残缺的题目，残缺的题目会在下一个分片中被完整提取。"
-            chat_param = AIChat(
-                provider_id=provider_id,
-                model_id="gpt-5.4", 
-                messages=[
-                    AIChatMessage(role="system", content=system_prompt),
-                    AIChatMessage(role="user", content=prompt_text)
-                ],
-                temperature=0.1
-            )
-            
-            try:
-                ai_resp = await ai_chat_service.raw_chat(db=db, chat=chat_param, stream=True)
-                resp_content = ai_resp.get('content', '')
-                
-                json_match = re.search(r'\{[\s\S]*\}', resp_content)
-                if json_match:
-                    try:
-                        data = json.loads(json_match.group())
-                        # 为合并防冲，给临时 ID 加上切片索引后缀
-                        chunk_suffix = f"_{chunk_index}"
-                        
-                        questions = data.get("questions", [])
-                        return {"questions": questions}
-                    except json.JSONDecodeError as je:
-                        log.error(f"由 AI 生成的 JSON 解析失败，{title}:\n{je}")
-                        return {"questions": []}
-                else:
-                    log.warning(f"模块{title}未能找到合法 JSON 块: {resp_content[:100]}...")
-                    return {"questions": []}
-            except Exception as e:
-                log.error(f"模块{title}调用 AI Plugin 失败: {e}")
-                return {"questions": []}
-
-        log.info(f"分配了 {len(parsed_chunks)} 个 AI 大模型滑动窗口切片串行提取子任务...")
-        results = []
-        for idx, (t, c) in enumerate(parsed_chunks):
-            res = await process_chunk(t, c, idx)
-            results.append(res)
-            # 严格限流，速率控制为最大 10 RPM（即每个请求间隔 6 秒）
-            await asyncio.sleep(6)
-        
-        final_questions = []
-        for res in results:
-            if isinstance(res, dict):
-                final_questions.extend(res.get("questions", []))
-                
-        log.info(f"试卷滑动切片处理全部完毕，总计识别分离出 {len(final_questions)} 道多模态题目。")
-        return {"questions": final_questions}
+        result = await ParseService.parse_pdf_to_ocr_result(file_path=file_path, images_dir_name=images_dir_name)
+        return result.content
 
     @staticmethod
-    async def extract_questions_stream(db: AsyncSession, md_content: str, provider_id: int = 4):
+    async def _export_markdown(md_content: str, filename_stem: str) -> dict[str, Any]:
         """
-        利用 AI 提供商进行全文题目的自动切割、提取（流式流出）。
-        切片逐个返回结果通过 yield 暴露给 SSE 调用，让前端实时绘制题目卡片不用一直傻等。
+        导出 Markdown 文件
+
+        :param md_content: Markdown 内容
+        :param filename_stem: 文件名前缀
+        :return:
         """
-        import json
-        import re
-        import asyncio
-        from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
-        from backend.plugin.ai.service.chat_service import ai_chat_service
+        export_dir = UPLOAD_DIR / 'parse_export'
+        export_dir.mkdir(parents=True, exist_ok=True)
+        safe_stem = safe_path_segment(filename_stem, default='document')
+        md_file_name = f'{safe_stem}_{uuid.uuid4().hex[:8]}.md'
+        md_file_path = export_dir / md_file_name
+        await run_in_threadpool(md_file_path.write_text, md_content, encoding='utf-8')
+        return {
+            'md_url': f'parse_export/{md_file_name}',
+            'md_length': len(md_content),
+            'file_name': md_file_name,
+        }
 
-        system_prompt = """你是一个专业的公考题库结构化数据提取工具（API）。
-你的唯一任务是将用户输入的Markdown格式的公考试卷片段，转换为严格的 JSON 格式。
-【最高指令】绝对不要回答试卷中的问题！绝对不要进行评价、解释、分析对错、纠错或寒暄！只做客观的结构化抽取！
-这是一份由 Markdown 组成的试卷文本截断（其中的图片链接如 `![图](URL)` 和公式如 `$$...$$` 请完完整整、一字不落的原样保留！严禁改动链接和表格）。
+    @staticmethod
+    async def _export_text(text_content: str, filename_stem: str) -> dict[str, Any]:
+        """
+        导出 Text 文件
 
-公考中尤其是【资料分析】或【文章阅读】通常会有一大段**公共材料**，接着连续出5道左右选择题。
-请提取文本中的所有考题（包括选项、标注的老答案和老解析等），按题号次序严格提取出，并输出为严谨的 JSON。如果没有找到任何题目，必须返回 {"questions": []}。
-【注意】如果发现长篇“公共材料（如资料分析文章、表格）”，请**完全忽略并丢弃它们**，本系统的材料将由人工后续录入，你只需要专门提取每一道“单选题”、“多选题”本身！
-如果题目附近有明显的所属章节大标题（比如“第一部分 政治理论”、“第二部分 常识判断”等），请一并推断并填入章节名。
+        :param text_content: Text 内容
+        :param filename_stem: 文件名前缀
+        :return:
+        """
+        export_dir = UPLOAD_DIR / 'parse_export'
+        export_dir.mkdir(parents=True, exist_ok=True)
+        safe_stem = safe_path_segment(filename_stem, default='document')
+        text_file_name = f'{safe_stem}_{uuid.uuid4().hex[:8]}.txt'
+        text_file_path = export_dir / text_file_name
+        await run_in_threadpool(text_file_path.write_text, text_content, encoding='utf-8')
+        return {
+            'text_url': f'parse_export/{text_file_name}',
+            'text_length': len(text_content),
+            'text_file_name': text_file_name,
+        }
 
-**输出 JSON 格式要求规范：**
-```json
-{
-  "questions": [
-    {
-      "type": "single", // 题型: single/multiple/judgement/fill/shortAnswer 
-      "stem": "<p>...</p>", // 包含正文题干描述。请务必彻底删除正文开头的任何形式的题号标识（如“1.”、“1、”、“(1)”、“1．”、“一、”、“【1】”、“第1题”等），保证题干纯净。
-      "options_data": { // 单选/多选/判断可用。如果不适用则值为 null 
-        "A": {"code": "A", "content": "选项A的内容(维持Markdown图片等)"},
-        "B": {"code": "B", "content": "选项B的内容"}
-      },
-      "answer_data": {
-        "correct": "A" // 单选为"A", 多选为["A","C"], 判断为"正确", 填空为["填空处1", "填空处2"]
-      },
-      "analysis_content": "解析正文的 Markdown 原文片段...", // 将原文中关联该题的解析抽取于此
-      "difficulty": "medium", // 预测难度: easy/medium/hard
-      "knowledge_point": "xx考点", // 提取或推断该题考察知识点
-      "score": 1.0, // 默认1
-      "sort_order": 1, // 提取出的原题号（纯数字），如果没有则依据顺序递增，必须是数字
-      "source": "卷名来源",
-      "year": 2026, // 提取出的年份或设null
-      "chapter_name": "所属章节标题，比如 第一部分 政治理论（如果没有则填null）"
-    }
-  ]
-}
-```
-**千万注意**:
-1. 仅仅输出合法且闭合的 JSON 数据对象，必须以 `{` 开始，以 `}` 结束。
-2. 不要加任何类似于 ```json ``` 的代码块标记！绝对不要包含任何其它总结、提示性的人类寒暄（比如“这是整理好的内容”、“答案是有笔误的”等等）。
-3. 即使你发现原文有逻辑错误或笔误，也不要去修复它，你要做的是原样抓取并JSON化！
-"""
+    @staticmethod
+    async def _recover_text_content(job_id: str | None) -> str:
+        """
+        从云端 OCR 任务恢复纯文本
 
-        chunk_size = 1000
-        overlap = 200
-        parsed_chunks = []
-        md_len = len(md_content)
-        
-        if md_len == 0:
-            yield {"questions": []}
-            return
-            
-        start = 0
-        chunk_index = 0
-        while start < md_len:
-            end = min(start + chunk_size, md_len)
-            prefix_context = "(接上文)...\n" if start > 0 else ""
-            suffix_context = "\n...(未完待续)" if end < md_len else ""
-            text_slice = md_content[start:end]
-            final_text = f"{prefix_context}{text_slice}{suffix_context}"
-            parsed_chunks.append((f"分片_{chunk_index}", final_text))
-            chunk_index += 1
-            start += (chunk_size - overlap)
-            
-        async def process_chunk(title, text, idx):
-            prompt_text = f"【当前{title}】：\n{text}\n\n注意：如果发现某道题或材料被开头/结尾截断了不完整，请**只提取完整的那些题目**，不要提取残缺的题目，残缺的题目会在下一个分片中被完整提取。"
-            chat_param = AIChat(
-                provider_id=provider_id,
-                model_id="gpt-5.4", 
-                messages=[
-                    AIChatMessage(role="system", content=system_prompt),
-                    AIChatMessage(role="user", content=prompt_text)
-                ],
-                temperature=0.1
+        :param job_id: 云端 OCR 任务 ID
+        :return:
+        """
+        if not job_id:
+            return ''
+
+        try:
+            result = await ocr_service.recover_document(
+                job_id=job_id,
+                output_format='text',
+                download_images=False,
             )
-            
-            try:
-                ai_resp = await ai_chat_service.raw_chat(db=db, chat=chat_param, stream=False)
-                resp_content = ai_resp.get('content', '')
-                
-                json_match = re.search(r'\{[\s\S]*\}', resp_content)
-                if json_match:
-                    try:
-                        data = json.loads(json_match.group())
-                        return {"questions": data.get("questions", [])}
-                    except json.JSONDecodeError as je:
-                        log.error(f"由 AI 生成的 JSON 解析失败，{title}:\n{je}")
-                        return {"questions": []}
-                else:
-                    log.warning(f"模块{title}未能找到合法 JSON 块: {resp_content[:100]}...")
-                    return {"questions": []}
-            except Exception as e:
-                log.error(f"模块{title}调用 AI Plugin 失败: {e}")
-                return {"questions": []}
+        except Exception as exc:
+            log.warning(f'恢复 OCR Text 失败，job_id={job_id}: {exc!s}')
+            return ''
 
-        log.info(f"开启流式分配 {len(parsed_chunks)} 个抽取子任务...")
-        total_found = 0
-        for idx, (t, c) in enumerate(parsed_chunks):
-            res = await process_chunk(t, c, idx)
-            # 通过 generator yield 单个分片的捕获题型
-            if res and isinstance(res, dict) and res.get("questions"):
-                total_found += len(res["questions"])
-                yield res
-            
-            # 严格限流，速率控制为最大 10 RPM（即每个请求间隔 6 秒）
-            if idx < len(parsed_chunks) - 1:
-                await asyncio.sleep(6)
-        
-        log.info(f"流式分片抽取彻底结束，总获取题数: {total_found}")
+        return result.content
+
+    @staticmethod
+    async def _export_markdown_with_text(
+        md_content: str,
+        filename_stem: str,
+        text_content: str | None,
+        job_id: str | None,
+    ) -> dict[str, Any]:
+        """
+        导出 Markdown 和 Text 文件
+
+        :param md_content: Markdown 内容
+        :param filename_stem: 文件名前缀
+        :param text_content: Text 内容
+        :param job_id: 云端 OCR 任务 ID
+        :return:
+        """
+        data = await ParseService._export_markdown(md_content, filename_stem)
+        if not text_content:
+            text_content = await ParseService._recover_text_content(job_id)
+        if not text_content:
+            return data
+
+        text_data = await ParseService._export_text(text_content, filename_stem)
+        data.update(text_data)
+        return data
 
     @staticmethod
     async def smart_commit(
@@ -476,12 +180,11 @@ class ParseService:
         )
 
     @staticmethod
-    async def upload_and_parse_pdf_file(file: UploadFile, request_base_url: str) -> dict[str, Any]:
+    async def upload_and_parse_pdf_file(file: UploadFile) -> dict[str, Any]:
         """
         上传并解析 PDF 试卷为 Markdown
 
         :param file: 上传的文件对象
-        :param request_base_url: 请求基础 URL
         :return: 包含 markdown 内容的字典
         """
         if not file.filename.lower().endswith('.pdf'):
@@ -495,201 +198,433 @@ class ParseService:
         md_content = await ParseService.parse_pdf_to_markdown(
             file_path=file_path,
             images_dir_name=folder_name,
-            request_base_url=request_base_url,
         )
         return {'markdown': md_content}
 
     @staticmethod
-    async def smart_extract_file(
+    async def convert_pdf_to_markdown_only(
         db: AsyncSession,
         file: UploadFile,
         bank_id: int,
-        request_base_url: str,
     ) -> dict[str, Any]:
         """
-        智能提取 PDF/Markdown 文件中的题目结构（不入库）
+        仅将 PDF 转为 Markdown
 
         :param db: 数据库会话
-        :param file: 上传的文件对象
+        :param file: 上传的 PDF 文件
         :param bank_id: 题库 ID
-        :param request_base_url: 请求基础 URL
-        :return: 提取结果字典
+        :return:
         """
-        is_pdf = file.filename.lower().endswith('.pdf')
-        is_md = file.filename.lower().endswith('.md')
-        if not (is_pdf or is_md):
-            raise ValueError('请上传 .pdf 或 .md 格式文件')
-
-        temp_folder = 'temp_pdf'
-        filename = await upload_file(file, folder=temp_folder)
-        file_path = UPLOAD_DIR / filename
+        if not file.filename.lower().endswith('.pdf'):
+            raise ValueError('请上传 .pdf 格式文件')
 
         bank = await bank_dao.get(db, bank_id)
         if not bank:
             raise ValueError('题库不存在')
-        folder_name = bank.name
 
-        if is_pdf:
-            md_content = await ParseService.parse_pdf_to_markdown(
-                file_path=file_path,
-                images_dir_name=folder_name,
-                request_base_url=request_base_url,
-            )
-        else:
-            md_content = await run_in_threadpool(file_path.read_text, encoding='utf-8')
-
-        extract_result = await ParseService.extract_questions_from_md(
-            db=db, md_content=md_content, provider_id=4,
+        filename = await upload_file(file, folder='temp_pdf')
+        file_path = UPLOAD_DIR / filename
+        safe_bank_name = safe_path_segment(bank.name, default='bank')
+        result = await ParseService.parse_pdf_to_ocr_result(
+            file_path=file_path,
+            images_dir_name=safe_bank_name,
         )
 
-        materials_data = extract_result.get('materials', [])
-        questions_data = extract_result.get('questions', [])
-        return {
-            'materials': materials_data,
-            'questions': questions_data,
-            'raw_md_length': len(md_content),
-            'materials_count': len(materials_data),
-            'questions_count': len(questions_data),
-        }
+        return await ParseService._export_markdown_with_text(
+            result.content,
+            f'markdown_{Path(file.filename).stem}',
+            result.text_content,
+            result.job_id,
+        )
 
     @staticmethod
-    async def smart_extract_file_stream(
+    async def recover_markdown_from_ocr_job(
+        db: AsyncSession,
+        bank_id: int,
+        job_id: str,
+        download_images: bool = False,
+    ) -> dict[str, Any]:
+        """
+        从云端 OCR 任务恢复 Markdown
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :param job_id: 云端 OCR 任务 ID
+        :param download_images: 是否同时下载图片
+        :return:
+        """
+        bank = await bank_dao.get(db, bank_id)
+        if not bank:
+            raise ValueError('题库不存在')
+
+        safe_bank_name = safe_path_segment(bank.name, default='bank')
+        result = await ocr_service.recover_document(
+            job_id=job_id,
+            output_format='markdown',
+            images_dir_name=safe_bank_name,
+            download_images=download_images,
+        )
+
+        data = await ParseService._export_markdown_with_text(
+            result.content,
+            f'ocr_{result.job_id or job_id}',
+            result.text_content,
+            result.job_id or job_id,
+        )
+        data.update({
+            'job_id': result.job_id,
+            'status': result.status,
+        })
+        return data
+
+    @staticmethod
+    def _review_dir() -> Path:
+        """获取审核任务目录"""
+        review_dir = UPLOAD_DIR / 'parse_review'
+        review_dir.mkdir(parents=True, exist_ok=True)
+        return review_dir
+
+    @staticmethod
+    def _review_job_path(job_id: str) -> Path:
+        """
+        获取审核任务路径
+
+        :param job_id: 审核任务 ID
+        :return:
+        """
+        safe_job_id = ''.join([char for char in job_id if char.isalnum() or char in ('_', '-')])
+        return ParseService._review_dir() / f'{safe_job_id}.json'
+
+    @staticmethod
+    async def _read_review_job(job_id: str) -> dict[str, Any]:
+        """
+        读取审核任务
+
+        :param job_id: 审核任务 ID
+        :return:
+        """
+        job_path = ParseService._review_job_path(job_id)
+        if not job_path.exists():
+            raise ValueError('审核任务不存在')
+        content = await run_in_threadpool(job_path.read_text, encoding='utf-8')
+        return json.loads(content)
+
+    @staticmethod
+    async def _write_review_job(job_data: dict[str, Any]) -> None:
+        """
+        写入审核任务
+
+        :param job_data: 审核任务数据
+        :return:
+        """
+        job_path = ParseService._review_job_path(job_data['job_id'])
+        text = json.dumps(job_data, ensure_ascii=False, indent=2)
+        await run_in_threadpool(job_path.write_text, text, encoding='utf-8')
+
+    @staticmethod
+    async def create_review_job_stream(
         db: AsyncSession,
         file: UploadFile,
         bank_id: int,
-        request_base_url: str,
+        provider_id: int = 4,
+        user_id: int | None = None,
+        extract_mode: str = 'question',
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
-        智能流式提取 PDF/Markdown 中的题目结构
+        流式创建 AI 审核任务
 
         :param db: 数据库会话
-        :param file: 上传的文件对象
+        :param file: 上传文件
         :param bank_id: 题库 ID
-        :param request_base_url: 请求基础 URL
-        :return: 流式生成器
+        :param provider_id: AI 供应商 ID
+        :param user_id: 用户 ID
+        :param extract_mode: 抽取模式
+        :return:
         """
+        from backend.app.question_bank.service.review_parse_service import review_parse_service
+
+        if extract_mode not in {'question', 'answer'}:
+            raise ValueError('不支持的解析模式')
+
         is_pdf = file.filename.lower().endswith('.pdf')
         is_md = file.filename.lower().endswith('.md')
         if not (is_pdf or is_md):
             raise ValueError('请上传 .pdf 或 .md 格式文件')
 
-        temp_folder = 'temp_pdf'
-        filename = await upload_file(file, folder=temp_folder)
-        file_path = UPLOAD_DIR / filename
-
         bank = await bank_dao.get(db, bank_id)
         if not bank:
             raise ValueError('题库不存在')
-        folder_name = bank.name
 
+        yield {'type': 'stage', 'stage': 'parse', 'message': '正在解析文档...'}
+
+        filename = await upload_file(file, folder='temp_pdf')
+        file_path = UPLOAD_DIR / filename
         if is_pdf:
             md_content = await ParseService.parse_pdf_to_markdown(
                 file_path=file_path,
-                images_dir_name=folder_name,
-                request_base_url=request_base_url,
+                images_dir_name=bank.name,
             )
         else:
             md_content = await run_in_threadpool(file_path.read_text, encoding='utf-8')
 
-        async for chunk_result in ParseService.extract_questions_stream(db, md_content, provider_id=4):
-            yield chunk_result
+        job_id = uuid.uuid4().hex
+        review_dir = ParseService._review_dir()
+        md_file_name = f'{job_id}.md'
+        md_file_path = review_dir / md_file_name
+        await run_in_threadpool(md_file_path.write_text, md_content, encoding='utf-8')
 
-    @staticmethod
-    async def save_segments_to_disk(db: AsyncSession, bank_id: int, segments: list[dict]) -> dict[str, Any]:
-        """
-        将前端编辑后的分段 Markdown 保存到服务器文件系统
-
-        :param db: 数据库会话
-        :param bank_id: 题库 ID
-        :param segments: 分段数据列表
-        :return: 保存结果字典
-        """
-        bank = await bank_dao.get(db, bank_id)
-        if not bank:
-            raise ValueError('题库不存在')
-
-        base_dir = UPLOAD_DIR / 'parsed_md' / bank.name
-        base_dir.mkdir(parents=True, exist_ok=True)
-
-        saved_files = []
-        for seg in segments:
-            name = seg.get('name', '未命名分片')
-            content = seg.get('content', '')
-
-            safe_name = ''.join([c for c in name if c.isalnum() or c in (' ', '_', '-')]).rstrip()
-            file_path = base_dir / f'{safe_name}.md'
-
-            await run_in_threadpool(file_path.write_text, content, encoding='utf-8')
-            saved_files.append(str(file_path))
-
-        return {'count': len(saved_files), 'path': str(base_dir)}
-
-    @staticmethod
-    async def run_pipeline_with_file(
-        db: AsyncSession,
-        file: UploadFile,
-        bank_id: int,
-        request_base_url: str,
-        provider_id: int = 4,
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        """
-        智能导入流水线（PDF/MD → Excel）
-
-        :param db: 数据库会话
-        :param file: 上传的文件对象
-        :param bank_id: 题库 ID
-        :param request_base_url: 请求基础 URL
-        :param provider_id: AI 供应商 ID
-        :return: SSE 事件生成器
-        """
-        from backend.app.question_bank.service.pipeline_service import pipeline_service
-
-        is_pdf = file.filename.lower().endswith('.pdf')
-        is_md = file.filename.lower().endswith('.md')
-        if not (is_pdf or is_md):
-            raise ValueError('请上传 .pdf 或 .md 格式文件')
-
-        temp_folder = 'temp_pdf'
-        filename = await upload_file(file, folder=temp_folder)
-        file_path = UPLOAD_DIR / filename
-
-        bank = await bank_dao.get(db, bank_id)
-        if not bank:
-            raise ValueError('题库不存在')
-
-        file_type = 'pdf' if is_pdf else 'md'
-
-        async for event in pipeline_service.run_pipeline(
-            db=db,
-            file_path=file_path,
-            file_type=file_type,
-            bank_name=bank.name,
-            request_base_url=request_base_url,
-            provider_id=provider_id,
-        ):
-            yield event
-
-    @staticmethod
-    async def preview_segments_from_file(file: UploadFile) -> dict[str, Any]:
-        """
-        预览 Markdown 分段结果（兜底）
-
-        :param file: 上传的文件对象
-        :return: 分段预览结果
-        """
-        from backend.app.question_bank.service.pipeline_service import pipeline_service
-
-        if not file.filename.lower().endswith('.md'):
-            raise ValueError('请上传 .md 格式文件')
-
-        content = await file.read()
-        md_content = content.decode('utf-8')
-
-        segments = await run_in_threadpool(pipeline_service.preview_segments, md_content)
-        return {
-            'segments': segments,
-            'total_count': len(segments),
+        yield {
+            'type': 'stage',
+            'stage': 'parse_done',
+            'message': f'文档解析完成，共 {len(md_content)} 字符',
+            'md_length': len(md_content),
+            'md_url': f'parse_review/{md_file_name}',
         }
+
+        yield {'type': 'stage', 'stage': 'segment', 'message': '正在分段...'}
+
+        segments = review_parse_service.build_review_segments(md_content)
+        yield {
+            'type': 'stage',
+            'stage': 'segment_done',
+            'message': f'分段完成，识别到 {len(segments)} 段',
+            'segments_count': len(segments),
+        }
+
+        yield {'type': 'stage', 'stage': 'ai_extract', 'message': '正在进行 AI 智能提取...'}
+
+        materials: list[dict[str, Any]] = []
+        questions: list[dict[str, Any]] = []
+        answers: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        if extract_mode == 'answer':
+            async for event in review_parse_service.extract_answers_with_ai(db, segments, provider_id):
+                if event['type'] == 'progress':
+                    yield event
+                if event['type'] == 'complete':
+                    answers = event.get('answers', [])
+                    warnings = event.get('warnings', [])
+        else:
+            async for event in review_parse_service.extract_review_with_ai(db, segments, provider_id):
+                if event['type'] == 'progress':
+                    yield event
+                if event['type'] == 'complete':
+                    materials = event.get('materials', [])
+                    questions = event.get('questions', [])
+                    answers = event.get('answers', [])
+                    warnings = event.get('warnings', [])
+
+        yield {
+            'type': 'stage',
+            'stage': 'ai_extract_done',
+            'message': f'AI 提取完成，题目 {len(questions)} 道，答案解析 {len(answers)} 条',
+            'questions_count': len(questions),
+            'answers_count': len(answers),
+        }
+
+        job_data = {
+            'job_id': job_id,
+            'status': 'pending_review',
+            'bank_id': bank_id,
+            'bank_name': bank.name,
+            'provider_id': provider_id,
+            'file_name': file.filename,
+            'file_type': 'pdf' if is_pdf else 'md',
+            'extract_mode': extract_mode,
+            'user_id': user_id,
+            'md_url': f'parse_review/{md_file_name}',
+            'excel_url': None,
+            'segments': segments,
+            'materials': materials,
+            'questions': ParseService._normalize_review_questions(questions),
+            'answers': ParseService._normalize_review_answers(answers),
+            'warnings': warnings,
+            'materials_count': len(materials),
+            'questions_count': len(questions),
+            'answers_count': len(answers),
+            'segments_count': len(segments),
+        }
+        await ParseService._write_review_job(job_data)
+
+        yield {
+            'type': 'done',
+            'message': '审核任务已创建',
+            'job': job_data,
+            'job_id': job_id,
+            'materials_count': len(materials),
+            'questions_count': len(questions),
+            'answers_count': len(answers),
+            'segments_count': len(segments),
+            'warnings_count': len(warnings),
+        }
+
+    @staticmethod
+    def _normalize_review_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        规范化审核题目
+
+        :param questions: 题目列表
+        :return:
+        """
+        normalized: list[dict[str, Any]] = []
+        for index, question in enumerate(questions, start=1):
+            item = dict(question)
+            item['question_id'] = str(item.get('question_id') or f'Q{index}')
+            item['sort_order'] = item.get('sort_order') or index
+            item['status'] = item.get('status') or 'pending_review'
+            item['warnings'] = item.get('warnings') or []
+            if not str(item.get('stem') or '').strip():
+                warning = '题干为空，疑似答案解析册条目，不能直接作为新题入库'
+                if warning not in item['warnings']:
+                    item['warnings'].append(warning)
+            chapter_level1_name = (
+                item.get('chapter_level1_name')
+                or item.get('一级目录')
+                or item.get('chapter_name')
+            )
+            item['chapter_level1_name'] = chapter_level1_name
+            item['chapter_level2_name'] = item.get('chapter_level2_name') or item.get('二级目录')
+            item['chapter_level3_name'] = item.get('chapter_level3_name') or item.get('三级目录')
+            item['chapter_name'] = item.get('chapter_name') or chapter_level1_name
+            normalized.append(item)
+        return normalized
+
+    @staticmethod
+    def _normalize_review_answers(answers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        规范化审核答案解析
+
+        :param answers: 答案解析列表
+        :return:
+        """
+        normalized: list[dict[str, Any]] = []
+        for index, answer_item in enumerate(answers, start=1):
+            item = dict(answer_item)
+            item['answer_id'] = str(item.get('answer_id') or f'A{index}')
+            item['sort_order'] = item.get('sort_order') or index
+            item['status'] = item.get('status') or 'pending_review'
+            item['warnings'] = item.get('warnings') or []
+            answer_data = item.get('answer_data')
+            if not isinstance(answer_data, dict):
+                answer_data = {}
+            item['answer_data'] = answer_data
+            if not answer_data.get('correct') and not str(item.get('analysis_content') or '').strip():
+                warning = '答案和解析均为空'
+                if warning not in item['warnings']:
+                    item['warnings'].append(warning)
+            normalized.append(item)
+        return normalized
+
+    @staticmethod
+    async def get_review_job(job_id: str) -> dict[str, Any]:
+        """
+        获取审核任务
+
+        :param job_id: 审核任务 ID
+        :return:
+        """
+        return await ParseService._read_review_job(job_id)
+
+    @staticmethod
+    async def update_review_job(job_id: str, param: ReviewJobUpdateParam) -> dict[str, Any]:
+        """
+        更新审核任务
+
+        :param job_id: 审核任务 ID
+        :param param: 更新参数
+        :return:
+        """
+        job_data = await ParseService._read_review_job(job_id)
+        job_data['materials'] = [item.model_dump() for item in param.materials]
+        job_data['questions'] = [item.model_dump() for item in param.questions]
+        job_data['answers'] = [item.model_dump() for item in param.answers]
+        job_data['segments'] = param.segments
+        job_data['status'] = param.status
+        job_data['materials_count'] = len(job_data['materials'])
+        job_data['questions_count'] = len(job_data['questions'])
+        job_data['answers_count'] = len(job_data['answers'])
+        job_data['segments_count'] = len(job_data['segments'])
+        await ParseService._write_review_job(job_data)
+        return job_data
+
+    @staticmethod
+    async def export_review_job_excel(job_id: str) -> dict[str, Any]:
+        """
+        导出审核任务 Excel
+
+        :param job_id: 审核任务 ID
+        :return:
+        """
+        from backend.app.question_bank.service.review_parse_service import review_parse_service
+
+        job_data = await ParseService._read_review_job(job_id)
+        excel_filename = f'review_{job_id}.xlsx'
+        excel_path = ParseService._review_dir() / excel_filename
+        _, warnings_count = await run_in_threadpool(
+            review_parse_service.export_review_to_excel,
+            materials=job_data.get('materials', []),
+            questions=job_data.get('questions', []),
+            answers=job_data.get('answers', []),
+            output_path=excel_path,
+        )
+        job_data['excel_url'] = f'parse_review/{excel_filename}'
+        job_data['warnings_count'] = warnings_count
+        await ParseService._write_review_job(job_data)
+        return {
+            'excel_url': job_data['excel_url'],
+            'warnings_count': warnings_count,
+        }
+
+    @staticmethod
+    async def commit_review_job(db: AsyncSession, job_id: str, user_id: int) -> dict[str, Any]:
+        """
+        提交审核任务入库
+
+        :param db: 数据库会话
+        :param job_id: 审核任务 ID
+        :param user_id: 用户 ID
+        :return:
+        """
+        job_data = await ParseService._read_review_job(job_id)
+        materials = [
+            item for item in job_data.get('materials', [])
+            if item.get('status') != 'rejected'
+        ]
+        questions = [
+            item for item in job_data.get('questions', [])
+            if item.get('status') != 'rejected'
+        ]
+        questions = ParseService._normalize_review_questions(questions)
+        skipped_empty_stem_count = len([
+            item for item in questions
+            if not str(item.get('stem') or '').strip()
+        ])
+        questions = [
+            item for item in questions
+            if str(item.get('stem') or '').strip()
+        ]
+        answers = job_data.get('answers', [])
+        if not questions and answers:
+            raise ValueError('当前审核任务只有答案解析，请复制到原题后再入库')
+        if skipped_empty_stem_count > 0 and not questions:
+            raise ValueError('当前审核任务没有可直接入库的完整题目，疑似只有答案解析，请先匹配原题后再入库')
+
+        result = await ParseService.smart_commit(
+            db=db,
+            bank_id=job_data['bank_id'],
+            materials_data=materials,
+            questions_data=questions,
+            user_id=user_id,
+        )
+        if skipped_empty_stem_count > 0:
+            result['skipped_empty_stem_count'] = skipped_empty_stem_count
+            job_warnings = job_data.get('warnings') or []
+            job_warnings.append(f'已跳过 {skipped_empty_stem_count} 条题干为空的解析册条目')
+            job_data['warnings'] = job_warnings
+        job_data['status'] = 'committed'
+        job_data['commit_result'] = result
+        await ParseService._write_review_job(job_data)
+        return result
 
 
 parse_service = ParseService()

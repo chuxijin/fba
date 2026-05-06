@@ -7,3 +7,4 @@ from backend.app.membership.model.plan import MembershipPlan as MembershipPlan
 from backend.app.membership.model.record import MembershipRecord as MembershipRecord
 from backend.app.membership.model.tier import MembershipTier as MembershipTier
 from backend.app.membership.model.tier_entitlement import MembershipTierEntitlement as MembershipTierEntitlement
+from backend.app.membership.model.usage_counter import MembershipUsageCounter as MembershipUsageCounter

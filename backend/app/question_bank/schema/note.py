@@ -7,7 +7,6 @@ from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
 
-
 # ============ 题目笔记 Schema ============
 
 

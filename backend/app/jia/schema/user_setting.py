@@ -3,6 +3,7 @@ from pydantic import Field
 
 from backend.common.schema import SchemaBase
 
+
 class UserSettingSchemaBase(SchemaBase):
     """用户设置基础模型"""
     

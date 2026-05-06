@@ -5,10 +5,10 @@
 # 需要使用这些模型时，请直接从对应模块导入
 
 # 导入所有模型以确保它们被注册到 SQLAlchemy 注册表中
-from .user import DriveAccount
 from .filesync import SyncConfig, SyncTask, SyncTaskItem
-from .rule_template import RuleTemplate
 from .resource import Resource, ResourceViewHistory
+from .rule_template import RuleTemplate
+from .user import DriveAccount
 
 # 注意：Category 已迁移到 backend.app.admin.model.category
 # 使用时请导入：from backend.app.admin.model.category import Category

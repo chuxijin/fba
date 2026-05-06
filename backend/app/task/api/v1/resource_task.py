@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Annotated, Dict, Any
+from typing import Annotated, Any, Dict
 
-from fastapi import APIRouter, Query, Path
+from fastapi import APIRouter, Path, Query
 from starlette.concurrency import run_in_threadpool
 
 from backend.app.task.tasks.resource.tasks import (
     check_and_refresh_expiring_resources,
-    refresh_resource_share_by_id,
     get_expiring_resources,
     refresh_category_mode2_to_permanent,
+    refresh_resource_share_by_id,
 )
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth

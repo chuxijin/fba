@@ -1,14 +1,17 @@
 import logging
-from datetime import datetime, timedelta
+
+from datetime import timedelta
 from typing import Any, Dict
-from backend.app.task.celery import celery_app
-from sqlalchemy import delete, and_
+
+from sqlalchemy import and_, delete
 
 from backend.app.admin.service.login_log_service import login_log_service
 from backend.app.admin.service.opera_log_service import opera_log_service
 from backend.app.coulddrive.service.synctask_service import get_sync_task_service
+from backend.app.task.celery import celery_app
 from backend.app.task.model.result import Task
 from backend.database.db import async_db_session
+from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +62,7 @@ async def delete_celery_task_results() -> Dict[str, Any]:
     try:
         async with async_db_session() as db:
             # 计算30天前的时间
-            threshold_date = datetime.now() - timedelta(days=30)
+            threshold_date = timezone.now() - timedelta(days=30)
 
             # 构建删除语句：删除 date_done 在 30 天之前的记录
             stmt = delete(Task).where(

@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from typing import Any
 
-from sqlalchemy import Select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 

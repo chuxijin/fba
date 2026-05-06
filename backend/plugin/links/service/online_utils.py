@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import json
-from datetime import datetime
+
+from backend.utils.timezone import timezone
 
 
 def parse_online_status(online_json: str | None) -> dict:
@@ -44,7 +45,7 @@ def parse_online_status(online_json: str | None) -> dict:
 
 def is_dark_theme() -> bool:
     """判断当前是否使用暗色主题（23:00-06:00）"""
-    hour = datetime.now().hour
+    hour = timezone.now().hour
     return hour >= 23 or hour < 6
 
 
@@ -55,7 +56,7 @@ def _is_in_schedule(schedule: list) -> bool:
     :param schedule: 排班列表
     :return:
     """
-    now = datetime.now()
+    now = timezone.now()
     current_weekday = now.isoweekday()  # 1=周一, 7=周日
     current_time = now.strftime('%H:%M')
 

@@ -1,7 +1,7 @@
 import asyncio
 import os
+
 from llama_parse import LlamaParse
-from llama_index.core.schema import Document
 
 os.environ["LLAMA_CLOUD_API_KEY"] = "llx-lh7d6DvCeMcjsh1TWAXVsCS0EERyD8a5nD6nIXAgXdgXpQ8C"
 

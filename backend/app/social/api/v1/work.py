@@ -2,21 +2,18 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Path, Query, Request
 
 from backend.app.social.schema.work import (
     CreateSocialWorkParam,
-    UpdateSocialWorkParam,
     GetSocialWorkDetail,
+    UpdateSocialWorkParam,
 )
 from backend.app.social.service.work_service import SocialWorkService
-from backend.common.pagination import DependsPagination, PageData, _CustomPageParams, paging_data
+from backend.common.pagination import DependsPagination, _CustomPageParams, paging_data
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
-from backend.common.security.jwt import DependsJwtAuth
-from backend.common.security.permission import RequestPermission
-from fastapi import Request
 
 router = APIRouter(prefix='/social/work', tags=['social:work'])
 
@@ -70,5 +67,4 @@ async def delete_social_work(
 ) -> ResponseModel:
     await service.delete(pks=pks)
     return response_base.success()
-
 

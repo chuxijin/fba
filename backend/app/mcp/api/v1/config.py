@@ -3,14 +3,12 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.mcp.schema.config import UpsertMcpConfigParam, GetMcpConfigListParam, UpsertMcpConfigBatchParam
+from backend.app.mcp.schema.config import GetMcpConfigListParam, UpsertMcpConfigBatchParam, UpsertMcpConfigParam
 from backend.app.mcp.service.config_service import mcp_config_service
-from backend.common.response.response_schema import response_base, ResponseModel, ResponseSchemaModel
+from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
-
 
 router = APIRouter(prefix="/config")
 

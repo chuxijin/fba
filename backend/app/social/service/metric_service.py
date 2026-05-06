@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Sequence
 
 from sqlalchemy import Select
 
@@ -11,7 +10,6 @@ from backend.app.social.schema.metric import (
     UpdateSocialWorkMetricParam,
 )
 from backend.common.exception import errors
-from backend.common.pagination import paging_data
 from backend.database.db import async_db_session
 
 

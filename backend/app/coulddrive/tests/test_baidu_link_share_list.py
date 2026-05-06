@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.file import ListShareFilesParam

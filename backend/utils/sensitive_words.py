@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from backend.core.conf import settings
 from backend.common.exception import errors
+from backend.core.conf import settings
 
 
 def contains_sensitive_words(text: str | None) -> bool:

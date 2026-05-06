@@ -8,6 +8,7 @@ from fastapi import UploadFile
 from backend.common.exception.errors import NotFoundError
 from backend.core.path_conf import UPLOAD_DIR
 from backend.utils.file_ops import upload_file, upload_file_verify
+from backend.utils.timezone import timezone
 
 
 class FileService:
@@ -78,7 +79,7 @@ class FileService:
                     'name': item_path.name,
                     'type': 'folder',
                     'is_folder': True,
-                    'created_time': datetime.fromtimestamp(item_path.stat().st_ctime).isoformat(),
+                    'created_time': datetime.fromtimestamp(item_path.stat().st_ctime, tz=timezone.tz_info).isoformat(),
                 }
                 all_items.append(folder_info)
 
@@ -95,7 +96,7 @@ class FileService:
                     'name': item_path.name,
                     'url': f'{base_url}/static/upload/{relative_path}',
                     'size': stat.st_size,
-                    'created_time': datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                    'created_time': datetime.fromtimestamp(stat.st_ctime, tz=timezone.tz_info).isoformat(),
                     'type': FileService._get_file_type(item_path.name),
                     'is_folder': False,
                 }
@@ -148,19 +149,13 @@ class FileService:
             raise NotFoundError(msg='非法的文件路径')
 
         if file_path.is_dir():
-             # 如果是文件夹，可以使用 rmdir (如果不空) 或 shutil.rmtree
-             # 这里简单起见假设只删除文件或是空文件夹，或者调用 file_path.rmdir()
-             # 原有逻辑用了 file_path.unlink()，只能删文件。
-             # 我们保持原有逻辑
-             if file_path.is_file():
-                 file_path.unlink()
-             else:
-                 try:
-                     file_path.rmdir()
-                 except OSError:
-                     raise NotFoundError(msg='文件夹不为空或无法删除')
-        else:
-             file_path.unlink()
+            try:
+                file_path.rmdir()
+            except OSError as exc:
+                raise NotFoundError(msg='文件夹不为空或无法删除') from exc
+            return
+
+        file_path.unlink()
 
     @staticmethod
     def create_folder(folder_name: str, parent_folder: str | None = None) -> dict:
@@ -200,8 +195,8 @@ class FileService:
         try:
             if not str(new_folder_path.resolve()).startswith(str(upload_dir.resolve())):
                 raise NotFoundError(msg='非法的文件夹路径')
-        except Exception:
-             raise NotFoundError(msg='非法的文件夹路径')
+        except Exception as exc:
+            raise NotFoundError(msg='非法的文件夹路径') from exc
 
         new_folder_path.mkdir(parents=True, exist_ok=False)
 

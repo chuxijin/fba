@@ -7,18 +7,15 @@ Created On: 2024-01-01
 """
 
 from __future__ import annotations
-import asyncio
-from collections import deque
-from datetime import datetime
-from io import BytesIO
-import logging
-import os
-from pathlib import Path, PurePosixPath
-import re
-import time
-from typing import Any, Callable, Dict, IO, List, Optional, Set, Tuple, Union
 
-from backend.app.coulddrive.schema.enum import RecursionSpeed
+import asyncio
+import logging
+import re
+
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     BaseShareInfo,
@@ -29,22 +26,15 @@ from backend.app.coulddrive.schema.file import (
     ListShareInfoParam,
     MkdirParam,
     MoveParam,
-    ShareParam,
-    RelationshipParam,
-    RelationshipType,
     RemoveParam,
+    RenameParam,
+    ShareParam,
     TransferParam,
     UserInfoParam,
-    RenameParam,
 )
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
-    GetUserFriendDetail,
-    GetUserGroupDetail,
 )
-from backend.app.coulddrive.service.rule_template_service import ItemFilter
-from backend.app.coulddrive.service.quark.api import QuarkApi
-from backend.app.coulddrive.service.quark.errors import QuarkApiError
 from backend.app.coulddrive.service.coulddrive_service import (
     BaseDriveClient,
     ConfigItem,
@@ -52,18 +42,12 @@ from backend.app.coulddrive.service.coulddrive_service import (
     DriveAuthError,
     DriverRegistry,
 )
-from backend.app.coulddrive.schema.enum import DriveType
-from backend.common.log import log
+from backend.app.coulddrive.service.quark.api import QuarkApi
+from backend.app.coulddrive.service.quark.errors import QuarkApiError
+from backend.utils.timezone import timezone
 
 from .schemas import (
-    FromTo,
-    QuarkAccount,
-    QuarkAuthor,
     QuarkFile,
-    QuarkMember,
-    QuarkSaveTask,
-    QuarkShare,
-    QuarkShareDetail,
     QuarkTask,
 )
 
@@ -239,7 +223,7 @@ class QuarkClient(BaseDriveClient):
                         
                         # 尝试在当前上下文中运行验证
                         try:
-                            loop = asyncio.get_running_loop()
+                            asyncio.get_running_loop()
                             # 在异步上下文中，暂时标记为已授权
                             self._is_authorized = True
                             return True
@@ -376,10 +360,6 @@ class QuarkClient(BaseDriveClient):
         file_path = params.file_path or "/"
         file_id = params.file_id or ""
         
-        # 从 kwargs 中获取可选参数
-        drive_account_id = kwargs.get('drive_account_id', None)
-        db = kwargs.get('db', None)
-
         # 构建排序参数
         sort_str = "file_type:asc,updated_at:desc"  # 默认排序
 
@@ -653,7 +633,7 @@ class QuarkClient(BaseDriveClient):
             # 使用API返回的过期时间
             expired_at = None
             if share_data.get("expired_at"):
-                expired_at = datetime.fromtimestamp(share_data.get("expired_at") / 1000)  # 毫秒转秒
+                expired_at = datetime.fromtimestamp(share_data.get("expired_at") / 1000, tz=timezone.tz_info)  # 毫秒转秒
             
             return BaseShareInfo(
                 title=share_data.get("title", file_name),
@@ -872,7 +852,6 @@ class QuarkClient(BaseDriveClient):
         :param kwargs: 其他关键字参数
         :return: 是否成功取消
         """
-        from backend.app.coulddrive.schema.file import CancelShareParam
         
         try:
             # 将ID转换为字符串列表
@@ -923,7 +902,7 @@ class QuarkClient(BaseDriveClient):
                 password=str(share_info_data.get("passcode", "")),
                 expired_type=share_info_data.get("expired_type", 0),
                 view_count=share_info_data.get("click_pv", 0),
-                expired_at=datetime.fromtimestamp(share_info_data.get("expired_at", 0) / 1000) if share_info_data.get("expired_at") else None,
+                expired_at=datetime.fromtimestamp(share_info_data.get("expired_at", 0) / 1000, tz=timezone.tz_info) if share_info_data.get("expired_at") else None,
                 expired_left=share_info_data.get("expired_left", 0),
                 audit_status=share_info_data.get("audit_status", 0),
                 status=share_info_data.get("status", 0),
@@ -964,7 +943,7 @@ class QuarkClient(BaseDriveClient):
                     password=str(item.get("passcode", "")),
                     expired_type=item.get("expired_type", 0),
                     view_count=item.get("click_pv", 0),
-                    expired_at=datetime.fromtimestamp(item.get("expired_at", 0) / 1000) if item.get("expired_at") else None,
+                    expired_at=datetime.fromtimestamp(item.get("expired_at", 0) / 1000, tz=timezone.tz_info) if item.get("expired_at") else None,
                     expired_left=item.get("expired_left", 0),
                     audit_status=item.get("audit_status", 0),
                     status=item.get("status", 0),
@@ -993,7 +972,6 @@ class QuarkClient(BaseDriveClient):
         """
         source_type = params.source_type
         source_id = params.source_id
-        source_path = params.source_path
         target_path = params.target_path
         target_id = params.target_id
         file_ids = params.file_ids
@@ -1165,5 +1143,3 @@ class QuarkClient(BaseDriveClient):
         except Exception as e:
             self.logger.error(f"查询任务时发生错误: {e}")
             raise
-
- 

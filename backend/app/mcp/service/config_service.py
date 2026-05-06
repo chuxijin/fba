@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.mcp.crud.crud_config import mcp_config_dao
 from backend.app.mcp.model.config import McpConfig
-from backend.app.mcp.schema.config import UpsertMcpConfigParam, McpConfigItem, UpsertMcpConfigBatchParam
+from backend.app.mcp.schema.config import UpsertMcpConfigBatchParam, UpsertMcpConfigParam
 from backend.common.exception import errors
 
 

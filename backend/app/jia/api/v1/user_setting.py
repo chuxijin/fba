@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Request, Depends
 from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.database.db import get_db
 
 from backend.app.jia.schema.user_setting import GetUserSettingDetail, UpdateUserSettingParam
 from backend.app.jia.service.user_setting_service import user_setting_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
+from backend.database.db import get_db
 
 router = APIRouter()
 

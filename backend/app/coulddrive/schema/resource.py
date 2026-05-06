@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime, date
+from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import ConfigDict, Field
 
-from backend.common.schema import SchemaBase
-from backend.app.coulddrive.schema.file import BaseShareInfo
 from backend.app.coulddrive.schema.enum import DriveType
+from backend.common.schema import SchemaBase
 
 
 class ResourceBase(SchemaBase):

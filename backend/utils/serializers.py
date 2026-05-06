@@ -1,12 +1,12 @@
+import json as stdlib_json
+import math
+
 from collections import defaultdict, namedtuple
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, TypeVar
-import json as stdlib_json
-import math
 
 from fastapi.encoders import decimal_encoder
-from msgspec import json
 from sqlalchemy import Row, RowMapping
 from sqlalchemy.orm import ColumnProperty, SynonymProperty, class_mapper
 from starlette.responses import JSONResponse

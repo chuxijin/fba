@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import logging
+
 from collections.abc import Sequence
 
 from sqlalchemy import delete, select

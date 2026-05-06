@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model.question import QuestionMaterial, question_material_relation
-from backend.app.question_bank.schema.material import CreateMaterialParam, UpdateMaterialParam, MaterialParam
+from backend.app.question_bank.schema.material import CreateMaterialParam, MaterialParam, UpdateMaterialParam
 
 
 class CRUDMaterial(CRUDPlus[QuestionMaterial]):

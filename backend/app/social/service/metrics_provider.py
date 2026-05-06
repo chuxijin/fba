@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict, Any
 import json
 import os
+
+from typing import TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
     from backend.app.social.model.account import SocialAccount
@@ -31,7 +32,6 @@ async def fetch_metrics_for_work(*, account: 'SocialAccount', work: 'SocialWork'
     # 硬编码默认（可被环境变量覆盖）
     token = os.getenv('COZE_API_TOKEN', 'pat_BlIZrZATpxzAURJb76EGKbBUZeiVUpANMJU1e2i7czeuGhlYMkyOh3Wt4pxmxVSW')
     workflow_id = os.getenv('COZE_WORKFLOW_ID', '7538417342105288750')
-    space_id = os.getenv('COZE_SPACE_ID', '7456235812326670363')  # 共组/空间 OID（当前 SDK 不强制使用，保留以便扩展）
     base_url = os.getenv('COZE_API_BASE', 'https://api.coze.cn')
 
     if not token or not workflow_id:
@@ -97,5 +97,4 @@ async def fetch_metrics_for_work(*, account: 'SocialAccount', work: 'SocialWork'
         return None
 
     return None
-
 

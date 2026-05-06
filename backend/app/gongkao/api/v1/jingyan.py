@@ -6,6 +6,8 @@ from fastapi import APIRouter, Path, Query
 
 from backend.app.content.schema.content import (
     GetContentDetail,
+)
+from backend.app.content.schema.content import (
     GetContentListDetails as GetContentListDetail,
 )
 from backend.app.content.service.content_service import content_service
@@ -27,9 +29,9 @@ async def get_jingyan(
 @router.get('', summary='获取经验列表', response_model=ResponseSchemaModel[list[GetContentListDetail]])
 async def get_jingyan_list(
     db: CurrentSession,
-    app_code: str = Query('gongkao', description='应用标识'),
-    category_id: int = Query(33, description='分类 ID'),
-    is_published: bool = Query(True, description='是否发布'),
+    app_code: Annotated[str, Query(description='应用标识')] = 'gongkao',
+    category_id: Annotated[int, Query(description='分类 ID')] = 33,
+    is_published: Annotated[bool, Query(description='是否发布')] = True,
 ):
     contents = await content_service.get_list(
         db=db, 

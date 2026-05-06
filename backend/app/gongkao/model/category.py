@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import sqlalchemy as sa
+
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, UserMixin, id_key

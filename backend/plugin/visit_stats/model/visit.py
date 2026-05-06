@@ -3,6 +3,7 @@
 from datetime import date
 
 import sqlalchemy as sa
+
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, id_key

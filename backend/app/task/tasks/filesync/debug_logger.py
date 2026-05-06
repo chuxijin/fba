@@ -3,11 +3,11 @@
 import json
 import logging
 import os
-from datetime import datetime
-from pathlib import Path
+
 from typing import Any
 
 from backend.core.path_conf import LOG_DIR
+from backend.utils.timezone import timezone
 
 # 临时调试日志文件路径
 DEBUG_LOG_DIR = LOG_DIR / 'filesync_debug'
@@ -28,7 +28,7 @@ def get_debug_logger() -> logging.Logger:
     _debug_logger.propagate = False  # 不传播到根 logger
 
     # 按日期命名，每天一个文件
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = timezone.now().strftime('%Y-%m-%d')
     log_file = DEBUG_LOG_DIR / f'filesync_debug_{today}.log'
 
     handler = logging.FileHandler(str(log_file), encoding='utf-8')
@@ -58,7 +58,7 @@ def log_task_dispatch(task_name: str, config_id: int, celery_task_id: str) -> No
         f"{'='*60}\n"
         f"  [派发] task={task_name}, config_id={config_id}\n"
         f"  celery_task_id={celery_task_id}\n"
-        f"  时间={datetime.now().isoformat()}\n"
+        f"  时间={timezone.now().isoformat()}\n"
         f"{'='*60}"
     )
 

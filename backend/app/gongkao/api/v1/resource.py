@@ -7,13 +7,12 @@ from fastapi import APIRouter, File, Query, UploadFile
 from backend.app.gongkao.schema.resource import (
     CreateResourceParam,
     GetResourceDetail,
-    GetResourceListParams,
     UpdateResourceParam,
 )
 from backend.app.gongkao.service.resource_service import resource_service
 from backend.common.exception import errors
-from backend.common.pagination import DependsPagination, PageData, paging_data
-from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.pagination import DependsPagination, paging_data
+from backend.common.response.response_schema import ResponseModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 

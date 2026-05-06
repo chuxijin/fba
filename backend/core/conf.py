@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import re
 import shutil
 
 from functools import cache
@@ -68,9 +69,9 @@ class Settings(BaseSettings):
     REDIS_DATABASE: int
 
     # Redis
-    REDIS_TIMEOUT: int = 5 # redis 默认连接超时时间
-    REDIS_SOCKET_TIMEOUT: int = 5 # redis socket 连接超时时间
-    REDIS_CONNECT_TIMEOUT: int = 5 # redis 连接超时时间
+    REDIS_TIMEOUT: int = 5  # redis 默认连接超时时间
+    REDIS_SOCKET_TIMEOUT: int = 5  # redis socket 连接超时时间
+    REDIS_CONNECT_TIMEOUT: int = 5  # redis 连接超时时间
 
     # 缓存
     CACHE_LOCAL_ENABLED: bool = True
@@ -116,15 +117,13 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',  # 百度网盘 OAuth 回调
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/login',  # 订单号直接登录
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/verify',  # 验证订单号
-        f'{FASTAPI_API_V1_PATH}/mall/pay/notify',  # 微信支付回调
-        f'{FASTAPI_API_V1_PATH}/mall/pay/refund-notify',  # 微信退款回调
         f'{FASTAPI_API_V1_PATH}/sms/send_login_code',  # 发送短信验证码
         f'{FASTAPI_API_V1_PATH}/sms/login/sms',  # 短信验证码登录
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
-        rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$',
-        rf'^{FASTAPI_API_V1_PATH}/qbank/banks/\d+$',  # 题库详情（公开接口）
-        rf'^{FASTAPI_API_V1_PATH}/resources/\d+/click$',  # 资源点击统计（公开接口）
+        re.compile(rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$'),
+        re.compile(rf'^{FASTAPI_API_V1_PATH}/qbank/banks/\d+$'),  # 题库详情（公开接口）
+        re.compile(rf'^{FASTAPI_API_V1_PATH}/resources/\d+/click$'),  # 资源点击统计（公开接口）
     ]
 
     # 用户安全
@@ -289,7 +288,7 @@ class Settings(BaseSettings):
     PLUGIN_REDIS_PREFIX: str = 'fba:plugin'
 
     # HTTP 请求
-    HTTP_REQUEST_TIMEOUT: int = 60 # HTTP 请求超时时间（秒）
+    HTTP_REQUEST_TIMEOUT: int = 60  # HTTP 请求超时时间（秒）
 
     # I18n 配置
     I18N_DEFAULT_LANGUAGE: str = 'zh-CN'
@@ -382,10 +381,39 @@ class Settings(BaseSettings):
     ##################################################
     # [ Plugin ] ocr 图片文字识别
     ##################################################
-    OCR_PROVIDER: str = 'baidu'
+    OCR_PROVIDER: str = 'llama_parse'
+    OCR_DOCUMENT_PROVIDER: str = 'llama_parse'
     OCR_IMAGE_MAX_COUNT: int = 3
     OCR_REQUEST_TIMEOUT: int = 20
     OCR_TOKEN_REDIS_PREFIX: str = 'fba:ocr:token'
+    OCR_LLAMA_CLOUD_API_KEY: str = ''
+    OCR_LLAMA_POLL_INTERVAL_SECONDS: int = 60
+    OCR_LLAMA_MAX_POLL_ATTEMPTS: int = 30
+    OCR_LLAMA_REQUEST_RETRY_COUNT: int = 3
+    OCR_LLAMA_REQUEST_RETRY_DELAY_SECONDS: int = 5
+    OCR_LLAMA_CONNECT_TIMEOUT: int = 30
+    OCR_LLAMA_READ_TIMEOUT: int = 300
+    OCR_LLAMA_WRITE_TIMEOUT: int = 300
+    OCR_LLAMA_POOL_TIMEOUT: int = 30
+    OCR_LLAMA_TIER: str = 'agentic'
+    OCR_LLAMA_VERSION: str = 'latest'
+    OCR_LLAMA_CUSTOM_PROMPT: str = (
+        '你是一个专业的文档 OCR 和结构化解析助手。'
+        '请完整保留公式、题目描述、选项内容、图片和表格位置。'
+        '遇到复杂表格时优先保留为图片或稳定的版式内容。'
+    )
+    OCR_LLAMA_EXPAND: str = 'markdown_full,text_full'
+    OCR_LLAMA_IMAGES_TO_SAVE: str = 'embedded'
+    OCR_LLAMA_SAVE_IMAGES: bool = True
+    OCR_LLAMA_DOWNLOAD_IMAGES: bool = True
+    OCR_LLAMA_INLINE_IMAGES: bool = True
+    OCR_LLAMA_TABLES_AS_MARKDOWN: bool = True
+    OCR_LLAMA_MERGE_CONTINUED_TABLES: bool = True
+    OCR_LLAMA_IGNORE_DIAGONAL_TEXT: bool = True
+    OCR_LLAMA_IGNORE_TEXT_IN_IMAGE: bool = False
+    OCR_LLAMA_IGNORE_HIDDEN_TEXT: bool = True
+    OCR_LLAMA_LANGUAGES: str = 'ch_sim,en'
+    OCR_LLAMA_COST_OPTIMIZER_ENABLED: bool = True
 
     BAIDU_OCR_API_KEY: str = ''
     BAIDU_OCR_SECRET_KEY: str = ''

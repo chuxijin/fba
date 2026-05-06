@@ -2,11 +2,10 @@
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
-from backend.core.conf import settings
 from backend.app.social.api.v1.account import router as account_router
-from backend.app.social.api.v1.work import router as work_router
 from backend.app.social.api.v1.metric import router as metric_router
-
+from backend.app.social.api.v1.work import router as work_router
+from backend.core.conf import settings
 
 v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH)
 

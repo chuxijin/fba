@@ -36,14 +36,14 @@ class CRUDDevice:
         """获取用户的所有设备"""
         stmt = select(JiaDevice).where(
             JiaDevice.user_id == user_id,
-            JiaDevice.is_active == True,
+            JiaDevice.is_active.is_(True),
         )
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
     async def get_all_active(self, db: AsyncSession) -> list[JiaDevice]:
         """获取所有活跃设备"""
-        stmt = select(JiaDevice).where(JiaDevice.is_active == True)
+        stmt = select(JiaDevice).where(JiaDevice.is_active.is_(True))
         result = await db.execute(stmt)
         return list(result.scalars().all())
 

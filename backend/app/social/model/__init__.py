@@ -3,8 +3,8 @@
 
 # 导入模型以确保注册
 from .account import SocialAccount
-from .work import SocialWork
 from .metric import SocialWorkMetric
+from .work import SocialWork
 
 __all__ = [
     "SocialAccount",

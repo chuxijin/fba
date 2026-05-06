@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import secrets
 import string
+
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession

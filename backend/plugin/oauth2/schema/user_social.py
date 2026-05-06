@@ -1,7 +1,6 @@
 from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
-from backend.plugin.oauth2.enums import UserSocialType
 
 
 class UserSocialSchemaBase(SchemaBase):

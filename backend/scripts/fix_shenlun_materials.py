@@ -12,9 +12,11 @@ import asyncio
 import html
 import re
 import sys
+
 from pathlib import Path
 
 import httpx
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

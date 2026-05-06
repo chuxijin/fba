@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
 import hashlib
+
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import bindparam, select, update as sa_update
+
+from sqlalchemy import bindparam, select
+from sqlalchemy import update as sa_update
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
-from sqlalchemy.dialects import postgresql
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import (
@@ -33,7 +35,7 @@ from backend.app.question_bank.schema.question import (
 )
 from backend.common.enums import DataBaseType
 from backend.core.conf import settings
-
+from backend.utils.timezone import timezone
 
 # ============ Question CRUD ============
 
@@ -739,7 +741,7 @@ class CRUDQuestionOptionStats(CRUDPlus[QuestionOptionStats]):
 
         payloads: list[dict] = []
         insert_rows: list[dict] = []
-        current_time = datetime.now()
+        current_time = timezone.now()
         for item in aggregated.values():
             option_row = option_map.get((item['question_id'], item['option_code']))
             if option_row is None:
@@ -1070,7 +1072,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         :param obj: 更新统计参数
         """
         if DataBaseType.postgresql == settings.DATABASE_TYPE:
-            current_time = datetime.now()
+            current_time = timezone.now()
             insert_stmt = postgresql.insert(QuestionStatistics).values({
                 'question_id': question_id,
                 'created_time': current_time,
@@ -1170,7 +1172,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         if not values:
             return
 
-        values['last_updated'] = datetime.now()
+        values['last_updated'] = timezone.now()
 
         stmt = (
             sa_update(QuestionStatistics)
@@ -1263,12 +1265,13 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     aggregated_item['option_select_counts'][normalized_key] = current_count + int(count or 0)
 
         question_ids = list(aggregated.keys())
-        insert_time = datetime.now()
+        insert_time = timezone.now()
+        stats_update_time = insert_time.replace(tzinfo=None)
         insert_stmt = postgresql.insert(QuestionStatistics).values([
             {
                 'question_id': question_id,
                 'created_time': insert_time,
-                'last_updated': insert_time,
+                'last_updated': stats_update_time,
             }
             for question_id in question_ids
         ])
@@ -1282,7 +1285,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         )
         rows = (await db.execute(lock_stmt)).scalars().all()
         stats_map = {row.question_id: row for row in rows}
-        current_time = datetime.now()
+        current_time = timezone.now().replace(tzinfo=None)
         payloads: list[dict[str, Any]] = []
 
         for question_id, aggregated_item in aggregated.items():

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import re
+
 from datetime import date, datetime, time
 from typing import Any
 
@@ -11,6 +12,7 @@ from backend.app.content.crud.crud_content import content_dao
 from backend.app.content.schema.content import CreateContentParam, UpdateContentParam
 from backend.app.task.celery import celery_app
 from backend.database.db import async_db_session
+from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,7 @@ async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
                     result['skipped_count'] += 1
                     continue
                 add_time = str(record.get('addTime') or '').strip()
-                daily_date = datetime.strptime(add_time, '%Y-%m-%d').date()
+                daily_date = datetime.strptime(add_time, '%Y-%m-%d').replace(tzinfo=timezone.tz_info).date()
                 slug = build_content_slug(daily_date)
                 title = str(record.get('title') or f'news {daily_date.isoformat()}').strip()
                 content_html = normalize_news_html(str(record.get('intro') or ''))
@@ -138,10 +140,18 @@ async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
 
                 update_obj = UpdateContentParam()
                 changed = False
-                if existing.title != title: update_obj.title = title; changed = True
-                if existing.content_html != content_html: update_obj.content_html = content_html; changed = True
-                if existing.summary != summary: update_obj.summary = summary; changed = True
-                if existing.extra != extra: update_obj.extra = extra; changed = True
+                if existing.title != title:
+                    update_obj.title = title
+                    changed = True
+                if existing.content_html != content_html:
+                    update_obj.content_html = content_html
+                    changed = True
+                if existing.summary != summary:
+                    update_obj.summary = summary
+                    changed = True
+                if existing.extra != extra:
+                    update_obj.extra = extra
+                    changed = True
 
                 if changed:
                     await content_dao.update(db, existing.id, update_obj)

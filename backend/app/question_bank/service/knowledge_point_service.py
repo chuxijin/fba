@@ -3,13 +3,14 @@
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import func, select, literal_column, cast
+
+from sqlalchemy import cast, func, literal_column, select
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.model.practice import PracticeRecord
-from backend.app.question_bank.model.question import Question, QuestionPlacement
+from backend.app.question_bank.model.question import Question
 from backend.app.question_bank.schema.knowledge_point import (
     GetKpDetailResponse,
     GetKpProgressResponse,

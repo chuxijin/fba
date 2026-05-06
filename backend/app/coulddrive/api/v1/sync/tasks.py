@@ -3,15 +3,13 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.coulddrive.service.filesync_service import file_sync_service
 from backend.app.coulddrive.service.synctask_service import sync_task_service
-from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.response.response_code import CustomResponseCode, CustomResponse
+from backend.common.pagination import DependsPagination, _CustomPageParams
+from backend.common.response.response_schema import ResponseModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
-from backend.common.pagination import DependsPagination, PageData, paging_data, _CustomPageParams
 
 router = APIRouter()
 

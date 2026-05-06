@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from backend.plugin.render_book.schema.render import RenderFieldChoice, RenderFieldSpec, RenderOptions, RenderTemplateDetail
+from backend.plugin.render_book.schema.render import (
+    RenderFieldChoice,
+    RenderFieldSpec,
+    RenderOptions,
+    RenderTemplateDetail,
+)
 
 
 def get_template_registry() -> dict[str, RenderTemplateDetail]:

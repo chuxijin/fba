@@ -2,8 +2,7 @@
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint
-from sqlalchemy.sql import func
-from sqlalchemy.orm import Mapped, mapped_column # 导入 Mapped 和 mapped_column
+from sqlalchemy.orm import Mapped, mapped_column  # 导入 Mapped 和 mapped_column
 
 from backend.common.model import Base
 

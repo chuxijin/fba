@@ -1,9 +1,10 @@
+from fastapi import APIRouter
+
 from backend.app.gongkao.api.v1.category import router as category_router
 from backend.app.gongkao.api.v1.gangwei import router as gangwei_router
 from backend.app.gongkao.api.v1.hanyu import router as hanyu_router
 from backend.app.gongkao.api.v1.shizhen import router as shizhen_router
 from backend.app.gongkao.api.v1.zhenti import router as zhenti_router
-from fastapi import APIRouter
 
 router = APIRouter(prefix='/gk')
 

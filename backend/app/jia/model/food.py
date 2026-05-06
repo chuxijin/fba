@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, Numeric, String
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, UserMixin, id_key

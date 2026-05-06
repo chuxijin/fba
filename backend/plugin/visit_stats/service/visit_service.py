@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.plugin.visit_stats.crud import visit_log_dao, visit_stats_dao
 from backend.plugin.visit_stats.schema import VisitStatsResponse
+from backend.utils.timezone import timezone
 
 
 class VisitService:
@@ -32,7 +33,7 @@ class VisitService:
     @staticmethod
     async def get_stats(*, db: AsyncSession) -> VisitStatsResponse:
         """获取访问统计"""
-        today = date.today()
+        today = timezone.now().date()
         yesterday = today - timedelta(days=1)
 
         # 获取今日实时数据
@@ -69,10 +70,11 @@ class VisitService:
         汇总指定日期的统计数据（通常由定时任务在每日凌晨调用，汇总昨日数据）
         """
         from sqlalchemy import func, select
+
         from backend.plugin.visit_stats.model import VisitLog
 
         if target_date is None:
-            target_date = date.today() - timedelta(days=1)
+            target_date = timezone.now().date() - timedelta(days=1)
 
         # 统计指定日期的 PV/UV
         pv_stmt = select(func.count(VisitLog.id)).where(VisitLog.visit_date == target_date)

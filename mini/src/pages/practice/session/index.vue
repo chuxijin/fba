@@ -23,6 +23,26 @@ definePage({ style: { navigationStyle: 'custom', navigationBarTextStyle: 'black'
 type PracticeMode = 'exam' | 'practice' | 'memorize' | 'review'
 type UserAnswerValue = string | string[]
 
+interface PracticeJudgeResultItem {
+  question_id: number
+  record_id?: number | null
+  correct_answer?: string | string[]
+  analysis?: string
+  is_correct?: boolean | null
+  correct_rate?: number | string | null
+  option_select_stats?: Record<string, unknown> | null
+  score?: number | string | null
+  full_score?: number | string | null
+  ai_evaluation_id?: number | null
+  summary_text?: string | null
+  error_message?: string | null
+}
+
+interface BatchUpsertPracticeRecordsResult {
+  upserted_count: number
+  judge_results: PracticeJudgeResultItem[]
+}
+
 interface AnswerState {
   userAnswer?: UserAnswerValue
   answerTime: number
@@ -681,6 +701,24 @@ function applySessionSolutions(items: any[]) {
   })
 }
 
+function applyJudgeSolution(questionId: number, answer: UserAnswerValue | undefined, judge: PracticeJudgeResultItem) {
+  solutionMap[questionId] = {
+    question_id: judge.question_id,
+    record_id: judge.record_id || null,
+    correct_answer: judge.correct_answer ?? '',
+    analysis: judge.analysis ?? '',
+    is_correct: typeof judge.is_correct === 'boolean' ? judge.is_correct : null,
+    correct_rate: Number(judge.correct_rate || 0),
+    option_select_stats: judge.option_select_stats || {},
+    score: judge.score ?? null,
+    full_score: judge.full_score ?? null,
+    ai_evaluation_id: judge.ai_evaluation_id ?? null,
+    summary_text: judge.summary_text ?? null,
+    error_message: judge.error_message ?? null,
+  }
+  solutionKeyMap[questionId] = solutionCacheKey(answer)
+}
+
 async function loadSolution(questionId: number) {
   if (!questionId)
     return
@@ -1079,12 +1117,14 @@ async function persistAnswer(questionId: number, judgeNow: boolean, silent = fal
         user_answer: Array.isArray(state.userAnswer) ? [...state.userAnswer] : (state.userAnswer || ''),
         answer_time: state.answerTime,
       }],
-    } as any) as any
+    } as any) as BatchUpsertPracticeRecordsResult
 
     state.isAnswered = true
     if (judgeNow && mode.value !== 'exam')
       state.locked = true
-    const judge = Array.isArray(result?.judge_results) ? result.judge_results.find((item: any) => Number(item?.question_id) === questionId) : null
+    const judge = Array.isArray(result?.judge_results)
+      ? result.judge_results.find(item => Number(item?.question_id) === questionId) || null
+      : null
     if (judge) {
       state.isCorrect = typeof judge.is_correct === 'boolean' ? judge.is_correct : null
       if (judge.score != null)
@@ -1108,7 +1148,10 @@ async function persistAnswer(questionId: number, judgeNow: boolean, silent = fal
     }
 
     if (judgeNow && mode.value !== 'exam') {
-      void loadSolution(questionId)
+      if (judge)
+        applyJudgeSolution(questionId, state.userAnswer, judge)
+      else
+        void loadSolution(questionId)
 
       if (isQuestionSubjective(questionMap[questionId]) && judge?.record_id)
         void loadAIEvaluation(questionId, true)

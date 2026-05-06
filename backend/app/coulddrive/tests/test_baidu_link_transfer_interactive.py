@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from urllib.parse import urlparse, parse_qs
+
+from urllib.parse import parse_qs, urlparse
 
 from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.file import ListFilesParam, TransferParam

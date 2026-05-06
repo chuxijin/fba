@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from fastapi import Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.common.exception import errors
 from backend.common.security.jwt import superuser_verify

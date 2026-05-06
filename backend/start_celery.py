@@ -6,12 +6,13 @@ Celery 服务管理器
 启动和管理 Celery Worker、Beat 和 Flower 服务
 """
 
+import atexit
 import os
+import signal
+import subprocess
 import sys
 import time
-import signal
-import atexit
-import subprocess
+
 from pathlib import Path
 
 # 设置控制台编码为UTF-8（Windows兼容性）
@@ -19,7 +20,7 @@ if os.name == 'nt':
     try:
         # 尝试设置控制台编码
         os.system('chcp 65001 >nul 2>&1')
-    except:
+    except Exception:
         pass
 
 

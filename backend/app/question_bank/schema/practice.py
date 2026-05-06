@@ -8,7 +8,6 @@ from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
 
-
 # ===== enums =====
 SessionType = Literal['chapter', 'bank', 'random', 'exam', 'wrong', 'favorite', 'note']
 SessionStatus = Literal['in_progress', 'completed', 'abandoned']
@@ -322,6 +321,25 @@ class GetQuestionSolution(SchemaBase):
         default=Decimal('0'), ge=Decimal('0'), le=Decimal('100'), description='全站正确率（%）'
     )
     option_select_stats: dict[str, Any] | None = Field(None, description='选项选择统计')
+
+
+class PracticeJudgeResultItem(GetQuestionSolution):
+    """即时判题结果"""
+
+    question_id: int = Field(description='题目 ID')
+    record_id: int | None = Field(None, description='答题记录 ID')
+    score: Decimal | None = Field(None, ge=Decimal('0'), description='得分')
+    full_score: Decimal | None = Field(None, ge=Decimal('0'), description='满分')
+    ai_evaluation_id: int | None = Field(None, description='AI 判分记录 ID')
+    summary_text: str | None = Field(None, description='AI 判分摘要')
+    error_message: str | None = Field(None, description='错误信息')
+
+
+class BatchUpsertPracticeRecordsResult(SchemaBase):
+    """批量提交作答结果"""
+
+    upserted_count: int = Field(ge=0, description='写入记录数')
+    judge_results: list[PracticeJudgeResultItem] = Field(default_factory=list, description='即时判题结果')
 
 
 # ===== 会话题目批量返回 =====

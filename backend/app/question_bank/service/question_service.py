@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import hashlib
 import json
 import logging
-import re
+
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
+from math import ceil
 from typing import Any
 
 from sqlalchemy import cast, func, or_, select, update
@@ -22,7 +22,6 @@ from backend.app.question_bank.crud.crud_question import (
     question_analysis_dao,
     question_dao,
     question_option_dao,
-    question_option_stats_dao,
     question_placement_dao,
     question_statistics_dao,
 )
@@ -46,8 +45,9 @@ from backend.app.question_bank.schema.question import (
     UpsertQuestionPlacementItem,
 )
 from backend.common.exception import errors
-from backend.common.pagination import _CustomPage, _CustomPageParams
 from backend.database.redis import redis_client
+from backend.utils.answer_parser import extract_option_codes, split_answer_text
+from backend.utils.timezone import timezone
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class QuestionService:
         :param chapter_id: 章节 ID
         :return:
         """
-        placements = question.placements if question.placements else []
+        placements = question.placements or []
         if not placements:
             return None
 
@@ -113,44 +113,8 @@ class QuestionService:
 
         return sorted_candidates[0]
 
-    @staticmethod
-    def _extract_option_codes(text: str | list[str]) -> list[str]:
-        if isinstance(text, list):
-            raw = ','.join([str(item) for item in text if str(item).strip()])
-        else:
-            raw = str(text or '')
-
-        raw = raw.strip().upper()
-        if not raw:
-            return []
-
-        parts = re.split(r'[\s,，、|]+', raw)
-        codes: list[str] = []
-        for part in parts:
-            token = part.strip()
-            if not token:
-                continue
-            if token.isalpha():
-                codes.extend(list(token)) if len(token) > 1 else codes.append(token)
-                continue
-            letters = [ch for ch in token if ch.isalpha()]
-            if not letters:
-                continue
-            if len(letters) == 1:
-                codes.append(letters[0])
-            else:
-                codes.extend(letters)
-
-        return codes
-
-    @staticmethod
-    def _split_answer_text(answer_str: str) -> list[str]:
-        if not answer_str:
-            return []
-        text = str(answer_str)
-        for sep in ['\r\n', '\n', '\r', '，', ';', '；', '|', '/', '、']:
-            text = text.replace(sep, ',')
-        return [item.strip() for item in text.split(',') if item.strip()]
+    _extract_option_codes = staticmethod(extract_option_codes)
+    _split_answer_text = staticmethod(split_answer_text)
 
     @staticmethod
     def _pick_default_analysis(analyses: Sequence[QuestionAnalysis] | None) -> QuestionAnalysis | None:
@@ -158,12 +122,12 @@ class QuestionService:
             return None
         defaults = [item for item in analyses if getattr(item, 'is_default', False)]
         candidates = defaults or list(analyses)
-        return sorted(candidates, key=lambda item: item.id)[0]
+        return min(candidates, key=lambda item: item.id)
 
     @staticmethod
     def build_options_data(*, question: Question) -> dict | None:
         """从规范化选项行构建 options_data"""
-        option_rows = question.options if question.options else []
+        option_rows = question.options or []
         if not option_rows:
             return None
 
@@ -180,6 +144,31 @@ class QuestionService:
             }
 
         return options_data
+
+    @staticmethod
+    def build_solution_payload(
+        *,
+        question: Question,
+        analysis: QuestionAnalysis,
+        is_correct: bool | None = None,
+    ) -> dict[str, Any]:
+        """
+        基于已加载题目对象构建解析返回数据
+
+        :param question: 题目对象
+        :param analysis: 默认解析
+        :param is_correct: 是否答对
+        :return:
+        """
+        stats = question.statistics
+        answer_data = analysis.answer_data or {}
+        return {
+            'correct_answer': answer_data.get('correct', ''),
+            'analysis': analysis.content or '',
+            'is_correct': is_correct,
+            'correct_rate': stats.correct_rate if stats else Decimal('0'),
+            'option_select_stats': stats.option_select_stats if stats else {},
+        }
 
     @staticmethod
     def parse_selected_option_codes(*, question_type: str, user_answer: str | list[str]) -> list[str]:
@@ -307,10 +296,10 @@ class QuestionService:
             current_analysis = QuestionService._pick_default_analysis(question.analyses)
             question_dict['answer_data'] = current_analysis.answer_data if current_analysis else None
             question_dict['analysis_content'] = current_analysis.content if current_analysis else None
-            question_dict['analyses'] = question.analyses if question.analyses else []
+            question_dict['analyses'] = question.analyses or []
 
         if include_materials:
-            materials = question.materials if question.materials else []
+            materials = question.materials or []
             question_dict['materials'] = [{'id': m.id, 'content': m.content} for m in materials]
             question_dict['material_ids'] = [m.id for m in materials]
 
@@ -340,7 +329,7 @@ class QuestionService:
         )
 
         # 详情接口对齐 GetQuestionDetail schema：补齐 options / placements
-        option_rows = question.options if question.options else []
+        option_rows = question.options or []
         sorted_options = sorted(option_rows, key=lambda item: (item.sort_order, item.option_code))
         data['options'] = [
             {
@@ -355,7 +344,7 @@ class QuestionService:
             for item in sorted_options
         ]
 
-        placement_rows = question.placements if question.placements else []
+        placement_rows = question.placements or []
         sorted_placements = sorted(
             placement_rows,
             key=lambda item: (item.bank_id, item.chapter_id or 0, item.sort_order, item.id),
@@ -458,7 +447,6 @@ class QuestionService:
                 for q in questions
             ]
 
-            from math import ceil
             total_pages = ceil(total / size) if size > 0 else 0
             return {
                 'items': questions_dict,
@@ -548,7 +536,7 @@ class QuestionService:
             'year_start': year_start,
             'year_end': year_end,
         }
-        cache_hash = hashlib.sha1(
+        cache_hash = hashlib.sha256(
             json.dumps(cache_payload, ensure_ascii=False, sort_keys=True).encode('utf-8')
         ).hexdigest()
         cache_key = f'qbank:collections:v1:{cache_hash}'
@@ -558,7 +546,7 @@ class QuestionService:
             if cached:
                 return json.loads(cached)
         except Exception:
-            pass
+            log.warning('Redis 缓存读取失败，跳过缓存', exc_info=True)
 
         cat_ids = await category_dao.get_all_children_ids(db, cat_id) if cat_id is not None else None
 
@@ -633,10 +621,10 @@ class QuestionService:
             stmt = stmt.where(analysis_exists)
 
         if year_start is not None:
-            start_at = datetime(year_start, 1, 1)
+            start_at = datetime(year_start, 1, 1, tzinfo=timezone.tz_info)
             stmt = stmt.where(Question.created_time >= start_at)
         if year_end is not None:
-            end_at = datetime(year_end + 1, 1, 1)
+            end_at = datetime(year_end + 1, 1, 1, tzinfo=timezone.tz_info)
             stmt = stmt.where(Question.created_time < end_at)
 
         normalized_ids = [kp_id for kp_id in (knowledge_ids or []) if isinstance(kp_id, int) and kp_id > 0]
@@ -646,16 +634,10 @@ class QuestionService:
             kp_column = cast(Question.knowledge_point, PGJSONB)
             conditions = []
             for kp_id in normalized_ids:
-                conditions.append(kp_column.contains([kp_id]))
-                conditions.append(kp_column.contains([{'id': kp_id}]))
-                conditions.append(kp_column.contains([{'category_id': kp_id}]))
-                conditions.append(kp_column.contains([{'cat_id': kp_id}]))
+                conditions.extend((kp_column.contains([kp_id]), kp_column.contains([{'id': kp_id}]), kp_column.contains([{'category_id': kp_id}]), kp_column.contains([{'cat_id': kp_id}])))
 
             for kp_name in normalized_names:
-                conditions.append(kp_column.contains([kp_name]))
-                conditions.append(kp_column.contains([{'name': kp_name}]))
-                conditions.append(kp_column.contains([{'label': kp_name}]))
-                conditions.append(kp_column.contains([{'title': kp_name}]))
+                conditions.extend((kp_column.contains([kp_name]), kp_column.contains([{'name': kp_name}]), kp_column.contains([{'label': kp_name}]), kp_column.contains([{'title': kp_name}])))
 
             stmt = stmt.where(or_(*conditions))
 
@@ -684,7 +666,7 @@ class QuestionService:
         try:
             await redis_client.set(cache_key, json.dumps(data, ensure_ascii=False, default=str), ex=60)
         except Exception:
-            pass
+            log.warning('Redis 缓存写入失败', exc_info=True)
 
         return data
 
@@ -892,9 +874,6 @@ class QuestionService:
         if not analysis:
             raise errors.NotFoundError(msg='Question analysis not found')
 
-        stats = question.statistics
-        correct_answer = analysis.answer_data.get('correct', '')
-
         is_correct = None
         if user_answer is not None:
             try:
@@ -903,13 +882,11 @@ class QuestionService:
             except (json.JSONDecodeError, TypeError):
                 is_correct = QuestionService.check_answer(question.type, user_answer, analysis.answer_data)
 
-        return {
-            'correct_answer': correct_answer,
-            'analysis': analysis.content,
-            'is_correct': is_correct,
-            'correct_rate': stats.correct_rate if stats else Decimal('0'),
-            'option_select_stats': stats.option_select_stats if stats else {},
-        }
+        return QuestionService.build_solution_payload(
+            question=question,
+            analysis=analysis,
+            is_correct=is_correct,
+        )
 
     @staticmethod
     async def mark_analysis_helpful(*, db: AsyncSession, question_id: int, is_helpful: bool) -> None:
@@ -1003,7 +980,7 @@ class QuestionService:
         if not question:
             raise errors.NotFoundError(msg='题目不存在')
 
-        placement_candidates = question.placements if question.placements else []
+        placement_candidates = question.placements or []
         target_placements = [
             placement
             for placement in placement_candidates
@@ -1075,17 +1052,21 @@ class QuestionService:
         level1_name: str | None,
         level2_name: str | None,
         chapter_cache: dict[str, int],
+        level3_name: str | None = None,
     ) -> int | None:
         """
-        获取或创建章节
+        获取或创建章节（支持三级）
 
         :param db: 数据库会话
         :param bank_id: 题库 ID
         :param level1_name: 一级章节名称
         :param level2_name: 二级章节名称
+        :param level3_name: 三级章节名称
         :param chapter_cache: 章节缓存
         :return:
         """
+        from backend.app.question_bank.schema.chapter import CreateChapterParam
+
         if not level1_name:
             return None
 
@@ -1095,70 +1076,46 @@ class QuestionService:
 
         source_bank_id = bank.chapter_source_bank_id or bank.id
 
-        # 获取或创建一级章节
-        cache_key_1 = f'{source_bank_id}:{level1_name}'
-        if cache_key_1 not in chapter_cache:
-            level1_chapter = await chapter_dao.get_by_name(
-                db=db,
-                bank_id=source_bank_id,
-                name=level1_name,
-                parent_id=None,
-            )
-            if not level1_chapter:
-                from backend.app.question_bank.schema.chapter import CreateChapterParam
+        levels: list[tuple[str | None, int]] = [
+            (level1_name, 1),
+            (level2_name, 2),
+            (level3_name, 3),
+        ]
+        parent_id: int | None = None
+        key_parts: list[str] = [str(source_bank_id)]
 
-                level1_param = CreateChapterParam(
-                    bank_id=source_bank_id,
-                    name=level1_name,
-                    level=1,
-                    parent_id=None,
-                    sort_order=0,
-                )
-                await chapter_dao.create(db, level1_param)
-                await db.flush()
-                level1_chapter = await chapter_dao.get_by_name(
+        for name, level in levels:
+            if not name:
+                break
+            key_parts.append(name)
+            cache_key = ':'.join(key_parts)
+            if cache_key not in chapter_cache:
+                chapter = await chapter_dao.get_by_name(
                     db=db,
                     bank_id=source_bank_id,
-                    name=level1_name,
-                    parent_id=None,
+                    name=name,
+                    parent_id=parent_id,
                 )
-            chapter_cache[cache_key_1] = level1_chapter.id
+                if not chapter:
+                    param = CreateChapterParam(
+                        bank_id=source_bank_id,
+                        name=name,
+                        level=level,
+                        parent_id=parent_id,
+                        sort_order=0,
+                    )
+                    await chapter_dao.create(db, param)
+                    await db.flush()
+                    chapter = await chapter_dao.get_by_name(
+                        db=db,
+                        bank_id=source_bank_id,
+                        name=name,
+                        parent_id=parent_id,
+                    )
+                chapter_cache[cache_key] = chapter.id
+            parent_id = chapter_cache[cache_key]
 
-        level1_id = chapter_cache[cache_key_1]
-
-        if not level2_name:
-            return level1_id
-
-        # 获取或创建二级章节
-        cache_key_2 = f'{source_bank_id}:{level1_name}:{level2_name}'
-        if cache_key_2 not in chapter_cache:
-            level2_chapter = await chapter_dao.get_by_name(
-                db=db,
-                bank_id=source_bank_id,
-                name=level2_name,
-                parent_id=level1_id,
-            )
-            if not level2_chapter:
-                from backend.app.question_bank.schema.chapter import CreateChapterParam
-
-                level2_param = CreateChapterParam(
-                    bank_id=source_bank_id,
-                    name=level2_name,
-                    level=2,
-                    parent_id=level1_id,
-                    sort_order=0,
-                )
-                await chapter_dao.create(db, level2_param)
-                await db.flush()
-                level2_chapter = await chapter_dao.get_by_name(
-                    db=db,
-                    bank_id=source_bank_id,
-                    name=level2_name,
-                    parent_id=level1_id,
-                )
-            chapter_cache[cache_key_2] = level2_chapter.id
-
-        return chapter_cache[cache_key_2]
+        return parent_id
 
     @staticmethod
     async def _update_placement_caches(
@@ -1263,6 +1220,3 @@ class QuestionService:
 
 
 question_service: QuestionService = QuestionService()
-
-
-

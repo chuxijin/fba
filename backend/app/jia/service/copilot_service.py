@@ -1,17 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import json
+
+import anyio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.jia.crud.crud_copilot import copilot_session_dao, copilot_message_dao
+from backend.app.jia.crud.crud_copilot import copilot_message_dao, copilot_session_dao
 from backend.app.jia.model.copilot import JiaCopilotMessage
-from backend.app.jia.schema.copilot import CreateSessionParam, ChatRequest, ChatResponse, AnalyzeItemRequest, AnalyzeItemResponse, RecognizeFormulaRequest, RecognizeFormulaResponse, AnalyzeFoodRequest, AnalyzeFoodResponse
+from backend.app.jia.schema.copilot import (
+    AnalyzeFoodRequest,
+    AnalyzeFoodResponse,
+    AnalyzeItemRequest,
+    AnalyzeItemResponse,
+    ChatRequest,
+    ChatResponse,
+    CreateSessionParam,
+    RecognizeFormulaRequest,
+    RecognizeFormulaResponse,
+)
 from backend.app.jia.service.exercise_service import exercise_service
 from backend.app.jia.service.food_service import food_service
 from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
 from backend.plugin.ai.service.chat_service import ai_chat_service
-
-
 
 TOOLS = [
     {
@@ -221,7 +232,7 @@ class CopilotService:
         current_session = None
         
         if session_id:
-             current_session = await copilot_session_dao.get(db, session_id)
+            current_session = await copilot_session_dao.get(db, session_id)
         
         if not current_session:
             title = (req.query[:20] if req.query else "New Chat") 
@@ -336,7 +347,8 @@ class CopilotService:
             content_part = msg.content
             if msg.attachments:
                 parts = []
-                if msg.content: parts.append({"type": "text", "text": msg.content})
+                if msg.content:
+                    parts.append({"type": "text", "text": msg.content})
                 for att in msg.attachments:
                     if att['type'] == 'image':
                         # Check compatibility again if needed, but DB should store valid ones
@@ -430,7 +442,7 @@ class CopilotService:
                             if ex_data and isinstance(ex_data, list):
                                 final_meta['type'] = 'workout_suggestion'
                                 final_meta['exercises'] = ex_data
-                        except:
+                        except Exception:
                             pass
 
                 await db.commit()
@@ -444,12 +456,12 @@ class CopilotService:
         # Or just return it. The frontend uses the meta from response.
         # Ideally, we should update the last message in DB with meta.
         if final_meta and ai_db_msg: # ai_db_msg is the last one
-             # Note: ai_db_msg might be from previous turn if we broke loop.
-             # Actually, if we break, ai_db_msg IS the last message.
-             # But we need to update it.
-             ai_db_msg.meta = final_meta
-             db.add(ai_db_msg) # re-add to session to ensure update?
-             await db.commit()
+            # Note: ai_db_msg might be from previous turn if we broke loop.
+            # Actually, if we break, ai_db_msg IS the last message.
+            # But we need to update it.
+            ai_db_msg.meta = final_meta
+            db.add(ai_db_msg) # re-add to session to ensure update?
+            await db.commit()
              
         # Return Final Response
         return ChatResponse(
@@ -728,10 +740,12 @@ class CopilotService:
         """
         使用 Whisper 将音频转为文字
         """
-        from openai import AsyncOpenAI
-        from backend.plugin.ai.crud.crud_provider import ai_provider_dao
-        from backend.core.conf import settings
         import os
+
+        from openai import AsyncOpenAI
+
+        from backend.core.conf import settings
+        from backend.plugin.ai.crud.crud_provider import ai_provider_dao
 
         # 获取 provider 配置
         provider = await ai_provider_dao.get(db, provider_id)
@@ -749,8 +763,7 @@ class CopilotService:
         full_path = os.path.join(upload_dir, audio_path)
 
         # 读取音频文件
-        with open(full_path, 'rb') as f:
-            audio_data = f.read()
+        audio_data = await anyio.Path(full_path).read_bytes()
 
         # 调用 Whisper API
         transcript = await client.audio.transcriptions.create(

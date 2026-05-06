@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import sqlalchemy as sa
+
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, UniversalText, id_key

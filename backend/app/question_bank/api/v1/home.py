@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 
@@ -17,6 +17,7 @@ from backend.app.question_bank.service.rank_service import rank_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.utils.timezone import timezone
 
 router = APIRouter()
 
@@ -63,15 +64,15 @@ async def check_in(
 async def get_check_in_calendar(
     request: Request,
     db: CurrentSession,
-    year: int = Query(default=None, description='年份（默认当前年）'),
-    month: int = Query(default=None, description='月份（默认当前月，1-12）'),
+    year: Annotated[int | None, Query(description='年份（默认当前年）')] = None,
+    month: Annotated[int | None, Query(description='月份（默认当前月，1-12）')] = None,
 ) -> ResponseSchemaModel[CheckInCalendarData]:
     """
     👤 客户端首页 - 获取打卡日历
 
     获取指定月份的打卡日历数据，包括每天的打卡状态和做题数
     """
-    today = date.today()
+    today = timezone.now().date()
     year = year or today.year
     month = month or today.month
 
@@ -88,11 +89,11 @@ async def get_check_in_calendar(
 async def get_rank_list(
     request: Request,
     db: CurrentSession,
-    rank_type: str = Query(
-        default='practice_count',
-        description='排行榜类型（practice_count: 刷题数量, accuracy_rate: 正确率, streak_days: 坚持天数）',
-    ),
-    limit: int = Query(default=100, ge=1, le=500, description='返回数量（默认 100，最大 500）'),
+    rank_type: Annotated[
+        str,
+        Query(description='排行榜类型（practice_count: 刷题数量, accuracy_rate: 正确率, streak_days: 坚持天数）'),
+    ] = 'practice_count',
+    limit: Annotated[int, Query(ge=1, le=500, description='返回数量（默认 100，最大 500）')] = 100,
 ) -> ResponseSchemaModel[RankListData]:
     """
     👤 客户端首页 - 获取排行榜列表

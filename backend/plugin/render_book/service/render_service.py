@@ -8,37 +8,35 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+import anyio
 import httpx
 
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.pagination import _CustomPageParams, paging_list_data
 from backend.core.conf import settings
 from backend.database.db import async_db_session
-from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.plugin.render_book.crud import render_book_job_dao, render_book_job_file_dao
 from backend.plugin.render_book.model import RenderBookJob, RenderBookJobFile
 from backend.plugin.render_book.schema.payload import RenderDocumentPayload
 from backend.plugin.render_book.schema.render import (
-    RenderArtifactKind,
-    RenderAnswerLayout,
-    RenderContentMode,
-    RenderDeliveryMode,
     JobStatus,
+    RenderArtifactKind,
     RenderFileKind,
     RenderJobCreate,
     RenderJobFileRead,
     RenderJobListParams,
     RenderJobRead,
-    RenderTemplatePreviewRequest,
-    RenderTemplatePreviewResponse,
     RenderJobValidationResult,
     RenderOptions,
     RenderOutputTargets,
     RenderTemplateDetail,
+    RenderTemplatePreviewRequest,
+    RenderTemplatePreviewResponse,
     RenderTemplateSummary,
     RenderValidationIssue,
     RenderVariant,
@@ -329,7 +327,8 @@ class RenderService:
             raise errors.NotFoundError(msg='当前任务的预览 PDF 尚未生成或本地文件不存在')
 
         file_path = Path(matched.local_path)
-        if not file_path.exists() or not file_path.is_file():
+        async_file_path = anyio.Path(file_path)
+        if not await async_file_path.exists() or not await async_file_path.is_file():
             raise errors.NotFoundError(msg='预览 PDF 文件不存在，请重新生成预览')
 
         return matched
@@ -589,12 +588,13 @@ class RenderService:
             raise errors.NotFoundError(msg='渲染任务不存在')
 
         output_file = Path(local_path)
-        if not output_file.exists() or not output_file.is_file():
+        async_output_file = anyio.Path(output_file)
+        if not await async_output_file.exists() or not await async_output_file.is_file():
             raise errors.RequestError(msg=f'输出文件不存在: {output_file}')
 
         resolved_filename = filename or output_file.name
         resolved_content_type = content_type or mimetypes.guess_type(output_file.name)[0] or 'application/pdf'
-        size_bytes = output_file.stat().st_size
+        size_bytes = (await async_output_file.stat()).st_size
         storage_type = 'local'
         status = 'available'
         object_key = None

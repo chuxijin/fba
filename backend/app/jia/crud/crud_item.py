@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.jia.model import JiaItem
@@ -80,7 +79,7 @@ class CRUDItem(CRUDPlus[JiaItem]):
         :param user_id: 用户 ID
         :return:
         """
-        from sqlalchemy import select, distinct
+        from sqlalchemy import distinct, select
 
         stmt = select(distinct(JiaItem.category)).where(
             JiaItem.created_by == user_id,
@@ -157,7 +156,7 @@ class CRUDItem(CRUDPlus[JiaItem]):
         :param user_id: 用户 ID
         :return: (删除数量, 图片路径列表)
         """
-        from sqlalchemy import select, delete
+        from sqlalchemy import delete, select
 
         # 先查询要删除的物品的图片路径
         stmt = select(JiaItem.image_path).where(

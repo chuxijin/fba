@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """排名服务类"""
-import sqlalchemy as sa
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -11,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.admin.model import User
 from backend.app.question_bank.crud.crud_check_in import check_in_dao
 from backend.app.question_bank.crud.crud_daily_rank import daily_rank_dao
-from backend.app.question_bank.model import PracticeRecord, UserAccount, UserCheckIn, UserPracticeStats
+from backend.app.question_bank.model import PracticeRecord, UserAccount, UserPracticeStats
 from backend.app.question_bank.schema.home import RankItem, RankListData, RankUserInfo, UserRankInfo
+from backend.utils.timezone import timezone
 
 
 class RankService:
@@ -27,7 +27,8 @@ class RankService:
         :param user_id: 用户 ID
         :return:
         """
-        yesterday = date.today() - timedelta(days=1)
+        today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
         rank_record = await daily_rank_dao.get_by_user_and_date(db, user_id, yesterday)
 
         if rank_record:
@@ -57,9 +58,10 @@ class RankService:
         :param user_id: 用户 ID
         :return:
         """
-        yesterday = date.today() - timedelta(days=1)
+        today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
         yesterday_start = datetime.combine(yesterday, datetime.min.time())
-        today_start = datetime.combine(date.today(), datetime.min.time())
+        today_start = datetime.combine(today, datetime.min.time())
 
         stmt = (
             select(

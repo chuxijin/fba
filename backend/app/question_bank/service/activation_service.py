@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.actcode.schema.actcode import RedeemCodeParam, RedeemCodeResult
 from backend.app.actcode.service.actcode_service import actcode_service
-from backend.common.exception import errors
 
 
 class ActivationService:

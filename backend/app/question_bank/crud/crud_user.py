@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.admin.crud.crud_user import user_dao
+from backend.app.admin.model.user import User
 from backend.app.question_bank.model import UserAccount
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+
 from time import perf_counter
 from urllib.parse import urlencode
 

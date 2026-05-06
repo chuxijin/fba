@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 from datetime import date
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model.statistics import UserPracticeStats
+from backend.utils.timezone import timezone
 
 
 class CRUDUserPracticeStats(CRUDPlus[UserPracticeStats]):
@@ -53,7 +54,7 @@ class CRUDUserPracticeStats(CRUDPlus[UserPracticeStats]):
         :param duration: 新增答题时长（秒）
         """
         stats = await self.get_or_create(db, user_id)
-        today = date.today()
+        today = timezone.now().date()
 
         update_data: dict = {
             'total_count': UserPracticeStats.total_count + answered,

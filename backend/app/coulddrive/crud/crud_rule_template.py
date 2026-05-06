@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
 from typing import Sequence
 
-from sqlalchemy import Select, and_, desc, select, func, or_
+from sqlalchemy import Select, and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.rule_template import RuleTemplate
 from backend.app.coulddrive.schema.rule_template import (
-    CreateRuleTemplateParam, 
-    UpdateRuleTemplateParam,
+    CreateRuleTemplateParam,
     GetRuleTemplateListParam,
-    TemplateType
+    TemplateType,
+    UpdateRuleTemplateParam,
 )
+from backend.utils.timezone import timezone
 
 
 class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
@@ -193,7 +193,7 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         """
         result = await self.update_model(db, pk, {
             "usage_count": self.model.usage_count + 1,
-            "last_used_at": datetime.now()
+            "last_used_at": timezone.now()
         })
         await db.commit()
         return result
@@ -223,12 +223,12 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         
         # 启用数量
         active_count = await db.scalar(
-            select(func.count(self.model.id)).where(self.model.is_active == True)
+            select(func.count(self.model.id)).where(self.model.is_active.is_(True))
         )
         
         # 系统模板数量
         system_count = await db.scalar(
-            select(func.count(self.model.id)).where(self.model.is_system == True)
+            select(func.count(self.model.id)).where(self.model.is_system.is_(True))
         )
         
         # 用户模板数量

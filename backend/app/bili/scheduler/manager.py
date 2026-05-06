@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """动态任务调度管理器（支持工作时间段）"""
 import asyncio
-import json
 import random
-from datetime import datetime, time
+
+from datetime import time
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.bili.model.task_config import BiliTaskConfig
 from backend.common.log import log
 from backend.database.db import async_engine
+from backend.utils.timezone import timezone
 
 
 class TaskSchedulerManager:
@@ -61,7 +62,7 @@ class TaskSchedulerManager:
     async def reload_tasks(self):
         """热重载任务配置（从数据库读取）"""
         async with AsyncSession(async_engine) as db:
-            stmt = select(BiliTaskConfig).where(BiliTaskConfig.is_enabled == True)
+            stmt = select(BiliTaskConfig).where(BiliTaskConfig.is_enabled.is_(True))
             result = await db.execute(stmt)
             tasks = result.scalars().all()
 
@@ -134,14 +135,14 @@ class TaskSchedulerManager:
                         return
 
                     log.info(f'🏃 开始执行任务: {task.task_name}')
-                    task.last_check_time = datetime.now()
+                    task.last_check_time = timezone.now()
                     await db.commit()
 
                     # 执行任务（传递完整配置）
                     result = await task_func(task_config)
 
                     # 更新成功状态（result 可能是 reply_count 或 send_count）
-                    task.last_run_time = datetime.now()
+                    task.last_run_time = timezone.now()
                     task.run_count += 1
 
                     # 根据任务类型更新统计
@@ -184,7 +185,7 @@ class TaskSchedulerManager:
         :param task_config: 任务配置
         :return:
         """
-        now = datetime.now().time()
+        now = timezone.now().time()
 
         # 解析时间字符串
         start_time = time.fromisoformat(task_config.start_time)
@@ -268,7 +269,7 @@ class TaskSchedulerManager:
                 task = db_result.scalar_one_or_none()
 
                 if task:
-                    task.last_run_time = datetime.now()
+                    task.last_run_time = timezone.now()
                     task.run_count += 1
 
                     if task_config.task_type in ['reply_my_message', 'reply_my_comment']:

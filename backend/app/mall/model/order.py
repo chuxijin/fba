@@ -6,11 +6,11 @@ from datetime import datetime
 from decimal import Decimal
 
 import sqlalchemy as sa
+
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.common.model import Base, TimeZone, UniversalText, UserMixin, id_key
-from backend.utils.timezone import timezone
+from backend.common.model import Base, TimeZone, UserMixin, id_key
 
 CompatibleJSONB = sa.JSON().with_variant(JSONB, 'postgresql')
 

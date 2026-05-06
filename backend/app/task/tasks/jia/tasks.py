@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from backend.app.task.celery import celery_app
-
 from backend.app.jia.service import item_service
+from backend.app.task.celery import celery_app
 from backend.database.db import async_db_session
 
 

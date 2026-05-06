@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
+
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, UserMixin, id_key

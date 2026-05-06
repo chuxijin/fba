@@ -11,8 +11,8 @@ from backend.app.job.schema.job_posting import (
     UpdateJobPosting,
 )
 from backend.app.job.service.job_posting_service import job_posting_service
-from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.enums import ApplicationStatus
+from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission

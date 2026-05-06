@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import logging
+
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 from croniter import croniter
 
@@ -11,9 +12,9 @@ from backend.app.coulddrive.service.filesync_service import file_sync_service
 from backend.app.task.celery import celery_app
 from backend.app.task.tasks.filesync.debug_logger import (
     log_task_dispatch,
-    log_task_start,
-    log_task_skipped,
     log_task_end,
+    log_task_skipped,
+    log_task_start,
 )
 from backend.database.db import async_db_session
 from backend.database.redis import redis_client
@@ -299,9 +300,6 @@ def _should_execute_now(cron_expr: str, last_sync: Any | None, current_time: dat
         
         # 获取当前时间之前的最近一次应该执行的时间
         prev_execution_time = cron.get_prev(datetime)
-        
-        # 获取下一次应该执行的时间
-        next_execution_time = cron.get_next(datetime)
         
         # 计算当前检查时间与最近执行时间的差距（分钟）
         # 如果差距在合理范围内（比如5分钟内），认为是在执行窗口内

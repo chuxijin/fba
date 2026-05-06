@@ -18,9 +18,9 @@ import logging
 import re
 import sys
 import time
+
 from pathlib import Path
 
-import sqlalchemy as sa
 from sqlalchemy import text
 
 # 确保项目根目录在 sys.path

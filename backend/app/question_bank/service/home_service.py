@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import sqlalchemy as sa
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,7 @@ from backend.app.question_bank.schema.home import (
     WeekPracticeStats,
 )
 from backend.app.question_bank.service.rank_service import rank_service
+from backend.utils.timezone import timezone
 
 
 class HomeService:
@@ -31,7 +33,7 @@ class HomeService:
         :param user_id: 用户 ID
         :return:
         """
-        today = date.today()
+        today = timezone.now().date()
 
         # 1. 打卡汇总
         recent_dates, total_check_in_days = await HomeService._get_check_in_summary(db, user_id)
@@ -142,7 +144,7 @@ class HomeService:
     @staticmethod
     async def _get_week_stats(db: AsyncSession, user_id: int) -> WeekPracticeStats:
         """获取本周刷题统计"""
-        today = date.today()
+        today = timezone.now().date()
         week_start = today - timedelta(days=today.weekday())
         week_start_dt = datetime.combine(week_start, datetime.min.time())
 

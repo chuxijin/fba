@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import logging
+
 from typing import Annotated
 
 from fastapi import APIRouter, File, Request, UploadFile

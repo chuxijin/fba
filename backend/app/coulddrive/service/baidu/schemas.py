@@ -1,10 +1,8 @@
-from typing import Optional, List, Dict, NamedTuple
+
 from collections import namedtuple
+from typing import Dict, List, NamedTuple, Optional
 from urllib.parse import unquote
 
-from base64 import standard_b64encode
-
-import os
 
 class PcsFile(NamedTuple):
     """

@@ -11,6 +11,7 @@ from sqlalchemy_crud_plus import CRUDPlus
 from backend.app.question_bank.model import PracticeRecord
 from backend.common.enums import DataBaseType
 from backend.core.conf import settings
+from backend.utils.timezone import timezone
 
 
 class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
@@ -147,7 +148,7 @@ class CRUDPracticeRecord(CRUDPlus[PracticeRecord]):
             return []
 
         # 为所有记录添加时间戳
-        now = datetime.now()
+        now = timezone.now()
         for record in records:
             if 'created_time' not in record:
                 record['created_time'] = now

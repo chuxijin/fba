@@ -1,11 +1,12 @@
 #api.py
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
 
-from .errors import QuarkApiError, assert_ok
 from backend.core.conf import settings
+
+from .errors import QuarkApiError, assert_ok
 
 # API 基础URL
 PAN_QUARK_COM = "https://pan.quark.cn"
@@ -99,13 +100,16 @@ class QuarkApi:
         self,
         method: Method,
         url: str,
-        params: Optional[Dict[str, str]] = {},
+        params: Optional[Dict[str, str]] = None,
         headers: Optional[Dict[str, str]] = None,
         data: Union[str, bytes, Dict[str, str], Any] = None,
         files: Optional[Dict[str, Any]] = None,
         timeout: Optional[Union[float, Tuple[float, float]]] = None,
         **kwargs,
     ) -> requests.Response:
+        if params is None:
+            params = {}
+
         if not headers:
             headers = PAN_HEADERS.copy()
 
@@ -136,7 +140,7 @@ class QuarkApi:
     async def _request_get(
         self,
         url: str,
-        params: Optional[Dict[str, str]] = {},
+        params: Optional[Dict[str, str]] = None,
         headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ) -> requests.Response:
@@ -814,4 +818,3 @@ class QuarkApi:
         
         resp = await self._request(Method.POST, url, params=params, data=data)
         return resp.json()
-

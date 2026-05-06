@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import sqlalchemy as sa
+
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, UserMixin, id_key

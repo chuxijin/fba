@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from pathlib import Path
@@ -12,11 +13,14 @@ from typing import Any
 
 import httpx
 
+from backend.utils.timezone import timezone
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.app.gongkao.crud.crud_content import content_dao  # noqa: E402
+
 from backend.app.gongkao.schema.content import CreateContentParam, UpdateContentParam  # noqa: E402
 from backend.app.task.tasks.gongkao.tasks import (  # noqa: E402
     DEFAULT_TAGS,
@@ -91,7 +95,7 @@ def parse_daily_date(record: dict[str, Any]) -> date | None:
         return None
 
     try:
-        return datetime.strptime(add_time, '%Y-%m-%d').date()
+        return datetime.strptime(add_time, '%Y-%m-%d').replace(tzinfo=timezone.tz_info).date()
     except ValueError:
         return None
 

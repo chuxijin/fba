@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Any
 
 from sqlalchemy import Select
 
 from backend.common.exception import errors
 from backend.database.db import async_db_session
 from backend.plugin.app_auth.crud.crud_order import CRUDOrder, order_dao
-from backend.plugin.app_auth.model.order import AppOrder
 from backend.plugin.app_auth.schema.order import CreateOrderParam, GetOrderDetail, UpdateOrderParam
 
 
@@ -59,7 +57,7 @@ class OrderService:
         :param obj: 订单创建参数
         :return:
         """
-        async with AsyncSession() as db:
+        async with async_db_session() as db:
             # 生成订单号
             import time
             order_no = f"ORD{int(time.time() * 1000)}"
@@ -99,7 +97,7 @@ class OrderService:
         :param obj: 订单更新参数
         :return:
         """
-        async with AsyncSession() as db:
+        async with async_db_session() as db:
             order = await CRUDOrder.get(db, pk)
             if not order:
                 raise errors.NotFoundError(msg='订单不存在')
@@ -116,7 +114,7 @@ class OrderService:
         :param pk: 订单ID
         :return:
         """
-        async with AsyncSession() as db:
+        async with async_db_session() as db:
             order = await CRUDOrder.get(db, pk)
             if not order:
                 raise errors.NotFoundError(msg='订单不存在')

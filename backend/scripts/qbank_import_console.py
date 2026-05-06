@@ -7,6 +7,7 @@ import hashlib
 import os
 import re
 import sys
+
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -14,8 +15,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import httpx
+
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select, text as sa_text, update as sa_update
+from sqlalchemy import func, select
+from sqlalchemy import text as sa_text
+from sqlalchemy import update as sa_update
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -981,7 +985,7 @@ def build_material_hash(content: str) -> str:
     :return:
     """
     normalized = normalize_material_content(content)
-    return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def extract_material_contents(item: dict[str, Any]) -> list[str]:

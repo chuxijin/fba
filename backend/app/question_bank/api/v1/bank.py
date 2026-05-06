@@ -17,12 +17,28 @@ from backend.app.question_bank.service.bank_service import bank_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.security.jwt import DependsJwtAuth
+from backend.common.security.jwt import DependsJwtAuth, get_token, jwt_authentication
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
+
+
+async def get_authenticated_user_id(request: Request) -> int:
+    """
+    获取认证用户 ID
+
+    :param request: FastAPI 请求对象
+    :return:
+    """
+    user_id = getattr(request.user, 'id', None)
+    if user_id is not None:
+        return int(user_id)
+
+    token = get_token(request)
+    user = await jwt_authentication(token)
+    return int(user.id)
 
 
 @router.get('/recommend', summary='获取推荐题库', name='qbank_get_recommend_banks')
@@ -108,6 +124,7 @@ async def get_bank_list(
     keyword: Annotated[str | None, Query(description='关键字搜索')] = None,
     bank_type: Annotated[int | None, Query(description='内容类型: 1=题库, 2=试卷, 3=合集')] = None,
     parent_id: Annotated[int | None, Query(description='父级题库 ID')] = None,
+    study_domain: Annotated[str | None, Query(description='学习领域编码')] = None,
 ) -> ResponseModel:
     """🌍 公开接口 - 任何人都可以查看题库树形列表"""
     data = await bank_service.get_list(
@@ -117,6 +134,7 @@ async def get_bank_list(
         keyword=keyword,
         bank_type=bank_type,
         parent_id=parent_id,
+        study_domain=study_domain,
     )
     return response_base.success(data=data)
 
@@ -133,7 +151,8 @@ async def get_bank_list(
 )
 async def create_bank(request: Request, db: CurrentSessionTransaction, obj: CreateBankParam) -> ResponseModel:
     """🔐 管理员接口 - 只有管理员可以创建题库"""
-    await bank_service.create(db=db, obj=obj, created_by=request.user.id)
+    user_id = await get_authenticated_user_id(request)
+    await bank_service.create(db=db, obj=obj, created_by=user_id)
     return response_base.success()
 
 
@@ -151,7 +170,8 @@ async def update_bank(
     request: Request, db: CurrentSessionTransaction, pk: Annotated[int, Path(description='题库 ID')], obj: UpdateBankParam
 ) -> ResponseModel:
     """🔐 管理员接口 - 只有管理员可以更新题库"""
-    count = await bank_service.update(db=db, pk=pk, obj=obj, updated_by=request.user.id)
+    user_id = await get_authenticated_user_id(request)
+    count = await bank_service.update(db=db, pk=pk, obj=obj, updated_by=user_id)
     if count > 0:
         return response_base.success()
     return response_base.fail()

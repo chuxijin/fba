@@ -1,14 +1,13 @@
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.dialects import mysql
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.filesync_lock import FileSyncLock
-from sqlalchemy_crud_plus import CRUDPlus
-from backend.common.log import log
 from backend.common.exception.errors import CustomError
+from backend.common.log import log
 from backend.common.response.response_code import CustomErrorCode
 from backend.utils.timezone import timezone
 

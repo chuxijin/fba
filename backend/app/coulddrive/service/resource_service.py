@@ -4,42 +4,42 @@ from __future__ import annotations
 
 import asyncio
 import random
-from typing import Sequence, Dict, Any
+
 from datetime import datetime, timedelta
+from typing import Any, Dict, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.coulddrive.crud.crud_resource import resource_dao, resource_view_history_dao
-from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
 from backend.app.admin.crud.crud_category import category_dao
+from backend.app.coulddrive.crud.crud_drive_account import drive_account_dao
+from backend.app.coulddrive.crud.crud_resource import resource_dao, resource_view_history_dao
 from backend.app.coulddrive.model.resource import Resource, ResourceViewHistory
+from backend.app.coulddrive.schema.enum import DriveType
+from backend.app.coulddrive.schema.file import ListShareInfoParam, ShareParam
 from backend.app.coulddrive.schema.resource import (
     CreateResourceParam,
-    UpdateResourceParam,
-    GetResourceListParam,
-    ResourceStatistics,
     CreateResourceViewHistoryParam,
-    GetResourceViewHistoryListParam,
-    ResourceViewTrendResponse,
-    ResourceViewTrendData,
-    UpdateResourceViewCountParam,
-    GetResourceDetail,
-    ResourceListItem,
-    GetResourceViewHistoryDetail,
-    GetResourceViewTrendParam,
-    OverallStatisticsTrendResponse,
-    OverallStatisticsTrendData,
     GetOverallStatisticsTrendParam,
+    GetResourceDetail,
+    GetResourceListParam,
+    GetResourceViewHistoryDetail,
+    GetResourceViewHistoryListParam,
+    GetResourceViewTrendParam,
+    OverallStatisticsTrendData,
+    OverallStatisticsTrendResponse,
     ResourceKnowledgeItem,
-    VectorSearchResultItem,
-    VectorSearchKnowledgeResultItem
+    ResourceListItem,
+    ResourceStatistics,
+    ResourceViewTrendData,
+    ResourceViewTrendResponse,
+    UpdateResourceParam,
+    UpdateResourceViewCountParam,
 )
-from backend.app.coulddrive.schema.file import ListShareInfoParam, ShareParam
-from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
-from backend.common.exception.errors import NotFoundError, ForbiddenError
-from backend.common.pagination import paging_data, paging_list_data, _CustomPageParams
+from backend.common.exception.errors import NotFoundError
+from backend.common.pagination import paging_data
 from backend.utils.sensitive_words import contains_sensitive_words
+from backend.utils.timezone import timezone
 
 
 class ResourceService:
@@ -232,7 +232,7 @@ class ResourceService:
             # 如果获取到分享信息，使用第一个
             share_info = share_info_list[0] if share_info_list else None
 
-        except Exception as e:
+        except Exception:
             # 如果获取分享信息失败，使用默认值
             share_info = None
 
@@ -306,7 +306,7 @@ class ResourceService:
                             view_count=updated_resource.view_count
                         )
                         await resource_view_history_dao.create(db, history_param)
-                    except Exception as e:
+                    except Exception:
                         # 记录浏览量历史失败不影响资源创建
                         pass
 
@@ -314,7 +314,7 @@ class ResourceService:
                 if auto_vectorize:
                     try:
                         await resource_dao.update_resource_vector(db, updated_resource.id)
-                    except Exception as e:
+                    except Exception:
                         # 向量化失败不影响资源创建
                         pass
 
@@ -356,7 +356,7 @@ class ResourceService:
                             view_count=updated_resource.view_count
                         )
                         await resource_view_history_dao.create(db, history_param)
-                    except Exception as e:
+                    except Exception:
                         # 记录浏览量历史失败不影响资源创建
                         pass
 
@@ -364,7 +364,7 @@ class ResourceService:
                 if auto_vectorize:
                     try:
                         await resource_dao.update_resource_vector(db, updated_resource.id)
-                    except Exception as e:
+                    except Exception:
                         # 向量化失败不影响资源创建
                         pass
 
@@ -384,7 +384,7 @@ class ResourceService:
                     view_count=resource.view_count or 0
                 )
                 await resource_view_history_dao.create(db, history_param)
-            except Exception as e:
+            except Exception:
                 # 记录浏览量历史失败不影响资源创建
                 pass
 
@@ -392,7 +392,7 @@ class ResourceService:
         if auto_vectorize:
             try:
                 await resource_dao.update_resource_vector(db, resource.id)
-            except Exception as e:
+            except Exception:
                 # 向量化失败不影响资源创建
                 pass
 
@@ -464,7 +464,7 @@ class ResourceService:
                             if field in share_data:
                                 update_data[field] = share_data[field]
 
-            except Exception as e:
+            except Exception:
                 # 如果获取分享信息失败，继续执行更新操作
                 pass
 
@@ -487,7 +487,7 @@ class ResourceService:
                     view_count=updated_resource.view_count
                 )
                 await resource_view_history_dao.create(db, history_param)
-            except Exception as e:
+            except Exception:
                 # 记录浏览量历史失败不影响资源更新
                 pass
             
@@ -571,7 +571,7 @@ class ResourceService:
                     view_count=updated_resource.view_count or 0
                 )
                 await resource_view_history_dao.create(db, history_param)
-            except Exception as e:
+            except Exception:
                 # 记录浏览量历史失败不影响分享信息刷新
                 pass
         
@@ -612,7 +612,7 @@ class ResourceService:
         :param pk: 资源 ID
         :return:
         """
-        resource = await ResourceService.get_model(db=db, pk=pk)
+        await ResourceService.get_model(db=db, pk=pk)
 
         count = await resource_dao.soft_delete(db, [pk])
         if count == 0:
@@ -668,7 +668,7 @@ class ResourceService:
         :param audit_status: 审核状态
         :return:
         """
-        resource = await ResourceService.get_model(db=db, pk=pk)
+        await ResourceService.get_model(db=db, pk=pk)
 
         count = await resource_dao.update_audit_status(db, pk, audit_status)
         if count == 0:
@@ -684,7 +684,7 @@ class ResourceService:
         :param status: 状态
         :return:
         """
-        resource = await ResourceService.get_model(db=db, pk=pk)
+        await ResourceService.get_model(db=db, pk=pk)
 
         count = await resource_dao.update_status(db, pk, status)
         if count == 0:
@@ -732,16 +732,16 @@ class ResourceService:
         :return:
         """
         from datetime import datetime, timedelta
-        from sqlalchemy import func, and_
+
         
         # 确定查询的日期范围
         if params.start_date and params.end_date:
-            start_date = datetime.strptime(params.start_date, '%Y-%m-%d').date()
-            end_date = datetime.strptime(params.end_date, '%Y-%m-%d').date()
+            start_date = datetime.strptime(params.start_date, '%Y-%m-%d').replace(tzinfo=timezone.tz_info).date()
+            end_date = datetime.strptime(params.end_date, '%Y-%m-%d').replace(tzinfo=timezone.tz_info).date()
         else:
             # 默认获取最近7天的数据
             days = params.days or 7
-            end_date = datetime.now().date()
+            end_date = timezone.now().date()
             start_date = end_date - timedelta(days=days-1)
         
         # 生成日期列表
@@ -756,7 +756,7 @@ class ResourceService:
         # 为每个日期获取统计数据
         for date in date_list:
             date_start = datetime.combine(date, datetime.min.time())
-            date_end = datetime.combine(date, datetime.max.time())
+            date_end = datetime.combine(date, datetime.max.replace(tzinfo=timezone.tz_info).time())
             
             # 获取当日的资源统计
             total_count = await resource_dao.count_resources_by_date(db, date_end)
@@ -1037,7 +1037,7 @@ class ResourceService:
         }
 
         try:
-            current_time = datetime.now()
+            current_time = timezone.now()
 
             # 1. 获取24小时内即将过期的资源
             expiring_threshold = current_time + timedelta(hours=hours)
@@ -1071,7 +1071,7 @@ class ResourceService:
                     all_resources.append(resource)
 
             # 按过期时间排序，优先处理已过期的资源
-            all_resources.sort(key=lambda x: (x.expired_at or datetime.max, getattr(x, 'expiry_category', '')))
+            all_resources.sort(key=lambda x: (x.expired_at or datetime.max.replace(tzinfo=timezone.tz_info), getattr(x, 'expiry_category', '')))
 
             result["checked_resources"] = len(all_resources)
 

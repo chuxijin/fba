@@ -14,14 +14,12 @@ from backend.app.question_bank.schema.favorite import (
     CreateQuestionFavoriteParam,
     FavoriteStatistics,
     FolderInfo,
-    GetQuestionFavoriteDetail,
 )
 from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
 from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.database.redis import redis_client
-
 
 FAVORITE_STATISTICS_CACHE_TTL = 30
 
@@ -104,7 +102,7 @@ class FavoriteService:
         :param study_domain: 领域编码
         :return:
         """
-        if not study_domain:
+        if study_domain is None:
             return None
         return await study_domain_service.get_question_filter(db=db, code=study_domain)
 

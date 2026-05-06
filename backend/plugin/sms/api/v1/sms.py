@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 import random
 
+from typing import Annotated
+
 from fastapi import APIRouter, Body, Depends, Request, Response
 from pyrate_limiter import Duration, Rate
 from starlette.background import BackgroundTasks
@@ -23,7 +25,7 @@ router = APIRouter()
 
 
 @router.post('/send', summary='发送短信验证码', dependencies=[DependsJwtAuth])
-async def send_sms(request: SendSmsRequest = Body(...)) -> ResponseSchemaModel[SendSmsResponse]:
+async def send_sms(request: Annotated[SendSmsRequest, Body()]) -> ResponseSchemaModel[SendSmsResponse]:
     """发送短信验证码（调试）"""
     result = await sms_service.send_sms(
         phone_numbers=request.phone_numbers,
@@ -43,7 +45,7 @@ async def send_sms(request: SendSmsRequest = Body(...)) -> ResponseSchemaModel[S
     summary='发送登录短信验证码',
     dependencies=[Depends(RateLimiter(Rate(1, Duration.MINUTE)))],
 )
-async def send_login_code(phone: str = Body(..., embed=True)) -> ResponseSchemaModel:
+async def send_login_code(phone: Annotated[str, Body(embed=True)]) -> ResponseSchemaModel:
     """发送登录短信验证码，生成 6 位验证码，存储在 Redis 中"""
     verification_code = ''.join(random.choices('0123456789', k=6))
 
@@ -91,7 +93,7 @@ async def login_by_sms(
     summary='发送更换手机号验证码',
     dependencies=[DependsJwtAuth, Depends(RateLimiter(Rate(1, Duration.MINUTE)))],
 )
-async def send_change_phone_code(phone: str = Body(..., embed=True)) -> ResponseSchemaModel:
+async def send_change_phone_code(phone: Annotated[str, Body(embed=True)]) -> ResponseSchemaModel:
     """发送更换手机号的验证码（需登录）"""
     verification_code = ''.join(random.choices('0123456789', k=6))
 

@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import sqlalchemy as sa
+
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, TimeZone, UserMixin, id_key

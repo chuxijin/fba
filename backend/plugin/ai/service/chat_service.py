@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import json
 
 from collections.abc import AsyncGenerator
@@ -16,8 +17,81 @@ from backend.plugin.ai.utils.model_control import get_pydantic_model
 chat_agent = Agent(name='fba_chat')
 
 
+def _build_model_settings(chat: AIChat) -> dict[str, Any]:
+    """
+    从聊天参数构建模型设置字典
+
+    :param chat: 聊天参数
+    :return:
+    """
+    return {
+        k: v
+        for k, v in {
+            'max_tokens': chat.max_tokens,
+            'temperature': chat.temperature,
+            'top_p': chat.top_p,
+            'timeout': chat.timeout,
+            'parallel_tool_calls': chat.parallel_tool_calls,
+            'seed': chat.seed,
+            'presence_penalty': chat.presence_penalty,
+            'frequency_penalty': chat.frequency_penalty,
+            'logit_bias': chat.logit_bias,
+            'stop_sequences': chat.stop_sequences,
+            'extra_headers': chat.extra_headers,
+            'extra_body': chat.extra_body,
+        }.items()
+        if v is not None
+    }
+
+
 class ChatService:
     """聊天服务类"""
+
+    @staticmethod
+    def _ensure_json_object_instruction(messages: list[dict[str, Any]]) -> None:
+        """
+        为 json_object 响应格式补充 json 指令
+
+        :param messages: OpenAI 消息列表
+        :return:
+        """
+        for message in messages:
+            if message.get('role') != 'user':
+                continue
+
+            content = message.get('content')
+            if isinstance(content, str) and 'json' in content:
+                return
+
+            if not isinstance(content, list):
+                continue
+
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+
+                text = part.get('text') or part.get('content')
+                if isinstance(text, str) and 'json' in text:
+                    return
+
+        instruction = '请只返回合法 json 对象，不要输出 Markdown 或额外文字。'
+        for message in reversed(messages):
+            if message.get('role') != 'user':
+                continue
+
+            content = message.get('content')
+            if isinstance(content, str):
+                message['content'] = f'{content}\n\n{instruction}'
+                return
+
+            if isinstance(content, list):
+                content.append({'type': 'text', 'text': instruction})
+                return
+
+            message['content'] = instruction
+            return
+
+        messages.append({'role': 'user', 'content': instruction})
 
     @staticmethod
     async def stream_messages(*, db: AsyncSession, chat: AIChat) -> AsyncGenerator[bytes, Any]:
@@ -44,24 +118,7 @@ class ChatService:
 
         yield json.dumps({'role': 'user', 'content': chat.user_prompt}, ensure_ascii=False).encode('utf-8') + b'\n'
 
-        model_settings = {
-            k: v
-            for k, v in {
-                'max_tokens': chat.max_tokens,
-                'temperature': chat.temperature,
-                'top_p': chat.top_p,
-                'timeout': chat.timeout,
-                'parallel_tool_calls': chat.parallel_tool_calls,
-                'seed': chat.seed,
-                'presence_penalty': chat.presence_penalty,
-                'frequency_penalty': chat.frequency_penalty,
-                'logit_bias': chat.logit_bias,
-                'stop_sequences': chat.stop_sequences,
-                'extra_headers': chat.extra_headers,
-                'extra_body': chat.extra_body,
-            }.items()
-            if v is not None
-        }
+        model_settings = _build_model_settings(chat)
 
         async with chat_agent.run_stream(
             chat.user_prompt,
@@ -76,8 +133,6 @@ class ChatService:
             async for text in result.stream_output(debounce_by=0.01):
                 message = ModelResponse(parts=[TextPart(text)], model_name=model.model_id, timestamp=result.timestamp())
                 yield json.dumps(to_chat_message(message)).encode('utf-8') + b'\n'
-
-
 
     @staticmethod
     async def invoke(*, db: AsyncSession, chat: AIChat) -> str:
@@ -102,24 +157,7 @@ class ChatService:
         if not model.status:
             raise errors.RequestError(msg='此模型暂不可用，请更换模型或联系系统管理员')
 
-        model_settings = {
-            k: v
-            for k, v in {
-                'max_tokens': chat.max_tokens,
-                'temperature': chat.temperature,
-                'top_p': chat.top_p,
-                'timeout': chat.timeout,
-                'parallel_tool_calls': chat.parallel_tool_calls,
-                'seed': chat.seed,
-                'presence_penalty': chat.presence_penalty,
-                'frequency_penalty': chat.frequency_penalty,
-                'logit_bias': chat.logit_bias,
-                'stop_sequences': chat.stop_sequences,
-                'extra_headers': chat.extra_headers,
-                'extra_body': chat.extra_body,
-            }.items()
-            if v is not None
-        }
+        model_settings = _build_model_settings(chat)
 
         result = await chat_agent.run(
             chat.user_prompt,
@@ -133,11 +171,10 @@ class ChatService:
         )
         if hasattr(result, 'data'):
             return result.data
-        elif hasattr(result, 'output'):
+        if hasattr(result, 'output'):
             return result.output
-        else:
-             # Try to find where the content is
-            return str(result)
+        # Try to find where the content is
+        return str(result)
 
     @staticmethod
     async def raw_chat(*, db: AsyncSession, chat: AIChat, stream: bool = False) -> dict:
@@ -158,25 +195,25 @@ class ChatService:
 
         if not model.status:
             raise errors.RequestError(msg='此模型暂不可用，请更换模型或联系系统管理员')
-            
+
         from openai import AsyncOpenAI
-        
+
         base_url = provider.api_host
         if base_url:
             base_url = f'{base_url}/v1' if not base_url.endswith('/v1') else base_url
-            
+
         client = AsyncOpenAI(api_key=provider.api_key, base_url=base_url)
-        
+
         # 构造 Messages
         openai_messages = []
         if chat.messages:
-             for m in chat.messages:
-                 # 确保 content 是 list[dict] 或 str
-                 msg_dict = m.model_dump(exclude_none=True) # type: ignore
-                 openai_messages.append(msg_dict)
+            for m in chat.messages:
+                # 确保 content 是 list[dict] 或 str
+                msg_dict = m.model_dump(exclude_none=True)  # type: ignore
+                openai_messages.append(msg_dict)
         else:
-             openai_messages.append({"role": "user", "content": chat.user_prompt})
-             
+            openai_messages.append({"role": "user", "content": chat.user_prompt})
+
         # 构造参数
         kwargs = {
             'model': model.model_id,
@@ -184,19 +221,32 @@ class ChatService:
             'temperature': chat.temperature,
             'max_tokens': chat.max_tokens,
         }
-        
+
+        if chat.timeout is not None:
+            kwargs['timeout'] = chat.timeout
+
+        if chat.top_p is not None:
+            kwargs['top_p'] = chat.top_p
+
+        if chat.extra_body and isinstance(chat.extra_body, dict):
+            kwargs.update(chat.extra_body)
+
+        response_format = kwargs.get('response_format')
+        if isinstance(response_format, dict) and response_format.get('type') == 'json_object':
+            ChatService._ensure_json_object_instruction(openai_messages)
+
         if chat.tools:
             kwargs['tools'] = chat.tools
             if chat.tool_choice:
                 kwargs['tool_choice'] = chat.tool_choice
-        
+
         if stream:
             kwargs['stream'] = True
             try:
                 response_stream = await client.chat.completions.create(**kwargs)
                 full_content = ""
                 role = "assistant"
-                
+
                 async for chunk in response_stream:
                     if not chunk.choices:
                         continue
@@ -205,17 +255,16 @@ class ChatService:
                         full_content += delta.content
                     if delta.role:
                         role = delta.role
-                        
+
                 return {"role": role, "content": full_content}
             except Exception as e:
-                raise errors.ServerError(msg=f'AI 请求失败(内部拼接流式返回): {str(e)}')
+                raise errors.ServerError(msg=f'AI 请求失败(内部拼接流式返回): {e!s}')
         else:
             try:
                 response = await client.chat.completions.create(**kwargs)
                 return response.choices[0].message.model_dump()
             except Exception as e:
-                raise errors.ServerError(msg=f'AI 请求失败: {str(e)}')
-
+                raise errors.ServerError(msg=f'AI 请求失败: {e!s}')
 
     @staticmethod
     async def embedding(*, db: AsyncSession, provider_id: int, model_id: str, text: str) -> list[float]:
@@ -247,7 +296,7 @@ class ChatService:
             response = await client.embeddings.create(input=text, model=model_id)
             return response.data[0].embedding
         except Exception as e:
-            raise errors.ServerError(msg=f'向量化失败: {str(e)}')
+            raise errors.ServerError(msg=f'向量化失败: {e!s}')
 
 
 ai_chat_service: ChatService = ChatService()

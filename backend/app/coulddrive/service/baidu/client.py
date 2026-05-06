@@ -7,48 +7,42 @@ Created On: 2023-01-01
 """
 
 from __future__ import annotations
-from importlib.util import source_from_cache
-import os
-from collections import deque
-from io import BytesIO
-from pathlib import Path, PurePosixPath
-from typing import IO, Callable, Dict, List, Optional, Set, Tuple, Union, Any
-import re
-from datetime import datetime
-import time
+
 import logging  # 导入标准日志模块
-import asyncio
+import os
+import re
 
-from PIL import Image
-from urllib.parse import urlparse, parse_qs
+from collections import deque
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, List, Optional, Set, Union
+from urllib.parse import parse_qs, urlparse
 
-from backend.app.coulddrive.schema.enum import RecursionSpeed
+from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
     BaseShareInfo,
+    CancelShareParam,
     CopyParam,
     ListFilesParam,
     ListShareFilesParam,
     ListShareInfoParam,
     MkdirParam,
     MoveParam,
-    RenameParam,
     RelationshipParam,
     RelationshipType,
     RemoveParam,
+    RenameParam,
     ShareParam,
     TransferParam,
     UserInfoParam,
 )
-from backend.app.coulddrive.schema.file import CancelShareParam
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
     GetUserFriendDetail,
     GetUserGroupDetail,
 )
-
+from backend.app.coulddrive.service.baidu.api import BaiduApi
 from backend.app.coulddrive.service.baidu.errors import BaiduApiError
-from backend.app.coulddrive.service.rule_template_service import ItemFilter
 from backend.app.coulddrive.service.coulddrive_service import (
     BaseDriveClient,
     ConfigItem,
@@ -56,7 +50,8 @@ from backend.app.coulddrive.service.coulddrive_service import (
     DriveAuthError,
     DriverRegistry,
 )
-from backend.app.coulddrive.schema.enum import DriveType
+from backend.utils.timezone import timezone
+
 from .schemas import (
     FromTo,
     PcsFile,
@@ -64,8 +59,6 @@ from .schemas import (
     PcsSharedLink,
     PcsSharedPath,
 )
-from backend.app.coulddrive.service.baidu.api import BaiduApi
-from backend.common.log import log
 
 SHARED_URL_PREFIX = "https://pan.baidu.com/s/"
 
@@ -236,7 +229,7 @@ class BaiduClient(BaseDriveClient):
                         
                         # 尝试在当前上下文中运行验证
                         try:
-                            loop = asyncio.get_running_loop()
+                            asyncio.get_running_loop()
                             # 在异步上下文中，暂时标记为已授权，用户ID稍后获取
                             self._is_authorized = True
                             return True
@@ -384,10 +377,6 @@ class BaiduClient(BaseDriveClient):
         if not file_path.startswith("/"):
             file_path = "/" + file_path
         
-        # 从 kwargs 中获取可选参数
-        drive_account_id = kwargs.get('drive_account_id', None)
-        db = kwargs.get('db', None)
-
         drive_files_list: List[BaseFileInfo] = []
         initial_parent_id = file_id
 
@@ -481,7 +470,6 @@ class BaiduClient(BaseDriveClient):
         """
         file_path = params.file_path
         parent_id = params.parent_id
-        file_name = params.file_name
         return_if_exist = params.return_if_exist
 
         # 规范化路径
@@ -605,7 +593,8 @@ class BaiduClient(BaseDriveClient):
             # 如果提供了 file_paths，优先使用它们，并确保它们是绝对路径
             if input_paths_list:
                 for path in input_paths_list:
-                    if not path: continue # 跳过空路径
+                    if not path:
+                        continue
                     
                     current_path_to_delete = path
                     if not current_path_to_delete.startswith("/"):
@@ -613,11 +602,11 @@ class BaiduClient(BaseDriveClient):
                     paths_for_api_call.append(current_path_to_delete)
             
             elif file_ids and not input_paths_list:
-                 self.logger.error(
-                     "BaiduClient.remove 不支持单独使用 file_ids 删除，除非实现可靠的ID到路径转换或百度提供基于ID的删除API。"
-                     "请同时提供对应的 file_paths。"
-                 )
-                 return False
+                self.logger.error(
+                    "BaiduClient.remove 不支持单独使用 file_ids 删除，除非实现可靠的ID到路径转换或百度提供基于ID的删除API。"
+                    "请同时提供对应的 file_paths。"
+                )
+                return False
             elif not input_paths_list and not file_ids:
                 self.logger.warning("没有提供 file_paths 或 file_ids 进行删除操作。")
                 return False # 或者 True，因为没有操作也算成功？
@@ -633,7 +622,7 @@ class BaiduClient(BaseDriveClient):
             await self._baidupcs.remove(*paths_for_api_call) 
             # self.logger.info(f"已成功请求删除以下路径: {paths_for_api_call}")
             if file_ids: # 如果也提供了ID，可以一起记录，方便追踪
-                 self.logger.debug(f"对应的 file_ids (如果提供): {file_ids}")
+                self.logger.debug(f"对应的 file_ids (如果提供): {file_ids}")
 
             return True
         
@@ -675,7 +664,7 @@ class BaiduClient(BaseDriveClient):
             # 直接使用API返回的过期时间
             expired_at = None
             if info.get("expiretime"):
-                expired_at = datetime.fromtimestamp(info.get("expiretime"))
+                expired_at = datetime.fromtimestamp(info.get("expiretime"), tz=timezone.tz_info)
             
             return BaseShareInfo(
                 title=file_name,
@@ -788,8 +777,10 @@ class BaiduClient(BaseDriveClient):
 
     # save_shared 已内联至 transfer 的 link 分支，避免额外公开方法
 
-    async def remote_path_exists(self, name: str, rd: str, _cache: Dict[str, Set[str]] = {}) -> bool:
+    async def remote_path_exists(self, name: str, rd: str, _cache: Dict[str, Set[str]] | None = None) -> bool:
         """检查远程路径是否存在"""
+        if _cache is None:
+            _cache = {}
 
         names = _cache.get(rd)
         if names is None:
@@ -1512,7 +1503,6 @@ class BaiduClient(BaseDriveClient):
                 
                 # 获取分享的基本信息
                 share_id = str(info.get("share_id", ""))
-                uk = str(info.get("uk", ""))
                 title = info.get("title", "")
                 expired_type = info.get("expired_type", 0)
                 
@@ -1529,7 +1519,7 @@ class BaiduClient(BaseDriveClient):
                         # 使用服务器时间作为基准
                         server_time = info.get("server_time")
                         if server_time:
-                            expired_at = datetime.fromtimestamp(server_time + expired_type * 24 * 3600)
+                            expired_at = datetime.fromtimestamp(server_time + expired_type * 24 * 3600, tz=timezone.tz_info)
                     
                     share_info = BaseShareInfo(
                         title=title or file_item.get("server_filename", ""),
@@ -1574,7 +1564,7 @@ class BaiduClient(BaseDriveClient):
                             # 使用创建时间 + 有效期计算过期时间
                             create_time = share_item.get("ctime")
                             if create_time:
-                                expired_at = datetime.fromtimestamp(create_time + expired_type * 24 * 3600)
+                                expired_at = datetime.fromtimestamp(create_time + expired_type * 24 * 3600, tz=timezone.tz_info)
                         
                         # 构建 BaseShareInfo 对象
                         share_info = BaseShareInfo(
@@ -1640,7 +1630,6 @@ class BaiduClient(BaseDriveClient):
         """
         source_type = params.source_type
         source_id = params.source_id
-        source_path = params.source_path
         target_path = params.target_path
         file_ids = params.file_ids
 
@@ -1827,7 +1816,6 @@ class BaiduClient(BaseDriveClient):
         :param kwargs: 其他关键字参数
         :return: 是否成功取消
         """
-        from backend.app.coulddrive.schema.file import CancelShareParam
         
         try:
             # 将字符串ID转换为整数

@@ -11,7 +11,7 @@ from backend.app.question_bank.service.study_domain_service import StudyDomainQu
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.database.redis import redis_client
-
+from backend.utils.timezone import timezone
 
 WRONG_QUESTION_STATISTICS_CACHE_TTL = 30
 
@@ -94,7 +94,7 @@ class WrongQuestionService:
         :param study_domain: 领域编码
         :return:
         """
-        if not study_domain:
+        if study_domain is None:
             return None
         return await study_domain_service.get_question_filter(db=db, code=study_domain)
 
@@ -367,7 +367,6 @@ class WrongQuestionService:
         :param mastery_threshold: 连续答对达到此阈值标记为已掌握
         :return:
         """
-        from datetime import datetime
 
         if placement_id is not None:
             wrong = await wrong_question_dao.get_by_user_and_question(
@@ -383,7 +382,7 @@ class WrongQuestionService:
         if not wrong_records:
             return {'is_mastered': False, 'correct_streak': 0, 'message': '未找到对应错题记录'}
 
-        practice_time = datetime.now()
+        practice_time = timezone.now()
         for wrong in wrong_records:
             await wrong_question_dao.increment_correct(
                 db=db,

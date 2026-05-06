@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import asyncio
 import atexit
 import threading
@@ -5,7 +7,7 @@ import weakref
 
 from collections.abc import Awaitable, Callable, Coroutine
 from functools import wraps
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 T = TypeVar('T')
 
@@ -33,12 +35,16 @@ class _TaskRunner:
 
     def _target(self) -> None:
         """后台线程的目标函数"""
-        try:
-            self.__loop.run_forever()
-        finally:
-            self.__loop.close()
+        loop = self.__loop
+        if loop is None:
+            return
 
-    def run(self, coro: Awaitable[T]) -> T:
+        try:
+            loop.run_forever()
+        finally:
+            loop.close()
+
+    def run(self, coro: Coroutine[Any, Any, T]) -> T:
         """在后台事件循环上运行协程并返回其结果"""
         with self.__lock:
             name = f'TaskRunner-{threading.get_ident()}'
@@ -50,7 +56,7 @@ class _TaskRunner:
             return future.result()
 
 
-_runner_map = weakref.WeakValueDictionary()
+_runner_map: weakref.WeakValueDictionary[str, _TaskRunner] = weakref.WeakValueDictionary()
 
 
 def run_await(coro: Callable[..., Awaitable[T]] | Callable[..., Coroutine[Any, Any, T]]) -> Callable[..., T]:
@@ -68,7 +74,7 @@ def run_await(coro: Callable[..., Awaitable[T]] | Callable[..., Coroutine[Any, A
             name = f'TaskRunner-{threading.get_ident()}'
             if name not in _runner_map:
                 _runner_map[name] = _TaskRunner()
-            return _runner_map[name].run(inner)
+            return _runner_map[name].run(cast(Coroutine[Any, Any, T], inner))
         except RuntimeError:
             # 如果没有，则创建一个新的事件循环
             try:

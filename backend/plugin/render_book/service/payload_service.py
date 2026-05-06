@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import re
+
 from collections import OrderedDict
 from collections.abc import Sequence
-from datetime import datetime
 from decimal import Decimal
-import re
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +36,7 @@ from backend.plugin.render_book.schema.render import (
     RenderVariant,
     SolutionMode,
 )
+from backend.utils.timezone import timezone
 
 QUESTION_TYPE_LABELS = {
     'single': '单选题',
@@ -496,7 +497,7 @@ class RenderPayloadService:
                 'solution_mode': solution_mode,
                 'render_variants': render_variants,
                 'question_ids': [item['number'] for item in questions],
-                'generated_at': datetime.now().isoformat(),
+                'generated_at': timezone.now().isoformat(),
             },
         )
 
@@ -774,7 +775,7 @@ class RenderPayloadService:
                 'chapter_id': chapter_id,
                 'chapter_name': chapter.name if chapter else None,
                 'question_ids': [item.id for item in questions],
-                'generated_at': datetime.now().isoformat(),
+                'generated_at': timezone.now().isoformat(),
                 'window_recent_days': filters.get('wrong_only_recent_days'),
             },
         )

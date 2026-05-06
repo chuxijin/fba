@@ -4,11 +4,12 @@ from typing import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy.sql import Select, exists, select as sa_select
+from sqlalchemy.sql import Select, exists
+from sqlalchemy.sql import select as sa_select
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.job.model.job_posting import JobPosting
 from backend.app.job.model.job_application import JobApplication
+from backend.app.job.model.job_posting import JobPosting
 from backend.app.job.schema.job_posting import CreateJobPosting, UpdateJobPosting
 from backend.common.enums import ApplicationStatus
 

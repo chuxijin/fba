@@ -4,7 +4,6 @@ from fastapi import APIRouter
 
 from backend.common.response.response_schema import ResponseModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
-from backend.plugin.app_auth.schema.statistics import AppAuthStatistics
 from backend.plugin.app_auth.service.statistics_service import StatisticsService
 
 router = APIRouter()

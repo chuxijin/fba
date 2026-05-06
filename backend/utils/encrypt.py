@@ -69,7 +69,7 @@ class Md5Cipher:
         :param plaintext: 加密前的明文
         :return:
         """
-        md5 = hashlib.md5()
+        md5 = hashlib.md5(usedforsecurity=False)
         if not isinstance(plaintext, bytes):
             plaintext = str(plaintext).encode('utf-8')
         md5.update(plaintext)

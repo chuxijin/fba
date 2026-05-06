@@ -3,12 +3,13 @@
 
 #api.py
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 import requests
 
-from .errors import AlistApiError, assert_ok
 from backend.core.conf import settings
+
+from .errors import AlistApiError, assert_ok
 
 # API 基础URL
 ALIST_URL = "https://alist.yzxj.vip"
@@ -105,7 +106,7 @@ class AlistApi:
         self,
         method: Method,
         url: str,
-        params: Optional[Dict[str, str]] = {},
+        params: Optional[Dict[str, str]] = None,
         headers: Optional[Dict[str, str]] = None,
         data: Union[str, bytes, Dict[str, str], Any] = None,
         files: Optional[Dict[str, Any]] = None,
@@ -113,6 +114,9 @@ class AlistApi:
         **kwargs,
     ) -> requests.Response:
         """原始请求方法，不进行自动重试"""
+        if params is None:
+            params = {}
+
         if not headers:
             headers = self._headers
 
@@ -131,7 +135,7 @@ class AlistApi:
             try:
                 response_json = resp.json()
                 print(f"   响应体: {response_json}")
-            except:
+            except Exception:
                 print(f"   响应体 (文本): {resp.text}")
             
             return resp
@@ -143,7 +147,7 @@ class AlistApi:
         self,
         method: Method,
         url: str,
-        params: Optional[Dict[str, str]] = {},
+        params: Optional[Dict[str, str]] = None,
         headers: Optional[Dict[str, str]] = None,
         data: Union[str, bytes, Dict[str, str], Any] = None,
         files: Optional[Dict[str, Any]] = None,
@@ -152,6 +156,9 @@ class AlistApi:
         **kwargs,
     ) -> requests.Response:
         """带自动重新登录的请求方法"""
+        if params is None:
+            params = {}
+
         try:
             resp = await self._request_raw(method, url, params, headers, data, files, timeout=timeout, **kwargs)
             
@@ -176,7 +183,7 @@ class AlistApi:
     async def _request_get(
         self,
         url: str,
-        params: Optional[Dict[str, str]] = {},
+        params: Optional[Dict[str, str]] = None,
         headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ) -> requests.Response:

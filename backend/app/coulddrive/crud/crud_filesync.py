@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence
 
-from sqlalchemy import Select, func, and_, or_
+from sqlalchemy import Select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
-
-from backend.common.pagination import paging_data
 
 from backend.app.coulddrive.model.filesync import SyncConfig, SyncTask, SyncTaskItem
 from backend.app.coulddrive.schema.filesync import (
     CreateSyncConfigParam,
-    CreateSyncTaskParam,
     CreateSyncTaskItemParam,
+    CreateSyncTaskParam,
     UpdateSyncConfigParam,
     UpdateSyncTaskParam,
-    UpdateSyncTaskItemParam,
 )
 
 
@@ -83,7 +80,7 @@ class CRUDSyncConfig(CRUDPlus[SyncConfig]):
         :param filters: 过滤条件
         :return: 同步配置列表
         """
-        from sqlalchemy import select, desc
+        from sqlalchemy import desc, select
         from sqlalchemy.orm import noload
         
         stmt = (
@@ -177,7 +174,7 @@ class CRUDSyncConfig(CRUDPlus[SyncConfig]):
         :param created_by: 创建人ID
         :return: 查询语句
         """
-        from sqlalchemy import select, desc
+        from sqlalchemy import desc, select
         from sqlalchemy.orm import noload
         
         stmt = (
@@ -304,7 +301,7 @@ class CRUDSyncTask(CRUDPlus[SyncTask]):
         :param status: 任务状态筛选
         :return: 同步任务列表
         """
-        from sqlalchemy import select, desc
+        from sqlalchemy import desc, select
         from sqlalchemy.orm import noload
         
         stmt = (
@@ -404,7 +401,7 @@ class CRUDSyncTaskItem(CRUDPlus[SyncTaskItem]):
         :param operation_type: 操作类型筛选
         :return: 同步任务项列表
         """
-        from sqlalchemy import select, desc
+        from sqlalchemy import desc, select
         from sqlalchemy.orm import noload
         
         stmt = (
@@ -434,7 +431,7 @@ class CRUDSyncTaskItem(CRUDPlus[SyncTaskItem]):
         :param task_id: 任务ID
         :return: 统计信息字典
         """
-        from sqlalchemy import select, func
+        from sqlalchemy import func, select
         
         # 总数统计
         total_stmt = select(func.count(SyncTaskItem.id)).where(SyncTaskItem.task_id == task_id)

@@ -47,7 +47,7 @@ class ActivateService:
         source_key = f'{cls.ORDER_SOURCE_PREFIX}{order_no}'
         if len(source_key) <= 64:
             return source_key
-        digest = hashlib.sha1(order_no.encode('utf-8')).hexdigest()[:24]
+        digest = hashlib.sha1(order_no.encode('utf-8'), usedforsecurity=False).hexdigest()[:24]
         return f'{cls.ORDER_SOURCE_PREFIX}{digest}'
 
     @staticmethod

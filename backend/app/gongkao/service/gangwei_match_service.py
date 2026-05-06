@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import re
+
 from datetime import date
 from typing import Any
 
@@ -11,6 +12,7 @@ from backend.app.gongkao.model.dict_major import GkDictMajor
 from backend.app.gongkao.model.user_profile import GkUserProfile
 from backend.app.gongkao.schema.gangwei_match import CanApplyResult, ConditionCheckItem
 from backend.common.exception import errors
+from backend.utils.timezone import timezone
 
 # ========== 常量定义 ==========
 
@@ -174,7 +176,7 @@ def calc_age(birth: date, ref: date | None = None) -> int:
     :param ref: 参考日期
     :return:
     """
-    ref_date = ref or date.today()
+    ref_date = ref or timezone.now().date()
     age = ref_date.year - birth.year
     if (ref_date.month, ref_date.day) < (birth.month, birth.day):
         age -= 1

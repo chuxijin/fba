@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 import logging
 import secrets
-from datetime import datetime, timedelta
-from decimal import Decimal
+
+from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import random
 import string
+
 from typing import Optional
 
 from backend.plugin.app_auth.schema.redeem_code import CardKeyGenerationRequest, CharTypeOptions

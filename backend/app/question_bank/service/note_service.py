@@ -39,7 +39,7 @@ class NoteService:
         :param study_domain: 领域编码
         :return:
         """
-        if not study_domain:
+        if study_domain is None:
             return None
         return await study_domain_service.get_question_filter(db=db, code=study_domain)
 

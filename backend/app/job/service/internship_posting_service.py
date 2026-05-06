@@ -6,10 +6,14 @@ from sqlalchemy.sql import Select
 
 from backend.app.job.crud.crud_internship_posting import internship_posting_dao
 from backend.app.job.model.internship_posting import InternshipPosting
-from backend.app.job.schema.internship_posting import CreateInternshipPosting, UpdateInternshipPosting, DeleteInternshipPostingParam
+from backend.app.job.schema.internship_posting import (
+    CreateInternshipPosting,
+    DeleteInternshipPostingParam,
+    UpdateInternshipPosting,
+)
+from backend.common.enums import ApplicationStatus
 from backend.common.exception import errors
 from backend.database.db import async_db_session
-from backend.common.enums import ApplicationStatus
 
 
 class JobPostingService:

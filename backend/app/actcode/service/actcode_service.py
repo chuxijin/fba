@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import random
 import string
-from datetime import datetime
+
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.actcode.crud.crud_actcode import actcode_batch_dao, actcode_dao, actcode_usage_dao
 from backend.app.actcode.schema.actcode import (
     CreateBatchParam,
-    GetActcodeDetail,
     GetBatchDetail,
     RedeemCodeParam,
     RedeemCodeResult,
@@ -98,7 +97,6 @@ class ActcodeService:
         :return:
         """
         charset = ActcodeService._build_charset(config)
-        total_length = config.groups * config.group_length
 
         for _ in range(max_attempts):
             code_parts = []
@@ -124,7 +122,7 @@ class ActcodeService:
     @staticmethod
     def _generate_batch_no() -> str:
         """生成批次编号"""
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
         random_str = ''.join(random.choices(string.digits, k=6))
         return f'BATCH{timestamp}{random_str}'
 

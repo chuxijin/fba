@@ -5,12 +5,11 @@ from __future__ import annotations
 from typing import Any, Callable, Tuple
 
 from starlette.applications import Starlette
-from starlette.responses import PlainTextResponse, Response
 from starlette.requests import Request
+from starlette.responses import Response
 from starlette.routing import Mount, Route
 
 from backend.app.mcp.service.resource_search_service import register_resource_search_tools
-
 
 _mcp: Any | None = None
 _registered_tools_cache: list[dict[str, str]] | None = None

@@ -6,10 +6,10 @@ from sqlalchemy.sql import Select
 
 from backend.app.job.crud.crud_job_posting import job_posting_dao
 from backend.app.job.model.job_posting import JobPosting
-from backend.app.job.schema.job_posting import CreateJobPosting, UpdateJobPosting, DeleteJobPostingParam
+from backend.app.job.schema.job_posting import CreateJobPosting, DeleteJobPostingParam, UpdateJobPosting
+from backend.common.enums import ApplicationStatus
 from backend.common.exception import errors
 from backend.database.db import async_db_session
-from backend.common.enums import ApplicationStatus
 
 
 class JobPostingService:

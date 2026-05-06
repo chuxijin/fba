@@ -8,7 +8,6 @@ from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
 
-
 PracticeAIEvaluationTargetType = Literal['question_eval', 'session_summary']
 PracticeAIEvaluationStatus = Literal['pending', 'succeeded', 'failed']
 PracticeAIEvaluationTriggerSource = Literal['auto', 'manual']

@@ -155,6 +155,3 @@ async def get_pending_webhooks(
     """获取待处理的Webhook事件列表"""
     webhooks = await webhook_service.get_pending_webhooks(limit=limit)
     return response_base.success(data=webhooks)
-
-
- 

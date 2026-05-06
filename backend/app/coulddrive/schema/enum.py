@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class DriveType(Enum):
     """支持的网盘类型枚举"""
     BAIDU_DRIVE = "BaiduDrive"

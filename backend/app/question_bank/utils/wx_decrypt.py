@@ -7,6 +7,7 @@
 """
 import base64
 import json
+
 from typing import Any
 
 from cryptography.hazmat.backends import default_backend

@@ -1,8 +1,9 @@
 
-from sqlalchemy import BigInteger, String, JSON
+from sqlalchemy import JSON, BigInteger, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, id_key
+
 
 class JiaUserSetting(Base):
     """用户个性化设置表"""

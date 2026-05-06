@@ -10,6 +10,7 @@ import type {
   SubmitPracticeSessionParam,
   SubmitPracticeSessionResult,
   BatchUpsertPracticeRecordsParam,
+  BatchUpsertPracticeRecordsResult,
   GetPracticeRecordDetail,
   GetPracticeRecordListItem,
   SessionReport,
@@ -70,7 +71,7 @@ export interface PracticeModule {
   deleteSession(id: number): Promise<void>;
 
   /** 批量提交/更新答题记录 */
-  upsertRecords(id: number, params: BatchUpsertPracticeRecordsParam): Promise<void>;
+  upsertRecords(id: number, params: BatchUpsertPracticeRecordsParam): Promise<BatchUpsertPracticeRecordsResult>;
 
   /** 获取答题记录详情 */
   getRecord(id: number): Promise<GetPracticeRecordDetail>;
@@ -152,7 +153,7 @@ export function createPracticeModule(client: ApiClient): PracticeModule {
     },
 
     upsertRecords(id, params) {
-      return client.post<void>(`/session/${id}/records`, params);
+      return client.post<BatchUpsertPracticeRecordsResult>(`/session/${id}/records`, params);
     },
 
     getRecord(id) {
@@ -178,4 +179,3 @@ export function createPracticeModule(client: ApiClient): PracticeModule {
     },
   };
 }
-

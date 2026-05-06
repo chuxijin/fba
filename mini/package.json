@@ -139,8 +139,6 @@
     "dayjs": "1.11.10",
     "echarts": "^5.5.1",
     "echarts-for-weixin": "^1.0.2",
-    "highlight.js": "^11.11.1",
-    "markdown-it": "^14.1.1",
     "mp-html": "^2.5.2",
     "pinia": "2.0.36",
     "pinia-plugin-persistedstate": "3.2.1",

@@ -5,15 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
 from backend.app.admin.service.file_service import file_service
-from backend.common.dataclasses import UploadUrl
 from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, File, UploadFile
-from backend.utils.file_ops import upload_file, upload_file_verify
 
 router = APIRouter()
 
@@ -39,6 +34,7 @@ async def upload_files(
     
     # 获取文件详情
     from pathlib import Path
+
     from backend.core.path_conf import UPLOAD_DIR
     
     full_path_obj = UPLOAD_DIR / relative_path

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
 
 from sqlalchemy import case, cast, delete, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
@@ -12,6 +11,7 @@ from sqlalchemy_crud_plus import CRUDPlus
 from backend.app.question_bank.model import QuestionFavorite
 from backend.app.question_bank.model.question import Question, QuestionPlacement
 from backend.common.exception import errors
+from backend.utils.timezone import timezone
 
 
 class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
@@ -250,7 +250,7 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         """
         update_data: dict = {'is_pinned': is_pinned}
         if is_pinned:
-            update_data['pinned_time'] = datetime.now()
+            update_data['pinned_time'] = timezone.now()
         else:
             update_data['pinned_time'] = None
 

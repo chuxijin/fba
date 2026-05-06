@@ -7,7 +7,7 @@ from sqlalchemy.sql import Select
 from backend.app.job.crud.crud_job_application import job_application_dao
 from backend.app.job.crud.crud_job_posting import job_posting_dao
 from backend.app.job.model.job_application import JobApplication
-from backend.app.job.schema.job_application import CreateJobApplication, UpdateJobApplication, DeleteJobApplicationParam
+from backend.app.job.schema.job_application import CreateJobApplication, DeleteJobApplicationParam, UpdateJobApplication
 from backend.common.enums import ApplicationStatus
 from backend.common.exception import errors
 from backend.database.db import async_db_session

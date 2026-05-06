@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import uuid
+
 from decimal import Decimal
 
 from sqlalchemy import select

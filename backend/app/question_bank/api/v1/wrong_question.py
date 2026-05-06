@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Request
@@ -12,7 +11,6 @@ from backend.app.question_bank.schema.wrong_question import (
     WrongQuestionAnswerCorrectParam,
     WrongQuestionGroupItem,
     WrongQuestionQueryParam,
-    WrongQuestionStatistics,
 )
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.wrong_question_service import wrong_question_service

@@ -2,9 +2,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 
@@ -14,6 +13,7 @@ from backend.common.model import Base, TimeZone, UniversalText, id_key
 
 if TYPE_CHECKING:
     from backend.app.admin.model import User
+
     from .practice import PracticeRecord, PracticeSession, WrongQuestionBook
     from .statistics import UserCheckIn
 

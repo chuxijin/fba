@@ -1,6 +1,7 @@
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+
+from datetime import timedelta
 from typing import Callable, Self
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.coulddrive.crud.crud_filesync_lock import crud_filesync_lock
 from backend.app.coulddrive.model.filesync_lock import FileSyncLock
 from backend.common.exception.errors import CustomError
-from backend.common.response.response_code import CustomErrorCode
 from backend.common.log import log
+from backend.common.response.response_code import CustomErrorCode
 from backend.utils.timezone import timezone
 
 

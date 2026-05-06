@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 import sqlalchemy as sa
+
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, UniversalText, UserMixin, id_key

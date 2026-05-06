@@ -7,40 +7,40 @@ Alist 网盘客户端实现
 """
 
 from __future__ import annotations
-import os
-from collections import deque
-from io import BytesIO
-from pathlib import Path, PurePosixPath
-from typing import IO, Callable, Dict, List, Optional, Set, Tuple, Union, Any
-import re
-from datetime import datetime
-import time
-import logging
-import asyncio
 
-from backend.app.coulddrive.schema.enum import RecursionSpeed
-from backend.app.coulddrive.schema.file import BaseFileInfo, ListFilesParam, ListShareFilesParam, MkdirParam, RemoveParam, TransferParam, RelationshipParam, RelationshipType, UserInfoParam
+import asyncio
+import logging
+
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+from backend.app.coulddrive.schema.enum import DriveType
+from backend.app.coulddrive.schema.file import (
+    BaseFileInfo,
+    ListFilesParam,
+    ListShareFilesParam,
+    MkdirParam,
+    RelationshipParam,
+    RemoveParam,
+    TransferParam,
+    UserInfoParam,
+)
 from backend.app.coulddrive.schema.user import (
     BaseUserInfo,
-    GetUserFriendDetail,
-    GetUserGroupDetail,
 )
-
+from backend.app.coulddrive.service.alist.api import AlistApi
 from backend.app.coulddrive.service.alist.errors import AlistApiError
-from backend.app.coulddrive.service.rule_template_service import ItemFilter
+from backend.app.coulddrive.service.alist.schemas import (
+    AlistFile,
+    AlistQuota,
+)
 from backend.app.coulddrive.service.coulddrive_service import (
     BaseDriveClient,
     ConfigItem,
     ConfigItemType,
     DriverRegistry,
 )
-from backend.app.coulddrive.schema.enum import DriveType
-from backend.app.coulddrive.service.alist.schemas import (
-    AlistFile,
-    AlistQuota,
-)
-from backend.app.coulddrive.service.alist.api import AlistApi
-from backend.common.log import log
+from backend.utils.timezone import timezone
 
 
 @DriverRegistry.register(DriveType.ALIST_DRIVE)
@@ -185,7 +185,7 @@ class AlistClient(BaseDriveClient):
                         
                         # 尝试在当前上下文中运行验证
                         try:
-                            loop = asyncio.get_running_loop()
+                            asyncio.get_running_loop()
                             # 在异步上下文中，暂时标记为已授权
                             self._is_authorized = True
                             return True
@@ -378,7 +378,7 @@ class AlistClient(BaseDriveClient):
                 full_path = "/" + params.file_name
             
             # 调用 Alist API 创建目录
-            result = await self._alistapi.mkdir(path=full_path)
+            await self._alistapi.mkdir(path=full_path)
             
             # 返回目录信息
             return BaseFileInfo(
@@ -387,8 +387,8 @@ class AlistClient(BaseDriveClient):
                 file_path=full_path,
                 file_size=0,
                 is_folder=True,
-                created_time=datetime.now().isoformat(),
-                updated_time=datetime.now().isoformat(),
+                created_time=timezone.now().isoformat(),
+                updated_time=timezone.now().isoformat(),
                 parent_id=params.parent_id,
                 drive_type="alist"
             )
@@ -424,7 +424,7 @@ class AlistClient(BaseDriveClient):
                 parent_path = "/"
             
             # 调用删除API
-            result = await self._alistapi.remove(names=names, dir=parent_path)
+            await self._alistapi.remove(names=names, dir=parent_path)
             
             # 检查删除结果
             return True  # Alist API 成功调用即认为删除成功
@@ -460,7 +460,7 @@ class AlistClient(BaseDriveClient):
                 src_dir = "/"
             
             # 调用复制API
-            result = await self._alistapi.copy(
+            await self._alistapi.copy(
                 src_dir=src_dir,
                 dst_dir=params.target_parent_path,
                 names=names

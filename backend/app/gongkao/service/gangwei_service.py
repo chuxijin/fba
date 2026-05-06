@@ -2,11 +2,14 @@
 # -*- coding: utf-8 -*-
 import hashlib
 import re
+
 from collections.abc import Sequence
 from io import BytesIO
 from typing import Any
 
+import anyio
 import pandas as pd
+
 from fastapi import UploadFile
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -314,13 +317,12 @@ class GangweiService:
         preview_data = preview_df.to_dict(orient='records')
 
         # 保存文件到临时目录
-        file_hash = hashlib.md5(file_content).hexdigest()
+        file_hash = hashlib.sha256(file_content).hexdigest()
         file_key = f'{file_hash}_{file.filename}'
         temp_file_path = TEMP_IMPORT_DIR / file_key
 
         # 保存原始文件
-        with open(temp_file_path, 'wb') as f:
-            f.write(file_content)
+        await anyio.Path(temp_file_path).write_bytes(file_content)
 
         # 智能匹配建议
         suggested_mappings = GangweiService._suggest_mappings(headers)
@@ -346,10 +348,11 @@ class GangweiService:
         :return:
         """
         temp_file_path = TEMP_IMPORT_DIR / file_key
-        if not temp_file_path.exists():
+        temp_path = anyio.Path(temp_file_path)
+        if not await temp_path.exists():
             raise errors.NotFoundError(msg='临时文件不存在或已过期，请重新上传')
 
-        file_content = temp_file_path.read_bytes()
+        file_content = await temp_path.read_bytes()
         filename = file_key.split('_', 1)[1] if '_' in file_key else file_key
 
         # 读取原始行
@@ -696,12 +699,11 @@ class GangweiService:
         preview_data = preview_df.to_dict(orient='records')
 
         # 保存文件
-        file_hash = hashlib.md5(file_content).hexdigest()
+        file_hash = hashlib.sha256(file_content).hexdigest()
         file_key = f'score_{file_hash}_{file.filename}'
         temp_file_path = TEMP_IMPORT_DIR / file_key
 
-        with open(temp_file_path, 'wb') as f:
-            f.write(file_content)
+        await anyio.Path(temp_file_path).write_bytes(file_content)
 
         # 智能匹配（针对分数字段）
         suggested_mappings = GangweiService._suggest_score_mappings(headers)
@@ -831,7 +833,7 @@ class GangweiService:
         :param updated_by: 修改者 ID
         :return:
         """
-        from decimal import Decimal, ROUND_HALF_UP
+        from decimal import ROUND_HALF_UP, Decimal
 
         temp_file_path = TEMP_IMPORT_DIR / obj.file_key
         if not temp_file_path.exists():

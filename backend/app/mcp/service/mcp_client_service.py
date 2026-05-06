@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import json
 from contextlib import AsyncExitStack
 from typing import Any, Optional, Tuple
 

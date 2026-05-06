@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
 
-from backend.app.jia.schema import CreateItemParam, UpdateItemParam, GetItemDetail, GetItemList
+from backend.app.jia.schema import CreateItemParam, GetItemDetail, GetItemList, UpdateItemParam
 from backend.app.jia.service import item_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base

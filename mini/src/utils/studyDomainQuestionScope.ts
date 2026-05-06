@@ -53,7 +53,7 @@ export interface StudyDomainQuestionScope {
 
 const scopePromiseMap = new Map<StudyDomainCode, Promise<StudyDomainScopeResponse>>()
 const questionScopePromiseMap = new Map<StudyDomainCode, Promise<StudyDomainQuestionScope>>()
-let bankTreePromise: Promise<BankNode[]> | null = null
+const bankTreePromiseMap = new Map<StudyDomainCode, Promise<BankNode[]>>()
 
 function cloneCategoryTree<T extends StudyDomainCategoryNode>(nodes: T[] | null | undefined): T[] {
   return (nodes || []).map(node => ({
@@ -121,11 +121,18 @@ function sumGroupCounts(nodes: GroupTreeNode[] | null | undefined): number {
   return (nodes || []).reduce((sum, node) => sum + Number(node.count || 0), 0)
 }
 
-async function getBankTree(): Promise<BankNode[]> {
-  if (!bankTreePromise) {
-    bankTreePromise = fbaApi.qbank.bank.getList({ status: 1 }) as Promise<BankNode[]>
+async function getBankTree(value: unknown): Promise<BankNode[]> {
+  const code = normalizeStudyDomainCode(value)
+  const cachedPromise = bankTreePromiseMap.get(code)
+  if (cachedPromise) {
+    return await cachedPromise
   }
 
+  const bankTreePromise = fbaApi.qbank.bank.getList({
+    status: 1,
+    study_domain: code,
+  }) as Promise<BankNode[]>
+  bankTreePromiseMap.set(code, bankTreePromise)
   return await bankTreePromise
 }
 
@@ -192,7 +199,7 @@ export async function getStudyDomainQuestionScope(value: unknown): Promise<Study
   const scopePromise = (async () => {
     const [domainScope, bankTree] = await Promise.all([
       getStudyDomainScope(code),
-      getBankTree(),
+      getBankTree(code),
     ])
 
     const allowedCategoryIds = collectCategoryIds(domainScope.product_catalog_roots)

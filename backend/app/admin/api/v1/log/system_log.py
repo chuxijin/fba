@@ -3,6 +3,8 @@
 import asyncio
 import os
 
+import anyio
+
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
@@ -19,26 +21,28 @@ async def stream_logs():
 
     async def log_generator():
         """日志生成器"""
+        log_path = anyio.Path(log_file)
+
         # 如果日志文件不存在，等待创建
         retry_count = 0
-        while not os.path.exists(log_file) and retry_count < 10:
+        while not await log_path.exists() and retry_count < 10:
             yield f'[INFO] 等待日志文件创建: {log_file}\n'
             await asyncio.sleep(1)
             retry_count += 1
 
-        if not os.path.exists(log_file):
+        if not await log_path.exists():
             yield f'[ERROR] 日志文件不存在: {log_file}\n'
             return
 
         try:
-            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+            async with await anyio.open_file(log_file, 'r', encoding='utf-8', errors='ignore') as f:
                 # 跳到文件末尾，只显示实时日志
-                f.seek(0, os.SEEK_END)
+                await f.seek(0, os.SEEK_END)
                 yield '=== 实时日志监听中 ===\n'
 
                 # 开始实时监听新日志
                 while True:
-                    line = f.readline()
+                    line = await f.readline()
                     if line:
                         yield line
                     else:

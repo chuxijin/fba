@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
-from sqlalchemy import select, desc
 
-from backend.app.jia.model.copilot import JiaCopilotSession, JiaCopilotMessage
-from backend.app.jia.schema.copilot import CreateSessionParam, UpdateSessionParam
+from backend.app.jia.model.copilot import JiaCopilotMessage, JiaCopilotSession
+from backend.app.jia.schema.copilot import CreateSessionParam
 
 
 class CRUDCopilotSession(CRUDPlus[JiaCopilotSession]):
