@@ -126,6 +126,21 @@ class VipFulfiller(BaseRewardFulfiller):
         )
         return True
 
+    async def revoke(self, *, db: AsyncSession, user_id: int, reward_data: dict) -> bool:
+        """
+        撤销会员权益(暂不支持自动撤销, 需人工介入)
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param reward_data: 权益数据
+        :return:
+        """
+        log.warning(
+            f'会员权益自动撤销暂不支持, 需人工介入: user_id={user_id}, '
+            f'source_key={reward_data.get("source_key")}'
+        )
+        return False
+
 
 class PointsFulfiller(BaseRewardFulfiller):
     """积分履约"""
@@ -190,6 +205,50 @@ class PointsFulfiller(BaseRewardFulfiller):
         log.info(
             f'积分权益发放成功: user_id={user_id}, amount={amount}, '
             f'family={family_code}, source={source}, source_key={source_key}'
+        )
+        return True
+
+    async def revoke(self, *, db: AsyncSession, user_id: int, reward_data: dict) -> bool:
+        """
+        撤销积分权益(从可用经验中扣回)
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param reward_data: 权益数据
+        :return:
+        """
+        amount = self._parse_positive_int(reward_data.get('amount'))
+        family_code = reward_data.get('family_code')
+        source_key = str(reward_data.get('source_key') or '').strip()
+        remark = reward_data.get('remark')
+
+        if amount is None:
+            log.warning(f'积分撤销失败: user_id={user_id}, reason=invalid_amount')
+            return False
+        if not source_key:
+            log.warning(f'积分撤销失败: user_id={user_id}, reason=missing_source_key')
+            return False
+
+        if not family_code:
+            family_code = await membership_experience_service.resolve_reward_family(db, user_id=user_id)
+
+        try:
+            await membership_experience_service.consume_experience(
+                db,
+                user_id=user_id,
+                family_code=str(family_code),
+                exp_delta=amount,
+                source='reward_revoke',
+                source_key=f'revoke:{source_key}',
+                remark=remark or '权益撤销',
+            )
+        except Exception as exc:
+            log.warning(f'积分撤销失败: user_id={user_id}, amount={amount}, error={exc!s}')
+            return False
+
+        log.info(
+            f'积分撤销成功: user_id={user_id}, amount={amount}, '
+            f'family={family_code}, source_key={source_key}'
         )
         return True
 

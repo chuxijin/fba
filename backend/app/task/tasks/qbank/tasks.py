@@ -101,3 +101,21 @@ async def _update_daily_user_ranks() -> dict:
             'created_ranks': created_count,
             'rank_date': str(yesterday),
         }
+
+
+@celery_app.task(name='simulate_bot_activity')
+async def simulate_bot_activity() -> dict:
+    """
+    模拟机器人每日活动（每天凌晨 2:00 执行）
+
+    自动创建新机器人用户并模拟已有机器人的刷题行为
+    """
+    from backend.app.question_bank.service.bot_service import run_bot_simulation
+
+    try:
+        result = await run_bot_simulation()
+        logger.info(f'机器人模拟完成: {result}')
+        return result
+    except Exception as e:
+        logger.error(f'机器人模拟失败: {str(e)}')
+        return {'error': str(e)}

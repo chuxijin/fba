@@ -85,6 +85,7 @@ class CRUDUserPracticeStats(CRUDPlus[UserPracticeStats]):
         total_duration: int,
         practice_days: int,
         last_practice_date: date | None,
+        streak_days: int = 0,
     ) -> None:
         """
         全量重建用户统计快照
@@ -96,6 +97,7 @@ class CRUDUserPracticeStats(CRUDPlus[UserPracticeStats]):
         :param total_duration: 累计答题时长
         :param practice_days: 练习天数
         :param last_practice_date: 最后练习日期
+        :param streak_days: 连续打卡天数
         """
         stats = await self.get_or_create(db, user_id)
         stmt = (
@@ -107,6 +109,7 @@ class CRUDUserPracticeStats(CRUDPlus[UserPracticeStats]):
                 total_duration=total_duration,
                 practice_days=practice_days,
                 last_practice_date=last_practice_date,
+                streak_days=streak_days,
             )
         )
         await db.execute(stmt)

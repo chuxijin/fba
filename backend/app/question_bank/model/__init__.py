@@ -4,9 +4,7 @@
 
 from .ai_evaluation import PracticeAIEvaluation
 from .bank import QuestionBank
-from .banner import Banner
 from .chapter import QuestionChapter
-from .notice import Notice
 from .practice import PracticeRecord, PracticeSession, SessionQuestion, WrongQuestionBook
 from .question import (
     OptionContent,
@@ -47,8 +45,7 @@ __all__ = [
     'UserCheckIn',
     'UserDailyRank',
     'UserPracticeStats',
-    'Banner',
-    'Notice',
     'UserMessage',
-    'UserMessageRead', 'QuestionMaterial',
+    'UserMessageRead',
+    'QuestionMaterial',
 ]

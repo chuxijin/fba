@@ -102,4 +102,5 @@ class UserPracticeStats(Base):
     total_duration: Mapped[int] = mapped_column(sa.Integer, default=0, comment='累计答题时长（秒）')
     practice_days: Mapped[int] = mapped_column(sa.Integer, default=0, comment='练习天数')
     last_practice_date: Mapped[date | None] = mapped_column(default=None, comment='最后练习日期')
+    streak_days: Mapped[int] = mapped_column(sa.Integer, default=0, server_default='0', comment='连续打卡天数')
 

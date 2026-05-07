@@ -40,3 +40,21 @@ async def dispatch_reward(*, db: AsyncSession, user_id: int, reward_type: str, r
         return False
 
     return await fulfiller.fulfill(db=db, user_id=user_id, reward_data=reward_data)
+
+
+async def revoke_reward(*, db: AsyncSession, user_id: int, reward_type: str, reward_data: dict) -> bool:
+    """
+    撤销权益（统一入口）
+
+    :param db: 数据库会话
+    :param user_id: 用户 ID
+    :param reward_type: 权益类型
+    :param reward_data: 原始发放时使用的权益数据(必须包含 source_key)
+    :return:
+    """
+    fulfiller = _FULFILLER_REGISTRY.get(reward_type)
+    if not fulfiller:
+        log.warning(f'未注册的权益类型: {reward_type}')
+        return False
+
+    return await fulfiller.revoke(db=db, user_id=user_id, reward_data=reward_data)

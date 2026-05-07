@@ -6,14 +6,12 @@ from backend.app.question_bank.api.v1.activation import router as activation_rou
 from backend.app.question_bank.api.v1.ai_evaluation import router as ai_evaluation_router
 from backend.app.question_bank.api.v1.auth import router as auth_router
 from backend.app.question_bank.api.v1.bank import router as bank_router
-from backend.app.question_bank.api.v1.banner import router as banner_router
 from backend.app.question_bank.api.v1.chapter import router as chapter_router
 from backend.app.question_bank.api.v1.favorite import router as favorite_router
 from backend.app.question_bank.api.v1.home import router as home_router
 from backend.app.question_bank.api.v1.knowledge_point import router as knowledge_point_router
 from backend.app.question_bank.api.v1.material import router as material_router
 from backend.app.question_bank.api.v1.note import router as note_router
-from backend.app.question_bank.api.v1.notice import router as notice_router
 from backend.app.question_bank.api.v1.parse import router as parse_router
 from backend.app.question_bank.api.v1.practice import router as practice_router
 from backend.app.question_bank.api.v1.question import router as question_router
@@ -32,8 +30,6 @@ router.include_router(user_settings_router, prefix='/settings', tags=['用户设
 router.include_router(user_message_router, prefix='/messages', tags=['用户消息'])
 router.include_router(study_domain_router, prefix='/study-domains', tags=['学习领域'])
 router.include_router(home_router, prefix='/home', tags=['首页'])
-router.include_router(banner_router, prefix='/banners', tags=['轮播图'])
-router.include_router(notice_router, prefix='/notices', tags=['通知栏'])
 router.include_router(bank_router, prefix='/banks', tags=['题库'])
 router.include_router(chapter_router, prefix='/chapters', tags=['题库章节'])
 router.include_router(material_router, prefix='/materials', tags=['题目材料'])

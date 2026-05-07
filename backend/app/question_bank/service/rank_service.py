@@ -8,7 +8,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.model import User
-from backend.app.question_bank.crud.crud_check_in import check_in_dao
 from backend.app.question_bank.crud.crud_daily_rank import daily_rank_dao
 from backend.app.question_bank.model import PracticeRecord, UserAccount, UserPracticeStats
 from backend.app.question_bank.schema.home import RankItem, RankListData, RankUserInfo, UserRankInfo
@@ -162,6 +161,12 @@ class RankService:
             if row.user_id == current_user_id:
                 current_user_rank = rank_item
 
+        # 用户不在前 N 名时，单独查询其排名
+        if current_user_rank is None:
+            current_user_rank = await RankService._get_user_rank_fallback(
+                db, current_user_id, 'practice_count'
+            )
+
         return RankListData(
             rank_type='practice_count',
             current_user_rank=current_user_rank,
@@ -235,52 +240,105 @@ class RankService:
         db: AsyncSession, current_user_id: int, limit: int
     ) -> RankListData:
         """获取坚持天数（连续打卡）排行榜"""
-        all_users_stmt = (
-            select(UserAccount.user_id.label('user_id'), User.nickname, User.avatar)
-            .join(User, User.id == UserAccount.user_id)
+        stmt = (
+            select(
+                UserPracticeStats.user_id.label('user_id'),
+                User.nickname,
+                User.avatar,
+                UserPracticeStats.streak_days.label('streak'),
+            )
+            .join(User, User.id == UserPracticeStats.user_id)
+            .where(UserPracticeStats.streak_days > 0)
+            .order_by(UserPracticeStats.streak_days.desc())
+            .limit(limit)
         )
-        users_result = await db.execute(all_users_stmt)
-        all_users = users_result.all()
 
-        users_with_streak = []
-
-        for user in all_users:
-            streak = await check_in_dao.get_streak(db, user.user_id)
-            if streak > 0:
-                users_with_streak.append({
-                    'user_id': user.user_id,
-                    'nickname': user.nickname,
-                    'avatar': user.avatar,
-                    'streak': streak,
-                })
-
-        users_with_streak.sort(key=lambda x: x['streak'], reverse=True)
-        users_with_streak = users_with_streak[:limit]
+        result = await db.execute(stmt)
+        rows = result.all()
 
         top_users = []
         current_user_rank = None
 
-        for i, user_data in enumerate(users_with_streak, 1):
+        for i, row in enumerate(rows, 1):
             rank_item = RankItem(
                 rank=i,
                 user=RankUserInfo(
-                    user_id=user_data['user_id'],
-                    nickname=user_data['nickname'] or f'用户{user_data["user_id"]}',
-                    avatar=user_data['avatar'],
+                    user_id=row.user_id,
+                    nickname=row.nickname or f'用户{row.user_id}',
+                    avatar=row.avatar,
                 ),
-                value=user_data['streak'],
-                is_current_user=user_data['user_id'] == current_user_id,
+                value=row.streak,
+                is_current_user=row.user_id == current_user_id,
             )
 
             top_users.append(rank_item)
 
-            if user_data['user_id'] == current_user_id:
+            if row.user_id == current_user_id:
                 current_user_rank = rank_item
+
+        # 用户不在前 N 名时，单独查询其排名
+        if current_user_rank is None:
+            current_user_rank = await RankService._get_user_rank_fallback(
+                db, current_user_id, 'streak_days'
+            )
 
         return RankListData(
             rank_type='streak_days',
             current_user_rank=current_user_rank,
             top_users=top_users,
+        )
+
+    @staticmethod
+    async def _get_user_rank_fallback(
+        db: AsyncSession, user_id: int, rank_type: str
+    ) -> RankItem | None:
+        """
+        用户不在前 N 名时，单独查询其排名
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param rank_type: 排行榜类型
+        :return:
+        """
+        if rank_type == 'practice_count':
+            value_col = UserPracticeStats.total_count
+        elif rank_type == 'streak_days':
+            value_col = UserPracticeStats.streak_days
+        else:
+            return None
+
+        # 查用户自己的值
+        user_stmt = (
+            select(
+                UserPracticeStats.user_id,
+                User.nickname,
+                User.avatar,
+                value_col.label('value'),
+            )
+            .join(User, User.id == UserPracticeStats.user_id)
+            .where(UserPracticeStats.user_id == user_id)
+        )
+        user_row = (await db.execute(user_stmt)).one_or_none()
+        if not user_row or not user_row.value:
+            return None
+
+        # 计算排在该用户前面的人数
+        rank_stmt = (
+            select(func.count())
+            .select_from(UserPracticeStats)
+            .where(value_col > user_row.value)
+        )
+        higher_count = int((await db.scalar(rank_stmt)) or 0)
+
+        return RankItem(
+            rank=higher_count + 1,
+            user=RankUserInfo(
+                user_id=user_row.user_id,
+                nickname=user_row.nickname or f'用户{user_row.user_id}',
+                avatar=user_row.avatar,
+            ),
+            value=user_row.value,
+            is_current_user=True,
         )
 
 

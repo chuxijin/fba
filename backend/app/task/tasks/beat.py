@@ -63,4 +63,12 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'sync_resource_hot_scores',
         'schedule': TzAwareCrontab('0', '1'),
     },
+    '排行榜机器人模拟': {
+        'task': 'simulate_bot_activity',
+        'schedule': TzAwareCrontab('0', '*/2'),
+    },
+    '释放过期悬赏领取': {
+        'task': 'release_expired_quest_claims',
+        'schedule': TzAwareCrontab('*/5'),
+    },
 }

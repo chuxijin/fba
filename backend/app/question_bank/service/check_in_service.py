@@ -12,7 +12,8 @@ from backend.app.membership.crud.crud_experience_rule import membership_experien
 from backend.app.membership.model.experience_rule import MembershipExperienceRule
 from backend.app.membership.service.experience_service import membership_experience_service
 from backend.app.question_bank.crud.crud_check_in import check_in_dao
-from backend.app.question_bank.model import PracticeRecord, UserCheckIn
+from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
+from backend.app.question_bank.model import PracticeRecord, UserCheckIn, UserPracticeStats
 from backend.app.question_bank.schema.home import CheckInCalendarData, CheckInCalendarDay, CheckInInfo, CheckInResult
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
@@ -152,6 +153,10 @@ class CheckInService:
 
         streak = await check_in_dao.get_streak(db, user_id)
         total_days = await check_in_dao.get_total_days(db, user_id)
+
+        # 同步连续打卡天数到快照表
+        await CheckInService._sync_streak_days(db, user_id, streak)
+
         return CheckInResult(
             is_checked_in_today=True,
             is_already_checked_in=False,
@@ -255,6 +260,28 @@ class CheckInService:
             'practice_count': int(row.practice_count or 0),
             'practice_duration': int(row.practice_duration or 0),
         }
+
+
+    @staticmethod
+    async def _sync_streak_days(db: AsyncSession, user_id: int, streak: int) -> None:
+        """
+        同步连续打卡天数到快照表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param streak: 连续打卡天数
+        """
+        stats = await user_practice_stats_dao.get_or_create(db, user_id)
+        if stats.streak_days != streak:
+            from sqlalchemy import update as sa_update
+
+            stmt = (
+                sa_update(UserPracticeStats)
+                .where(UserPracticeStats.id == stats.id)
+                .values(streak_days=streak)
+            )
+            await db.execute(stmt)
+            await db.flush()
 
 
 check_in_service: CheckInService = CheckInService()
