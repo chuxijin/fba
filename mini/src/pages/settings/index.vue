@@ -97,7 +97,7 @@ function openMyRenderBooks() {
     return
   }
 
-  uni.navigateTo({ url: '/pages/my-render-books/index' })
+  uni.navigateTo({ url: '/pages/mine/render-books/index' })
 }
 
 function updateRandomPracticeCount(count: number) {

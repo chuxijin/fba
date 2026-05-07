@@ -203,11 +203,11 @@ async function startPracticeByChapter(chapter: ChapterNode) {
       exam_config: {
         practice_mode: mode,
         entry: 'mini-bank-detail',
-        display_total_count: totalQuestionCount.value,
+        display_total_count: chapter.q_count_cache,
         chapter_question_count: chapter.q_count_cache,
       },
     } as any)
-    navigateToPracticeSession(Number((session as any)?.id || 0), mode, totalQuestionCount.value)
+    navigateToPracticeSession(Number((session as any)?.id || 0), mode, chapter.q_count_cache)
   }
   catch (error) {
     if (isMembershipAccessError(error)) {
@@ -454,6 +454,48 @@ onShow(() => {
             <view class="mt-1 text-right text-[11px] text-[#94A3B8]">
               {{ totalAnswerCount }}/{{ totalQuestionCount }}
             </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 练习模式快捷入口 -->
+      <view class="mx-4 mt-4 border border-white/60 rounded-2xl bg-white/80 px-5 py-4 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.04)] backdrop-blur-md">
+        <view class="grid grid-cols-4 gap-y-4">
+          <view
+            class="flex flex-col items-center transition-transform active:scale-95"
+            @click="uni.showToast({ title: '随机练习', icon: 'none' })"
+          >
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#EFF6FF] text-[#3B82F6] shadow-inner">
+              <view class="i-carbon-shuffle text-[20px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">随机练习</text>
+          </view>
+          <view
+            class="flex flex-col items-center transition-transform active:scale-95"
+            @click="uni.showToast({ title: '易错快刷', icon: 'none' })"
+          >
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#FEF2F2] text-[#EF4444] shadow-inner">
+              <view class="i-carbon-warning-alt text-[20px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">易错快刷</text>
+          </view>
+          <view
+            class="flex flex-col items-center transition-transform active:scale-95"
+            @click="uni.showToast({ title: '模拟考试', icon: 'none' })"
+          >
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#7C3AED] shadow-inner">
+              <view class="i-carbon-timer text-[20px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">模拟考试</text>
+          </view>
+          <view
+            class="flex flex-col items-center transition-transform active:scale-95"
+            @click="uni.showToast({ title: '顺序练习', icon: 'none' })"
+          >
+            <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#F0FDF4] text-[#10B981] shadow-inner">
+              <view class="i-carbon-list-numbered text-[20px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">顺序练习</text>
           </view>
         </view>
       </view>

@@ -213,7 +213,7 @@ function finishPractice() {
     records: records.value,
   })
   uni.redirectTo({
-    url: `/pages/basic-calculation-result/index?id=${resultId}`,
+    url: `/pages/basic-calculation/result/index?id=${resultId}`,
   })
 }
 

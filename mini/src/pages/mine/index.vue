@@ -128,6 +128,15 @@ function openFeedbackPage() {
   uni.navigateTo({ url: '/pages/feedback/index' })
 }
 
+function openPrintMiniApp() {
+  uni.navigateToMiniProgram({
+    shortLink: '#小程序://小猴云印/WjOGjIb3mitTI7w',
+    fail: () => {
+      uni.showToast({ title: '跳转失败，请稍后再试', icon: 'none' })
+    },
+  })
+}
+
 async function loadUnreadMessageCount() {
   tokenStore.updateNowTime()
   if (!hasLogin.value) {
@@ -298,28 +307,28 @@ onShow(() => {
             <text class="text-[11px] text-[#64748B] font-medium">刷题记录</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-wrong-questions/index')">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/mine/wrong-questions/index')">
             <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#FEF2F2] text-[#EF4444] shadow-inner">
               <view class="i-carbon-close-outline text-[20px]" />
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">我的错题</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-favorites/index')">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/mine/favorites/index')">
             <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#FFFBEB] text-[#F59E0B] shadow-inner">
               <view class="i-carbon-star text-[20px]" />
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">我的收藏</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-notes/index')">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/mine/notes/index')">
             <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#EFF6FF] text-[#3B82F6] shadow-inner">
               <view class="i-carbon-notebook text-[20px]" />
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">我的笔记</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-render-books/index')">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/mine/render-books/index')">
             <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#FFF7ED] text-[#EA580C] shadow-inner">
               <view class="i-carbon-book text-[20px]" />
             </view>
@@ -333,6 +342,13 @@ onShow(() => {
           账户服务
         </view>
         <view class="grid grid-cols-5 gap-y-7">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/quest-list/index')">
+            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FFF7ED] text-[#EA580C] shadow-inner">
+              <view class="i-carbon-gift text-[22px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">活动任务</text>
+          </view>
+
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/ability-practice/index')">
             <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#ECFDF5] text-[#059669] shadow-inner">
               <view class="i-carbon-rocket text-[22px]" />
@@ -340,7 +356,7 @@ onShow(() => {
             <text class="text-[11px] text-[#64748B] font-medium">能力练习</text>
           </view>
 
-          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/my-messages/index')">
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openServicePage('/pages/mine/messages/index')">
             <view class="relative mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#EEF2FF] text-[#4F46E5] shadow-inner">
               <view class="i-carbon-notification text-[22px]" />
               <view
@@ -351,6 +367,13 @@ onShow(() => {
               </view>
             </view>
             <text class="text-[11px] text-[#64748B] font-medium">我的消息</text>
+          </view>
+
+          <view class="flex flex-col items-center transition-transform active:scale-95" @click="openPrintMiniApp">
+            <view class="mb-1.5 h-11 w-11 flex items-center justify-center rounded-2xl bg-[#FEF3C7] text-[#D97706] shadow-inner">
+              <view class="i-carbon-printer text-[22px]" />
+            </view>
+            <text class="text-[11px] text-[#64748B] font-medium">网上打印</text>
           </view>
 
           <view class="flex flex-col items-center transition-transform active:scale-95" @click="openFeedbackPage">

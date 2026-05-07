@@ -33,19 +33,23 @@ const displayNickname = computed(() => userStore.userInfo?.nickname || '我的')
 const reportData = computed(() => dashboard.value?.report || null)
 const summaryTitle = computed(() => `${displayNickname.value}的刷题报告`)
 
+const todayAccuracy = computed(() => {
+  const dailyBreakdown = dashboard.value?.week_stats?.daily_breakdown
+  if (!Array.isArray(dailyBreakdown) || !dailyBreakdown.length)
+    return 0
+
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const todayData = dailyBreakdown.find((d: any) => String(d.date) === todayStr)
+  if (!todayData || !todayData.count)
+    return 0
+
+  return Math.round((todayData.correct_count / todayData.count) * 100)
+})
+
 const metricCards = computed<ReportMetric[]>(() => {
   const report = reportData.value || {}
   return [
-    {
-      label: '总答题量',
-      value: String(Number(report.total_answer_count || dashboard.value?.total_questions || 0)),
-      tone: 'from-[#ECFDF5] to-[#F0FDF4] text-[#059669]',
-    },
-    {
-      label: '正确率',
-      value: formatPercent(report.accuracy_rate ?? dashboard.value?.overall_accuracy ?? 0),
-      tone: 'from-[#EFF6FF] to-[#F8FBFF] text-[#2563EB]',
-    },
     {
       label: '全站最高答题量',
       value: String(Number(report.site_max_answer_count || 0)),
@@ -55,6 +59,16 @@ const metricCards = computed<ReportMetric[]>(() => {
       label: '答题量排名',
       value: formatRank(report.answer_count_rank),
       tone: 'from-[#F5F3FF] to-[#FAF5FF] text-[#7C3AED]',
+    },
+    {
+      label: '总答题量',
+      value: String(Number(report.total_answer_count || dashboard.value?.total_questions || 0)),
+      tone: 'from-[#ECFDF5] to-[#F0FDF4] text-[#059669]',
+    },
+    {
+      label: '正确率',
+      value: formatPercent(report.accuracy_rate ?? dashboard.value?.overall_accuracy ?? 0),
+      tone: 'from-[#EFF6FF] to-[#F8FBFF] text-[#2563EB]',
     },
     {
       label: '练习天数',
@@ -96,6 +110,10 @@ function goBack() {
   }
 
   uni.switchTab({ url: '/pages/practice/index' })
+}
+
+function openRankList() {
+  uni.navigateTo({ url: '/pages/rank-list/index' })
 }
 
 async function loadDashboard() {
@@ -140,11 +158,21 @@ onShow(() => {
 
     <view class="relative z-10 px-4 pb-16 pt-6">
       <view class="overflow-hidden rounded-[28px] from-[#10B981] to-[#047857] bg-gradient-to-br px-5 py-5 text-white shadow-[0_18px_44px_rgba(16,185,129,0.24)]">
-        <view class="text-[12px] text-white/72">
-          统计总览
-        </view>
-        <view class="mt-2 text-[24px] font-black leading-tight">
-          {{ summaryTitle }}
+        <view class="flex items-start justify-between">
+          <view class="flex-1">
+            <view class="text-[12px] text-white/72">
+              统计总览
+            </view>
+            <view class="mt-2 text-[24px] font-black leading-tight">
+              {{ summaryTitle }}
+            </view>
+          </view>
+          <view
+            class="ml-3 mt-1 h-9 w-9 flex shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-transform active:scale-90"
+            @tap="openRankList"
+          >
+            <view class="i-carbon-trophy text-[20px] text-white" />
+          </view>
         </view>
         <view class="mt-2 text-[12px] text-white/80">
           {{ loading ? '正在同步你的最新练习表现' : '这里会集中展示你的累计刷题表现和站内排名' }}
@@ -183,10 +211,10 @@ onShow(() => {
           <view class="h-12 w-px bg-[#E2E8F0]" />
           <view class="text-right">
             <view class="text-[12px] text-[#94A3B8]">
-              累计正确率
+              今日正确率
             </view>
             <view class="mt-1 text-[24px] text-[#2563EB] font-black">
-              {{ loading ? '--' : formatPercent(dashboard?.overall_accuracy || 0) }}
+              {{ loading ? '--' : `${todayAccuracy}%` }}
             </view>
           </view>
         </view>

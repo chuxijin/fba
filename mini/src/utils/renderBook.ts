@@ -539,7 +539,7 @@ export async function exportMiniRenderBook(scope: ExportScope) {
       cancelText: '知道了',
       success: (res) => {
         if (res.confirm) {
-          uni.navigateTo({ url: '/pages/my-render-books/index' })
+          uni.navigateTo({ url: '/pages/mine/render-books/index' })
         }
       },
     })

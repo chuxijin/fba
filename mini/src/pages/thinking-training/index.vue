@@ -11,9 +11,14 @@ definePage({
   },
 })
 
+interface TrainingItem {
+  name: string
+  url: string
+}
+
 interface TrainingGroup {
   title: string
-  items: string[]
+  items: TrainingItem[]
 }
 
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
@@ -21,19 +26,33 @@ const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSys
 const trainingGroups: TrainingGroup[] = [
   {
     title: '找数能力',
-    items: ['舒尔特方格', '滚动舒尔特', '文字找茬'],
+    items: [
+      { name: '舒尔特方格', url: '/pages/thinking-training/schulte/index' },
+      { name: '滚动舒尔特', url: '/pages/thinking-training/scroll-schulte/index' },
+      { name: '文字找茬', url: '/pages/thinking-training/text-diff/index' },
+    ],
   },
   {
     title: '推理能力',
-    items: ['数独', '猜数字', '24点'],
+    items: [
+      { name: '数独', url: '/pages/thinking-training/sudoku/index' },
+      { name: '猜数字', url: '/pages/thinking-training/bulls-cows/index' },
+      { name: '24点', url: '/pages/thinking-training/24point/index' },
+    ],
   },
   {
     title: '工作记忆',
-    items: ['瞬间记忆', '闪电心算'],
+    items: [
+      { name: '瞬间记忆', url: '/pages/thinking-training/flash-memory/index' },
+      { name: '闪电心算', url: '/pages/thinking-training/mental-math/index' },
+    ],
   },
   {
     title: '注意力',
-    items: ['斯特鲁普', '图形旋转'],
+    items: [
+      { name: '斯特鲁普', url: '/pages/thinking-training/stroop/index' },
+      { name: '图形旋转', url: '/pages/thinking-training/shape-rotation/index' },
+    ],
   },
 ]
 
@@ -46,8 +65,8 @@ function goBack() {
   uni.navigateTo({ url: '/pages/ability-practice/index' })
 }
 
-function openTrainingItem(name: string) {
-  uni.showToast({ title: `${name} 正在接入中`, icon: 'none' })
+function openTrainingItem(item: TrainingItem) {
+  uni.navigateTo({ url: item.url })
 }
 </script>
 
@@ -80,11 +99,11 @@ function openTrainingItem(name: string) {
         <view class="grid grid-cols-3 gap-2">
           <view
             v-for="item in group.items"
-            :key="item"
+            :key="item.name"
             class="h-[58px] flex items-center justify-center rounded-md bg-[#E8EDF5] px-2 text-center text-[15px] text-[#1F2937] font-black leading-tight shadow-[0_2px_10px_-9px_rgba(31,41,55,0.4)] active:scale-[0.98]"
             @click="openTrainingItem(item)"
           >
-            {{ item }}
+            {{ item.name }}
           </view>
         </view>
       </view>

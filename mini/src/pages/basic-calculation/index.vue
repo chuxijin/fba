@@ -158,7 +158,7 @@ function startPractice() {
     params.push('custom=1')
     params.push(`customConfig=${encodeBasicCalculationCustomConfig(customConfig.value)}`)
   }
-  uni.navigateTo({ url: `/pages/basic-calculation-session/index?${params.join('&')}` })
+  uni.navigateTo({ url: `/pages/basic-calculation/session/index?${params.join('&')}` })
 }
 
 function isExportTypeSelected(index: number) {
@@ -404,7 +404,7 @@ async function exportQuestions() {
       cancelText: '知道了',
       success: (res) => {
         if (res.confirm) {
-          uni.navigateTo({ url: '/pages/my-render-books/index' })
+          uni.navigateTo({ url: '/pages/mine/render-books/index' })
         }
       },
     })

@@ -28,23 +28,26 @@ const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSys
 
 const loading = ref(false)
 const loadingMore = ref(false)
+const dashboardLoading = ref(false)
 const deletingId = ref(0)
 const records = ref<GetPracticeSessionListItem[]>([])
 const total = ref(0)
 const page = ref(1)
 const currentDomainLabel = ref(getStudyDomainOption(getAppSettings().currentDomain).label)
+const dashboard = ref<any>(null)
 
 const hasMore = computed(() => records.value.length < total.value)
 
 const summary = computed(() => {
-  const completedCount = records.value.reduce((sum, item) => sum + Number(item.completed_count || 0), 0)
-  const correctCount = records.value.reduce((sum, item) => sum + Number(item.correct_count || 0), 0)
-  const accuracy = completedCount > 0 ? Math.round((correctCount / completedCount) * 100) : 0
+  const report = dashboard.value?.report
+  const completedCount = Number(report?.total_answer_count ?? dashboard.value?.total_questions ?? 0)
+  const correctCount = Number(dashboard.value?.total_correct ?? 0)
+  const accuracy = Number(report?.accuracy_rate ?? dashboard.value?.overall_accuracy ?? 0)
 
   return {
     completedCount,
     correctCount,
-    accuracy,
+    accuracy: Math.round(accuracy),
   }
 })
 
@@ -58,6 +61,22 @@ function ensureLogin() {
     toLoginPage()
   }, 300)
   return false
+}
+
+async function loadDashboard() {
+  if (!tokenStore.updateNowTime().hasLogin)
+    return
+
+  dashboardLoading.value = true
+  try {
+    dashboard.value = await fbaApi.qbank.home.getDashboard()
+  }
+  catch (error) {
+    console.error('加载统计数据失败:', error)
+  }
+  finally {
+    dashboardLoading.value = false
+  }
 }
 
 async function loadRecords(targetPage = 1) {
@@ -188,10 +207,11 @@ function goBack() {
 
 onShow(() => {
   loadRecords()
+  loadDashboard()
 })
 
 onPullDownRefresh(async () => {
-  await loadRecords()
+  await Promise.all([loadRecords(), loadDashboard()])
   uni.stopPullDownRefresh()
 })
 
@@ -219,15 +239,15 @@ onReachBottom(() => {
       <view class="mb-5 border border-white/60 rounded-2xl bg-white/80 p-5 shadow-[0_4px_24px_-10px_rgba(0,0,0,0.06)] backdrop-blur-md">
         <view class="grid grid-cols-3 gap-3">
           <view class="flex flex-col items-center rounded-xl bg-[#F0FDF4] py-3">
-            <text class="text-[22px] text-[#16A34A] font-black">{{ summary.completedCount }}</text>
+            <text class="text-[22px] text-[#16A34A] font-black">{{ dashboardLoading ? '--' : summary.completedCount }}</text>
             <text class="mt-1 text-[11px] text-[#94A3B8]">累计刷题</text>
           </view>
           <view class="flex flex-col items-center rounded-xl bg-[#F5F3FF] py-3">
-            <text class="text-[22px] text-[#7C3AED] font-black">{{ summary.correctCount }}</text>
+            <text class="text-[22px] text-[#7C3AED] font-black">{{ dashboardLoading ? '--' : summary.correctCount }}</text>
             <text class="mt-1 text-[11px] text-[#94A3B8]">答对题数</text>
           </view>
           <view class="flex flex-col items-center rounded-xl bg-[#FFF7ED] py-3">
-            <text class="text-[22px] text-[#EA580C] font-black">{{ summary.accuracy }}%</text>
+            <text class="text-[22px] text-[#EA580C] font-black">{{ dashboardLoading ? '--' : `${summary.accuracy}%` }}</text>
             <text class="mt-1 text-[11px] text-[#94A3B8]">综合正确率</text>
           </view>
         </view>

@@ -99,7 +99,7 @@ function restartPractice() {
     params.push('custom=1')
     params.push(`customConfig=${encodeBasicCalculationCustomConfig(result.value.customConfig)}`)
   }
-  uni.redirectTo({ url: `/pages/basic-calculation-session/index?${params.join('&')}` })
+  uni.redirectTo({ url: `/pages/basic-calculation/session/index?${params.join('&')}` })
 }
 
 onLoad((query) => {

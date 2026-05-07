@@ -1056,7 +1056,7 @@ onShow(() => {
               </view>
             </view>
 
-            <view class="flex flex-col gap-3 px-5">
+            <view class="flex flex-col gap-3">
               <template v-if="tab.items.length">
                 <view class="border-y border-[#F1F5F9]">
                   <view
@@ -1096,7 +1096,7 @@ onShow(() => {
                 </view>
               </template>
 
-              <view v-else class="rounded-xl bg-white/80 px-5 py-10 text-center shadow-sm">
+              <view v-else class="mx-5 rounded-xl bg-white/80 px-5 py-10 text-center shadow-sm">
                 <text class="text-[14px] text-[#94A3B8]">这个分类下暂时还没有题库。</text>
               </view>
             </view>
