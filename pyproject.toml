@@ -86,6 +86,8 @@ dependencies = [
   "serverchan-sdk>=0.3.0",
   # [ App ] 微信支付 V3
   "wechatpayv3>=1.2.44",
+  # [ App ] 单词本 FSRS 间隔重复算法
+  "fsrs>=6.3.1",
 ]
 dynamic = ["version"]
 

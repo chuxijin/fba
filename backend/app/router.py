@@ -18,6 +18,7 @@ from backend.app.question_bank.api.router import v1 as question_bank_v1
 from backend.app.social.api.router import v1 as social_v1
 from backend.app.task.api.router import v1 as task_v1
 from backend.app.trail.api.router import v1 as trail_v1
+from backend.app.vocab.api.router import v1 as vocab_v1
 
 router = APIRouter()
 
@@ -39,3 +40,4 @@ router.include_router(trail_v1)
 router.include_router(content_v1)
 router.include_router(quest_v1)
 router.include_router(cms_v1)
+router.include_router(vocab_v1)
