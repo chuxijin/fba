@@ -3,7 +3,7 @@
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from backend.app.coulddrive.schema.file import (
     BaseFileInfo,
@@ -43,7 +43,7 @@ async def get_file_list(
     params: Annotated[ListFilesParam, Depends()],
     page_params: Annotated[_CustomPageParams, DependsPagination],
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID（内部调用必传）")] = None
-) -> ResponseSchemaModel[PageData[BaseFileInfo]]:
+) -> ResponseSchemaModel[dict[str, Any]] | Response:
     """
     获取文件列表，支持智能缓存
 
@@ -91,7 +91,7 @@ async def get_share_file_list(
     params: Annotated[ListShareFilesParam, Depends()],
     page_params: Annotated[_CustomPageParams, DependsPagination],
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID（内部调用必传）")] = None
-) -> ResponseSchemaModel[PageData[BaseFileInfo]]:
+) -> ResponseSchemaModel[dict[str, Any]] | Response:
     """获取分享文件列表，支持智能缓存"""
     try:
         service = CouldDriveService.create_from_request(
@@ -132,7 +132,7 @@ async def create_folder(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: MkdirParam,
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[BaseFileInfo]:
+) -> ResponseSchemaModel[BaseFileInfo] | Response:
     try:
         service = CouldDriveService.create_from_request(
             db=db,
@@ -166,7 +166,7 @@ async def rename_file(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: RenameParam,
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[bool]:
+) -> ResponseSchemaModel[bool] | Response:
     try:
         service = CouldDriveService.create_from_request(
             db=db,
@@ -200,7 +200,7 @@ async def move_files(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: MoveParam,
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[bool]:
+) -> ResponseSchemaModel[bool] | Response:
     try:
         service = CouldDriveService.create_from_request(
             db=db,
@@ -234,7 +234,7 @@ async def copy_files(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: CopyParam,
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[bool]:
+) -> ResponseSchemaModel[bool] | Response:
     try:
         service = CouldDriveService.create_from_request(
             db=db,
@@ -268,7 +268,7 @@ async def remove_files(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: RemoveParam,
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[bool]:
+) -> ResponseSchemaModel[bool] | Response:
     try:
         service = CouldDriveService.create_from_request(
             db=db,
@@ -302,7 +302,7 @@ async def transfer_files(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: TransferParam,
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[bool]:
+) -> ResponseSchemaModel[bool] | Response:
     try:
         service = CouldDriveService.create_from_request(
             db=db,
@@ -334,7 +334,7 @@ async def batch_rename_files(
     db: CurrentSession,
     x_token: Annotated[str, Header(description="认证令牌")],
     params: BatchRenameParam,
-) -> ResponseSchemaModel[dict[str, Any]]:
+) -> ResponseSchemaModel[dict[str, Any]] | Response:
     """批量重命名文件或文件夹"""
     global file_operate_service_instance
     if not file_operate_service_instance:
@@ -365,7 +365,7 @@ async def batch_rename_files(
                 return response_base.fast_success(res=CustomResponse(400, f"获取重命名模板失败: {str(e)}"))
         
         # 初始化进度信息
-        file_operate_service_instance.update_progress(str(temp_task_id), {
+        file_operate_service_instance.update_progress(temp_task_id, {
             'type': 'start',
             'message': '开始批量重命名...',
             'current_folder': '',
@@ -376,7 +376,7 @@ async def batch_rename_files(
         
         # 定义进度回调函数
         async def progress_callback(progress_data):
-            file_operate_service_instance.update_progress(str(temp_task_id), progress_data)
+            file_operate_service_instance.update_progress(temp_task_id, progress_data)
         
         # 调用服务层，传递进度回调（不传递数据库连接，避免长时间持有）
         result = await file_operate_service_instance.batch_rename_files_with_progress(
@@ -385,7 +385,7 @@ async def batch_rename_files(
         )
         
         # 标记任务完成
-        file_operate_service_instance.update_progress(str(temp_task_id), {
+        file_operate_service_instance.update_progress(temp_task_id, {
             'type': 'complete',
             'message': '批量重命名完成',
             'stats': result
@@ -435,7 +435,7 @@ async def get_share_info(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: Annotated[ListShareInfoParam, Depends()],
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[list[BaseShareInfo]]:
+) -> ResponseSchemaModel[list[BaseShareInfo]] | Response:
     """
     获取分享详情信息
 
@@ -459,7 +459,7 @@ async def get_share_info(
 
         # 如果返回的是包含分页信息的字典，提取列表部分
         if isinstance(share_info_result, dict) and 'list' in share_info_result:
-            share_info_list = share_info_result['list']
+            share_info_list: list[BaseShareInfo] = share_info_result['list']
         else:
             share_info_list = share_info_result
 
@@ -486,7 +486,7 @@ async def create_share(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: ShareParam,
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[BaseShareInfo]:
+) -> ResponseSchemaModel[BaseShareInfo] | Response:
     """
     创建分享链接
 
@@ -530,7 +530,7 @@ async def cancel_share(
     x_token: Annotated[str, Header(description="认证令牌")],
     params: CancelShareParam,
     drive_account_id: Annotated[int | None, Query(description="网盘账户ID")] = None
-) -> ResponseSchemaModel[bool]:
+) -> ResponseSchemaModel[bool] | Response:
     """
     取消分享链接
 

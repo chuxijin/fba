@@ -88,12 +88,20 @@ class RewardService:
         else:
             log_record = existing
 
-        success = await dispatch_reward(
-            db=db,
-            user_id=claim.user_id,
-            reward_type=quest.reward_type,
-            reward_data=reward_data,
-        )
+        error_detail = ''
+        try:
+            success = await dispatch_reward(
+                db=db,
+                user_id=claim.user_id,
+                reward_type=quest.reward_type,
+                reward_data=reward_data,
+            )
+        except Exception as exc:
+            success = False
+            error_detail = str(exc)
+            log.warning(
+                f'悬赏任务奖励发放异常: claim_id={claim.id}, user_id={claim.user_id}, error={error_detail}'
+            )
 
         if success:
             await quest_reward_log_dao.update_model(
@@ -110,10 +118,11 @@ class RewardService:
             )
             log.info(f'悬赏任务奖励发放成功: claim_id={claim.id}, user_id={claim.user_id}')
         else:
+            error_msg = error_detail or '奖励分发返回失败'
             await quest_reward_log_dao.update_model(
                 db,
                 log_record.id,
-                {'grant_status': 2, 'error_message': '奖励分发失败，详见日志'},
+                {'grant_status': 2, 'error_message': error_msg},
                 commit=False,
             )
             await quest_claim_dao.update_model(
@@ -122,7 +131,7 @@ class RewardService:
                 {'reward_status': 2},
                 commit=False,
             )
-            log.warning(f'悬赏任务奖励发放失败: claim_id={claim.id}, user_id={claim.user_id}')
+            log.warning(f'悬赏任务奖励发放失败: claim_id={claim.id}, user_id={claim.user_id}, reason={error_msg}')
 
         return success
 

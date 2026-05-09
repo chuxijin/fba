@@ -75,7 +75,8 @@ class GetQuestDetail(SchemaBase):
     reward_type: str = Field(description='奖励类型')
     reward_data: dict | None = Field(None, description='奖励数据')
     sort: int = Field(description='排序')
-    created_by: int | None = Field(None, description='创建者用户 ID')
+    created_by: int = Field(description='创建者')
+    updated_by: int | None = Field(None, description='修改者')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
 

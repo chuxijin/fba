@@ -92,7 +92,8 @@ class GetSlotDetail(SchemaBase):
     close_dismiss_count: int = Field(description='关闭 N 次后不再展示')
     can_close: bool = Field(description='是否允许用户主动关闭')
     extra: dict | None = Field(None, description='扩展字段')
-    created_by: int | None = Field(None, description='创建者用户 ID')
+    created_by: int = Field(description='创建者')
+    updated_by: int | None = Field(None, description='修改者')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
 

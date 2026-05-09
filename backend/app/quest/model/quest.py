@@ -6,10 +6,10 @@ import sqlalchemy as sa
 
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.common.model import Base, TimeZone, UniversalText, id_key
+from backend.common.model import Base, TimeZone, UniversalText, UserMixin, id_key
 
 
-class Quest(Base):
+class Quest(Base, UserMixin):
     """悬赏任务表"""
 
     __tablename__ = 'quest_task'
@@ -41,4 +41,3 @@ class Quest(Base):
     reward_type: Mapped[str] = mapped_column(sa.String(32), default='points', comment='奖励类型(vip/points/feature)')
     reward_data: Mapped[dict | None] = mapped_column(sa.JSON, default=None, comment='奖励数据')
     sort: Mapped[int] = mapped_column(default=0, comment='排序(数字越小越靠前)')
-    created_by: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='创建者用户 ID')

@@ -6,10 +6,10 @@ import sqlalchemy as sa
 
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.common.model import Base, TimeZone, UniversalText, id_key
+from backend.common.model import Base, TimeZone, UniversalText, UserMixin, id_key
 
 
-class CmsSlot(Base):
+class CmsSlot(Base, UserMixin):
     """内容运营位表"""
 
     __tablename__ = 'cms_slot'
@@ -58,4 +58,3 @@ class CmsSlot(Base):
     close_dismiss_count: Mapped[int] = mapped_column(default=0, comment='关闭 N 次后该用户不再展示(0 不限)')
     can_close: Mapped[bool] = mapped_column(default=True, comment='是否允许用户主动关闭')
     extra: Mapped[dict | None] = mapped_column(sa.JSON, default=None, comment='形态特有字段兜底')
-    created_by: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='创建者用户 ID')

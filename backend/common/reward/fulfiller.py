@@ -173,7 +173,6 @@ class PointsFulfiller(BaseRewardFulfiller):
         :return:
         """
         amount = self._parse_positive_int(reward_data.get('amount'))
-        family_code = reward_data.get('family_code')
         source = str(reward_data.get('source') or 'reward').strip() or 'reward'
         source_key = str(reward_data.get('source_key') or '').strip()
         remark = reward_data.get('remark')
@@ -185,8 +184,8 @@ class PointsFulfiller(BaseRewardFulfiller):
             log.warning(f'积分权益发放失败: user_id={user_id}, reason=missing_source_key')
             return False
 
-        if not family_code:
-            family_code = await membership_experience_service.resolve_reward_family(db, user_id=user_id)
+        # 始终自动解析用户当前生效族群，避免硬编码 family_code 与实际会员不匹配
+        family_code = await membership_experience_service.resolve_reward_family(db, user_id=user_id)
 
         try:
             await membership_experience_service.add_experience(
@@ -218,7 +217,6 @@ class PointsFulfiller(BaseRewardFulfiller):
         :return:
         """
         amount = self._parse_positive_int(reward_data.get('amount'))
-        family_code = reward_data.get('family_code')
         source_key = str(reward_data.get('source_key') or '').strip()
         remark = reward_data.get('remark')
 
@@ -229,8 +227,8 @@ class PointsFulfiller(BaseRewardFulfiller):
             log.warning(f'积分撤销失败: user_id={user_id}, reason=missing_source_key')
             return False
 
-        if not family_code:
-            family_code = await membership_experience_service.resolve_reward_family(db, user_id=user_id)
+        # 始终自动解析用户当前生效族群
+        family_code = await membership_experience_service.resolve_reward_family(db, user_id=user_id)
 
         try:
             await membership_experience_service.consume_experience(
