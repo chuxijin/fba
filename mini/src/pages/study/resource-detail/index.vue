@@ -2,7 +2,7 @@
 import type { CoulddriveResourceListItem } from '@fba/api-sdk'
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 
 defineOptions({
   name: 'StudyResourceDetail',
@@ -198,7 +198,7 @@ async function loadResourceDetail() {
   loading.value = true
 
   try {
-    const data = await fbaApi.coulddrive.resource.getDetail(resourceId.value) as unknown as ResourceDetail
+    const { data } = await api.getResourceDetail({ path: { resource_id: resourceId.value } }) as any
     resource.value = data
   }
   catch (error) {
@@ -215,7 +215,7 @@ function recordResourceClick() {
     return
   }
 
-  void fbaApi.coulddrive.resource.recordClick(resourceId.value).catch((error) => {
+  void api.recordResourceClick({ path: { resource_id: resourceId.value } }).catch((error) => {
     console.warn('记录资源点击失败:', error)
   })
 }

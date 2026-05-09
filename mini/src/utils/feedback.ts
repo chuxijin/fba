@@ -1,5 +1,5 @@
 import type { CreateFeedbackParam, FeedbackType } from '@fba/api-sdk'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { getEnvBaseUrl } from '@/utils'
 
@@ -105,7 +105,7 @@ export function createFeedbackPayload(
 }
 
 export async function submitFeedback(payload: CreateFeedbackParam): Promise<void> {
-  await fbaApi.admin.feedback.create(payload)
+  await api.createFeedback({ body: payload })
 }
 
 export async function uploadFeedbackImage(filePath: string): Promise<string> {

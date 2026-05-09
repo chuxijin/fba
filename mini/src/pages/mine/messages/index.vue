@@ -2,7 +2,7 @@
 import type { PageData } from '@fba/api-sdk'
 import { computed, ref } from 'vue'
 import { onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { formatDateTime, stripRichText } from '@/utils/mine'
 import { toLoginPage } from '@/utils/toLoginPage'
@@ -102,13 +102,13 @@ async function loadMessages(targetPage = 1) {
   }
 
   try {
-    const data = await fbaApi.qbank.request.get<PageData<UserMessageItem>>('/messages', {
-      params: {
+    const { data } = await api.getMyMessages({
+      query: {
         page: targetPage,
         size: PAGE_SIZE,
         unread_only: unreadOnly.value,
-      },
-    })
+      } as any,
+    }) as any
     const pageItems = data?.items || []
     total.value = Number(data?.total || 0)
     page.value = targetPage
@@ -136,7 +136,7 @@ async function markMessageRead(item: UserMessageItem) {
   }
 
   try {
-    await fbaApi.qbank.request.put(`/messages/${item.id}/read`)
+    await api.markMessageRead({ path: { pk: item.id } })
     item.is_read = true
     item.read_time = new Date().toISOString()
   }
@@ -166,7 +166,7 @@ async function markAllRead() {
   }
 
   try {
-    await fbaApi.qbank.request.put('/messages/read-all')
+    await api.markAllMessagesRead()
     messages.value = messages.value.map(item => ({
       ...item,
       is_read: true,

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
-import { http } from '@/http/http'
+import { api } from '@/api/sdk'
 
 const props = defineProps<{
   /** 触发场景，如 app_launch / home */
@@ -27,33 +27,31 @@ const curtainWidth = computed(() => curtainData.value?.extra?.width ?? 280)
 const closePosition = computed(() => curtainData.value?.extra?.close_position ?? 'bottom')
 
 async function fetchCurtain() {
+  console.log('[CmsCurtain] fetchCurtain called, scene =', props.scene)
   try {
-    const res = await http<{ data: SlotItem[] }>({
-      url: '/cms/slots/active',
-      method: 'GET',
-      data: { scene: props.scene },
-    })
-    const slots = (res as any)?.data ?? res ?? []
+    const { data: slotsData } = await api.getActiveSlots({ query: { scene: props.scene } }) as any
+    const slots = slotsData as SlotItem[]
+    console.log('[CmsCurtain] slots response:', JSON.stringify(slots))
     const list = Array.isArray(slots) ? slots : []
     // 找第一个 curtain 类型且有图片的运营位
-    const curtain = list.find((s: SlotItem) => s.slot_type === 'curtain' && s.image_url)
+    const curtain = list.find((s) => s.slot_type === 'curtain' && s.image_url)
+    console.log('[CmsCurtain] matched curtain:', curtain)
     if (curtain) {
       curtainData.value = curtain
       showCurtain.value = true
       reportAction(curtain.id, 0)
     }
   }
-  catch {
-    // 静默失败，不影响主流程
+  catch (err) {
+    console.error('[CmsCurtain] fetchCurtain error:', err)
   }
 }
 
 async function reportAction(slotId: number, action: number) {
   try {
-    await http({
-      url: `/cms/slots/${slotId}/log`,
-      method: 'POST',
-      data: { action, scene: props.scene },
+    await api.reportAction({
+      path: { pk: slotId },
+      body: { action, scene: props.scene },
     })
   }
   catch {

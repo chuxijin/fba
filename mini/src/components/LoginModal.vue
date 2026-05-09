@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { ref, watch } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 
 const props = defineProps<{
@@ -75,7 +75,7 @@ async function refreshAccountCaptcha(showError = false) {
 
   accountCaptchaLoading.value = true
   try {
-    const captcha = await fbaApi.admin.auth.getCaptcha()
+    const { data: captcha } = await api.getCaptcha() as any
     accountCaptchaEnabled.value = Boolean(captcha?.is_enabled)
     accountCaptchaUuid.value = accountCaptchaEnabled.value ? captcha?.uuid || '' : ''
     accountCaptchaImage.value = accountCaptchaEnabled.value && captcha?.image
@@ -249,9 +249,7 @@ async function confirmOrderLogin() {
   })
 
   try {
-    await fbaApi.actcode.verifyAgisoOrder({
-      order_input: orderNo,
-    })
+    await api.verifyOrderNo({ body: { order_input: orderNo } })
     await tokenStore.orderLogin(orderNo)
     orderForm.value.orderNo = ''
     handleLoginSuccess()

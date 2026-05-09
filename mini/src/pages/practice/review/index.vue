@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { computed, reactive, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { getAppSettings } from '@/utils/appSettings'
 import { replaceHtmlWithCachedMedia } from '@/utils/questionMediaCache'
@@ -91,7 +91,7 @@ async function loadQuestionIds() {
         .filter(Boolean)
     }
 
-    const result = await fbaApi.qbank.question.collect(collectPayload as any)
+    const { data: result } = await api.qbankCollectQuestions({ body: collectPayload as any }) as any
 
     questionIds.value = Array.isArray(result?.question_ids) ? result.question_ids : []
     currentIndex.value = 0
@@ -117,7 +117,8 @@ async function loadCurrentQuestion() {
   loading.value = true
   resetAnswerState()
   try {
-    currentQuestion.value = await fbaApi.qbank.practice.getQuestionDetail(currentQid.value)
+    const { data: qDetail } = await api.practiceGetQuestion({ path: { pk: currentQid.value } }) as any
+    currentQuestion.value = qDetail
   }
   catch (error) {
     console.error('加载题目失败:', error)
@@ -132,7 +133,8 @@ async function loadSolution() {
   if (!currentQid.value || currentSolution.value)
     return
   try {
-    currentSolution.value = await fbaApi.qbank.practice.getQuestionAnalysis(currentQid.value)
+    const { data: qAnalysis } = await api.practiceGetAnalysis({ path: { pk: currentQid.value } }) as any
+    currentSolution.value = qAnalysis
   }
   catch (error) {
     console.error('加载解析失败:', error)
@@ -192,7 +194,10 @@ async function handleWrongQuestionCorrect() {
   correctStreakMap[qid] = streak
 
   try {
-    await fbaApi.qbank.wrongQuestion.answerCorrect(qid, { mastery_threshold: masteryThreshold.value })
+    await api.qbankWrongQuestionAnswerCorrect({
+      path: { question_id: qid },
+      body: { mastery_threshold: masteryThreshold.value } as any,
+    })
 
     if (streak >= masteryThreshold.value) {
       removedIds.add(qid)

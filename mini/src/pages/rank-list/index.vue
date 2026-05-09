@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 
 defineOptions({ name: 'RankListPage' })
@@ -104,7 +104,7 @@ async function loadRank(rankType: RankTab = activeTab.value) {
 
   loading.value = true
   try {
-    const data = await fbaApi.qbank.home.getRank(rankType, 100) as any
+    const { data } = await api.homeRankList({ query: { rank_type: rankType, limit: 100 } }) as any
     rankDataMap.value[rankType] = data
   }
   catch (error) {

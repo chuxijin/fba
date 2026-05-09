@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useMembershipStore } from './membership'
 
 // 初始化状态
@@ -47,7 +47,7 @@ export const useUserStore = defineStore(
      * 获取用户信息
      */
     const fetchUserInfo = async () => {
-      const res = await fbaApi.qbank.auth.getMe()
+      const { data: res } = await api.getCurrentUserInfo() as any
       setUserInfo(res)
       // 同步拉取会员信息
       const membershipStore = useMembershipStore()

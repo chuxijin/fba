@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { RenderJobCreatePayload } from '@fba/api-sdk'
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import {
   BASIC_CALCULATION_TYPES,
@@ -394,8 +394,13 @@ async function exportQuestions() {
   exportingQuestions.value = true
   uni.showLoading({ title: '提交任务中...' })
   try {
-    const job = await fbaApi.renderBook.createJob(buildExportPayload(contentMode, selectedExportTypeIndexes.value))
-    await fbaApi.renderBook.dispatchJob(job.job_id, true)
+    const { data: job } = await api.createRenderJob({
+      body: buildExportPayload(contentMode, selectedExportTypeIndexes.value),
+    }) as any
+    await api.dispatchRenderJob({
+      path: { job_id: job.job_id },
+      query: { upload_to_oss: true },
+    })
     cancelExportSelectMode()
     uni.showModal({
       title: '已提交导出任务',

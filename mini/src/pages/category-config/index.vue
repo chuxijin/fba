@@ -2,7 +2,7 @@
 import type { AppPracticeMode } from '@/utils/appSettings'
 import { onShow } from '@dcloudio/uni-app'
 import { computed, ref, watch } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import LoginModal from '@/components/LoginModal.vue'
 import { useTokenStore, useUserStore } from '@/store'
 import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
@@ -426,7 +426,8 @@ function applyStudyPreference(data: any) {
 async function loadStudyPreference() {
   const userId = Number(userStore.userInfo?.id || 0)
   const cached = getCachedStudyPreference(userId)
-  const data = cached || await fbaApi.qbank.settings.getStudyPreference() as any
+  const remoteResponse = cached ? null : await api.qbankGetStudyPreference()
+  const data = cached || (remoteResponse as any)?.data
   const nextDomain = data?.current_domain
     ? getStudyDomainOption(data.current_domain).code
     : currentDomain.value
@@ -465,7 +466,7 @@ async function saveStudyPreference() {
       } as any
 
       mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), payload)
-      await fbaApi.qbank.settings.updateStudyPreference(payload)
+      await api.qbankUpdateStudyPreference({ body: payload })
     } while (pendingSave.value)
 
     uni.showToast({ title: '已保存首页分类', icon: 'none' })

@@ -6,7 +6,7 @@ import type {
 } from '@fba/api-sdk'
 import { computed, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 
 defineOptions({
@@ -151,7 +151,7 @@ async function loadKeywordResults(targetPage: number, normalizedKeyword: string)
     params.resource_type = resourceType.value
   }
 
-  const data = await fbaApi.coulddrive.resource.getList(params)
+  const { data } = await api.getResourceList({ query: params as any }) as any
   const items = Array.isArray(data.items) ? data.items : []
   const mappedItems = items.map(item => ({
     resource: item,
@@ -181,7 +181,9 @@ async function loadVectorResults(normalizedKeyword: string) {
     params.category_id = categoryId.value
   }
 
-  const data = await fbaApi.coulddrive.resource.vectorSearch(params)
+  const { data } = await api.vectorSearchResources({
+    query: { ...params, include_content: false } as any,
+  }) as any
   const items = Array.isArray(data) ? data : []
   const filteredItems = resourceType.value
     ? items.filter(item => item.resource.resource_type === resourceType.value)

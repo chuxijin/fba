@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useMembershipStore, useTokenStore } from '@/store'
 
 defineProps<{
@@ -55,9 +55,7 @@ async function handleActivateOrder() {
   activating.value = true
   uni.showLoading({ title: '激活中...', mask: true })
   try {
-    const result = await fbaApi.actcode.activateAgisoOrder({
-      order_input: normalizedOrderInput,
-    })
+    const { data: result } = await api.activateAgisoOrderForCurrentUser({ body: { order_input: normalizedOrderInput } }) as any
 
     await membershipStore.fetchMembership()
     orderInput.value = ''

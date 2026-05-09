@@ -2,7 +2,7 @@
 import type { CoulddriveResourceListItem, CoulddriveResourceListParams, GetCategoryTree } from '@fba/api-sdk'
 import { computed, nextTick, ref, watch } from 'vue'
 import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { getAppSettings } from '@/utils/appSettings'
 import { getStudyDomainOption, type StudyDomainCode } from '@/utils/studyDomain'
 import { getStudyDomainCategoryRoots } from '@/utils/studyDomainQuestionScope'
@@ -229,7 +229,7 @@ async function loadRecentResources(targetPage = 1) {
   }
 
   try {
-    const data = await fbaApi.coulddrive.resource.getList(buildQuery(targetPage))
+    const { data } = await api.getResourceList({ query: buildQuery(targetPage) }) as any
     const items = Array.isArray(data.items) ? data.items : []
 
     recentResources.value = isFirstPage ? items : [...recentResources.value, ...items]
@@ -264,12 +264,13 @@ async function loadPopularResources() {
       return
     }
 
-    const hotList = await fbaApi.coulddrive.resource.getHot(
-      selectedShortcutCategoryId.value,
-      10,
-      [...POPULAR_RESOURCE_TYPES],
-    )
-
+    const { data: hotList } = await api.getHotResourceList({
+      query: {
+        category_id: selectedShortcutCategoryId.value,
+        limit: 10,
+        resource_types: [...POPULAR_RESOURCE_TYPES],
+      } as any,
+    }) as any
     popularResources.value = hotList.filter((item) => {
       const categoryId = Number(item.category_id || 0)
       return allowedCategoryIds.has(categoryId)

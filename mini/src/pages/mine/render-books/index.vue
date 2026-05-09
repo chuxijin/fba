@@ -2,7 +2,7 @@
 import type { PageData, RenderJobResult, RenderJobFile } from '@fba/api-sdk'
 import { computed, ref } from 'vue'
 import { onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api, buildRenderBookFileUrl } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { getEnvBaseUrl } from '@/utils'
 import { getAppSettings } from '@/utils/appSettings'
@@ -72,11 +72,13 @@ async function loadJobs(targetPage = 1) {
   }
 
   try {
-    const data = await fbaApi.renderBook.listJobs({
-      page: targetPage,
-      size: PAGE_SIZE,
-      study_domain: currentDomainCode.value,
-    } as any) as PageData<RenderJobResult>
+    const { data } = await api.listRenderJobs({
+      query: {
+        page: targetPage,
+        size: PAGE_SIZE,
+        study_domain: currentDomainCode.value,
+      } as any,
+    }) as any as { data: PageData<RenderJobResult> }
 
     const pageItems = data.items || []
     total.value = Number(data.total || 0)
@@ -265,7 +267,7 @@ async function openJob(job: RenderJobResult) {
   uni.showLoading({ title: '预览中...', mask: true })
   try {
     const downloadUrl = file.url || toAbsoluteApiUrl(
-      fbaApi.renderBook.buildJobFileUrl(job.job_id, file.file_kind, { prefer_url: true }),
+      buildRenderBookFileUrl(job.job_id, file.file_kind, { prefer_url: true }),
     )
     const result = await downloadFile(downloadUrl, !file.url)
     await openPdf(result.tempFilePath)
@@ -310,7 +312,7 @@ async function downloadJob(job: RenderJobResult) {
   uni.showLoading({ title: '下载中...', mask: true })
   try {
     const downloadUrl = file.url || toAbsoluteApiUrl(
-      fbaApi.renderBook.buildJobFileUrl(job.job_id, file.file_kind, { prefer_url: true }),
+      buildRenderBookFileUrl(job.job_id, file.file_kind, { prefer_url: true }),
     )
     const result = await downloadFile(downloadUrl, !file.url)
     await saveFile(result.tempFilePath)
@@ -349,7 +351,10 @@ async function retryJob(job: RenderJobResult) {
 
   retryingJobId.value = job.job_id
   try {
-    await fbaApi.renderBook.dispatchJob(job.job_id, true)
+    await api.dispatchRenderJob({
+      path: { job_id: job.job_id },
+      query: { upload_to_oss: true },
+    })
     jobs.value = jobs.value.map(item => item.job_id === job.job_id
       ? { ...item, status: 'running', error_message: null }
       : item)

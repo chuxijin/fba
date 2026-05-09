@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import MembershipModal from '@/components/MembershipModal.vue'
 import RenderBookExportPopup from '@/components/RenderBookExportPopup.vue'
 import { useMembershipStore, useTokenStore } from '@/store'
@@ -117,7 +117,7 @@ function patchProgressToTree(nodes: KpItem[]) {
 async function loadKpProgress() {
   if (!categoryId.value || !tokenStore.hasLogin) return
   try {
-    const res = await fbaApi.qbank.knowledgePoint.getProgress(categoryId.value)
+    const { data: res } = await api.qbankGetKpProgress({ path: { pk: categoryId.value } }) as any
     totalAnswerCount.value = res.total_answer_count || 0
     totalCorrectCount.value = res.total_correct_count || 0
     
@@ -138,7 +138,7 @@ async function loadKpDetail() {
 
   loading.value = true
   try {
-    const res = await fbaApi.qbank.knowledgePoint.getDetail(categoryId.value)
+    const { data: res } = await api.qbankGetKpDetail({ path: { pk: categoryId.value } }) as any
     
     categoryName.value = res.name
     kpItems.value = res.children || []
@@ -189,19 +189,21 @@ async function startPracticeByKp(kpName: string, itemId: number) {
   }
 
   try {
-    const session = await fbaApi.qbank.session.create({
-      session_type: mode === 'exam' ? 'exam' : 'random',
-      practice_name: kpName,
-      knowledge_point: [kpName],
-      shuffle: true,
-      limit: settings.randomPracticeCount,
-      year_start: yearStart,
-      year_end: yearEnd,
-      exam_config: {
-        practice_mode: mode,
-        entry: 'mini-kp-detail',
-      },
-    } as any)
+    const { data: session } = await api.qbankPracticeCreateSession({
+      body: {
+        session_type: mode === 'exam' ? 'exam' : 'random',
+        practice_name: kpName,
+        knowledge_point: [kpName],
+        shuffle: true,
+        limit: settings.randomPracticeCount,
+        year_start: yearStart,
+        year_end: yearEnd,
+        exam_config: {
+          practice_mode: mode,
+          entry: 'mini-kp-detail',
+        },
+      } as any,
+    })
     navigateToPracticeSession(Number((session as any)?.id || 0), mode)
   }
   catch (error) {
@@ -246,19 +248,21 @@ async function startPracticeAll() {
   }
 
   try {
-    const session = await fbaApi.qbank.session.create({
-      session_type: mode === 'exam' ? 'exam' : 'random',
-      practice_name: categoryName.value,
-      knowledge_point: allKpNames,
-      shuffle: true,
-      limit: settings.randomPracticeCount,
-      year_start: yearStart,
-      year_end: yearEnd,
-      exam_config: {
-        practice_mode: mode,
-        entry: 'mini-kp-detail',
-      },
-    } as any)
+    const { data: session } = await api.qbankPracticeCreateSession({
+      body: {
+        session_type: mode === 'exam' ? 'exam' : 'random',
+        practice_name: categoryName.value,
+        knowledge_point: allKpNames,
+        shuffle: true,
+        limit: settings.randomPracticeCount,
+        year_start: yearStart,
+        year_end: yearEnd,
+        exam_config: {
+          practice_mode: mode,
+          entry: 'mini-kp-detail',
+        },
+      } as any,
+    })
     navigateToPracticeSession(Number((session as any)?.id || 0), mode)
   }
   catch (error) {

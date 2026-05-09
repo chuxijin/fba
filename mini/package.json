@@ -39,7 +39,6 @@
     "pnpm": ">=9"
   },
   "scripts": {
-    "openapi": "openapi-ts",
     "init-husky": "git init && husky",
     "init-baseFiles": "node ./scripts/create-base-files.js",
     "prepare": "pnpm init-husky & pnpm init-baseFiles",
@@ -114,8 +113,6 @@
     "lint:fix": "eslint --fix"
   },
   "dependencies": {
-    "@alova/adapter-uniapp": "^2.0.14",
-    "@alova/shared": "^1.3.1",
     "@changesets/cli": "^2.30.0",
     "@dcloudio/uni-app": "3.0.0-4070620250821001",
     "@dcloudio/uni-app-harmony": "3.0.0-4070620250821001",
@@ -133,9 +130,10 @@
     "@dcloudio/uni-mp-weixin": "3.0.0-4070620250821001",
     "@dcloudio/uni-mp-xhs": "3.0.0-4070620250821001",
     "@dcloudio/uni-quickapp-webview": "3.0.0-4070620250821001",
-    "@fba/api-sdk": "file:..\\packages\\api-sdk",
+    "@fba/api-sdk": "workspace:*",
     "abortcontroller-polyfill": "^1.7.8",
-    "alova": "^3.3.3",
+    "axios": "^1.14.0",
+    "axios-miniprogram-adapter": "^0.3.5",
     "dayjs": "1.11.10",
     "echarts": "^5.5.1",
     "echarts-for-weixin": "^1.0.2",
@@ -187,7 +185,6 @@
     "lint-staged": "^15.2.10",
     "miniprogram-api-typings": "^4.1.0",
     "miniprogram-ci": "^2.1.26",
-    "openapi-ts-request": "^1.10.0",
     "picocolors": "^1.1.1",
     "postcss": "^8.4.49",
     "postcss-html": "^1.8.0",

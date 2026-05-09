@@ -1,4 +1,4 @@
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import {
   getStudyDomainOption,
   normalizeStudyDomainCode,
@@ -128,10 +128,12 @@ async function getBankTree(value: unknown): Promise<BankNode[]> {
     return await cachedPromise
   }
 
-  const bankTreePromise = fbaApi.qbank.bank.getList({
-    status: 1,
-    study_domain: code,
-  }) as Promise<BankNode[]>
+  const bankTreePromise = (async () => {
+    const { data } = await api.qbankGetBankList({
+      query: { status: 1, study_domain: code },
+    }) as any
+    return data as BankNode[]
+  })()
   bankTreePromiseMap.set(code, bankTreePromise)
   return await bankTreePromise
 }
@@ -144,9 +146,9 @@ export async function getStudyDomainScope(value: unknown): Promise<StudyDomainSc
   }
 
   const scopePromise = (async () => {
-    const data = await fbaApi.qbank.request.get<StudyDomainScopeResponse>('/study-domains/scope', {
-      params: { code },
-    })
+    const { data } = await api.qbankGetStudyDomainScope({
+      query: { code },
+    }) as any
 
     return {
       ...data,

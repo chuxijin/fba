@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import {
   clearStoredRefreshCookie,
   getStoredRefreshExpiresIn,
@@ -162,7 +162,7 @@ export const useTokenStore = defineStore(
 
     const login = async (loginForm: any) => {
       try {
-        const res = await fbaApi.admin.auth.login(loginForm)
+        const { data: res } = await api.login({ body: loginForm }) as any
         const authInfo: IAuthLoginRes = isDoubleTokenMode
           ? buildDoubleTokenInfo(res)
           : {
@@ -193,11 +193,12 @@ export const useTokenStore = defineStore(
     const wxLogin = async (userInfo?: { nickname?: string, avatar?: string }) => {
       try {
         const code = await getWxCode()
-        const res = await fbaApi.qbank.auth.wxLogin({
-          code,
-          platform: 'miniapp',
-          ...userInfo,
-        })
+        const { data: res } = await api.wechatMiniappLogin({
+          body: {
+            code,
+            ...userInfo,
+          },
+        }) as any
 
         const authInfo: IAuthLoginRes = isDoubleTokenMode
           ? buildDoubleTokenInfo(res)
@@ -228,9 +229,7 @@ export const useTokenStore = defineStore(
 
     const orderLogin = async (orderInput: string) => {
       try {
-        const res = await fbaApi.actcode.loginByAgisoOrder({
-          order_input: orderInput,
-        })
+        const { data: res } = await api.loginByAgisoOrder({ body: { order_input: orderInput } }) as any
 
         const authInfo: IAuthLoginRes = isDoubleTokenMode
           ? buildDoubleTokenInfo(res)
@@ -260,7 +259,7 @@ export const useTokenStore = defineStore(
       const userId = Number(userStore.userInfo?.id || 0)
 
       try {
-        await fbaApi.admin.auth.logout()
+        await api.logout()
       }
       catch (error) {
         console.error('退出登录失败:', error)
@@ -291,7 +290,7 @@ export const useTokenStore = defineStore(
           throw new Error('无效的 refresh token')
         }
 
-        const res = await fbaApi.admin.auth.refresh()
+        const { data: res } = await api.refreshToken() as any
         setTokenInfo(buildDoubleTokenInfo(res))
         return res
       }

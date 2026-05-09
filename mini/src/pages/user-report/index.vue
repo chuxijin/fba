@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore, useUserStore } from '@/store'
 import { formatDuration } from '@/utils/mine'
 
@@ -125,7 +125,8 @@ async function loadDashboard() {
 
   loading.value = true
   try {
-    dashboard.value = await fbaApi.qbank.home.getDashboard()
+    const { data: dashData } = await api.homeDashboard() as any
+    dashboard.value = dashData
   }
   catch (error) {
     console.error('加载用户报告失败:', error)

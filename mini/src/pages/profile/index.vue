@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useCachedAvatar } from '@/hooks/useCachedAvatar'
 import { useTokenStore, useUserStore } from '@/store'
 import { toLoginPage } from '@/utils/toLoginPage'
@@ -120,7 +120,7 @@ async function onChooseAvatar(event: any) {
   updatingAvatar.value = true
   try {
     const avatarUrl = await uploadAvatarToOss(localAvatar)
-    await fbaApi.admin.sys.user.updateMyAvatar(avatarUrl)
+    await api.updateUserAvatar({ body: { avatar: avatarUrl } })
     updateLocalUser({ avatar: avatarUrl })
     uni.showToast({ title: '头像已更新', icon: 'success' })
   }
@@ -156,7 +156,7 @@ function handleEditNickname() {
 
       updatingNickname.value = true
       try {
-        await fbaApi.admin.sys.user.updateMyNickname(nickname)
+        await api.updateUserNickname({ body: { nickname } })
         updateLocalUser({ nickname })
         uni.showToast({ title: '昵称已更新', icon: 'success' })
       }
@@ -216,10 +216,12 @@ function handleChangePassword() {
               }
 
               try {
-                await fbaApi.admin.sys.user.updateMyPassword({
-                  old_password: oldPassword,
-                  new_password: newPassword,
-                  confirm_password: confirmPassword,
+                await api.updateUserPassword({
+                  body: {
+                    old_password: oldPassword,
+                    new_password: newPassword,
+                    confirm_password: confirmPassword,
+                  },
                 })
                 uni.showToast({ title: '密码已更新', icon: 'success' })
               }

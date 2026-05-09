@@ -1,8 +1,9 @@
 <script lang="ts" setup>
 import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import LoginModal from '@/components/LoginModal.vue'
+import CmsCurtain from '@/components/CmsCurtain.vue'
 import PracticeNode from '@/components/PracticeNode.vue'
 import { useTokenStore, useUserStore } from '@/store'
 import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
@@ -608,11 +609,13 @@ async function fetchRecentSessionsSafe() {
   recentSessionsLoading.value = true
 
   try {
-    const pageData = await fbaApi.qbank.session.getList({
-      status: 'in_progress' as any,
-      page: 1,
-      size: 20,
-    } as any)
+    const { data: pageData } = await api.qbankPracticeGetSessions({
+      query: {
+        status: 'in_progress' as any,
+        page: 1,
+        size: 20,
+      } as any,
+    }) as any
     recentSessions.value = (pageData?.items || [])
       .map(normalizeLatestSession)
       .filter((item): item is LatestSessionBrief => Boolean(item))
@@ -700,19 +703,21 @@ async function createPracticeSessionByBank(item: PracticeListItem) {
   practiceMode.value = nextPracticeMode
 
   try {
-    const session = await fbaApi.qbank.session.create({
-      session_type: nextPracticeMode === 'exam' ? 'exam' : 'bank',
-      practice_name: item.name,
-      bank_id: item.id,
-      exam_config: {
-        practice_mode: nextPracticeMode,
-        entry: 'mini-home',
-        display_total_count: item.count,
-      },
-      cat_id: currentTab.value?.id,
-    } as any)
+    const { data: session } = await api.qbankPracticeCreateSession({
+      body: {
+        session_type: nextPracticeMode === 'exam' ? 'exam' : 'bank',
+        practice_name: item.name,
+        bank_id: item.id,
+        exam_config: {
+          practice_mode: nextPracticeMode,
+          entry: 'mini-home',
+          display_total_count: item.count,
+        },
+        cat_id: currentTab.value?.id,
+      } as any,
+    }) as any
 
-    navigateToPracticeSession(Number((session as any)?.id || 0), nextPracticeMode, item.count)
+    navigateToPracticeSession(Number(session?.id || 0), nextPracticeMode, item.count)
   }
   catch (error) {
     console.error('创建刷题会话失败:', error)
@@ -819,7 +824,7 @@ async function loadDashboard() {
 
   dashboardLoading.value = true
   try {
-    const data = await fbaApi.qbank.home.getDashboard() as any
+    const { data } = await api.homeDashboard() as any
     dashboard.value = {
       todayPracticeCount: toNumber(data?.check_in?.today_practice_count),
       overallAccuracy: formatPercent(data?.overall_accuracy),
@@ -872,7 +877,7 @@ async function loadStudyPreference() {
       return
     }
 
-    const data = await fbaApi.qbank.settings.getStudyPreference() as any
+    const { data } = await api.qbankGetStudyPreference() as any
     const nextDomain = data?.current_domain
       ? getStudyDomainOption(data.current_domain).code
       : currentDomain.value
@@ -897,7 +902,7 @@ async function loadPracticeTabs() {
   try {
     syncCurrentDomain()
     const [bankTreeData, categoryRoots] = await Promise.all([
-      fbaApi.qbank.bank.getList({ status: 1, study_domain: currentDomain.value }) as Promise<BankNode[]>,
+      api.qbankGetBankList({ query: { status: 1, study_domain: currentDomain.value } }).then((r: any) => r.data) as Promise<BankNode[]>,
       getStudyDomainCategoryRoots(currentDomain.value, ['product_catalog', 'knowledge_point']) as Promise<CategoryNode[]>,
     ])
 
@@ -1119,6 +1124,7 @@ onShow(() => {
     </swiper>
 
     <LoginModal v-model="showLoginModal" @success="handleLoginSuccess" />
+    <CmsCurtain scene="app_launch" />
   </view>
 </template>
 

@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import LoginModal from '@/components/LoginModal.vue'
 import { useCachedAvatar } from '@/hooks/useCachedAvatar'
 import { useMembershipStore, useTokenStore, useUserStore } from '@/store'
@@ -134,7 +134,7 @@ function openPrintMiniApp() {
     fail: () => {
       uni.showToast({ title: '跳转失败，请稍后再试', icon: 'none' })
     },
-  })
+  } as any)
 }
 
 async function loadUnreadMessageCount() {
@@ -155,7 +155,7 @@ async function loadUnreadMessageCount() {
 
   unreadMessagePromise = (async () => {
     try {
-      const data = await fbaApi.qbank.request.get<{ count: number }>('/messages/unread-count')
+      const { data } = await api.getMyUnreadCount() as any
       unreadMessageCount.value = Number(data?.count || 0)
       unreadMessageFetchedAt.value = Date.now()
     }
@@ -204,9 +204,9 @@ function chooseStudyDomain() {
 
       if (tokenStore.updateNowTime().hasLogin) {
         try {
-          await fbaApi.qbank.settings.updateStudyPreference({
-            current_domain: nextDomain,
-          } as any)
+          await api.qbankUpdateStudyPreference({
+            body: { current_domain: nextDomain } as any,
+          })
           mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), {
             current_domain: nextDomain,
           })

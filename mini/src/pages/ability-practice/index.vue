@@ -27,7 +27,22 @@ const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSys
 const currentDomain = ref<StudyDomainCode>(getAppSettings().currentDomain)
 
 const abilityPracticeMap: Partial<Record<StudyDomainCode, AbilityPracticeItem[]>> = {
-  kaoyan: [],
+  cet: [
+    {
+      title: '单词记忆',
+      desc: '基于 FSRS 智能算法，科学安排复习计划',
+      icon: 'i-carbon-translate',
+      url: '/pages/vocab/index',
+    },
+  ],
+  kaoyan: [
+    {
+      title: '单词记忆',
+      desc: '基于 FSRS 智能算法，科学安排复习计划',
+      icon: 'i-carbon-translate',
+      url: '/pages/vocab/index',
+    },
+  ],
   gongkao: [
     {
       title: '基础计算练习',
@@ -56,18 +71,8 @@ const abilityPracticeMap: Partial<Record<StudyDomainCode, AbilityPracticeItem[]>
 
 const currentDomainOption = computed(() => getStudyDomainOption(currentDomain.value))
 const practiceItems = computed(() => abilityPracticeMap[currentDomain.value] || [])
-const emptyTitle = computed(() => {
-  if (currentDomain.value === 'kaoyan') {
-    return '考研能力练习暂未配置'
-  }
-  return `${currentDomainOption.value.label}能力练习暂未配置`
-})
-const emptyDesc = computed(() => {
-  if (currentDomain.value === 'kaoyan') {
-    return '当前先保留入口，等想清楚训练内容后再接入。'
-  }
-  return '后续会按当前领域展示专项练习入口。'
-})
+const emptyTitle = computed(() => `${currentDomainOption.value.label}能力练习暂未配置`)
+const emptyDesc = computed(() => '后续会按当前领域展示专项练习入口。')
 
 function goBack() {
   const pages = getCurrentPages()

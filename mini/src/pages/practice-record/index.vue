@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { GetPracticeSessionListItem, PageData } from '@fba/api-sdk'
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { useResultStore } from '@/store/result'
 import { getAppSettings } from '@/utils/appSettings'
@@ -69,7 +69,8 @@ async function loadDashboard() {
 
   dashboardLoading.value = true
   try {
-    dashboard.value = await fbaApi.qbank.home.getDashboard()
+    const { data: dashData } = await api.homeDashboard() as any
+    dashboard.value = dashData
   }
   catch (error) {
     console.error('加载统计数据失败:', error)
@@ -96,13 +97,13 @@ async function loadRecords(targetPage = 1) {
     const currentDomain = getAppSettings().currentDomain
     currentDomainLabel.value = getStudyDomainOption(currentDomain).label
 
-    const data = await fbaApi.qbank.request.get<PageData<GetPracticeSessionListItem>>('/sessions', {
-      params: {
+    const { data } = await api.qbankPracticeGetSessions({
+      query: {
         page: targetPage,
         size: PAGE_SIZE,
         study_domain: currentDomain,
-      },
-    })
+      } as any,
+    }) as any
 
     records.value = isFirstPage ? data.items : [...records.value, ...data.items]
     total.value = data.total
@@ -131,8 +132,8 @@ async function openSession(record: GetPracticeSessionListItem) {
     uni.showLoading({ title: '加载中...', mask: true })
     try {
       const [reportData, solutionData] = await Promise.all([
-        fbaApi.qbank.session.getReport(record.id).catch(() => null),
-        fbaApi.qbank.session.getSolution(record.id).catch(() => null),
+        api.qbankPracticeGetSessionReport({ path: { pk: record.id } }).then(res => res.data).catch(() => null),
+        api.qbankPracticeGetSessionSolution({ path: { pk: record.id } }).then(res => res.data).catch(() => null),
       ])
       const resultStore = useResultStore()
       resultStore.setResult(record.id, reportData, solutionData)
@@ -181,7 +182,7 @@ async function handleDelete(record: GetPracticeSessionListItem) {
 
   deletingId.value = record.id
   try {
-    await fbaApi.qbank.session.remove(record.id)
+    await api.qbankPracticeDeleteSession({ path: { pk: record.id } })
     records.value = records.value.filter(item => item.id !== record.id)
     total.value = Math.max(0, total.value - 1)
     uni.showToast({ title: '删除成功', icon: 'success' })

@@ -1,7 +1,7 @@
 import type { MembershipBrief } from '@fba/api-sdk'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from './token'
 
 const MEMBERSHIP_REFRESH_TTL = 30 * 1000
@@ -59,7 +59,8 @@ export const useMembershipStore = defineStore(
       loading.value = true
       fetchingPromise = (async () => {
         try {
-          memberships.value = await fbaApi.membership.getMyMembership()
+          const { data } = await api.getMyMembership() as any
+          memberships.value = (data || []) as MembershipBrief[]
           lastFetchedAt.value = Date.now()
         }
         catch (error) {

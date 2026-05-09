@@ -2,7 +2,7 @@
 import type { PageData } from '@fba/api-sdk'
 import { computed, getCurrentInstance, nextTick, ref, shallowRef, watch } from 'vue'
 import { onPullDownRefresh, onShow } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import MembershipModal from '@/components/MembershipModal.vue'
 import { useMembershipStore, useTokenStore } from '@/store'
 import { echarts } from '@/utils/charts/echarts'
@@ -477,13 +477,13 @@ async function loadRecords() {
   }
 
   try {
-    const data = await fbaApi.membership.request.get<PageData<MembershipRecordBrief>>('/membership/me/records', {
-      params: {
+    const { data } = await api.getMyRecords({
+      query: {
         page: 1,
         size: 8,
         family_code: currentFamily.value,
-      },
-    })
+      } as any,
+    }) as any
     records.value = data?.items || []
   }
   catch (error) {
@@ -499,12 +499,17 @@ async function loadData() {
 
   loading.value = true
   try {
-    const [membershipData, progressData, tierData, planData] = await Promise.all([
-      fbaApi.membership.request.get<UserMembershipBrief[]>('/membership/me'),
-      fbaApi.membership.request.get<MembershipProgress[]>('/membership/me/progress'),
-      fbaApi.membership.request.get<MembershipTierBrief[]>('/membership/tiers/active'),
-      fbaApi.membership.request.get<MembershipPlanBrief[]>('/membership/plans/available'),
-    ])
+    const [
+      { data: membershipData },
+      { data: progressData },
+      { data: tierData },
+      { data: planData },
+    ] = await Promise.all([
+      api.getMyMembership(),
+      api.getMyMembershipProgress(),
+      api.getActiveTiers(),
+      api.getAvailablePlans(),
+    ]) as any
 
     memberships.value = membershipData || []
     progressList.value = progressData || []

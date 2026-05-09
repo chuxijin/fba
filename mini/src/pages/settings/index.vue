@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore, useUserStore } from '@/store'
 import { getAppSettings, saveAppSettings } from '@/utils/appSettings'
 import { clearQuestionMediaCache, getQuestionMediaCacheSummary } from '@/utils/questionMediaCache'
@@ -141,9 +141,9 @@ async function updatePracticeMode(nextMode: PracticeMode) {
 
   if (tokenStore.updateNowTime().hasLogin) {
     try {
-      await fbaApi.qbank.settings.updateStudyPreference({
-        practice_mode: nextMode,
-      } as any)
+      await api.qbankUpdateStudyPreference({
+        body: { practice_mode: nextMode } as any,
+      })
       mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), {
         practice_mode: nextMode,
       })
@@ -179,9 +179,9 @@ function chooseMasteryStreak() {
 
         if (tokenStore.updateNowTime().hasLogin) {
           try {
-            await fbaApi.qbank.settings.updateStudyPreference({
-              mastery_threshold: streak,
-            } as any)
+            await api.qbankUpdateStudyPreference({
+              body: { mastery_threshold: streak } as any,
+            })
             mergeCachedStudyPreference(Number(userStore.userInfo?.id || 0), {
               mastery_threshold: streak,
             })

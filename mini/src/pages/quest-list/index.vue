@@ -1,7 +1,7 @@
 <script lang="ts" setup>
-import { onLoad } from '@dcloudio/uni-app'
+import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { httpGet } from '@/http/http'
+import { api } from '@/api/sdk'
 import LoginModal from '@/components/LoginModal.vue'
 import { useTokenStore } from '@/store'
 
@@ -91,10 +91,10 @@ function goToQuestDetail(quest: QuestItem) {
 async function loadQuests() {
   loading.value = true
   try {
-    const data = await httpGet<any>('/api/v1/quest/quests', {
-      only_active: true, page: 1, size: 50,
-    })
-    quests.value = data?.items || data || []
+    const { data } = await api.getQuestList({
+      query: { only_active: true, page: 1, size: 50 },
+    }) as any
+    quests.value = data?.items || []
   }
   catch (error) {
     console.error('加载任务列表失败:', error)
@@ -110,7 +110,7 @@ function handleLoginSuccess() {
   void loadQuests()
 }
 
-onLoad(() => {
+onShow(() => {
   tokenStore.updateNowTime()
   void loadQuests()
 })

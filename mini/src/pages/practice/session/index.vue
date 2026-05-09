@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { onHide, onLoad, onPullDownRefresh, onUnload } from '@dcloudio/uni-app'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import type { AnswerSheetGroup, AnswerSheetItem } from '@/components/AnswerSheet.vue'
 import FeedbackPopup from '@/components/FeedbackPopup.vue'
 import { useMembershipStore } from '@/store'
@@ -540,6 +540,7 @@ function questionProgressLabel(item: any, index: number) {
   return `${item.seq_no}/${displayTotalCount.value}`
 }
 
+
 function parseNumberList(value: unknown) {
   return String(value || '')
     .split(',')
@@ -754,7 +755,11 @@ async function loadSolution(questionId: number) {
 
     // 降级：请求单题 API
     solutionLoadingMap[questionId] = true
-    solutionMap[questionId] = await fbaApi.qbank.question.getSolution(questionId, serializeAnswer(state.userAnswer)) as any
+    const { data: sol } = await api.qbankGetQuestionSolution({
+      path: { pk: questionId },
+      query: { user_answer: serializeAnswer(state.userAnswer) } as any,
+    }) as any
+    solutionMap[questionId] = sol
     solutionKeyMap[questionId] = cacheKey
 
     if (solutionMap[questionId]?.is_correct != null) {
@@ -912,7 +917,9 @@ async function loadFavoriteStates() {
     return
   try {
     clearMap(favoritedMap)
-    const statusMap = await fbaApi.qbank.question.checkFavorites(sessionId.value)
+    const { data: statusMap } = await api.qbankGetSessionFavorites({
+      path: { session_id: sessionId.value },
+    }) as any
     Object.keys(statusMap || {}).forEach((key) => {
       favoritedMap[Number(key)] = Boolean((statusMap as any)[key])
     })
@@ -928,7 +935,9 @@ async function loadNotes() {
   try {
     clearMap(noteMap)
     clearMap(noteContentMap)
-    const result = await fbaApi.qbank.question.getNotes(sessionId.value) as any
+    const { data: result } = await api.qbankGetSessionNotes({
+      path: { session_id: sessionId.value },
+    }) as any
     Object.keys(result || {}).forEach((key) => {
       const qid = Number(key)
       noteMap[qid] = result[key]
@@ -951,12 +960,12 @@ async function saveNote(questionId: number) {
   try {
     const existing = noteMap[questionId]
     if (existing?.id) {
-      await fbaApi.qbank.note.update(existing.id, { content } as any)
+      await api.updateNote({ path: { pk: existing.id }, body: { content } as any })
       noteMap[questionId] = { ...existing, content }
     }
     else {
-      const result = await fbaApi.qbank.note.create({ question_id: questionId, content, is_public: false } as any) as any
-      noteMap[questionId] = result?.data || { id: Date.now(), question_id: questionId, content, is_public: false }
+      const { data: noteResult } = await api.createNote({ body: { question_id: questionId, content, is_public: false } as any }) as any
+      noteMap[questionId] = noteResult || { id: Date.now(), question_id: questionId, content, is_public: false }
     }
     noteEditingMap[questionId] = false
     uni.showToast({ title: '笔记已保存', icon: 'success' })
@@ -976,7 +985,7 @@ async function toggleNotePublic(questionId: number) {
     return
   const newPublic = !note.is_public
   try {
-    await fbaApi.qbank.note.update(note.id, { is_public: newPublic } as any)
+    await api.updateNote({ path: { pk: note.id }, body: { is_public: newPublic } as any })
     noteMap[questionId] = { ...note, is_public: newPublic }
     uni.showToast({ title: newPublic ? '笔记已公开' : '笔记已设为私密', icon: 'none' })
   }
@@ -991,8 +1000,8 @@ async function loadPublicNotes(questionId: number) {
     return
   publicNotesLoadingMap[questionId] = true
   try {
-    const result = await fbaApi.qbank.note.getQuestionPublic(questionId) as any
-    publicNotesMap[questionId] = result?.data || result || []
+    const { data: notesData } = await api.getQuestionPublicNotes({ path: { question_id: questionId } }) as any
+    publicNotesMap[questionId] = notesData || []
   }
   catch (error) {
     console.error('加载公开笔记失败:', error)
@@ -1021,15 +1030,15 @@ async function loadSession() {
     const solutionPromise = shouldLoadReviewSolution
       ? cachedSolutions
         ? Promise.resolve(cachedSolutions)
-        : fbaApi.qbank.session.getSolution(sessionId.value).catch((error) => {
+        : api.qbankPracticeGetSessionSolution({ path: { pk: sessionId.value } }).then((r: any) => r.data).catch((error: any) => {
           console.error('加载整套解析失败:', error)
           uni.showToast({ title: '加载整套解析失败', icon: 'none' })
           return []
         })
       : Promise.resolve([])
     const [detail, content, reviewSolutions] = await Promise.all([
-      fbaApi.qbank.session.getDetail(sessionId.value),
-      fbaApi.qbank.question.getSessionQuestions(sessionId.value),
+      api.qbankPracticeGetSession({ path: { pk: sessionId.value } }).then((r: any) => r.data),
+      api.qbankGetSessionQuestions({ path: { session_id: sessionId.value } }).then((r: any) => r.data),
       solutionPromise,
     ]) as any
     session.value = detail
@@ -1107,17 +1116,21 @@ async function persistAnswer(questionId: number, judgeNow: boolean, silent = fal
     commitTime(questionId)
   actionQuestionId.value = questionId
   try {
-    const result = await fbaApi.qbank.session.upsertRecords(sessionId.value, {
-      session_id: sessionId.value,
-      judge_now: judgeNow,
-      records: [{
-        seq_no: snap.seq_no,
-        question_id: snap.question_id,
-        placement_id: snap.placement_id,
-        user_answer: Array.isArray(state.userAnswer) ? [...state.userAnswer] : (state.userAnswer || ''),
-        answer_time: state.answerTime,
-      }],
-    } as any) as BatchUpsertPracticeRecordsResult
+    const { data: upsertResult } = await api.qbankPracticeUpsertRecords({
+      path: { pk: sessionId.value },
+      body: {
+        session_id: sessionId.value,
+        judge_now: judgeNow,
+        records: [{
+          seq_no: snap.seq_no,
+          question_id: snap.question_id,
+          placement_id: snap.placement_id,
+          user_answer: Array.isArray(state.userAnswer) ? [...state.userAnswer] : (state.userAnswer || ''),
+          answer_time: state.answerTime,
+        }],
+      } as any,
+    }) as any
+    const result = upsertResult as BatchUpsertPracticeRecordsResult
 
     state.isAnswered = true
     if (judgeNow && mode.value !== 'exam')
@@ -1302,7 +1315,10 @@ async function submitSession() {
     return
   submitting.value = true
   try {
-    const submitResult = await fbaApi.qbank.session.submit(sessionId.value, { total_time: totalSeconds.value } as any) as any
+    const { data: submitResult } = await api.qbankPracticeSubmitSession({
+      path: { pk: sessionId.value },
+      body: { total_time: totalSeconds.value } as any,
+    }) as any
     if (Number(submitResult?.reward_exp || 0) > 0) {
       void useMembershipStore().fetchMembership()
       const checkInReward = Number(submitResult?.check_in_reward_exp || 0)
@@ -1313,8 +1329,8 @@ async function submitSession() {
     }
 
     const [reportData, solutionData] = await Promise.all([
-      fbaApi.qbank.session.getReport(sessionId.value).catch(() => null),
-      fbaApi.qbank.session.getSolution(sessionId.value).catch(() => null),
+      api.qbankPracticeGetSessionReport({ path: { pk: sessionId.value } }).then((r: any) => r.data).catch(() => null),
+      api.qbankPracticeGetSessionSolution({ path: { pk: sessionId.value } }).then((r: any) => r.data).catch(() => null),
     ])
 
     const resultStore = useResultStore()
@@ -1335,13 +1351,13 @@ async function submitSession() {
 async function toggleFavorite(questionId: number) {
   try {
     if (favoritedMap[questionId]) {
-      await fbaApi.qbank.favorite.removeByQuestion(questionId)
+      await api.qbankFavoriteDeleteByQuestion({ path: { question_id: questionId } })
       favoritedMap[questionId] = false
       uni.showToast({ title: '已取消收藏', icon: 'success' })
       return
     }
 
-    await fbaApi.qbank.favorite.create({ question_id: questionId } as any)
+    await api.qbankFavoriteCreate({ body: { question_id: questionId } as any })
     favoritedMap[questionId] = true
     uni.showToast({ title: '已加入收藏', icon: 'success' })
   }
@@ -1422,7 +1438,7 @@ onUnload(() => {
     clearInterval(tickTimer)
   // 自动销毁临时 session（错题/收藏/笔记入口创建的）
   if (autoDestroy.value && sessionId.value) {
-    fbaApi.qbank.session.remove(sessionId.value).catch(() => {})
+    api.qbankPracticeDeleteSession({ path: { pk: sessionId.value } }).catch(() => {})
   }
 })
 </script>

@@ -1,4 +1,4 @@
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { getEnvBaseUrl } from '@/utils'
 
@@ -74,31 +74,37 @@ function trimTrailingZero(value: number) {
 }
 
 export async function getPracticeRecordAIEvaluation(recordId: number) {
-  return await fbaApi.qbank.request.get<PracticeAIEvaluation>(`/ai-evaluations/records/${recordId}`)
+  const { data } = await api.qbankAiEvaluationGetRecordLatest({ path: { record_id: recordId } }) as any
+  return data as PracticeAIEvaluation
 }
 
 export async function regeneratePracticeRecordAIEvaluation(recordId: number) {
-  return await fbaApi.qbank.request.post<PracticeAIEvaluation>(`/ai-evaluations/records/${recordId}/judge`, {
-    force_regenerate: true,
-  })
+  const { data } = await api.qbankAiEvaluationJudgeRecord({
+    path: { record_id: recordId },
+    body: { force_regenerate: true },
+  }) as any
+  return data as PracticeAIEvaluation
 }
 
 export async function judgeSessionSubjectiveRecords(sessionId: number, forceRegenerate = false) {
-  return await fbaApi.qbank.request.post<PracticeAIEvaluation[]>(
-    `/ai-evaluations/sessions/${sessionId}/judge-subjective`,
-    { force_regenerate: forceRegenerate },
-  )
+  const { data } = await api.qbankAiEvaluationJudgeSessionSubjective({
+    path: { session_id: sessionId },
+    body: { force_regenerate: forceRegenerate },
+  }) as any
+  return data as PracticeAIEvaluation[]
 }
 
 export async function getPracticeSessionAISummary(sessionId: number) {
-  return await fbaApi.qbank.request.get<PracticeAIEvaluation>(`/ai-evaluations/sessions/${sessionId}/summary`)
+  const { data } = await api.qbankAiEvaluationGetSessionSummary({ path: { session_id: sessionId } }) as any
+  return data as PracticeAIEvaluation
 }
 
 export async function generatePracticeSessionAISummary(sessionId: number, forceRegenerate = false) {
-  return await fbaApi.qbank.request.post<PracticeAIEvaluation>(
-    `/ai-evaluations/sessions/${sessionId}/summary`,
-    { force_regenerate: forceRegenerate },
-  )
+  const { data } = await api.qbankAiEvaluationGenerateSessionSummary({
+    path: { session_id: sessionId },
+    body: { force_regenerate: forceRegenerate },
+  }) as any
+  return data as PracticeAIEvaluation
 }
 
 export async function recognizeSubjectiveAnswerImage(filePath: string) {

@@ -4,7 +4,7 @@ import type {
   RenderJobFile,
   RenderJobResult,
 } from '@fba/api-sdk'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { getAppSettings } from '@/utils/appSettings'
 import { getEnvBaseUrl } from '@/utils'
 
@@ -375,7 +375,7 @@ async function collectQuestionIds(scope: ExportScope) {
     return scope.questionIds
   }
 
-  const collected = await fbaApi.qbank.question.collect(buildCollectPayload(scope) as any)
+  const { data: collected } = await api.qbankCollectQuestions({ body: buildCollectPayload(scope) as any }) as any
   const questionIds = Array.isArray((collected as any)?.question_ids) ? (collected as any).question_ids : []
   return questionIds
 }
@@ -529,8 +529,13 @@ export async function exportMiniRenderBook(scope: ExportScope) {
       throw new Error('当前范围内暂无可导出的题目')
     }
 
-    const job = await fbaApi.renderBook.createJob(buildRenderPayload(scope, questionIds, resolvedSettings))
-    await fbaApi.renderBook.dispatchJob(job.job_id, resolvedSettings.uploadToOss)
+    const { data: job } = await api.createRenderJob({
+      body: buildRenderPayload(scope, questionIds, resolvedSettings),
+    }) as any
+    await api.dispatchRenderJob({
+      path: { job_id: job.job_id },
+      query: { upload_to_oss: resolvedSettings.uploadToOss },
+    })
 
     uni.showModal({
       title: '已提交导出任务',

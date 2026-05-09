@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import GroupedListPage from '@/components/GroupedListPage.vue'
 import { useGroupedListPage } from '@/hooks/useGroupedListPage'
 import type { GroupedListPageConfig } from '@/hooks/useGroupedListPage'
@@ -32,10 +32,12 @@ const config: GroupedListPageConfig = {
   gradientVia: '#FFFDF8',
   exportBorderColor: '#FDE68A',
   exportActiveBg: '#FFFBEB',
-  fetchStatistics: (mode, studyDomain) => fbaApi.qbank.favorite.getStatistics({
-    group_by: mode,
-    study_domain: studyDomain,
-  }),
+  fetchStatistics: (mode, studyDomain) => api.qbankFavoriteStatistics({
+    query: {
+      group_by: mode,
+      study_domain: studyDomain,
+    } as any,
+  }).then(res => res.data),
 }
 
 const ctx = useGroupedListPage(config)

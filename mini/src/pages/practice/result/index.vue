@@ -2,7 +2,7 @@
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import type { AnswerSheetGroup, AnswerSheetItem } from '@/components/AnswerSheet.vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useResultStore } from '@/store/result'
 import {
   generatePracticeSessionAISummary,
@@ -241,7 +241,7 @@ async function loadReport() {
   // 降级：从 API 请求
   loading.value = true
   try {
-    const data = await fbaApi.qbank.session.getReport(sessionId.value) as any
+    const { data } = await api.qbankPracticeGetSessionReport({ path: { pk: sessionId.value } }) as any
     report.value = data
     const currentSameResultSession = resultStore.state.sessionId === sessionId.value
     resultStore.setResult(
@@ -270,7 +270,7 @@ async function loadSessionSolution() {
     return
 
   try {
-    const data = await fbaApi.qbank.session.getSolution(sessionId.value)
+    const { data } = await api.qbankPracticeGetSessionSolution({ path: { pk: sessionId.value } }) as any
     const currentSameResultSession = resultStore.state.sessionId === sessionId.value
     resultStore.setResult(
       sessionId.value,

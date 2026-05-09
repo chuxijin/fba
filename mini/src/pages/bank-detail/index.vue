@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
+import BankChapterTreeNode from '@/components/BankChapterTreeNode.vue'
 import MembershipModal from '@/components/MembershipModal.vue'
 import RenderBookExportPopup from '@/components/RenderBookExportPopup.vue'
 import { useMembershipStore, useTokenStore } from '@/store'
@@ -66,6 +67,11 @@ interface BankExportTarget {
   chapterId?: number | null
 }
 
+interface VisibleChapterNode {
+  chapter: ChapterNode
+  depth: number
+}
+
 const { statusBarHeight } = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
 const tokenStore = useTokenStore()
 const membershipStore = useMembershipStore()
@@ -115,15 +121,36 @@ const progressMap = computed(() => {
   return map
 })
 
+const visibleChapters = computed(() => {
+  const result: VisibleChapterNode[] = []
+
+  function walk(nodes: ChapterNode[], depth: number) {
+    for (const chapter of nodes || []) {
+      result.push({ chapter, depth })
+      if (chapter.children?.length && expandedChapters.value.has(chapter.id))
+        walk(chapter.children, depth + 1)
+    }
+  }
+
+  walk(bank.value?.chapters || [], 0)
+  return result
+})
+
 function goBack() {
   uni.navigateBack()
 }
 
+function showComingSoon(title: string) {
+  uni.showToast({ title, icon: 'none' })
+}
+
 function toggleChapter(id: number) {
-  if (expandedChapters.value.has(id))
-    expandedChapters.value.delete(id)
+  const next = new Set(expandedChapters.value)
+  if (next.has(id))
+    next.delete(id)
   else
-    expandedChapters.value.add(id)
+    next.add(id)
+  expandedChapters.value = next
 }
 
 function currentPracticeMode(): PracticeMode {
@@ -164,16 +191,18 @@ async function startPracticeByBank() {
 
   const mode = currentPracticeMode()
   try {
-    const session = await fbaApi.qbank.session.create({
-      session_type: mode === 'exam' ? 'exam' : 'bank',
-      practice_name: bank.value.name,
-      bank_id: bank.value.id,
-      exam_config: {
-        practice_mode: mode,
-        entry: 'mini-bank-detail',
-        display_total_count: totalQuestionCount.value,
-      },
-    } as any)
+    const { data: session } = await api.qbankPracticeCreateSession({
+      body: {
+        session_type: mode === 'exam' ? 'exam' : 'bank',
+        practice_name: bank.value.name,
+        bank_id: bank.value.id,
+        exam_config: {
+          practice_mode: mode,
+          entry: 'mini-bank-detail',
+          display_total_count: totalQuestionCount.value,
+        },
+      } as any,
+    })
     navigateToPracticeSession(Number((session as any)?.id || 0), mode, totalQuestionCount.value)
   }
   catch (error) {
@@ -195,19 +224,21 @@ async function startPracticeByChapter(chapter: ChapterNode) {
 
   const mode = currentPracticeMode()
   try {
-    const session = await fbaApi.qbank.session.create({
-      session_type: mode === 'exam' ? 'exam' : 'bank',
-      practice_name: chapter.name,
-      bank_id: bank.value?.id,
-      chapter_id: chapter.id,
-      exam_config: {
-        practice_mode: mode,
-        entry: 'mini-bank-detail',
-        display_total_count: chapter.q_count_cache,
-        chapter_question_count: chapter.q_count_cache,
-      },
-    } as any)
-    navigateToPracticeSession(Number((session as any)?.id || 0), mode, chapter.q_count_cache)
+    const { data: session } = await api.qbankPracticeCreateSession({
+      body: {
+        session_type: mode === 'exam' ? 'exam' : 'bank',
+        practice_name: chapter.name,
+        bank_id: bank.value?.id,
+        chapter_id: chapter.id,
+        exam_config: {
+          practice_mode: mode,
+          entry: 'mini-bank-detail',
+          display_total_count: totalQuestionCount.value,
+          chapter_question_count: chapter.q_count_cache,
+        },
+      } as any,
+    })
+    navigateToPracticeSession(Number((session as any)?.id || 0), mode, totalQuestionCount.value)
   }
   catch (error) {
     if (isMembershipAccessError(error)) {
@@ -314,7 +345,7 @@ async function loadBankDetail() {
 
   loading.value = true
   try {
-    const data = await fbaApi.qbank.bank.getDetail(bankId.value) as any
+    const { data } = await api.qbankGetBank({ path: { pk: bankId.value } }) as any
     bank.value = data
     requiresMembership.value = Boolean(data?.access_entitlement_code) && !membershipStore.isVip
   }
@@ -332,7 +363,8 @@ async function loadProgress() {
     return
 
   try {
-    progress.value = await fbaApi.qbank.bank.getChapterProgress(bankId.value) as any
+    const { data } = await api.qbankGetBankChapterProgress({ path: { pk: bankId.value } }) as any
+    progress.value = data
     requiresMembership.value = Boolean(bank.value?.access_entitlement_code) && !membershipStore.isVip
   }
   catch (error) {
@@ -343,17 +375,6 @@ async function loadProgress() {
 
     // 未登录或接口异常时不影响页面展示
   }
-}
-
-function getChapterProgress(chapterId: number) {
-  return progressMap.value[chapterId]
-}
-
-function progressPercent(chapterId: number): number {
-  const p = getChapterProgress(chapterId)
-  if (!p || !p.question_count)
-    return 0
-  return Math.round(p.answer_count / p.question_count * 100)
 }
 
 async function refreshPageData() {
@@ -445,14 +466,16 @@ onShow(() => {
           </view>
           <!-- 总进度条 -->
           <view v-if="totalAnswerCount > 0" class="mt-3">
-            <view class="h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
-              <view
-                class="h-full rounded-full from-[#3B82F6] to-[#2563EB] bg-gradient-to-r transition-all duration-500"
-                :style="{ width: `${Math.min(Math.round(totalAnswerCount / totalQuestionCount * 100), 100)}%` }"
-              />
-            </view>
-            <view class="mt-1 text-right text-[11px] text-[#94A3B8]">
-              {{ totalAnswerCount }}/{{ totalQuestionCount }}
+            <view class="flex items-center gap-2">
+              <view class="h-2 flex-1 overflow-hidden rounded-full bg-[#E2E8F0]">
+                <view
+                  class="h-full rounded-full from-[#3B82F6] to-[#2563EB] bg-gradient-to-r transition-all duration-500"
+                  :style="{ width: `${Math.min(Math.round(totalAnswerCount / totalQuestionCount * 100), 100)}%` }"
+                />
+              </view>
+              <text class="shrink-0 whitespace-nowrap text-[11px] text-[#94A3B8]">
+                {{ totalAnswerCount }}/{{ totalQuestionCount }}
+              </text>
             </view>
           </view>
         </view>
@@ -463,7 +486,7 @@ onShow(() => {
         <view class="grid grid-cols-4 gap-y-4">
           <view
             class="flex flex-col items-center transition-transform active:scale-95"
-            @click="uni.showToast({ title: '随机练习', icon: 'none' })"
+            @click="showComingSoon('随机练习')"
           >
             <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#EFF6FF] text-[#3B82F6] shadow-inner">
               <view class="i-carbon-shuffle text-[20px]" />
@@ -472,7 +495,7 @@ onShow(() => {
           </view>
           <view
             class="flex flex-col items-center transition-transform active:scale-95"
-            @click="uni.showToast({ title: '易错快刷', icon: 'none' })"
+            @click="showComingSoon('易错快刷')"
           >
             <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#FEF2F2] text-[#EF4444] shadow-inner">
               <view class="i-carbon-warning-alt text-[20px]" />
@@ -481,7 +504,7 @@ onShow(() => {
           </view>
           <view
             class="flex flex-col items-center transition-transform active:scale-95"
-            @click="uni.showToast({ title: '模拟考试', icon: 'none' })"
+            @click="showComingSoon('模拟考试')"
           >
             <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#7C3AED] shadow-inner">
               <view class="i-carbon-timer text-[20px]" />
@@ -490,7 +513,7 @@ onShow(() => {
           </view>
           <view
             class="flex flex-col items-center transition-transform active:scale-95"
-            @click="uni.showToast({ title: '顺序练习', icon: 'none' })"
+            @click="showComingSoon('顺序练习')"
           >
             <view class="mb-1.5 h-10 w-10 flex items-center justify-center rounded-2xl bg-[#F0FDF4] text-[#10B981] shadow-inner">
               <view class="i-carbon-list-numbered text-[20px]" />
@@ -505,102 +528,21 @@ onShow(() => {
         <view class="mb-3 flex items-center justify-between pl-1">
           <text class="text-[13px] text-[#475569] font-bold">章节目录</text>
         </view>
-        <view class="flex flex-col gap-2.5">
+        <view class="overflow-hidden border border-white/60 rounded-2xl bg-white/90 shadow-sm backdrop-blur-sm">
           <view
-            v-for="chapter in bank.chapters"
-            :key="chapter.id"
-            class="overflow-hidden border border-white/60 rounded-2xl bg-white/90 shadow-sm backdrop-blur-sm"
+            v-for="item in visibleChapters"
+            :key="item.chapter.id"
           >
-            <view class="flex items-center px-4 py-3.5" @click="chapter.children?.length ? toggleChapter(chapter.id) : startPracticeByChapter(chapter)">
-              <view class="mr-3 h-9 w-9 flex shrink-0 items-center justify-center rounded-xl shadow-inner" :class="chapter.children?.length ? 'bg-[#ECFDF5]' : 'bg-[#EFF6FF]'">
-                <view :class="chapter.children?.length ? 'i-carbon-folder text-[18px] text-[#10B981]' : 'i-carbon-document text-[18px] text-[#3B82F6]'" />
-              </view>
-              <view class="min-w-0 flex-1">
-                <view class="text-[15px] text-[#1E293B] font-bold">
-                  {{ chapter.name }}
-                </view>
-                <view class="mt-0.5 flex items-center gap-2 text-[11px] text-[#94A3B8]">
-                  <text>{{ (getChapterProgress(chapter.id)?.question_count ?? chapter.q_count_cache) || 0 }} 题</text>
-                  <template v-if="getChapterProgress(chapter.id)?.answer_count">
-                    <text>·</text>
-                    <text class="text-[#3B82F6]">已做 {{ getChapterProgress(chapter.id)!.answer_count }}</text>
-                    <text v-if="getChapterProgress(chapter.id)!.correct_ratio > 0" class="text-[#10B981]">
-                      {{ getChapterProgress(chapter.id)!.correct_ratio }}%
-                    </text>
-                  </template>
-                </view>
-                <!-- 章节进度条 -->
-                <view v-if="progressPercent(chapter.id) > 0" class="mt-1.5">
-                  <view class="h-1.5 overflow-hidden rounded-full bg-[#E2E8F0]">
-                    <view
-                      class="h-full rounded-full from-[#3B82F6] to-[#60A5FA] bg-gradient-to-r transition-all duration-500"
-                      :style="{ width: `${Math.min(progressPercent(chapter.id), 100)}%` }"
-                    />
-                  </view>
-                </view>
-              </view>
-              <view class="ml-2 flex items-center gap-2">
-                <view
-                  class="rounded-full border border-[#DBEAFE] px-3 py-1 text-[11px] text-[#2563EB] font-semibold"
-                  :class="exportingChapterId === chapter.id ? 'bg-[#EFF6FF] opacity-70' : 'bg-white'"
-                  @click.stop="exportChapterQuestions(chapter)"
-                >
-                  {{ exportingChapterId === chapter.id ? '导出中' : '导出题本' }}
-                </view>
-                <view
-                  v-if="chapter.children?.length"
-                  class="i-carbon-chevron-down text-lg text-[#94A3B8] transition-transform duration-300"
-                  :style="{ transform: expandedChapters.has(chapter.id) ? 'rotate(180deg)' : 'rotate(0deg)' }"
-                />
-                <view v-else class="i-carbon-chevron-right text-lg text-[#CBD5E1]" />
-              </view>
-            </view>
-
-            <!-- 子章节 -->
-            <template v-if="chapter.children?.length && expandedChapters.has(chapter.id)">
-              <view class="mx-4 h-px from-transparent via-[#E2E8F0] to-transparent bg-gradient-to-r" />
-              <view
-                v-for="sub in chapter.children"
-                :key="sub.id"
-                class="flex items-center px-4 py-3 pl-14 active:bg-gray-50"
-                @click="startPracticeByChapter(sub)"
-              >
-                <view class="min-w-0 flex-1">
-                  <view class="text-[14px] text-[#334155] font-medium">
-                    {{ sub.name }}
-                  </view>
-                  <view class="mt-0.5 flex items-center gap-2 text-[11px] text-[#94A3B8]">
-                    <text>{{ (getChapterProgress(sub.id)?.question_count ?? sub.q_count_cache) || 0 }} 题</text>
-                    <template v-if="getChapterProgress(sub.id)?.answer_count">
-                      <text>·</text>
-                      <text class="text-[#3B82F6]">已做 {{ getChapterProgress(sub.id)!.answer_count }}</text>
-                      <text v-if="getChapterProgress(sub.id)!.correct_ratio > 0" class="text-[#10B981]">
-                        {{ getChapterProgress(sub.id)!.correct_ratio }}%
-                      </text>
-                    </template>
-                  </view>
-                  <!-- 子章节进度条 -->
-                  <view v-if="progressPercent(sub.id) > 0" class="mt-1.5">
-                    <view class="h-1 overflow-hidden rounded-full bg-[#E2E8F0]">
-                      <view
-                        class="h-full rounded-full from-[#3B82F6] to-[#60A5FA] bg-gradient-to-r transition-all duration-500"
-                        :style="{ width: `${Math.min(progressPercent(sub.id), 100)}%` }"
-                      />
-                    </view>
-                  </view>
-                </view>
-                <view class="ml-2 flex items-center gap-2">
-                  <view
-                    class="rounded-full border border-[#DBEAFE] px-3 py-1 text-[11px] text-[#2563EB] font-semibold"
-                    :class="exportingChapterId === sub.id ? 'bg-[#EFF6FF] opacity-70' : 'bg-white'"
-                    @click.stop="exportChapterQuestions(sub)"
-                  >
-                    {{ exportingChapterId === sub.id ? '导出中' : '导出题本' }}
-                  </view>
-                  <view class="i-carbon-chevron-right text-lg text-[#CBD5E1]" />
-                </view>
-              </view>
-            </template>
+            <BankChapterTreeNode
+              :chapter="item.chapter"
+              :depth="item.depth"
+              :expanded-chapters="expandedChapters"
+              :progress-map="progressMap"
+              :exporting-chapter-id="exportingChapterId"
+              @toggle="toggleChapter"
+              @start="startPracticeByChapter"
+              @export="exportChapterQuestions"
+            />
           </view>
         </view>
       </view>

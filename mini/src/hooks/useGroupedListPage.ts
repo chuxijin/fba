@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { fbaApi } from '@/api/sdk'
+import { api } from '@/api/sdk'
 import { useTokenStore } from '@/store'
 import { exportMiniRenderBook } from '@/utils/renderBook'
 import type { ExportScope, RenderBookExportSubmitPayload } from '@/utils/renderBook'
@@ -220,7 +220,7 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
 
     uni.showLoading({ title: '创建会话...' })
     try {
-      const session = await fbaApi.qbank.session.create(params as any)
+      const { data: session } = await api.qbankPracticeCreateSession({ body: params as any }) as any
       let url = `/pages/practice/session/index?sessionId=${session.id}&mode=practice`
       if (config.autoDestroySession)
         url += '&autoDestroy=1'
@@ -297,20 +297,22 @@ export function useGroupedListPage(config: GroupedListPageConfig) {
 
         const results = await Promise.all(
           scopes.map(scope =>
-            fbaApi.qbank.question.collect({
-              source_type: scope.sourceType,
-              bank_id: scope.bankId ?? undefined,
-              chapter_id: scope.chapterId ?? undefined,
-              knowledge_point: scope.knowledgePoint
-                ? (Array.isArray(scope.knowledgePoint) ? scope.knowledgePoint : [scope.knowledgePoint])
-                : undefined,
-            } as any),
+            api.qbankCollectQuestions({
+              body: {
+                source_type: scope.sourceType,
+                bank_id: scope.bankId ?? undefined,
+                chapter_id: scope.chapterId ?? undefined,
+                knowledge_point: scope.knowledgePoint
+                  ? (Array.isArray(scope.knowledgePoint) ? scope.knowledgePoint : [scope.knowledgePoint])
+                  : undefined,
+              } as any,
+            }),
           ),
         )
 
         const allIds = new Set<number>()
         for (const r of results) {
-          const ids = (r as any)?.question_ids || []
+          const ids = (r as any)?.data?.question_ids || []
           for (const id of ids) allIds.add(id)
         }
 
