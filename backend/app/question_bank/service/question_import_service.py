@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import logging
 import re
 
@@ -90,13 +91,13 @@ class QuestionImportService:
 
                 difficulty = DIFFICULTY_MAPPING.get(row.难度 or '中等', 'medium')
 
-                chapter_id = await QuestionService._get_or_create_chapter(
+                chapter_id = await QuestionImportService._resolve_import_chapter_id(
                     db=db,
                     bank_id=obj.bank_id,
                     level1_name=row.一级目录,
                     level2_name=row.二级目录,
-                    chapter_cache=chapter_cache,
                     level3_name=row.三级目录,
+                    chapter_cache=chapter_cache,
                 )
 
                 options_data = None
@@ -300,13 +301,13 @@ class QuestionImportService:
                 difficulty = DIFFICULTY_MAPPING.get(row.难度 or '中等', 'medium')
 
                 # 章节
-                chapter_id = await QuestionService._get_or_create_chapter(
+                chapter_id = await QuestionImportService._resolve_import_chapter_id(
                     db=db,
                     bank_id=bank_id,
                     level1_name=row.一级目录,
                     level2_name=row.二级目录,
-                    chapter_cache=chapter_cache,
                     level3_name=row.三级目录,
+                    chapter_cache=chapter_cache,
                 )
 
                 # 选项
@@ -1031,13 +1032,13 @@ class QuestionImportService:
             level2_name = q_data.get('chapter_level2_name') or q_data.get('二级目录')
             level3_name = q_data.get('chapter_level3_name') or q_data.get('三级目录')
             if level1_name:
-                chapter_id = await QuestionService._get_or_create_chapter(
+                chapter_id = await QuestionImportService._resolve_import_chapter_id(
                     db=db,
                     bank_id=bank_id,
                     level1_name=level1_name,
                     level2_name=level2_name,
-                    chapter_cache=chapter_cache,
                     level3_name=level3_name,
+                    chapter_cache=chapter_cache,
                 )
 
             # 2b. 基本字段
@@ -1123,6 +1124,98 @@ class QuestionImportService:
     # ------------------------------------------------------------------
     #  内部工具
     # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _resolve_import_chapter_id(
+        *,
+        db: AsyncSession,
+        bank_id: int,
+        level1_name: str | None,
+        level2_name: str | None,
+        level3_name: str | None,
+        chapter_cache: dict[str, int],
+    ) -> int | None:
+        """
+        解析导入章节，忽略末尾题型目录
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :param level1_name: 一级章节名称
+        :param level2_name: 二级章节名称
+        :param level3_name: 三级章节名称
+        :param chapter_cache: 章节缓存
+        :return:
+        """
+        from backend.app.question_bank.service.question_service import QuestionService
+
+        chapter_names = QuestionImportService._normalize_import_chapter_names(
+            level1_name=level1_name,
+            level2_name=level2_name,
+            level3_name=level3_name,
+        )
+        return await QuestionService._get_or_create_chapter(
+            db=db,
+            bank_id=bank_id,
+            level1_name=chapter_names[0],
+            level2_name=chapter_names[1],
+            chapter_cache=chapter_cache,
+            level3_name=chapter_names[2],
+        )
+
+    @staticmethod
+    def _normalize_import_chapter_names(
+        *,
+        level1_name: str | None,
+        level2_name: str | None,
+        level3_name: str | None,
+    ) -> tuple[str | None, str | None, str | None]:
+        """
+        规范化导入章节名称
+
+        :param level1_name: 一级章节名称
+        :param level2_name: 二级章节名称
+        :param level3_name: 三级章节名称
+        :return:
+        """
+        names = [
+            QuestionImportService._clean_chapter_name(level1_name),
+            QuestionImportService._clean_chapter_name(level2_name),
+            QuestionImportService._clean_chapter_name(level3_name),
+        ]
+        chapter_names = [name for name in names if name]
+        if chapter_names and QuestionImportService._is_question_type_chapter(chapter_names[-1]):
+            chapter_names.pop()
+
+        while len(chapter_names) < 3:
+            chapter_names.append(None)
+
+        return chapter_names[0], chapter_names[1], chapter_names[2]
+
+    @staticmethod
+    def _clean_chapter_name(value: str | None) -> str | None:
+        """
+        清理章节名称
+
+        :param value: 原始章节名称
+        :return:
+        """
+        if value is None:
+            return None
+
+        name = str(value).strip()
+        if not name:
+            return None
+        return name
+
+    @staticmethod
+    def _is_question_type_chapter(name: str) -> bool:
+        """
+        判断章节名称是否只是题型
+
+        :param name: 章节名称
+        :return:
+        """
+        return name.strip() in TYPE_MAPPING
 
     @staticmethod
     def _normalize_stem(stem: str) -> str:

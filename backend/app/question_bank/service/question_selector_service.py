@@ -17,6 +17,7 @@ from backend.app.question_bank.model import (
     Question,
     QuestionAnalysis,
     QuestionBank,
+    QuestionChapter,
     QuestionOption,
     QuestionPlacement,
 )
@@ -135,6 +136,42 @@ class QuestionSelectorService:
             return None
         return await category_dao.get_all_children_ids(db, cat_id)
 
+    @staticmethod
+    async def resolve_chapter_scope_ids(*, db: AsyncSession, chapter_id: int | None) -> list[int] | None:
+        """
+        解析章节及其所有子章节 ID
+
+        :param db: 数据库会话
+        :param chapter_id: 章节 ID
+        :return:
+        """
+        if chapter_id is None:
+            return None
+
+        chapter_stmt = select(QuestionChapter).where(QuestionChapter.id == chapter_id)
+        chapter = (await db.execute(chapter_stmt)).scalars().first()
+        if not chapter:
+            return [chapter_id]
+
+        chapter_list_stmt = select(QuestionChapter.id, QuestionChapter.parent_id).where(
+            QuestionChapter.bank_id == chapter.bank_id
+        )
+        rows = (await db.execute(chapter_list_stmt)).all()
+        children_map: dict[int, list[int]] = {}
+        for row in rows:
+            if row.parent_id is None:
+                continue
+            children_map.setdefault(row.parent_id, []).append(row.id)
+
+        scope_ids: list[int] = []
+        pending_ids = [chapter_id]
+        while pending_ids:
+            current_id = pending_ids.pop(0)
+            scope_ids.append(current_id)
+            pending_ids.extend(children_map.get(current_id, []))
+
+        return scope_ids
+
     @classmethod
     def _apply_question_filters(
         cls,
@@ -177,10 +214,13 @@ class QuestionSelectorService:
         params: QuestionCollectParam,
         cat_ids: list[int] | None,
         needs_bank_join: bool,
+        chapter_scope_ids: list[int] | None,
     ):
         if params.bank_id is not None:
             stmt = stmt.where(QuestionPlacement.bank_id == params.bank_id)
-        if params.chapter_id is not None:
+        if chapter_scope_ids:
+            stmt = stmt.where(QuestionPlacement.chapter_id.in_(chapter_scope_ids))
+        elif params.chapter_id is not None:
             stmt = stmt.where(QuestionPlacement.chapter_id == params.chapter_id)
         if params.is_active is not None:
             stmt = stmt.where(QuestionPlacement.is_active.is_(params.is_active))
@@ -227,6 +267,7 @@ class QuestionSelectorService:
         kp_ids: list[int],
         kp_names: list[str],
         cat_ids: list[int] | None,
+        chapter_scope_ids: list[int] | None,
     ) -> list[int]:
         if not ordered_ids:
             return []
@@ -250,6 +291,7 @@ class QuestionSelectorService:
                 params=params,
                 cat_ids=cat_ids,
                 needs_bank_join=needs_bank_join,
+                chapter_scope_ids=chapter_scope_ids,
             )
             stmt = stmt.where(placement_stmt.exists())
 
@@ -268,6 +310,7 @@ class QuestionSelectorService:
         kp_ids: list[int],
         kp_names: list[str],
         cat_ids: list[int] | None,
+        chapter_scope_ids: list[int] | None,
     ) -> list[int]:
         stmt = select(QuestionPlacement.question_id).select_from(QuestionPlacement).join(
             Question,
@@ -286,6 +329,7 @@ class QuestionSelectorService:
             params=params,
             cat_ids=cat_ids,
             needs_bank_join=needs_bank_join,
+            chapter_scope_ids=chapter_scope_ids,
         )
 
         if params.chapter_id is not None:
@@ -357,6 +401,7 @@ class QuestionSelectorService:
         explicit_ids = cls._dedup_ints(params.question_ids)
         kp_ids, kp_names = cls._normalize_knowledge_point_terms(params.knowledge_point)
         cat_ids = await cls._resolve_category_ids(db=db, cat_id=params.cat_id)
+        chapter_scope_ids = await cls.resolve_chapter_scope_ids(db=db, chapter_id=params.chapter_id)
 
         if params.source_type == 'placement':
             if explicit_ids:
@@ -367,6 +412,7 @@ class QuestionSelectorService:
                     kp_ids=kp_ids,
                     kp_names=kp_names,
                     cat_ids=cat_ids,
+                    chapter_scope_ids=chapter_scope_ids,
                 )
             else:
                 selected_ids = await cls._select_placement_question_ids(
@@ -375,6 +421,7 @@ class QuestionSelectorService:
                     kp_ids=kp_ids,
                     kp_names=kp_names,
                     cat_ids=cat_ids,
+                    chapter_scope_ids=chapter_scope_ids,
                 )
         else:
             if not isinstance(user_id, int) or user_id <= 0:
@@ -400,6 +447,7 @@ class QuestionSelectorService:
                 kp_ids=kp_ids,
                 kp_names=kp_names,
                 cat_ids=cat_ids,
+                chapter_scope_ids=chapter_scope_ids,
             )
 
         return QuestionCollectResult(

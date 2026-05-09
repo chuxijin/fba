@@ -150,9 +150,11 @@ class BankService:
     def _patch_tree_count(nodes: list[dict[str, Any]], count_map: dict[int, int]) -> None:
         """递归回填章节树题量"""
         for node in nodes:
-            node['q_count_cache'] = count_map.get(node['id'], 0)
+            direct_count = count_map.get(node['id'], 0)
             if node.get('children'):
                 BankService._patch_tree_count(node['children'], count_map)
+                direct_count += sum(child.get('q_count_cache', 0) for child in node['children'])
+            node['q_count_cache'] = direct_count
 
     @staticmethod
     async def get(*, db: AsyncSession, pk: int) -> GetBankDetailWithChapters:
@@ -260,6 +262,11 @@ class BankService:
                 node.pop('_sort', None)
                 if node['children']:
                     sort_tree(node['children'])
+                    node['question_count'] += sum(child['question_count'] for child in node['children'])
+                    node['answer_count'] += sum(child['answer_count'] for child in node['children'])
+                    node['correct_count'] += sum(child['correct_count'] for child in node['children'])
+                    if node['answer_count'] > 0:
+                        node['correct_ratio'] = round(node['correct_count'] / node['answer_count'] * 100, 1)
 
         sort_tree(root_nodes)
 

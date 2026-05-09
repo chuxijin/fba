@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
-from typing import Annotated
+from collections.abc import Sequence
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, File, Form, Path, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
+from backend.app.question_bank.model import QuestionAnalysis, QuestionStatistics
 from backend.app.question_bank.schema.note import GetQuestionNoteDetail
-from backend.app.question_bank.schema.practice import GetQuestionSolution, GetSessionQuestionsResponse
 from backend.app.question_bank.schema.question import (
     CreateQuestionParam,
     DeleteQuestionParam,
-    GetQuestionDetail,
-    GetQuestionDynamicCollectionItem,
-    GetQuestionListItem,
-    GetQuestionStatisticsDetail,
-    QuestionAnalysisItem,
     QuestionCollectParam,
     QuestionCollectResult,
     QuestionOptionStatsItem,
@@ -31,7 +27,6 @@ from backend.app.question_bank.service.question_import_service import question_i
 from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.session_service import session_service
-from backend.common.pagination import PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.rbac import DependsRBAC
@@ -116,7 +111,7 @@ async def get_dynamic_collections(
     analysis_keyword: Annotated[str | None, Query(description='解析关键字')] = None,
     year_start: Annotated[int | None, Query(description='起始年份（按题目创建年）')] = None,
     year_end: Annotated[int | None, Query(description='结束年份（按题目创建年）')] = None,
-) -> ResponseSchemaModel[list[GetQuestionDynamicCollectionItem]]:
+) -> ResponseSchemaModel[list[dict[str, Any]]]:
     """按筛选条件动态返回试卷合集（通过题目挂载关系聚合）"""
     if year_start is not None and year_end is not None and year_start > year_end:
         year_start, year_end = year_end, year_start
@@ -292,7 +287,7 @@ async def get_question(
     request: Request,
     db: CurrentSession,
     pk: Annotated[int, Path(description='题目 ID')],
-) -> ResponseSchemaModel[GetQuestionDetail]:
+) -> ResponseSchemaModel[dict[str, Any]]:
     """
     获取题目详情（不含答案和解析）
 
@@ -327,7 +322,7 @@ async def get_question_list(
     page: Annotated[int | None, Query(description='页码', ge=1)] = None,
     size: Annotated[int | None, Query(description='每页数量', ge=1, le=100)] = None,
     include_answer: Annotated[bool, Query(description='是否包含答案（用于查看历史记录）')] = False,
-) -> ResponseSchemaModel[PageData[GetQuestionListItem] | list[GetQuestionListItem]]:
+) -> ResponseSchemaModel[Sequence[dict[str, Any]] | dict[str, Any]]:
     """
     获取题目列表
 
@@ -438,7 +433,7 @@ async def get_question_analysis(
     request: Request,
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='题目 ID')],
-) -> ResponseSchemaModel[QuestionAnalysisItem]:
+) -> ResponseSchemaModel[QuestionAnalysis]:
     """
     获取题目解析（含答案）
 
@@ -466,7 +461,7 @@ async def get_question_solution(
     db: CurrentSession,
     pk: Annotated[int, Path(description='题目 ID')],
     user_answer: Annotated[str | None, Query(description='用户答案（用于判题）')] = None,
-) -> ResponseSchemaModel[GetQuestionSolution]:
+) -> ResponseSchemaModel[dict[str, Any]]:
     """获取题目答案和解析（练题模式专用）"""
     data = await question_service.get_solution(db=db, question_id=pk, user_answer=user_answer)
     return response_base.success(data=data)
@@ -502,7 +497,7 @@ async def get_question_statistics(
     request: Request,
     db: CurrentSession,
     pk: Annotated[int, Path(description='题目 ID')],
-) -> ResponseSchemaModel[GetQuestionStatisticsDetail]:
+) -> ResponseSchemaModel[QuestionStatistics]:
     """获取题目统计"""
     if not _should_bypass_membership_checks(request):
         await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
@@ -605,7 +600,7 @@ async def get_session_questions(
     request: Request,
     db: CurrentSession,
     session_id: Annotated[int, Path(description='会话 ID')],
-) -> ResponseSchemaModel[GetSessionQuestionsResponse]:
+) -> ResponseSchemaModel[dict[str, Any]]:
     """
     获取会话题目静态内容和去重材料
 

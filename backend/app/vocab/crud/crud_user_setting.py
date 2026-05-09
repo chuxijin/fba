@@ -30,7 +30,10 @@ class CRUDUserSetting(CRUDPlus[VocabUserSetting]):
         setting = await self.get_by_user(db, user_id)
         if setting:
             return setting
-        setting = await self.create_model(db, {'user_id': user_id}, commit=False)
+
+        setting = VocabUserSetting(user_id=user_id)
+        db.add(setting)
+        await db.flush()
         await db.commit()
         await db.refresh(setting)
         return setting

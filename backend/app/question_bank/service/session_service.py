@@ -375,6 +375,7 @@ class SessionService:
         placements: list[QuestionPlacement],
         bank_id: int | None = None,
         chapter_id: int | None = None,
+        chapter_scope_ids: list[int] | None = None,
     ) -> QuestionPlacement | None:
         """
         按题库/章节上下文选择挂载
@@ -382,6 +383,7 @@ class SessionService:
         :param placements: 候选挂载列表
         :param bank_id: 题库 ID
         :param chapter_id: 章节 ID
+        :param chapter_scope_ids: 章节及子章节 ID 列表
         :return:
         """
         if not placements:
@@ -393,6 +395,11 @@ class SessionService:
             for placement in sorted_candidates:
                 if placement.bank_id == bank_id and placement.chapter_id == chapter_id:
                     return placement
+            if chapter_scope_ids:
+                chapter_scope_set = set(chapter_scope_ids)
+                for placement in sorted_candidates:
+                    if placement.bank_id == bank_id and placement.chapter_id in chapter_scope_set:
+                        return placement
             return None
 
         if bank_id is not None:
@@ -405,6 +412,11 @@ class SessionService:
             for placement in sorted_candidates:
                 if placement.chapter_id == chapter_id:
                     return placement
+            if chapter_scope_ids:
+                chapter_scope_set = set(chapter_scope_ids)
+                for placement in sorted_candidates:
+                    if placement.chapter_id in chapter_scope_set:
+                        return placement
             return None
 
         return sorted_candidates[0]
@@ -438,11 +450,16 @@ class SessionService:
             params=cls._build_collect_param(obj=obj, source_type='placement'),
             user_id=user_id,
         )
+        chapter_scope_ids = await question_selector_service.resolve_chapter_scope_ids(
+            db=db,
+            chapter_id=obj.chapter_id,
+        )
         placements = await cls._query_placements_by_question_ids(
             db=db,
             question_ids=collect_result.question_ids,
             bank_id=obj.bank_id,
             chapter_id=obj.chapter_id,
+            chapter_scope_ids=chapter_scope_ids,
         )
 
         return await cls._create_session_snapshot(
@@ -484,6 +501,10 @@ class SessionService:
             question_ids=obj.question_ids,
             bank_id=obj.bank_id,
             chapter_id=obj.chapter_id,
+            chapter_scope_ids=await question_selector_service.resolve_chapter_scope_ids(
+                db=db,
+                chapter_id=obj.chapter_id,
+            ),
         )
         return await cls._create_session_snapshot(
             db=db,
@@ -523,6 +544,7 @@ class SessionService:
         question_ids: list[int],
         bank_id: int | None = None,
         chapter_id: int | None = None,
+        chapter_scope_ids: list[int] | None = None,
     ) -> list[QuestionPlacement]:
         """
         根据题目 ID 列表反查挂载
@@ -531,6 +553,7 @@ class SessionService:
         :param question_ids: 题目 ID 列表
         :param bank_id: 题库 ID
         :param chapter_id: 篇章 ID
+        :param chapter_scope_ids: 篇章及子篇章 ID 列表
         :return:
         """
         if not question_ids:
@@ -561,6 +584,7 @@ class SessionService:
                 placements=placement_map.get(question_id, []),
                 bank_id=bank_id,
                 chapter_id=chapter_id,
+                chapter_scope_ids=chapter_scope_ids,
             )
             if matched_placement is not None:
                 placements.append(matched_placement)

@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, Request
+from fastapi import APIRouter, File, Form, Path, Query, Request, UploadFile
+from starlette.responses import Response
 
 from backend.app.vocab.schema.book import (
     BatchAddWordsParam,
@@ -11,13 +12,15 @@ from backend.app.vocab.schema.book import (
     GetBookDetail,
     UpdateBookParam,
 )
+from backend.app.vocab.schema.vocab_import import VocabExcelImportResult
 from backend.app.vocab.schema.word import CreateWordParam, GetWordDetail, UpdateWordParam
 from backend.app.vocab.service.book_service import book_service
+from backend.app.vocab.service.vocab_import_service import vocab_import_service
 from backend.app.vocab.service.word_service import word_service
 from backend.common.pagination import DependsPagination
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
-from backend.database.db import CurrentSession
+from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter(prefix='/vocab/admin', tags=['单词本管理'], dependencies=[DependsJwtAuth])
 
@@ -136,4 +139,41 @@ async def get_word_detail(
 ) -> ResponseSchemaModel[GetWordDetail]:
     """获取单词详情"""
     data = await word_service.get_word_detail(db=db, pk=pk)
+    return response_base.success(data=data)
+
+
+# ============ Excel 导入 ============
+@router.get('/import/template', summary='下载单词导入模板')
+async def download_import_template() -> Response:
+    """下载 Excel 导入模板"""
+    content = await vocab_import_service.build_import_template()
+    return Response(
+        content=content,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': 'attachment; filename=vocab_import_template.xlsx'},
+    )
+
+
+@router.post('/import-excel', summary='从 Excel 导入单词')
+async def import_from_excel(
+    request: Request,
+    db: CurrentSessionTransaction,
+    file: Annotated[UploadFile, File(description='Excel 文件（.xlsx）')],
+    book_id: Annotated[int | None, Form(description='目标词书 ID，为空则仅创建单词')] = None,
+) -> ResponseSchemaModel[VocabExcelImportResult]:
+    """
+    从 Excel 导入单词
+
+    - 按模板格式填写单词、释义、例句等
+    - 支持同时关联到指定词书
+    - 已存在的单词自动跳过或仅做词书关联
+    """
+    content = await file.read()
+    rows = await vocab_import_service.parse_excel_file(content=content, filename=file.filename)
+    data = await vocab_import_service.import_from_excel(
+        db=db,
+        book_id=book_id,
+        rows=rows,
+        user_id=request.user.id,
+    )
     return response_base.success(data=data)
