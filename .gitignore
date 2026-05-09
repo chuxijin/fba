@@ -61,6 +61,10 @@ frontend/
 backend/dist/
 backend/scripts/chinese-xinhua/
 backend/scripts/output/
+backend/scripts/outputs/
+
+# 录屏/视频（过程文件）
+videos/
 
 # 调试/测试脚本
 debug_materials.py
@@ -74,6 +78,11 @@ claude.md
 # 小程序临时文件
 mini/_tmp_*
 mini/dist/
+
+# api-sdk 自动生成产物 (hey-api codegen)
+packages/api-sdk/openapi.json
+packages/api-sdk/src/generated/
+
 
 # 质量检查
 requirements-quality.txt

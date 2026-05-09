@@ -75,7 +75,22 @@
       "Read(//d/100_Work/101_Program/Proj/fba/backend/plugin/$plugin/**)",
       "Bash(done)",
       "Bash(gh api:*)",
-      "Bash(node --check 'D:/100_Work/101_Program/Proj/youanshang/app/api/gongkao.ts')"
+      "Bash(node --check 'D:/100_Work/101_Program/Proj/youanshang/app/api/gongkao.ts')",
+      "Bash(py -c \"from backend.app.quest.model import Quest, QuestClaim, QuestRewardLog; print\\('models OK'\\)\")",
+      "Read(//c/Users/19396/AppData/Local/Programs/**)",
+      "Bash(ls /c/Python*)",
+      "Bash(sed -i \"/export \\\\* from '\\\\.\\\\/category';/a export * from './cms';\" api/index.ts)",
+      "Bash(sed -i \"/export \\\\* from '\\\\.\\\\/plugin';/a export * from './quest';\" api/index.ts)",
+      "Bash(echo \"test\")",
+      "Bash(rm views/cms/slot/test.txt)",
+      "mcp__postgres__query",
+      "Bash(npm run *)",
+      "Bash(python backend/scripts/check_sdk_coverage.py)",
+      "Bash(.venv/Scripts/python.exe backend/scripts/dump_openapi.py)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe *)",
+      "Bash(npx openapi-ts *)",
+      "Bash(npx tsc *)"
     ],
     "deny": [],
     "ask": []

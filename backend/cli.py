@@ -42,6 +42,7 @@ from backend.database.db import (
     create_database_async_engine,
     create_database_async_session,
     create_database_url,
+    create_postgresql_extensions,
 )
 from backend.database.redis import RedisCli, redis_client
 from backend.plugin.core import (
@@ -289,6 +290,7 @@ async def init(db: AsyncSession, redis: RedisCli) -> None:
 
             console.note('重建数据库表')
             conn = await db.connection()
+            await create_postgresql_extensions(conn)
             await conn.run_sync(MappedBase.metadata.drop_all)
             await conn.run_sync(MappedBase.metadata.create_all)
 
@@ -427,6 +429,7 @@ async def install_plugin(  # noqa: C901
         else:
             async with async_db_session.begin() as db:
                 conn = await db.connection()
+                await create_postgresql_extensions(conn)
                 await conn.run_sync(MappedBase.metadata.create_all)
 
         if not no_sql:
