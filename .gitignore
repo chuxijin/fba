@@ -75,9 +75,8 @@ claude.md
 .playwright-mcp/
 .schemas/
 
-# 小程序临时文件
-mini/_tmp_*
-mini/dist/
+# 小程序（已迁移至独立私有仓库 fba-mini）
+mini/
 
 # api-sdk 自动生成产物 (hey-api codegen)
 packages/api-sdk/openapi.json
