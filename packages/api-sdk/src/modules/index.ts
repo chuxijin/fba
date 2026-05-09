@@ -10,6 +10,8 @@ export { createOssModule } from './oss';
 export { createMembershipModule } from './membership';
 export { createRenderBookModule } from './render-book';
 export { createActcodeModule } from './actcode';
+export { createCmsModule } from './cms';
+export { createQuestModule } from './quest';
 
 export type { BankModule } from './bank';
 export type { MaterialModule } from './material';
@@ -23,3 +25,5 @@ export type { OssModule } from './oss';
 export type { MembershipModule } from './membership';
 export type { RenderBookModule } from './render-book';
 export type { ActcodeModule } from './actcode';
+export type { CmsAdminModule, CmsModule } from './cms';
+export type { QuestAdminModule, QuestModule } from './quest';

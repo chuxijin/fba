@@ -18,6 +18,10 @@ import { createContentModule } from './modules/content';
 import type { ContentModule } from './modules/content';
 import { createActcodeModule } from './modules/actcode';
 import type { ActcodeModule } from './modules/actcode';
+import { createCmsModule } from './modules/cms';
+import type { CmsModule } from './modules/cms';
+import { createQuestModule } from './modules/quest';
+import type { QuestModule } from './modules/quest';
 import type { BankModule } from './modules/bank';
 import type { MaterialModule } from './modules/material';
 import type { PracticeModule } from './modules/practice';
@@ -33,6 +37,8 @@ export interface FbaApiSdk {
   renderBook: RenderBookModule;
   content: ContentModule;
   actcode: ActcodeModule;
+  cms: CmsModule;
+  quest: QuestModule;
   bank: BankModule;
   material: MaterialModule;
   question: QuestionModule;
@@ -51,6 +57,8 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
   const renderBook = createRenderBookModule(client);
   const content = createContentModule(client);
   const actcode = createActcodeModule(client);
+  const cms = createCmsModule(client);
+  const quest = createQuestModule(client);
 
   return {
     admin,
@@ -62,6 +70,8 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
     renderBook,
     content,
     actcode,
+    cms,
+    quest,
     bank: qbank.bank,
     material: qbank.material,
     question: qbank.question,
@@ -82,6 +92,8 @@ export type { MembershipModule } from './modules/membership';
 export type { RenderBookModule } from './modules/render-book';
 export type { ContentModule } from './modules/content';
 export type { ActcodeModule } from './modules/actcode';
+export type { CmsAdminModule, CmsModule } from './modules/cms';
+export type { QuestAdminModule, QuestModule } from './modules/quest';
 export type { BankModule } from './modules/bank';
 export type { MaterialModule } from './modules/material';
 export type { PracticeModule } from './modules/practice';
@@ -244,4 +256,46 @@ export type {
   ActcodeOrderLoginResult,
   ActcodeOrderPayload,
   ActcodeOrderVerifyResult,
+  CmsJumpType,
+  CmsSlotAction,
+  CmsSlotDeletedResult,
+  CmsSlotStatus,
+  CmsSlotType,
+  CmsSlotUpdatedResult,
+  CreateSlotParam,
+  GetActiveSlot,
+  GetSlotDetail,
+  ReportSlotActionParam,
+  SlotListParams,
+  SlotStatsResult,
+  UpdateSlotParam,
+  AdminClaimListParams,
+  CreateQuestParam,
+  GetClaimDetail,
+  GetQuestDetail,
+  GetQuestWithUserDetail,
+  MyClaimListParams,
+  QuestAbandonResult,
+  QuestClaimStatus,
+  QuestDeletedResult,
+  QuestListParams,
+  QuestRetryGrantResult,
+  QuestReviewDecision,
+  QuestRewardStatus,
+  QuestRewardType,
+  QuestStatus,
+  QuestUpdatedResult,
+  ReviewClaimParam,
+  ReviewClaimResult,
+  RevokeClaimParam,
+  RevokeClaimResult,
+  SubmitClaimParam,
+  UpdateQuestParam,
 } from './types';
+
+// === Generated SDK runtime (hey-api/openapi-ts) ===
+// 新业务推荐用法: setupSdk + 直接 import 生成方法
+//   import { setupSdk } from '@fba/api-sdk';
+//   import { getQuestList } from '@fba/api-sdk/generated';
+export { setupSdk, getSdkInstance, createClientConfig } from './runtime/axios';
+export type { SetupSdkOptions, ApiResponseError } from './runtime/axios';

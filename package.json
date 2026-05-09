@@ -1,0 +1,13 @@
+{
+  "name": "fba-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.10.0",
+  "scripts": {
+    "sdk:sync": "pnpm --filter @fba/api-sdk run gen",
+    "sdk:watch": "pnpm --filter @fba/api-sdk run gen:watch",
+    "sdk:dump": "pnpm --filter @fba/api-sdk run gen:openapi",
+    "sdk:gen": "pnpm --filter @fba/api-sdk run gen:sdk",
+    "sdk:build": "pnpm --filter @fba/api-sdk run build"
+  }
+}

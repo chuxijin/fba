@@ -46,6 +46,26 @@
         "types": "./dist/types/index.d.cts",
         "default": "./dist/types/index.cjs"
       }
+    },
+    "./runtime": {
+      "import": {
+        "types": "./dist/runtime/index.d.ts",
+        "default": "./dist/runtime/index.js"
+      },
+      "require": {
+        "types": "./dist/runtime/index.d.cts",
+        "default": "./dist/runtime/index.cjs"
+      }
+    },
+    "./generated": {
+      "import": {
+        "types": "./dist/generated/index.d.ts",
+        "default": "./dist/generated/index.js"
+      },
+      "require": {
+        "types": "./dist/generated/index.d.cts",
+        "default": "./dist/generated/index.cjs"
+      }
     }
   },
   "files": [
@@ -55,15 +75,23 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "generate": "tsx scripts/generate-types.ts"
+    "generate": "tsx scripts/generate-types.ts",
+    "gen:openapi": "node scripts/run-dump-openapi.mjs",
+    "gen:sdk": "openapi-ts",
+    "gen": "npm run gen:openapi && npm run gen:sdk && npm run build",
+    "gen:watch": "npm run gen:openapi && npm run gen:sdk && npm run dev"
   },
   "devDependencies": {
-    "axios": "^1.14.0",
+    "@hey-api/client-axios": "^0.6.0",
+    "@hey-api/openapi-ts": "^0.66.0",
     "openapi-typescript": "^7.6.1",
     "tsup": "^8.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.9.3"
   },
   "license": "MIT",
-  "packageManager": "pnpm@10.31.0+sha512.e3927388bfaa8078ceb79b748ffc1e8274e84d75163e67bc22e06c0d3aed43dd153151cbf11d7f8301ff4acb98c68bdc5cadf6989532801ffafe3b3e4a63c268"
+  "packageManager": "pnpm@10.31.0+sha512.e3927388bfaa8078ceb79b748ffc1e8274e84d75163e67bc22e06c0d3aed43dd153151cbf11d7f8301ff4acb98c68bdc5cadf6989532801ffafe3b3e4a63c268",
+  "dependencies": {
+    "axios": "^1.14.0"
+  }
 }

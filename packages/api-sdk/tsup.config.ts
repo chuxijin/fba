@@ -6,6 +6,8 @@ export default defineConfig({
     'client/index': 'src/client/index.ts',
     'modules/index': 'src/modules/index.ts',
     'types/index': 'src/types/index.ts',
+    'runtime/index': 'src/runtime/index.ts',
+    'generated/index': 'src/generated/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,

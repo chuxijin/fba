@@ -218,3 +218,46 @@ export type {
   ActcodeOrderPayload,
   ActcodeOrderVerifyResult,
 } from './actcode';
+
+// CMS
+export type {
+  CmsJumpType,
+  CmsSlotAction,
+  CmsSlotDeletedResult,
+  CmsSlotStatus,
+  CmsSlotType,
+  CmsSlotUpdatedResult,
+  CreateSlotParam,
+  GetActiveSlot,
+  GetSlotDetail,
+  ReportSlotActionParam,
+  SlotListParams,
+  SlotStatsResult,
+  UpdateSlotParam,
+} from './cms';
+
+// Quest
+export type {
+  AdminClaimListParams,
+  CreateQuestParam,
+  GetClaimDetail,
+  GetQuestDetail,
+  GetQuestWithUserDetail,
+  MyClaimListParams,
+  QuestAbandonResult,
+  QuestClaimStatus,
+  QuestDeletedResult,
+  QuestListParams,
+  QuestRetryGrantResult,
+  QuestReviewDecision,
+  QuestRewardStatus,
+  QuestRewardType,
+  QuestStatus,
+  QuestUpdatedResult,
+  ReviewClaimParam,
+  ReviewClaimResult,
+  RevokeClaimParam,
+  RevokeClaimResult,
+  SubmitClaimParam,
+  UpdateQuestParam,
+} from './quest';
