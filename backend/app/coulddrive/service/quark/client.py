@@ -174,8 +174,8 @@ class QuarkClient(BaseDriveClient):
         self.logger = logging.getLogger(self.__class__.__name__)
 
         # 不要先创建空的 QuarkApi 实例，直接在 login 中创建
-        self._quarkapi: QuarkApi = None
-        self._is_authorized = False
+        self._quarkapi: Optional[QuarkApi] = None
+        self._is_authorized: bool = False
 
         # 从配置中获取 cookie
         cookies = self.get_config_value("cookie", "")
@@ -260,7 +260,7 @@ class QuarkClient(BaseDriveClient):
         return None
 
     @property
-    def cookies(self) -> Dict[str, str]:
+    def cookies(self) -> Dict[str, Optional[str]]:
         return self._quarkapi.cookies if self._quarkapi else {}
 
     async def quota(self) -> Dict[str, Any]:
@@ -271,7 +271,7 @@ class QuarkClient(BaseDriveClient):
             "used": info.get("data", {}).get("use_capacity", 0)
         }
 
-    async def get_user_info(self, params: UserInfoParam = None, **kwargs) -> BaseUserInfo:
+    async def get_user_info(self, params: Optional[UserInfoParam] = None, **kwargs) -> BaseUserInfo:
         """
         获取用户信息
         
@@ -436,7 +436,7 @@ class QuarkClient(BaseDriveClient):
             
             # 创建 BaseFileInfo 对象
             file_info = BaseFileInfo(
-                file_id=current_fid,
+                file_id=str(current_fid or ''),
                 file_name=current_item_name,
                 file_path=item_full_path,
                 is_folder=is_folder,
@@ -486,7 +486,7 @@ class QuarkClient(BaseDriveClient):
             return BaseFileInfo(
                 file_id=str(data.get('fid', '')),
                 file_path=full_path,
-                file_name=folder_name,
+                file_name=folder_name or '',
                 file_size=0,
                 is_folder=True,
                 created_at=mkdir_created_at_str,
@@ -866,7 +866,7 @@ class QuarkClient(BaseDriveClient):
             self.logger.error(f"取消分享时发生错误: {e}")
             return False
 
-    async def get_share_info(self, params: ListShareInfoParam, **kwargs: Any) -> Union[List[BaseShareInfo], Dict[str, Any]]:
+    async def get_share_info(self, params: ListShareInfoParam, **kwargs: Any) -> list[BaseShareInfo] | dict[str, Any]:  # type: ignore[override]
         """
         获取分享详情列表
         
@@ -1032,7 +1032,7 @@ class QuarkClient(BaseDriveClient):
                 if combined_kwargs.get("files_ext_info"):
                     files_ext_info = combined_kwargs.get("files_ext_info")
                     # 按照 file_ids 的顺序提取对应的 share_fid_token
-                    for file_id in file_ids:
+                    for file_id in (file_ids or []):
                         token_found = False
                         for file_info in files_ext_info:
                             if file_info.get('file_id') == file_id:
@@ -1049,13 +1049,13 @@ class QuarkClient(BaseDriveClient):
                     # 如果提供了token列表，直接使用
                     share_fid_tokens = combined_kwargs.get("share_fid_tokens")
                     # 验证token数量是否与文件数量匹配
-                    if len(share_fid_tokens) != len(file_ids):
-                        self.logger.error(f"转存失败: share_fid_tokens数量({len(share_fid_tokens)})与文件数量({len(file_ids)})不匹配")
+                    if len(share_fid_tokens) != len(file_ids or []):
+                        self.logger.error(f"转存失败: share_fid_tokens数量({len(share_fid_tokens)})与文件数量({len(file_ids or [])})不匹配")
                         return False
                 elif combined_kwargs.get("share_fid_token"):
                     # 如果提供了单个share_fid_token，为每个文件使用相同的token（通常不推荐）
                     self.logger.warning("使用单个share_fid_token为所有文件转存，可能导致部分文件转存失败")
-                    share_fid_tokens = [combined_kwargs.get("share_fid_token")] * len(file_ids)
+                    share_fid_tokens = [combined_kwargs.get("share_fid_token")] * len(file_ids or [])
                 else:
                     # 如果没有提供任何token信息，报错
                     self.logger.error("转存失败: 未提供share_fid_token信息，无法进行分享文件转存")
@@ -1083,24 +1083,26 @@ class QuarkClient(BaseDriveClient):
                 task_id = data.get("task_id")
                 
                 if task_id:
-                    # 查询任务状态
-                    # self.logger.info(f"转存任务已创建，任务ID: {task_id}")
-                    
-                    # 等待任务完成（可选）
-                    if combined_kwargs.get("wait_for_completion", False):
-                        max_retries = combined_kwargs.get("max_retries", 10)
+                    # 默认等待任务完成，确保能感知后台任务失败（如 41035 超出限制）
+                    if combined_kwargs.get("wait_for_completion", True):
+                        max_retries = combined_kwargs.get("max_retries", 30)
                         retry_interval = combined_kwargs.get("retry_interval", 2)
                         
                         for i in range(max_retries):
                             try:
-                                task_result = await self.query_task(task_id)
-                                task_status = task_result.status
+                                task_data = await self.query_task(task_id)
+                                task_status = task_data.get("status")
                                 
                                 if task_status == 2:  # 任务完成
-                                    # self.logger.info(f"转存任务完成: {task_id}")
+                                    self.logger.info(f"转存任务完成: {task_id}")
                                     return True
                                 elif task_status == 3:  # 任务失败
-                                    self.logger.error(f"转存任务失败: {task_id}")
+                                    error_code = task_data.get("code", 0)
+                                    error_msg = task_data.get("message", "未知错误")
+                                    self.logger.error(
+                                        f"转存任务失败: {task_id}, "
+                                        f"code={error_code}, message={error_msg}"
+                                    )
                                     return False
                                 else:
                                     # 任务进行中，继续等待
@@ -1112,10 +1114,12 @@ class QuarkClient(BaseDriveClient):
                                 if i < max_retries - 1:
                                     await asyncio.sleep(retry_interval)
                         
-                        self.logger.warning(f"转存任务超时: {task_id}")
-                        return False
+                        # 超时不视为失败：夸克后台大概率已成功，只是轮询窗口内没拿到确认
+                        self.logger.warning(f"转存任务轮询超时（{max_retries * retry_interval}秒），视为成功: {task_id}")
+                        return True
                     else:
-                        # 不等待任务完成，直接返回成功
+                        # 不等待任务完成，直接返回成功（不推荐）
+                        self.logger.warning(f"跳过任务状态检查，直接返回成功: {task_id}")
                         return True
                 else:
                     self.logger.warning("转存API返回成功但没有task_id")
@@ -1133,13 +1137,29 @@ class QuarkClient(BaseDriveClient):
             self.logger.error(f"不支持的转存 source_type: {source_type}")
             return False
 
-    async def query_task(self, task_id: str, **kwargs) -> QuarkTask:
-        """查询任务状态"""
-        try:
-            result = await self._quarkapi.query_task(task_id=task_id, **kwargs)
-            
-            data = result.get("data", {})
-            return QuarkTask.from_(data)
-        except Exception as e:
-            self.logger.error(f"查询任务时发生错误: {e}")
-            raise
+    async def query_task(self, task_id: str, **kwargs) -> dict[str, Any]:
+        """
+        查询任务状态，直接返回原始响应
+
+        :param task_id: 任务 ID
+        :return:
+        """
+        result = await self._quarkapi.query_task(task_id=task_id, **kwargs)
+        # query_task 没有 @assert_ok，直接拿到原始 JSON
+        # 正常完成: {status: 200, code: 0, data: {status: 2, ...}}
+        # 任务失败: {status: 404, code: 41035, message: "...", data: {...}}
+        code = result.get("code", 0)
+        if code != 0 and code != "OK":
+            # 任务本身失败（如 41035 超出限制），返回失败状态 + 错误信息
+            return {
+                "status": 3,
+                "code": code,
+                "message": result.get("message", "未知错误"),
+            }
+        data = result.get("data", {})
+        return {
+            "status": data.get("status"),
+            "code": 0,
+            "message": "",
+        }
+

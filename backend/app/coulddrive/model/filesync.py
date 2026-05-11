@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.common.model import Base, UserMixin, id_key
+from backend.common.model import Base, TimeZone, UserMixin, id_key
 
 if TYPE_CHECKING:
     from backend.app.coulddrive.model.rule_template import RuleTemplate
@@ -34,10 +35,10 @@ class SyncConfig(Base, UserMixin):
     src_meta: Mapped[str | None] = mapped_column(Text, nullable=True, comment="源路径元数据", init=False)
     dst_meta: Mapped[str | None] = mapped_column(Text, nullable=True, comment="目标路径元数据", init=False)
     cron: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="定时任务表达式", init=False)
-    end_time: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True, comment="结束时间", init=False)
+    end_time: Mapped[datetime | None] = mapped_column(TimeZone, nullable=True, comment="结束时间", init=False)
     exclude_template_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("rule_template.id", ondelete="SET NULL", use_alter=True), nullable=True, comment="排除规则模板ID", init=False)
     rename_template_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("rule_template.id", ondelete="SET NULL", use_alter=True), nullable=True, comment="重命名规则模板ID", init=False)
-    last_sync: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True, comment="最后同步时间", init=False)
+    last_sync: Mapped[datetime | None] = mapped_column(TimeZone, nullable=True, comment="最后同步时间", init=False)
     
     # 关系
     drive_account: Mapped["DriveAccount"] = relationship(
@@ -80,7 +81,7 @@ class SyncTask(Base, UserMixin):
 
     # 可选字段
     err_msg: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误信息", init=False)
-    start_time: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True, comment="开始时间", init=False)
+    start_time: Mapped[datetime | None] = mapped_column(TimeZone, nullable=True, comment="开始时间", init=False)
     task_num: Mapped[str | None] = mapped_column(Text, nullable=True, comment="任务统计信息", init=False)
 
     # 关系

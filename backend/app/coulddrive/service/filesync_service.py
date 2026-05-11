@@ -1743,6 +1743,9 @@ class FileSyncService:
             )
             stats["pending_task_items"].append(task_item)
 
+    # 单次转存最大文件数，超过此数量自动分批，避免夸克 41035 错误
+    TRANSFER_BATCH_SIZE = 10
+
     async def transfer_files(
         self,
         service: CouldDriveService,
@@ -1758,7 +1761,7 @@ class FileSyncService:
         **kwargs
     ) -> bool:
         """
-        批量转存文件 - 构建正确的扩展参数对应关系
+        批量转存文件 - 超过 TRANSFER_BATCH_SIZE 时自动分批
 
         :param service: 网盘服务实例
         :param source_definition: 源定义
@@ -1782,6 +1785,92 @@ class FileSyncService:
                 self.logger.info(f"[任务{task_id}] transfer_files 检测到取消请求，停止转存")
                 return False
 
+        # 无需分批，直接调用单批次转存
+        if len(files) <= self.TRANSFER_BATCH_SIZE:
+            return await self._transfer_files_batch(
+                service, source_definition, target_definition,
+                files, recursion_speed, stats, task_id, db,
+                account_key=account_key, current_target_id=current_target_id, **kwargs
+            )
+
+        # 分批转存
+        total_files = len(files)
+        batch_size = self.TRANSFER_BATCH_SIZE
+        total_batches = (total_files + batch_size - 1) // batch_size
+        self.logger.info(
+            f"[任务{task_id or 'unknown'}] 文件数 {total_files} 超过单批限制 {batch_size}，"
+            f"自动分 {total_batches} 批转存"
+        )
+
+        all_ok = True
+        failed_batches = 0
+
+        for batch_idx in range(total_batches):
+            batch_start = batch_idx * batch_size
+            batch_end = min(batch_start + batch_size, total_files)
+            batch_files = files[batch_start:batch_end]
+
+            self.logger.info(
+                f"[任务{task_id or 'unknown'}] 转存第 {batch_idx + 1}/{total_batches} 批，"
+                f"文件 {batch_start + 1}-{batch_end}"
+            )
+
+            # 每批开始前检查取消
+            if task_id and db:
+                if await self._check_cancel_requested(db, task_id):
+                    self.logger.info(f"[任务{task_id}] 分批转存检测到取消请求，停止处理")
+                    return False
+
+            batch_result = await self._transfer_files_batch(
+                service, source_definition, target_definition,
+                batch_files, recursion_speed, stats, task_id, db,
+                account_key=account_key, current_target_id=current_target_id, **kwargs
+            )
+
+            if not batch_result:
+                self.logger.error(
+                    f"[任务{task_id or 'unknown'}] 第 {batch_idx + 1}/{total_batches} 批转存失败"
+                )
+                all_ok = False
+                failed_batches += 1
+
+        if failed_batches:
+            self.logger.warning(
+                f"[任务{task_id or 'unknown'}] 分批转存完成，"
+                f"失败 {failed_batches}/{total_batches} 批"
+            )
+
+        return all_ok
+
+    async def _transfer_files_batch(
+        self,
+        service: CouldDriveService,
+        source_definition: ShareSourceDefinition,
+        target_definition: DiskTargetDefinition,
+        files: list[dict[str, Any]],
+        recursion_speed: RecursionSpeed,
+        stats: dict[str, Any],
+        task_id: int | None,
+        db: AsyncSession | None = None,
+        account_key: str | None = None,
+        current_target_id: str | None = None,
+        **kwargs
+    ) -> bool:
+        """
+        单批次转存文件（内部方法），不做分批
+
+        :param service: 网盘服务实例
+        :param source_definition: 源定义
+        :param target_definition: 目标定义
+        :param files: 文件列表（数量应 <= TRANSFER_BATCH_SIZE）
+        :param recursion_speed: 递归速度
+        :param stats: 同步统计信息字典
+        :param task_id: 任务 ID
+        :param db: 数据库会话
+        :param account_key: 账户锁键
+        :param current_target_id: 当前目标目录 ID
+        :return:
+        """
         try:
             # 构建转存请求
             actual_target_id = current_target_id or target_definition.file_id
@@ -2251,14 +2340,14 @@ class FileSyncService:
                 all_files_to_transfer.append(transfer_file_info)
                 stats["files_processed"] += 1
 
-            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始批量转存 {len(all_files_to_transfer)} 个项目")
+            self.logger.info(f"[任务{task_id or 'unknown'}] 覆盖同步：开始转存 {len(all_files_to_transfer)} 个项目")
             transfer_start_time = time.time()
             transfer_result = await self.transfer_files(
                 service, source_definition, target_definition,
                 all_files_to_transfer, recursion_speed, stats, task_id, db, account_key=account_key
             )
             self.logger.info(
-                f"[任务{task_id or 'unknown'}] 覆盖同步：批量转存完成，"
+                f"[任务{task_id or 'unknown'}] 覆盖同步：转存完成，"
                 f"成功: {transfer_result}, 耗时: {time.time() - transfer_start_time:.2f}秒"
             )
 
@@ -2280,13 +2369,12 @@ class FileSyncService:
 
             if not transfer_result:
                 self.logger.warning(
-                    f"[任务{task_id or 'unknown'}] 覆盖同步批量转存失败，"
-                    f"终止当前覆盖流程: {target_definition.file_path}"
+                    f"[任务{task_id or 'unknown'}] 覆盖同步转存失败: {target_definition.file_path}"
                 )
                 elapsed = time.time() - start_overwrite_sync_time
                 self.logger.info(
                     f"[任务{task_id or 'unknown'}] 退出 _handle_overwrite_sync "
-                    f"(因批量转存失败), 耗时: {elapsed:.2f}秒"
+                    f"(转存失败), 耗时: {elapsed:.2f}秒"
                 )
                 return
             if db:

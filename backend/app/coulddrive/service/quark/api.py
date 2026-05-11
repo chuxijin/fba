@@ -273,7 +273,6 @@ class QuarkApi:
         resp = await self._request(Method.POST, url, params=params, data=data)
         return resp.json()
 
-    @assert_ok
     async def query_task(
         self,
         task_id: str,
