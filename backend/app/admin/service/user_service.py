@@ -217,6 +217,44 @@ class UserService:
         return count
 
     @staticmethod
+    async def update_username(*, db: AsyncSession, user_id: int, username: str) -> int:
+        """
+        一次性设置自定义用户名（仅 wx_ 开头的用户可用）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param username: 新用户名
+        :return:
+        """
+        import re
+
+        user = await user_dao.get(db, user_id)
+        if not user:
+            raise errors.NotFoundError(msg='用户不存在')
+
+        if not user.username.startswith('wx_'):
+            raise errors.RequestError(msg='用户名已设置，不可再次修改')
+
+        username = username.strip()
+        if not (4 <= len(username) <= 20):
+            raise errors.RequestError(msg='用户名长度需在 4-20 位之间')
+
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username):
+            raise errors.RequestError(msg='用户名需以字母开头，仅可包含字母、数字和下划线')
+
+        if username.lower().startswith('wx_'):
+            raise errors.RequestError(msg='用户名不能以 wx_ 开头')
+
+        validate_no_sensitive_words(username, '用户名')
+
+        if await user_dao.get_by_username(db, username):
+            raise errors.ConflictError(msg='用户名已被使用')
+
+        count = await user_dao.update_username(db, user_id, username)
+        await redis_client.delete(f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}')
+        return count
+
+    @staticmethod
     async def update_nickname(*, db: AsyncSession, user_id: int, nickname: str) -> int:
         """
         更新当前用户昵称

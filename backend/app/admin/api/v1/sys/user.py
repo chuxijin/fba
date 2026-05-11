@@ -139,6 +139,18 @@ async def reset_user_password(
     return response_base.fail()
 
 
+@router.put('/me/username', summary='设置自定义用户名（一次性）', dependencies=[DependsJwtAuth])
+async def update_user_username(
+    db: CurrentSessionTransaction,
+    request: Request,
+    username: Annotated[str, Body(embed=True, description='自定义用户名')],
+) -> ResponseModel:
+    count = await user_service.update_username(db=db, user_id=request.user.id, username=username)
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
 @router.put('/me/nickname', summary='更新当前用户昵称', dependencies=[DependsJwtAuth])
 async def update_user_nickname(
     db: CurrentSessionTransaction,

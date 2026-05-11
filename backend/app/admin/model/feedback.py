@@ -40,6 +40,7 @@ class Feedback(Base):
         sa.Index('idx_feedback_status_created', 'status', 'created_time'),
         sa.Index('idx_feedback_source', 'source_app', 'source_platform'),
         sa.Index('idx_feedback_target', 'target_type', 'target_id'),
+        sa.Index('idx_feedback_user_created', 'user_id', 'created_time'),
         {'comment': '系统反馈表'},
     )
 
@@ -69,3 +70,4 @@ class Feedback(Base):
 
     ip_address: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='IP 地址')
     user_agent: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='用户代理')
+    user_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='提交用户 ID（匿名为空）')

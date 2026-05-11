@@ -38,5 +38,6 @@ async def update_study_preference(
         practice_mode=param.practice_mode,
         custom_tabs=param.custom_tabs,
         mastery_threshold=param.mastery_threshold,
+        theme_mode=param.theme_mode,
     )
     return response_base.success()

@@ -28,6 +28,7 @@ class FeedbackService:
         obj: CreateFeedbackParam,
         ip_address: str | None = None,
         user_agent: str | None = None,
+        user_id: int | None = None,
     ) -> Feedback:
         """
         创建反馈
@@ -36,6 +37,7 @@ class FeedbackService:
         :param obj: 创建参数
         :param ip_address: IP 地址
         :param user_agent: 用户代理
+        :param user_id: 提交用户 ID（匿名为空）
         :return:
         """
         validate_no_sensitive_words(obj.content, '反馈内容')
@@ -46,7 +48,32 @@ class FeedbackService:
             obj=obj,
             ip_address=ip_address,
             user_agent=user_agent,
+            user_id=user_id,
         )
+
+    @staticmethod
+    async def get_my_list(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        feedback_type: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        获取当前用户的反馈分页列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param feedback_type: 反馈类型
+        :param status: 处理状态
+        :return:
+        """
+        select_stmt = feedback_dao.get_select_by_user(
+            user_id=user_id,
+            feedback_type=feedback_type,
+            status=status,
+        )
+        return await paging_data(db, select_stmt)
 
     @staticmethod
     async def get_list(*, db: AsyncSession, params: FeedbackQueryParam) -> dict[str, Any]:

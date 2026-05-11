@@ -57,6 +57,13 @@ class UserSettingsService:
         return normalize_study_domain_code(settings.get('current_domain'))
 
     @staticmethod
+    def _normalize_theme_mode(value: str | None) -> str:
+        """规范化主题模式取值，非法值统一回落为 light"""
+        if value in ('light', 'dark', 'auto'):
+            return value
+        return 'light'
+
+    @staticmethod
     async def get_study_preference(*, db: AsyncSession, user_id: int) -> GetStudyPreferenceResponse:
         """
         获取学习偏好设置
@@ -74,12 +81,14 @@ class UserSettingsService:
         custom_tabs = settings.get('custom_tabs', [])
         mastery_threshold = settings.get('mastery_threshold', 3)
         current_domain = normalize_study_domain_code(settings.get('current_domain'))
+        theme_mode = UserSettingsService._normalize_theme_mode(settings.get('theme_mode'))
 
         return GetStudyPreferenceResponse(
             current_domain=current_domain,
             practice_mode=practice_mode,
             custom_tabs=custom_tabs,
             mastery_threshold=mastery_threshold,
+            theme_mode=theme_mode,
         )
 
     @staticmethod
@@ -91,6 +100,7 @@ class UserSettingsService:
         practice_mode: str | None,
         custom_tabs: list[CustomTab] | None,
         mastery_threshold: int | None,
+        theme_mode: str | None,
     ) -> None:
         """
         更新学习偏好设置
@@ -100,6 +110,7 @@ class UserSettingsService:
         :param practice_mode: 练习模式
         :param custom_tabs: 自定义标签页
         :param mastery_threshold: 错题掌握阈值
+        :param theme_mode: 主题模式（light/dark/auto）
         """
         user = await user_account_dao.get_by_sys_user_id(db, user_id)
         if not user:
@@ -118,6 +129,9 @@ class UserSettingsService:
 
         if mastery_threshold is not None:
             current_settings['mastery_threshold'] = mastery_threshold
+
+        if theme_mode is not None:
+            current_settings['theme_mode'] = UserSettingsService._normalize_theme_mode(theme_mode)
 
         await user_account_dao.update_model(
             db,

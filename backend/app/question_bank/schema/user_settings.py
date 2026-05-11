@@ -20,6 +20,9 @@ class CustomTab(BaseModel):
     order: int = Field(description='排序')
 
 
+ThemeMode = Literal['light', 'dark', 'auto']
+
+
 class StudyPreferenceSettings(BaseModel):
     """学习偏好设置"""
 
@@ -27,6 +30,7 @@ class StudyPreferenceSettings(BaseModel):
     practice_mode: str = Field(default='practice', description='做题模式：practice/exercise/memorize')
     custom_tabs: list[CustomTab] = Field(default_factory=list, description='自定义 Tab 列表')
     mastery_threshold: int = Field(default=3, ge=1, le=20, description='错题连续答对掌握阈值')
+    theme_mode: ThemeMode = Field(default='light', description='主题模式：light/dark/auto')
 
 
 class UpdateStudyPreferenceParam(BaseModel):
@@ -36,6 +40,7 @@ class UpdateStudyPreferenceParam(BaseModel):
     practice_mode: str | None = Field(None, description='做题模式：practice/exercise/memorize')
     custom_tabs: list[CustomTab] | None = Field(None, description='自定义 Tab 列表')
     mastery_threshold: int | None = Field(None, ge=1, le=20, description='错题连续答对掌握阈值')
+    theme_mode: ThemeMode | None = Field(None, description='主题模式：light/dark/auto')
 
 
 class GetStudyPreferenceResponse(BaseModel):
@@ -45,3 +50,4 @@ class GetStudyPreferenceResponse(BaseModel):
     practice_mode: str = Field(description='做题模式：practice/exercise/memorize')
     custom_tabs: list[CustomTab] = Field(default_factory=list, description='自定义 Tab 列表')
     mastery_threshold: int = Field(default=3, description='错题连续答对掌握阈值')
+    theme_mode: ThemeMode = Field(default='light', description='主题模式：light/dark/auto')

@@ -196,6 +196,8 @@ class Settings(BaseSettings):
         'http://localhost:5175',
         'http://127.0.0.1:5500',
         'https://zyas.top',
+        'https://api.yzxj.vip',
+        'https://api-test.yzxj.vip',
         'https://admin.yzxj.vip',
         'https://home.yzxj.vip',
         'https://blog.yzxj.vip',

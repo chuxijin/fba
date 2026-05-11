@@ -4,9 +4,13 @@
 from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import re
+
 from backend.app.gongkao.crud.crud_resource import resource_dao
 from backend.app.gongkao.model.resource import GkResource
 from backend.app.gongkao.schema.resource import CreateResourceParam, UpdateResourceParam
+from backend.plugin.oss.service.storage_service import storage_service
+from backend.utils.timezone import timezone
 
 
 class ResourceService:
@@ -75,24 +79,17 @@ class ResourceService:
     @staticmethod
     async def upload_file(db: AsyncSession, file, category_id: int) -> dict:
         """
-        上传资料预览文件
+        上传资料预览文件到云存储
         
         :param db: 数据库会话
         :param file: FastAPI UploadFile 对象
         :param category_id: 分类ID
-        :return: { 'url': 相对路径, 'filename': 文件名 }
+        :return: 上传结果
         """
-        import re
-
-        from anyio import open_file
         from sqlalchemy import select
 
         from backend.app.gongkao.model.category import GkCategory
-        from backend.common.exception import errors
         from backend.common.log import log
-        from backend.core.conf import settings
-        from backend.core.path_conf import STATIC_DIR
-        from backend.utils.timezone import timezone
         
         # 解析分类路径
         safe_parts = []
@@ -124,15 +121,6 @@ class ResourceService:
 
         if not safe_parts:
             safe_parts = ['other']
-
-        if not safe_parts:
-            safe_parts = ['other']
-        
-        # 构建保存目录（支持多级）
-        resource_dir = STATIC_DIR / 'gk_resource'
-        for part in safe_parts:
-            resource_dir = resource_dir / part
-        resource_dir.mkdir(parents=True, exist_ok=True)
         
         # 构建文件名
         filename = file.filename or 'unnamed'
@@ -142,27 +130,22 @@ class ResourceService:
             new_filename = f'{filename.replace(f".{file_ext}", f"_{timestamp}")}.{file_ext}'
         else:
             new_filename = f'{filename}_{timestamp}'
-        
-        # 保存文件
-        file_path = resource_dir / new_filename
-        try:
-            async with await open_file(file_path, mode='wb') as fb:
-                while True:
-                    content = await file.read(settings.UPLOAD_READ_SIZE)
-                    if not content:
-                        break
-                    await fb.write(content)
-        except Exception as e:
-            log.error(f'上传资料文件 {new_filename} 失败：{e!s}')
-            raise errors.RequestError(msg='上传文件失败')
-        finally:
-            await file.close()
-        
-        # 返回相对路径（不含域名）
+
         category_path = '/'.join(safe_parts)
-        relative_url = f'/static/gk_resource/{category_path}/{new_filename}'
-        
-        return {'url': relative_url, 'filename': new_filename}
+        uploaded_url, object_key = await storage_service.upload_with_filename(
+            db=db,
+            file=file,
+            filename=new_filename,
+            path=f'gk_resource/{category_path}',
+            use_signed_url=False,
+        )
+        log.info('公考资料上传成功: %s', uploaded_url)
+        return {
+            'url': uploaded_url,
+            'filename': new_filename,
+            'file_type': file_ext,
+            'object_key': object_key,
+        }
 
 
 resource_service: ResourceService = ResourceService()

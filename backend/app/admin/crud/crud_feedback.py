@@ -59,6 +59,7 @@ class CRUDFeedback(CRUDPlus[Feedback]):
         obj: CreateFeedbackParam,
         ip_address: str | None = None,
         user_agent: str | None = None,
+        user_id: int | None = None,
     ) -> Feedback:
         """
         创建反馈
@@ -67,6 +68,7 @@ class CRUDFeedback(CRUDPlus[Feedback]):
         :param obj: 创建参数
         :param ip_address: IP 地址
         :param user_agent: 用户代理
+        :param user_id: 提交用户 ID（匿名为空）
         :return:
         """
         return await self.create_model(
@@ -74,7 +76,33 @@ class CRUDFeedback(CRUDPlus[Feedback]):
             obj,
             ip_address=ip_address,
             user_agent=user_agent[:512] if user_agent else None,
+            user_id=user_id,
         )
+
+    def get_select_by_user(
+        self,
+        user_id: int,
+        feedback_type: str | None = None,
+        status: str | None = None,
+    ) -> Select:
+        """
+        获取指定用户的反馈列表查询表达式
+
+        :param user_id: 用户 ID
+        :param feedback_type: 反馈类型
+        :param status: 处理状态
+        :return:
+        """
+        stmt = (
+            select(Feedback)
+            .where(Feedback.user_id == user_id)
+            .order_by(Feedback.created_time.desc())
+        )
+        if feedback_type is not None:
+            stmt = stmt.where(Feedback.feedback_type == feedback_type)
+        if status is not None:
+            stmt = stmt.where(Feedback.status == status)
+        return stmt
 
     async def update(self, db: AsyncSession, pk: int, values: dict[str, object]) -> int:
         """

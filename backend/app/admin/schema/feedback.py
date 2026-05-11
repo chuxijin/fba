@@ -65,6 +65,22 @@ class FeedbackQueryParam(SchemaBase):
     is_read: bool | None = Field(default=None, description='是否已读')
 
 
+class GetMyFeedbackItem(SchemaBase):
+    """我的反馈列表项"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description='反馈 ID')
+    feedback_type: FeedbackTypeLiteral = Field(description='反馈类型')
+    content: str = Field(description='反馈内容')
+    images: list[str] | None = Field(default=None, description='图片列表')
+    target_text: str | None = Field(default=None, description='关联目标描述')
+    status: FeedbackStatusLiteral = Field(description='处理状态')
+    reply_content: str | None = Field(default=None, description='处理回复')
+    handled_time: datetime | None = Field(default=None, description='处理时间')
+    created_time: datetime = Field(description='提交时间')
+
+
 class GetFeedbackDetail(SchemaBase):
     """反馈详情"""
 

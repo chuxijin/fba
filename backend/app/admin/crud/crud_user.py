@@ -226,6 +226,17 @@ class CRUDUser(CRUDPlus[User]):
         """
         return await self.update_model(db, user_id, {'last_password_changed_time': timezone.now()})
 
+    async def update_username(self, db: AsyncSession, user_id: int, username: str) -> int:
+        """
+        更新用户名
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param username: 新用户名
+        :return:
+        """
+        return await self.update_model(db, user_id, {'username': username})
+
     async def update_nickname(self, db: AsyncSession, user_id: int, nickname: str) -> int:
         """
         更新用户昵称

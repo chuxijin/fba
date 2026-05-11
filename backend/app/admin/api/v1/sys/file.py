@@ -9,6 +9,7 @@ from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
+from backend.database.db import CurrentSession
 
 router = APIRouter()
 
@@ -23,32 +24,13 @@ router = APIRouter()
 )
 async def upload_files(
     request: Request,
+    db: CurrentSession,
     file: Annotated[UploadFile, File()],
     folder: Annotated[str | None, Query()] = None,
 ) -> ResponseSchemaModel[dict]:
     """文件上传"""
-    relative_path = await file_service.upload(file, folder=folder)
-    
-    # 相对路径 URL
-    url = f'/static/upload/{relative_path}'
-    
-    # 获取文件详情
-    from pathlib import Path
-
-    from backend.core.path_conf import UPLOAD_DIR
-    
-    full_path_obj = UPLOAD_DIR / relative_path
-    local_path = str(full_path_obj.resolve())
-    size = full_path_obj.stat().st_size
-    file_type = Path(relative_path).suffix.lstrip('.').lower()
-    
-    return response_base.success(data={
-        'url': url,
-        'local_path': local_path,
-        'file_type': file_type,
-        'size': size,
-        'filename': Path(relative_path).name
-    })
+    result = await file_service.upload(db=db, file=file, folder=folder)
+    return response_base.success(data=result)
 
 
 @router.get(

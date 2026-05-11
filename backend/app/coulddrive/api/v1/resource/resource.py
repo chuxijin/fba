@@ -33,6 +33,7 @@ from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
+from backend.plugin.oss.service.storage_service import storage_service
 from backend.utils.timezone import timezone
 
 router = APIRouter()
@@ -499,18 +500,18 @@ async def clean_old_view_history(
     dependencies=[DependsJwtAuth]
 )
 async def upload_resource_file(
+    db: CurrentSession,
     file: Annotated[UploadFile, File(description="文件")]
 ) -> ResponseModel:
     """
-    上传资源文件
+    上传资源文件到云存储
     
+    :param db: 数据库会话
     :param file: 文件对象
     :return: 文件路径和类型
     """
     try:
         import uuid
-
-        from backend.core.path_conf import UPLOAD_DIR
         
         filename = file.filename
         ext = filename.split('.')[-1].lower() if '.' in filename else ''
@@ -519,28 +520,25 @@ async def upload_resource_file(
         # if ext not in ALLOWED_EXTENSIONS:
         #     return response_base.fail(res=CustomResponse(code=400, msg='不支持的文件类型'))
             
-        # 生成保存路径: uploads/resources/YYYYMMDD/uuid.ext
+        # 生成对象路径: resources/YYYYMMDD/uuid.ext
         today = timezone.now().strftime('%Y%m%d')
-        save_dir = UPLOAD_DIR / 'resources' / today
-        
-        await anyio.Path(save_dir).mkdir(parents=True, exist_ok=True)
             
         base_name = filename.rsplit('.', 1)[0]
         new_filename = f"{base_name}_{uuid.uuid4().hex[:8]}.{ext}"
-        save_path = save_dir / new_filename
-        
-        # 保存文件
-        await anyio.Path(save_path).write_bytes(await file.read())
-            
-        # 生成相对路径（用于前端访问）
-        # 假设静态文件挂载在 /static/upload
-        relative_path = f"/static/upload/resources/{today}/{new_filename}"
+        uploaded_url, object_key = await storage_service.upload_with_filename(
+            db=db,
+            file=file,
+            filename=new_filename,
+            path=f'resources/{today}',
+            use_signed_url=False,
+        )
         
         return response_base.success(data={
-            'url': relative_path,
-            'local_path': str(save_path),
+            'url': uploaded_url,
+            'local_path': None,
             'filename': filename,
-            'file_type': ext
+            'file_type': ext,
+            'object_key': object_key,
         })
         
     except Exception as e:

@@ -944,6 +944,21 @@ class SessionService:
             q_result = await db.execute(stmt)
             question_map: dict[int, Question] = {q.id: q for q in q_result.scalars().all()}
 
+            # 即时判题时同步错题本：客观题答对累加 correct_streak，答错重置并 +1 wrong_count
+            from backend.app.question_bank.service.user_settings_service import user_settings_service
+
+            mastery_threshold = await user_settings_service.get_mastery_threshold(db=db, user_id=user_id)
+            existing_wrongs = await wrong_question_dao.list_by_user_and_questions(
+                db=db,
+                user_id=user_id,
+                question_ids=question_ids,
+            )
+            existing_wrongs_by_qid: dict[int, list[WrongQuestionBook]] = {}
+            for wrong in existing_wrongs:
+                existing_wrongs_by_qid.setdefault(wrong.question_id, []).append(wrong)
+            wrong_create_rows: list[dict[str, Any]] = []
+            wrong_update_rows: list[dict[str, Any]] = []
+
             judge_results_map: dict[int, dict[str, Any]] = {}
             judge_time = timezone.now()
             for rd in records_dict:
@@ -1014,7 +1029,62 @@ class SessionService:
                 rd['score'] = full if is_correct else Decimal('0')
                 rd['judged_at'] = judge_time
 
+                # 同步错题本：按 question_id 宽松匹配，忽略 placement
+                placement_id = rd.get('placement_id')
+                existing_wrong_list = existing_wrongs_by_qid.get(rd['question_id'], [])
+                if is_correct:
+                    for existing_wrong in existing_wrong_list:
+                        new_streak = existing_wrong.correct_streak + 1
+                        is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
+                        mastered_time = existing_wrong.mastered_time
+                        if is_mastered and mastered_time is None:
+                            mastered_time = judge_time
+                        wrong_update_rows.append({
+                            'filter_wrong_id': existing_wrong.id,
+                            'set_wrong_count': existing_wrong.wrong_count,
+                            'set_correct_streak': new_streak,
+                            'set_last_wrong_time': existing_wrong.last_wrong_time,
+                            'set_last_practice_time': judge_time,
+                            'set_is_mastered': is_mastered,
+                            'set_mastered_time': mastered_time,
+                        })
+                else:
+                    if existing_wrong_list:
+                        for existing_wrong in existing_wrong_list:
+                            wrong_update_rows.append({
+                                'filter_wrong_id': existing_wrong.id,
+                                'set_wrong_count': existing_wrong.wrong_count + 1,
+                                'set_correct_streak': 0,
+                                'set_last_wrong_time': judge_time,
+                                'set_last_practice_time': existing_wrong.last_practice_time,
+                                'set_is_mastered': False,
+                                'set_mastered_time': None,
+                            })
+                    else:
+                        wrong_create_rows.append({
+                            'user_id': user_id,
+                            'question_id': rd['question_id'],
+                            'placement_id': placement_id,
+                            'wrong_count': 1,
+                            'correct_streak': 0,
+                            'first_wrong_time': judge_time,
+                            'last_wrong_time': judge_time,
+                            'last_practice_time': None,
+                            'is_mastered': False,
+                            'mastered_time': None,
+                            'created_by': user_id,
+                        })
+
             result['judge_results'] = list(judge_results_map.values())
+
+            if wrong_create_rows:
+                await wrong_question_dao.batch_create(db=db, rows=wrong_create_rows)
+            if wrong_update_rows:
+                await wrong_question_dao.batch_update(db=db, rows=wrong_update_rows)
+            if wrong_create_rows or wrong_update_rows:
+                from backend.app.question_bank.service.wrong_question_service import wrong_question_service
+
+                await wrong_question_service._clear_statistics_cache(user_id)
 
         # 统一写入（含即时判题结果），并复用返回记录避免再次拉取整套会话记录
         upserted_records: list[PracticeRecord] = []
@@ -1289,9 +1359,9 @@ class SessionService:
             user_id=user_id,
             question_ids=question_ids,
         )
-        existing_wrong_map: dict[tuple[int, int | None], WrongQuestionBook] = {
-            (wrong.question_id, wrong.placement_id): wrong for wrong in existing_wrongs
-        }
+        existing_wrong_by_qid: dict[int, list[WrongQuestionBook]] = {}
+        for wrong in existing_wrongs:
+            existing_wrong_by_qid.setdefault(wrong.question_id, []).append(wrong)
 
         subjective_records = [
             record
@@ -1404,20 +1474,20 @@ class SessionService:
                     'is_correct': is_correct,
                 })
 
-            # 3d. 汇总错题本
-            wrong_key = (record.question_id, placement_id)
-            existing_wrong = existing_wrong_map.get(wrong_key)
+            # 3d. 汇总错题本（按 question_id 宽松匹配，忽略 placement）
+            existing_wrong_list = existing_wrong_by_qid.get(record.question_id, [])
             if not is_correct:
-                if existing_wrong:
-                    wrong_update_rows.append({
-                        'filter_wrong_id': existing_wrong.id,
-                        'set_wrong_count': existing_wrong.wrong_count + 1,
-                        'set_correct_streak': 0,
-                        'set_last_wrong_time': submit_time,
-                        'set_last_practice_time': existing_wrong.last_practice_time,
-                        'set_is_mastered': False,
-                        'set_mastered_time': None,
-                    })
+                if existing_wrong_list:
+                    for existing_wrong in existing_wrong_list:
+                        wrong_update_rows.append({
+                            'filter_wrong_id': existing_wrong.id,
+                            'set_wrong_count': existing_wrong.wrong_count + 1,
+                            'set_correct_streak': 0,
+                            'set_last_wrong_time': submit_time,
+                            'set_last_practice_time': existing_wrong.last_practice_time,
+                            'set_is_mastered': False,
+                            'set_mastered_time': None,
+                        })
                 else:
                     wrong_create_rows.append({
                         'user_id': user_id,
@@ -1433,7 +1503,7 @@ class SessionService:
                         'created_by': user_id,
                     })
             else:
-                if existing_wrong:
+                for existing_wrong in existing_wrong_list:
                     new_streak = existing_wrong.correct_streak + 1
                     is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
                     mastered_time = existing_wrong.mastered_time

@@ -4,25 +4,49 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.common.exception.errors import NotFoundError
 from backend.core.path_conf import UPLOAD_DIR
-from backend.utils.file_ops import upload_file, upload_file_verify
+from backend.plugin.oss.service.storage_service import storage_service
+from backend.utils.file_ops import upload_file_verify
 from backend.utils.timezone import timezone
 
 
 class FileService:
     @staticmethod
-    async def upload(file: UploadFile, folder: str | None = None) -> str:
+    async def upload(db: AsyncSession, file: UploadFile, folder: str | None = None) -> dict:
         """
         上传文件
 
+        :param db: 数据库会话
         :param file: 文件对象
         :param folder: 目标文件夹
-        :return: 文件名
+        :return: 上传结果
         """
         upload_file_verify(file)
-        return await upload_file(file, folder=folder)
+        upload_path = 'sys/upload'
+        if folder:
+            normalized_folder = folder.strip('/').replace('\\', '/')
+            if '..' in normalized_folder:
+                raise NotFoundError(msg='非法的文件夹路径')
+            if normalized_folder:
+                upload_path = f'{upload_path}/{normalized_folder}'
+
+        url, object_key = await storage_service.upload(
+            db=db,
+            file=file,
+            path=upload_path,
+            use_signed_url=False,
+        )
+        return {
+            'url': url,
+            'local_path': None,
+            'file_type': Path(file.filename or '').suffix.lstrip('.').lower(),
+            'size': getattr(file, 'size', None),
+            'filename': Path(file.filename or '').name,
+            'object_key': object_key,
+        }
 
     @staticmethod
     def list(

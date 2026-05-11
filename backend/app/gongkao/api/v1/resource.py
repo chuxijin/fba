@@ -85,6 +85,6 @@ async def upload_gk_resource_file(
     category_id: Annotated[int, Query(description='分类 ID')],
     db: CurrentSession,
 ) -> ResponseModel:
-    """上传资料预览文件，文件将保存到 static/gk_resource/{分类路径}/ 目录下"""
+    """上传资料预览文件到云存储"""
     result = await resource_service.upload_file(db, file, category_id)
     return response_base.success(data=result)
