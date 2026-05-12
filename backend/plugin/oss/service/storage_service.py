@@ -375,5 +375,23 @@ class StorageService:
         )
         return url, object_key
 
+    async def delete_object(self, db: AsyncSession, object_key: str) -> bool:
+        """
+        Delete a single object by key using configured provider.
+
+        :param db: db session
+        :param object_key: object key
+        :return:
+        """
+        if not object_key:
+            return False
+
+        cfg = await self._load_runtime_config(db)
+        provider = self._resolve_provider(cfg.provider)
+        log.info(f'[OSS] delete begin provider={cfg.provider} object_key={object_key}')
+        ok = await provider.delete(object_key)
+        log.info(f'[OSS] delete done provider={cfg.provider} object_key={object_key} ok={ok}')
+        return ok
+
 
 storage_service = StorageService()

@@ -4,8 +4,10 @@ import json
 
 from sqlalchemy.exc import IntegrityError
 
-from backend.app.actcode.crud.crud_actcode import actcode_batch_dao, actcode_dao
+from backend.app.actcode.crud.crud_actcode import actcode_batch_dao, actcode_dao, actcode_usage_dao
 from backend.app.actcode.model import Actcode
+from backend.app.actcode.service.activate_service import activate_service
+from backend.app.membership.service.membership_service import membership_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.core.conf import settings
@@ -233,6 +235,9 @@ class WebhookService:
                 await push_log_service.update_log_status(push_log_id, process_status=1, process_result=msg)
                 return {'success': 'true', 'message': f'发货推送已记录(无匹配批次): {order_no}'}
 
+            over_capacity = False
+            batch_snapshot: dict[str, int | str] = {}
+
             async with async_db_session.begin() as db:
                 # 检查激活码是否已存在（去重）
                 existing = await actcode_dao.get_by_code(db, order_no)
@@ -248,6 +253,16 @@ class WebhookService:
                 if not batch:
                     raise errors.NotFoundError(msg=f'激活码批次不存在(batch_id={batch_id})')
 
+                # 容量软告警预检：total_count>0 且已用 >= 上限时仅记录，不阻断写入
+                if batch.total_count > 0 and batch.used_count >= batch.total_count:
+                    over_capacity = True
+                    batch_snapshot = {
+                        'batch_id': batch.id,
+                        'batch_name': batch.name,
+                        'used_count': batch.used_count,
+                        'total_count': batch.total_count,
+                    }
+
                 # 创建激活码：code = 订单号
                 actcode = Actcode(
                     batch_id=batch_id,
@@ -259,8 +274,30 @@ class WebhookService:
                 await actcode_batch_dao.increment_used_count(db, batch_id)
 
             log.info(f'激活码创建成功: {order_no}, batch_id={batch_id}, platform={platform}')
+            result_msg = f'激活码已创建: {order_no}, batch_id={batch_id}'
+
+            if over_capacity:
+                log.warning(
+                    f'激活码批次已超额仍写入: batch_id={batch_snapshot["batch_id"]}, '
+                    f'used={batch_snapshot["used_count"]}, total={batch_snapshot["total_count"]}, order_no={order_no}'
+                )
+                await notify_service.send(
+                    title='激活码批次已超额',
+                    content=(
+                        f'批次ID: {batch_snapshot["batch_id"]}\n'
+                        f'批次名称: {batch_snapshot["batch_name"]}\n'
+                        f'已用数量: {batch_snapshot["used_count"]}\n'
+                        f'总数上限: {batch_snapshot["total_count"]}\n'
+                        f'本次订单仍已写入: {order_no}\n'
+                        f'建议运营尽快扩容 total_count 或下架活动'
+                    ),
+                    options={'tags': '阿奇索|批次超额'},
+                    source='agiso_webhook',
+                )
+                result_msg = f'{result_msg}; 批次已超额, 已发告警'
+
             await push_log_service.update_log_status(
-                push_log_id, process_status=1, process_result=f'激活码已创建: {order_no}, batch_id={batch_id}'
+                push_log_id, process_status=1, process_result=result_msg
             )
             return {'success': 'true', 'message': f'激活码已创建: {order_no}'}
 
@@ -285,7 +322,7 @@ class WebhookService:
         data: dict,
     ) -> dict[str, str]:
         """
-        处理退款推送：删除对应的激活码，如已被使用则通知告警
+        处理退款推送：未使用激活码直接删除；已使用激活码反向回收会员时长
 
         :param order_no: 订单编号
         :param push_log_id: 推送日志ID
@@ -294,34 +331,85 @@ class WebhookService:
         :return:
         """
         try:
+            outcome: str = ''
+            outcome_msg: str = ''
+            need_alert: bool = False
+            alert_payload: dict[str, str] = {}
+
             async with async_db_session.begin() as db:
                 actcode = await actcode_dao.get_by_code(db, order_no)
                 if not actcode:
-                    msg = f'退款订单无对应激活码: {order_no}'
-                    log.info(msg)
-                    await push_log_service.update_log_status(push_log_id, process_status=1, process_result=msg)
-                    return {'success': 'true', 'message': msg}
+                    outcome = 'no_code'
+                    outcome_msg = f'退款订单无对应激活码: {order_no}'
+                elif actcode.status != 1:
+                    # 未使用，直接删除
+                    await actcode_dao.delete_model(db, actcode.id)
+                    outcome = 'deleted'
+                    outcome_msg = f'退款激活码已删除: {order_no}'
+                else:
+                    # 已使用，定位绑定用户后反向回收
+                    usage = await actcode_usage_dao.get_by_code_id(db, actcode.id)
+                    if not usage:
+                        outcome = 'revoke_failed'
+                        outcome_msg = f'激活码标记已使用但无使用记录: {order_no}, actcode_id={actcode.id}'
+                        need_alert = True
+                    else:
+                        try:
+                            user_id = int(usage.user_id)
+                        except (TypeError, ValueError):
+                            outcome = 'revoke_failed'
+                            outcome_msg = (
+                                f'退款订单激活码绑定 user_id 异常: {order_no}, user_id={usage.user_id}'
+                            )
+                            need_alert = True
+                        else:
+                            revoked = await membership_service.revoke_by_source_key(
+                                db,
+                                user_id=user_id,
+                                source=activate_service.ORDER_SOURCE,
+                                original_source_key=activate_service._build_source_key(order_no),
+                                revoke_source_key=activate_service._build_refund_source_key(order_no),
+                                source_detail=f'refund order_no={order_no}',
+                                remark='退款撤销',
+                            )
+                            if revoked is None:
+                                outcome = 'revoke_failed'
+                                outcome_msg = (
+                                    f'未定位到原发放流水，无法撤销会员: {order_no}, user_id={user_id}'
+                                )
+                                need_alert = True
+                                alert_payload = {'user_id': str(user_id)}
+                            else:
+                                outcome = 'revoked'
+                                outcome_msg = (
+                                    f'退款已撤销会员: {order_no}, user_id={user_id}, '
+                                    f'new_valid_to={revoked.valid_to}, status={revoked.status}'
+                                )
 
-                if actcode.status == 1:
-                    # 已被使用，通知告警
-                    msg = f'退款订单激活码已被使用: {order_no}, actcode_id={actcode.id}'
-                    log.warning(msg)
-                    await push_log_service.update_log_status(push_log_id, process_status=1, process_result=msg)
-                    await notify_service.send(
-                        title='退款订单激活码已被使用',
-                        content=f'订单号: {order_no}\n平台: {platform}\n激活码ID: {actcode.id}\n需人工处理',
-                        options={'tags': '阿奇索|退款告警'},
-                        source='agiso_webhook',
-                    )
-                    return {'success': 'true', 'message': msg}
+            if outcome == 'no_code':
+                log.info(outcome_msg)
+            elif outcome == 'revoke_failed':
+                log.warning(outcome_msg)
+            else:
+                log.info(outcome_msg)
 
-                # 未使用，直接删除
-                await actcode_dao.delete_model(db, actcode.id)
+            await push_log_service.update_log_status(push_log_id, process_status=1, process_result=outcome_msg)
 
-            msg = f'退款激活码已删除: {order_no}'
-            log.info(msg)
-            await push_log_service.update_log_status(push_log_id, process_status=1, process_result=msg)
-            return {'success': 'true', 'message': msg}
+            if need_alert:
+                await notify_service.send(
+                    title='退款撤销会员失败',
+                    content=(
+                        f'订单号: {order_no}\n'
+                        f'平台: {platform}\n'
+                        f'用户ID: {alert_payload.get("user_id", "未知")}\n'
+                        f'原因: {outcome_msg}\n'
+                        f'需人工处理'
+                    ),
+                    options={'tags': '阿奇索|退款告警'},
+                    source='agiso_webhook',
+                )
+
+            return {'success': 'true', 'message': outcome_msg}
 
         except Exception as e:
             log.error(f'处理退款推送失败: {e}')

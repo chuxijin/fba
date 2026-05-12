@@ -58,6 +58,7 @@ class RenderBookJob(Base):
     material_count: Mapped[int | None] = mapped_column(sa.Integer, default=None, comment='材料数量')
     output_path: Mapped[str | None] = mapped_column(sa.String(1000), default=None, comment='主输出路径或地址')
     error_message: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='错误信息')
+    del_flag: Mapped[bool] = mapped_column(default=False, comment='删除标志（False 存在 True 删除）')
 
     files: Mapped[list['RenderBookJobFile']] = relationship(
         init=False,

@@ -33,8 +33,10 @@ class ActivateService:
 
     ORDER_SOURCE = 'actcode_order'
     ORDER_SOURCE_PREFIX = 'actcode_order:'
+    ORDER_REFUND_SOURCE_PREFIX = 'actcode_order_refund:'
     ORDER_REGISTER_CHANNEL = 'agiso_order'
     ORDER_USERNAME_PREFIX = 'ag'
+    ORDER_DEFAULT_PASSWORD = '123456'
 
     @classmethod
     def _build_source_key(cls, order_no: str) -> str:
@@ -49,6 +51,20 @@ class ActivateService:
             return source_key
         digest = hashlib.sha1(order_no.encode('utf-8'), usedforsecurity=False).hexdigest()[:24]
         return f'{cls.ORDER_SOURCE_PREFIX}{digest}'
+
+    @classmethod
+    def _build_refund_source_key(cls, order_no: str) -> str:
+        """
+        构建退款回收幂等键
+
+        :param order_no: 订单号
+        :return:
+        """
+        source_key = f'{cls.ORDER_REFUND_SOURCE_PREFIX}{order_no}'
+        if len(source_key) <= 64:
+            return source_key
+        digest = hashlib.sha1(order_no.encode('utf-8'), usedforsecurity=False).hexdigest()[:24]
+        return f'{cls.ORDER_REFUND_SOURCE_PREFIX}{digest}'
 
     @staticmethod
     def _normalize_order_input(order_input: str) -> str:
@@ -228,7 +244,7 @@ class ActivateService:
         """
         username = await cls._generate_username(db)
         salt = bcrypt.gensalt()
-        password = get_hash_password(secrets.token_urlsafe(18), salt)
+        password = get_hash_password(cls.ORDER_DEFAULT_PASSWORD, salt)
         nickname = f'用户{order_no[-6:]}' if len(order_no) >= 6 else username
 
         return await user_dao.create_user_with_roles(

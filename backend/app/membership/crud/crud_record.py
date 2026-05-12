@@ -76,5 +76,38 @@ class CRUDMembershipRecord(CRUDPlus[MembershipRecord]):
             op_type__eq=op_type,
         )
 
+    async def get_grant_by_source_key(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        source: str,
+        source_key: str,
+    ) -> MembershipRecord | None:
+        """
+        按来源幂等键定位发放类流水(用于反向回收)
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param source: 来源
+        :param source_key: 原始发放幂等键
+        :return:
+        """
+        from sqlalchemy import select
+
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.user_id == user_id,
+                self.model.source == source,
+                self.model.source_key == source_key,
+                self.model.op_type.in_(['open', 'add_days', 'grant']),
+            )
+            .order_by(self.model.created_time.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
 
 membership_record_dao: CRUDMembershipRecord = CRUDMembershipRecord(MembershipRecord)

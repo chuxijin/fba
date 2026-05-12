@@ -114,6 +114,64 @@ class QiniuKodoProvider:
         """
         return await self._upload_sync(context)
 
+    async def delete(self, object_key: str) -> bool:
+        """
+        Delete object by key.
+
+        :param object_key: object key
+        :return:
+        """
+        return await self._delete_sync(object_key)
+
+    @sync_to_async
+    def _delete_sync(self, object_key: str) -> bool:
+        """
+        Delete object by key in sync thread.
+
+        :param object_key: object key
+        :return:
+        """
+        try:
+            from qiniu import Auth, BucketManager
+
+            self._disable_region_persist_cache()
+
+            access_key = str(settings.QINIU_KODO_ACCESS_KEY).strip()
+            secret_key = str(settings.QINIU_KODO_SECRET_KEY).strip()
+            bucket_name = str(settings.QINIU_KODO_BUCKET).strip() or str(settings.QINIU_KODO_BUCKET_NAME).strip()
+
+            if not access_key or not secret_key or not bucket_name:
+                raise errors.RequestError(msg='七牛云 Kodo 配置不完整，请检查环境变量')
+
+            auth = Auth(access_key, secret_key)
+            bucket_manager = BucketManager(auth)
+
+            def delete_once() -> tuple[bool, int]:
+                _, info_inner = bucket_manager.delete(bucket_name, object_key)
+                status_code_inner = getattr(info_inner, 'status_code', 0)
+                # 200 = 删除成功；612 = 资源不存在，按已删除处理
+                return status_code_inner in (200, 612), status_code_inner
+
+            try:
+                ok, status_code = delete_once()
+            except OSError as exc:
+                # Windows 下 region cache 文件冲突，清理后重试
+                if getattr(exc, 'winerror', None) == 183:
+                    self._cleanup_region_cache()
+                    ok, status_code = delete_once()
+                else:
+                    raise
+
+            if ok:
+                return True
+            log.warning(f'七牛云删除返回异常 object_key={object_key} status={status_code}')
+            return False
+        except errors.RequestError:
+            raise
+        except Exception as exc:
+            log.warning(f'七牛云删除失败 object_key={object_key}: [{type(exc).__name__}] {exc!r}')
+            return False
+
     @sync_to_async
     def _upload_sync(self, context: ProviderUploadContext) -> str:
         """

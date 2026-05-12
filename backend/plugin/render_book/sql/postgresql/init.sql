@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS render_book_job (
     material_count INTEGER DEFAULT NULL,
     output_path VARCHAR(1000) DEFAULT NULL,
     error_message TEXT DEFAULT NULL,
+    del_flag BOOLEAN NOT NULL DEFAULT FALSE,
     created_time TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_time TIMESTAMPTZ DEFAULT NULL,
     CONSTRAINT ck_render_book_job_mode CHECK (mode IN ('preview','final')),

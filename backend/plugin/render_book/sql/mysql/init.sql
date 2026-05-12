@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS render_book_job (
     material_count INT NULL,
     output_path VARCHAR(1000) NULL,
     error_message LONGTEXT NULL,
+    del_flag BOOLEAN NOT NULL DEFAULT FALSE,
     created_time DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_time DATETIME(6) NULL DEFAULT NULL,
     UNIQUE KEY uq_render_book_job_job_id (job_id),

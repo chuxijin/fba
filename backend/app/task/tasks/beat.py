@@ -71,4 +71,8 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'release_expired_quest_claims',
         'schedule': TzAwareCrontab('*/5'),
     },
+    '清理过期题本': {
+        'task': 'cleanup_expired_render_books',
+        'schedule': TzAwareCrontab('0', '4'),
+    },
 }

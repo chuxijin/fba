@@ -360,6 +360,24 @@ async def get_render_job(
     return response_base.success(data=_sanitize_render_job_for_client(job))
 
 
+@router.delete('/jobs/{job_id}', summary='删除题本渲染任务（软删除）')
+async def delete_render_job(
+    request: Request,
+    job_id: str,
+    db: CurrentSession,
+) -> ResponseSchemaModel[None]:
+    job = await render_service.get_job(job_id, db=db)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Render job '{job_id}' not found.",
+        )
+    _ensure_render_job_access(request, job)
+    await render_service.soft_delete_job(db=db, job_id=job_id)
+    await db.commit()
+    return response_base.success()
+
+
 @router.get('/jobs/{job_id}/files/{file_kind}', summary='下载题本正式文件')
 async def download_render_job_file(
     request: Request,

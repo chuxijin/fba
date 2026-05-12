@@ -42,6 +42,33 @@ class AliyunOssProvider:
         """
         return await self._upload_sync(context)
 
+    async def delete(self, object_key: str) -> bool:
+        """
+        Delete object by key.
+
+        :param object_key: object key
+        :return:
+        """
+        return await self._delete_sync(object_key)
+
+    @sync_to_async
+    def _delete_sync(self, object_key: str) -> bool:
+        """
+        Delete object by key in sync thread.
+
+        :param object_key: object key
+        :return:
+        """
+        try:
+            bucket = self._get_bucket()
+            bucket.delete_object(object_key)
+            return True
+        except errors.RequestError:
+            raise
+        except Exception as exc:
+            log.warning(f'阿里云删除失败 object_key={object_key}: [{type(exc).__name__}] {exc!r}')
+            return False
+
     @sync_to_async
     def _upload_sync(self, context: ProviderUploadContext) -> str:
         """

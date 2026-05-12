@@ -478,6 +478,18 @@ class RenderService:
     async def mark_job_running(self, *, db: AsyncSession, job_id: str) -> RenderJobRead:
         return await self.update_job_status(db=db, job_id=job_id, status='running')
 
+    async def soft_delete_job(self, *, db: AsyncSession, job_id: str) -> None:
+        """
+        软删除题本任务（用户视角：从「我的题本」列表中移除）
+
+        :param db: 数据库会话
+        :param job_id: 外部任务 ID
+        :return:
+        """
+        count = await render_book_job_dao.soft_delete_by_job_id(db, job_id=job_id)
+        if count == 0:
+            raise errors.NotFoundError(msg='渲染任务不存在')
+
     async def mark_job_succeeded(
         self,
         *,
@@ -713,6 +725,8 @@ class RenderService:
                 preview_paths = executor_result.get('preview_download_paths', [])
                 if preview_paths and variant in ('questions_only', 'combined_inline', 'combined_appendix'):
                     preview_urls = []
+                    preview_object_keys = []
+                    preview_local_paths = []
                     for idx, artifact_path in enumerate(preview_paths):
                         try:
                             downloaded_preview = await self._download_executor_artifact(
@@ -723,13 +737,16 @@ class RenderService:
                                 required=False,
                             )
                             if downloaded_preview and downloaded_preview.exists():
+                                preview_local_paths.append(str(downloaded_preview))
                                 if upload_to_oss:
-                                    url, _ = await self._upload_local_file_to_oss(
+                                    url, object_key = await self._upload_local_file_to_oss(
                                         db=db,
                                         job_id=job.job_id,
                                         output_file=downloaded_preview,
                                         filename=downloaded_preview.name,
                                     )
+                                    if object_key:
+                                        preview_object_keys.append(object_key)
                                     preview_urls.append(url if url else str(downloaded_preview))
                                 else:
                                     preview_urls.append(str(downloaded_preview))
@@ -740,6 +757,10 @@ class RenderService:
                         # Append preview URLs to job metadata
                         meta = dict(job.metadata_json or {})
                         meta['preview_urls'] = preview_urls
+                        if preview_object_keys:
+                            meta['preview_object_keys'] = preview_object_keys
+                        if preview_local_paths:
+                            meta['preview_local_paths'] = preview_local_paths
                         job.metadata_json = meta
                         await db.flush()
 

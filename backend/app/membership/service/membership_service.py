@@ -19,6 +19,8 @@ from backend.app.membership.model.plan import MembershipPlan
 from backend.app.membership.model.record import MembershipRecord
 from backend.app.membership.model.tier import MembershipTier
 from backend.app.membership.schema.membership import OpenMembershipParam
+from backend.app.question_bank.crud.crud_user_message import user_message_dao
+from backend.app.question_bank.schema.user_message import CreateUserMessageParam
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.database.db import async_db_session
@@ -27,6 +29,8 @@ from backend.utils.timezone import timezone
 
 class MembershipService:
     """会员服务"""
+
+    MEMBERSHIP_CENTER_LINK = '/pkg/mine/membership-center'
 
     @staticmethod
     async def _ensure_user_role(db: AsyncSession, *, user_id: int, role_id: int) -> None:
@@ -235,6 +239,21 @@ class MembershipService:
             f'membership grant success: user_id={user_id}, tier={membership.tier_code}, '
             f'plan_id={plan.id}, days={grant_days}, source={source}, source_key={source_key}'
         )
+
+        if op_type in ('open', 'add_days'):
+            await MembershipService._send_grant_notification(
+                db,
+                user_id=user_id,
+                tier=membership.tier_code,
+                tier_name=membership.tier_name,
+                plan=plan,
+                op_type=op_type,
+                days=grant_days,
+                valid_to=valid_to,
+                source=source,
+                source_key=source_key,
+            )
+
         return membership
 
     @staticmethod
@@ -294,6 +313,212 @@ class MembershipService:
             source_detail=source_detail,
             remark=remark,
         )
+
+    @staticmethod
+    async def _send_grant_notification(
+        db: AsyncSession,
+        *,
+        user_id: int,
+        tier: str,
+        tier_name: str,
+        plan: MembershipPlan,
+        op_type: str,
+        days: int,
+        valid_to,
+        source: str,
+        source_key: str,
+    ) -> None:
+        """
+        在会员发放成功后投递个人消息，失败仅记录日志不影响主流程
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param tier: 等级编码
+        :param tier_name: 等级名称
+        :param plan: 会员计划
+        :param op_type: 操作类型(open/add_days)
+        :param days: 本次发放天数
+        :param valid_to: 新的到期时间
+        :param source: 来源
+        :param source_key: 来源幂等键
+        :return:
+        """
+        valid_to_display = valid_to.strftime('%Y-%m-%d') if valid_to else '永久'
+        if op_type == 'open':
+            title = '会员开通成功'
+            content = f'您的「{tier_name}」会员已开通，有效期至 {valid_to_display}'
+        else:
+            title = '会员时长已增加'
+            content = f'您的「{tier_name}」会员已增加 {days} 天，有效期至 {valid_to_display}'
+
+        message_param = CreateUserMessageParam(
+            target_type='user',
+            user_id=user_id,
+            title=title,
+            content=content,
+            message_type='system',
+            link_url=MembershipService.MEMBERSHIP_CENTER_LINK,
+            payload={
+                'event': op_type,
+                'plan_id': plan.id,
+                'plan_name': plan.name,
+                'tier_code': tier,
+                'tier_name': tier_name,
+                'days': days,
+                'valid_to': valid_to.isoformat() if valid_to else None,
+                'source': source,
+                'source_key': source_key,
+            },
+            publish_time=timezone.now(),
+        )
+
+        try:
+            async with db.begin_nested():
+                await user_message_dao.create(db, message_param)
+        except Exception as exc:
+            log.warning(
+                f'membership notification failed (ignored): '
+                f'user_id={user_id}, op_type={op_type}, source_key={source_key}, error={exc}'
+            )
+
+    @staticmethod
+    async def revoke_by_source_key(
+        db: AsyncSession,
+        *,
+        user_id: int,
+        source: str,
+        original_source_key: str,
+        revoke_source_key: str,
+        source_detail: str | None = None,
+        remark: str | None = None,
+    ) -> UserMembership | None:
+        """
+        按原发放幂等键反向回收会员时长
+
+        定位原 grant 流水的 valid_to_after - valid_to_before 增量，
+        将该增量从当前 valid_to 回退；回退后若 valid_to <= now 且当前状态为生效则标记过期，
+        同时写一条 op_type='revoke' 流水并对称扣减用户角色有效期；
+        其它来源的会员时长不受影响
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param source: 来源
+        :param original_source_key: 原始发放幂等键
+        :param revoke_source_key: 回收流水使用的幂等键
+        :param source_detail: 来源详情
+        :param remark: 备注
+        :return:
+        """
+        grant_record = await membership_record_dao.get_grant_by_source_key(
+            db,
+            user_id=user_id,
+            source=source,
+            source_key=original_source_key,
+        )
+        if not grant_record:
+            log.warning(
+                f'membership revoke skipped (no grant record): '
+                f'user_id={user_id}, source={source}, source_key={original_source_key}'
+            )
+            return None
+
+        if not grant_record.valid_to_before or not grant_record.valid_to_after:
+            log.warning(
+                f'membership revoke skipped (grant record missing valid_to snapshots): '
+                f'record_id={grant_record.id}'
+            )
+            return None
+
+        delta = grant_record.valid_to_after - grant_record.valid_to_before
+        delta_days = delta.days
+        if delta_days <= 0:
+            log.warning(
+                f'membership revoke skipped (non-positive delta_days={delta_days}): '
+                f'record_id={grant_record.id}'
+            )
+            return None
+
+        tier = await membership_tier_dao.select_model(db, grant_record.tier_id)
+        if not tier:
+            log.warning(f'membership revoke skipped (tier not found): tier_id={grant_record.tier_id}')
+            return None
+
+        membership = await user_membership_dao.get_by_user_and_family(
+            db,
+            user_id,
+            tier.family_code,
+            for_update=True,
+        )
+        if not membership:
+            log.warning(
+                f'membership revoke skipped (membership row missing): '
+                f'user_id={user_id}, family_code={tier.family_code}'
+            )
+            return None
+
+        now = timezone.now()
+        valid_to_before = membership.valid_to
+        new_valid_to = valid_to_before - delta if valid_to_before else None
+        if (
+            new_valid_to is not None
+            and membership.valid_from is not None
+            and new_valid_to < membership.valid_from
+        ):
+            new_valid_to = membership.valid_from
+
+        new_status = membership.status
+        if new_status == 1 and new_valid_to is not None and new_valid_to <= now:
+            new_status = 2
+
+        await user_membership_dao.update_model(
+            db,
+            membership.id,
+            {
+                'valid_to': new_valid_to,
+                'status': new_status,
+            },
+        )
+        membership.valid_to = new_valid_to
+        membership.status = new_status
+
+        revoke_record = MembershipRecord(
+            user_id=user_id,
+            family_code=tier.family_code,
+            tier_id=membership.tier_id,
+            plan_id=grant_record.plan_id,
+            op_type='revoke',
+            days=-delta_days,
+            exp_delta=0,
+            source=source,
+            source_key=revoke_source_key,
+            source_detail=source_detail,
+            valid_to_before=valid_to_before,
+            valid_to_after=new_valid_to,
+            remark=remark,
+        )
+        db.add(revoke_record)
+
+        try:
+            await db.flush()
+        except IntegrityError as exc:
+            raise errors.RequestError(msg='revoke_source_key 已使用，拒绝重复回收') from exc
+
+        if grant_record.plan_id is not None:
+            plan = await membership_plan_dao.select_model(db, grant_record.plan_id)
+            if plan:
+                await user_role_expiry_service.reduce_expiry(
+                    db,
+                    user_id=user_id,
+                    role_id=plan.role_id,
+                    reduce_days=delta_days,
+                )
+
+        await user_cache_manager.clear([user_id])
+        log.info(
+            f'membership revoke success: user_id={user_id}, family={tier.family_code}, '
+            f'delta_days={delta_days}, new_valid_to={new_valid_to}, status={new_status}'
+        )
+        return membership
 
     @staticmethod
     async def get_user_membership_info(db: AsyncSession, *, user_id: int) -> Sequence[UserMembership]:

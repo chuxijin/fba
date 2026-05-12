@@ -30,3 +30,12 @@ class StorageProvider(Protocol):
         :return:
         """
         ...
+
+    async def delete(self, object_key: str) -> bool:
+        """
+        Delete object by key. Return True if deleted or not existed.
+
+        :param object_key: object key
+        :return:
+        """
+        ...
