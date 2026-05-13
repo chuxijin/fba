@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import asyncio
+
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -8,7 +10,6 @@ import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.model import PracticeRecord, PracticeSession, UserCheckIn, UserPracticeStats
 from backend.app.question_bank.schema.home import (
     CheckInInfo,
@@ -18,6 +19,7 @@ from backend.app.question_bank.schema.home import (
     WeekPracticeStats,
 )
 from backend.app.question_bank.service.rank_service import rank_service
+from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
 
 
@@ -35,13 +37,43 @@ class HomeService:
         """
         today = timezone.now().date()
 
-        # 1. 打卡汇总
-        recent_dates, total_check_in_days = await HomeService._get_check_in_summary(db, user_id)
+        # 5 个独立查询并发执行，每个使用独立 session 避免单连接串行
+        async def _run_check_in() -> tuple[list[date], int]:
+            async with async_db_session() as session:
+                return await HomeService._get_check_in_summary(session, user_id)
+
+        async def _run_week() -> WeekPracticeStats:
+            async with async_db_session() as session:
+                return await HomeService._get_week_stats(session, user_id)
+
+        async def _run_rank():
+            async with async_db_session() as session:
+                return await rank_service.get_user_rank_info(db=session, user_id=user_id)
+
+        async def _run_total_and_answer_rank() -> tuple[dict, dict]:
+            async with async_db_session() as session:
+                return await HomeService._get_total_and_answer_rank(session, user_id)
+
+        async def _run_session_count() -> int:
+            async with async_db_session() as session:
+                return await HomeService._get_created_session_count(session, user_id)
+
+        (
+            (recent_dates, total_check_in_days),
+            week_stats,
+            rank_info,
+            (total_stats, answer_rank_stats),
+            created_session_count,
+        ) = await asyncio.gather(
+            _run_check_in(),
+            _run_week(),
+            _run_rank(),
+            _run_total_and_answer_rank(),
+            _run_session_count(),
+        )
+
         is_checked_in = bool(recent_dates) and recent_dates[0] == today
         streak = HomeService._calc_streak(recent_dates, today)
-
-        # 2. 本周统计（今日做题数从 daily_breakdown 中提取，省去独立查询）
-        week_stats = await HomeService._get_week_stats(db, user_id)
         today_daily = next((d for d in week_stats.daily_breakdown if d.date == today), None)
 
         check_in_info = CheckInInfo(
@@ -50,16 +82,6 @@ class HomeService:
             is_checked_in_today=is_checked_in,
             today_practice_count=today_daily.count if today_daily else 0,
         )
-
-        # 3. 排名
-        rank_info = await rank_service.get_user_rank_info(db=db, user_id=user_id)
-
-        # 4. 快照统计
-        total_stats = await HomeService._get_total_stats(db, user_id)
-
-        # 5. 会话数 + 排名统计（合并 MAX/COUNT 为单次查询）
-        created_session_count = await HomeService._get_created_session_count(db, user_id)
-        answer_rank_stats = await HomeService._get_answer_rank_stats(db, total_stats['total_count'])
 
         report = HomeUserReportData(
             total_answer_count=total_stats['total_count'],
@@ -88,26 +110,29 @@ class HomeService:
     @staticmethod
     async def _get_check_in_summary(db: AsyncSession, user_id: int) -> tuple[list[date], int]:
         """
-        获取打卡摘要：最近打卡日期列表 + 总打卡天数
+        获取打卡摘要：最近打卡日期列表 + 总打卡天数（单条 SQL 合并）
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :return:
         """
-        # 只查 check_date 列，LIMIT 365 足以计算连续打卡
-        dates_stmt = (
-            select(UserCheckIn.check_date)
+        # 用窗口函数一次性拿到 LIMIT 365 的最近日期 + 总条数，省一个 RTT
+        stmt = (
+            select(
+                UserCheckIn.check_date,
+                func.count().over().label('total_days'),
+            )
             .where(UserCheckIn.user_id == user_id)
             .order_by(UserCheckIn.check_date.desc())
             .limit(365)
         )
-        dates_result = await db.execute(dates_stmt)
-        recent_dates = list(dates_result.scalars().all())
+        rows = (await db.execute(stmt)).all()
 
-        # 总天数用 COUNT，避免加载全部记录
-        count_stmt = select(func.count()).select_from(UserCheckIn).where(UserCheckIn.user_id == user_id)
-        total_days = int((await db.scalar(count_stmt)) or 0)
+        if not rows:
+            return [], 0
 
+        recent_dates = [row.check_date for row in rows]
+        total_days = int(rows[0].total_days)
         return recent_dates, total_days
 
     @staticmethod
@@ -214,28 +239,62 @@ class HomeService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _get_total_stats(db: AsyncSession, user_id: int) -> dict:
-        """从快照表获取累计统计数据"""
-        stats = await user_practice_stats_dao.get_by_user(db, user_id)
+    async def _get_total_and_answer_rank(db: AsyncSession, user_id: int) -> tuple[dict, dict]:
+        """
+        合并查询用户快照统计 + 全站答题量排名（单条 SQL）
 
-        total_count = stats.total_count if stats else 0
-        correct_count = stats.correct_count if stats else 0
-        total_duration = stats.total_duration if stats else 0
-        practice_days = stats.practice_days if stats else 0
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        # CTE 物化用户行一次，后续标量子查询复用，避免重复 PK lookup
+        me_cte = (
+            select(
+                UserPracticeStats.total_count,
+                UserPracticeStats.correct_count,
+                UserPracticeStats.total_duration,
+                UserPracticeStats.practice_days,
+            )
+            .where(UserPracticeStats.user_id == user_id)
+            .cte('me_stats')
+        )
 
+        my_total_expr = func.coalesce(select(me_cte.c.total_count).scalar_subquery(), 0)
+
+        stmt = select(
+            my_total_expr.label('my_total'),
+            func.coalesce(select(me_cte.c.correct_count).scalar_subquery(), 0).label('my_correct'),
+            func.coalesce(select(me_cte.c.total_duration).scalar_subquery(), 0).label('my_duration'),
+            func.coalesce(select(me_cte.c.practice_days).scalar_subquery(), 0).label('my_days'),
+            func.coalesce(func.max(UserPracticeStats.total_count), 0).label('site_max'),
+            func.coalesce(
+                func.sum(sa.case((UserPracticeStats.total_count > my_total_expr, 1), else_=0)),
+                0,
+            ).label('higher_count'),
+        ).select_from(UserPracticeStats)
+
+        row = (await db.execute(stmt)).one()
+
+        my_total = int(row.my_total)
+        my_correct = int(row.my_correct)
         accuracy_rate = (
-            Decimal((correct_count / total_count) * 100).quantize(Decimal('0.01'))
-            if total_count > 0
+            Decimal((my_correct / my_total) * 100).quantize(Decimal('0.01'))
+            if my_total > 0
             else Decimal('0')
         )
 
-        return {
-            'total_count': total_count,
-            'correct_count': correct_count,
+        total_stats = {
+            'total_count': my_total,
+            'correct_count': my_correct,
             'accuracy_rate': accuracy_rate,
-            'total_duration': total_duration,
-            'practice_days': practice_days,
+            'total_duration': int(row.my_duration),
+            'practice_days': int(row.my_days),
         }
+        rank_stats = {
+            'site_max_answer_count': int(row.site_max),
+            'answer_count_rank': int(row.higher_count) + 1 if my_total > 0 else 0,
+        }
+        return total_stats, rank_stats
 
     @staticmethod
     async def _get_created_session_count(db: AsyncSession, user_id: int) -> int:
@@ -246,34 +305,6 @@ class HomeService:
         )
         result = await db.scalar(stmt)
         return int(result or 0)
-
-    @staticmethod
-    async def _get_answer_rank_stats(db: AsyncSession, total_answer_count: int) -> dict:
-        """从快照表获取排名统计（合并 MAX + COUNT 为单次查询）"""
-        if total_answer_count <= 0:
-            site_max_stmt = select(func.coalesce(func.max(UserPracticeStats.total_count), 0))
-            site_max = int((await db.scalar(site_max_stmt)) or 0)
-            return {
-                'site_max_answer_count': site_max,
-                'answer_count_rank': 0,
-            }
-
-        stmt = (
-            select(
-                func.coalesce(func.max(UserPracticeStats.total_count), 0).label('site_max'),
-                func.coalesce(
-                    func.sum(sa.case((UserPracticeStats.total_count > total_answer_count, 1), else_=0)),
-                    0,
-                ).label('higher_count'),
-            )
-            .select_from(UserPracticeStats)
-        )
-        row = (await db.execute(stmt)).one()
-
-        return {
-            'site_max_answer_count': int(row.site_max),
-            'answer_count_rank': int(row.higher_count) + 1,
-        }
 
 
 home_service: HomeService = HomeService()
