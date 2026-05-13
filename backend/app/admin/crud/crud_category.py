@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -270,6 +271,58 @@ class CRUDCategory(CRUDPlus[Category]):
         stmt = select(final_cte.c.id)
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_subtree_by_root_codes(
+        self,
+        db: AsyncSession,
+        *,
+        app_code: str,
+        root_codes: list[str],
+    ) -> list[dict[str, Any]]:
+        """
+        通过根编码递归查询子树扁平列表，跳过 ORM 实例化
+
+        :param db: 数据库会话
+        :param app_code: 应用标识
+        :param root_codes: 根分类编码列表
+        :return:
+        """
+        if not root_codes:
+            return []
+
+        anchor = select(
+            Category.id,
+            Category.parent_id,
+            Category.app_code,
+            Category.type,
+            Category.code,
+            Category.name,
+            Category.sort_order,
+        ).where(
+            Category.app_code == app_code,
+            Category.code.in_(root_codes),
+            Category.status.is_(True),
+        )
+        cte = anchor.cte('category_subtree', recursive=True)
+
+        recursive_part = (
+            select(
+                Category.id,
+                Category.parent_id,
+                Category.app_code,
+                Category.type,
+                Category.code,
+                Category.name,
+                Category.sort_order,
+            )
+            .join(cte, Category.parent_id == cte.c.id)
+            .where(Category.status.is_(True))
+        )
+
+        final_cte = cte.union_all(recursive_part)
+        stmt = select(final_cte)
+        result = await db.execute(stmt)
+        return [dict(row) for row in result.mappings().all()]
 
 
 category_dao: CRUDCategory = CRUDCategory(Category)

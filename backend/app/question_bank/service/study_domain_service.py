@@ -53,28 +53,6 @@ class StudyDomainService:
             raise errors.RequestError(msg=str(exc)) from None
 
     @staticmethod
-    def _filter_root_nodes(
-        nodes: list[dict[str, Any]],
-        root_codes: list[str],
-    ) -> list[StudyDomainCategoryTree]:
-        """
-        过滤根节点树
-
-        :param nodes: 树节点列表
-        :param root_codes: 根编码列表
-        :return:
-        """
-        code_set = {code.strip().lower() for code in root_codes if code}
-        if not code_set:
-            return []
-
-        matched_nodes = [
-            node for node in nodes
-            if str(node.get('code') or '').strip().lower() in code_set
-        ]
-        return [StudyDomainCategoryTree.model_validate(node) for node in matched_nodes]
-
-    @staticmethod
     def _collect_category_ids(nodes: list[StudyDomainCategoryTree]) -> set[int]:
         """
         收集分类 ID
@@ -142,21 +120,29 @@ class StudyDomainService:
         """
         normalized_code = cls._validate_code(code)
         root_codes = get_study_domain_root_codes(normalized_code)
+        all_root_codes = [
+            *root_codes['product_catalog'],
+            *root_codes['knowledge_point'],
+            *root_codes['resource_exam'],
+        ]
 
-        categories = await category_dao.get_all(
+        nodes = await category_dao.get_subtree_by_root_codes(
             db,
             app_code=STUDY_DOMAIN_APP_CODE,
-            status=True,
+            root_codes=all_root_codes,
         )
 
-        type_groups: dict[str, list[Any]] = defaultdict(list)
-        for category in categories:
-            type_groups[str(category.type)].append(category)
+        type_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for node in nodes:
+            type_groups[str(node['type'])].append(node)
 
         tree_map = {
             type_name: get_tree_data(items, sort_key='sort_order')
             for type_name, items in type_groups.items()
         }
+
+        def to_schema(tree_nodes: list[dict[str, Any]]) -> list[StudyDomainCategoryTree]:
+            return [StudyDomainCategoryTree.model_validate(node) for node in tree_nodes]
 
         return StudyDomainScopeResponse(
             code=normalized_code,
@@ -165,18 +151,9 @@ class StudyDomainService:
             product_catalog_codes=root_codes['product_catalog'],
             knowledge_point_codes=root_codes['knowledge_point'],
             resource_exam_codes=root_codes['resource_exam'],
-            product_catalog_roots=cls._filter_root_nodes(
-                tree_map.get('product_catalog', []),
-                root_codes['product_catalog'],
-            ),
-            knowledge_point_roots=cls._filter_root_nodes(
-                tree_map.get('knowledge_point', []),
-                root_codes['knowledge_point'],
-            ),
-            resource_exam_roots=cls._filter_root_nodes(
-                tree_map.get('resource_exam', []),
-                root_codes['resource_exam'],
-            ),
+            product_catalog_roots=to_schema(tree_map.get('product_catalog', [])),
+            knowledge_point_roots=to_schema(tree_map.get('knowledge_point', [])),
+            resource_exam_roots=to_schema(tree_map.get('resource_exam', [])),
         )
 
     @classmethod
@@ -230,8 +207,18 @@ class StudyDomainService:
         :param code: 领域编码
         :return:
         """
-        scope = await cls.get_scope(db=db, code=code)
-        return cls._collect_category_ids(scope.product_catalog_roots)
+        normalized_code = cls._validate_code(code)
+        root_codes = get_study_domain_root_codes(normalized_code)
+        product_catalog_codes = root_codes['product_catalog']
+        if not product_catalog_codes:
+            return set()
+
+        nodes = await category_dao.get_subtree_by_root_codes(
+            db,
+            app_code=STUDY_DOMAIN_APP_CODE,
+            root_codes=product_catalog_codes,
+        )
+        return {int(node['id']) for node in nodes}
 
 
 study_domain_service = StudyDomainService()
