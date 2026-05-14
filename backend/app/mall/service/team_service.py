@@ -11,7 +11,9 @@ from backend.app.mall.crud.crud_group_buy import group_buy_activity_dao, group_b
 from backend.app.mall.crud.crud_group_buy_team import group_buy_member_dao, group_buy_team_dao
 from backend.app.mall.model.group_buy_team import GroupBuyMember, GroupBuyTeam
 from backend.app.mall.schema.group_buy_team import (
+    CreateGroupBuyMemberRecord,
     CreateGroupBuyTeamParam,
+    CreateGroupBuyTeamRecord,
     GroupBuyTeamProgress,
     JoinGroupBuyTeamParam,
 )
@@ -67,27 +69,27 @@ class TeamService:
         expire_time = now + timedelta(hours=activity.time_limit)
         share_code = TeamService._generate_share_code()
 
-        team_data = {
-            'activity_id': obj.activity_id,
-            'leader_user_id': user_id,
-            'required_people': obj.required_people,
-            'current_people': 1,
-            'team_price': ladder_price.price,
-            'status': 'pending',
-            'start_time': now,
-            'expire_time': expire_time,
-            'share_code': share_code,
-        }
+        team_data = CreateGroupBuyTeamRecord(
+            activity_id=obj.activity_id,
+            leader_user_id=user_id,
+            required_people=obj.required_people,
+            current_people=1,
+            team_price=ladder_price.price,
+            status='pending',
+            start_time=now,
+            expire_time=expire_time,
+            share_code=share_code,
+        )
         team = await group_buy_team_dao.create_model(db, team_data)
 
-        member_data = {
-            'team_id': team.id,
-            'activity_id': obj.activity_id,
-            'user_id': user_id,
-            'is_leader': True,
-            'paid_amount': ladder_price.price,
-            'join_time': now,
-        }
+        member_data = CreateGroupBuyMemberRecord(
+            team_id=team.id,
+            activity_id=obj.activity_id,
+            user_id=user_id,
+            is_leader=True,
+            paid_amount=ladder_price.price,
+            join_time=now,
+        )
         await group_buy_member_dao.create_model(db, member_data)
 
         log.info(f'用户 {user_id} 发起拼团，团队 ID: {team.id}')
@@ -125,15 +127,15 @@ class TeamService:
         if already_joined:
             raise errors.ForbiddenError(msg='您已参与该活动的其他拼团')
 
-        member_data = {
-            'team_id': obj.team_id,
-            'activity_id': team.activity_id,
-            'user_id': user_id,
-            'is_leader': False,
-            'paid_amount': team.team_price,
-            'join_time': now,
-            'inviter_user_id': obj.inviter_user_id,
-        }
+        member_data = CreateGroupBuyMemberRecord(
+            team_id=obj.team_id,
+            activity_id=team.activity_id,
+            user_id=user_id,
+            is_leader=False,
+            paid_amount=team.team_price,
+            join_time=now,
+            inviter_user_id=obj.inviter_user_id,
+        )
         member = await group_buy_member_dao.create_model(db, member_data)
 
         await group_buy_team_dao.increment_people(db, obj.team_id)

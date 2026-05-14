@@ -8,7 +8,7 @@ from backend.app.mall.crud.crud_group_buy_team import group_buy_team_dao
 from backend.app.mall.crud.crud_order import order_dao
 from backend.app.mall.crud.crud_product import product_dao, product_sku_dao
 from backend.app.mall.model.order import Order
-from backend.app.mall.schema.order import CreateOrderParam
+from backend.app.mall.schema.order import CreateOrderParam, CreateOrderRecord
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
@@ -63,22 +63,22 @@ class OrderService:
         total_amount = unit_price * obj.quantity
 
         order_no = OrderService._generate_order_no()
-        order_data = {
-            'order_no': order_no,
-            'user_id': user_id,
-            'order_type': obj.order_type,
-            'product_id': obj.product_id,
-            'sku_id': obj.sku_id,
-            'product_name': product.name,
-            'sku_name': sku.sku_name,
-            'quantity': obj.quantity,
-            'unit_price': unit_price,
-            'total_amount': total_amount,
-            'status': 'pending',
-            'team_id': obj.team_id,
-            'activity_id': obj.activity_id,
-            'remark': obj.remark,
-        }
+        order_data = CreateOrderRecord(
+            order_no=order_no,
+            user_id=user_id,
+            order_type=obj.order_type,
+            product_id=obj.product_id,
+            sku_id=obj.sku_id,
+            product_name=product.name,
+            sku_name=sku.sku_name,
+            quantity=obj.quantity,
+            unit_price=unit_price,
+            total_amount=total_amount,
+            status='pending',
+            team_id=obj.team_id,
+            activity_id=obj.activity_id,
+            remark=obj.remark,
+        )
 
         order = await order_dao.create_model(db, order_data)
         log.info(f'用户 {user_id} 创建订单，订单号: {order_no}')

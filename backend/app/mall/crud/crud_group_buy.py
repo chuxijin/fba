@@ -10,6 +10,7 @@ from backend.app.mall.model.group_buy import GroupBuyActivity, GroupBuyLadderPri
 from backend.app.mall.schema.group_buy import (
     CreateGroupBuyActivityParam,
     CreateGroupBuyLadderPriceParam,
+    GroupBuyActivityBase,
     UpdateGroupBuyActivityParam,
 )
 
@@ -86,15 +87,13 @@ class CRUDGroupBuyActivity(CRUDPlus[GroupBuyActivity]):
         :param user_id: 创建者 ID
         :return:
         """
-        create_data = obj_in.model_dump(exclude={'ladder_prices'})
-        create_data['created_by'] = user_id
-        activity = await self.create_model(db, create_data)
+        activity_base = GroupBuyActivityBase(**obj_in.model_dump(exclude={'ladder_prices'}))
+        activity = await self.create_model(db, activity_base, created_by=user_id)
 
         for ladder_price in obj_in.ladder_prices:
-            price_data = ladder_price.model_dump()
-            price_data['activity_id'] = activity.id
-            price_data['created_by'] = user_id
-            await group_buy_ladder_price_dao.create_model(db, price_data)
+            await group_buy_ladder_price_dao.create_model(
+                db, ladder_price, activity_id=activity.id, created_by=user_id
+            )
 
         return activity
 
@@ -187,10 +186,7 @@ class CRUDGroupBuyLadderPrice(CRUDPlus[GroupBuyLadderPrice]):
         :param user_id: 创建者 ID
         :return:
         """
-        create_data = obj_in.model_dump()
-        create_data['activity_id'] = activity_id
-        create_data['created_by'] = user_id
-        return await self.create_model(db, create_data)
+        return await self.create_model(db, obj_in, activity_id=activity_id, created_by=user_id)
 
 
 group_buy_activity_dao = CRUDGroupBuyActivity(GroupBuyActivity)

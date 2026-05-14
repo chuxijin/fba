@@ -48,9 +48,7 @@ class CRUDProductCategory(CRUDPlus[ProductCategory]):
         :param user_id: 创建者 ID
         :return:
         """
-        create_data = obj_in.model_dump()
-        create_data['created_by'] = user_id
-        return await self.create_model(db, create_data)
+        return await self.create_model(db, obj_in, created_by=user_id)
 
     async def update(
         self, db: AsyncSession, category_id: int, obj_in: UpdateProductCategoryParam
@@ -112,9 +110,7 @@ class CRUDProduct(CRUDPlus[Product]):
         :param user_id: 创建者 ID
         :return:
         """
-        create_data = obj_in.model_dump()
-        create_data['created_by'] = user_id
-        return await self.create_model(db, create_data)
+        return await self.create_model(db, obj_in, created_by=user_id)
 
     async def update(self, db: AsyncSession, product_id: int, obj_in: UpdateProductParam) -> int:
         """
@@ -187,9 +183,7 @@ class CRUDProductSKU(CRUDPlus[ProductSKU]):
         :param user_id: 创建者 ID
         :return:
         """
-        create_data = obj_in.model_dump()
-        create_data['created_by'] = user_id
-        return await self.create_model(db, create_data)
+        return await self.create_model(db, obj_in, created_by=user_id)
 
     async def update(self, db: AsyncSession, sku_id: int, obj_in: UpdateProductSKUParam) -> int:
         """

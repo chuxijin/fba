@@ -89,3 +89,30 @@ class GroupBuyTeamProgress(SchemaBase):
     status: TeamStatus = Field(description='团队状态')
     expire_time: datetime = Field(description='过期时间')
     is_expired: bool = Field(description='是否已过期')
+
+
+# ===== internal create schemas =====
+class CreateGroupBuyTeamRecord(SchemaBase):
+    """拼团团队创建记录"""
+
+    activity_id: int = Field(description='活动 ID')
+    leader_user_id: int = Field(description='团长用户 ID')
+    required_people: int = Field(description='需要人数')
+    current_people: int = Field(default=1, description='当前人数')
+    team_price: Decimal = Field(description='拼团价格')
+    status: TeamStatus = Field(default='pending', description='团队状态')
+    start_time: datetime = Field(description='开团时间')
+    expire_time: datetime = Field(description='过期时间')
+    share_code: str | None = Field(None, description='分享码')
+
+
+class CreateGroupBuyMemberRecord(SchemaBase):
+    """拼团成员创建记录"""
+
+    team_id: int = Field(description='团队 ID')
+    activity_id: int = Field(description='活动 ID')
+    user_id: int = Field(description='用户 ID')
+    is_leader: bool = Field(default=False, description='是否团长')
+    paid_amount: Decimal = Field(description='支付金额')
+    join_time: datetime = Field(description='参团时间')
+    inviter_user_id: int | None = Field(None, description='邀请人用户 ID')

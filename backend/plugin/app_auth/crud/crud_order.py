@@ -46,15 +46,14 @@ class CRUDOrder(CRUDPlus[AppOrder]):
         """
         # 生成订单号
         order_no = f"ORD{uuid.uuid4().hex[:16].upper()}"
-        
-        order_data = obj_in.model_dump()
-        order_data.update({
-            'order_no': order_no,
-            'total_amount': total_amount,
-            'paid_amount': Decimal('0.00')
-        })
-        
-        return await self.create_model(db, order_data)
+
+        return await self.create_model(
+            db,
+            obj_in,
+            order_no=order_no,
+            total_amount=total_amount,
+            paid_amount=Decimal('0.00'),
+        )
 
     async def update(self, db: AsyncSession, order_id: int, obj_in: UpdateOrderParam) -> int:
         """

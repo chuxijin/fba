@@ -61,3 +61,23 @@ class GetOrderDetail(GetOrderListItem):
     refunded_time: datetime | None = Field(None, description='退款时间')
     completed_time: datetime | None = Field(None, description='完成时间')
     updated_time: datetime | None = Field(None, description='更新时间')
+
+
+# ===== internal create schemas =====
+class CreateOrderRecord(SchemaBase):
+    """订单创建记录"""
+
+    order_no: str = Field(description='订单号')
+    user_id: int = Field(description='用户 ID')
+    order_type: OrderType = Field(description='订单类型')
+    product_id: int = Field(description='商品 ID')
+    sku_id: int = Field(description='SKU ID')
+    product_name: str = Field(description='商品名称(快照)')
+    sku_name: str = Field(description='SKU 名称(快照)')
+    quantity: int = Field(description='购买数量')
+    unit_price: Decimal = Field(description='单价')
+    total_amount: Decimal = Field(description='订单总额')
+    status: OrderStatus = Field(default='pending', description='订单状态')
+    team_id: int | None = Field(None, description='拼团团队 ID')
+    activity_id: int | None = Field(None, description='拼团活动 ID')
+    remark: str | None = Field(None, description='订单备注')
