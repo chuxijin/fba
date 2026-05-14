@@ -72,6 +72,53 @@ class CRUDBank(CRUDPlus[QuestionBank]):
 
         return await self.select_models_order(db, 'created_time', 'desc', **filters)
 
+    async def get_all_mappings(
+        self,
+        db: AsyncSession,
+        cat_id: int | None = None,
+        cat_ids: list[int] | None = None,
+        status: int | None = None,
+        keyword: str | None = None,
+        bank_type: int | None = None,
+        parent_id: int | None = None,
+    ) -> list[dict]:
+        """
+        获取所有题库映射，跳过 ORM 实例化提升性能
+
+        :param db: 数据库会话
+        :param cat_id: 分类 ID（精确匹配）
+        :param cat_ids: 分类 ID 列表（包含子分类，优先级高于 cat_id）
+        :param status: 题库状态
+        :param keyword: 关键字搜索
+        :param bank_type: 内容类型
+        :param parent_id: 父级 ID
+        :return:
+        """
+        from sqlalchemy import and_
+
+        filters = []
+        if cat_ids is not None:
+            filters.append(self.model.cat_id.in_(cat_ids))
+        elif cat_id is not None:
+            filters.append(self.model.cat_id == cat_id)
+        if status is not None:
+            filters.append(self.model.status == status)
+        if keyword is not None:
+            filters.append(self.model.name.like(f'%{keyword}%'))
+        if bank_type is not None:
+            filters.append(self.model.bank_type == bank_type)
+        if parent_id is not None:
+            filters.append(self.model.parent_id == parent_id)
+
+        stmt = select(self.model.__table__)
+        if filters:
+            stmt = stmt.where(and_(*filters))
+            
+        stmt = stmt.order_by(self.model.created_time.desc())
+
+        result = await db.execute(stmt)
+        return [dict(row) for row in result.mappings().all()]
+
     async def create(self, db: AsyncSession, obj: CreateBankParam, *, created_by: int) -> None:
         """
         创建题库

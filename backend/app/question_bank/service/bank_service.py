@@ -319,7 +319,7 @@ class BankService:
                 if not cat_ids:
                     return []
 
-        bank_select = await bank_dao.get_all(
+        bank_select = await bank_dao.get_all_mappings(
             db,
             cat_ids=cat_ids,
             status=status,

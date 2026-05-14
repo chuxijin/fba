@@ -53,6 +53,9 @@ def select_columns_serialize(row: R) -> dict[str, Any]:
     :param row: SQLAlchemy 查询结果行
     :return:
     """
+    if isinstance(row, dict):
+        return {k: (decimal_encoder(v) if isinstance(v, Decimal) else v) for k, v in row.items()}
+    
     result = {}
     for column in row.__table__.columns.keys():
         value = getattr(row, column)
