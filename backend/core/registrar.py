@@ -62,13 +62,6 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
     # 创建操作日志任务
     create_task(OperaLogMiddleware.consumer())
 
-    # 初始化任务调度器
-    from backend.app.bili.scheduler import register_all_tasks
-    from backend.app.bili.scheduler.manager import task_scheduler
-
-    register_all_tasks()
-    await task_scheduler.start()
-
     # 初始化 Firebase 推送服务
     from backend.app.jia.service.push_service import push_service
 
