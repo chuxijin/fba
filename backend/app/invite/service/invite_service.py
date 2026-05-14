@@ -23,6 +23,7 @@ from backend.app.invite.schema.invite import (
     UpdateRewardRuleParam,
 )
 from backend.common.exception import errors
+from backend.common.events import publish
 from backend.common.pagination import paging_data
 from backend.common.reward import dispatch_reward
 from backend.utils.timezone import timezone
@@ -231,6 +232,12 @@ class InviteService:
                 relation.invitee_reward_status = 1 if invitee_ok else 2
 
         await db.commit()
+        await publish(
+            'invite.accepted',
+            inviter_user_id=invite_code.user_id,
+            invitee_user_id=invitee_user_id,
+            relation_id=relation.id,
+        )
         return AcceptInviteResult(success=True, message='邀请成功')
 
     @staticmethod

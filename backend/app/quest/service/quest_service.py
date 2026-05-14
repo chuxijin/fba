@@ -122,6 +122,8 @@ class QuestService:
         detail.my_claim_count = my_count
         detail.my_active_claim_id = active_claim.id if active_claim else None
         detail.my_latest_claim_status = latest_claim.claim_status if latest_claim else None
+        progress_source = active_claim or latest_claim
+        detail.my_current_progress = progress_source.progress if progress_source else 0
         return detail
 
     @staticmethod

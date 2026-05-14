@@ -27,6 +27,9 @@ class CreateQuestParam(SchemaBase):
     review_required: bool = Field(default=True, description='是否需要人工审核')
     reward_type: str = Field(default='points', max_length=32, description='奖励类型(vip/points/feature)')
     reward_data: dict | None = Field(None, description='奖励数据')
+    trigger_type: str | None = Field(None, max_length=64, description='自动触发类型(空=人工领取)')
+    trigger_target: int = Field(default=0, ge=0, description='自动触发达成阈值(0 当 trigger_type 为空时无意义)')
+    trigger_payload: dict | None = Field(None, description='自动触发匹配条件(预留)')
     sort: int = Field(default=0, description='排序(数字越小越靠前)')
 
 
@@ -48,6 +51,9 @@ class UpdateQuestParam(SchemaBase):
     review_required: bool | None = Field(None, description='是否需要人工审核')
     reward_type: str | None = Field(None, max_length=32, description='奖励类型')
     reward_data: dict | None = Field(None, description='奖励数据')
+    trigger_type: str | None = Field(None, max_length=64, description='自动触发类型(空=人工领取)')
+    trigger_target: int | None = Field(None, ge=0, description='自动触发达成阈值')
+    trigger_payload: dict | None = Field(None, description='自动触发匹配条件(预留)')
     sort: int | None = Field(None, description='排序')
 
 
@@ -74,6 +80,9 @@ class GetQuestDetail(SchemaBase):
     review_required: bool = Field(description='是否需要人工审核')
     reward_type: str = Field(description='奖励类型')
     reward_data: dict | None = Field(None, description='奖励数据')
+    trigger_type: str | None = Field(None, description='自动触发类型(空=人工领取)')
+    trigger_target: int = Field(description='自动触发达成阈值')
+    trigger_payload: dict | None = Field(None, description='自动触发匹配条件')
     sort: int = Field(description='排序')
     created_by: int = Field(description='创建者')
     updated_by: int | None = Field(None, description='修改者')
@@ -87,6 +96,7 @@ class GetQuestWithUserDetail(GetQuestDetail):
     my_claim_count: int = Field(default=0, description='当前用户已领取次数')
     my_active_claim_id: int | None = Field(None, description='当前用户进行中的领取 ID')
     my_latest_claim_status: int | None = Field(None, description='当前用户最近一次领取状态')
+    my_current_progress: int = Field(default=0, description='当前用户在该任务的累计进度')
 
 
 # ============ 领取/提交 ============
@@ -118,6 +128,7 @@ class GetClaimDetail(SchemaBase):
     review_time: datetime | None = Field(None, description='审核时间')
     reward_status: int = Field(description='奖励状态')
     granted_at: datetime | None = Field(None, description='奖励发放时间')
+    progress: int = Field(default=0, description='当前累计进度(自动触发型任务)')
     created_time: datetime = Field(description='创建时间')
 
 

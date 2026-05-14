@@ -40,4 +40,19 @@ class Quest(Base, UserMixin):
     review_required: Mapped[bool] = mapped_column(default=True, comment='是否需要人工审核')
     reward_type: Mapped[str] = mapped_column(sa.String(32), default='points', comment='奖励类型(vip/points/feature)')
     reward_data: Mapped[dict | None] = mapped_column(sa.JSON, default=None, comment='奖励数据')
+    trigger_type: Mapped[str | None] = mapped_column(
+        sa.String(64),
+        default=None,
+        index=True,
+        comment='自动触发类型(None=人工领取, 如 invite.accepted/groupbuy.team_success)',
+    )
+    trigger_target: Mapped[int] = mapped_column(
+        default=0,
+        comment='自动触发达成阈值(0 当 trigger_type 为空时无意义)',
+    )
+    trigger_payload: Mapped[dict | None] = mapped_column(
+        sa.JSON,
+        default=None,
+        comment='自动触发匹配条件(预留扩展, 如 channel 限定)',
+    )
     sort: Mapped[int] = mapped_column(default=0, comment='排序(数字越小越靠前)')

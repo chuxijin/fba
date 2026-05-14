@@ -42,3 +42,4 @@ class QuestClaim(Base):
         comment='奖励状态(0 未发放 1 已发放 2 发放失败 3 已撤销)',
     )
     granted_at: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='奖励发放时间')
+    progress: Mapped[int] = mapped_column(default=0, comment='自动触发型任务的当前累计进度')
