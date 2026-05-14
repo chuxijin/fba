@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import asyncio
 import hashlib
 import json
 import logging
@@ -8,7 +9,7 @@ import random
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import cast, or_, select
+from sqlalchemy import cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, load_only, selectinload
@@ -56,6 +57,7 @@ from backend.app.question_bank.service.question_selector_service import question
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.common.exception import errors
+from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
 
 log = logging.getLogger(__name__)
@@ -884,14 +886,15 @@ class SessionService:
         """
         批量创建/更新答题记录（基于 session_id + question_id 幂等）
 
-        当 judge_now=True 且非考试模式时，同步返回每题的判题结果
+        纯写入路径：仅做鉴权 + 落盘，判题/错题本/统计快照全部由异步任务承担。
+        客户端通过 GET /qbank/questions/{qid}/solution 单独获取答案与解析。
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param obj: 批量提交参数
-        :return: 包含 upserted_count 和可选 judge_results 的字典
+        :return:
         """
-        # 合并查询：session + session_questions 一次加载
+        # 鉴权 + 加载 session_questions（用于过滤合法题目 + 取 placement_id / seq_no / full_score）
         session_stmt = (
             select(PracticeSession)
             .where(PracticeSession.id == obj.session_id)
@@ -906,7 +909,7 @@ class SessionService:
         if session.status != 'in_progress':
             raise errors.ForbiddenError(msg='会话已结束，不可作答')
 
-        # 考试模式不允许即时判题
+        # 考试模式不允许异步任务判题（保持原 allow_judge_now 语义）
         allow_judge_now = obj.judge_now and session.session_type != 'exam'
 
         sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session.session_questions}
@@ -930,248 +933,19 @@ class SessionService:
 
         result: dict[str, Any] = {'upserted_count': len(records_dict), 'judge_results': []}
 
-        # 即时判题：查询对应题目的默认解析，逐题比对，并将判题结果合并到 records_dict
-        if allow_judge_now and records_dict:
-            question_ids = [r['question_id'] for r in records_dict]
-            stmt = (
-                select(Question)
-                .where(Question.id.in_(question_ids))
-                .options(
-                    selectinload(Question.analyses),
-                    selectinload(Question.statistics),
-                )
-            )
-            q_result = await db.execute(stmt)
-            question_map: dict[int, Question] = {q.id: q for q in q_result.scalars().all()}
-
-            # 即时判题时同步错题本：客观题答对累加 correct_streak，答错重置并 +1 wrong_count
-            from backend.app.question_bank.service.user_settings_service import user_settings_service
-
-            mastery_threshold = await user_settings_service.get_mastery_threshold(db=db, user_id=user_id)
-            existing_wrongs = await wrong_question_dao.list_by_user_and_questions(
-                db=db,
-                user_id=user_id,
-                question_ids=question_ids,
-            )
-            existing_wrongs_by_qid: dict[int, list[WrongQuestionBook]] = {}
-            for wrong in existing_wrongs:
-                existing_wrongs_by_qid.setdefault(wrong.question_id, []).append(wrong)
-            wrong_create_rows: list[dict[str, Any]] = []
-            wrong_update_rows: list[dict[str, Any]] = []
-
-            judge_results_map: dict[int, dict[str, Any]] = {}
-            judge_time = timezone.now()
-            for rd in records_dict:
-                full = sq_map[rd['question_id']].full_score if rd['question_id'] in sq_map else rd.get('full_score', Decimal('0'))
-                question = question_map.get(rd['question_id'])
-                if not question:
-                    judge_results_map[rd['question_id']] = {
-                        'question_id': rd['question_id'],
-                        'record_id': None,
-                        'correct_answer': '',
-                        'analysis': '',
-                        'is_correct': None,
-                        'correct_rate': Decimal('0'),
-                        'option_select_stats': {},
-                        'score': None,
-                        'full_score': full,
-                        'ai_evaluation_id': None,
-                        'summary_text': None,
-                        'error_message': None,
-                    }
-                    continue
-
-                analysis = None
-                if question.analyses:
-                    analysis = next((a for a in question.analyses if a.is_default), question.analyses[0])
-
-                solution_payload = {
-                    'correct_answer': '',
-                    'analysis': '',
-                    'is_correct': None,
-                    'correct_rate': Decimal('0'),
-                    'option_select_stats': {},
-                }
-                if analysis:
-                    solution_payload = question_service.build_solution_payload(
-                        question=question,
-                        analysis=analysis,
-                        is_correct=None,
-                    )
-
-                judge_result = {
-                    'question_id': rd['question_id'],
-                    'record_id': None,
-                    'score': None,
-                    'full_score': full,
-                    'ai_evaluation_id': None,
-                    'summary_text': None,
-                    'error_message': None,
-                    **solution_payload,
-                }
-
-                if question.type in SUBJECTIVE_QUESTION_TYPES:
-                    judge_results_map[rd['question_id']] = judge_result
-                    continue
-
-                is_correct = False
-                if analysis and analysis.answer_data:
-                    is_correct = question_service.check_answer(
-                        question.type, rd['user_answer'], analysis.answer_data,
-                    )
-
-                judge_result['is_correct'] = is_correct
-                judge_result['score'] = full if is_correct else Decimal('0')
-                judge_results_map[rd['question_id']] = judge_result
-
-                # 将判题结果合并到记录中，后续统一 upsert
-                rd['is_correct'] = is_correct
-                rd['score'] = full if is_correct else Decimal('0')
-                rd['judged_at'] = judge_time
-
-                # 同步错题本：按 question_id 宽松匹配，忽略 placement
-                placement_id = rd.get('placement_id')
-                existing_wrong_list = existing_wrongs_by_qid.get(rd['question_id'], [])
-                if is_correct:
-                    for existing_wrong in existing_wrong_list:
-                        new_streak = existing_wrong.correct_streak + 1
-                        is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
-                        mastered_time = existing_wrong.mastered_time
-                        if is_mastered and mastered_time is None:
-                            mastered_time = judge_time
-                        wrong_update_rows.append({
-                            'filter_wrong_id': existing_wrong.id,
-                            'set_wrong_count': existing_wrong.wrong_count,
-                            'set_correct_streak': new_streak,
-                            'set_last_wrong_time': existing_wrong.last_wrong_time,
-                            'set_last_practice_time': judge_time,
-                            'set_is_mastered': is_mastered,
-                            'set_mastered_time': mastered_time,
-                        })
-                else:
-                    if existing_wrong_list:
-                        for existing_wrong in existing_wrong_list:
-                            wrong_update_rows.append({
-                                'filter_wrong_id': existing_wrong.id,
-                                'set_wrong_count': existing_wrong.wrong_count + 1,
-                                'set_correct_streak': 0,
-                                'set_last_wrong_time': judge_time,
-                                'set_last_practice_time': existing_wrong.last_practice_time,
-                                'set_is_mastered': False,
-                                'set_mastered_time': None,
-                            })
-                    else:
-                        wrong_create_rows.append({
-                            'user_id': user_id,
-                            'question_id': rd['question_id'],
-                            'placement_id': placement_id,
-                            'wrong_count': 1,
-                            'correct_streak': 0,
-                            'first_wrong_time': judge_time,
-                            'last_wrong_time': judge_time,
-                            'last_practice_time': None,
-                            'is_mastered': False,
-                            'mastered_time': None,
-                            'created_by': user_id,
-                        })
-
-            result['judge_results'] = list(judge_results_map.values())
-
-            if wrong_create_rows:
-                await wrong_question_dao.batch_create(db=db, rows=wrong_create_rows)
-            if wrong_update_rows:
-                await wrong_question_dao.batch_update(db=db, rows=wrong_update_rows)
-            if wrong_create_rows or wrong_update_rows:
-                from backend.app.question_bank.service.wrong_question_service import wrong_question_service
-
-                await wrong_question_service._clear_statistics_cache(user_id)
-
-        # 统一写入（含即时判题结果），并复用返回记录避免再次拉取整套会话记录
         upserted_records: list[PracticeRecord] = []
         if records_dict:
             upserted_records = await practice_record_dao.batch_upsert(db=db, records=records_dict)
 
-        if allow_judge_now and records_dict:
-            upserted_record_map = {record.question_id: record for record in upserted_records}
-
-            judge_results_list = result.get('judge_results', [])
-            for judge_item in judge_results_list:
-                question_id = judge_item.get('question_id')
-                upserted_record = upserted_record_map.get(question_id)
-                if upserted_record:
-                    judge_item['record_id'] = upserted_record.id
-
-            subjective_question_ids = {
-                rd['question_id']
-                for rd in records_dict
-                if (question_map.get(rd['question_id']) and question_map[rd['question_id']].type in SUBJECTIVE_QUESTION_TYPES)
+        # 异步副作用：服务端判题 + 错题本 + completed_count + 统计快照
+        # 通过 result['_async_payload'] 让 API 层在事务 commit 之后用 BackgroundTasks 投递
+        if upserted_records:
+            result['_async_payload'] = {
+                'user_id': user_id,
+                'session_id': obj.session_id,
+                'record_ids': [int(r.id) for r in upserted_records],
+                'allow_judge_now': allow_judge_now,
             }
-            if subjective_question_ids:
-                target_records = [record for record in upserted_records if record.question_id in subjective_question_ids]
-                try:
-                    subjective_evaluations = await practice_ai_evaluation_service.evaluate_subjective_records(
-                        db=db,
-                        session=session,
-                        records=target_records,
-                        question_map=question_map,
-                        trigger_source='auto',
-                        force_regenerate=True,
-                        judge_version=None,
-                    )
-                except Exception as exc:
-                    log.exception('即时 AI 判分失败: session_id=%s error=%s', obj.session_id, exc)
-                    subjective_evaluations = {}
-
-                judge_results_by_question = {item['question_id']: item for item in judge_results_list}
-                for record in target_records:
-                    evaluation = subjective_evaluations.get(record.id)
-                    target_result = judge_results_by_question.get(record.question_id)
-                    if not target_result:
-                        target_result = {'question_id': record.question_id}
-                        judge_results_list.append(target_result)
-                        judge_results_by_question[record.question_id] = target_result
-
-                    if not evaluation:
-                        target_result['is_correct'] = None
-                        target_result['error_message'] = 'AI 判分暂时失败，请稍后重试'
-                        continue
-
-                    target_result['ai_evaluation_id'] = evaluation.id
-                    target_result['correct_answer'] = (
-                        evaluation.result_payload.get('reference_answer')
-                        if evaluation.result_payload else None
-                    )
-                    if evaluation.status == 'succeeded':
-                        target_result['is_correct'] = (evaluation.score or Decimal('0')) >= (
-                            (evaluation.max_score or Decimal('1')) * Decimal('0.60')
-                        )
-                        target_result['score'] = evaluation.score
-                        target_result['full_score'] = evaluation.max_score
-                        target_result['summary_text'] = evaluation.summary_text
-                    else:
-                        target_result['is_correct'] = None
-                        target_result['error_message'] = evaluation.error_message
-
-                result['judge_results'] = judge_results_list
-
-        # 同步会话进度 + 增量更新用户统计快照
-        if records_dict:
-            completed_count = await practice_record_dao.count_by_session(db=db, session_id=obj.session_id)
-            await practice_session_dao.update_model(db, obj.session_id, {'completed_count': completed_count})
-
-        if allow_judge_now and records_dict:
-            judged = [
-                record for record in upserted_records
-                if record.is_correct is not None
-            ]
-            if judged:
-                await user_practice_stats_dao.increment(
-                    db=db,
-                    user_id=user_id,
-                    answered=len(judged),
-                    correct=sum(1 for record in judged if record.is_correct),
-                    duration=sum(record.answer_time for record in judged),
-                )
 
         return result
 
@@ -1551,25 +1325,18 @@ class SessionService:
             total_score=total_score if total_score > 0 else None,
         )
 
-        # 6. 增量更新用户统计快照（只统计本次新判的记录，避免与 upsert_records 重复）
-        newly_judged = [r for r in records if r.is_correct is None]
-        newly_judged_count = len(newly_judged) if newly_judged else completed_count
-        newly_correct = sum(
-            1 for row in judged_record_rows
-            if row['question_id'] in {r.question_id for r in newly_judged} and row['is_correct']
-        ) if newly_judged else correct_count
-        newly_duration = sum(
-            row.get('answer_time', 0) for row in judged_record_rows
-            if row['question_id'] in {r.question_id for r in newly_judged}
-        ) if newly_judged else sum(r.answer_time or 0 for r in records)
-
-        if newly_judged_count > 0:
+        # 6. 增量更新用户统计快照（只统计本次新判的记录，避免与异步任务重复）
+        # 刷题模式：每题 Celery process_record_side_effects 已增量过 → newly_judged 为空 → 跳过
+        # 考试模式 / 异常情况：record.is_correct 仍为 NULL → 此刻首次判 → 增量
+        newly_judged_qids = {r.question_id for r in records if r.is_correct is None}
+        if newly_judged_qids:
+            newly_rows = [row for row in judged_record_rows if row['question_id'] in newly_judged_qids]
             await user_practice_stats_dao.increment(
                 db=db,
                 user_id=user_id,
-                answered=newly_judged_count,
-                correct=newly_correct,
-                duration=newly_duration,
+                answered=len(newly_rows),
+                correct=sum(1 for row in newly_rows if row['is_correct']),
+                duration=sum(row.get('answer_time', 0) or 0 for row in newly_rows),
             )
 
         reward_progress = await SessionService._grant_practice_correct_experience(

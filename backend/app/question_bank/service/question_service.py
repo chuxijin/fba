@@ -856,37 +856,78 @@ class QuestionService:
         :param user_answer: 用户答案
         :return:
         """
-        # 单条查询同时加载 question + analyses + statistics
-        stmt = (
-            select(Question)
-            .where(Question.id == question_id)
-            .options(
-                selectinload(Question.analyses),
-                selectinload(Question.statistics),
+        # 静态部分（correct_answer / analysis / correct_rate / option_select_stats / full_score 等）
+        # 与 user_answer 无关，按 question_id 强缓存。is_correct 由 user_answer 在外层动态比对。
+        cache_key = f'qbank:solution:static:{question_id}'
+        static_payload: dict[str, Any] | None = None
+        question_type: str | None = None
+        answer_data: Any = None
+
+        try:
+            cached = await redis_client.get(cache_key)
+        except Exception:
+            cached = None
+        if cached:
+            try:
+                cached_obj = json.loads(cached)
+                static_payload = cached_obj.get('static')
+                question_type = cached_obj.get('question_type')
+                answer_data = cached_obj.get('answer_data')
+            except (json.JSONDecodeError, TypeError):
+                static_payload = None
+
+        if static_payload is None:
+            stmt = (
+                select(Question)
+                .where(Question.id == question_id)
+                .options(
+                    selectinload(Question.analyses),
+                    selectinload(Question.statistics),
+                )
             )
-        )
-        result = await db.execute(stmt)
-        question = result.scalars().first()
-        if not question:
-            raise errors.NotFoundError(msg='Question not found')
+            result = await db.execute(stmt)
+            question = result.scalars().first()
+            if not question:
+                raise errors.NotFoundError(msg='Question not found')
 
-        analysis = QuestionService._pick_default_analysis(question.analyses)
-        if not analysis:
-            raise errors.NotFoundError(msg='Question analysis not found')
+            analysis = QuestionService._pick_default_analysis(question.analyses)
+            if not analysis:
+                raise errors.NotFoundError(msg='Question analysis not found')
 
-        is_correct = None
-        if user_answer is not None:
+            static_payload = QuestionService.build_solution_payload(
+                question=question,
+                analysis=analysis,
+                is_correct=None,
+            )
+            question_type = question.type
+            answer_data = analysis.answer_data
+
+            try:
+                await redis_client.set(
+                    cache_key,
+                    json.dumps(
+                        {
+                            'static': static_payload,
+                            'question_type': question_type,
+                            'answer_data': answer_data,
+                        },
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                    ex=86400,
+                )
+            except Exception:
+                log.warning('Redis 写入 solution 缓存失败 question_id=%s', question_id, exc_info=True)
+
+        payload = dict(static_payload)
+        if user_answer is not None and question_type and answer_data is not None:
             try:
                 parsed_answer = json.loads(user_answer)
-                is_correct = QuestionService.check_answer(question.type, parsed_answer, analysis.answer_data)
             except (json.JSONDecodeError, TypeError):
-                is_correct = QuestionService.check_answer(question.type, user_answer, analysis.answer_data)
+                parsed_answer = user_answer
+            payload['is_correct'] = QuestionService.check_answer(question_type, parsed_answer, answer_data)
 
-        return QuestionService.build_solution_payload(
-            question=question,
-            analysis=analysis,
-            is_correct=is_correct,
-        )
+        return payload
 
     @staticmethod
     async def mark_analysis_helpful(*, db: AsyncSession, question_id: int, is_helpful: bool) -> None:

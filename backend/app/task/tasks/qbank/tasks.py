@@ -8,10 +8,18 @@ from decimal import Decimal
 
 import sqlalchemy as sa
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.orm import selectinload
 
 from backend.app.question_bank.crud.crud_daily_rank import daily_rank_dao
-from backend.app.question_bank.model import PracticeRecord, UserAccount
+from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
+from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
+from backend.app.question_bank.model import (
+    PracticeRecord,
+    PracticeSession,
+    Question,
+    UserAccount,
+)
 from backend.app.task.celery import celery_app
 from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
@@ -119,3 +127,183 @@ async def simulate_bot_activity() -> dict:
     except Exception as e:
         logger.error(f'机器人模拟失败: {str(e)}')
         return {'error': str(e)}
+
+
+@celery_app.task(name='qbank_process_record_side_effects')
+async def process_record_side_effects(
+    user_id: int,
+    session_id: int,
+    record_ids: list[int],
+    allow_judge_now: bool = True,
+) -> dict:
+    """
+    异步处理答题记录的副作用：服务端判题 + 错题本维护 + 进度同步 + 统计快照 + 缓存失效
+
+    :param user_id: 用户 ID
+    :param session_id: 会话 ID
+    :param record_ids: 已落盘的 PracticeRecord ID 列表
+    :param allow_judge_now: 是否允许立即判题（考试模式下应为 False）
+    :return:
+    """
+    from backend.app.question_bank.service.question_service import QuestionService
+    from backend.app.question_bank.service.user_settings_service import user_settings_service
+
+    if not record_ids:
+        return {'processed': 0}
+
+    SUBJECTIVE_TYPES = {'shortAnswer', 'essay'}
+
+    judge_time = timezone.now()
+    wrong_create_rows: list[dict] = []
+    wrong_update_rows: list[dict] = []
+    objective_count = 0
+    correct_count = 0
+    duration_sum = 0
+
+    async with async_db_session.begin() as db:
+        # 1. 加载记录
+        record_stmt = select(PracticeRecord).where(PracticeRecord.id.in_(record_ids))
+        records = (await db.execute(record_stmt)).scalars().all()
+        if not records:
+            return {'processed': 0}
+
+        # 2. 服务端判题（仅 allow_judge_now 时执行；考试模式跳过判题保持 is_correct=NULL）
+        if allow_judge_now:
+            question_ids = list({r.question_id for r in records})
+            q_stmt = (
+                select(Question)
+                .where(Question.id.in_(question_ids))
+                .options(
+                    selectinload(Question.analyses),
+                    selectinload(Question.statistics),
+                )
+            )
+            question_map = {q.id: q for q in (await db.execute(q_stmt)).scalars().all()}
+
+            mastery_threshold = await user_settings_service.get_mastery_threshold(
+                db=db,
+                user_id=user_id,
+            )
+
+            existing_wrongs = await wrong_question_dao.list_by_user_and_questions(
+                db=db,
+                user_id=user_id,
+                question_ids=question_ids,
+            )
+            existing_wrongs_by_qid: dict[int, list] = {}
+            for wrong in existing_wrongs:
+                existing_wrongs_by_qid.setdefault(wrong.question_id, []).append(wrong)
+
+            for record in records:
+                question = question_map.get(record.question_id)
+                if not question:
+                    continue
+                if question.type in SUBJECTIVE_TYPES:
+                    continue
+                analysis = next(
+                    (a for a in question.analyses if a.is_default),
+                    question.analyses[0] if question.analyses else None,
+                )
+                if not analysis or not analysis.answer_data:
+                    continue
+
+                is_correct = QuestionService.check_answer(
+                    question.type,
+                    record.user_answer,
+                    analysis.answer_data,
+                )
+                full = record.full_score or Decimal('0')
+                record.is_correct = is_correct
+                record.score = full if is_correct else Decimal('0')
+                record.judged_at = judge_time
+
+                objective_count += 1
+                if is_correct:
+                    correct_count += 1
+                duration_sum += record.answer_time or 0
+
+                # 错题本维护
+                existing_wrong_list = existing_wrongs_by_qid.get(record.question_id, [])
+                if is_correct:
+                    for existing_wrong in existing_wrong_list:
+                        new_streak = existing_wrong.correct_streak + 1
+                        is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
+                        mastered_time = existing_wrong.mastered_time
+                        if is_mastered and mastered_time is None:
+                            mastered_time = judge_time
+                        wrong_update_rows.append({
+                            'filter_wrong_id': existing_wrong.id,
+                            'set_wrong_count': existing_wrong.wrong_count,
+                            'set_correct_streak': new_streak,
+                            'set_last_wrong_time': existing_wrong.last_wrong_time,
+                            'set_last_practice_time': judge_time,
+                            'set_is_mastered': is_mastered,
+                            'set_mastered_time': mastered_time,
+                        })
+                else:
+                    if existing_wrong_list:
+                        for existing_wrong in existing_wrong_list:
+                            wrong_update_rows.append({
+                                'filter_wrong_id': existing_wrong.id,
+                                'set_wrong_count': existing_wrong.wrong_count + 1,
+                                'set_correct_streak': 0,
+                                'set_last_wrong_time': judge_time,
+                                'set_last_practice_time': existing_wrong.last_practice_time,
+                                'set_is_mastered': False,
+                                'set_mastered_time': None,
+                            })
+                    else:
+                        wrong_create_rows.append({
+                            'user_id': user_id,
+                            'question_id': record.question_id,
+                            'placement_id': record.placement_id,
+                            'wrong_count': 1,
+                            'correct_streak': 0,
+                            'first_wrong_time': judge_time,
+                            'last_wrong_time': judge_time,
+                            'last_practice_time': None,
+                            'is_mastered': False,
+                            'mastered_time': None,
+                            'created_by': user_id,
+                        })
+
+            if wrong_create_rows:
+                await wrong_question_dao.batch_create(db=db, rows=wrong_create_rows)
+            if wrong_update_rows:
+                await wrong_question_dao.batch_update(db=db, rows=wrong_update_rows)
+
+        # 3. 会话进度（考试模式也要做）
+        count_subq = (
+            select(func.count(PracticeRecord.id))
+            .where(PracticeRecord.session_id == session_id)
+            .scalar_subquery()
+        )
+        await db.execute(
+            update(PracticeSession)
+            .where(PracticeSession.id == session_id)
+            .values(completed_count=count_subq)
+        )
+
+        # 4. 用户练习统计快照（仅 allow_judge_now 时增量）
+        if allow_judge_now and objective_count > 0:
+            await user_practice_stats_dao.increment(
+                db=db,
+                user_id=user_id,
+                answered=objective_count,
+                correct=correct_count,
+                duration=duration_sum,
+            )
+
+    # 5. Redis 错题统计缓存失效（出事务后做）
+    if wrong_create_rows or wrong_update_rows:
+        from backend.app.question_bank.service.wrong_question_service import wrong_question_service
+
+        await wrong_question_service._clear_statistics_cache(user_id)
+
+    return {
+        'processed': len(record_ids),
+        'judged': objective_count,
+        'correct': correct_count,
+        'wrongs_created': len(wrong_create_rows),
+        'wrongs_updated': len(wrong_update_rows),
+    }

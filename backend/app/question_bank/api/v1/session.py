@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Path, Query, Request
 
 from backend.app.question_bank.schema.practice import (
     BatchUpsertPracticeRecordsResult,
@@ -225,12 +225,23 @@ async def delete_session(
 async def upsert_records(
     request: Request,
     db: CurrentSessionTransaction,
+    background_tasks: BackgroundTasks,
     pk: Annotated[int, Path(description='会话 ID')],
     obj: BatchUpsertPracticeRecordsParam,
 ) -> ResponseSchemaModel[BatchUpsertPracticeRecordsResult]:
     """批量创建或更新答题记录"""
     obj.session_id = pk
     result = await session_service.upsert_records(db=db, user_id=request.user.id, obj=obj)
+
+    # 同步路径只做"用户当下要看的事"：鉴权 / 落盘 / 即时判题。
+    # 错题本维护 / 进度同步 / 统计快照增量改为事务提交后由 Celery 异步处理，
+    # 这里通过 BackgroundTasks 在响应发送后投递，确保任务读到的是已提交数据。
+    async_payload = result.pop('_async_payload', None)
+    if async_payload is not None:
+        from backend.app.task.tasks.qbank.tasks import process_record_side_effects
+
+        background_tasks.add_task(process_record_side_effects.delay, **async_payload)
+
     return response_base.success(data=result)
 
 
