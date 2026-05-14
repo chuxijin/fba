@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -9,7 +9,7 @@ from backend.app.question_bank.crud.crud_practice_session import practice_sessio
 from backend.app.question_bank.crud.crud_question import question_statistics_dao
 from backend.app.question_bank.crud.crud_question_note import question_note_dao, user_note_vote_dao
 from backend.app.question_bank.crud.crud_session_question import session_question_dao
-from backend.app.question_bank.model import QuestionNote, UserNoteVote
+from backend.app.question_bank.model import QuestionNote, SessionQuestion, UserNoteVote
 from backend.app.question_bank.schema.note import (
     CreateQuestionNoteParam,
     GetQuestionNoteDetail,
@@ -363,30 +363,27 @@ class NoteService:
         session_id: int,
     ) -> dict[int, 'GetQuestionNoteDetail']:
         """
-        通过会话批量查询题目笔记（仅返回存在的笔记）
+        通过会话批量查询题目笔记（单条 JOIN SQL，跳过会话题目 ORM 加载）
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param session_id: 会话 ID
         :return:
         """
-        question_ids = await NoteService._get_owned_session_question_ids(
-            db=db,
-            user_id=user_id,
-            session_id=session_id,
-        )
-        if not question_ids:
-            return {}
-
+        note_model = question_note_dao.model
         stmt = (
-            select(question_note_dao.model)
-            .where(
-                question_note_dao.model.user_id == user_id,
-                question_note_dao.model.question_id.in_(question_ids),
+            select(note_model)
+            .join(
+                SessionQuestion,
+                and_(
+                    SessionQuestion.question_id == note_model.question_id,
+                    SessionQuestion.session_id == session_id,
+                ),
             )
+            .where(note_model.user_id == user_id)
             .order_by(
-                question_note_dao.model.updated_time.desc(),
-                question_note_dao.model.id.desc(),
+                note_model.updated_time.desc(),
+                note_model.id.desc(),
             )
         )
         result = await db.execute(stmt)
