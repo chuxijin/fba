@@ -157,6 +157,27 @@ class BankService:
             node['q_count_cache'] = direct_count
 
     @staticmethod
+    def _prune_empty_branches(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        递归剪掉自己和后代都没有题目的题库节点, 并写入 effective_q_count
+
+        :param nodes: 树节点列表
+        :return:
+        """
+        kept: list[dict[str, Any]] = []
+        for node in nodes:
+            children = node.get('children') or []
+            if children:
+                node['children'] = BankService._prune_empty_branches(children)
+                effective = sum((c.get('effective_q_count') or 0) for c in node['children'])
+            else:
+                effective = node.get('q_count_cache') or 0
+            node['effective_q_count'] = effective
+            if effective > 0:
+                kept.append(node)
+        return kept
+
+    @staticmethod
     async def get(*, db: AsyncSession, pk: int) -> GetBankDetailWithChapters:
         """
         获取题库详情（含章节树）
@@ -288,6 +309,7 @@ class BankService:
         bank_type: int | None = None,
         parent_id: int | None = None,
         study_domain: str | None = None,
+        exclude_empty: bool = True,
     ) -> list[dict[str, Any]]:
         """
         获取题库树形列表
@@ -336,6 +358,9 @@ class BankService:
                 for item in tree_data:
                     if item.get('bank_type') == 3 and item['id'] in child_counts:
                         item['q_count_cache'] = child_counts[item['id']]
+
+        if exclude_empty:
+            tree_data = BankService._prune_empty_branches(tree_data)
 
         return tree_data
 
