@@ -49,6 +49,27 @@ async def get_my_unread_count(
     return response_base.success(data=UserMessageUnreadCount(count=count))
 
 
+@router.get(
+    '/admin',
+    summary='获取消息列表（管理）',
+    dependencies=[DependsJwtAuth, DependsPagination],
+)
+async def get_messages_admin(
+    db: CurrentSession,
+    title: Annotated[str | None, Query(description='标题关键词')] = None,
+    message_type: Annotated[str | None, Query(description='消息类型')] = None,
+    status: Annotated[int | None, Query(description='状态')] = None,
+) -> ResponseSchemaModel[PageData[GetUserMessageListItem]]:
+    """获取消息列表（管理端）"""
+    data = await user_message_service.get_admin_list(
+        db=db,
+        title=title,
+        message_type=message_type,
+        status=status,
+    )
+    return response_base.success(data=data)
+
+
 @router.get('/{pk}', summary='获取我的消息详情', dependencies=[DependsJwtAuth])
 async def get_my_message(
     request: Request,

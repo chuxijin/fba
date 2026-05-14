@@ -51,6 +51,30 @@ class CRUDUserMessage(CRUDPlus[UserMessage]):
         """
         return await self.select_model(db, pk)
 
+    async def get_admin_select(
+        self,
+        *,
+        title: str | None = None,
+        message_type: str | None = None,
+        status: int | None = None,
+    ) -> Select:
+        """
+        获取管理端消息查询表达式
+
+        :param title: 标题关键词
+        :param message_type: 消息类型
+        :param status: 状态
+        :return:
+        """
+        stmt = select(UserMessage).order_by(UserMessage.id.desc())
+        if title:
+            stmt = stmt.where(UserMessage.title.ilike(f'%{title}%'))
+        if message_type:
+            stmt = stmt.where(UserMessage.message_type == message_type)
+        if status is not None:
+            stmt = stmt.where(UserMessage.status == status)
+        return stmt
+
     async def get_select(
         self,
         *,

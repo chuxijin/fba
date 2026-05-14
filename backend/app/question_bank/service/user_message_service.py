@@ -21,6 +21,30 @@ class UserMessageService:
     """用户消息服务类"""
 
     @staticmethod
+    async def get_admin_list(
+        *,
+        db: AsyncSession,
+        title: str | None = None,
+        message_type: str | None = None,
+        status: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        获取管理端消息列表
+
+        :param db: 数据库会话
+        :param title: 标题关键词
+        :param message_type: 消息类型
+        :param status: 状态
+        :return:
+        """
+        stmt = await user_message_dao.get_admin_select(
+            title=title,
+            message_type=message_type,
+            status=status,
+        )
+        return await paging_data(db, stmt, GetUserMessageListItem)
+
+    @staticmethod
     def _to_detail(message: UserMessage, is_read: bool, read_time) -> GetUserMessageDetail:
         """
         转换消息详情
