@@ -56,8 +56,8 @@ class GetExampleDetail(SchemaBase):
 
 
 # ============ 单词 ============
-class CreateWordParam(SchemaBase):
-    """创建单词参数"""
+class WordCoreParam(SchemaBase):
+    """单词核心字段参数"""
 
     word: str = Field(min_length=1, max_length=100, description='单词')
     phonetic_us: str | None = Field(None, max_length=100, description='美式音标')
@@ -66,6 +66,11 @@ class CreateWordParam(SchemaBase):
     audio_uk_url: str | None = Field(None, max_length=255, description='英式发音 URL')
     common_meaning: str | None = Field(None, max_length=200, description='常用释义')
     frequency: int = Field(default=0, description='词频等级')
+
+
+class CreateWordParam(WordCoreParam):
+    """创建单词参数"""
+
     definitions: list[DefinitionParam] = Field(default=[], description='释义列表')
     examples: list[ExampleParam] = Field(default=[], description='例句列表')
 

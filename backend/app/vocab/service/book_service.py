@@ -10,6 +10,7 @@ from backend.app.vocab.schema.book import (
     BatchAddWordsParam,
     BatchRemoveWordsParam,
     CreateBookParam,
+    CreateBookWordParam,
     GetBookDetail,
     UpdateBookParam,
 )
@@ -30,10 +31,7 @@ class BookService:
         :param obj: 创建参数
         :return:
         """
-        dict_obj = obj.model_dump()
-        dict_obj['created_by'] = user_id
-        dict_obj['creator_id'] = user_id
-        book = await book_dao.create_model(db, dict_obj, commit=False)
+        book = await book_dao.create_model(db, obj, created_by=user_id, creator_id=user_id, commit=False)
         await db.commit()
         await db.refresh(book)
         return GetBookDetail.model_validate(book)
@@ -137,7 +135,9 @@ class BookService:
         for word_id in obj.word_ids:
             existing = await book_word_dao.get_by_book_and_word(db, pk, word_id)
             if not existing:
-                await book_word_dao.create_model(db, {'book_id': pk, 'word_id': word_id}, commit=False)
+                await book_word_dao.create_model(
+                    db, CreateBookWordParam(book_id=pk, word_id=word_id), commit=False
+                )
                 added += 1
 
         if added > 0:

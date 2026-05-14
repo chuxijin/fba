@@ -11,6 +11,7 @@ from backend.app.vocab.schema.word import (
     GetExampleDetail,
     GetWordDetail,
     UpdateWordParam,
+    WordCoreParam,
 )
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
@@ -34,25 +35,20 @@ class WordService:
             raise errors.ConflictError(msg=f'单词 "{obj.word}" 已存在')
 
         # 创建单词
-        word_data = obj.model_dump(exclude={'definitions', 'examples'})
-        word_data['created_by'] = user_id
-        word = await word_dao.create_model(db, word_data, commit=False)
+        word_core = WordCoreParam(**obj.model_dump(exclude={'definitions', 'examples'}))
+        word = await word_dao.create_model(db, word_core, created_by=user_id, commit=False)
         await db.flush()
 
         # 创建释义
         definitions = []
         for d in obj.definitions:
-            d_data = d.model_dump()
-            d_data['word_id'] = word.id
-            defn = await definition_dao.create_model(db, d_data, commit=False)
+            defn = await definition_dao.create_model(db, d, word_id=word.id, commit=False)
             definitions.append(defn)
 
         # 创建例句
         examples = []
         for e in obj.examples:
-            e_data = e.model_dump()
-            e_data['word_id'] = word.id
-            ex = await example_dao.create_model(db, e_data, commit=False)
+            ex = await example_dao.create_model(db, e, word_id=word.id, commit=False)
             examples.append(ex)
 
         await db.commit()
@@ -83,17 +79,13 @@ class WordService:
         if obj.definitions is not None:
             await definition_dao.delete_by_word_id(db, pk)
             for d in obj.definitions:
-                d_data = d.model_dump()
-                d_data['word_id'] = pk
-                await definition_dao.create_model(db, d_data, commit=False)
+                await definition_dao.create_model(db, d, word_id=pk, commit=False)
 
         # 全量替换例句
         if obj.examples is not None:
             await example_dao.delete_by_word_id(db, pk)
             for e in obj.examples:
-                e_data = e.model_dump()
-                e_data['word_id'] = pk
-                await example_dao.create_model(db, e_data, commit=False)
+                await example_dao.create_model(db, e, word_id=pk, commit=False)
 
         if update_data:
             count = await word_dao.update_model(db, pk, update_data, commit=False)

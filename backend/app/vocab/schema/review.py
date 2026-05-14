@@ -17,6 +17,18 @@ class SubmitReviewParam(SchemaBase):
     duration_ms: int = Field(ge=0, description='本次耗时(毫秒)')
 
 
+class CreateReviewLogParam(SchemaBase):
+    """创建复习日志参数"""
+
+    user_id: int = Field(description='用户 ID')
+    word_id: int = Field(description='单词 ID')
+    rating: int = Field(description='评分')
+    state: int = Field(description='复习时卡片状态')
+    review_mode: str = Field(description='学习模式')
+    duration_ms: int = Field(description='耗时(毫秒)')
+    reviewed_at: datetime = Field(description='复习时间')
+
+
 class GetReviewLogDetail(SchemaBase):
     """复习日志详情"""
 

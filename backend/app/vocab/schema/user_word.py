@@ -29,3 +29,13 @@ class ToggleStarParam(SchemaBase):
 
     word_id: int = Field(description='单词 ID')
     is_starred: bool = Field(description='是否收藏')
+
+
+class CreateUserWordParam(SchemaBase):
+    """创建用户单词状态参数"""
+
+    user_id: int = Field(description='用户 ID')
+    word_id: int = Field(description='单词 ID')
+    state: int = Field(description='FSRS 状态')
+    step: int = Field(default=0, description='FSRS 学习步骤')
+    due: datetime = Field(description='下次到期时间')

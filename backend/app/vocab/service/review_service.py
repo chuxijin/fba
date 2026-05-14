@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.vocab.crud.crud_review_log import review_log_dao
 from backend.app.vocab.crud.crud_user_word import user_word_dao
 from backend.app.vocab.model import VocabUserWord
-from backend.app.vocab.schema.review import ReviewForecast, ReviewResult, SubmitReviewParam
+from backend.app.vocab.schema.review import CreateReviewLogParam, ReviewForecast, ReviewResult, SubmitReviewParam
+from backend.app.vocab.schema.user_word import CreateUserWordParam
 from backend.app.vocab.service.checkin_service import checkin_service
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
@@ -76,13 +77,13 @@ class ReviewService:
             now = timezone.now()
             uw = await user_word_dao.create_model(
                 db,
-                {
-                    'user_id': user_id,
-                    'word_id': obj.word_id,
-                    'state': State.Learning.value,
-                    'step': 0,
-                    'due': now,
-                },
+                CreateUserWordParam(
+                    user_id=user_id,
+                    word_id=obj.word_id,
+                    state=State.Learning.value,
+                    step=0,
+                    due=now,
+                ),
                 commit=False,
             )
             await db.flush()
@@ -103,15 +104,15 @@ class ReviewService:
         # 写入复习日志
         await review_log_dao.create_model(
             db,
-            {
-                'user_id': user_id,
-                'word_id': obj.word_id,
-                'rating': obj.rating,
-                'state': old_state,
-                'review_mode': obj.review_mode,
-                'duration_ms': obj.duration_ms,
-                'reviewed_at': now,
-            },
+            CreateReviewLogParam(
+                user_id=user_id,
+                word_id=obj.word_id,
+                rating=obj.rating,
+                state=old_state,
+                review_mode=obj.review_mode,
+                duration_ms=obj.duration_ms,
+                reviewed_at=now,
+            ),
             commit=False,
         )
 

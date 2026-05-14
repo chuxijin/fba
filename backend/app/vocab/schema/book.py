@@ -76,3 +76,11 @@ class BatchRemoveWordsParam(SchemaBase):
     """批量从词书移除单词参数"""
 
     word_ids: list[int] = Field(min_length=1, description='单词 ID 列表')
+
+
+class CreateBookWordParam(SchemaBase):
+    """词书单词关联参数"""
+
+    book_id: int = Field(description='词书 ID')
+    word_id: int = Field(description='单词 ID')
+    sort_order: int = Field(default=0, description='在词书中的顺序')

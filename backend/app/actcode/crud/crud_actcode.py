@@ -52,9 +52,7 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
         :param batch_no: 批次编号
         :return:
         """
-        dict_obj = obj.model_dump()
-        dict_obj['batch_no'] = batch_no
-        return await self.create_model(db, dict_obj, commit=False)
+        return await self.create_model(db, obj, batch_no=batch_no, commit=False)
 
     async def increment_used_count(self, db: AsyncSession, pk: int) -> None:
         """

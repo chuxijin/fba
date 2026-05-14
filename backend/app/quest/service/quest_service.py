@@ -33,9 +33,7 @@ class QuestService:
         if existing:
             raise errors.ConflictError(msg='任务码已存在')
 
-        dict_obj = obj.model_dump()
-        dict_obj['created_by'] = user_id
-        quest = await quest_dao.create_model(db, dict_obj, commit=False)
+        quest = await quest_dao.create_model(db, obj, created_by=user_id, commit=False)
         await db.commit()
         await db.refresh(quest)
         return GetQuestDetail.model_validate(quest)

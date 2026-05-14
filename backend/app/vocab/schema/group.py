@@ -50,3 +50,11 @@ class GroupRemoveWordsParam(SchemaBase):
     """从学习组移除单词参数"""
 
     word_ids: list[int] = Field(min_length=1, description='单词 ID 列表')
+
+
+class CreateGroupWordParam(SchemaBase):
+    """学习组单词关联参数"""
+
+    group_id: int = Field(description='学习组 ID')
+    word_id: int = Field(description='单词 ID')
+    added_at: datetime = Field(description='加入时间')

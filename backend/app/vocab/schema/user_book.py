@@ -13,6 +13,15 @@ class StartBookParam(SchemaBase):
     daily_new_target: int | None = Field(None, ge=1, le=200, description='每日新词目标(可选,覆盖全局设置)')
 
 
+class CreateUserBookParam(SchemaBase):
+    """创建用户词书参数"""
+
+    user_id: int = Field(description='用户 ID')
+    book_id: int = Field(description='词书 ID')
+    is_active: bool = Field(True, description='是否当前在学')
+    started_at: datetime = Field(description='开始学习时间')
+
+
 class GetUserBookDetail(SchemaBase):
     """用户词书详情"""
 

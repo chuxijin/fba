@@ -39,3 +39,14 @@ class GetStreakInfo(SchemaBase):
 
     current_streak: int = Field(description='当前连续打卡天数')
     total_checkins: int = Field(description='总打卡天数')
+
+
+class CreateCheckinParam(SchemaBase):
+    """创建打卡记录参数"""
+
+    user_id: int = Field(description='用户 ID')
+    checkin_date: date = Field(description='打卡日期')
+    new_words: int = Field(default=0, description='当日新学单词数')
+    review_words: int = Field(default=0, description='当日复习单词数')
+    duration_seconds: int = Field(default=0, description='学习总时长(秒)')
+    streak_days: int = Field(default=0, description='连续打卡天数')

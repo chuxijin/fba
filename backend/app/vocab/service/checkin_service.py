@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.vocab.crud.crud_checkin import checkin_dao
 from backend.app.vocab.crud.crud_user_setting import user_setting_dao
-from backend.app.vocab.schema.checkin import GetCheckinToday, GetStreakInfo
+from backend.app.vocab.schema.checkin import CreateCheckinParam, GetCheckinToday, GetStreakInfo
 from backend.utils.timezone import timezone
 
 
@@ -52,15 +52,15 @@ class CheckinService:
             await checkin_dao.update_model(db, record.id, update_data)
         else:
             # 首次学习，创建记录
-            checkin_data = {
-                'user_id': user_id,
-                'checkin_date': today,
-                'new_words': 1 if is_new_word else 0,
-                'review_words': 0 if is_new_word else 1,
-                'duration_seconds': max(0, duration_ms // 1000),
-                'streak_days': 0,
-            }
-            await checkin_dao.create_model(db, checkin_data)
+            checkin = CreateCheckinParam(
+                user_id=user_id,
+                checkin_date=today,
+                new_words=1 if is_new_word else 0,
+                review_words=0 if is_new_word else 1,
+                duration_seconds=max(0, duration_ms // 1000),
+                streak_days=0,
+            )
+            await checkin_dao.create_model(db, checkin)
 
     @staticmethod
     async def get_today_status(*, db: AsyncSession, user_id: int) -> GetCheckinToday:

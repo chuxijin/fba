@@ -5,7 +5,13 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.vocab.crud.crud_group import group_word_dao, word_group_dao
-from backend.app.vocab.schema.group import CreateGroupParam, GetGroupDetail, GroupAddWordsParam, UpdateGroupParam
+from backend.app.vocab.schema.group import (
+    CreateGroupParam,
+    CreateGroupWordParam,
+    GetGroupDetail,
+    GroupAddWordsParam,
+    UpdateGroupParam,
+)
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
 from backend.utils.timezone import timezone
@@ -24,9 +30,7 @@ class GroupService:
         :param obj: 创建参数
         :return:
         """
-        data = obj.model_dump()
-        data['user_id'] = user_id
-        group = await word_group_dao.create_model(db, data, commit=False)
+        group = await word_group_dao.create_model(db, obj, user_id=user_id, commit=False)
         await db.commit()
         await db.refresh(group)
         detail = GetGroupDetail.model_validate(group)
@@ -99,7 +103,9 @@ class GroupService:
             existing = await group_word_dao.get_by_group_and_word(db, pk, word_id)
             if not existing:
                 await group_word_dao.create_model(
-                    db, {'group_id': pk, 'word_id': word_id, 'added_at': timezone.now()}, commit=False
+                    db,
+                    CreateGroupWordParam(group_id=pk, word_id=word_id, added_at=timezone.now()),
+                    commit=False,
                 )
                 added += 1
         if added > 0:

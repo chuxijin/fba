@@ -11,7 +11,7 @@ from backend.app.vocab.schema.review import (
     ReviewResult,
     SubmitReviewParam,
 )
-from backend.app.vocab.schema.user_book import GetUserBookDetail, StartBookParam
+from backend.app.vocab.schema.user_book import CreateUserBookParam, GetUserBookDetail, StartBookParam
 from backend.app.vocab.schema.user_word import ToggleStarParam
 from backend.app.vocab.service.review_service import review_service
 from backend.app.vocab.service.study_service import study_service
@@ -61,7 +61,12 @@ async def start_book(
     else:
         ub = await user_book_dao.create_model(
             db,
-            {'user_id': user_id, 'book_id': pk, 'is_active': True, 'started_at': timezone.now()},
+            CreateUserBookParam(
+                user_id=user_id,
+                book_id=pk,
+                is_active=True,
+                started_at=timezone.now(),
+            ),
             commit=False,
         )
         await db.commit()
