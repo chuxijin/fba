@@ -1,17 +1,18 @@
 from fastapi import APIRouter
 
+from backend.app.access.api.router import v1 as access_v1
 from backend.app.actcode.api.router import v1 as actcode_v1
 from backend.app.admin.api.router import v1 as admin_v1
 from backend.app.cms.api.router import v1 as cms_v1
 from backend.app.content.api.router import v1 as content_v1
 from backend.app.coulddrive.api.router import v1 as coulddrive_v1
 from backend.app.gongkao.api.router import v1 as gongkao_v1
+from backend.app.growth.api import v1 as growth_v1
 from backend.app.invite.api.router import v1 as invite_v1
 from backend.app.jia.api.router import v1 as jia_v1
 from backend.app.job.router import v1 as job_v1
 from backend.app.mall.api.router import v1 as mall_v1
 from backend.app.mcp.api.router import v1 as mcp_v1
-from backend.app.membership.api.router import v1 as membership_v1
 from backend.app.quest.api.router import v1 as quest_v1
 from backend.app.question_bank.api.router import v1 as question_bank_v1
 from backend.app.social.api.router import v1 as social_v1
@@ -21,6 +22,8 @@ from backend.app.vocab.api.router import v1 as vocab_v1
 
 router = APIRouter()
 
+router.include_router(access_v1)
+router.include_router(growth_v1)
 router.include_router(actcode_v1)
 router.include_router(admin_v1)
 router.include_router(task_v1)
@@ -33,7 +36,6 @@ router.include_router(gongkao_v1)
 router.include_router(invite_v1)
 router.include_router(jia_v1)
 router.include_router(mall_v1)
-router.include_router(membership_v1)
 router.include_router(trail_v1)
 router.include_router(content_v1)
 router.include_router(quest_v1)

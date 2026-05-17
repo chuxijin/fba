@@ -170,16 +170,6 @@ export type {
   CoulddriveResourceVectorizeResult,
 } from './coulddrive';
 
-// Membership
-export type {
-  MembershipBrief,
-  MembershipPlanBrief,
-  MembershipProgress,
-  MembershipRecordBrief,
-  MembershipRecordListParams,
-  MembershipTierBrief,
-} from './membership';
-
 // Oss
 export type { OssUploadParams, OssUploadResult } from './oss';
 

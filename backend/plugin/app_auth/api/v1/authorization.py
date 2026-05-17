@@ -63,21 +63,21 @@ async def get_pagination_authorizations(
     db: CurrentSession,
     application_id: Annotated[int | None, Query(description='应用ID')] = None,
     device_id: Annotated[int | None, Query(description='设备ID')] = None,
-    auth_type: Annotated[int | None, Query(description='授权类型')] = None,
-    status: Annotated[int | None, Query(description='授权状态')] = None,
+    source: Annotated[str | None, Query(description='授权来源(manual/purchase/redeem_code)')] = None,
+    status: Annotated[str | None, Query(description='授权状态(active/expired/paused)')] = None,
 ) -> ResponseModel:
     """
     分页获取授权列表
-    
+
     :param db: 数据库会话
     :param application_id: 应用ID
     :param device_id: 设备ID
-    :param auth_type: 授权类型
+    :param source: 授权来源
     :param status: 授权状态
     :return:
     """
     select = authorization_service.get_select(
-        application_id=application_id, device_id=device_id, auth_type=auth_type, status=status
+        application_id=application_id, device_id=device_id, source=source, status=status
     )
     page_data = await paging_data(db, select)
     return response_base.success(data=page_data)

@@ -10,6 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
+from backend.app.access.constants import SubscriptionSource
+from backend.app.access.crud.crud_template import subscription_template_dao
+from backend.app.access.model.subscription import Subscription
+from backend.app.access.service.subscription_service import subscription_service
 from backend.app.actcode.crud.crud_actcode import actcode_batch_dao, actcode_dao, actcode_usage_dao
 from backend.app.actcode.model.actcode import Actcode, ActcodeBatch, ActcodeUsage
 from backend.app.actcode.schema.actcode import OrderCodeActivateResult, OrderCodeLoginResult, OrderCodeVerifyResult
@@ -17,11 +21,6 @@ from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.model.user import User
 from backend.app.admin.service.auth_service import auth_service
 from backend.app.admin.utils.password_security import get_hash_password
-from backend.app.membership.crud.crud_membership import user_membership_dao
-from backend.app.membership.crud.crud_plan import membership_plan_dao
-from backend.app.membership.crud.crud_tier import membership_tier_dao
-from backend.app.membership.model.membership import UserMembership
-from backend.app.membership.service.membership_service import membership_service
 from backend.app.question_bank.service.user_account_service import user_account_service
 from backend.common.exception import errors
 from backend.common.log import log
@@ -80,37 +79,33 @@ class ActivateService:
         return normalized
 
     @staticmethod
-    def _resolve_plan_id(batch: ActcodeBatch) -> int | None:
+    def _resolve_template_code(batch: ActcodeBatch) -> str | None:
         """
-        从批次配置解析会员计划 ID
+        从批次配置解析订阅模板编码
 
         :param batch: 激活码批次
         :return:
         """
         reward_data = batch.reward_data or {}
-        plan_id = reward_data.get('membership_plan_id')
-        if plan_id is None:
+        template_code = reward_data.get('template_code')
+        if template_code is None:
             return None
 
-        try:
-            plan_value = int(plan_id)
-        except (TypeError, ValueError) as exc:
-            raise errors.RequestError(msg='批次 reward_data.membership_plan_id 配置错误') from exc
-
-        if plan_value <= 0:
-            raise errors.RequestError(msg='批次 reward_data.membership_plan_id 配置错误')
-        return plan_value
+        value = str(template_code).strip()
+        if not value:
+            raise errors.RequestError(msg='批次 reward_data.template_code 配置错误')
+        return value
 
     @classmethod
-    def _safe_resolve_plan_id(cls, batch: ActcodeBatch) -> int | None:
+    def _safe_resolve_template_code(cls, batch: ActcodeBatch) -> str | None:
         """
-        宽容获取会员计划 ID
+        宽容获取模板编码
 
         :param batch: 激活码批次
         :return:
         """
         try:
-            return cls._resolve_plan_id(batch)
+            return cls._resolve_template_code(batch)
         except errors.BaseError:
             return None
 
@@ -265,9 +260,9 @@ class ActivateService:
         user_id: int,
         batch: ActcodeBatch,
         order_no: str,
-    ) -> UserMembership:
+    ) -> Subscription:
         """
-        根据订单号发放会员
+        根据订单号发放订阅
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -275,19 +270,16 @@ class ActivateService:
         :param order_no: 订单号
         :return:
         """
-        plan_id = cls._resolve_plan_id(batch)
-        if plan_id is None:
-            raise errors.RequestError(msg='该订单号未配置会员计划')
+        template_code = cls._resolve_template_code(batch)
+        if template_code is None:
+            raise errors.RequestError(msg='该订单号未配置订阅模板')
 
-        return await membership_service.grant_by_plan(
+        return await subscription_service.create_from_template(
             db,
             user_id=user_id,
-            plan_id=plan_id,
-            source=cls.ORDER_SOURCE,
-            source_key=cls._build_source_key(order_no),
-            op_type='open',
-            source_detail=f'order_no={order_no}',
-            remark='订单号激活'
+            template_code=template_code,
+            source=SubscriptionSource.ACTCODE,
+            source_ref=cls._build_source_key(order_no),
         )
 
     @classmethod
@@ -298,9 +290,9 @@ class ActivateService:
         user_id: int,
         batch: ActcodeBatch,
         order_no: str,
-    ) -> UserMembership | None:
+    ) -> Subscription | None:
         """
-        获取订单号对应的会员快照
+        获取订单号对应的订阅快照
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -308,28 +300,43 @@ class ActivateService:
         :param order_no: 订单号
         :return:
         """
-        plan_id = cls._resolve_plan_id(batch)
-        if plan_id is None:
+        template_code = cls._resolve_template_code(batch)
+        if template_code is None:
             return None
 
-        plan = await membership_plan_dao.select_model(db, plan_id)
-        if not plan:
-            return None
+        from sqlalchemy import select as sa_select
 
-        tier = await membership_tier_dao.select_model(db, plan.tier_id)
-        if not tier:
-            return None
-
-        membership = await user_membership_dao.get_by_user_and_family(db, user_id, tier.family_code)
-        if membership:
-            return membership
-
-        return await user_membership_dao.select_model_by_column(
-            db,
-            user_id__eq=user_id,
-            source__eq=cls.ORDER_SOURCE,
-            source_key__eq=cls._build_source_key(order_no),
+        stmt = (
+            sa_select(Subscription)
+            .where(
+                Subscription.user_id == user_id,
+                Subscription.source == SubscriptionSource.ACTCODE,
+                Subscription.source_ref == cls._build_source_key(order_no),
+            )
+            .order_by(Subscription.id.desc())
         )
+        return (await db.execute(stmt)).scalars().first()
+
+    @classmethod
+    async def _resolve_template_meta(
+        cls,
+        db: AsyncSession,
+        *,
+        subscription: Subscription | None,
+    ) -> tuple[str | None, str | None]:
+        """
+        解析订阅关联的模板编码与名称
+
+        :param db: 数据库会话
+        :param subscription: 订阅
+        :return:
+        """
+        if subscription is None:
+            return None, None
+        template = await subscription_template_dao.select_model(db, subscription.template_id)
+        if template is None:
+            return None, None
+        return template.code, template.name
 
     @classmethod
     async def _consume_for_user(
@@ -340,7 +347,7 @@ class ActivateService:
         batch: ActcodeBatch,
         usage: ActcodeUsage | None,
         user: User,
-    ) -> tuple[bool, UserMembership | None]:
+    ) -> tuple[bool, Subscription | None]:
         """
         将订单号消耗到指定用户
 
@@ -355,11 +362,13 @@ class ActivateService:
             if usage.user_id != str(user.id):
                 raise errors.ConflictError(msg='该订单号已绑定其他账号')
 
-            membership = await cls._get_membership_snapshot(db, user_id=user.id, batch=batch, order_no=actcode.code)
-            return False, membership
+            subscription = await cls._get_membership_snapshot(
+                db, user_id=user.id, batch=batch, order_no=actcode.code
+            )
+            return False, subscription
 
         cls._ensure_order_consumable(actcode=actcode, batch=batch, usage=usage)
-        membership = await cls._grant_membership(db, user_id=user.id, batch=batch, order_no=actcode.code)
+        subscription = await cls._grant_membership(db, user_id=user.id, batch=batch, order_no=actcode.code)
         await user_account_service.ensure_by_sys_user_id(
             db=db,
             sys_user_id=user.id,
@@ -378,7 +387,7 @@ class ActivateService:
         new_status = 1 if new_used_count >= batch.max_use_per_code else actcode.status
         await actcode_dao.update_status(db, actcode.id, status=new_status, used_count=new_used_count)
         await actcode_batch_dao.increment_used_count(db, batch.id)
-        return True, membership
+        return True, subscription
 
     @classmethod
     async def activate_current_user(
@@ -397,7 +406,7 @@ class ActivateService:
         :return:
         """
         actcode, batch, usage = await cls._load_order_context(db, order_input=order_input, for_update=True)
-        just_activated, membership = await cls._consume_for_user(
+        just_activated, subscription = await cls._consume_for_user(
             db,
             actcode=actcode,
             batch=batch,
@@ -411,6 +420,8 @@ class ActivateService:
             register_channel=cls.ORDER_REGISTER_CHANNEL,
         )
 
+        template_code, template_name = await cls._resolve_template_meta(db, subscription=subscription)
+
         log.info(
             'order activate success: order_no=%s, user_id=%s, just_activated=%s',
             actcode.code,
@@ -422,10 +433,10 @@ class ActivateService:
             user_id=current_user.id,
             username=current_user.username,
             just_activated=just_activated,
-            membership_plan_id=cls._safe_resolve_plan_id(batch),
-            tier_code=membership.tier_code if membership else None,
-            tier_name=membership.tier_name if membership else None,
-            membership_valid_to=membership.valid_to if membership else None,
+            membership_plan_id=None,
+            template_code=template_code,
+            template_name=template_name,
+            subscription_valid_to=subscription.valid_period.upper if subscription else None,
             message='订单号激活成功'
             if just_activated
             else '订单号已绑定当前账号',
@@ -458,7 +469,7 @@ class ActivateService:
             bound_user = await cls._create_order_user(db, order_no=actcode.code)
             auto_created = True
 
-        just_activated, membership = await cls._consume_for_user(
+        just_activated, subscription = await cls._consume_for_user(
             db,
             actcode=actcode,
             batch=batch,
@@ -479,6 +490,8 @@ class ActivateService:
             success_msg='订单号登录成功'
         )
 
+        template_code, template_name = await cls._resolve_template_meta(db, subscription=subscription)
+
         log.info(
             'order login success: order_no=%s, user_id=%s, auto_created=%s, just_activated=%s',
             actcode.code,
@@ -491,10 +504,10 @@ class ActivateService:
             order_no=actcode.code,
             auto_created=auto_created,
             just_activated=just_activated,
-            membership_plan_id=cls._safe_resolve_plan_id(batch),
-            tier_code=membership.tier_code if membership else None,
-            tier_name=membership.tier_name if membership else None,
-            membership_valid_to=membership.valid_to if membership else None,
+            membership_plan_id=None,
+            template_code=template_code,
+            template_name=template_name,
+            subscription_valid_to=subscription.valid_period.upper if subscription else None,
         )
 
     @classmethod
@@ -520,13 +533,12 @@ class ActivateService:
                 is_bound=False,
                 can_login=False,
                 username=None,
-                membership_plan_id=None,
                 message=exc.msg,
             )
 
         bound_user = await cls._get_bound_user(db, usage)
         try:
-            plan_id = cls._resolve_plan_id(batch)
+            template_code = cls._resolve_template_code(batch)
         except errors.BaseError as exc:
             return OrderCodeVerifyResult(
                 valid=False,
@@ -534,7 +546,6 @@ class ActivateService:
                 is_bound=bound_user is not None,
                 can_login=False,
                 username=bound_user.username if bound_user else None,
-                membership_plan_id=None,
                 message=exc.msg,
             )
 
@@ -545,7 +556,6 @@ class ActivateService:
                 is_bound=True,
                 can_login=True,
                 username=bound_user.username,
-                membership_plan_id=plan_id,
                 message='订单号已绑定，可直接登录',
             )
 
@@ -558,7 +568,6 @@ class ActivateService:
                 is_bound=False,
                 can_login=False,
                 username=None,
-                membership_plan_id=plan_id,
                 message=exc.msg,
             )
 
@@ -568,8 +577,8 @@ class ActivateService:
             is_bound=False,
             can_login=True,
             username=None,
-            membership_plan_id=plan_id,
-            message='订单号有效，可直接登录或绑定当前账号',
+            membership_plan_id=None,
+            message=f'订单号有效，模板: {template_code}',
         )
 
 

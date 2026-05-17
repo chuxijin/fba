@@ -10,8 +10,6 @@ import { createCoulddriveModule } from './modules/coulddrive';
 import type { CoulddriveModule } from './modules/coulddrive';
 import { createOssModule } from './modules/oss';
 import type { OssModule } from './modules/oss';
-import { createMembershipModule } from './modules/membership';
-import type { MembershipModule } from './modules/membership';
 import { createRenderBookModule } from './modules/render-book';
 import type { RenderBookModule } from './modules/render-book';
 import { createContentModule } from './modules/content';
@@ -33,7 +31,6 @@ export interface FbaApiSdk {
   qbank: QbankModule;
   coulddrive: CoulddriveModule;
   oss: OssModule;
-  membership: MembershipModule;
   renderBook: RenderBookModule;
   content: ContentModule;
   actcode: ActcodeModule;
@@ -53,7 +50,6 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
   const qbank = createQbankModule(client);
   const coulddrive = createCoulddriveModule(client);
   const oss = createOssModule(client);
-  const membership = createMembershipModule(client);
   const renderBook = createRenderBookModule(client);
   const content = createContentModule(client);
   const actcode = createActcodeModule(client);
@@ -66,7 +62,6 @@ export function createFbaApiSdk(options: SdkOptions): FbaApiSdk {
     qbank,
     coulddrive,
     oss,
-    membership,
     renderBook,
     content,
     actcode,
@@ -88,7 +83,6 @@ export type { GongkaoModule } from './modules/gongkao';
 export type { QbankModule } from './modules/qbank';
 export type { CoulddriveModule } from './modules/coulddrive';
 export type { OssModule } from './modules/oss';
-export type { MembershipModule } from './modules/membership';
 export type { RenderBookModule } from './modules/render-book';
 export type { ContentModule } from './modules/content';
 export type { ActcodeModule } from './modules/actcode';
@@ -229,8 +223,6 @@ export type {
   CoulddriveResourceVectorizeResult,
   OssUploadParams,
   OssUploadResult,
-  MembershipBrief,
-  MembershipPlanBrief,
   RenderAnswerLayout,
   RenderBookKind,
   RenderBookMode,

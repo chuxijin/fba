@@ -48,7 +48,7 @@ class CRUDAuthorization(CRUDPlus[AppAuthorization]):
         """删除授权"""
         return await self.delete_model(db, auth_id)
 
-    async def get_by_app_and_device(self, db: AsyncSession, application_id: int, 
+    async def get_by_app_and_device(self, db: AsyncSession, application_id: int,
                                    device_id: int) -> AppAuthorization | None:
         """
         获取应用和设备的授权
@@ -62,13 +62,13 @@ class CRUDAuthorization(CRUDPlus[AppAuthorization]):
             and_(
                 self.model.application_id == application_id,
                 self.model.device_id == device_id,
-                self.model.status == 1
+                self.model.status == 'active'
             )
         )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def check_authorization(self, db: AsyncSession, application_id: int, 
+    async def check_authorization(self, db: AsyncSession, application_id: int,
                                  device_id: int, current_time: datetime) -> AppAuthorization | None:
         """
         检查授权是否有效
@@ -83,9 +83,9 @@ class CRUDAuthorization(CRUDPlus[AppAuthorization]):
             and_(
                 self.model.application_id == application_id,
                 self.model.device_id == device_id,
-                self.model.status == 1,
-                self.model.start_time <= current_time,
-                (self.model.end_time.is_(None) | (self.model.end_time >= current_time))
+                self.model.status == 'active',
+                self.model.valid_from <= current_time,
+                (self.model.valid_to.is_(None) | (self.model.valid_to >= current_time))
             )
         )
         result = await db.execute(stmt)
@@ -113,8 +113,8 @@ class CRUDAuthorization(CRUDPlus[AppAuthorization]):
         stmt = select(self.model).where(self.model.application_id == application_id).order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 
-    async def get_list(self, db: AsyncSession, application_id: int = None, device_id: int = None, 
-                      status: int = None) -> list[AppAuthorization]:
+    async def get_list(self, db: AsyncSession, application_id: int = None, device_id: int = None,
+                      status: str = None) -> list[AppAuthorization]:
         """获取授权列表"""
         stmt = select(self.model)
         if application_id:
@@ -126,14 +126,14 @@ class CRUDAuthorization(CRUDPlus[AppAuthorization]):
         stmt = stmt.order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 
-    def get_select(self, application_id: int = None, device_id: int = None, 
-                  auth_type: int = None, status: int = None):
+    def get_select(self, application_id: int = None, device_id: int = None,
+                  source: str = None, status: str = None):
         """
         获取授权查询语句
 
         :param application_id: 应用 ID
         :param device_id: 设备 ID
-        :param auth_type: 授权类型
+        :param source: 授权来源
         :param status: 状态
         :return:
         """
@@ -142,8 +142,8 @@ class CRUDAuthorization(CRUDPlus[AppAuthorization]):
             stmt = stmt.where(self.model.application_id == application_id)
         if device_id:
             stmt = stmt.where(self.model.device_id == device_id)
-        if auth_type is not None:
-            stmt = stmt.where(self.model.auth_type == auth_type)
+        if source is not None:
+            stmt = stmt.where(self.model.source == source)
         if status is not None:
             stmt = stmt.where(self.model.status == status)
         stmt = stmt.order_by(self.model.created_time.desc())

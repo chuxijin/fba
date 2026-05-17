@@ -12,10 +12,11 @@ class CreateAuthorizationParam(SchemaBase):
 
     application_id: int = Field(description='应用ID')
     device_id: int = Field(description='设备ID')
-    auth_type: int = Field(description='授权类型')
-    start_time: datetime = Field(description='授权开始时间')
-    end_time: datetime | None = Field(None, description='授权结束时间')
-    auth_source: str | None = Field(None, description='授权来源')
+    source: str = Field(description='授权来源(manual/purchase/redeem_code)')
+    valid_from: datetime = Field(description='授权开始时间')
+    valid_to: datetime | None = Field(None, description='授权结束时间')
+    source_ref: str | None = Field(None, description='来源引用')
+    template_code: str | None = Field(None, description='关联 access 订阅模板编码')
     remark: str | None = Field(None, description='备注')
 
 
@@ -25,6 +26,7 @@ class AuthorizeDeviceParam(SchemaBase):
     application_id: int = Field(description='应用ID')
     device_id: str = Field(description='设备标识')
     duration_days: int = Field(description='授权天数')
+    template_code: str | None = Field(None, description='关联 access 订阅模板编码')
     remark: str | None = Field(None, description='备注')
 
 
@@ -38,15 +40,16 @@ class RedeemCodeAuthParam(SchemaBase):
 class UpdateAuthorizationParam(SchemaBase):
     """更新授权参数"""
 
-    status: int | None = Field(None, description='授权状态')
-    end_time: datetime | None = Field(None, description='授权结束时间')
+    status: str | None = Field(None, description='授权状态(active/expired/paused)')
+    valid_to: datetime | None = Field(None, description='授权结束时间')
+    template_code: str | None = Field(None, description='关联 access 订阅模板编码')
     remark: str | None = Field(None, description='备注')
 
 
 class UpdateAuthorizationTimeParam(SchemaBase):
     """修改授权时间参数"""
 
-    end_time: datetime | None = Field(None, description='新的结束时间，为空表示永久授权')
+    valid_to: datetime | None = Field(None, description='新的结束时间，为空表示永久授权')
     remark: str | None = Field(None, description='修改备注')
 
 
@@ -63,12 +66,13 @@ class GetAuthorizationDetail(SchemaBase):
     id: int = Field(description='授权ID')
     application_id: int = Field(description='应用ID')
     device_id: int = Field(description='设备ID')
-    auth_type: int = Field(description='授权类型')
-    status: int = Field(description='授权状态')
-    start_time: datetime = Field(description='授权开始时间')
-    end_time: datetime | None = Field(description='授权结束时间')
+    source: str = Field(description='授权来源')
+    status: str = Field(description='授权状态')
+    valid_from: datetime = Field(description='授权开始时间')
+    valid_to: datetime | None = Field(description='授权结束时间')
     remaining_days: int | None = Field(description='剩余天数')
-    auth_source: str | None = Field(description='授权来源')
+    source_ref: str | None = Field(description='来源引用')
+    template_code: str | None = Field(description='关联 access 订阅模板编码')
     remark: str | None = Field(description='备注')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(description='更新时间')
@@ -78,7 +82,7 @@ class AuthorizationCheckResult(SchemaBase):
     """授权检查结果"""
 
     is_authorized: bool = Field(description='是否已授权')
-    status: int | None = Field(description='授权状态')
+    status: str | None = Field(description='授权状态')
     remaining_days: int | None = Field(description='剩余天数')
-    end_time: datetime | None = Field(description='授权结束时间')
+    valid_to: datetime | None = Field(description='授权结束时间')
     message: str = Field(description='提示信息')

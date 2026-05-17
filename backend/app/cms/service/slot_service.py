@@ -14,7 +14,7 @@ from backend.app.cms.schema.slot import (
     GetSlotDetail,
     UpdateSlotParam,
 )
-from backend.app.membership.crud.crud_membership import user_membership_dao
+from backend.app.access.service.subscription_service import subscription_service
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
 from backend.utils.timezone import timezone
@@ -89,14 +89,14 @@ class SlotService:
             return (timezone.now() - created_time) <= timedelta(days=NEW_USER_WINDOW_DAYS)
 
         if slot.target_user_type == 2:
-            # 会员
-            level = await user_membership_dao.get_max_active_weight(db, user_id)
-            return level >= max(1, slot.target_min_member_level)
+            # 会员: 任何 active subscription 视为命中
+            grade = await subscription_service.get_max_grade(db, user_id=user_id)
+            return grade != 'basic'
 
         if slot.target_user_type == 3:
             # 普通用户(无任何有效会员)
-            level = await user_membership_dao.get_max_active_weight(db, user_id)
-            return level == 0
+            grade = await subscription_service.get_max_grade(db, user_id=user_id)
+            return grade == 'basic'
 
         # 99 自定义条件保留位
         return True

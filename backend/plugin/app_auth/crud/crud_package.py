@@ -56,21 +56,21 @@ class CRUDPackage(CRUDPlus[AppPackage]):
         """
         stmt = select(self.model).where(
             self.model.application_id == application_id,
-            self.model.is_active.is_(True)
+            self.model.status == 'active'
         ).order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 
-    async def get_list(self, db: AsyncSession, application_id: int = None, is_active: bool = None) -> list[AppPackage]:
+    async def get_list(self, db: AsyncSession, application_id: int = None, status: str = None) -> list[AppPackage]:
         """获取套餐列表"""
         stmt = select(self.model)
         if application_id:
             stmt = stmt.where(self.model.application_id == application_id)
-        if is_active is not None:
-            stmt = stmt.where(self.model.is_active == is_active)
+        if status is not None:
+            stmt = stmt.where(self.model.status == status)
         stmt = stmt.order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 
-    def get_select(self, application_id: int = None, name: str = None, is_active: bool = None):
+    def get_select(self, application_id: int = None, name: str = None, status: str = None):
         """获取套餐查询语句，包含应用信息"""
         stmt = select(
             self.model,
@@ -82,8 +82,8 @@ class CRUDPackage(CRUDPlus[AppPackage]):
             stmt = stmt.where(self.model.application_id == application_id)
         if name:
             stmt = stmt.where(self.model.name.like(f'%{name}%'))
-        if is_active is not None:
-            stmt = stmt.where(self.model.is_active == is_active)
+        if status is not None:
+            stmt = stmt.where(self.model.status == status)
         stmt = stmt.order_by(self.model.created_time.desc())
         return stmt
 

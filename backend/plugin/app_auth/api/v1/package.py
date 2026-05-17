@@ -70,23 +70,21 @@ async def get_pagination_packages(
     db: CurrentSession,
     application_id: Annotated[int | None, Query(description='应用ID')] = None,
     name: Annotated[str | None, Query(description='套餐名称')] = None,
-    is_active: Annotated[bool | None, Query(description='是否启用')] = None,
+    status: Annotated[str | None, Query(description='套餐状态(active/inactive)')] = None,
 ) -> ResponseModel:
     """
     分页获取套餐列表
-    
+
     :param db: 数据库会话
     :param application_id: 应用ID
     :param name: 套餐名称
-    :param is_active: 是否启用
+    :param status: 套餐状态
     :return:
     """
-    # 暂时使用自定义查询方法，避免分页序列化问题
     packages = await package_service.get_pagination_list(
-        db, application_id=application_id, name=name, is_active=is_active
+        db, application_id=application_id, name=name, status=status
     )
-    
-    # 简单的分页处理（这里可以后续优化为真正的分页）
+
     page_data = {
         'items': packages,
         'total': len(packages),

@@ -1,39 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.membership.constants import MembershipEntitlementCode
-from backend.app.membership.crud.crud_entitlement import membership_entitlement_dao
-from backend.app.membership.security import check_membership_entitlement
+from backend.app.access.constants import ResourceType
+from backend.app.access.engine.decide import access_decision_engine
+from backend.app.access.engine.snapshot import snapshot_service
+from backend.app.access.schema.engine import AccessContext
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_question import question_dao
-from backend.app.question_bank.model import QuestionBank, QuestionPlacement
+from backend.app.question_bank.model import QuestionPlacement
 from backend.common.exception import errors
+from backend.utils.timezone import timezone
+
+_FEATURE_ADVANCED_FILTER = 'qbank.advanced_filter'
+_FEATURE_KNOWLEDGE_PRACTICE = 'qbank.knowledge_practice'
 
 
 class MembershipService:
-    """题库会员权限服务"""
-
-    QBANK_FILTER_ENTITLEMENT_CODE: str = MembershipEntitlementCode.QBANK_ADVANCED_FILTER
-    KNOWLEDGE_ACCESS_ENTITLEMENT_CODE: str = MembershipEntitlementCode.QBANK_KNOWLEDGE_PRACTICE
-
-    @staticmethod
-    def _normalize_entitlement_code(value: str | None) -> str | None:
-        """标准化权益编码"""
-        if value is None:
-            return None
-
-        normalized = value.strip()
-        if not normalized:
-            return None
-        return normalized
+    """题库权益服务(基于 access 决策引擎)"""
 
     @staticmethod
     def _has_text_value(value: str | None) -> bool:
@@ -50,252 +40,55 @@ class MembershipService:
         return any(item is not None and str(item).strip() for item in value)
 
     @staticmethod
-    async def _get_active_bank_ids_by_chapter_source(
-        *,
-        db: AsyncSession,
-        source_bank_id: int,
-    ) -> list[int]:
-        """
-        获取使用指定篇章来源的有效题库 ID 列表
-
-        :param db: 数据库会话
-        :param source_bank_id: 篇章来源题库 ID
-        :return:
-        """
-        stmt = (
-            select(QuestionBank.id)
-            .where(
-                QuestionBank.status == 1,
-                or_(
-                    QuestionBank.id == source_bank_id,
-                    QuestionBank.chapter_source_bank_id == source_bank_id,
-                ),
-            )
-            .order_by(QuestionBank.id.asc())
-        )
-        rows = (await db.execute(stmt)).all()
-        return [row[0] for row in rows]
-
-    @classmethod
-    async def _ensure_entitlement_available(cls, *, db: AsyncSession, entitlement_code: str) -> None:
-        """
-        确保权益配置存在且启用
-
-        :param db: 数据库会话
-        :param entitlement_code: 权益编码
-        :return:
-        """
-        entitlement = await membership_entitlement_dao.get_by_code(db, entitlement_code)
-        if not entitlement:
-            raise errors.ServerError(msg=f'权益配置缺失: {entitlement_code}')
-        if entitlement.status != 1:
-            raise errors.ServerError(msg=f'权益配置未启用: {entitlement_code}')
-
-    @classmethod
-    async def _build_entitlement_grant_map(
-        cls,
+    async def _decide_resource(
         *,
         db: AsyncSession,
         user_id: int,
-        entitlement_codes: Iterable[str | None],
-    ) -> dict[str, bool]:
+        resource_type: str,
+        resource_id: int,
+        consume_trial: bool = False,
+        deny_message: str = '当前资源需要会员权限',
+    ) -> None:
         """
-        批量计算用户对权益编码的访问结果
+        统一资源决策入口
 
         :param db: 数据库会话
         :param user_id: 用户 ID
-        :param entitlement_codes: 权益编码列表
+        :param resource_type: 资源类型
+        :param resource_id: 资源 ID
+        :param consume_trial: 是否允许扣减试看额度
+        :param deny_message: 拒绝时提示
         :return:
         """
-        normalized_codes = sorted(
-            {
-                code
-                for code in (cls._normalize_entitlement_code(item) for item in entitlement_codes)
-                if code is not None
-            }
+        ctx = AccessContext(
+            user_id=user_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            consume_trial=consume_trial,
         )
-        if not normalized_codes:
-            return {}
+        decision = await access_decision_engine.decide(db, ctx)
+        if not decision.allowed:
+            raise errors.ForbiddenError(msg=deny_message)
 
-        grant_map: dict[str, bool] = {}
-        for code in normalized_codes:
-            await cls._ensure_entitlement_available(db=db, entitlement_code=code)
-            try:
-                await check_membership_entitlement(
-                    db,
-                    user_id=user_id,
-                    entitlement_code=code,
-                )
-            except errors.ForbiddenError:
-                grant_map[code] = False
-                continue
-
-            grant_map[code] = True
-
-        return grant_map
-
-    @classmethod
-    async def _require_entitlement(
-        cls,
+    @staticmethod
+    async def _user_has_feature(
         *,
         db: AsyncSession,
         user_id: int,
         entitlement_code: str,
-        message: str,
-    ) -> None:
+    ) -> bool:
         """
-        要求用户具备指定权益
+        判断用户是否拥有指定跨域功能权益
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param entitlement_code: 权益编码
-        :param message: 权限不足提示
         :return:
         """
-        grant_map = await cls._build_entitlement_grant_map(
-            db=db,
-            user_id=user_id,
-            entitlement_codes=[entitlement_code],
-        )
-        if grant_map.get(entitlement_code):
-            return
-
-        raise errors.ForbiddenError(msg=message)
-
-    @classmethod
-    async def _verify_bank_model_access(
-        cls,
-        *,
-        db: AsyncSession,
-        user_id: int,
-        bank: QuestionBank,
-    ) -> None:
-        """
-        按题库模型校验访问权限
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :param bank: 题库模型
-        :return:
-        """
-        entitlement_code = cls._normalize_entitlement_code(bank.access_entitlement_code)
-        if entitlement_code is None:
-            return
-
-        await cls._require_entitlement(
-            db=db,
-            user_id=user_id,
-            entitlement_code=entitlement_code,
-            message='当前题库需要会员权限',
-        )
-
-    @classmethod
-    async def resolve_bank_context_for_chapter(
-        cls,
-        *,
-        db: AsyncSession,
-        chapter_id: int,
-        bank_id: int | None = None,
-        user_id: int | None = None,
-    ) -> int:
-        """
-        解析篇章访问所对应的题库上下文
-
-        :param db: 数据库会话
-        :param chapter_id: 篇章 ID
-        :param bank_id: 显式题库 ID
-        :param user_id: 用户 ID，传入时会同步校验访问权限
-        :return:
-        """
-        chapter = await chapter_dao.get(db, chapter_id)
-        if not chapter:
-            raise errors.NotFoundError(msg='篇章不存在')
-
-        if bank_id is not None:
-            await cls.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
-            if user_id is not None:
-                await cls.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
-            return bank_id
-
-        candidate_bank_ids = await cls._get_active_bank_ids_by_chapter_source(
-            db=db,
-            source_bank_id=chapter.bank_id,
-        )
-        if not candidate_bank_ids:
-            raise errors.NotFoundError(msg='篇章关联题库不存在')
-        if len(candidate_bank_ids) > 1:
-            raise errors.RequestError(msg='当前篇章被多个题库复用，请传 bank_id 明确题库上下文')
-
-        resolved_bank_id = candidate_bank_ids[0]
-        if user_id is not None:
-            await cls.verify_bank_access(db=db, user_id=user_id, bank_id=resolved_bank_id)
-        return resolved_bank_id
-
-    @classmethod
-    async def _get_question_access_map(
-        cls,
-        *,
-        db: AsyncSession,
-        question_ids: list[int],
-    ) -> dict[int, set[str | None]]:
-        """
-        获取题目对应的访问权益映射
-
-        :param db: 数据库会话
-        :param question_ids: 题目 ID 列表
-        :return:
-        """
-        if not question_ids:
-            return {}
-
-        stmt = (
-            select(
-                QuestionPlacement.question_id,
-                QuestionBank.access_entitlement_code,
-            )
-            .join(QuestionBank, QuestionBank.id == QuestionPlacement.bank_id)
-            .where(
-                QuestionPlacement.question_id.in_(question_ids),
-                QuestionPlacement.is_active.is_(True),
-                QuestionBank.status == 1,
-            )
-        )
-        rows = (await db.execute(stmt)).all()
-
-        access_map: dict[int, set[str | None]] = defaultdict(set)
-        for question_id, entitlement_code in rows:
-            access_map[question_id].add(cls._normalize_entitlement_code(entitlement_code))
-        return access_map
-
-    @staticmethod
-    def _ensure_question_access_by_codes(
-        *,
-        access_codes: set[str | None],
-        grant_map: dict[str, bool],
-    ) -> None:
-        """
-        根据题目可用资源判断是否可访问
-
-        :param access_codes: 题目关联的权益编码集合
-        :param grant_map: 用户权益结果
-        :return:
-        """
-        if not access_codes:
-            return
-
-        protected_codes = sorted({code for code in access_codes if code is not None})
-        if not protected_codes:
-            return
-
-        if None in access_codes or len(protected_codes) > 1:
-            if all(grant_map.get(code, False) for code in protected_codes):
-                return
-            raise errors.ForbiddenError(msg='当前题目存在多个题库权限上下文，请通过已授权题库或会话访问')
-
-        if grant_map.get(protected_codes[0], False):
-            return
-
-        raise errors.ForbiddenError(msg='当前题目需要会员权限')
+        snapshot = await snapshot_service.load(db, user_id=user_id, ts=timezone.now())
+        if snapshot.has_subscription_entitlement(entitlement_code):
+            return True
+        return snapshot.has_direct_grant(entitlement_code)
 
     @classmethod
     async def verify_bank_access(cls, *, db: AsyncSession, user_id: int, bank_id: int) -> None:
@@ -311,10 +104,17 @@ class MembershipService:
         if not bank:
             raise errors.NotFoundError(msg='题库不存在')
 
-        await cls._verify_bank_model_access(db=db, user_id=user_id, bank=bank)
+        await cls._decide_resource(
+            db=db,
+            user_id=user_id,
+            resource_type=ResourceType.QBANK,
+            resource_id=bank_id,
+            consume_trial=False,
+            deny_message='当前题库需要会员权限',
+        )
 
-    @staticmethod
-    async def verify_chapter_access(*, db: AsyncSession, user_id: int, chapter_id: int) -> None:
+    @classmethod
+    async def verify_chapter_access(cls, *, db: AsyncSession, user_id: int, chapter_id: int) -> None:
         """
         校验用户是否有访问篇章的权限
 
@@ -327,10 +127,12 @@ class MembershipService:
         if not chapter:
             raise errors.NotFoundError(msg='篇章不存在')
 
-        await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=chapter.bank_id)
+        await cls.verify_bank_access(db=db, user_id=user_id, bank_id=chapter.bank_id)
 
-    @staticmethod
-    async def verify_bank_chapter_relation(*, db: AsyncSession, bank_id: int, chapter_id: int) -> None:
+    @classmethod
+    async def verify_bank_chapter_relation(
+        cls, *, db: AsyncSession, bank_id: int, chapter_id: int
+    ) -> None:
         """
         校验篇章是否属于题库当前篇章来源
 
@@ -351,8 +153,10 @@ class MembershipService:
         if chapter.bank_id != source_bank_id:
             raise errors.ForbiddenError(msg=f'篇章 ID {chapter_id} 不属于题库 ID {bank_id} 的篇章来源')
 
-    @staticmethod
-    async def verify_bank_chapter_access(*, db: AsyncSession, user_id: int, bank_id: int, chapter_id: int) -> None:
+    @classmethod
+    async def verify_bank_chapter_access(
+        cls, *, db: AsyncSession, user_id: int, bank_id: int, chapter_id: int
+    ) -> None:
         """
         校验篇章与题库关系并校验访问权限
 
@@ -362,11 +166,85 @@ class MembershipService:
         :param chapter_id: 篇章 ID
         :return:
         """
-        await MembershipService.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
-        await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+        await cls.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
+        await cls.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+
+    @classmethod
+    async def resolve_bank_context_for_chapter(
+        cls,
+        *,
+        db: AsyncSession,
+        chapter_id: int,
+        bank_id: int | None = None,
+        user_id: int | None = None,
+    ) -> int:
+        """
+        解析篇章访问所对应的题库上下文
+
+        :param db: 数据库会话
+        :param chapter_id: 篇章 ID
+        :param bank_id: 显式题库 ID
+        :param user_id: 用户 ID, 传入时同步校验
+        :return:
+        """
+        chapter = await chapter_dao.get(db, chapter_id)
+        if not chapter:
+            raise errors.NotFoundError(msg='篇章不存在')
+
+        if bank_id is not None:
+            await cls.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
+            if user_id is not None:
+                await cls.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+            return bank_id
+
+        candidate_bank_ids = await cls._get_active_bank_ids_by_chapter_source(
+            db=db, source_bank_id=chapter.bank_id
+        )
+        if not candidate_bank_ids:
+            raise errors.NotFoundError(msg='篇章关联题库不存在')
+        if len(candidate_bank_ids) > 1:
+            raise errors.RequestError(msg='当前篇章被多个题库复用, 请传 bank_id 明确题库上下文')
+
+        resolved_bank_id = candidate_bank_ids[0]
+        if user_id is not None:
+            await cls.verify_bank_access(db=db, user_id=user_id, bank_id=resolved_bank_id)
+        return resolved_bank_id
 
     @staticmethod
-    async def verify_question_access(*, db: AsyncSession, user_id: int, question_id: int) -> None:
+    async def _get_active_bank_ids_by_chapter_source(
+        *,
+        db: AsyncSession,
+        source_bank_id: int,
+    ) -> list[int]:
+        """
+        获取使用指定篇章来源的有效题库 ID 列表
+
+        :param db: 数据库会话
+        :param source_bank_id: 篇章来源题库 ID
+        :return:
+        """
+        from sqlalchemy import or_
+
+        from backend.app.question_bank.model import QuestionBank
+
+        stmt = (
+            select(QuestionBank.id)
+            .where(
+                QuestionBank.status == 1,
+                or_(
+                    QuestionBank.id == source_bank_id,
+                    QuestionBank.chapter_source_bank_id == source_bank_id,
+                ),
+            )
+            .order_by(QuestionBank.id.asc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [row[0] for row in rows]
+
+    @classmethod
+    async def verify_question_access(
+        cls, *, db: AsyncSession, user_id: int, question_id: int
+    ) -> None:
         """
         校验用户是否有访问题目的权限
 
@@ -379,19 +257,26 @@ class MembershipService:
         if not question:
             raise errors.NotFoundError(msg='题目不存在')
 
-        access_map = await MembershipService._get_question_access_map(db=db, question_ids=[question_id])
-        grant_map = await MembershipService._build_entitlement_grant_map(
-            db=db,
-            user_id=user_id,
-            entitlement_codes=access_map.get(question_id, set()),
-        )
-        MembershipService._ensure_question_access_by_codes(
-            access_codes=access_map.get(question_id, set()),
-            grant_map=grant_map,
-        )
+        bank_ids = await cls._get_question_bank_ids(db=db, question_ids=[question_id])
+        target_bank_ids = bank_ids.get(question_id, [])
+        if not target_bank_ids:
+            return
 
-    @staticmethod
-    async def verify_question_ids_access(*, db: AsyncSession, user_id: int, question_ids: list[int]) -> None:
+        last_error: errors.ForbiddenError | None = None
+        for bank_id in target_bank_ids:
+            try:
+                await cls.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+                return
+            except errors.ForbiddenError as exc:
+                last_error = exc
+                continue
+
+        raise last_error or errors.ForbiddenError(msg='当前题目需要会员权限')
+
+    @classmethod
+    async def verify_question_ids_access(
+        cls, *, db: AsyncSession, user_id: int, question_ids: list[int]
+    ) -> None:
         """
         批量校验题目访问权限
 
@@ -400,28 +285,55 @@ class MembershipService:
         :param question_ids: 题目 ID 列表
         :return:
         """
-        normalized_question_ids = [question_id for question_id in dict.fromkeys(question_ids) if question_id > 0]
-        if not normalized_question_ids:
+        normalized_ids = [qid for qid in dict.fromkeys(question_ids) if qid > 0]
+        if not normalized_ids:
             return
 
-        access_map = await MembershipService._get_question_access_map(db=db, question_ids=normalized_question_ids)
-        grant_map = await MembershipService._build_entitlement_grant_map(
-            db=db,
-            user_id=user_id,
-            entitlement_codes=[
-                code
-                for access_codes in access_map.values()
-                for code in access_codes
-            ],
-        )
-        for question_id in normalized_question_ids:
-            MembershipService._ensure_question_access_by_codes(
-                access_codes=access_map.get(question_id, set()),
-                grant_map=grant_map,
-            )
+        bank_map = await cls._get_question_bank_ids(db=db, question_ids=normalized_ids)
+        for qid in normalized_ids:
+            bank_ids = bank_map.get(qid, [])
+            if not bank_ids:
+                continue
+            await cls.verify_bank_access(db=db, user_id=user_id, bank_id=bank_ids[0])
 
     @staticmethod
-    async def verify_bank_list_access(*, db: AsyncSession, user_id: int, bank_id: int) -> None:
+    async def _get_question_bank_ids(
+        *,
+        db: AsyncSession,
+        question_ids: list[int],
+    ) -> dict[int, list[int]]:
+        """
+        获取题目所属题库 ID 映射
+
+        :param db: 数据库会话
+        :param question_ids: 题目 ID 列表
+        :return:
+        """
+        if not question_ids:
+            return {}
+
+        from backend.app.question_bank.model import QuestionBank
+
+        stmt = (
+            select(QuestionPlacement.question_id, QuestionPlacement.bank_id)
+            .join(QuestionBank, QuestionBank.id == QuestionPlacement.bank_id)
+            .where(
+                QuestionPlacement.question_id.in_(question_ids),
+                QuestionPlacement.is_active.is_(True),
+                QuestionBank.status == 1,
+            )
+        )
+        rows = (await db.execute(stmt)).all()
+
+        result: dict[int, list[int]] = {}
+        for question_id, bank_id in rows:
+            result.setdefault(question_id, []).append(bank_id)
+        return result
+
+    @classmethod
+    async def verify_bank_list_access(
+        cls, *, db: AsyncSession, user_id: int, bank_id: int
+    ) -> None:
         """
         校验题库题目列表访问权限
 
@@ -430,10 +342,12 @@ class MembershipService:
         :param bank_id: 题库 ID
         :return:
         """
-        await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+        await cls.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
 
-    @staticmethod
-    async def verify_placement_access(*, db: AsyncSession, user_id: int, placement_id: int) -> None:
+    @classmethod
+    async def verify_placement_access(
+        cls, *, db: AsyncSession, user_id: int, placement_id: int
+    ) -> None:
         """
         校验题目挂载访问权限
 
@@ -446,12 +360,11 @@ class MembershipService:
             QuestionPlacement.id == placement_id,
             QuestionPlacement.is_active.is_(True),
         )
-        result = await db.execute(stmt)
-        placement = result.scalars().first()
+        placement = (await db.execute(stmt)).scalars().first()
         if not placement:
             raise errors.NotFoundError(msg='题目挂载不存在或已禁用')
 
-        await MembershipService.verify_bank_access(db=db, user_id=user_id, bank_id=placement.bank_id)
+        await cls.verify_bank_access(db=db, user_id=user_id, bank_id=placement.bank_id)
 
     @classmethod
     async def verify_filter_access(
@@ -473,7 +386,7 @@ class MembershipService:
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param cat_id: 分类 ID
-        :param region: 地区关键字
+        :param region: 地区
         :param year_start: 起始年份
         :param year_end: 结束年份
         :param stem_keyword: 题干关键字
@@ -493,12 +406,11 @@ class MembershipService:
         if not need_verify:
             return
 
-        await cls._require_entitlement(
-            db=db,
-            user_id=user_id,
-            entitlement_code=cls.QBANK_FILTER_ENTITLEMENT_CODE,
-            message='当前筛选条件需要会员权限',
-        )
+        if await cls._user_has_feature(
+            db=db, user_id=user_id, entitlement_code=_FEATURE_ADVANCED_FILTER
+        ):
+            return
+        raise errors.ForbiddenError(msg='当前筛选条件需要会员权限')
 
     @classmethod
     async def verify_knowledge_access(
@@ -528,15 +440,16 @@ class MembershipService:
         if not need_verify:
             return
 
-        await cls._require_entitlement(
-            db=db,
-            user_id=user_id,
-            entitlement_code=cls.KNOWLEDGE_ACCESS_ENTITLEMENT_CODE,
-            message='按知识点刷题需要会员权限',
-        )
+        if await cls._user_has_feature(
+            db=db, user_id=user_id, entitlement_code=_FEATURE_KNOWLEDGE_PRACTICE
+        ):
+            return
+        raise errors.ForbiddenError(msg='按知识点刷题需要会员权限')
 
     @staticmethod
-    async def verify_session_access(*, db: AsyncSession, user_id: int, session_id: int) -> None:
+    async def verify_session_access(
+        *, db: AsyncSession, user_id: int, session_id: int
+    ) -> None:
         """
         校验会话访问权限
 
@@ -553,14 +466,7 @@ class MembershipService:
 
     @staticmethod
     async def verify_scene_access(*, db: AsyncSession, user_id: int, scene_mask: int) -> None:
-        """
-        预留场景权限校验
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :param scene_mask: 场景位掩码
-        :return:
-        """
+        """预留场景权限校验"""
         return None
 
 

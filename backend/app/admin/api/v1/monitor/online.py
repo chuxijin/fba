@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.get('', summary='获取在线用户', dependencies=[DependsSuperUser])
-async def get_sessions(
+async def get_online_sessions(
     username: Annotated[str | None, Query(description='用户名')] = None,
 ) -> ResponseSchemaModel[list[GetTokenDetail]]:
     token_keys = await redis_client.get_prefix(f'{settings.TOKEN_REDIS_PREFIX}:*')
@@ -75,7 +75,7 @@ async def get_sessions(
     summary='强制下线',
     dependencies=[DependsSuperUser],
 )
-async def delete_session(
+async def delete_online_session(
     pk: Annotated[int, Path(description='用户 ID')],
     session_uuid: Annotated[str, Query(description='会话 UUID')],
 ) -> ResponseModel:

@@ -7,7 +7,8 @@ from sqlalchemy.exc import IntegrityError
 from backend.app.actcode.crud.crud_actcode import actcode_batch_dao, actcode_dao, actcode_usage_dao
 from backend.app.actcode.model import Actcode
 from backend.app.actcode.service.activate_service import activate_service
-from backend.app.membership.service.membership_service import membership_service
+from backend.app.access.constants import SubscriptionSource
+from backend.app.access.service.subscription_service import subscription_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.core.conf import settings
@@ -363,27 +364,24 @@ class WebhookService:
                             )
                             need_alert = True
                         else:
-                            revoked = await membership_service.revoke_by_source_key(
+                            revoked = await subscription_service.revoke_by_source(
                                 db,
                                 user_id=user_id,
-                                source=activate_service.ORDER_SOURCE,
-                                original_source_key=activate_service._build_source_key(order_no),
-                                revoke_source_key=activate_service._build_refund_source_key(order_no),
-                                source_detail=f'refund order_no={order_no}',
-                                remark='退款撤销',
+                                source=SubscriptionSource.ACTCODE,
+                                source_ref=activate_service._build_source_key(order_no),
+                                reason=f'退款撤销 order_no={order_no}',
                             )
-                            if revoked is None:
+                            if not revoked:
                                 outcome = 'revoke_failed'
                                 outcome_msg = (
-                                    f'未定位到原发放流水，无法撤销会员: {order_no}, user_id={user_id}'
+                                    f'未定位到原发放订阅，无法撤销会员: {order_no}, user_id={user_id}'
                                 )
                                 need_alert = True
                                 alert_payload = {'user_id': str(user_id)}
                             else:
                                 outcome = 'revoked'
                                 outcome_msg = (
-                                    f'退款已撤销会员: {order_no}, user_id={user_id}, '
-                                    f'new_valid_to={revoked.valid_to}, status={revoked.status}'
+                                    f'退款已撤销订阅: {order_no}, user_id={user_id}, count={revoked}'
                                 )
 
             if outcome == 'no_code':

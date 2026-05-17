@@ -111,7 +111,6 @@ class OrderCodeVerifyResult(SchemaBase):
     is_bound: bool = Field(default=False, description='是否已绑定账号')
     can_login: bool = Field(default=False, description='是否可直接登录')
     username: str | None = Field(None, description='已绑定的用户名')
-    membership_plan_id: int | None = Field(None, description='会员计划 ID')
     message: str = Field(description='提示信息')
 
 
@@ -122,10 +121,9 @@ class OrderCodeActivateResult(SchemaBase):
     user_id: int = Field(description='用户 ID')
     username: str = Field(description='用户名')
     just_activated: bool = Field(description='是否本次新完成激活')
-    membership_plan_id: int | None = Field(None, description='会员计划 ID')
-    tier_code: str | None = Field(None, description='会员等级编码')
-    tier_name: str | None = Field(None, description='会员等级名称')
-    membership_valid_to: datetime | None = Field(None, description='会员有效期至')
+    template_code: str | None = Field(None, description='订阅模板编码')
+    template_name: str | None = Field(None, description='订阅模板名称')
+    subscription_valid_to: datetime | None = Field(None, description='订阅有效期至')
     message: str = Field(description='提示信息')
 
 
@@ -135,7 +133,6 @@ class OrderCodeLoginResult(GetLoginToken):
     order_no: str = Field(description='订单号')
     auto_created: bool = Field(description='是否自动创建了账号')
     just_activated: bool = Field(description='是否本次新完成激活')
-    membership_plan_id: int | None = Field(None, description='会员计划 ID')
-    tier_code: str | None = Field(None, description='会员等级编码')
-    tier_name: str | None = Field(None, description='会员等级名称')
-    membership_valid_to: datetime | None = Field(None, description='会员有效期至')
+    template_code: str | None = Field(None, description='订阅模板编码')
+    template_name: str | None = Field(None, description='订阅模板名称')
+    subscription_valid_to: datetime | None = Field(None, description='订阅有效期至')

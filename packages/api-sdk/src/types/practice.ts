@@ -208,8 +208,8 @@ export interface SubmitPracticeSessionResult {
   is_auto_checked_in?: boolean;
   check_in_streak?: number | null;
   family_code?: string | null;
-  tier_grade?: number | null;
-  exp?: number | null;
+  current_grade?: string | null;
+  total_exp?: number | null;
   available_exp?: number | null;
 }
 

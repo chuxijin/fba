@@ -26,12 +26,11 @@ class PackageService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
-            # 检查应用是否存在
+
             app = await application_dao.get(db, obj.application_id)
             if not app:
                 raise errors.NotFoundError(msg='应用不存在')
-            
+
             return await package_dao.create(db, obj)
 
     @staticmethod
@@ -46,11 +45,11 @@ class PackageService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             package = await package_dao.get(db, package_id)
             if not package:
                 raise errors.NotFoundError(msg='套餐不存在')
-            
+
             return await package_dao.update(db, package_id, obj)
 
     @staticmethod
@@ -64,11 +63,11 @@ class PackageService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             package = await package_dao.get(db, package_id)
             if not package:
                 raise errors.NotFoundError(msg='套餐不存在')
-            
+
             return await package_dao.delete(db, package_id)
 
     @staticmethod
@@ -86,54 +85,53 @@ class PackageService:
             return package
 
     @staticmethod
-    async def get_list(application_id: int = None, is_active: bool = None) -> list[AppPackage]:
+    async def get_list(application_id: int = None, status: str = None) -> list[AppPackage]:
         """获取套餐列表"""
         async with async_db_session() as db:
-            return await package_dao.get_list(db, application_id=application_id, is_active=is_active)
+            return await package_dao.get_list(db, application_id=application_id, status=status)
 
     @staticmethod
-    def get_select(application_id: int = None, name: str = None, is_active: bool = None):
+    def get_select(application_id: int = None, name: str = None, status: str = None):
         """获取套餐查询语句用于分页"""
-        return package_dao.get_select(application_id=application_id, name=name, is_active=is_active)
+        return package_dao.get_select(application_id=application_id, name=name, status=status)
 
     @staticmethod
-    async def get_pagination_list(db, application_id: int = None, name: str = None, is_active: bool = None):
+    async def get_pagination_list(db, application_id: int = None, name: str = None, status: str = None):
         """获取套餐分页列表，包含应用信息"""
         from sqlalchemy import select
 
         from backend.plugin.app_auth.model import AppApplication
         from backend.utils.timezone import timezone
-        
+
         stmt = select(
             package_dao.model,
             AppApplication.name.label('application_name')
         ).join(
             AppApplication, package_dao.model.application_id == AppApplication.id
         )
-        
+
         if application_id:
             stmt = stmt.where(package_dao.model.application_id == application_id)
         if name:
             stmt = stmt.where(package_dao.model.name.like(f'%{name}%'))
-        if is_active is not None:
-            stmt = stmt.where(package_dao.model.is_active == is_active)
+        if status is not None:
+            stmt = stmt.where(package_dao.model.status == status)
         stmt = stmt.order_by(package_dao.model.created_time.desc())
-        
+
         result = await db.execute(stmt)
         packages = []
-        
+
         for row in result.fetchall():
-            package = row[0]  # AppPackage 对象
-            application_name = row[1]  # 应用名称
-            
-            # 计算当前价格
+            package = row[0]
+            application_name = row[1]
+
             current_price = package.original_price
             if package.discount_rate:
                 current_time = timezone.now()
                 if (not package.discount_start_time or current_time >= package.discount_start_time) and \
                    (not package.discount_end_time or current_time <= package.discount_end_time):
                     current_price = package.original_price * package.discount_rate
-            
+
             package_dict = {
                 'id': package.id,
                 'application_id': package.application_id,
@@ -147,23 +145,24 @@ class PackageService:
                 'discount_start_time': package.discount_start_time.isoformat() if package.discount_start_time else None,
                 'discount_end_time': package.discount_end_time.isoformat() if package.discount_end_time else None,
                 'max_devices': package.max_devices,
-                'is_active': package.is_active,
+                'status': package.status,
+                'template_code': package.template_code,
                 'sort_order': package.sort_order,
                 'created_time': package.created_time.isoformat(),
                 'updated_time': package.updated_time.isoformat() if package.updated_time else None,
             }
             packages.append(package_dict)
-        
+
         return packages
 
     @staticmethod
     async def get_options(application_id: int = None) -> list[dict]:
         """获取套餐选择选项"""
         async with async_db_session() as db:
-            packages = await package_dao.get_list(db, application_id=application_id, is_active=True)  # 只获取启用的套餐
+            packages = await package_dao.get_list(db, application_id=application_id, status='active')
             return [
                 {
-                    'label': f"{package.name} - {package.current_price}元/{package.duration_days}天",
+                    'label': f"{package.name} - {PackageService.calculate_current_price(package)}元/{package.duration_days}天",
                     'value': package.id
                 }
                 for package in packages
@@ -180,22 +179,19 @@ class PackageService:
         计算套餐当前价格
 
         :param package: 套餐对象
-        :return: 当前价格
+        :return:
         """
         from backend.utils.timezone import timezone
-        
-        # 如果没有折扣率，返回原价
+
         if not package.discount_rate:
             return package.original_price
-        
-        # 检查折扣时间
+
         current_time = timezone.now()
         if package.discount_start_time and current_time < package.discount_start_time:
             return package.original_price
         if package.discount_end_time and current_time > package.discount_end_time:
             return package.original_price
-        
-        # 计算折扣价
+
         return package.original_price * package.discount_rate
 
 

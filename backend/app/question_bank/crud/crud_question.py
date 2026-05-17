@@ -1076,7 +1076,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
             insert_stmt = postgresql.insert(QuestionStatistics).values({
                 'question_id': question_id,
                 'created_time': current_time,
-                'last_updated': current_time,
+                'last_updated': current_time.replace(tzinfo=None),
             })
             insert_stmt = insert_stmt.on_conflict_do_nothing(index_elements=[QuestionStatistics.question_id])
             await db.execute(insert_stmt)
@@ -1172,7 +1172,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         if not values:
             return
 
-        values['last_updated'] = timezone.now()
+        values['last_updated'] = timezone.now().replace(tzinfo=None)
 
         stmt = (
             sa_update(QuestionStatistics)

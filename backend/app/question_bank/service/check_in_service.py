@@ -8,9 +8,9 @@ from datetime import date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.membership.crud.crud_experience_rule import membership_experience_rule_dao
-from backend.app.membership.model.experience_rule import MembershipExperienceRule
-from backend.app.membership.service.experience_service import membership_experience_service
+from backend.app.growth.crud import experience_rule_dao
+from backend.app.growth.model.experience_rule import ExperienceRule
+from backend.app.growth.service import experience_service
 from backend.app.question_bank.crud.crud_check_in import check_in_dao
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.model import PracticeRecord, UserCheckIn, UserPracticeStats
@@ -46,7 +46,7 @@ class CheckInService:
     @staticmethod
     async def _get_reward_context(
         *, db: AsyncSession, user_id: int
-    ) -> tuple[str, int, MembershipExperienceRule | None]:
+    ) -> tuple[str, int, ExperienceRule | None]:
         """
         获取签到奖励上下文
 
@@ -54,10 +54,10 @@ class CheckInService:
         :param user_id: 用户 ID
         :return:
         """
-        family_code = await membership_experience_service.resolve_reward_family(db, user_id=user_id)
+        family_code = await experience_service.resolve_reward_family(db, user_id=user_id)
         streak_before_today = await check_in_dao.get_streak(db, user_id)
         cycle_day = (streak_before_today % 7) + 1
-        reward_rule = await membership_experience_rule_dao.get_active_rule(
+        reward_rule = await experience_rule_dao.get_active_rule(
             db,
             event_code='check_in',
             family_code=family_code,
@@ -141,14 +141,14 @@ class CheckInService:
         reward_exp = reward_rule.exp_delta if reward_rule else 0
         progress: dict[str, int | str | None] | None = None
         if reward_exp > 0:
-            progress = await membership_experience_service.add_experience(
+            progress = await experience_service.add_experience(
                 db,
                 user_id=user_id,
                 family_code=family_code,
                 exp_delta=reward_exp,
                 source='check_in',
                 source_key=f'check_in:{user_id}:{today.isoformat()}',
-                remark=f'连续签到第 {cycle_day} 天奖励',
+                reason=f'连续签到第 {cycle_day} 天奖励',
             )
 
         streak = await check_in_dao.get_streak(db, user_id)
@@ -166,8 +166,8 @@ class CheckInService:
             practice_duration=practice_duration,
             reward_exp=reward_exp,
             family_code=family_code,
-            tier_grade=progress.get('tier_grade') if progress else None,
-            exp=progress.get('exp') if progress else None,
+            tier_grade=progress.get('current_grade') if progress else None,
+            exp=progress.get('total_exp') if progress else None,
             available_exp=progress.get('available_exp') if progress else None,
         )
 

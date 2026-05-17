@@ -10,7 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_category import category_dao
-from backend.app.membership.crud.crud_entitlement import membership_entitlement_dao
+from backend.app.access.constants import CommonStatus
+from backend.app.access.crud.crud_entitlement import entitlement_dao
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.model.bank import QuestionBank
@@ -117,10 +118,10 @@ class BankService:
         if not entitlement_code:
             return
 
-        entitlement = await membership_entitlement_dao.get_by_code(db, entitlement_code)
+        entitlement = await entitlement_dao.get_by_code(db, entitlement_code)
         if not entitlement:
             raise errors.NotFoundError(msg=f'权益编码不存在: {entitlement_code}')
-        if entitlement.status != 1:
+        if entitlement.status != CommonStatus.ACTIVE:
             raise errors.RequestError(msg=f'权益编码未启用: {entitlement_code}')
 
     @staticmethod

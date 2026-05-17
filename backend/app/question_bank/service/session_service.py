@@ -14,8 +14,8 @@ from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, load_only, selectinload
 
-from backend.app.membership.crud.crud_experience_rule import membership_experience_rule_dao
-from backend.app.membership.service.experience_service import membership_experience_service
+from backend.app.growth.crud import experience_rule_dao
+from backend.app.growth.service import experience_service
 from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_question import (
@@ -1009,8 +1009,8 @@ class SessionService:
         if correct_count <= 0:
             return {'reward_exp': 0}
 
-        family_code = await membership_experience_service.resolve_reward_family(db, user_id=user_id)
-        reward_rule = await membership_experience_rule_dao.get_active_rule(
+        family_code = await experience_service.resolve_reward_family(db, user_id=user_id)
+        reward_rule = await experience_rule_dao.get_active_rule(
             db,
             event_code='practice_correct',
             family_code=family_code,
@@ -1025,20 +1025,20 @@ class SessionService:
             return {'reward_exp': 0, 'family_code': family_code}
 
         reward_exp = reward_rule.exp_delta * correct_count
-        progress = await membership_experience_service.add_experience(
+        progress = await experience_service.add_experience(
             db,
             user_id=user_id,
             family_code=family_code,
             exp_delta=reward_exp,
             source='practice_correct',
             source_key=f'practice_correct:{session_id}',
-            remark=f'完成练习答对 {correct_count} 题奖励',
+            reason=f'完成练习答对 {correct_count} 题奖励',
         )
         return {
             'reward_exp': reward_exp,
             'family_code': family_code,
-            'tier_grade': progress.get('tier_grade'),
-            'exp': progress.get('exp'),
+            'tier_grade': progress.get('current_grade'),
+            'exp': progress.get('total_exp'),
             'available_exp': progress.get('available_exp'),
         }
 

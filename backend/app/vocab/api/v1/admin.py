@@ -144,7 +144,7 @@ async def get_word_detail(
 
 # ============ Excel 导入 ============
 @router.get('/import/template', summary='下载单词导入模板')
-async def download_import_template() -> Response:
+async def vocab_download_import_template() -> Response:
     """下载 Excel 导入模板"""
     content = await vocab_import_service.build_import_template()
     return Response(
@@ -155,7 +155,7 @@ async def download_import_template() -> Response:
 
 
 @router.post('/import-excel', summary='从 Excel 导入单词')
-async def import_from_excel(
+async def vocab_import_from_excel(
     request: Request,
     db: CurrentSessionTransaction,
     file: Annotated[UploadFile, File(description='Excel 文件（.xlsx）')],
