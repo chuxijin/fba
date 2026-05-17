@@ -6,7 +6,7 @@ import sys
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 import anyio
 import cappa
@@ -41,7 +41,7 @@ from backend.database.db import (
     async_db_session,
     create_database_async_engine,
     create_database_async_session,
-    create_database_url,
+    get_database_url,
     create_postgresql_extensions,
 )
 from backend.database.redis import RedisCli, redis_client
@@ -60,7 +60,7 @@ from backend.utils.dynamic_import import import_module_cached
 from backend.utils.sql_parser import parse_sql_script
 from backend.utils.timezone import timezone
 
-output_help = "\n更多信息，尝试 '[cyan]--help[/]'"
+_OUTPUT_HELP: Final = "\n更多信息，尝试 '[cyan]--help[/]'"
 
 
 def _quote_mysql_identifier(value: str) -> str:
@@ -230,7 +230,7 @@ async def auto_init() -> None:
     ok = Prompt.ask('即将[red]新建/重建数据库[/red]，确认继续吗？', choices=['y', 'n'], default='n')
 
     if ok.lower() == 'y':
-        async_init_engine = create_database_async_engine(create_database_url(with_database=False))
+        async_init_engine = create_database_async_engine(get_database_url(with_database=False))
         async with async_init_engine.connect() as conn:
             await conn.execution_options(isolation_level='AUTOCOMMIT')
             if not await create_database(conn):
@@ -239,7 +239,7 @@ async def auto_init() -> None:
         console.warning('已取消数据库操作')
 
     console.print('\n[bold cyan]步骤 3/3:[/] 初始化数据库表和数据', style='bold')
-    async_init_engine = create_database_async_engine(create_database_url())
+    async_init_engine = create_database_async_engine(get_database_url())
     async_init_db_session = create_database_async_session(async_init_engine)
     redis_init_client = RedisCli(
         host=settings.REDIS_HOST,
@@ -961,5 +961,5 @@ class FbaCli:
 
 
 def main() -> None:
-    output = cappa.Output(error_format=f'{error_format}\n{output_help}')
+    output = cappa.Output(error_format=f'{error_format}\n{_OUTPUT_HELP}')
     asyncio.run(cappa.invoke_async(FbaCli, version=__version__, output=output))

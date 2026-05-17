@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from collections.abc import Sequence
 
 from typing import Any
 
@@ -91,6 +92,16 @@ class CRUDUser(CRUDPlus[User]):
         :return:
         """
         return await self.select_model_by_column(db, phone=phone)
+
+    async def get_all_by_usernames(self, db: AsyncSession, usernames: list[str]) -> Sequence[User]:
+        """
+        通过用户名列表批量获取用户
+
+        :param db: 数据库会话
+        :param usernames: 用户名列表
+        :return:
+        """
+        return await self.select_models(db, username__in=usernames)
 
     async def get_by_nickname(self, db: AsyncSession, nickname: str) -> User | None:
         """
