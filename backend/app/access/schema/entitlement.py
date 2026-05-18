@@ -66,3 +66,12 @@ class GetEntitlementDetail(SchemaBase):
     status: CommonStatus = Field(description='状态')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(default=None, description='更新时间')
+
+
+class GetMyEntitlement(SchemaBase):
+    """我的权益"""
+
+    code: str = Field(description='权益编码')
+    name: str = Field(description='权益名')
+    category: EntitlementCategory = Field(description='权益分类')
+    description: str | None = Field(default=None, description='描述')

@@ -233,7 +233,14 @@ class BankService:
             select(
                 QuestionPlacement.chapter_id,
                 func.count(func.distinct(PracticeRecord.question_id)),
-                func.sum(sa.case((PracticeRecord.is_correct.is_(True), 1), else_=0)),
+                func.count(
+                    func.distinct(
+                        sa.case(
+                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            else_=None,
+                        )
+                    )
+                ),
             )
             .join(QuestionPlacement, PracticeRecord.placement_id == QuestionPlacement.id)
             .where(

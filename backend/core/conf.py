@@ -480,7 +480,7 @@ class Settings(BaseSettings):
     ##################################################
     # .env 阿奇索配置
     AGISO_APP_SECRET: str = ''
-    AGISO_BATCH_RULES: list[dict[str, Any]]  # 批次匹配规则 [{platform, keyword, batch_id}]
+    AGISO_BATCH_RULES: list[dict[str, Any]] = []  # 兼容旧 plugin.toml 配置，优先使用 sys_config
 
     ##################################################
     # [ Plugin ] notify 多渠道通知

@@ -8,6 +8,7 @@ from backend.app.access.constants import CommonStatus, TemplateKind
 from backend.app.access.schema.template import (
     CreateTemplateParam,
     GetTemplateDetail,
+    GetTemplateDetailWithPacks,
     SetTemplatePacksParam,
     UpdateTemplateParam,
 )
@@ -26,9 +27,9 @@ router = APIRouter()
 async def get_template(
     db: CurrentSession,
     pk: Annotated[int, Path(description='模板 ID')],
-) -> ResponseSchemaModel[GetTemplateDetail]:
+) -> ResponseSchemaModel[GetTemplateDetailWithPacks]:
     """获取订阅模板详情"""
-    data = await subscription_template_service.get(db=db, pk=pk)
+    data = await subscription_template_service.get_detail(db=db, pk=pk)
     return response_base.success(data=data)
 
 

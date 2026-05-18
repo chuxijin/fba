@@ -8,6 +8,7 @@ from backend.app.access.constants import CommonStatus, GradeLevel
 from backend.app.access.schema.pack import (
     CreatePackParam,
     GetPackDetail,
+    GetPackDetailWithItems,
     SetPackItemsParam,
     UpdatePackParam,
 )
@@ -26,9 +27,9 @@ router = APIRouter()
 async def get_pack(
     db: CurrentSession,
     pk: Annotated[int, Path(description='包 ID')],
-) -> ResponseSchemaModel[GetPackDetail]:
+) -> ResponseSchemaModel[GetPackDetailWithItems]:
     """获取权益包详情"""
-    data = await entitlement_pack_service.get(db=db, pk=pk)
+    data = await entitlement_pack_service.get_detail(db=db, pk=pk)
     return response_base.success(data=data)
 
 
@@ -61,10 +62,10 @@ async def get_pack_list(
 )
 async def create_pack(
     db: CurrentSessionTransaction, obj: CreatePackParam
-) -> ResponseModel:
+) -> ResponseSchemaModel[GetPackDetail]:
     """创建权益包"""
-    await entitlement_pack_service.create(db=db, obj=obj)
-    return response_base.success()
+    data = await entitlement_pack_service.create(db=db, obj=obj)
+    return response_base.success(data=data)
 
 
 @router.put(

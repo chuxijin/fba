@@ -57,7 +57,7 @@ class ClaimService:
             raise errors.ConflictError(msg='名额已满')
 
         user_claim_count = await quest_claim_dao.count_active_by_user(db, quest_id, user_id)
-        if user_claim_count >= quest.max_claims_per_user:
+        if quest.max_claims_per_user > 0 and user_claim_count >= quest.max_claims_per_user:
             raise errors.ConflictError(msg='已达个人领取上限')
 
         now = timezone.now()
@@ -110,8 +110,17 @@ class ClaimService:
         if not quest:
             raise errors.NotFoundError(msg='关联任务不存在')
 
-        if quest.submission_required and not (obj.submission_links or obj.submission_images):
-            raise errors.RequestError(msg='请至少提交一个链接或图片')
+        if quest.submission_required:
+            if quest.require_link and not obj.submission_links:
+                raise errors.RequestError(msg='该任务必须提交链接')
+            if quest.require_image and not obj.submission_images:
+                raise errors.RequestError(msg='该任务必须提交图片')
+            if quest.require_note and not obj.submission_note:
+                raise errors.RequestError(msg='该任务必须填写文字说明')
+            # 兼容：如果都配置成 false，但 submission_required=True，那么至少提交任意一种
+            if not (quest.require_link or quest.require_image or quest.require_note):
+                if not (obj.submission_links or obj.submission_images or obj.submission_note):
+                    raise errors.RequestError(msg='请填写任务提交内容')
 
         update_data: dict[str, Any] = {
             'submission_links': obj.submission_links,

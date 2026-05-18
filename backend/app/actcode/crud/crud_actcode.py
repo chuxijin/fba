@@ -12,7 +12,11 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
     """激活码批次数据库操作类"""
 
     async def get_select(
-        self, app_id: str | None = None, status: int | None = None, batch_no: str | None = None
+        self,
+        app_id: str | None = None,
+        status: int | None = None,
+        batch_no: str | None = None,
+        reward_type: str | None = None,
     ) -> Select:
         """
         获取批次列表查询表达式
@@ -20,6 +24,7 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
         :param app_id: 应用 ID
         :param status: 状态
         :param batch_no: 批次编号
+        :param reward_type: 权益类型
         :return:
         """
         filters = {}
@@ -30,6 +35,8 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
             filters['status__eq'] = status
         if batch_no is not None:
             filters['batch_no__like'] = f'%{batch_no}%'
+        if reward_type is not None:
+            filters['reward_type__eq'] = reward_type
 
         return await self.select_order('created_time', 'desc', **filters)
 

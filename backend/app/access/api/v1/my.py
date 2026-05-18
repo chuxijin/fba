@@ -4,13 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 
-from backend.app.access.constants import CycleType, SubscriptionStatus
+from backend.app.access.constants import CycleType
 from backend.app.access.engine.cycle import build_cycle_key
 from backend.app.access.engine.ledger import ledger_service
-from backend.app.access.schema.base import TimePeriodOutput
+from backend.app.access.schema.entitlement import GetMyEntitlement
 from backend.app.access.schema.ledger import GetQuotaBalance
-from backend.app.access.schema.subscription import GetMySubscription
-from backend.app.access.service.subscription_service import subscription_service
+from backend.app.access.schema.subscription import GetMySubscription, GetMySubscriptionLedger
+from backend.app.access.service.my_service import my_access_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
@@ -30,39 +30,41 @@ async def get_my_subscriptions(
 ) -> ResponseSchemaModel[list[GetMySubscription]]:
     """我的订阅列表"""
     user_id = int(request.user.id)
-    subs = (
-        await subscription_service.list_active(db=db, user_id=user_id)
-        if only_active
-        else await subscription_service.list_for_user(
-            db=db, user_id=user_id, status=SubscriptionStatus.ACTIVE
-        )
+    data = await my_access_service.get_subscriptions(
+        db=db, user_id=user_id, only_active=only_active
     )
-    if not subs:
-        return response_base.success(data=[])
+    return response_base.success(data=data)
 
-    from backend.app.access.crud.crud_template import subscription_template_dao
 
-    template_ids = list({sub.template_id for sub in subs})
-    templates = await subscription_template_dao.select_models(db, id__in=template_ids)
-    tpl_map = {tpl.id: tpl for tpl in templates}
+@router.get(
+    '/entitlements',
+    summary='我的权益列表',
+    dependencies=[DependsJwtAuth],
+)
+async def get_my_entitlements(
+    request: Request,
+    db: CurrentSession,
+) -> ResponseSchemaModel[list[GetMyEntitlement]]:
+    """我的权益列表"""
+    user_id = int(request.user.id)
+    data = await my_access_service.get_entitlements(db=db, user_id=user_id)
+    return response_base.success(data=data)
 
-    items: list[GetMySubscription] = []
-    for sub in subs:
-        tpl = tpl_map.get(sub.template_id)
-        if not tpl:
-            continue
-        items.append(
-            GetMySubscription(
-                id=sub.id,
-                template_code=tpl.code,
-                template_name=tpl.name,
-                cover_image=tpl.cover_image,
-                valid_period=TimePeriodOutput.from_range(sub.valid_period),
-                status=sub.status,
-                created_time=sub.created_time,
-            )
-        )
-    return response_base.success(data=items)
+
+@router.get(
+    '/subscription-ledger',
+    summary='我的订阅流水',
+    dependencies=[DependsJwtAuth],
+)
+async def get_my_subscription_ledger(
+    request: Request,
+    db: CurrentSession,
+    limit: Annotated[int, Query(ge=1, le=100, description='数量上限')] = 50,
+) -> ResponseSchemaModel[list[GetMySubscriptionLedger]]:
+    """我的订阅流水"""
+    user_id = int(request.user.id)
+    data = await my_access_service.get_subscription_ledger(db=db, user_id=user_id, limit=limit)
+    return response_base.success(data=data)
 
 
 @router.get(

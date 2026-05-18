@@ -37,6 +37,19 @@ class CRUDEntitlement(CRUDPlus[Entitlement]):
         stmt = select(self.model).where(self.model.code.in_(codes))
         return (await db.execute(stmt)).scalars().all()
 
+    async def get_by_ids(self, db: AsyncSession, ids: list[int]) -> Sequence[Entitlement]:
+        """
+        按 ID 批量获取
+
+        :param db: 数据库会话
+        :param ids: 权益 ID 列表
+        :return:
+        """
+        if not ids:
+            return []
+        stmt = select(self.model).where(self.model.id.in_(ids))
+        return (await db.execute(stmt)).scalars().all()
+
     async def get_select(
         self,
         *,

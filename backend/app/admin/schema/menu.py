@@ -39,7 +39,7 @@ class GetMenuDetail(MenuSchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='菜单 ID')
-    created_time: datetime = Field(description='创建时间')
+    created_time: datetime | None = Field(None, description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
 
 

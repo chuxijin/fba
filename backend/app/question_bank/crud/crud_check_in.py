@@ -70,6 +70,7 @@ class CRUDCheckIn(CRUDPlus[UserCheckIn]):
             check_date=today,
             practice_count=practice_count,
             practice_duration=practice_duration,
+            created_by=user_id,
         )
         db.add(new_check_in)
         await db.flush()

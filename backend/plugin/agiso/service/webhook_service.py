@@ -8,6 +8,7 @@ from backend.app.actcode.crud.crud_actcode import actcode_batch_dao, actcode_dao
 from backend.app.actcode.model import Actcode
 from backend.app.actcode.service.activate_service import activate_service
 from backend.app.access.constants import SubscriptionSource
+from backend.app.access.service.redeem_service import access_redeem_service
 from backend.app.access.service.subscription_service import subscription_service
 from backend.common.exception import errors
 from backend.common.log import log
@@ -229,7 +230,7 @@ class WebhookService:
                 spec_name = first_order.get('SpecName')
 
             # 根据平台和商品信息匹配批次
-            batch_id = WebhookService._resolve_batch_id(platform, goods_name, spec_name)
+            batch_id = await WebhookService._resolve_batch_id(platform, goods_name, spec_name)
             if batch_id is None:
                 msg = f'未匹配到激活批次: platform={platform}, goods_name={goods_name}, spec_name={spec_name}'
                 log.warning(msg)
@@ -423,11 +424,11 @@ class WebhookService:
             raise
 
     @staticmethod
-    def _resolve_batch_id(platform: str | None, goods_name: str | None, spec_name: str | None) -> int | None:
+    async def _resolve_batch_id(platform: str | None, goods_name: str | None, spec_name: str | None) -> int | None:
         """
         根据平台和商品信息匹配激活码批次 ID
 
-        按 AGISO_BATCH_RULES 规则列表顺序匹配，keyword 在 goods_name 或 spec_name 中出现即命中，
+        按后端配置的 AGISO_BATCH_RULES 规则列表顺序匹配，keyword 在 goods_name 或 spec_name 中出现即命中，
         无匹配返回 None
 
         :param platform: 来源平台
@@ -435,19 +436,16 @@ class WebhookService:
         :param spec_name: 规格名称
         :return:
         """
-        search_text = f'{goods_name or ""} {spec_name or ""}'
-        for rule in settings.AGISO_BATCH_RULES:
-            rule_platform = rule.get('platform')
-            keyword = rule.get('keyword')
-            batch_id = rule.get('batch_id')
-            if not rule_platform or not keyword or batch_id is None:
-                continue
-            if platform != rule_platform:
-                continue
-            if keyword in search_text:
-                log.info(f'批次匹配命中: platform={platform}, keyword={keyword}, batch_id={batch_id}')
-                return batch_id
-        return None
+        async with async_db_session() as db:
+            batch_id = await access_redeem_service.resolve_agiso_batch_id(
+                db,
+                platform=platform,
+                goods_name=goods_name,
+                spec_name=spec_name,
+            )
+        if batch_id is not None:
+            log.info(f'批次匹配命中: platform={platform}, batch_id={batch_id}')
+        return batch_id
 
     # TODO: 付款推送后30秒内若未收到发货推送，需要发出警告
 

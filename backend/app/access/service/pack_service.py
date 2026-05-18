@@ -11,6 +11,8 @@ from backend.app.access.crud.crud_pack import entitlement_pack_dao, pack_item_da
 from backend.app.access.model.pack import EntitlementPack, PackItem
 from backend.app.access.schema.pack import (
     CreatePackParam,
+    GetPackDetailWithItems,
+    GetPackItemDetail,
     SetPackItemsParam,
     UpdatePackParam,
 )
@@ -60,6 +62,52 @@ class EntitlementPackService:
         return await pack_item_dao.get_by_pack(db, pack_id)
 
     @staticmethod
+    async def get_detail(db: AsyncSession, *, pk: int) -> GetPackDetailWithItems:
+        """
+        获取权益包详情
+
+        :param db: 数据库会话
+        :param pk: 包 ID
+        :return:
+        """
+        pack = await EntitlementPackService.get(db, pk=pk)
+        items = await pack_item_dao.get_by_pack(db, pk)
+        entitlement_ids = [item.entitlement_id for item in items]
+        entitlements = await entitlement_dao.get_by_ids(db, entitlement_ids)
+        entitlement_map = {ent.id: ent for ent in entitlements}
+
+        item_details: list[GetPackItemDetail] = []
+        for item in items:
+            entitlement = entitlement_map.get(item.entitlement_id)
+            if not entitlement:
+                continue
+            item_details.append(
+                GetPackItemDetail(
+                    id=item.id,
+                    pack_id=item.pack_id,
+                    entitlement_id=item.entitlement_id,
+                    entitlement_code=entitlement.code,
+                    entitlement_name=entitlement.name,
+                    value_int=item.value_int,
+                    value_meta=item.value_meta,
+                    status=item.status,
+                )
+            )
+
+        return GetPackDetailWithItems(
+            id=pack.id,
+            code=pack.code,
+            name=pack.name,
+            grade=pack.grade,
+            domain_id=pack.domain_id,
+            description=pack.description,
+            status=pack.status,
+            created_time=pack.created_time,
+            updated_time=pack.updated_time,
+            items=item_details,
+        )
+
+    @staticmethod
     async def get_select(
         *,
         grade: GradeLevel | None = None,
@@ -79,7 +127,7 @@ class EntitlementPackService:
         )
 
     @staticmethod
-    async def create(db: AsyncSession, *, obj: CreatePackParam) -> None:
+    async def create(db: AsyncSession, *, obj: CreatePackParam) -> EntitlementPack:
         """
         创建权益包
 
@@ -90,7 +138,7 @@ class EntitlementPackService:
         existing = await entitlement_pack_dao.get_by_code(db, obj.code)
         if existing:
             raise errors.ConflictError(msg='权益包编码已存在')
-        await entitlement_pack_dao.create_model(db, obj)
+        return await entitlement_pack_dao.create_model(db, obj)
 
     @staticmethod
     async def update(db: AsyncSession, *, pk: int, obj: UpdatePackParam) -> int:

@@ -51,7 +51,7 @@ async def get_subscription_list(
     from backend.app.access.crud.crud_subscription import subscription_dao
 
     stmt = await subscription_dao.get_select(user_id=user_id, status=status, source=source)
-    page_data = await paging_data(db, stmt)
+    page_data = await paging_data(db, stmt, schema_cls=GetSubscriptionDetail)
     return response_base.success(data=page_data)
 
 

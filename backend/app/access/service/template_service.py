@@ -12,6 +12,7 @@ from backend.app.access.model.pack import EntitlementPack
 from backend.app.access.model.template import SubscriptionTemplate, TemplatePack
 from backend.app.access.schema.template import (
     CreateTemplateParam,
+    GetTemplateDetailWithPacks,
     SetTemplatePacksParam,
     UpdateTemplateParam,
 )
@@ -34,6 +35,35 @@ class SubscriptionTemplateService:
         if not template:
             raise errors.NotFoundError(msg='订阅模板不存在')
         return template
+
+    @staticmethod
+    async def get_detail(db: AsyncSession, *, pk: int) -> GetTemplateDetailWithPacks:
+        """
+        获取模板详情
+
+        :param db: 数据库会话
+        :param pk: 模板 ID
+        :return:
+        """
+        template = await SubscriptionTemplateService.get(db, pk=pk)
+        packs = await SubscriptionTemplateService.get_packs(db, template_id=pk)
+        return GetTemplateDetailWithPacks(
+            id=template.id,
+            code=template.code,
+            name=template.name,
+            kind=template.kind,
+            duration_days=template.duration_days,
+            auto_renewable=template.auto_renewable,
+            price_cents=template.price_cents,
+            display_order=template.display_order,
+            cover_image=template.cover_image,
+            description=template.description,
+            sale_period=template.sale_period,
+            status=template.status,
+            created_time=template.created_time,
+            updated_time=template.updated_time,
+            packs=packs,
+        )
 
     @staticmethod
     async def get_by_code(db: AsyncSession, *, code: str) -> SubscriptionTemplate:
@@ -95,6 +125,10 @@ class SubscriptionTemplateService:
         data = obj.model_dump(exclude={'pack_codes', 'sale_period'})
         if obj.sale_period is not None:
             data['sale_period'] = obj.sale_period.to_range()
+        
+        if 'metadata' in data:
+            data['metadata_'] = data.pop('metadata')
+            
         template = SubscriptionTemplate(**data)
         db.add(template)
         await db.flush()
@@ -116,6 +150,10 @@ class SubscriptionTemplateService:
         data = obj.model_dump(exclude_unset=True, exclude={'sale_period'})
         if obj.sale_period is not None:
             data['sale_period'] = obj.sale_period.to_range()
+            
+        if 'metadata' in data:
+            data['metadata_'] = data.pop('metadata')
+            
         return await subscription_template_dao.update_model(db, pk, data)
 
     @staticmethod

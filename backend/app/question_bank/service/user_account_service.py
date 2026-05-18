@@ -34,6 +34,25 @@ class UserAccountService:
         account = UserAccount(user_id=sys_user_id, register_channel=register_channel)
         db.add(account)
         await db.flush()
+
+        # 为新用户自动发放免费订阅
+        try:
+            from backend.app.access.constants import SubscriptionSource
+            from backend.app.access.service.subscription_service import subscription_service
+
+            await subscription_service.create_from_template(
+                db,
+                user_id=sys_user_id,
+                template_code='template.free',
+                source=SubscriptionSource.SYSTEM,
+                source_ref='register_bonus',
+            )
+        except Exception as e:
+            # 此处不应阻塞用户正常注册, 但可记录日志或因为尚未配置 template.free 而静默忽略
+            import logging
+
+            logging.getLogger(__name__).warning(f'为新用户 {sys_user_id} 发放默认免费订阅失败: {e}')
+
         return account
 
 

@@ -141,10 +141,6 @@ class ExperienceService:
 
         account.total_exp = new_total
         account.available_exp = new_available
-        await growth_account_dao.update_model(
-            db, account.id,
-            {'total_exp': new_total, 'available_exp': new_available},
-        )
 
         event = GrowthEvent(
             user_id=user_id,
@@ -203,7 +199,6 @@ class ExperienceService:
 
         new_available = account.available_exp - exp_delta
         account.available_exp = new_available
-        await growth_account_dao.update_model(db, account.id, {'available_exp': new_available})
 
         event = GrowthEvent(
             user_id=user_id,

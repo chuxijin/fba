@@ -41,6 +41,8 @@ class TimePeriodOutput(SchemaBase):
             return {'valid_from': data.lower, 'valid_to': data.upper}
         if hasattr(data, 'lower') and hasattr(data, 'upper'):
             return {'valid_from': data.lower, 'valid_to': data.upper}
+        if isinstance(data, dict) and 'lower' in data and 'upper' in data:
+            return {'valid_from': data.get('lower'), 'valid_to': data.get('upper')}
         return data
 
     @classmethod

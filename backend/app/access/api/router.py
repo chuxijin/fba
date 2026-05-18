@@ -8,6 +8,7 @@ from backend.app.access.api.v1.entitlement import router as entitlement_router
 from backend.app.access.api.v1.grant import router as grant_router
 from backend.app.access.api.v1.my import router as my_router
 from backend.app.access.api.v1.pack import router as pack_router
+from backend.app.access.api.v1.redeem import router as redeem_router
 from backend.app.access.api.v1.rule import router as rule_router
 from backend.app.access.api.v1.subscription import router as subscription_router
 from backend.app.access.api.v1.template import router as template_router
@@ -23,6 +24,7 @@ v1.include_router(template_router, prefix='/access/templates', tags=['订阅模�
 v1.include_router(subscription_router, prefix='/access/subscriptions', tags=['用户订阅'])
 v1.include_router(rule_router, prefix='/access/rules', tags=['资源规则'])
 v1.include_router(grant_router, prefix='/access/grants', tags=['直接授予'])
+v1.include_router(redeem_router, prefix='/access/redeem', tags=['兑换配置'])
 v1.include_router(my_router, prefix='/access/my', tags=['我的权益'])
 
 router = v1

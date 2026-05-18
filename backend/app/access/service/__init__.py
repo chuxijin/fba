@@ -4,12 +4,14 @@ from backend.app.access.service.domain_service import study_domain_service
 from backend.app.access.service.entitlement_service import entitlement_service
 from backend.app.access.service.grant_service import direct_grant_service
 from backend.app.access.service.pack_service import entitlement_pack_service
+from backend.app.access.service.redeem_service import access_redeem_service
 from backend.app.access.service.rule_service import resource_rule_service
 from backend.app.access.service.subscription_service import subscription_service
 from backend.app.access.service.template_service import subscription_template_service
 
 __all__ = [
     'direct_grant_service',
+    'access_redeem_service',
     'entitlement_pack_service',
     'entitlement_service',
     'resource_rule_service',

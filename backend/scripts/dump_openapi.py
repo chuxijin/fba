@@ -5,7 +5,7 @@
 
 特性:
 1. 不启动 uvicorn / 不触发 lifespan, 避免连 Redis / 雪花 ID 等副作用
-2. 仅 import 路由聚合器 backend.app.router, 构造最小 FastAPI 实例后调用 app.openapi()
+2. 通过 build_final_router() 聚合所有路由(含插件), 构造最小 FastAPI 实例后调用 app.openapi()
 3. 默认输出到 packages/api-sdk/openapi.json (跨包路径), 支持 --output 覆盖
 """
 from __future__ import annotations
@@ -26,8 +26,8 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 from fastapi import FastAPI  # noqa: E402
 
-from backend.app.router import router as backend_router  # noqa: E402
 from backend.core.conf import settings  # noqa: E402
+from backend.plugin.core import build_final_router  # noqa: E402
 from backend.utils.openapi import ensure_unique_route_names, simplify_operation_ids  # noqa: E402
 
 
@@ -38,7 +38,8 @@ def build_minimal_app() -> FastAPI:
         version='1.0.0',
         description=settings.FASTAPI_DESCRIPTION,
     )
-    app.include_router(backend_router)
+    final_router = build_final_router()
+    app.include_router(final_router)
     # 与 register_app() 保持一致: 让 operation_id 等于函数名 (snake_case),
     # hey-api 会自动转 camelCase (例如 get_quest_list -> getQuestList)
     ensure_unique_route_names(app)
