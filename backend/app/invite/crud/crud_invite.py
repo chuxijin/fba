@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.invite.model import InviteCode, InviteRelation, InviteRewardRule
 from backend.app.invite.schema.invite import CreateRewardRuleParam
+from backend.utils.timezone import timezone
 
 
 class CRUDInviteCode(CRUDPlus[InviteCode]):
@@ -136,6 +137,22 @@ class CRUDInviteRewardRule(CRUDPlus[InviteRewardRule]):
         if status is not None:
             filters['status__eq'] = status
         return await self.select_order('created_time', 'desc', **filters)
+
+    async def get_current_default(self, db: AsyncSession) -> InviteRewardRule | None:
+        """获取当前有效的默认奖励规则"""
+        now = timezone.now()
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.status == 1,
+                or_(self.model.valid_from.is_(None), self.model.valid_from <= now),
+                or_(self.model.valid_to.is_(None), self.model.valid_to > now),
+            )
+            .order_by(self.model.created_time.desc(), self.model.id.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
 
 
 invite_code_dao: CRUDInviteCode = CRUDInviteCode(InviteCode)

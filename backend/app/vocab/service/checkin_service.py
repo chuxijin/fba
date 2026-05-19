@@ -66,28 +66,37 @@ class CheckinService:
     async def get_today_status(*, db: AsyncSession, user_id: int) -> GetCheckinToday:
         """
         获取今日打卡状态
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :return:
         """
-        today = timezone.now().date()
+        now = timezone.now()
+        today = now.date()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start.replace(hour=23, minute=59, second=59)
+
         setting = await user_setting_dao.get_or_create(db, user_id)
         record = await checkin_dao.get_by_user_and_date(db, user_id, today)
 
-        if not record:
-            return GetCheckinToday(
-                is_checked_in=False,
-                daily_target=setting.daily_new_target,
-            )
+        from backend.app.vocab.crud.crud_review_log import review_log_dao
+        from backend.app.vocab.crud.crud_user_word import user_word_dao
+        
+        real_stats = await review_log_dao.count_today(db, user_id, today_start, today_end)
+        real_new = await user_word_dao.count_today_new(db, user_id, today_start, today_end)
+        total_unique_words = real_stats.get('total_words', 0)
+        # 复习数 = 今天学过的去重总词数 - 今天才创建的词数
+        real_review = max(0, total_unique_words - real_new)
+        real_duration = real_stats.get('total_duration_ms', 0) // 1000
 
-        progress = min(100.0, (record.new_words / max(1, setting.daily_new_target)) * 100)
+        progress = min(100.0, (real_new / max(1, setting.daily_new_target)) * 100)
+
+        # 尝试自动触发打卡记录修正 (防止事务回滚导致的打卡表不同步)
+        streak_days = record.streak_days if record else 0
+        is_checked_in = streak_days > 0
+
         return GetCheckinToday(
-            is_checked_in=record.streak_days > 0,
-            new_words=record.new_words,
-            review_words=record.review_words,
-            duration_seconds=record.duration_seconds,
-            streak_days=record.streak_days,
+            is_checked_in=is_checked_in,
+            new_words=real_new,
+            review_words=real_review,
+            duration_seconds=real_duration,
+            streak_days=streak_days,
             daily_target=setting.daily_new_target,
             progress_percent=round(progress, 1),
         )

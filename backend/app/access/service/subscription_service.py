@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy.dialects.postgresql.ranges import Range
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,15 +23,15 @@ class SubscriptionService:
     """用户订阅服务"""
 
     @staticmethod
-    async def get(db: AsyncSession, *, pk: int) -> Subscription:
+    async def get(db: AsyncSession, *, pk: int) -> Any:
         """
-        获取订阅详情
+        获取订阅详情 (带关联的用户名和模板信息)
 
         :param db: 数据库会话
         :param pk: 订阅 ID
         :return:
         """
-        sub = await subscription_dao.select_model(db, pk)
+        sub = await subscription_dao.get_detail(db, pk)
         if not sub:
             raise errors.NotFoundError(msg='订阅不存在')
         return sub
@@ -90,6 +91,31 @@ class SubscriptionService:
         )
         db.add(sub)
         await db.flush()
+
+        # 发送用户消息通知
+        try:
+            from backend.app.question_bank.schema.user_message import CreateUserMessageParam
+            from backend.app.question_bank.service.user_message_service import user_message_service
+            from backend.common.log import log
+
+            lower_str = sub.valid_period.lower.strftime("%Y-%m-%d %H:%M:%S") if sub.valid_period.lower else "-"
+            upper_str = sub.valid_period.upper.strftime("%Y-%m-%d %H:%M:%S") if sub.valid_period.upper else "永久"
+
+            await user_message_service.create(
+                db=db,
+                obj_in=CreateUserMessageParam(
+                    title="订阅开通通知",
+                    content=f"恭喜！您的「{template.name}」订阅已成功开通，有效期为 {lower_str} 至 {upper_str}。",
+                    target_type="user",
+                    user_id=obj.user_id,
+                    message_type="personal",
+                    status=1,
+                    publish_time=timezone.now()
+                )
+            )
+        except Exception as e:
+            log.error(f"发送订阅消息通知失败: {e}", exc_info=True)
+
         return sub
 
     @staticmethod
@@ -133,6 +159,31 @@ class SubscriptionService:
         )
         db.add(sub)
         await db.flush()
+
+        # 发送用户消息通知
+        try:
+            from backend.app.question_bank.schema.user_message import CreateUserMessageParam
+            from backend.app.question_bank.service.user_message_service import user_message_service
+            from backend.common.log import log
+
+            lower_str = start.strftime("%Y-%m-%d %H:%M:%S")
+            upper_str = end.strftime("%Y-%m-%d %H:%M:%S") if end else "永久"
+
+            await user_message_service.create(
+                db=db,
+                obj_in=CreateUserMessageParam(
+                    title="订阅开通通知",
+                    content=f"恭喜！您的「{template.name}」订阅已成功开通，有效期为 {lower_str} 至 {upper_str}。",
+                    target_type="user",
+                    user_id=user_id,
+                    message_type="personal",
+                    status=1,
+                    publish_time=timezone.now()
+                )
+            )
+        except Exception as e:
+            log.error(f"发送订阅模板消息通知失败: {e}", exc_info=True)
+
         return sub
 
     @staticmethod
@@ -234,6 +285,30 @@ class SubscriptionService:
             current_upper = existing.valid_period.upper or timezone.now()
             new_upper = current_upper + timedelta(days=days)
             existing.valid_period = Range(existing.valid_period.lower, new_upper, bounds='[)')
+
+            # 发送用户订阅续期消息通知
+            try:
+                from backend.app.question_bank.schema.user_message import CreateUserMessageParam
+                from backend.app.question_bank.service.user_message_service import user_message_service
+                from backend.common.log import log
+
+                upper_str = new_upper.strftime("%Y-%m-%d %H:%M:%S")
+
+                await user_message_service.create(
+                    db=db,
+                    obj_in=CreateUserMessageParam(
+                        title="订阅续期通知",
+                        content=f"您的「{template.name}」订阅已成功延期 {days} 天，到期时间更新为 {upper_str}。",
+                        target_type="user",
+                        user_id=user_id,
+                        message_type="personal",
+                        status=1,
+                        publish_time=timezone.now()
+                    )
+                )
+            except Exception as e:
+                log.error(f"发送订阅续期消息通知失败: {e}", exc_info=True)
+
             return existing
 
         return await SubscriptionService.create_from_template(
@@ -247,23 +322,12 @@ class SubscriptionService:
     @staticmethod
     async def expire_due_subscriptions(db: AsyncSession) -> int:
         """
-        把所有过期的 active 订阅标记 expired(用于定时任务)
+        批量将已过期的 active 订阅标记为 expired
 
         :param db: 数据库会话
         :return:
         """
-        from sqlalchemy import select as sa_select
-
-        now = timezone.now()
-        stmt = sa_select(Subscription).where(Subscription.status == SubscriptionStatus.ACTIVE)
-        rows = (await db.execute(stmt)).scalars().all()
-        count = 0
-        for sub in rows:
-            upper = sub.valid_period.upper
-            if upper is not None and upper <= now:
-                sub.status = SubscriptionStatus.EXPIRED
-                count += 1
-        return count
+        return await subscription_dao.expire_due(db)
 
     @staticmethod
     async def get_max_grade(db: AsyncSession, *, user_id: int) -> str:

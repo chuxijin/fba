@@ -54,6 +54,11 @@ class GetSubscriptionDetail(SchemaBase):
     cancel_reason: str | None = Field(description='取消原因')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(default=None, description='更新时间')
+    username: str | None = Field(default=None, description='用户名')
+    template_code: str | None = Field(default=None, description='模板编码')
+    template_name: str | None = Field(default=None, description='模板名称')
+    valid_from: datetime | None = Field(default=None, description='生效时间')
+    valid_to: datetime | None = Field(default=None, description='到期时间')
 
 
 class GetMySubscription(SchemaBase):

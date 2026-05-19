@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.access.constants import SubscriptionSource, SubscriptionStatus
+from backend.app.access.constants import CycleType, EntitlementCategory, SubscriptionSource, SubscriptionStatus
 from backend.app.access.crud.crud_domain import study_domain_dao
 from backend.app.access.crud.crud_entitlement import entitlement_dao
 from backend.app.access.crud.crud_grant import direct_grant_dao
@@ -85,8 +85,36 @@ class MyAccessService:
 
         entitlements = await entitlement_dao.get_by_codes(db, sorted(entitlement_codes))
         entitlement_map = {item.code: item for item in entitlements}
+
+        # 聚合 QUOTA 类型权益的当前余额
+        from backend.app.access.engine.ledger import ledger_service
+
+        quota_codes = [
+            code
+            for code in entitlement_codes
+            if entitlement_map[code].category == EntitlementCategory.QUOTA
+        ]
+        balances = {}
+        if quota_codes:
+            cycle_types = await MyAccessService._get_subscription_quota_cycle_types(
+                db,
+                active_subs,
+                quota_codes,
+            )
+            for code in quota_codes:
+                balance = await ledger_service.get_balance(
+                    db,
+                    user_id=user_id,
+                    entitlement_code=code,
+                    cycle_type=cycle_types.get(code, CycleType.MONTHLY),
+                )
+                balances[code] = balance
+
         return [
-            MyAccessService._build_entitlement_item(entitlement_map[code])
+            MyAccessService._build_entitlement_item(
+                entitlement_map[code],
+                balance=balances.get(code),
+            )
             for code in sorted(entitlement_codes)
             if code in entitlement_map
         ]
@@ -193,6 +221,50 @@ class MyAccessService:
         return {entitlement.code for entitlement in entitlements}
 
     @staticmethod
+    async def _get_subscription_quota_cycle_types(
+        db: AsyncSession,
+        subs: Sequence[Subscription],
+        quota_codes: list[str],
+    ) -> dict[str, str]:
+        """
+        获取订阅配额权益的周期类型
+
+        :param db: 数据库会话
+        :param subs: 订阅列表
+        :param quota_codes: 配额权益编码
+        :return:
+        """
+        if not subs or not quota_codes:
+            return {}
+
+        template_ids = list({sub.template_id for sub in subs})
+        relations = await template_pack_dao.get_by_templates(db, template_ids)
+        pack_ids = list({relation.pack_id for relation in relations})
+        pack_items = await pack_item_dao.get_by_packs(db, pack_ids)
+        entitlement_ids = list({item.entitlement_id for item in pack_items})
+        entitlements = await entitlement_dao.select_models(db, id__in=entitlement_ids)
+        entitlement_map = {entitlement.id: entitlement for entitlement in entitlements}
+
+        code_set = set(quota_codes)
+        cycle_types: dict[str, str] = {}
+        quota_values: dict[str, int] = {}
+        for item in pack_items:
+            entitlement = entitlement_map.get(item.entitlement_id)
+            if entitlement is None or entitlement.code not in code_set:
+                continue
+
+            value = item.value_int if item.value_int is not None else 1
+            current_value = quota_values.get(entitlement.code, 0)
+            if value < current_value:
+                continue
+
+            value_meta = item.value_meta or {}
+            cycle_type = value_meta.get('cycle_type') or CycleType.MONTHLY
+            cycle_types[entitlement.code] = str(getattr(cycle_type, 'value', cycle_type))
+            quota_values[entitlement.code] = value
+        return cycle_types
+
+    @staticmethod
     def _build_subscription_item(sub: Subscription, context: dict[str, dict]) -> GetMySubscription:
         """
         构建我的订阅项
@@ -222,11 +294,12 @@ class MyAccessService:
         )
 
     @staticmethod
-    def _build_entitlement_item(entitlement: Entitlement) -> GetMyEntitlement:
+    def _build_entitlement_item(entitlement: Entitlement, balance: int | None = None) -> GetMyEntitlement:
         """
         构建我的权益项
 
         :param entitlement: 权益
+        :param balance: 余额
         :return:
         """
         return GetMyEntitlement(
@@ -234,6 +307,7 @@ class MyAccessService:
             name=entitlement.name,
             category=entitlement.category,
             description=entitlement.description,
+            balance=balance,
         )
 
     @staticmethod

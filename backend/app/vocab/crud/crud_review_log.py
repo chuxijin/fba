@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -32,6 +32,8 @@ class CRUDReviewLog(CRUDPlus[VocabReviewLog]):
             select(
                 func.count(func.distinct(VocabReviewLog.word_id)).label('total_words'),
                 func.sum(VocabReviewLog.duration_ms).label('total_duration_ms'),
+                func.count(func.distinct(case((VocabReviewLog.state == 0, VocabReviewLog.word_id), else_=None))).label('today_new'),
+                func.count(func.distinct(case((VocabReviewLog.state != 0, VocabReviewLog.word_id), else_=None))).label('today_review'),
             )
             .where(
                 VocabReviewLog.user_id == user_id,
@@ -44,6 +46,8 @@ class CRUDReviewLog(CRUDPlus[VocabReviewLog]):
         return {
             'total_words': row.total_words or 0,
             'total_duration_ms': row.total_duration_ms or 0,
+            'today_new': row.today_new or 0,
+            'today_review': row.today_review or 0,
         }
 
     async def get_select_by_user(

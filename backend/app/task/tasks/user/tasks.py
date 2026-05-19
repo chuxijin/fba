@@ -161,7 +161,7 @@ async def check_expired_user_roles() -> int:
 
 @celery_app.task(name='check_expired_memberships')
 async def check_expired_memberships() -> int:
-    """检查并处理过期会员"""
+    """批量将已过期的 active 订阅标记为 expired"""
     from backend.app.access.service.subscription_service import subscription_service
 
     async with async_db_session.begin() as db:

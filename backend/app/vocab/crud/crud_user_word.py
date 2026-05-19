@@ -76,6 +76,21 @@ class CRUDUserWord(CRUDPlus[VocabUserWord]):
         result = await db.execute(stmt)
         return {row[0]: row[1] for row in result.all()}
 
+    async def count_today_new(self, db: AsyncSession, user_id: int, today_start: datetime, today_end: datetime) -> int:
+        """
+        获取今日新学单词数 (精确按创建时间统计)
+        """
+        stmt = (
+            select(func.count())
+            .where(
+                VocabUserWord.user_id == user_id,
+                VocabUserWord.created_time >= today_start,
+                VocabUserWord.created_time < today_end,
+            )
+        )
+        result = await db.execute(stmt)
+        return result.scalar() or 0
+
     async def get_starred_select(self, user_id: int) -> Select:
         """
         获取用户收藏的单词列表

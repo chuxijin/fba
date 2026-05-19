@@ -92,17 +92,45 @@ class StudyService:
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start.replace(hour=23, minute=59, second=59)
         today_data = await review_log_dao.count_today(db, user_id, today_start, today_end)
+        today_new_count = await user_word_dao.count_today_new(db, user_id, today_start, today_end)
+        today_total_unique = today_data.get('total_words', 0)
+        today_review_count = max(0, today_total_unique - today_new_count)
 
         due_words = await user_word_dao.get_due_words(db, user_id, now, limit=1000)
+        
+        active_ub = await user_book_dao.get_active_book(db, user_id)
+        active_book_model = None
+        if active_ub:
+            book = await book_dao.select_model(db, active_ub.book_id)
+            if book:
+                from backend.app.vocab.schema.user_book import GetUserBookWithProgress
+                book_words = await book_word_dao.get_word_ids_by_book(db, active_ub.book_id)
+                learned_ids = await user_word_dao.get_learned_word_ids(db, user_id)
+                learned_in_book = [wid for wid in book_words if wid in learned_ids]
+                active_book_model = GetUserBookWithProgress(
+                    id=active_ub.id,
+                    user_id=active_ub.user_id,
+                    book_id=active_ub.book_id,
+                    is_active=active_ub.is_active,
+                    started_at=active_ub.started_at,
+                    finished_at=active_ub.finished_at,
+                    created_time=active_ub.created_time,
+                    book_name=book.name,
+                    book_cover=book.cover_image,
+                    total_words=len(book_words),
+                    learned_words=len(learned_in_book),
+                    mastered_words=0  # 如果需要精细可以之后再算，或者这里传 0
+                )
 
         return GetStudyStats(
             total_learned=total_learned,
             total_mastered=state_counts.get(2, 0),
             total_learning=state_counts.get(1, 0) + state_counts.get(3, 0),
-            today_new=today_data.get('total_words', 0),
-            today_review=today_data.get('total_words', 0),
+            today_new=today_new_count,
+            today_review=today_review_count,
             today_duration_seconds=today_data.get('total_duration_ms', 0) // 1000,
             due_count=len(due_words),
+            active_book=active_book_model,
         )
 
 

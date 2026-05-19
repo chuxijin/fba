@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
+from datetime import datetime, timezone as datetime_timezone
 
 from fsrs import Card, Rating, Scheduler, State
 
@@ -25,33 +25,29 @@ class ReviewService:
     def _db_to_card(self, uw: VocabUserWord) -> Card:
         """
         从数据库记录恢复 FSRS Card 对象
-
-        :param uw: 用户单词记录
-        :return:
         """
         card = Card()
         card.state = State(uw.state)
         card.step = uw.step
         card.stability = uw.stability
         card.difficulty = uw.difficulty
-        card.due = uw.due
-        card.last_review = uw.last_review
+        if uw.due:
+            card.due = timezone.to_utc(uw.due)
+        if uw.last_review:
+            card.last_review = timezone.to_utc(uw.last_review)
         return card
 
     def _card_to_db_dict(self, card: Card) -> dict:
         """
         将 FSRS Card 对象转为数据库更新字典
-
-        :param card: FSRS Card
-        :return:
         """
         return {
             'state': card.state.value,
             'step': card.step,
             'stability': card.stability,
             'difficulty': card.difficulty,
-            'due': card.due,
-            'last_review': card.last_review,
+            'due': timezone.from_datetime(card.due) if card.due else None,
+            'last_review': timezone.from_datetime(card.last_review) if card.last_review else None,
         }
 
     async def submit_review(
@@ -63,24 +59,19 @@ class ReviewService:
     ) -> ReviewResult:
         """
         提交复习结果
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :param obj: 复习参数
-        :return:
         """
         # 获取或创建用户单词状态
         uw = await user_word_dao.get_by_user_and_word(db, user_id, obj.word_id)
         is_new = uw is None
+        now = timezone.now()
 
         if uw is None:
-            now = timezone.now()
             uw = await user_word_dao.create_model(
                 db,
                 CreateUserWordParam(
                     user_id=user_id,
                     word_id=obj.word_id,
-                    state=State.Learning.value,
+                    state=Card().state.value,
                     step=0,
                     due=now,
                 ),
@@ -88,20 +79,15 @@ class ReviewService:
             )
             await db.flush()
 
-        # 构建 Card 并执行 FSRS 调度
         card = self._db_to_card(uw)
         rating = Rating(obj.rating)
-        now = timezone.now()
-        new_card, _ = self.scheduler.review_card(card, rating, now)
+        now_utc = timezone.to_utc(now)
+        new_card, _ = self.scheduler.review_card(card, rating, now_utc)
 
-        # 记录复习前的状态
         old_state = uw.state
-
-        # 更新用户单词状态
         update_data = self._card_to_db_dict(new_card)
         await user_word_dao.update_model(db, uw.id, update_data, commit=False)
 
-        # 写入复习日志
         await review_log_dao.create_model(
             db,
             CreateReviewLogParam(
@@ -118,7 +104,6 @@ class ReviewService:
 
         await db.commit()
 
-        # 触发打卡更新
         await checkin_service.update_daily_progress(
             db=db,
             user_id=user_id,
@@ -127,7 +112,7 @@ class ReviewService:
         )
 
         return ReviewResult(
-            next_due=new_card.due,
+            next_due=update_data['due'],
             new_state=new_card.state.value,
             stability=new_card.stability,
             difficulty=new_card.difficulty,
@@ -142,25 +127,21 @@ class ReviewService:
     ) -> ReviewForecast:
         """
         预览各评分对应的下次复习时间
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :param word_id: 单词 ID
-        :return:
         """
         uw = await user_word_dao.get_by_user_and_word(db, user_id, word_id)
         if not uw:
             raise errors.NotFoundError(msg='未找到该单词的学习记录')
 
         card = self._db_to_card(uw)
-        now = timezone.now()
+        now_utc = timezone.to_utc(timezone.now())
 
         results: dict[str, datetime] = {}
         for rating in [Rating.Again, Rating.Hard, Rating.Good, Rating.Easy]:
-            new_card, _ = self.scheduler.review_card(card, rating, now)
-            results[rating.name.lower()] = new_card.due
+            new_card, _ = self.scheduler.review_card(card, rating, now_utc)
+            results[rating.name.lower()] = timezone.from_datetime(new_card.due)
 
         return ReviewForecast(**results)
 
 
 review_service: ReviewService = ReviewService()
+

@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import hashlib
+
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.access.constants import CycleType, LedgerOperation
+from backend.app.access.constants import CycleType, EntitlementCategory, LedgerOperation
+from backend.app.access.crud.crud_entitlement import entitlement_dao
 from backend.app.access.crud.crud_ledger import quota_ledger_dao
+from backend.app.access.crud.crud_pack import pack_item_dao
+from backend.app.access.crud.crud_subscription import subscription_dao
+from backend.app.access.crud.crud_template import template_pack_dao
 from backend.app.access.engine.cycle import build_cycle_key
 from backend.app.access.model.ledger import QuotaLedger
 from backend.common.exception import errors
+from backend.utils.timezone import timezone
 
 
 class LedgerService:
@@ -39,12 +46,14 @@ class LedgerService:
         :return:
         """
         key = cycle_key or build_cycle_key(cycle_type, ts)
-        return await quota_ledger_dao.get_current_balance(
+        return await cls._ensure_cycle_quota(
             db,
             user_id=user_id,
             entitlement_code=entitlement_code,
             scope_key=scope_key,
+            cycle_type=cycle_type,
             cycle_key=key,
+            ts=ts,
         )
 
     @classmethod
@@ -137,11 +146,12 @@ class LedgerService:
                 return existing
 
         key = cycle_key or build_cycle_key(cycle_type)
-        balance = await quota_ledger_dao.get_current_balance(
+        balance = await cls._ensure_cycle_quota(
             db,
             user_id=user_id,
             entitlement_code=entitlement_code,
             scope_key=scope_key,
+            cycle_type=cycle_type,
             cycle_key=key,
         )
         if balance < amount:
@@ -162,6 +172,178 @@ class LedgerService:
             reason=reason,
             current_balance=balance,
         )
+
+    @classmethod
+    async def _ensure_cycle_quota(
+        cls,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        entitlement_code: str,
+        scope_key: str,
+        cycle_type: str,
+        cycle_key: str,
+        ts: datetime | None = None,
+    ) -> int:
+        """
+        确保当前周期订阅配额已初始化
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param entitlement_code: 权益编码
+        :param scope_key: 业务范围键
+        :param cycle_type: 周期类型
+        :param cycle_key: 周期键
+        :param ts: 时间点
+        :return:
+        """
+        latest = await quota_ledger_dao.get_latest_entry(
+            db,
+            user_id=user_id,
+            entitlement_code=entitlement_code,
+            scope_key=scope_key,
+            cycle_key=cycle_key,
+        )
+        if latest is not None:
+            return latest.balance_after
+
+        amount = await cls._resolve_subscription_quota_limit(
+            db,
+            user_id=user_id,
+            entitlement_code=entitlement_code,
+            cycle_type=cycle_type,
+            ts=ts,
+        )
+        if amount <= 0:
+            return 0
+
+        idempotency_key = cls._build_refill_idempotency_key(
+            user_id=user_id,
+            entitlement_code=entitlement_code,
+            scope_key=scope_key,
+            cycle_type=cycle_type,
+            cycle_key=cycle_key,
+        )
+        existing = await quota_ledger_dao.get_by_idempotency_key(db, idempotency_key)
+        if existing is not None:
+            return existing.balance_after
+
+        cycle_value = cls._normalise_cycle_type(cycle_type)
+        entry = await cls.credit(
+            db,
+            user_id=user_id,
+            entitlement_code=entitlement_code,
+            amount=amount,
+            cycle_type=cycle_type,
+            cycle_key=cycle_key,
+            scope_key=scope_key,
+            source='subscription_quota',
+            source_ref=f'{cycle_value}:{cycle_key}',
+            idempotency_key=idempotency_key,
+            reason='subscription quota refill',
+        )
+        return entry.balance_after
+
+    @classmethod
+    async def _resolve_subscription_quota_limit(
+        cls,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        entitlement_code: str,
+        cycle_type: str,
+        ts: datetime | None,
+    ) -> int:
+        """
+        获取订阅授予的当前周期配额上限
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param entitlement_code: 权益编码
+        :param cycle_type: 周期类型
+        :param ts: 时间点
+        :return:
+        """
+        entitlement = await entitlement_dao.get_by_code(db, entitlement_code)
+        if not entitlement or entitlement.category != EntitlementCategory.QUOTA:
+            return 0
+
+        subscriptions = await subscription_dao.list_active_for_user(db, user_id, ts or timezone.now())
+        if not subscriptions:
+            return 0
+
+        template_ids = [subscription.template_id for subscription in subscriptions]
+        template_packs = await template_pack_dao.get_by_templates(db, template_ids)
+        pack_ids = list({relation.pack_id for relation in template_packs})
+        pack_items = await pack_item_dao.get_by_packs(db, pack_ids)
+
+        entitlement_ids = list({item.entitlement_id for item in pack_items})
+        entitlements = await entitlement_dao.get_by_ids(db, entitlement_ids)
+        entitlement_map = {item.id: item for item in entitlements}
+
+        limit = 0
+        cycle_value = cls._normalise_cycle_type(cycle_type)
+        for item in pack_items:
+            item_entitlement = entitlement_map.get(item.entitlement_id)
+            if not item_entitlement or item_entitlement.code != entitlement_code:
+                continue
+
+            item_cycle_type = cls._get_pack_item_cycle_type(item.value_meta)
+            if item_cycle_type != cycle_value:
+                continue
+
+            value = item.value_int if item.value_int is not None else 1
+            if value > limit:
+                limit = value
+        return limit
+
+    @staticmethod
+    def _normalise_cycle_type(cycle_type: str) -> str:
+        """
+        标准化周期类型
+
+        :param cycle_type: 周期类型
+        :return:
+        """
+        return str(getattr(cycle_type, 'value', cycle_type))
+
+    @classmethod
+    def _get_pack_item_cycle_type(cls, value_meta: dict | None) -> str:
+        """
+        获取权益包成员周期类型
+
+        :param value_meta: 扩展参数
+        :return:
+        """
+        if not value_meta:
+            return cls._normalise_cycle_type(CycleType.MONTHLY)
+        cycle_type = value_meta.get('cycle_type') or CycleType.MONTHLY
+        return cls._normalise_cycle_type(cycle_type)
+
+    @classmethod
+    def _build_refill_idempotency_key(
+        cls,
+        *,
+        user_id: int,
+        entitlement_code: str,
+        scope_key: str,
+        cycle_type: str,
+        cycle_key: str,
+    ) -> str:
+        """
+        构建周期补额幂等键
+
+        :param user_id: 用户 ID
+        :param entitlement_code: 权益编码
+        :param scope_key: 范围键
+        :param cycle_type: 周期类型
+        :param cycle_key: 周期键
+        :return:
+        """
+        cycle_value = cls._normalise_cycle_type(cycle_type)
+        raw_key = f'{user_id}:{entitlement_code}:{scope_key}:{cycle_value}:{cycle_key}'
+        digest = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
+        return f'quota_refill:{digest}'
 
     @classmethod
     async def refund(

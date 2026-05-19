@@ -12,7 +12,7 @@ from backend.app.invite.crud.crud_invite import (
     invite_relation_dao,
     invite_reward_rule_dao,
 )
-from backend.app.invite.model import InviteRelation
+from backend.app.invite.model import InviteCode, InviteRelation
 from backend.app.invite.schema.invite import (
     AcceptInviteParam,
     AcceptInviteResult,
@@ -75,6 +75,26 @@ class InviteService:
         return payload
 
     @staticmethod
+    async def _resolve_reward_rule_id(db: AsyncSession, reward_rule_id: int | None) -> int | None:
+        """
+        解析邀请码使用的奖励规则
+
+        :param db: 数据库会话
+        :param reward_rule_id: 指定奖励规则 ID
+        :return:
+        """
+        if reward_rule_id:
+            rule = await invite_reward_rule_dao.select_model(db, reward_rule_id)
+            if not rule:
+                raise errors.NotFoundError(msg='奖励规则不存在')
+            return reward_rule_id
+
+        default_rule = await invite_reward_rule_dao.get_current_default(db)
+        if not default_rule:
+            return None
+        return default_rule.id
+
+    @staticmethod
     async def create_code(*, db: AsyncSession, user_id: int, obj: CreateInviteCodeParam) -> GetInviteCodeDetail:
         """
         为用户创建邀请码
@@ -84,10 +104,7 @@ class InviteService:
         :param obj: 创建参数
         :return:
         """
-        if obj.reward_rule_id:
-            rule = await invite_reward_rule_dao.select_model(db, obj.reward_rule_id)
-            if not rule:
-                raise errors.NotFoundError(msg='奖励规则不存在')
+        reward_rule_id = await InviteService._resolve_reward_rule_id(db, obj.reward_rule_id)
 
         for _ in range(10):
             code = InviteService._generate_invite_code()
@@ -100,7 +117,9 @@ class InviteService:
         dict_obj = obj.model_dump()
         dict_obj['user_id'] = user_id
         dict_obj['code'] = code
-        invite_code = await invite_code_dao.create_model(db, dict_obj, commit=False)
+        dict_obj['reward_rule_id'] = reward_rule_id
+        invite_code = InviteCode(**dict_obj)
+        db.add(invite_code)
         await db.commit()
         await db.refresh(invite_code)
         return GetInviteCodeDetail.model_validate(invite_code)
@@ -122,9 +141,15 @@ class InviteService:
         """
         invite_code = await invite_code_dao.get_by_user(db, user_id, campaign_id)
         if invite_code:
+            if invite_code.reward_rule_id is None:
+                reward_rule_id = await InviteService._resolve_reward_rule_id(db, None)
+                if reward_rule_id:
+                    invite_code.reward_rule_id = reward_rule_id
+                    await db.commit()
+                    await db.refresh(invite_code)
             return GetInviteCodeDetail.model_validate(invite_code)
 
-        obj = CreateInviteCodeParam(campaign_id=campaign_id)
+        obj = CreateInviteCodeParam(campaign_id=campaign_id, channel='miniapp')
         return await InviteService.create_code(db=db, user_id=user_id, obj=obj)
 
     @staticmethod

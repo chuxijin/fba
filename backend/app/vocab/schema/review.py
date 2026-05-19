@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
+from backend.app.vocab.schema.user_book import GetUserBookWithProgress
 from backend.app.vocab.schema.word import GetWordBrief, GetWordDetail
 from backend.common.schema import SchemaBase
 
@@ -71,6 +72,7 @@ class GetStudyStats(SchemaBase):
     today_review: int = Field(default=0, description='今日复习')
     today_duration_seconds: int = Field(default=0, description='今日学习时长(秒)')
     due_count: int = Field(default=0, description='待复习词数')
+    active_book: GetUserBookWithProgress | None = Field(None, description='当前在学的词书')
 
 
 class ReviewResult(SchemaBase):

@@ -44,7 +44,7 @@ class UserAccountService:
                 db,
                 user_id=sys_user_id,
                 template_code='template.free',
-                source=SubscriptionSource.SYSTEM,
+                source=SubscriptionSource.GIFT,
                 source_ref='register_bonus',
             )
         except Exception as e:

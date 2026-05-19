@@ -46,6 +46,38 @@ class CRUDQuotaLedger(CRUDPlus[QuotaLedger]):
         balance = (await db.execute(stmt)).scalar()
         return int(balance or 0)
 
+    async def get_latest_entry(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        entitlement_code: str,
+        scope_key: str,
+        cycle_key: str,
+    ) -> QuotaLedger | None:
+        """
+        获取当前周期最新流水
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param entitlement_code: 权益编码
+        :param scope_key: 业务范围键
+        :param cycle_key: 周期键
+        :return:
+        """
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.user_id == user_id,
+                self.model.entitlement_code == entitlement_code,
+                self.model.scope_key == scope_key,
+                self.model.cycle_key == cycle_key,
+            )
+            .order_by(self.model.occurred_at.desc(), self.model.id.desc())
+            .limit(1)
+        )
+        return (await db.execute(stmt)).scalars().first()
+
     async def get_by_idempotency_key(
         self,
         db: AsyncSession,
