@@ -51,3 +51,10 @@ class GetStudyPreferenceResponse(BaseModel):
     custom_tabs: list[CustomTab] = Field(default_factory=list, description='自定义 Tab 列表')
     mastery_threshold: int = Field(default=3, description='错题连续答对掌握阈值')
     theme_mode: ThemeMode = Field(default='light', description='主题模式：light/dark/auto')
+
+
+class InitDomainPreferenceParam(BaseModel):
+    """新用户领域初始化参数"""
+
+    domain_code: StudyDomainCode = Field(description='选择的学习领域编码')
+

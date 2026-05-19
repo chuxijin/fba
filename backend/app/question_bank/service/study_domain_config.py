@@ -13,6 +13,7 @@ STUDY_DOMAIN_CONFIG: dict[str, dict[str, Any]] = {
             'knowledge_point': ['kp_cet'],
             'resource_exam': ['re_cet'],
         },
+        'default_tab_codes': [],
     },
     'kaoyan': {
         'label': '考研',
@@ -21,6 +22,7 @@ STUDY_DOMAIN_CONFIG: dict[str, dict[str, Any]] = {
             'knowledge_point': ['kp_kaoyan'],
             'resource_exam': ['re_kaoyan'],
         },
+        'default_tab_codes': ['pc_kaoyan_math', 'pc_kaoyan_english', 'pc_kaoyan_politics', 'pc_kaoyan_major'],
     },
     'gongkao': {
         'label': '考公',
@@ -29,6 +31,7 @@ STUDY_DOMAIN_CONFIG: dict[str, dict[str, Any]] = {
             'knowledge_point': ['kp_xingce', 'kp_shenlun', 'kp_mianshi'],
             'resource_exam': ['re_guokao', 're_shengkao'],
         },
+        'default_tab_codes': ['pc_guokao', 'pc_shengkao'],
     },
     'jiaozhi': {
         'label': '教资',
@@ -37,6 +40,7 @@ STUDY_DOMAIN_CONFIG: dict[str, dict[str, Any]] = {
             'knowledge_point': [],
             'resource_exam': [],
         },
+        'default_tab_codes': [],
     },
 }
 
@@ -103,3 +107,14 @@ def get_study_domain_root_codes(code: str) -> dict[str, list[str]]:
         'knowledge_point': list(root_codes['knowledge_point']),
         'resource_exam': list(root_codes['resource_exam']),
     }
+
+
+def get_study_domain_default_tab_codes(code: str) -> list[str]:
+    """
+    获取领域默认首页 Tab 分类编码列表
+
+    :param code: 领域编码
+    :return:
+    """
+    normalized_code = normalize_study_domain_code(code)
+    return list(STUDY_DOMAIN_CONFIG[normalized_code].get('default_tab_codes', []))

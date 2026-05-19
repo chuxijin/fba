@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from backend.app.question_bank.schema.user_settings import (
     GetStudyPreferenceResponse,
+    InitDomainPreferenceParam,
     UpdateStudyPreferenceParam,
 )
 from backend.app.question_bank.service.user_settings_service import user_settings_service
@@ -41,3 +42,24 @@ async def update_study_preference(
         theme_mode=param.theme_mode,
     )
     return response_base.success()
+
+
+@router.post(
+    '/study-preference/init-domain',
+    summary='新用户初始化领域偏好',
+    name='qbank_init_domain_preference',
+    dependencies=[DependsJwtAuth],
+)
+async def init_domain_preference(
+    request: Request,
+    db: CurrentSessionTransaction,
+    param: InitDomainPreferenceParam,
+) -> ResponseModel:
+    """新用户选择领域后初始化默认偏好"""
+    custom_tabs = await user_settings_service.initialize_domain_preference(
+        db=db,
+        user_id=request.user.id,
+        domain_code=param.domain_code,
+    )
+    return response_base.success(data={'custom_tabs': custom_tabs})
+

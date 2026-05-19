@@ -2,11 +2,16 @@
 # -*- coding: utf-8 -*-
 import json
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.model.category import Category
 from backend.app.question_bank.crud.crud_user import user_account_dao
 from backend.app.question_bank.schema.user_settings import CustomTab, GetStudyPreferenceResponse
-from backend.app.question_bank.service.study_domain_config import normalize_study_domain_code
+from backend.app.question_bank.service.study_domain_config import (
+    get_study_domain_default_tab_codes,
+    normalize_study_domain_code,
+)
 from backend.common.exception import errors
 
 
@@ -138,6 +143,63 @@ class UserSettingsService:
             user.id,
             {'study_preference_settings': json.dumps(current_settings)},
         )
+
+    @staticmethod
+    async def initialize_domain_preference(*, db: AsyncSession, user_id: int, domain_code: str) -> list[dict]:
+        """
+        新用户选择领域后初始化默认偏好（current_domain + 默认 custom_tabs）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param domain_code: 学习领域编码
+        :return:
+        """
+        user = await user_account_dao.get_by_sys_user_id(db, user_id)
+        if not user:
+            raise errors.NotFoundError(msg='用户不存在')
+
+        normalized_domain = normalize_study_domain_code(domain_code)
+        tab_codes = get_study_domain_default_tab_codes(normalized_domain)
+
+        # 根据 code 从分类表批量查出 id 和 name
+        custom_tabs: list[dict] = []
+        if tab_codes:
+            stmt = (
+                select(Category.id, Category.name, Category.code, Category.sort_order)
+                .where(Category.code.in_(tab_codes))
+                .order_by(Category.sort_order)
+            )
+            rows = (await db.execute(stmt)).all()
+
+            # 按 tab_codes 的顺序排列
+            code_order = {code: idx for idx, code in enumerate(tab_codes)}
+            sorted_rows = sorted(rows, key=lambda r: code_order.get(r.code, 999))
+
+            custom_tabs = [
+                {
+                    'id': str(row.id),
+                    'name': row.name,
+                    'category_id': row.id,
+                    'category_name': row.name,
+                    'bank_id': None,
+                    'bank_name': None,
+                    'is_fixed': False,
+                    'order': idx,
+                }
+                for idx, row in enumerate(sorted_rows)
+            ]
+
+        current_settings = UserSettingsService._load_settings(user.study_preference_settings)
+        current_settings['current_domain'] = normalized_domain
+        current_settings['custom_tabs'] = custom_tabs
+
+        await user_account_dao.update_model(
+            db,
+            user.id,
+            {'study_preference_settings': json.dumps(current_settings)},
+        )
+
+        return custom_tabs
 
 
 user_settings_service = UserSettingsService()
