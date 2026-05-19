@@ -232,13 +232,11 @@ class BankService:
         progress_stmt = (
             select(
                 QuestionPlacement.chapter_id,
-                func.count(func.distinct(PracticeRecord.question_id)),
+                func.count(PracticeRecord.id),
                 func.count(
-                    func.distinct(
-                        sa.case(
-                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
-                            else_=None,
-                        )
+                    sa.case(
+                        (PracticeRecord.is_correct.is_(True), PracticeRecord.id),
+                        else_=None,
                     )
                 ),
             )
