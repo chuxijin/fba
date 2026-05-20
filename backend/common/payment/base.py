@@ -59,3 +59,15 @@ class PaymentProvider(ABC):
         :param body: 请求体原始字节
         :return:
         """
+
+    def normalize_callback_data(self, callback_data: dict, *, event: str = 'payment') -> dict:
+        """
+        将原始回调数据归一化为标准格式
+
+        标准字段: order_no, trade_no, trade_state, refund_status
+
+        :param callback_data: 原始回调数据
+        :param event: 事件类型 (payment / refund)
+        :return:
+        """
+        return callback_data

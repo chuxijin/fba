@@ -119,6 +119,8 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/verify',  # 验证订单号
         f'{FASTAPI_API_V1_PATH}/sms/send_login_code',  # 发送短信验证码
         f'{FASTAPI_API_V1_PATH}/sms/login/sms',  # 短信验证码登录
+        f'{FASTAPI_API_V1_PATH}/payment/pay/notify',  # 微信支付回调
+        f'{FASTAPI_API_V1_PATH}/payment/pay/refund-notify',  # 微信退款回调
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         re.compile(rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$'),
@@ -452,6 +454,14 @@ class Settings(BaseSettings):
     WECHAT_PAY_CERT_PATH: str = ''
     WECHAT_PAY_NOTIFY_URL: str = ''
     WECHAT_PAY_REFUND_NOTIFY_URL: str = ''
+
+    ##################################################
+    # [ App ] 微信虚拟支付
+    ##################################################
+    # .env 微信虚拟支付配置
+    VIRTUAL_PAY_OFFERID: str = ''
+    VIRTUAL_PAY_APPKEY: str = ''
+    VIRTUAL_PAY_SANDBOX_APPKEY: str = ''
 
     ##################################################
     # OpenAI 向量化服务

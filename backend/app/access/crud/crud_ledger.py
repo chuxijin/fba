@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -77,6 +77,50 @@ class CRUDQuotaLedger(CRUDPlus[QuotaLedger]):
             .limit(1)
         )
         return (await db.execute(stmt)).scalars().first()
+
+    async def get_latest_entries(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        entitlement_cycle_keys: dict[str, str],
+        scope_key: str,
+    ) -> dict[str, int]:
+        """
+        批量获取当前周期最新余额
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param entitlement_cycle_keys: 权益编码与周期键映射
+        :param scope_key: 业务范围键
+        :return:
+        """
+        if not entitlement_cycle_keys:
+            return {}
+
+        pairs = list(entitlement_cycle_keys.items())
+        row_number = func.row_number().over(
+            partition_by=self.model.entitlement_code,
+            order_by=(self.model.occurred_at.desc(), self.model.id.desc()),
+        )
+        latest_stmt = (
+            select(
+                self.model.entitlement_code.label('entitlement_code'),
+                self.model.balance_after.label('balance_after'),
+                row_number.label('row_number'),
+            )
+            .where(
+                self.model.user_id == user_id,
+                self.model.scope_key == scope_key,
+                tuple_(self.model.entitlement_code, self.model.cycle_key).in_(pairs),
+            )
+            .subquery()
+        )
+        stmt = select(latest_stmt.c.entitlement_code, latest_stmt.c.balance_after).where(
+            latest_stmt.c.row_number == 1
+        )
+        rows = (await db.execute(stmt)).all()
+        return {str(row.entitlement_code): int(row.balance_after or 0) for row in rows}
 
     async def get_by_idempotency_key(
         self,

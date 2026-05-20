@@ -5,15 +5,21 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.access.constants import CycleType, EntitlementCategory, SubscriptionSource, SubscriptionStatus
+from backend.app.access.constants import (
+    CycleType,
+    EntitlementCategory,
+    SubscriptionSource,
+    SubscriptionStatus,
+)
 from backend.app.access.crud.crud_domain import study_domain_dao
 from backend.app.access.crud.crud_entitlement import entitlement_dao
 from backend.app.access.crud.crud_grant import direct_grant_dao
 from backend.app.access.crud.crud_pack import entitlement_pack_dao, pack_item_dao
 from backend.app.access.crud.crud_subscription import subscription_dao
 from backend.app.access.crud.crud_template import subscription_template_dao, template_pack_dao
+from backend.app.access.engine.cycle import build_cycle_key
 from backend.app.access.model.entitlement import Entitlement
-from backend.app.access.model.pack import EntitlementPack
+from backend.app.access.model.pack import EntitlementPack, PackItem
 from backend.app.access.model.subscription import Subscription
 from backend.app.access.model.template import SubscriptionTemplate
 from backend.app.access.schema.base import TimePeriodOutput
@@ -75,10 +81,12 @@ class MyAccessService:
         :param user_id: 用户 ID
         :return:
         """
-        active_subs = await subscription_dao.list_active_for_user(db, user_id, timezone.now())
-        entitlement_codes = await MyAccessService._get_subscription_entitlement_codes(db, active_subs)
+        now = timezone.now()
+        active_subs = await subscription_dao.list_active_for_user(db, user_id, now)
+        subscription_context = await MyAccessService._get_subscription_entitlement_context(db, active_subs)
+        entitlement_codes = set(subscription_context['entitlement_codes'])
 
-        grants = await direct_grant_dao.list_active_for_user(db, user_id=user_id, ts=timezone.now())
+        grants = await direct_grant_dao.list_active_for_user(db, user_id=user_id, ts=now)
         entitlement_codes.update(grant.entitlement_code for grant in grants)
         if not entitlement_codes:
             return []
@@ -92,21 +100,34 @@ class MyAccessService:
         quota_codes = [
             code
             for code in entitlement_codes
-            if entitlement_map[code].category == EntitlementCategory.QUOTA
+            if code in entitlement_map and entitlement_map[code].category == EntitlementCategory.QUOTA
         ]
-        balances = {}
+        balances: dict[str, int] = {}
         if quota_codes:
-            cycle_types = await MyAccessService._get_subscription_quota_cycle_types(
-                db,
-                active_subs,
+            cycle_types = MyAccessService._get_quota_cycle_types(
+                subscription_context,
                 quota_codes,
             )
-            for code in quota_codes:
+            entitlement_cycle_keys = {
+                code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
+                for code in quota_codes
+            }
+            from backend.app.access.crud.crud_ledger import quota_ledger_dao
+
+            balances = await quota_ledger_dao.get_latest_entries(
+                db,
+                user_id=user_id,
+                entitlement_cycle_keys=entitlement_cycle_keys,
+                scope_key='global',
+            )
+            for code in sorted(set(quota_codes) - set(balances)):
                 balance = await ledger_service.get_balance(
                     db,
                     user_id=user_id,
                     entitlement_code=code,
                     cycle_type=cycle_types.get(code, CycleType.MONTHLY),
+                    cycle_key=entitlement_cycle_keys[code],
+                    ts=now,
                 )
                 balances[code] = balance
 
@@ -195,19 +216,23 @@ class MyAccessService:
         }
 
     @staticmethod
-    async def _get_subscription_entitlement_codes(
+    async def _get_subscription_entitlement_context(
         db: AsyncSession,
         subs: Sequence[Subscription],
-    ) -> set[str]:
+    ) -> dict[str, object]:
         """
-        获取订阅包含的权益编码
+        获取订阅权益上下文
 
         :param db: 数据库会话
         :param subs: 订阅列表
         :return:
         """
         if not subs:
-            return set()
+            return {
+                'entitlement_codes': set(),
+                'pack_items': [],
+                'entitlement_map': {},
+            }
 
         template_ids = list({sub.template_id for sub in subs})
         relations = await template_pack_dao.get_by_templates(db, template_ids)
@@ -215,42 +240,47 @@ class MyAccessService:
         pack_items = await pack_item_dao.get_by_packs(db, pack_ids)
         entitlement_ids = list({item.entitlement_id for item in pack_items})
         if not entitlement_ids:
-            return set()
+            return {
+                'entitlement_codes': set(),
+                'pack_items': [],
+                'entitlement_map': {},
+            }
 
         entitlements = await entitlement_dao.select_models(db, id__in=entitlement_ids)
-        return {entitlement.code for entitlement in entitlements}
+        entitlement_map = {entitlement.id: entitlement for entitlement in entitlements}
+        entitlement_codes = {entitlement.code for entitlement in entitlements}
+        return {
+            'entitlement_codes': entitlement_codes,
+            'pack_items': list(pack_items),
+            'entitlement_map': entitlement_map,
+        }
 
     @staticmethod
-    async def _get_subscription_quota_cycle_types(
-        db: AsyncSession,
-        subs: Sequence[Subscription],
+    def _get_quota_cycle_types(
+        subscription_context: dict[str, object],
         quota_codes: list[str],
     ) -> dict[str, str]:
         """
         获取订阅配额权益的周期类型
 
-        :param db: 数据库会话
-        :param subs: 订阅列表
+        :param subscription_context: 订阅权益上下文
         :param quota_codes: 配额权益编码
         :return:
         """
-        if not subs or not quota_codes:
+        code_set = set(quota_codes)
+        pack_items = subscription_context.get('pack_items')
+        entitlement_map = subscription_context.get('entitlement_map')
+        if not isinstance(pack_items, list) or not isinstance(entitlement_map, dict):
             return {}
 
-        template_ids = list({sub.template_id for sub in subs})
-        relations = await template_pack_dao.get_by_templates(db, template_ids)
-        pack_ids = list({relation.pack_id for relation in relations})
-        pack_items = await pack_item_dao.get_by_packs(db, pack_ids)
-        entitlement_ids = list({item.entitlement_id for item in pack_items})
-        entitlements = await entitlement_dao.select_models(db, id__in=entitlement_ids)
-        entitlement_map = {entitlement.id: entitlement for entitlement in entitlements}
-
-        code_set = set(quota_codes)
         cycle_types: dict[str, str] = {}
         quota_values: dict[str, int] = {}
         for item in pack_items:
+            if not isinstance(item, PackItem):
+                continue
+
             entitlement = entitlement_map.get(item.entitlement_id)
-            if entitlement is None or entitlement.code not in code_set:
+            if not isinstance(entitlement, Entitlement) or entitlement.code not in code_set:
                 continue
 
             value = item.value_int if item.value_int is not None else 1

@@ -24,6 +24,10 @@ class Subscription(Base):
     """用户订阅流水表"""
 
     __tablename__ = 'subscription'
+    __table_args__ = (
+        sa.Index('idx_subscription_user_status', 'user_id', 'status'),
+        sa.Index('idx_subscription_valid_period', 'valid_period', postgresql_using='gist'),
+    )
 
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(sa.BigInteger, comment='用户 ID')

@@ -25,6 +25,10 @@ class DirectGrant(DataClassBase):
     """直接授予表(运营补偿/活动赠送)"""
 
     __tablename__ = 'direct_grant'
+    __table_args__ = (
+        sa.Index('idx_direct_grant_user_status', 'user_id', 'status'),
+        sa.Index('idx_direct_grant_valid_period', 'valid_period', postgresql_using='gist'),
+    )
 
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(sa.BigInteger, comment='用户 ID')

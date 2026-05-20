@@ -67,6 +67,9 @@ class TemplatePack(Base):
     """订阅模板与权益包关联表"""
 
     __tablename__ = 'template_pack'
+    __table_args__ = (
+        sa.Index('idx_template_pack_template', 'template_id'),
+    )
 
     id: Mapped[id_key] = mapped_column(init=False)
     template_id: Mapped[int] = mapped_column(sa.BigInteger, comment='模板 ID')

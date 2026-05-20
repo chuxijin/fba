@@ -175,5 +175,25 @@ class WechatPayProvider(PaymentProvider):
 
         return json.loads(result) if isinstance(result, str) else result
 
+    def normalize_callback_data(self, callback_data: dict, *, event: str = 'payment') -> dict:
+        """
+        将微信支付回调数据归一化为标准格式
+
+        :param callback_data: 原始回调数据
+        :param event: 事件类型 (payment / refund)
+        :return:
+        """
+        if event == 'refund':
+            return {
+                'order_no': callback_data.get('out_trade_no', ''),
+                'trade_no': callback_data.get('transaction_id', ''),
+                'refund_status': callback_data.get('refund_status', ''),
+            }
+        return {
+            'order_no': callback_data.get('out_trade_no', ''),
+            'trade_no': callback_data.get('transaction_id', ''),
+            'trade_state': callback_data.get('trade_state', ''),
+        }
+
 
 wechat_pay_provider: WechatPayProvider = WechatPayProvider()

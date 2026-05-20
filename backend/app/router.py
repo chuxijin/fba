@@ -12,6 +12,7 @@ from backend.app.invite.api.router import v1 as invite_v1
 from backend.app.jia.api.router import v1 as jia_v1
 from backend.app.job.router import v1 as job_v1
 from backend.app.mall.api.router import v1 as mall_v1
+from backend.app.payment.api.router import v1 as payment_v1
 from backend.app.mcp.api.router import v1 as mcp_v1
 from backend.app.quest.api.router import v1 as quest_v1
 from backend.app.question_bank.api.router import v1 as question_bank_v1
@@ -36,6 +37,7 @@ router.include_router(gongkao_v1)
 router.include_router(invite_v1)
 router.include_router(jia_v1)
 router.include_router(mall_v1)
+router.include_router(payment_v1)
 router.include_router(trail_v1)
 router.include_router(content_v1)
 router.include_router(quest_v1)

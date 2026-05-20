@@ -52,6 +52,9 @@ class PackItem(Base):
     """权益包成员表"""
 
     __tablename__ = 'pack_item'
+    __table_args__ = (
+        sa.Index('idx_pack_item_pack_status', 'pack_id', 'status'),
+    )
 
     id: Mapped[id_key] = mapped_column(init=False)
     pack_id: Mapped[int] = mapped_column(sa.BigInteger, comment='包 ID')

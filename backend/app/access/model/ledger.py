@@ -23,6 +23,17 @@ class QuotaLedger(DataClassBase):
     """配额账本表(事件溯源, append-only)"""
 
     __tablename__ = 'quota_ledger'
+    __table_args__ = (
+        sa.Index(
+            'idx_quota_ledger_user_scope_cycle',
+            'user_id',
+            'entitlement_code',
+            'scope_key',
+            'cycle_key',
+            'occurred_at',
+            'id',
+        ),
+    )
 
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(sa.BigInteger, comment='用户 ID')
