@@ -16,6 +16,12 @@ export interface SetupSdkOptions {
   getToken?: () => string | undefined | null;
   /** 401 回调, 通常用于跳转登录 */
   onUnauthorized?: () => void;
+  /**
+   * Token 自然过期回调; 仅在响应 msg 为「Token 已过期」时触发。
+   * 返回 true 表示已成功刷新, SDK 会自动用新 token 重放原请求;
+   * 返回 false 或抛错则走 onUnauthorized 兜底登出。
+   */
+  onTokenExpired?: () => Promise<boolean>;
   /** 业务错误回调 (code !== 200) */
   onError?: (error: ApiResponseError) => void;
   /** 请求超时 (ms), 默认 30000 */
@@ -45,6 +51,59 @@ function makeError(message: string, partial: Partial<ApiResponseError> = {}): Ap
   return err;
 }
 
+const TOKEN_EXPIRED_MSG = 'Token 已过期';
+
+type Handle401Result = { replayed: true; value: unknown } | { replayed: false };
+
+/**
+ * 统一处理 code/status 为 401 的响应。
+ *
+ * 三种路径:
+ * 1) 外层原始请求 + 「Token 已过期」: 调 onTokenExpired refresh, 成功则重放原请求
+ * 2) 内层重放请求再次 401: 直接返回不调 onUnauthorized, 让外层 tryCatch 接住
+ * 3) 其它 401 (Token 无效/失效, refresh 自身失败): 调 onUnauthorized 一次
+ *
+ * 关键: 不依赖 config 字段共享状态, 因为 axios mergeConfig 会浅拷贝产生新对象。
+ * 重放路径的「内 vs 外」靠 _retry 标记区分, 但每个分支只在当前调用内读, 不跨调用。
+ */
+async function handle401(
+  instance: AxiosInstance,
+  config: AxiosRequestConfig | undefined,
+  msg: string | undefined,
+  opts: SetupSdkOptions,
+): Promise<Handle401Result> {
+  if (config) {
+    const flagged = config as AxiosRequestConfig & { _retry?: boolean };
+
+    if (flagged._retry) {
+      // 内层: 重放还是 401, 把控制权交还外层, 不重复 onUnauthorized
+      return { replayed: false };
+    }
+
+    if (opts.onTokenExpired && msg === TOKEN_EXPIRED_MSG) {
+      flagged._retry = true;
+      try {
+        const refreshed = await opts.onTokenExpired();
+        if (refreshed) {
+          try {
+            const value = await instance.request(config);
+            return { replayed: true, value };
+          }
+          catch {
+            // 重放失败, 落到下方 onUnauthorized
+          }
+        }
+      }
+      catch {
+        // refresh 自身异常, 落到下方 onUnauthorized
+      }
+    }
+  }
+
+  opts.onUnauthorized?.();
+  return { replayed: false };
+}
+
 /**
  * 初始化 SDK; 必须在调用任何生成方法之前执行一次。
  * 内部创建 axios 实例并注入 hey-api 的 generated client。
@@ -72,14 +131,17 @@ export async function setupSdk(opts: SetupSdkOptions): Promise<AxiosInstance> {
   });
 
   instance.interceptors.response.use(
-    (res) => {
+    async (res) => {
       const body = res.data;
       if (body && typeof body === 'object' && 'code' in body) {
         const code = (body as { code: number }).code;
         const msg = (body as { msg?: string }).msg;
         const data = (body as { data?: unknown }).data;
         if (code === 401) {
-          opts.onUnauthorized?.();
+          const result = await handle401(instance, res.config, msg, opts);
+          if (result.replayed) {
+            return result.value as typeof res;
+          }
           return Promise.reject(makeError(msg ?? 'unauthorized', { code, msg, status: res.status, data }));
         }
         if (code !== 200 && code !== 0) {
@@ -91,9 +153,14 @@ export async function setupSdk(opts: SetupSdkOptions): Promise<AxiosInstance> {
       }
       return res;
     },
-    (error) => {
+    async (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
-        opts.onUnauthorized?.();
+        const responseBody = error.response.data as { code?: number; msg?: string } | undefined;
+        const msg = responseBody?.msg;
+        const result = await handle401(instance, error.config, msg, opts);
+        if (result.replayed) {
+          return result.value;
+        }
       }
       return Promise.reject(error);
     },

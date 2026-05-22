@@ -47,6 +47,7 @@ class GetBankDetail(BankSchemaBase):
 class GetBankDetailWithChapters(GetBankDetail):
     """题库详情"""
 
+    question_type_counts: dict[str, int] = Field(default_factory=dict, description='题型题量统计')
     chapters: list[GetChapterTree] = Field(default_factory=list, description='篇章树')
 
 
@@ -56,6 +57,15 @@ class GetBankWithRelationDetail(GetBankDetail):
     model_config = ConfigDict(from_attributes=True)
 
     category: dict | None = Field(None, description='分类信息')
+
+
+class QuestionTypeProgress(SchemaBase):
+    """题型进度"""
+
+    question_count: int = Field(default=0, description='题目总数')
+    answer_count: int = Field(default=0, description='已做题数')
+    correct_count: int = Field(default=0, description='答对数')
+    correct_ratio: Decimal = Field(default=Decimal('0'), description='正确率')
 
 
 class BankParam(SchemaBase):
@@ -88,6 +98,8 @@ class ChapterProgressNode(SchemaBase):
 
     chapter_id: int = Field(description='篇章 ID')
     name: str = Field(description='篇章名称')
+    question_type_counts: dict[str, int] = Field(default_factory=dict, description='题型题量统计')
+    question_type_progress: dict[str, QuestionTypeProgress] = Field(default_factory=dict, description='题型进度统计')
     question_count: int = Field(default=0, description='题目总数')
     answer_count: int = Field(default=0, description='已做题数')
     correct_count: int = Field(default=0, description='答对数')
@@ -102,4 +114,16 @@ class GetBankChapterProgress(SchemaBase):
     total_question_count: int = Field(default=0, description='总题数')
     total_answer_count: int = Field(default=0, description='总已做题数')
     total_correct_count: int = Field(default=0, description='总答对数')
+    question_type_progress: dict[str, QuestionTypeProgress] = Field(default_factory=dict, description='题型进度统计')
     chapters: list[ChapterProgressNode] = Field(default_factory=list, description='篇章进度树')
+
+
+class BankProgressSummary(SchemaBase):
+    """题库进度摘要"""
+
+    bank_id: int = Field(description='题库 ID')
+    question_count: int = Field(default=0, description='题目总数')
+    answer_count: int = Field(default=0, description='已做题数')
+    correct_count: int = Field(default=0, description='答对数')
+    correct_ratio: Decimal = Field(default=Decimal('0'), description='正确率')
+    question_type_progress: dict[str, QuestionTypeProgress] = Field(default_factory=dict, description='题型进度统计')

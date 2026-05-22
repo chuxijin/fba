@@ -111,6 +111,9 @@ class OrderCodeVerifyResult(SchemaBase):
     is_bound: bool = Field(default=False, description='是否已绑定账号')
     can_login: bool = Field(default=False, description='是否可直接登录')
     username: str | None = Field(None, description='已绑定的用户名')
+    template_code: str | None = Field(None, description='订阅模板编码')
+    template_name: str | None = Field(None, description='订阅模板名称')
+    duration_days: int | None = Field(None, description='订阅时长天数')
     message: str = Field(description='提示信息')
 
 

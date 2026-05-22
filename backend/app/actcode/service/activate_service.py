@@ -526,7 +526,7 @@ class ActivateService:
         """
         try:
             actcode, batch, usage = await cls._load_order_context(db, order_input=order_input, for_update=False)
-        except errors.BaseError as exc:
+        except errors.BaseExceptionError as exc:
             return OrderCodeVerifyResult(
                 valid=False,
                 order_no=None,
@@ -539,7 +539,8 @@ class ActivateService:
         bound_user = await cls._get_bound_user(db, usage)
         try:
             template_code = cls._resolve_template_code(batch)
-        except errors.BaseError as exc:
+            template = await subscription_template_dao.get_by_code(db, template_code) if template_code else None
+        except errors.BaseExceptionError as exc:
             return OrderCodeVerifyResult(
                 valid=False,
                 order_no=actcode.code,
@@ -556,18 +557,24 @@ class ActivateService:
                 is_bound=True,
                 can_login=True,
                 username=bound_user.username,
+                template_code=template_code,
+                template_name=template.name if template else None,
+                duration_days=template.duration_days if template else None,
                 message='订单号已绑定，可直接登录',
             )
 
         try:
             cls._ensure_order_consumable(actcode=actcode, batch=batch, usage=usage)
-        except errors.BaseError as exc:
+        except errors.BaseExceptionError as exc:
             return OrderCodeVerifyResult(
                 valid=False,
                 order_no=actcode.code,
                 is_bound=False,
                 can_login=False,
                 username=None,
+                template_code=template_code,
+                template_name=template.name if template else None,
+                duration_days=template.duration_days if template else None,
                 message=exc.msg,
             )
 
@@ -577,8 +584,10 @@ class ActivateService:
             is_bound=False,
             can_login=True,
             username=None,
-            membership_plan_id=None,
-            message=f'订单号有效，模板: {template_code}',
+            template_code=template_code,
+            template_name=template.name if template else None,
+            duration_days=template.duration_days if template else None,
+            message=f'订单号有效，可开通 {template.name if template else template_code}',
         )
 
 

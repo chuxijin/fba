@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, Request
 
 from backend.app.question_bank.schema.bank import (
+    BankProgressSummary,
     CreateBankParam,
     DeleteBankParam,
     GetBankChapterProgress,
@@ -47,6 +48,22 @@ async def get_recommend_banks(
 ) -> ResponseSchemaModel[list[GetBankDetail]]:
     """🌍 公开接口 - 获取全局热门推荐题库（最近7天做题最多的前5个）"""
     data = await bank_service.get_recommend_banks(db=db)
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/progress/summary',
+    summary='批量获取题库进度摘要',
+    name='qbank_get_bank_progress_summary',
+    dependencies=[DependsJwtAuth],
+)
+async def get_bank_progress_summary(
+    request: Request,
+    db: CurrentSession,
+    bank_ids: Annotated[list[int], Query(description='题库 ID 列表')],
+) -> ResponseSchemaModel[list[BankProgressSummary]]:
+    """🔒 登录接口 - 批量获取题库累计进度摘要"""
+    data = await bank_service.get_progress_summaries(db=db, bank_ids=bank_ids, user_id=request.user.id)
     return response_base.success(data=data)
 
 

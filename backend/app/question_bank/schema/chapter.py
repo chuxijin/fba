@@ -52,6 +52,7 @@ class GetChapterWithRelationDetail(GetChapterDetail):
 class GetChapterTree(GetChapterDetail):
     """章节树"""
 
+    question_type_counts: dict[str, int] = Field(default_factory=dict, description='题型题量统计')
     children: list['GetChapterTree'] = Field(default_factory=list, description='子章节')
 
 
