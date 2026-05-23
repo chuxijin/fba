@@ -24,6 +24,7 @@ export interface CreatePracticeSessionParam {
   knowledge_point?: KnowledgePointValue[] | null;
   limit?: number | null;
   shuffle?: boolean;
+  question_types?: QuestionType[] | null;
   exam_config?: Record<string, unknown> | null;
 }
 

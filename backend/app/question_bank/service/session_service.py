@@ -55,6 +55,7 @@ from backend.app.question_bank.service.ai_evaluation_service import (
 from backend.app.question_bank.service.check_in_service import check_in_service
 from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
+from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
 from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.common.exception import errors
 from backend.database.db import async_db_session
@@ -349,6 +350,7 @@ class SessionService:
             region=obj.region,
             cat_id=obj.cat_id,
             knowledge_point=obj.knowledge_point,
+            question_types=obj.question_types,
             content_status=10,
             is_active=True if source_type == 'placement' else None,
         )
@@ -1667,6 +1669,25 @@ class SessionService:
                     'content': material.content,
                 })
 
+        # 5. 批量解析知识点 code → 显示名称
+        all_kp_codes: set[str] = set()
+        for q_item in questions_list:
+            kp_raw = q_item.get('knowledge_point')
+            if isinstance(kp_raw, list):
+                for kp in kp_raw:
+                    if isinstance(kp, str) and kp.strip():
+                        all_kp_codes.add(kp.strip())
+        if all_kp_codes:
+            code_map = await knowledge_point_service.resolve_codes_to_names(db, list(all_kp_codes))
+            for q_item in questions_list:
+                kp_raw = q_item.get('knowledge_point')
+                if isinstance(kp_raw, list):
+                    q_item['knowledge_point_display'] = [
+                        code_map.get(kp.strip(), kp.strip())
+                        for kp in kp_raw
+                        if isinstance(kp, str) and kp.strip()
+                    ]
+
         return {
             'questions': questions_list,
             'materials': materials_list,
@@ -1772,11 +1793,13 @@ class SessionService:
         if obj.chapter_id is not None:
             from backend.app.question_bank.service.membership_service import membership_service
 
+            # 复习类会话（错题/收藏/笔记）跳过题库权限校验，只做 chapter → bank 上下文解析
+            is_review_session = obj.session_type in {'wrong', 'favorite', 'note'}
             obj.bank_id = await membership_service.resolve_bank_context_for_chapter(
                 db=db,
                 chapter_id=obj.chapter_id,
                 bank_id=obj.bank_id,
-                user_id=user_id,
+                user_id=None if is_review_session else user_id,
             )
 
         source_snapshot = cls._build_session_source_snapshot(obj)
@@ -1808,14 +1831,6 @@ class SessionService:
             user_id=user_id,
         )
         question_ids = collect_result.question_ids
-
-        from backend.app.question_bank.service.membership_service import membership_service
-
-        await membership_service.verify_question_ids_access(
-            db=db,
-            user_id=user_id,
-            question_ids=question_ids,
-        )
 
         placements = await cls._query_placements_by_question_ids(
             db=db,

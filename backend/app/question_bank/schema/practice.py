@@ -46,6 +46,7 @@ class CreatePracticeSessionParam(SchemaBase):
     knowledge_point: list[KnowledgePointValue] | None = Field(None, min_length=1, max_length=200, description='考点标签筛选')
     limit: int | None = Field(None, ge=1, le=500, description='抽题数量上限')
     shuffle: bool = Field(False, description='是否打乱题序')
+    question_types: list[QuestionType] | None = Field(None, min_length=1, max_length=20, description='题型过滤')
     exam_config: dict[str, Any] | None = Field(None, description='考试配置')
 
 
@@ -361,7 +362,8 @@ class SessionQuestionItem(SchemaBase):
     stem: str = Field(description='题干')
     options: list[SessionQuestionOptionItem] = Field(default_factory=list, description='选项列表')
     material_ids: list[int] = Field(default_factory=list, description='材料 ID 列表')
-    knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签')
+    knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签（code）')
+    knowledge_point_display: list[str] | None = Field(None, description='考点标签（名称）')
     difficulty: str | None = Field(None, description='难度')
 
 
