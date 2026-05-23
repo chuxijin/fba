@@ -68,6 +68,7 @@ async def get_practice_questions(
         question_service.serialize_question(question=q, bank_id=bank_id, chapter_id=chapter_id)
         for q in questions
     ]
+    await question_service._fill_kp_display_batch(db, result)
     return response_base.success(data=result)
 
 
@@ -98,6 +99,7 @@ async def get_bank_questions(
         difficulty=difficulty,
     )
     result = [question_service.serialize_question(question=q, bank_id=bank_id) for q in questions]
+    await question_service._fill_kp_display_batch(db, result)
     return response_base.success(data=result)
 
 
@@ -139,6 +141,7 @@ async def get_chapter_questions(
         question_service.serialize_question(question=q, bank_id=bank_id, chapter_id=chapter_id)
         for q in questions
     ]
+    await question_service._fill_kp_display_batch(db, result)
     return response_base.success(data=result)
 
 

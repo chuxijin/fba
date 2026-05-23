@@ -58,11 +58,13 @@ class PracticeService:
         if question.content_status != 10:
             raise errors.NotFoundError(msg='题目内容未通过审核')
 
-        return question_service.serialize_question(
+        data = question_service.serialize_question(
             question=question,
             include_analysis=False,
             include_materials=False,
         )
+        await question_service._fill_kp_display_batch(db, [data])
+        return data
 
     @staticmethod
     async def get_practice_analysis(*, db: AsyncSession, question_id: int) -> QuestionAnalysis:

@@ -44,6 +44,7 @@ from backend.app.question_bank.schema.question import (
     UpdateQuestionStatisticsParam,
     UpsertQuestionPlacementItem,
 )
+from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
 from backend.common.exception import errors
 from backend.database.redis import redis_client
 from backend.utils.answer_parser import extract_option_codes, split_answer_text
@@ -234,6 +235,53 @@ class QuestionService:
         return sorted(kp_ids), sorted(kp_names)
 
     @staticmethod
+    def _extract_kp_codes(data: dict[str, Any]) -> list[str]:
+        """
+        从序列化题目字典中提取知识点编码列表
+
+        :param data: serialize_question 输出的字典
+        :return: 知识点编码列表（保持原始顺序，去重）
+        """
+        raw = data.get('knowledge_point')
+        if not raw or not isinstance(raw, list):
+            return []
+        codes: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            if isinstance(item, str) and item.strip():
+                code = item.strip()
+                if code not in seen:
+                    seen.add(code)
+                    codes.append(code)
+        return codes
+
+    @staticmethod
+    async def _fill_kp_display_batch(
+        db: AsyncSession,
+        items: list[dict[str, Any]],
+    ) -> None:
+        """
+        批量为题目字典列表填充 knowledge_point_display
+
+        :param db: 数据库会话
+        :param items: serialize_question 输出的字典列表
+        """
+        if not items:
+            return
+        all_codes: set[str] = set()
+        for item in items:
+            all_codes.update(QuestionService._extract_kp_codes(item))
+        if not all_codes:
+            return
+        code_map = await knowledge_point_service.resolve_codes_to_names(db, list(all_codes))
+        for item in items:
+            kp_codes = QuestionService._extract_kp_codes(item)
+            if kp_codes:
+                item['knowledge_point_display'] = [
+                    code_map.get(code, code) for code in kp_codes
+                ]
+
+    @staticmethod
     def serialize_question(
         *,
         question: Question,
@@ -328,6 +376,14 @@ class QuestionService:
             include_materials=True,
         )
 
+        # 解析知识点 code → 显示名称
+        kp_codes = QuestionService._extract_kp_codes(data)
+        if kp_codes:
+            code_map = await knowledge_point_service.resolve_codes_to_names(db, kp_codes)
+            data['knowledge_point_display'] = [
+                code_map.get(code, code) for code in kp_codes
+            ]
+
         # 详情接口对齐 GetQuestionDetail schema：补齐 options / placements
         option_rows = question.options or []
         sorted_options = sorted(option_rows, key=lambda item: (item.sort_order, item.option_code))
@@ -405,7 +461,7 @@ class QuestionService:
         """
         if ids:
             questions = await question_dao.get_by_ids(db, ids, include_analysis=include_analysis)
-            return [
+            items = [
                 QuestionService.serialize_question(
                     question=q,
                     bank_id=bank_id,
@@ -415,6 +471,8 @@ class QuestionService:
                 )
                 for q in questions
             ]
+            await QuestionService._fill_kp_display_batch(db, items)
+            return items
 
         if page is not None and size is not None:
             question_select = await question_dao.get_select(
@@ -446,6 +504,7 @@ class QuestionService:
                 )
                 for q in questions
             ]
+            await QuestionService._fill_kp_display_batch(db, questions_dict)
 
             total_pages = ceil(total / size) if size > 0 else 0
             return {
@@ -470,7 +529,7 @@ class QuestionService:
             include_analysis=include_analysis,
             include_materials=True,
         )
-        return [
+        items = [
             QuestionService.serialize_question(
                 question=q,
                 bank_id=bank_id,
@@ -480,6 +539,8 @@ class QuestionService:
             )
             for q in questions
         ]
+        await QuestionService._fill_kp_display_batch(db, items)
+        return items
 
     @staticmethod
     def parse_int_csv(value: str | None) -> list[int]:
