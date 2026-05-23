@@ -91,12 +91,21 @@ class MyAccessService:
         if not entitlement_codes:
             return []
 
-        entitlements = await entitlement_dao.get_by_codes(db, sorted(entitlement_codes))
-        entitlement_map = {item.code: item for item in entitlements}
+        # 复用订阅上下文里已加载的 entitlement, 仅对纯 direct_grant 引入的 code 再补一次查询
+        sub_entitlement_map = subscription_context.get('entitlement_map')
+        entitlement_map: dict[str, Entitlement] = {}
+        if isinstance(sub_entitlement_map, dict):
+            for entitlement in sub_entitlement_map.values():
+                if isinstance(entitlement, Entitlement):
+                    entitlement_map[entitlement.code] = entitlement
 
-        # 聚合 QUOTA 类型权益的当前余额
-        from backend.app.access.engine.ledger import ledger_service
+        grant_only_codes = sorted(entitlement_codes - set(entitlement_map.keys()))
+        if grant_only_codes:
+            extras = await entitlement_dao.get_by_codes(db, grant_only_codes)
+            for entitlement in extras:
+                entitlement_map[entitlement.code] = entitlement
 
+        # 聚合 QUOTA 类型权益的当前余额: 优先取 ledger 现存余额, 否则按 pack_item 配置回退
         quota_codes = [
             code
             for code in entitlement_codes
@@ -120,16 +129,14 @@ class MyAccessService:
                 entitlement_cycle_keys=entitlement_cycle_keys,
                 scope_key='global',
             )
-            for code in sorted(set(quota_codes) - set(balances)):
-                balance = await ledger_service.get_balance(
-                    db,
-                    user_id=user_id,
-                    entitlement_code=code,
-                    cycle_type=cycle_types.get(code, CycleType.MONTHLY),
-                    cycle_key=entitlement_cycle_keys[code],
-                    ts=now,
+            missing_codes = sorted(set(quota_codes) - set(balances))
+            if missing_codes:
+                fallback_limits = MyAccessService._compute_quota_limits_from_context(
+                    subscription_context,
+                    missing_codes,
                 )
-                balances[code] = balance
+                for code in missing_codes:
+                    balances[code] = fallback_limits.get(code, 0)
 
         return [
             MyAccessService._build_entitlement_item(
@@ -293,6 +300,38 @@ class MyAccessService:
             cycle_types[entitlement.code] = str(getattr(cycle_type, 'value', cycle_type))
             quota_values[entitlement.code] = value
         return cycle_types
+
+    @staticmethod
+    def _compute_quota_limits_from_context(
+        subscription_context: dict[str, object],
+        quota_codes: list[str],
+    ) -> dict[str, int]:
+        """
+        从订阅上下文直接计算配额上限, 避免落 ledger 时的多次查询
+
+        :param subscription_context: 订阅权益上下文
+        :param quota_codes: 配额权益编码
+        :return:
+        """
+        code_set = set(quota_codes)
+        pack_items = subscription_context.get('pack_items')
+        entitlement_map = subscription_context.get('entitlement_map')
+        if not isinstance(pack_items, list) or not isinstance(entitlement_map, dict):
+            return {}
+
+        quota_limits: dict[str, int] = {}
+        for item in pack_items:
+            if not isinstance(item, PackItem):
+                continue
+
+            entitlement = entitlement_map.get(item.entitlement_id)
+            if not isinstance(entitlement, Entitlement) or entitlement.code not in code_set:
+                continue
+
+            value = item.value_int if item.value_int is not None else 0
+            if value > quota_limits.get(entitlement.code, 0):
+                quota_limits[entitlement.code] = value
+        return quota_limits
 
     @staticmethod
     def _build_subscription_item(sub: Subscription, context: dict[str, dict]) -> GetMySubscription:
