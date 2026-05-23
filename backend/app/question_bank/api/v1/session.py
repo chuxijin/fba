@@ -37,33 +37,37 @@ async def create_session(
     obj: CreatePracticeSessionParam,
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """创建练习会话"""
+    # 复习类会话（错题/收藏/笔记）的题目来自用户付费期已生成的私有数据，跳过题库/筛选/知识点权限校验
+    is_review_session = obj.session_type in {'wrong', 'favorite', 'note'}
+
     if obj.chapter_id is not None:
         obj.bank_id = await membership_service.resolve_bank_context_for_chapter(
             db=db,
             chapter_id=obj.chapter_id,
             bank_id=obj.bank_id,
-            user_id=request.user.id,
+            user_id=None if is_review_session else request.user.id,
         )
-    elif obj.bank_id:
+    elif obj.bank_id and not is_review_session:
         await membership_service.verify_bank_list_access(
             db=db,
             user_id=request.user.id,
             bank_id=obj.bank_id,
         )
 
-    await membership_service.verify_filter_access(
-        db=db,
-        user_id=request.user.id,
-        cat_id=obj.cat_id,
-        region=obj.region,
-        year_start=obj.year_start,
-        year_end=obj.year_end,
-    )
-    await membership_service.verify_knowledge_access(
-        db=db,
-        user_id=request.user.id,
-        knowledge_point=obj.knowledge_point,
-    )
+    if not is_review_session:
+        await membership_service.verify_filter_access(
+            db=db,
+            user_id=request.user.id,
+            cat_id=obj.cat_id,
+            region=obj.region,
+            year_start=obj.year_start,
+            year_end=obj.year_end,
+        )
+        await membership_service.verify_knowledge_access(
+            db=db,
+            user_id=request.user.id,
+            knowledge_point=obj.knowledge_point,
+        )
 
     new_session = await session_service.create_unified_session(db=db, user_id=request.user.id, obj=obj)
     session = await session_service.get_session_detail(
