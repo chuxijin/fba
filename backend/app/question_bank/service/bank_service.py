@@ -10,8 +10,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_category import category_dao
-from backend.app.access.constants import CommonStatus
-from backend.app.access.crud.crud_entitlement import entitlement_dao
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.model.bank import QuestionBank
@@ -98,32 +96,6 @@ class BankService:
         actual_source_bank_id = source_bank.chapter_source_bank_id or source_bank.id
         if actual_source_bank_id != source_bank.id:
             raise errors.ForbiddenError(msg='章节来源题库必须维护自己的章节，不能继续复用其他题库')
-
-    @staticmethod
-    async def _validate_access_entitlement_code(
-        *,
-        db: AsyncSession,
-        access_entitlement_code: str | None,
-    ) -> None:
-        """
-        校验题库访问权益编码
-
-        :param db: 数据库会话
-        :param access_entitlement_code: 权益编码
-        :return:
-        """
-        if access_entitlement_code is None:
-            return
-
-        entitlement_code = access_entitlement_code.strip()
-        if not entitlement_code:
-            return
-
-        entitlement = await entitlement_dao.get_by_code(db, entitlement_code)
-        if not entitlement:
-            raise errors.NotFoundError(msg=f'权益编码不存在: {entitlement_code}')
-        if entitlement.status != CommonStatus.ACTIVE:
-            raise errors.RequestError(msg=f'权益编码未启用: {entitlement_code}')
 
     @staticmethod
     async def _get_chapter_count_map(
@@ -850,11 +822,6 @@ class BankService:
         if obj.chapter_source_bank_id is not None:
             await BankService._validate_chapter_source_bank(db=db, source_bank_id=obj.chapter_source_bank_id)
 
-        await BankService._validate_access_entitlement_code(
-            db=db,
-            access_entitlement_code=obj.access_entitlement_code,
-        )
-
         await bank_dao.create(db, obj, created_by=created_by)
 
     @staticmethod
@@ -883,11 +850,6 @@ class BankService:
 
         target_source_bank_id = obj.chapter_source_bank_id or pk
         await BankService._validate_chapter_source_bank(db=db, source_bank_id=target_source_bank_id)
-
-        await BankService._validate_access_entitlement_code(
-            db=db,
-            access_entitlement_code=obj.access_entitlement_code,
-        )
 
         count = await bank_dao.update(db, pk, obj, updated_by=updated_by)
         return count

@@ -25,7 +25,6 @@ class QuestionBank(Base, UserMixin):
         sa.Index('idx_study_question_bank_category_status', 'cat_id', 'status'),
         sa.Index('idx_study_question_bank_parent_sort', 'parent_id', 'sort_order'),
         sa.Index('idx_study_question_bank_chapter_source', 'chapter_source_bank_id'),
-        sa.Index('idx_study_question_bank_access_entitlement', 'access_entitlement_code'),
         sa.Index('idx_study_question_bank_type_scene_status', 'bank_type', 'scene_mask', 'status'),
         {'comment': '题库表'},
     )
@@ -73,11 +72,6 @@ class QuestionBank(Base, UserMixin):
         comment='缓存总分',
     )
     buy_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='购买数量')
-    access_entitlement_code: Mapped[str | None] = mapped_column(
-        sa.String(64),
-        default=None,
-        comment='访问所需权益编码，为空表示公开',
-    )
 
     parent: Mapped['QuestionBank | None'] = relationship(
         init=False,

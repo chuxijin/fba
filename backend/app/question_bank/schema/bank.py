@@ -26,7 +26,6 @@ class BankSchemaBase(SchemaBase):
     sort_order: int = Field(default=0, description='排序权重')
     chapter_source_bank_id: int | None = Field(None, description='篇章来源题库 ID')
     status: int = Field(default=1, ge=0, description='状态')
-    access_entitlement_code: str | None = Field(None, max_length=64, description='访问所需权益编码，为空表示公开')
 
 
 class GetBankDetail(BankSchemaBase):

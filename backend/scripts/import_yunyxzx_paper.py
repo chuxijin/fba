@@ -365,7 +365,6 @@ async def ensure_bank(
             q_count_cache=0,
             total_score_cache=Decimal('0'),
             buy_count=0,
-            access_entitlement_code=None,
             created_by=created_by,
         )
         db.add(bank)
