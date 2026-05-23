@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.access.crud.crud_subscription import subscription_dao
 from backend.app.access.constants import SubscriptionStatus
-from backend.app.growth.constants import DEFAULT_FAMILY, FamilyCode, GrowthEventOp
+from backend.app.growth.constants import DEFAULT_FAMILY, FamilyCode, GrowthEventOp, next_tier_exp_required, resolve_grade
 from backend.app.growth.crud.crud_experience_rule import experience_rule_dao
 from backend.app.growth.crud.crud_growth_account import growth_account_dao
 from backend.app.growth.crud.crud_growth_event import growth_event_dao
@@ -142,6 +142,10 @@ class ExperienceService:
         account.total_exp = new_total
         account.available_exp = new_available
 
+        new_grade = resolve_grade(new_total)
+        if new_grade > account.current_grade:
+            account.current_grade = new_grade
+
         event = GrowthEvent(
             user_id=user_id,
             family_code=family_code,
@@ -246,7 +250,7 @@ class ExperienceService:
             'total_exp': account.total_exp,
             'available_exp': account.available_exp,
             'current_grade': account.current_grade,
-            'next_exp_required': None,
+            'next_exp_required': next_tier_exp_required(account.current_grade),
         }
 
 
