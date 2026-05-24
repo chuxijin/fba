@@ -1,7 +1,7 @@
 [plugin]
-summary = 'Webhook事件接收器'
-version = '1.0.0'
-description = '用于接收和处理外部系统的Webhook POST事件'
+summary = 'Webhook 双向事件系统'
+version = '2.0.0'
+description = '基于 Standard Webhooks + CloudEvents v1.0 的双向 Webhook 系统, 支持入站接收和出站推送'
 author = 'null'
 tags = ["notification"]
 database = ["mysql", "postgresql"]
@@ -9,10 +9,26 @@ database = ["mysql", "postgresql"]
 [app]
 extend = 'admin'
 
-[api.webhook]
-prefix = '/webhooks'
-tags = 'Webhook事件管理'
+[api.inbound]
+prefix = '/webhook/inbound'
+tags = 'Webhook 入站接收'
 
-[api.webhook_config]
-prefix = '/webhook-configs'
-tags = 'Webhook配置管理'
+[api.endpoint]
+prefix = '/webhook/endpoints'
+tags = 'Webhook 出站端点'
+
+[api.delivery]
+prefix = '/webhook/deliveries'
+tags = 'Webhook 投递记录'
+
+[api.event_type]
+prefix = '/webhook/event-types'
+tags = 'Webhook 事件类型'
+
+[api.outbound]
+prefix = '/webhook/publish'
+tags = 'Webhook 手动发布'
+
+[api.event_log]
+prefix = '/webhook/event-logs'
+tags = 'Webhook 入站事件日志'
