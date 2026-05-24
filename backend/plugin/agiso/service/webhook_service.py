@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import json
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from backend.app.actcode.crud.crud_actcode import actcode_batch_dao, actcode_dao, actcode_usage_dao
@@ -36,6 +37,8 @@ class WebhookService:
         sign: str,
         platform: str | None = None,
         aopic: int | None = None,
+        *,
+        db: AsyncSession | None = None,
     ) -> dict[str, str]:
         """
         处理阿奇索推送：验签 → 解析 → 去重 → 存库 → 业务处理
@@ -45,6 +48,7 @@ class WebhookService:
         :param sign: 签名
         :param platform: 来源平台(fromPlatform)
         :param aopic: 推送类型(2097152:买家付款 2048:自动发货成功)
+        :param db: 数据库会话
         :return:
         """
         # 1. 验签
@@ -66,14 +70,14 @@ class WebhookService:
         order_no = log_obj.order_no
 
         # 4. 去重：同一 order_no + push_type 只保留一条
-        existing = await push_log_service.get_by_order_no_and_type(order_no, aopic)
+        existing = await push_log_service.get_by_order_no_and_type(order_no, aopic, db=db)
         if existing:
             log.info(f'重复推送已忽略: order_no={order_no}, aopic={aopic}, platform={platform}')
             return {'success': 'true', 'message': f'重复推送已忽略: {order_no}'}
 
         # 5. 存库（唯一约束兜底并发去重）
         try:
-            push_log = await push_log_service.create_log(log_obj)
+            push_log = await push_log_service.create_log(log_obj, db=db)
         except IntegrityError:
             log.info(f'并发重复推送已忽略: order_no={order_no}, aopic={aopic}, platform={platform}')
             return {'success': 'true', 'message': f'重复推送已忽略: {order_no}'}
@@ -90,24 +94,24 @@ class WebhookService:
         if push_action == 'payment':
             log.info(f'收到买家付款推送: order_no={order_no}, platform={platform}')
             await push_log_service.update_log_status(
-                push_log.id, process_status=1, process_result='付款推送已记录，等待发货推送'
+                push_log.id, process_status=1, process_result='付款推送已记录，等待发货推送', db=db
             )
             return {'success': 'true', 'message': f'付款推送已接收: {order_no}'}
 
         elif push_action == 'delivery':
             log.info(f'收到自动发货成功推送: order_no={order_no}, platform={platform}')
-            result = await WebhookService._handle_delivery(order_no, push_log.id, platform, data)
+            result = await WebhookService._handle_delivery(order_no, push_log.id, platform, data, db=db)
             return result
 
         elif push_action == 'refund':
             log.info(f'收到退款推送: order_no={order_no}, platform={platform}')
-            result = await WebhookService._handle_refund(order_no, push_log.id, platform, data)
+            result = await WebhookService._handle_refund(order_no, push_log.id, platform, data, db=db)
             return result
 
         else:
             log.warning(f'未知推送类型: aopic={aopic}, order_no={order_no}, platform={platform}')
             await push_log_service.update_log_status(
-                push_log.id, process_status=1, process_result=f'未知推送类型({aopic})已记录'
+                push_log.id, process_status=1, process_result=f'未知推送类型({aopic})已记录', db=db
             )
             return {'success': 'true', 'message': f'推送已接收: {order_no}'}
 
@@ -209,6 +213,8 @@ class WebhookService:
         push_log_id: int,
         platform: str | None,
         data: dict,
+        *,
+        db: AsyncSession | None = None,
     ) -> dict[str, str]:
         """
         处理发货成功推送：匹配批次规则后将订单号写入激活码表
@@ -217,8 +223,13 @@ class WebhookService:
         :param push_log_id: 推送日志ID
         :param platform: 来源平台
         :param data: 解析后的 JSON 数据
+        :param db: 数据库会话
         :return:
         """
+        if db is None:
+            async with async_db_session() as local_db:
+                return await WebhookService._handle_delivery(order_no, push_log_id, platform, data, db=local_db)
+
         try:
             # 从推送数据中提取商品信息
             goods_name = None
@@ -230,50 +241,55 @@ class WebhookService:
                 spec_name = first_order.get('SpecName')
 
             # 根据平台和商品信息匹配批次
-            batch_id = await WebhookService._resolve_batch_id(platform, goods_name, spec_name)
+            batch_id = await WebhookService._resolve_batch_id(platform, goods_name, spec_name, db=db)
             if batch_id is None:
                 msg = f'未匹配到激活批次: platform={platform}, goods_name={goods_name}, spec_name={spec_name}'
                 log.warning(msg)
-                await push_log_service.update_log_status(push_log_id, process_status=1, process_result=msg)
+                await push_log_service.update_log_status(push_log_id, process_status=1, process_result=msg, db=db)
                 return {'success': 'true', 'message': f'发货推送已记录(无匹配批次): {order_no}'}
 
             over_capacity = False
             batch_snapshot: dict[str, int | str] = {}
+            code_exists = False
 
-            async with async_db_session.begin() as db:
+            # 使用 nested 子事务保护发货激活码的插入和自增逻辑
+            async with db.begin_nested():
                 # 检查激活码是否已存在（去重）
                 existing = await actcode_dao.get_by_code(db, order_no)
                 if existing:
-                    log.info(f'激活码已存在，跳过: {order_no}')
-                    await push_log_service.update_log_status(
-                        push_log_id, process_status=1, process_result=f'激活码已存在(重复推送): {order_no}'
+                    code_exists = True
+                else:
+                    # 检查批次是否存在
+                    batch = await actcode_batch_dao.select_model(db, batch_id)
+                    if not batch:
+                        raise errors.NotFoundError(msg=f'激活码批次不存在(batch_id={batch_id})')
+
+                    # 容量软告警预检：total_count>0 且已用 >= 上限时仅记录，不阻断写入
+                    if batch.total_count > 0 and batch.used_count >= batch.total_count:
+                        over_capacity = True
+                        batch_snapshot = {
+                            'batch_id': batch.id,
+                            'batch_name': batch.name,
+                            'used_count': batch.used_count,
+                            'total_count': batch.total_count,
+                        }
+
+                    # 创建激活码：code = 订单号
+                    actcode = Actcode(
+                        batch_id=batch_id,
+                        code=order_no,
                     )
-                    return {'success': 'true', 'message': f'激活码已存在: {order_no}'}
+                    db.add(actcode)
 
-                # 检查批次是否存在
-                batch = await actcode_batch_dao.select_model(db, batch_id)
-                if not batch:
-                    raise errors.NotFoundError(msg=f'激活码批次不存在(batch_id={batch_id})')
+                    # 批次已使用数量 +1
+                    await actcode_batch_dao.increment_used_count(db, batch_id)
 
-                # 容量软告警预检：total_count>0 且已用 >= 上限时仅记录，不阻断写入
-                if batch.total_count > 0 and batch.used_count >= batch.total_count:
-                    over_capacity = True
-                    batch_snapshot = {
-                        'batch_id': batch.id,
-                        'batch_name': batch.name,
-                        'used_count': batch.used_count,
-                        'total_count': batch.total_count,
-                    }
-
-                # 创建激活码：code = 订单号
-                actcode = Actcode(
-                    batch_id=batch_id,
-                    code=order_no,
+            if code_exists:
+                log.info(f'激活码已存在，跳过: {order_no}')
+                await push_log_service.update_log_status(
+                    push_log_id, process_status=1, process_result=f'激活码已存在(重复推送): {order_no}', db=db
                 )
-                db.add(actcode)
-
-                # 批次已使用数量 +1
-                await actcode_batch_dao.increment_used_count(db, batch_id)
+                return {'success': 'true', 'message': f'激活码已存在: {order_no}'}
 
             log.info(f'激活码创建成功: {order_no}, batch_id={batch_id}, platform={platform}')
             result_msg = f'激活码已创建: {order_no}, batch_id={batch_id}'
@@ -299,14 +315,14 @@ class WebhookService:
                 result_msg = f'{result_msg}; 批次已超额, 已发告警'
 
             await push_log_service.update_log_status(
-                push_log_id, process_status=1, process_result=result_msg
+                push_log_id, process_status=1, process_result=result_msg, db=db
             )
             return {'success': 'true', 'message': f'激活码已创建: {order_no}'}
 
         except Exception as e:
             log.error(f'处理发货推送失败: {e}')
             await push_log_service.update_log_status(
-                push_log_id, process_status=2, process_result=f'处理失败: {str(e)}'
+                push_log_id, process_status=2, process_result=f'处理失败: {str(e)}', db=db
             )
             await notify_service.send(
                 title='阿奇索发货处理失败',
@@ -314,7 +330,7 @@ class WebhookService:
                 options={'tags': '阿奇索|发货失败'},
                 source='agiso_webhook',
             )
-            raise
+            return {'success': 'false', 'message': f'处理发货推送失败: {str(e)}'}
 
     @staticmethod
     async def _handle_refund(
@@ -322,6 +338,8 @@ class WebhookService:
         push_log_id: int,
         platform: str | None,
         data: dict,
+        *,
+        db: AsyncSession | None = None,
     ) -> dict[str, str]:
         """
         处理退款推送：未使用激活码直接删除；已使用激活码反向回收会员时长
@@ -330,15 +348,21 @@ class WebhookService:
         :param push_log_id: 推送日志ID
         :param platform: 来源平台
         :param data: 解析后的 JSON 数据
+        :param db: 数据库会话
         :return:
         """
+        if db is None:
+            async with async_db_session() as local_db:
+                return await WebhookService._handle_refund(order_no, push_log_id, platform, data, db=local_db)
+
         try:
             outcome: str = ''
             outcome_msg: str = ''
             need_alert: bool = False
             alert_payload: dict[str, str] = {}
 
-            async with async_db_session.begin() as db:
+            # 使用 nested 子事务保护退款删除/撤销订阅的数据库操作
+            async with db.begin_nested():
                 actcode = await actcode_dao.get_by_code(db, order_no)
                 if not actcode:
                     outcome = 'no_code'
@@ -392,7 +416,7 @@ class WebhookService:
             else:
                 log.info(outcome_msg)
 
-            await push_log_service.update_log_status(push_log_id, process_status=1, process_result=outcome_msg)
+            await push_log_service.update_log_status(push_log_id, process_status=1, process_result=outcome_msg, db=db)
 
             if need_alert:
                 await notify_service.send(
@@ -413,7 +437,7 @@ class WebhookService:
         except Exception as e:
             log.error(f'处理退款推送失败: {e}')
             await push_log_service.update_log_status(
-                push_log_id, process_status=2, process_result=f'处理失败: {str(e)}'
+                push_log_id, process_status=2, process_result=f'处理失败: {str(e)}', db=db
             )
             await notify_service.send(
                 title='阿奇索退款处理失败',
@@ -421,10 +445,16 @@ class WebhookService:
                 options={'tags': '阿奇索|退款失败'},
                 source='agiso_webhook',
             )
-            raise
+            return {'success': 'false', 'message': f'处理退款推送失败: {str(e)}'}
 
     @staticmethod
-    async def _resolve_batch_id(platform: str | None, goods_name: str | None, spec_name: str | None) -> int | None:
+    async def _resolve_batch_id(
+        platform: str | None,
+        goods_name: str | None,
+        spec_name: str | None,
+        *,
+        db: AsyncSession,
+    ) -> int | None:
         """
         根据平台和商品信息匹配激活码批次 ID
 
@@ -434,15 +464,15 @@ class WebhookService:
         :param platform: 来源平台
         :param goods_name: 商品名称
         :param spec_name: 规格名称
+        :param db: 数据库会话
         :return:
         """
-        async with async_db_session() as db:
-            batch_id = await access_redeem_service.resolve_agiso_batch_id(
-                db,
-                platform=platform,
-                goods_name=goods_name,
-                spec_name=spec_name,
-            )
+        batch_id = await access_redeem_service.resolve_agiso_batch_id(
+            db,
+            platform=platform,
+            goods_name=goods_name,
+            spec_name=spec_name,
+        )
         if batch_id is not None:
             log.info(f'批次匹配命中: platform={platform}, batch_id={batch_id}')
         return batch_id
