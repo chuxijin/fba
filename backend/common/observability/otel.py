@@ -81,10 +81,10 @@ def init_logging(resource: Resource) -> None:
     :return:
     """
     provider = LoggerProvider(resource=resource)
-    exporter = OTLPLogExporter(endpoint=settings.GRAFANA_OTLP_GRPC_ENDPOINT, insecure=True)
-    processor = BatchLogRecordProcessor(exporter=exporter)
+    # exporter = OTLPLogExporter(endpoint=settings.GRAFANA_OTLP_GRPC_ENDPOINT, insecure=True)
+    # processor = BatchLogRecordProcessor(exporter=exporter)
 
-    provider.add_log_record_processor(processor)
+    # provider.add_log_record_processor(processor)
     _logs.set_logger_provider(provider)
 
     otel_logging_handler = LoggingHandler(logger_provider=provider)
