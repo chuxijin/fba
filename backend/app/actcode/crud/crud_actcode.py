@@ -69,9 +69,13 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
         :param pk: 批次 ID
         :return:
         """
-        batch = await self.select_model(db, pk)
-        if batch:
-            await self.update_model(db, pk, {'used_count': batch.used_count + 1})
+        from sqlalchemy import update
+        stmt = (
+            update(self.model)
+            .where(self.model.id == pk)
+            .values(used_count=self.model.used_count + 1)
+        )
+        await db.execute(stmt)
 
 
 class CRUDActcodeDao(CRUDPlus[Actcode]):
