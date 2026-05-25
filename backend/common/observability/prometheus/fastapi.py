@@ -16,8 +16,9 @@ _PROMETHEUS_FASTAPI_REQUEST_COUNTER = Counter(
 
 _PROMETHEUS_FASTAPI_REQUEST_COST_TIME_HISTOGRAM = Histogram(
     name='fba_request_cost_time',
-    documentation='按方法和路径统计 FastAPI 请求耗时直方图（ms）',
-    labelnames=['app_name', 'method', 'path'],
+    documentation='按方法、路径和状态码统计 FastAPI 请求耗时直方图（ms）',
+    labelnames=['app_name', 'method', 'path', 'status_code'],
+    buckets=(5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000),
 )
 
 _PROMETHEUS_FASTAPI_EXCEPTION_COUNTER = Counter(
@@ -48,10 +49,10 @@ def inc_fastapi_request(*, method: str, path: str) -> None:
     _PROMETHEUS_FASTAPI_REQUEST_COUNTER.labels(app_name=PROMETHEUS_APP_NAME, method=method, path=path).inc()
 
 
-def observe_fastapi_request_cost_time(*, method: str, path: str, elapsed: float, trace_id: str) -> None:
+def observe_fastapi_request_cost_time(*, method: str, path: str, elapsed: float, trace_id: str, status_code: int | str) -> None:
     """记录 FastAPI 请求耗时"""
     _PROMETHEUS_FASTAPI_REQUEST_COST_TIME_HISTOGRAM.labels(
-        app_name=PROMETHEUS_APP_NAME, method=method, path=path
+        app_name=PROMETHEUS_APP_NAME, method=method, path=path, status_code=status_code
     ).observe(amount=elapsed, exemplar={'TraceID': trace_id})
 
 

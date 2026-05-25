@@ -93,7 +93,7 @@ class OperaLogMiddleware(BaseHTTPMiddleware):
 
             if path.startswith(settings.FASTAPI_API_V1_PATH):
                 observe_fastapi_request_cost_time(
-                    method=method, path=path, elapsed=elapsed, trace_id=get_request_trace_id()
+                    method=method, path=path, elapsed=elapsed, trace_id=get_request_trace_id(), status_code=code
                 )
         finally:
             # summary 只能在请求后获取
