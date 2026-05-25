@@ -39,6 +39,8 @@ async def register_event_type(obj: CreateEventTypeParam) -> ResponseSchemaModel[
         if existing:
             raise errors.ConflictError(msg=f'事件类型 {obj.type_key} 已存在')
         event_type = await crud_event_type.create(db, obj)
+        await db.flush()
+        await db.refresh(event_type)
         return response_base.success(data=GetEventTypeDetail.model_validate(event_type))
 
 

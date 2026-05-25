@@ -47,9 +47,12 @@ async def list_deliveries(
 @router.get('/{pk}', summary='获取投递记录详情', dependencies=[DependsJwtAuth])
 async def get_delivery(pk: Annotated[int, Path(description='投递记录 ID')]) -> ResponseSchemaModel[GetDeliveryDetail]:
     """获取投递记录详情"""
-    delivery = await crud_delivery.get(None, pk)
+    from backend.common.exception import errors
+    from backend.database.db import async_db_session
+
+    async with async_db_session() as db:
+        delivery = await crud_delivery.get(db, pk)
     if not delivery:
-        from backend.common.exception import errors
         raise errors.NotFoundError(msg='投递记录不存在')
     return response_base.success(data=GetDeliveryDetail.model_validate(delivery))
 

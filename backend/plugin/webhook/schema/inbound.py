@@ -35,6 +35,7 @@ class GetEventLogDetail(SchemaBase):
     source: str = Field(description='事件来源')
     event_type: str = Field(description='事件类型')
     event_id: str | None = Field(None, description='外部事件 ID')
+    payload: str = Field(description='原始请求体')
     signature_valid: bool = Field(description='签名验证结果')
     status: int = Field(description='状态 (0:received 1:processed 2:failed)')
     error_message: str | None = Field(None, description='错误信息')

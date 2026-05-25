@@ -40,14 +40,17 @@ async def list_event_logs(
         end_time=end_time,
     )
     select = await crud_event_log.get_list(params)
-    page_data = await paging_data(db, select)
+    page_data = await paging_data(db, select, schema_cls=GetEventLogDetail)
     return response_base.success(data=page_data)
 
 
 @router.get('/{pk}', summary='获取入站事件日志详情', dependencies=[DependsJwtAuth])
 async def get_event_log(pk: Annotated[int, Path(description='日志 ID')]) -> ResponseSchemaModel[GetEventLogDetail]:
     """获取入站事件日志详情"""
-    event_log = await crud_event_log.get(None, pk)
+    from backend.database.db import async_db_session
+
+    async with async_db_session() as db:
+        event_log = await crud_event_log.get(db, pk)
     if not event_log:
         raise errors.NotFoundError(msg='事件日志不存在')
     return response_base.success(data=GetEventLogDetail.model_validate(event_log))
