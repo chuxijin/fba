@@ -5,7 +5,7 @@ from typing import Sequence
 
 from sqlalchemy import Select, and_, case, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, noload
+from sqlalchemy.orm import contains_eager, joinedload, noload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.admin.model.category import Category
@@ -84,7 +84,7 @@ class CRUDResource(CRUDPlus[Resource]):
         stmt = (
             select(self.model)
             .outerjoin(Category, self.model.category_id == Category.id)
-            .options(joinedload(self.model.category))
+            .options(contains_eager(self.model.category))
             .order_by(desc(self.model.created_time))
         )
 
