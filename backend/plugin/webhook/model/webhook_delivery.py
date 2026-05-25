@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, TimeZone, UniversalText
 from backend.plugin.webhook.model.primary_key import webhook_id_column
-from backend.utils.timezone import timezone
+from datetime import datetime
 
 
 class WebhookDelivery(Base):
@@ -25,9 +25,9 @@ class WebhookDelivery(Base):
     response_code: Mapped[int | None] = mapped_column(Integer, default=None, comment='HTTP 响应码')
     response_body: Mapped[str | None] = mapped_column(Text, default=None, comment='响应体 (截断 10KB)')
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, comment='已尝试次数')
-    next_retry_at: Mapped[timezone.datetime | None] = mapped_column(
+    next_retry_at: Mapped[datetime | None] = mapped_column(
         TimeZone, default=None, comment='下次重试时间'
     )
-    completed_at: Mapped[timezone.datetime | None] = mapped_column(
+    completed_at: Mapped[datetime | None] = mapped_column(
         TimeZone, default=None, comment='完成时间'
     )
