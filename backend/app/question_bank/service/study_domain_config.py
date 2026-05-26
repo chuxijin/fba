@@ -27,7 +27,7 @@ STUDY_DOMAIN_CONFIG: dict[str, dict[str, Any]] = {
     'gongkao': {
         'label': '考公',
         'root_codes': {
-            'product_catalog': ['pc_guokao', 'pc_shengkao'],
+            'product_catalog': ['pc_guokao', 'pc_shengkao', 'pc_shishizhengzhi'],
             'knowledge_point': ['kp_xingce', 'kp_shenlun', 'kp_mianshi'],
             'resource_exam': ['re_guokao', 're_shengkao'],
         },

@@ -588,7 +588,8 @@ class BankService:
     async def get_progress_summaries(
         *,
         db: AsyncSession,
-        bank_ids: list[int],
+        bank_ids: list[int] | None = None,
+        cat_id: int | None = None,
         user_id: int,
     ) -> list[BankProgressSummary]:
         """
@@ -596,10 +597,21 @@ class BankService:
 
         :param db: 数据库会话
         :param bank_ids: 题库 ID 列表
+        :param cat_id: 分类 ID（自动展开子孙分类下的所有题库）
         :param user_id: 用户 ID
         :return:
         """
-        normalized_bank_ids = list(dict.fromkeys(int(bank_id) for bank_id in bank_ids if int(bank_id) > 0))
+        if cat_id is not None:
+            cat_ids = await category_dao.get_all_children_ids(db, cat_id)
+            stmt = select(QuestionBank.id).where(QuestionBank.cat_id.in_(cat_ids))
+            rows = (await db.execute(stmt)).all()
+            resolved_bank_ids = [int(row[0]) for row in rows]
+        elif bank_ids:
+            resolved_bank_ids = [int(bid) for bid in bank_ids]
+        else:
+            return []
+
+        normalized_bank_ids = list(dict.fromkeys(bid for bid in resolved_bank_ids if bid > 0))
         if not normalized_bank_ids:
             return []
 

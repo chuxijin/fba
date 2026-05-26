@@ -60,10 +60,13 @@ async def get_recommend_banks(
 async def get_bank_progress_summary(
     request: Request,
     db: CurrentSession,
-    bank_ids: Annotated[list[int], Query(description='题库 ID 列表')],
+    bank_ids: Annotated[list[int] | None, Query(description='题库 ID 列表')] = None,
+    cat_id: Annotated[int | None, Query(description='分类 ID（自动展开子孙分类下的所有题库）')] = None,
 ) -> ResponseSchemaModel[list[BankProgressSummary]]:
     """🔒 登录接口 - 批量获取题库累计进度摘要"""
-    data = await bank_service.get_progress_summaries(db=db, bank_ids=bank_ids, user_id=request.user.id)
+    data = await bank_service.get_progress_summaries(
+        db=db, bank_ids=bank_ids, cat_id=cat_id, user_id=request.user.id,
+    )
     return response_base.success(data=data)
 
 
