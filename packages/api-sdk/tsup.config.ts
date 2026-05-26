@@ -3,11 +3,10 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
-    'client/index': 'src/client/index.ts',
-    'modules/index': 'src/modules/index.ts',
-    'types/index': 'src/types/index.ts',
     'runtime/index': 'src/runtime/index.ts',
     'generated/index': 'src/generated/index.ts',
+    'plugins/index': 'src/plugins/index.ts',
+    'typed/index': 'src/typed/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,

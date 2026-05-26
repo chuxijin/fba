@@ -1,259 +1,190 @@
 # @fba/api-sdk
 
-FBA 刷题系统多端统一 API SDK，供 Web / 小程序 / App 共用接口层。
+FBA 后端多端统一 API SDK，供 Web (`youanshang`) 与小程序 (`mini`) 共用。
 
-## 特性
+## 核心特性
 
-- **平台无关**：通过可注入的 `RequestAdapter` 适配任意 HTTP 客户端（Axios、wx.request、fetch 等）
-- **类型安全**：所有请求/响应均有完整 TypeScript 类型定义，与后端 Pydantic Schema 对齐
-- **统一响应处理**：自动拆包 `{ code, msg, data }`，业务错误抛出 `ApiError`
-- **认证内置**：Token 自动注入、401 统一处理
-- **模块化导入**：按需导入 `bank`、`material`、`question`、`practice` 模块
-- **OpenAPI 同步**：一条命令从后端 OpenAPI 更新类型定义
+- **类型完整 + 自动对齐**：从后端 OpenAPI 自动生成 630+ operations / 802+ schemas；`typed()` 工具把 `ResponseSchemaModel<T>` 自动 unwrap 成 T，业务侧告别 `as any`
+- **跨端运行**：浏览器 / Nuxt SSR / 微信小程序 通过可注入 `adapter` 复用同一份代码
+- **统一拦截**：自动注入 Bearer Token、统一拆 `ResponseModel = { code, msg, data }`、统一抛 `ApiError`
+- **Refresh dedupe**：并发 401 自动合并为单次 refresh，防止 N 个请求同时刷 token 把 session 刷坏
+- **Plugin 系统**：横切关注点 (sentry / 日志 / metrics) 模块化封装，多个 plugin 可组合
+- **内置 loggerPlugin**：开箱即用的请求/响应/错误日志，可注入自定义 logger 接入统一日志系统
+- **重试机制**：5xx / 网络错误 / 业务 code 5xx 按指数退避自动重试（默认关闭，按需开启）
+- **请求取消**：原生支持 `AbortSignal`，组件卸载时立即终止飞行请求
+- **多实例**：`createSdk(opts)` 返回隔离实例，SSR / 多租户 / 测试零干扰
 
 ## 快速开始
 
-### 安装
+### 浏览器 / Nuxt
 
-```bash
-# 项目内引用（monorepo）
-pnpm add @fba/api-sdk
+```ts
+import * as g from '@fba/api-sdk/generated'
+import { setupSdk, typed, loggerPlugin } from '@fba/api-sdk'
 
-# 或通过路径引用
-pnpm add ../../packages/api-sdk
-```
-
-### Web 端接入（Axios）
-
-```typescript
-import axios from 'axios';
-import { createFbaApiSdk } from '@fba/api-sdk';
-
-const sdk = createFbaApiSdk({
-  baseURL: 'http://127.0.0.1:8000',
-  adapter: {
-    request: (config) =>
-      axios({
-        url: config.url,
-        method: config.method,
-        params: config.params,
-        data: config.data,
-        headers: config.headers,
-        timeout: config.timeout,
-      }).then((res) => res.data),
-  },
-  getToken: () => localStorage.getItem('access_token') ?? undefined,
-  onUnauthorized: () => {
-    // 跳转登录页
-    window.location.href = '/login';
-  },
-});
-
-// 使用
-const banks = await sdk.bank.getList({ keyword: '行测' });
-const detail = await sdk.material.getDetail(42);
-```
-
-### 小程序端接入（wx.request）
-
-```typescript
-import { createFbaApiSdk } from '@fba/api-sdk';
-
-const sdk = createFbaApiSdk({
+await setupSdk({
   baseURL: 'https://api.example.com',
-  adapter: {
-    request: <T>(config) =>
-      new Promise<T>((resolve, reject) => {
-        wx.request({
-          url: config.url,
-          method: config.method as WechatMiniprogram.RequestOption['method'],
-          data: config.method === 'GET' ? config.params : config.data,
-          header: config.headers,
-          timeout: config.timeout,
-          success: (res) => resolve(res.data as T),
-          fail: reject,
-        });
-      }),
+  getToken: () => localStorage.getItem('access_token') ?? undefined,
+  onTokenExpired: async () => {
+    // 用 refresh token 续期, 返回 true 让 SDK 自动重放原请求
+    return await authStore.refresh()
   },
-  getToken: () => wx.getStorageSync('token') || undefined,
   onUnauthorized: () => {
-    wx.navigateTo({ url: '/pages/login/index' });
+    // refresh 失败兜底, 跳登录
+    router.push('/login')
   },
-});
+  // 可观测性: 错误自动打日志
+  plugins: [loggerPlugin({ level: 'verbose' })],
+})
 
-// 调用方式完全一致！
-const banks = await sdk.bank.getList({ keyword: '行测' });
+// typed() 把响应类型自动 unwrap, 业务侧 .data 直接是 T (不是 ResponseSchemaModel<T>)
+export const api = typed(g)
+
+const { data } = await api.getBankList({ query: { page: 1, size: 20 } })
+//      ^? GetBankList (内层数据, 不是 ResponseSchemaModel)
 ```
 
-### 与现有 @vben/request 集成
+### 小程序
 
-如果 admin-web 已使用 `@vben/request`（内置 Axios 封装），可直接桥接：
+```ts
+import { setupSdk } from '@fba/api-sdk/runtime'
 
-```typescript
-import { createFbaApiSdk } from '@fba/api-sdk';
-import { baseRequestClient } from '#/api/request';
-
-const sdk = createFbaApiSdk({
-  baseURL: '',  // baseRequestClient 已配置 baseURL
-  apiPrefix: '', // 同上
-  adapter: {
-    request: (config) =>
-      baseRequestClient({
-        url: config.url,
-        method: config.method,
-        params: config.params,
-        data: config.data,
-        headers: config.headers,
-        timeout: config.timeout,
-      }).then((res) => res.data),
-  },
-  getToken: () => {
-    const { accessStore } = useAccessStore();
-    return accessStore.accessToken || undefined;
-  },
-});
+await setupSdk({
+  baseURL: 'https://api.example.com',
+  // 适配 uni.request / wx.request
+  adapter: (config) => new Promise((resolve, reject) => {
+    uni.request({
+      url: `${config.baseURL || ''}${config.url || ''}`,
+      method: config.method as any,
+      data: config.data,
+      header: config.headers,
+      timeout: config.timeout,
+      success: (res) => resolve({
+        data: res.data,
+        status: res.statusCode,
+        statusText: String(res.statusCode),
+        headers: res.header,
+        config,
+      }),
+      fail: reject,
+    })
+  }),
+  getToken: () => uni.getStorageSync('access_token') || undefined,
+})
 ```
 
-## API 模块一览
+### 多实例 (SSR / 测试 / 多租户)
 
-### `sdk.bank` — 题库
+```ts
+import { createSdk } from '@fba/api-sdk'
 
-| 方法 | 说明 |
-|------|------|
-| `getRecommend()` | 获取推荐题库 |
-| `getDetail(id)` | 获取题库详情（含章节树） |
-| `getList(params?)` | 获取题库树形列表 |
-| `getAllQuestions(bankId, params?)` | 获取题库所有题目（含答案） |
-| `create(data)` | 创建题库 |
-| `update(id, data)` | 更新题库 |
-| `remove(ids)` | 删除题库 |
+const sdkA = createSdk({ baseURL: 'https://a.example.com', /* ... */ })
+const sdkB = createSdk({ baseURL: 'https://b.example.com', /* ... */ })
 
-### `sdk.material` — 材料
-
-| 方法 | 说明 |
-|------|------|
-| `getDetail(id)` | 获取材料详情 |
-| `getList(params?)` | 获取材料列表 |
-| `getByBank(bankId, params?)` | 获取指定题库的材料 |
-| `create(data)` | 创建材料 |
-| `update(id, data)` | 更新材料 |
-| `remove(ids)` | 删除材料 |
-| `linkQuestions(id, data)` | 关联题目 |
-| `unlinkQuestions(id, data)` | 解除关联 |
-
-### `sdk.question` — 题目
-
-| 方法 | 说明 |
-|------|------|
-| `getDetail(id)` | 获取题目详情 |
-| `getList(params?)` | 获取题目列表（分页） |
-| `getCollections(params?)` | 按筛选条件获取题目合集/题库卡片 |
-| `collect(data)` | 统一筛题，返回稳定 question_ids |
-| `getAnalysis(id)` | 获取题目解析 |
-| `getSolution(id, userAnswer?)` | 获取答案和解析 |
-| `markAnalysisHelpful(id, bool)` | 标记解析是否有帮助 |
-| `getStatistics(id)` | 获取题目统计 |
-| `getOptionStats(id, params?)` | 获取选项统计 |
-| `checkFavorites(ids)` | 批量检查收藏状态 |
-| `getNotes(ids)` | 批量查询笔记 |
-| `create(data)` | 创建题目 |
-| `update(id, data)` | 更新题目 |
-| `remove(ids)` | 删除题目 |
-| `batchImport(data)` | 批量导入 |
-
-统一筛题典型用法：
-
-```typescript
-const collections = await sdk.question.getCollections({
-  cat_id: 12,
-  region: '江苏',
-  year_start: 2021,
-  year_end: 2025,
-  knowledge_names: ['资料分析', '判断推理'],
-});
-
-const collected = await sdk.question.collect({
-  source_type: 'placement',
-  cat_id: 12,
-  region: '江苏',
-  year_start: 2021,
-  year_end: 2025,
-  question_types: ['single'],
-  difficulties: ['medium'],
-  limit: 100,
-});
-
-const questionIds = collected.question_ids;
+// 实例间完全隔离 (refresh 状态、配置、axios 实例)
+sdkA.dispose()
+sdkB.dispose()
 ```
 
-### `sdk.practice` — 刷题
+## 进阶配置
 
-| 方法 | 说明 |
-|------|------|
-| `getQuestions(params?)` | 获取练习题目 |
-| `getQuestionsByBank(bankId, params?)` | 按题库获取练习题 |
-| `getQuestionsByChapter(chapterId, params?)` | 按章节获取练习题 |
-| `getQuestionDetail(id)` | 获取单题详情 |
-| `getQuestionAnalysis(id)` | 查看题目解析 |
+### 自动重试
 
-## 错误处理
+```ts
+await setupSdk({
+  baseURL,
+  retry: {
+    count: 3,                     // 重试次数 (不含首次)
+    baseDelayMs: 300,             // 基础延迟
+    maxDelayMs: 5000,             // 最大延迟 (指数退避封顶)
+    statusCodes: [502, 503, 504], // 哪些 HTTP 状态触发重试
+    retryOnNetworkError: true,    // 无 response 时也重试 (DNS / 断网)
+  },
+})
+```
 
-SDK 提供三种错误类型：
+### 可观测性钩子
 
-```typescript
-import { ApiError, UnauthorizedError, NetworkError } from '@fba/api-sdk';
+```ts
+await setupSdk({
+  baseURL,
+  hooks: {
+    onRequest: (ctx) => {
+      console.log(`[REQ] ${ctx.method} ${ctx.url} (attempt ${ctx.attempt})`)
+    },
+    onResponse: (ctx) => {
+      metrics.histogram('api.duration_ms', ctx.durationMs, {
+        method: ctx.method,
+        status: ctx.status,
+      })
+    },
+    onError: (ctx) => {
+      Sentry.captureException(ctx.error, { extra: { url: ctx.url } })
+    },
+  },
+})
+```
+
+### 取消请求
+
+```ts
+const ac = new AbortController()
+const promise = api.getBankList({ query: {}, signal: ac.signal })
+// 用户切换路由
+ac.abort()
+// promise 会 reject 一个 CanceledError
+```
+
+## 错误体系
+
+```ts
+import { ApiError, UnauthorizedError, NetworkError, TimeoutError, CanceledError } from '@fba/api-sdk'
 
 try {
-  const banks = await sdk.bank.getList();
+  const { data } = await api.getBankList({})
 } catch (err) {
   if (err instanceof UnauthorizedError) {
-    // 401 认证失败
-    console.log('请重新登录');
+    // 401, refresh 也救不回来; 已经触发 onUnauthorized
   } else if (err instanceof ApiError) {
-    // 业务错误（code !== 200）
-    console.log(`错误码: ${err.code}, 信息: ${err.msg}`);
+    // 业务错误, err.code / err.msg / err.status / err.data 都有
+  } else if (err instanceof TimeoutError) {
+    // 请求超时
   } else if (err instanceof NetworkError) {
-    // 网络错误 / 超时
-    console.log('网络异常', err.cause);
+    // DNS / 断网 / adapter 异常, err.cause 是原始错误
+  } else if (err instanceof CanceledError) {
+    // 调用方主动 abort
   }
 }
 ```
 
-## 类型导入
+> 说明：业务侧也可以鸭子类型判断 `err.code` / `err.status` / `err.msg`，所有错误都暴露这几个字段。
 
-所有后端 Schema 类型均可按需导入：
+## 子入口
 
-```typescript
-import type {
-  GetBankDetail,
-  GetQuestionListItem,
-  QuestionType,
-  Difficulty,
-  SessionType,
-} from '@fba/api-sdk';
-```
+| 入口 | 用途 |
+|---|---|
+| `@fba/api-sdk` | 主入口: `setupSdk` / `createSdk` / `typed` / `loggerPlugin` / 错误类 / 业务 schema 类型 |
+| `@fba/api-sdk/runtime` | 仅 runtime: `setupSdk` / `createSdk` / `createClientConfig` (hey-api 用) |
+| `@fba/api-sdk/generated` | hey-api 自动生成的所有 API 方法 + 类型 |
+| `@fba/api-sdk/plugins` | 内置 plugins: `loggerPlugin` |
+| `@fba/api-sdk/typed` | 类型对齐: `typed()` + `UnwrappedApi<T>` |
 
-## OpenAPI 类型同步
+## 类型同步
 
-当后端接口变更后，运行以下命令自动更新类型：
+后端改 schema / 路由后，在 `packages/api-sdk` 跑：
 
 ```bash
-cd packages/api-sdk
-
-# 开发环境（默认 http://127.0.0.1:8000）
-pnpm generate
-
-# 指定地址
-OPENAPI_URL=https://api.example.com/openapi.json pnpm generate
+pnpm gen
 ```
 
-生成的类型位于 `src/types/__generated__.ts`，可在自定义类型中引用。
+会重新 dump OpenAPI → 生成 SDK → build dist。详见 `SYNC.md`。
 
 ## 构建
 
 ```bash
 cd packages/api-sdk
 pnpm install
-pnpm build        # 产出 dist/（ESM + CJS + .d.ts）
+pnpm build        # 产出 dist/ (ESM + CJS + .d.ts)
 pnpm typecheck    # 类型检查
+pnpm exec tsx scripts/test-token-refresh.ts   # 跑 refresh / dedupe / hooks / retry / 多实例 9 个场景
 ```

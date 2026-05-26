@@ -53,28 +53,34 @@ npm run gen
 | `packages/api-sdk/.gitignore 之外的 dist/` | 编译产物(此处也 gitignore) |
 | `mini/src/api/sdk.ts` | 业务入口,导出 `api`(generated 别名)+ `unwrap` helper |
 
-## 业务调用形式
+## 业务调用形态
 
-我们**已废弃**旧的 `unwrap` 工具和 `fbaApi` 壳。现在全量采用原生 SDK 直接调用，并配合 `as any`（若需跳过强类型响应体约束）或直接解构 `data`。
+统一走 generated SDK 方法 + 拆包后的 `data`:
 
 ```ts
-import { api } from '@/api/sdk'
+import * as api from '@fba/api-sdk/generated'
 
-// 1. 无参数方法
-const { data: me } = await api.getCurrentUserMembership() as any
+// 1. 无参数
+const { data: me } = await api.getCurrentUserMembership()
 
-// 2. query 参数
-const { data: list } = await api.getBankList({ query: { page: 1, size: 20 } as any }) as any
+// 2. query 参数 (运行时透传, 类型按 generated XxxData)
+const { data: list } = await api.getBankList({ query: { page: 1, size: 20 } })
 
-// 3. path 参数(参数名按 generated 类型)
-const { data: detail } = await api.qbankGetBank({ path: { pk: 123 } }) as any
+// 3. path 参数
+const { data: detail } = await api.qbankGetBank({ path: { pk: 123 } })
 
 // 4. body 参数
-const { data: result } = await api.qbankPracticeCreateSession({ body: { practice_name: 'X' } as any }) as any
+const { data: result } = await api.qbankPracticeCreateSession({
+  body: { practice_name: 'X' },
+})
 
-// 5. 查找类型
-//    - 看 packages/api-sdk/src/generated/types.gen.ts 里的 XxxData 类型
+// 5. 取消请求
+const ac = new AbortController()
+const promise = api.getBankList({ query: { page: 1 }, signal: ac.signal })
+ac.abort()  // promise reject CanceledError
 ```
+
+> `runtime/axios.ts` 已自动拆 `ResponseModel`, 业务侧读 `.data` 直接拿到 `T`. 仍出现 `as any` 的位置通常是类型定义晚于运行时, 需要 `pnpm gen` 重新生成.
 
 ## mini / web 接入
 

@@ -17,36 +17,6 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./client": {
-      "import": {
-        "types": "./dist/client/index.d.ts",
-        "default": "./dist/client/index.js"
-      },
-      "require": {
-        "types": "./dist/client/index.d.cts",
-        "default": "./dist/client/index.cjs"
-      }
-    },
-    "./modules": {
-      "import": {
-        "types": "./dist/modules/index.d.ts",
-        "default": "./dist/modules/index.js"
-      },
-      "require": {
-        "types": "./dist/modules/index.d.cts",
-        "default": "./dist/modules/index.cjs"
-      }
-    },
-    "./types": {
-      "import": {
-        "types": "./dist/types/index.d.ts",
-        "default": "./dist/types/index.js"
-      },
-      "require": {
-        "types": "./dist/types/index.d.cts",
-        "default": "./dist/types/index.cjs"
-      }
-    },
     "./runtime": {
       "import": {
         "types": "./dist/runtime/index.d.ts",
@@ -65,6 +35,26 @@
       "require": {
         "types": "./dist/generated/index.d.cts",
         "default": "./dist/generated/index.cjs"
+      }
+    },
+    "./plugins": {
+      "import": {
+        "types": "./dist/plugins/index.d.ts",
+        "default": "./dist/plugins/index.js"
+      },
+      "require": {
+        "types": "./dist/plugins/index.d.cts",
+        "default": "./dist/plugins/index.cjs"
+      }
+    },
+    "./typed": {
+      "import": {
+        "types": "./dist/typed/index.d.ts",
+        "default": "./dist/typed/index.js"
+      },
+      "require": {
+        "types": "./dist/typed/index.d.cts",
+        "default": "./dist/typed/index.cjs"
       }
     }
   },
