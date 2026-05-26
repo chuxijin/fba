@@ -17,7 +17,7 @@ class HanyuSchemaBase(SchemaBase):
     structure: str | None = Field(None, description='结构')
     voice: str | None = Field(None, description='语音 URL')
     definition_info: dict | None = Field(None, description='定义信息')
-    detail_means: dict | None = Field(None, description='详细含义')
+    detail_means: list | None = Field(None, description='详细含义')
     liju: list | None = Field(None, description='例句')
     antonym: list | None = Field(None, description='反义词')
     synonyms: list | None = Field(None, description='近义词')
@@ -34,6 +34,8 @@ class HanyuParam(SchemaBase):
     baobian: str | None = Field(None, description='褒贬色彩')
     structure: str | None = Field(None, description='结构')
     min_frequency: int | None = Field(None, description='最小使用频次')
+    notebook_only: bool | None = Field(None, description='是否只显示生词本里的词汇')
+    user_id: int | None = Field(None, description='用户 ID')
 
 
 class CreateHanyuParam(HanyuSchemaBase):
@@ -50,7 +52,7 @@ class UpdateHanyuParam(SchemaBase):
     structure: str | None = Field(None, description='结构')
     voice: str | None = Field(None, description='语音 URL')
     definition_info: dict | None = Field(None, description='定义信息')
-    detail_means: dict | None = Field(None, description='详细含义')
+    detail_means: list | None = Field(None, description='详细含义')
     liju: list | None = Field(None, description='例句')
     antonym: list | None = Field(None, description='反义词')
     synonyms: list | None = Field(None, description='近义词')
@@ -75,6 +77,7 @@ class GetHanyuDetail(HanyuSchemaBase):
     updated_by: int | None = Field(None, description='更新人')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
+    in_notebook: bool | None = Field(None, description='是否已加入生词本')
 
 
 class GetHanyuListDetail(SchemaBase):

@@ -31,11 +31,13 @@ async def get_hanyu_types(db: CurrentSession) -> ResponseSchemaModel[list[str]]:
 
 @router.get('/{pk}', summary='获取汉语词汇详情')
 async def get_hanyu(
-    db: CurrentSession,
+    request: Request,
+    db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='id')],
 ) -> ResponseSchemaModel[GetHanyuDetail]:
     """根据 ID 获取汉语词汇详情"""
-    data = await hanyu_service.get(db=db, pk=pk)
+    user_id = getattr(request.user, 'id', None) if hasattr(request, 'user') else None
+    data = await hanyu_service.get(db=db, pk=pk, user_id=user_id)
     return response_base.success(data=data)
 
 
@@ -52,20 +54,25 @@ async def get_hanyu_by_name(
 
 @router.get('', summary='获取汉语词汇列表', dependencies=[DependsPagination])
 async def get_hanyu_list(
+    request: Request,
     db: CurrentSession,
     name: Annotated[str | None, Query(description='词语名称关键字')] = None,
     type_: Annotated[str | None, Query(alias='type', description='类型')] = None,
     baobian: Annotated[str | None, Query(description='褒贬色彩')] = None,
     structure: Annotated[str | None, Query(description='结构')] = None,
     min_frequency: Annotated[int | None, Query(description='最小使用频次')] = None,
+    notebook_only: Annotated[bool | None, Query(description='是否只显示生词本里的词汇')] = None,
 ) -> ResponseSchemaModel[PageData[GetHanyuListDetail]]:
     """获取汉语词汇列表（分页）"""
+    user_id = getattr(request.user, 'id', None) if hasattr(request, 'user') else None
     params = HanyuParam(
         name=name,
         type=type_,
         baobian=baobian,
         structure=structure,
         min_frequency=min_frequency,
+        notebook_only=notebook_only,
+        user_id=user_id,
     )
     data = await hanyu_service.get_list(db=db, params=params)
     return response_base.success(data=data)
@@ -124,4 +131,32 @@ async def increment_hanyu_frequency(
 ) -> ResponseModel:
     """增加汉语词汇使用频次"""
     await hanyu_service.increment_frequency(db=db, pk=pk)
+    return response_base.success()
+
+
+@router.post('/notebook/{hanyu_id}', summary='加入生词本')
+async def add_to_hanyu_notebook(
+    request: Request,
+    db: CurrentSessionTransaction,
+    hanyu_id: Annotated[int, Path(description='汉语词汇 ID')],
+) -> ResponseModel:
+    """加入生词本"""
+    user_id = getattr(request.user, 'id', None) if hasattr(request, 'user') else None
+    if not user_id:
+        raise errors.AuthorizationError(msg='请先登录')
+    await hanyu_service.add_to_notebook(db=db, user_id=user_id, hanyu_id=hanyu_id)
+    return response_base.success()
+
+
+@router.delete('/notebook/{hanyu_id}', summary='移出生词本')
+async def remove_from_hanyu_notebook(
+    request: Request,
+    db: CurrentSessionTransaction,
+    hanyu_id: Annotated[int, Path(description='汉语词汇 ID')],
+) -> ResponseModel:
+    """移出生词本"""
+    user_id = getattr(request.user, 'id', None) if hasattr(request, 'user') else None
+    if not user_id:
+        raise errors.AuthorizationError(msg='请先登录')
+    await hanyu_service.remove_from_notebook(db=db, user_id=user_id, hanyu_id=hanyu_id)
     return response_base.success()

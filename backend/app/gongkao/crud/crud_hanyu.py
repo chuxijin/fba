@@ -42,10 +42,18 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
         :param params: 查询参数
         :return:
         """
-        se = select(self.model).order_by(
-            self.model.frequency.desc(),
-            self.model.created_time.desc(),
-        )
+        se = select(self.model)
+
+        if getattr(params, 'notebook_only', False) and getattr(params, 'user_id', None) is not None:
+            from backend.app.gongkao.model.hanyu_notebook import GkHanyuNotebook
+            se = se.join(GkHanyuNotebook, GkHanyuNotebook.hanyu_id == self.model.id)
+            se = se.where(GkHanyuNotebook.user_id == params.user_id)
+            se = se.order_by(GkHanyuNotebook.id.desc())
+        else:
+            se = se.order_by(
+                self.model.frequency.desc(),
+                self.model.created_time.desc(),
+            )
 
         if params.type is not None:
             se = se.where(self.model.type == params.type)

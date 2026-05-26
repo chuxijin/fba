@@ -5,6 +5,7 @@ from backend.app.gongkao.model.dict_major import GkDictMajor
 from backend.app.gongkao.model.dict_region import GkDictRegion
 from backend.app.gongkao.model.gangwei import GkGangwei
 from backend.app.gongkao.model.hanyu import GkHanyu
+from backend.app.gongkao.model.hanyu_notebook import GkHanyuNotebook
 from backend.app.gongkao.model.user_profile import GkUserProfile
 from backend.app.gongkao.model.zhenti import GkMaterial, GkQuestion, GkQuestionAnswer, GkQuestionOption
 
@@ -18,6 +19,7 @@ __all__ = [
     'GkCategory',
     'GkGangwei',
     'GkHanyu',
+    'GkHanyuNotebook',
     'GkQuestion',
     'GkQuestionOption',
     'GkQuestionAnswer',
