@@ -94,6 +94,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--cookie', default='', help='远端接口 Cookie')
     parser.add_argument('--authorization', default='', help='远端接口 Authorization 请求头')
     parser.add_argument('--input-json', default='', help='本地接口响应 JSON 文件，传入后不再请求网络')
+    parser.add_argument('--chapter-name', default='', help='统一章节名称，传入后所有题目归入同一章节，不再按题型拆分')
+    parser.add_argument('--no-chapter', action='store_true', help='不创建章节，题目直接挂载到题库')
     parser.add_argument('--dry-run', action='store_true', help='只预览不提交数据库')
     parser.add_argument('--timeout', type=float, default=30.0, help='接口超时时间')
     return parser.parse_args()
@@ -202,7 +204,7 @@ def normalize_answer(answer: Any) -> str:
     return re.sub(r'[^A-Za-z0-9\u4e00-\u9fff]', '', normalize_text(answer)).upper()
 
 
-def chapter_name(sub_type: int, group_key: str) -> str:
+def chapter_label(sub_type: int, group_key: str) -> str:
     """
     获取章节名称
 
@@ -607,7 +609,7 @@ async def upsert_placement(
     *,
     question_id: int,
     bank_id: int,
-    chapter_id: int,
+    chapter_id: int | None,
     sort_order: int,
     created_by: int,
 ) -> None:
@@ -693,6 +695,8 @@ async def import_questions(
     bank: QuestionBank,
     questions: list[RemoteQuestion],
     created_by: int,
+    chapter_name: str = '',
+    no_chapter: bool = False,
 ) -> ImportStats:
     """
     导入题目
@@ -701,6 +705,8 @@ async def import_questions(
     :param bank: 题库
     :param questions: 远端题目
     :param created_by: 创建者
+    :param chapter_name: 统一章节名称，传入后不再按题型拆分
+    :param no_chapter: 不创建章节，题目直接挂载到题库
     :return:
     """
     stats = ImportStats(fetched=len(questions))
@@ -710,19 +716,27 @@ async def import_questions(
             stats.skipped += 1
             continue
 
-        chapter_key = str(remote.sub_type or remote.group_key)
-        chapter = chapter_cache.get(chapter_key)
-        if chapter is None:
-            chapter = await ensure_chapter(
-                db=db,
-                bank_id=bank.id,
-                group_key=chapter_key,
-                name=chapter_name(remote.sub_type, remote.group_key),
-                sort_order=len(chapter_cache) + 1,
-            )
-            chapter_cache[chapter_key] = chapter
+        chapter = None
+        if not no_chapter:
+            if chapter_name:
+                chapter_key = '_unified'
+                name = chapter_name
+            else:
+                chapter_key = str(remote.sub_type or remote.group_key)
+                name = chapter_label(remote.sub_type, remote.group_key)
+            chapter = chapter_cache.get(chapter_key)
+            if chapter is None:
+                chapter = await ensure_chapter(
+                    db=db,
+                    bank_id=bank.id,
+                    group_key=chapter_key,
+                    name=name,
+                    sort_order=len(chapter_cache) + 1,
+                )
+                chapter_cache[chapter_key] = chapter
 
         question_type = infer_question_type(remote.sub_type, remote.answer, remote.options)
+        kp = [chapter.name] if chapter else [bank.name]
         question = await get_question_by_source_id(db, remote.source_id)
         if question is None:
             question = Question(
@@ -730,7 +744,7 @@ async def import_questions(
                 stem=remote.issue,
                 difficulty='medium',
                 default_score=Decimal('1'),
-                knowledge_point=[chapter.name],
+                knowledge_point=kp,
                 content_status=10,
                 created_by=created_by,
             )
@@ -741,7 +755,7 @@ async def import_questions(
             question.type = question_type
             question.stem = remote.issue
             question.default_score = Decimal('1')
-            question.knowledge_point = [chapter.name]
+            question.knowledge_point = kp
             question.content_status = 10
             question.updated_by = created_by
             stats.questions_updated += 1
@@ -761,7 +775,7 @@ async def import_questions(
             db=db,
             question_id=question.id,
             bank_id=bank.id,
-            chapter_id=chapter.id,
+            chapter_id=chapter.id if chapter else None,
             sort_order=index,
             created_by=created_by,
         )
@@ -813,6 +827,8 @@ async def main() -> None:
             bank=bank,
             questions=remote_questions,
             created_by=args.created_by,
+            chapter_name=args.chapter_name,
+            no_chapter=args.no_chapter,
         )
         bank_id = bank.id
         bank_code = bank.code

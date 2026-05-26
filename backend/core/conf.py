@@ -576,6 +576,7 @@ class Settings(BaseSettings):
     SMSBAO_API_KEY: str = ''  # 短信宝 ApiKey（后台获取，比密码 MD5 更安全）
     SMSBAO_CONTENT_TEMPLATE: str = ''  # 自定义短信内容模板（可选）
 
+
     @model_validator(mode='before')
     @classmethod
     def check_env(cls, values: Any) -> Any:
