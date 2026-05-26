@@ -63,13 +63,36 @@ class RenderQuestionPayload(SchemaBase):
     tags: list[str] = Field(default_factory=list, description='扩展标签')
 
 
+class RenderWordPayload(SchemaBase):
+    """汉语词汇载荷"""
+
+    name: str = Field(description='词语名称')
+    type: str | None = Field(default=None, description='类型')
+    pinyin: str | None = Field(default=None, description='拼音')
+    baobian: str | None = Field(default=None, description='褒贬色彩')
+    structure: str | None = Field(default=None, description='结构')
+    definition_info: str | dict | None = Field(default=None, description='释义信息')
+    detail_means: list | dict | None = Field(default=None, description='详细含义')
+    liju: list | None = Field(default=None, description='例句')
+    synonyms: list | None = Field(default=None, description='近义词')
+    antonym: list | None = Field(default=None, description='反义词')
+    chu_chu: dict | list | str | None = Field(default=None, description='出处')
+    yin_zheng: dict | list | str | None = Field(default=None, description='引证')
+    frequency: int = Field(default=0, description='频次')
+
+
 class RenderSectionPayload(SchemaBase):
+    """分节载荷"""
+
     key: str = Field(description='分节键')
     title: str = Field(description='分节标题')
     questions: list[RenderQuestionPayload] = Field(default_factory=list, description='题目列表')
+    words: list[RenderWordPayload] = Field(default_factory=list, description='词汇列表')
 
 
 class RenderPaperPayload(SchemaBase):
+    """题本正文"""
+
     question_count: int = Field(default=0, description='题目总数')
     material_count: int = Field(default=0, description='材料总数')
     sections: list[RenderSectionPayload] = Field(default_factory=list, description='分节列表')

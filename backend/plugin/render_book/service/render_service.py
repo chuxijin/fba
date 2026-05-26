@@ -165,7 +165,7 @@ class RenderService:
             ]
         )
         if (
-            payload.template_key != 'wrong_question'
+            payload.template_key not in {'wrong_question', 'hanyu', 'basic_calculation'}
             and not payload.filters.get('bank_id')
             and not payload.filters.get('chapter_id')
             and not payload.filters.get('question_ids')

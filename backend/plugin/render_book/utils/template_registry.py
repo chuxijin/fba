@@ -204,4 +204,29 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
             default_options=RenderOptions(theme='amber', show_source=False),
             notes=['题目由 metadata.questions 直传，不依赖题库题目表。'],
         ),
+        'hanyu': RenderTemplateDetail(
+            key='hanyu',
+            name='汉语词汇手册',
+            description='汉语词汇积累与复习手册，支持词语卡片式排版，含拼音、释义、例句、近反义词等。',
+            scene='能力训练',
+            subject='汉语',
+            estimated_latency='medium',
+            filter_fields=[
+                RenderFieldSpec(key='hanyu_ids', label='词汇 ID 列表', field_type='string', description='逗号分隔，如 101,102,103'),
+                RenderFieldSpec(
+                    key='hanyu_type',
+                    label='词汇类型',
+                    field_type='single_select',
+                    default='all',
+                    choices=[
+                        RenderFieldChoice(value='all', label='全部词汇'),
+                        RenderFieldChoice(value='idiom', label='成语'),
+                        RenderFieldChoice(value='word', label='普通词语'),
+                    ],
+                ),
+            ],
+            option_fields=base_option_fields,
+            default_options=RenderOptions(theme='teal'),
+            notes=['包含成语、词语的拼音、基本释义、例句、出处与近反义词。'],
+        ),
     }

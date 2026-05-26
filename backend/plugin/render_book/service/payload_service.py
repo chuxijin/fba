@@ -25,6 +25,7 @@ from backend.plugin.render_book.schema.payload import (
     RenderQuestionOptionPayload,
     RenderQuestionPayload,
     RenderSectionPayload,
+    RenderWordPayload,
 )
 from backend.plugin.render_book.schema.render import (
     BookKind,
@@ -161,6 +162,7 @@ class RenderPayloadService:
         'practice': 'custom',
         'wrong_question': 'wrong',
         'basic_calculation': 'custom',
+        'hanyu': 'custom',
     }
 
     @staticmethod
@@ -379,6 +381,8 @@ class RenderPayloadService:
 
     @classmethod
     def resolve_render_variants(cls, payload: RenderJobCreate, solution_mode: SolutionMode) -> list[RenderVariant]:
+        if payload.template_key == 'hanyu':
+            return ['combined_appendix']
         content_mode, answer_layout, delivery_mode = cls.resolve_export_config(payload)
         if content_mode == 'questions_only':
             return ['questions_only']
@@ -654,9 +658,202 @@ class RenderPayloadService:
         )
 
     @classmethod
+    async def _build_hanyu_payload(cls, *, db: AsyncSession, payload: RenderJobCreate) -> RenderDocumentPayload:
+        filters = payload.filters or {}
+        hanyu_ids = cls._parse_int_list(filters.get('hanyu_ids'))
+        hanyu_type = str(filters.get('hanyu_type') or 'all').strip().lower()
+
+        from sqlalchemy import select
+        from backend.app.gongkao.model import GkHanyu
+
+        stmt = select(GkHanyu)
+        if hanyu_ids:
+            stmt = stmt.where(GkHanyu.id.in_(hanyu_ids))
+            stmt = stmt.order_by(GkHanyu.frequency.desc(), GkHanyu.id.asc())
+        else:
+            user_id = payload.metadata.get('user_id')
+            if user_id is not None:
+                from backend.app.gongkao.model.hanyu_notebook import GkHanyuNotebook
+                stmt = stmt.join(GkHanyuNotebook, GkHanyuNotebook.hanyu_id == GkHanyu.id)
+                stmt = stmt.where(GkHanyuNotebook.user_id == user_id)
+                stmt = stmt.order_by(GkHanyuNotebook.id.desc())
+            else:
+                stmt = stmt.order_by(GkHanyu.frequency.desc(), GkHanyu.id.asc())
+
+            if hanyu_type == 'idiom':
+                stmt = stmt.where(GkHanyu.type == '成语')
+            elif hanyu_type == 'word':
+                stmt = stmt.where(GkHanyu.type != '成语')
+
+        # 限制导出范围数量
+        limit_val = filters.get('limit')
+        if limit_val is not None:
+            try:
+                limit_val = int(limit_val)
+                if limit_val > 0:
+                    stmt = stmt.limit(limit_val)
+            except (ValueError, TypeError):
+                pass
+
+        result = await db.execute(stmt)
+        hanyu_list = result.scalars().all()
+
+        # 加强版：自动获取近义词的详细内容并合并进来
+        layout_mode = getattr(payload.options, 'layout_mode', 'standard')
+        if layout_mode == 'standard' and hanyu_list:
+            synonym_names = set()
+            for h in hanyu_list:
+                if h.synonyms and isinstance(h.synonyms, list):
+                    for syn in h.synonyms:
+                        if isinstance(syn, str) and syn.strip():
+                            synonym_names.add(syn.strip())
+            
+            if synonym_names:
+                existing_names = {h.name for h in hanyu_list}
+                query_syns = list(synonym_names - existing_names)
+                if query_syns:
+                    syn_stmt = select(GkHanyu).where(GkHanyu.name.in_(query_syns))
+                    syn_stmt = syn_stmt.order_by(GkHanyu.frequency.desc(), GkHanyu.id.asc())
+                    syn_res = await db.execute(syn_stmt)
+                    syn_records = list(syn_res.scalars().all())
+                    
+                    # 自动创建尚未录入的近义词
+                    found_names = {r.name for r in syn_records}
+                    missing_names = set(query_syns) - found_names
+                    if missing_names:
+                        from backend.app.gongkao.schema.hanyu import CreateHanyuParam
+                        from backend.app.gongkao.service.hanyu_service import hanyu_service
+                        for name in missing_names:
+                            create_obj = CreateHanyuParam(name=name, type='成语')
+                            new_h = await hanyu_service.create(db, create_obj, created_by=1)
+                            syn_records.append(new_h)
+                    
+                    # 对所有收集到的近义词记录批量补充和静默填充完整信息
+                    from backend.app.gongkao.service.hanyu_service import HanyuService
+                    completed_syns = []
+                    for r in syn_records:
+                        filled = await HanyuService.ensure_data_complete(db, r)
+                        completed_syns.append(filled)
+                        
+                    hanyu_list = list(hanyu_list) + completed_syns
+
+        if not hanyu_list:
+            raise ValueError('未找到符合条件的汉语词汇，无法生成手册。')
+
+        idioms = []
+        words = []
+        for h in hanyu_list:
+            def_text = None
+            if h.definition_info and isinstance(h.definition_info, dict):
+                def_text = h.definition_info.get('definition') or ''
+            elif isinstance(h.definition_info, str):
+                def_text = h.definition_info
+
+            chu_chu_val = None
+            if h.chu_chu and isinstance(h.chu_chu, list) and len(h.chu_chu) > 0:
+                cc_source = h.chu_chu[0].get('source') or ''
+                if cc_source:
+                    chu_chu_val = {"text": cc_source}
+
+            detail_means_val = []
+            if h.detail_means and isinstance(h.detail_means, list):
+                detail_means_val = h.detail_means
+
+            word_payload = RenderWordPayload(
+                name=h.name,
+                type=h.type or '词语',
+                pinyin=h.pinyin or '',
+                baobian=h.baobian or '',
+                structure=h.structure or '',
+                definition_info=def_text or '',
+                detail_means=detail_means_val,
+                liju=h.liju[:1] if h.liju else [],
+                synonyms=h.synonyms or [],
+                antonym=h.antonym or [],
+                chu_chu=chu_chu_val,
+                yin_zheng=h.yin_zheng,
+                frequency=h.frequency or 0,
+            )
+
+            if h.type == '成语':
+                idioms.append(word_payload)
+            else:
+                words.append(word_payload)
+
+        sections = []
+        if idioms:
+            sections.append(
+                RenderSectionPayload(
+                    key='idioms',
+                    title='高频成语',
+                    words=idioms,
+                )
+            )
+        if words:
+            sections.append(
+                RenderSectionPayload(
+                    key='words',
+                    title='高频词语',
+                    words=words,
+                )
+            )
+
+        book_kind = cls.resolve_book_kind(payload)
+        content_mode, answer_layout, delivery_mode = cls.resolve_export_config(payload)
+        solution_mode = cls.resolve_solution_mode(payload)
+        render_variants = cls.resolve_render_variants(payload, solution_mode)
+
+        meta_lines = [f'词汇总数：{len(hanyu_list)} 个']
+        if idioms:
+            meta_lines.append(f'成语：{len(idioms)} 个')
+        if words:
+            meta_lines.append(f'词语：{len(words)} 个')
+
+        return RenderDocumentPayload(
+            template_key=payload.template_key,
+            render_plan=RenderPlanPayload(
+                book_kind=book_kind,
+                content_mode=content_mode,
+                answer_layout=answer_layout,
+                delivery_mode=delivery_mode,
+                solution_mode=solution_mode,
+                output_targets=payload.output_targets,
+                render_variants=render_variants,
+            ),
+            book=RenderBookMeta(
+                title=payload.title.strip() or '汉语词汇手册',
+                subtitle=payload.subtitle,
+                meta_lines=meta_lines,
+            ),
+            options=payload.options,
+            paper=RenderPaperPayload(
+                question_count=0,
+                material_count=0,
+                sections=sections,
+                materials=[],
+            ),
+            metadata={
+                **payload.metadata,
+                'filters': payload.filters,
+                'subject': payload.subject or '汉语',
+                'template_key': payload.template_key,
+                'book_kind': book_kind,
+                'content_mode': content_mode,
+                'answer_layout': answer_layout,
+                'delivery_mode': delivery_mode,
+                'solution_mode': solution_mode,
+                'render_variants': render_variants,
+                'hanyu_ids': [h.id for h in hanyu_list],
+                'generated_at': timezone.now().isoformat(),
+            },
+        )
+
+    @classmethod
     async def build_payload(cls, *, db: AsyncSession, payload: RenderJobCreate) -> RenderDocumentPayload:
         if payload.template_key == 'basic_calculation':
             return cls._build_basic_calculation_payload(payload)
+        if payload.template_key == 'hanyu':
+            return await cls._build_hanyu_payload(db=db, payload=payload)
 
         questions = await cls._load_questions(db=db, payload=payload)
         if not questions:
@@ -761,6 +958,7 @@ class RenderPayloadService:
                 materials=materials,
             ),
             metadata={
+                **payload.metadata,
                 'filters': payload.filters,
                 'subject': payload.subject,
                 'template_key': payload.template_key,
