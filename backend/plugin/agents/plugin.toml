@@ -1,0 +1,10 @@
+[plugin]
+summary = 'Agent 平台'
+version = '0.0.1'
+description = 'C 端考生自助批改 Agent 平台,覆盖申论、英语作文、行测、面试评估等场景。依赖插件: ai(LLM 调用)、ocr(OCR 识别);依赖模块: app/access(权益与配额)。'
+author = 'gongkao'
+tags = ["ai", "agent"]
+database = ["mysql", "postgresql"]
+
+[app]
+router = ['v1']

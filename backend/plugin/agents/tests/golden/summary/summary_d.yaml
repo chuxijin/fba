@@ -1,0 +1,5 @@
+extends: ../../samples/sample_d_grade.yaml
+
+golden:
+  expected_level: D
+  expected_score_range: [0.0, 3.9]  # 10分制下，D 档 (不合格) 即 < 4.0 分

@@ -1,0 +1,5 @@
+extends: ../../samples/sample_essay_c_grade.yaml
+
+golden:
+  expected_level: C
+  expected_score_range: [16, 25]  # C 档分值区间通常是 40%-65%，大作文40分制下即 16-25 分

@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS plugin_agents_task (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键 ID',
+    agent_type VARCHAR(64) NOT NULL COMMENT 'agent 类型',
+    user_id BIGINT NOT NULL COMMENT '提交用户 ID',
+    provider_id BIGINT NOT NULL COMMENT 'AI 供应商 ID',
+    model_id VARCHAR(128) NOT NULL COMMENT '主力模型 ID',
+    input_payload JSON NOT NULL COMMENT '输入参数',
+    status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '任务状态',
+    stage VARCHAR(64) NULL COMMENT '当前阶段',
+    progress DOUBLE NOT NULL DEFAULT 0 COMMENT '进度 0-1',
+    state_snapshot JSON NULL COMMENT '中间快照',
+    report JSON NULL COMMENT '最终报告',
+    traces JSON NULL COMMENT '执行轨迹',
+    quota_consumed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已扣权益',
+    error_code VARCHAR(64) NULL COMMENT '错误码',
+    error_message LONGTEXT NULL COMMENT '错误信息',
+    created_time DATETIME NOT NULL COMMENT '创建时间',
+    updated_time DATETIME NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    INDEX idx_plugin_agents_task_status (status),
+    INDEX idx_plugin_agents_task_user_id (user_id),
+    INDEX idx_plugin_agents_task_agent_type (agent_type)
+) COMMENT='Agent 任务表';

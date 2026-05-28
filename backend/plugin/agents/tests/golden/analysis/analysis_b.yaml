@@ -1,0 +1,5 @@
+extends: ../../samples/sample_analysis.yaml
+
+golden:
+  expected_level: B
+  expected_score_range: [5.0, 7.0]

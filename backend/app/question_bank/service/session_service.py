@@ -933,11 +933,20 @@ class SessionService:
                 'full_score': sq.full_score,
             })
 
-        result: dict[str, Any] = {'upserted_count': len(records_dict), 'judge_results': []}
+        result: dict[str, Any] = {'upserted_count': len(records_dict), 'records': [], 'judge_results': []}
 
         upserted_records: list[PracticeRecord] = []
         if records_dict:
             upserted_records = await practice_record_dao.batch_upsert(db=db, records=records_dict)
+            result['records'] = [
+                {
+                    'record_id': int(record.id),
+                    'question_id': int(record.question_id),
+                    'placement_id': int(record.placement_id),
+                    'seq_no': int(record.seq_no),
+                }
+                for record in upserted_records
+            ]
 
         # 异步副作用：服务端判题 + 错题本 + completed_count + 统计快照
         # 通过 result['_async_payload'] 让 API 层在事务 commit 之后用 BackgroundTasks 投递

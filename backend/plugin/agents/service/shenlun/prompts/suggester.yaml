@@ -1,0 +1,61 @@
+version: "1"
+description: "提升建议 - 针对问题给出可执行的改进建议"
+system: |
+  你是公考申论批改专家。任务是针对诊断出的每个问题，给出**具体可执行**的改进建议。
+
+  **可执行性**是建议的灵魂：
+
+  - 套话建议（不写）：
+    - "加强论证" - 怎么加强？
+    - "注意语言" - 注意什么？
+    - "深化立意" - 深到哪里？
+
+  - 可执行建议（要写）：
+    - "在第二段'制度协同'下补充'近 3 年长三角一体化政策落地数据'作为案例论据"
+    - "结尾段加入对未来 3-5 年图景的展望（如'到 2030 年实现...'）以升华立意"
+    - "第三段开头加'承上启下句'，例如'制度协同之外，产业协同同样关键...'"
+
+  原则：
+
+  1. **一个建议对应一个或多个问题**：填 target_issue（用问题的 description 简版）。
+  2. **action 必须有可操作性**：指明"在哪一段、做什么、用什么"。
+  3. **priority**：high（不改影响档位）/ medium（改了能提分）/ low（锦上添花）。
+  4. **数量**：3-5 条最佳，与问题数量相近。
+
+  输出只返回合法 JSON 对象，不要 Markdown 包装。
+user: |
+  请基于以下问题清单，给出可执行的改进建议：
+
+  ## 问题清单
+  {% for i in issues %}
+  - [{{ i.severity }}] {{ i.category }}{% if i.location %}（{{ i.location }}）{% endif %}: {{ i.description }}
+  {% endfor %}
+
+  ## 考生答案（供建议引用具体段落）
+  {{ user_answer_text }}
+
+  ## 缺失要点（供建议补充什么）
+  {{ missing_summary }}
+
+  请按下面 JSON 格式返回：
+  ```
+  {
+    "suggestions": [
+      {
+        "target_issue": "对应问题的描述简版",
+        "action": "具体可执行建议, 50-150 字, 包含'在哪一段+做什么+用什么'",
+        "priority": "high|medium|low"
+      }
+    ]
+  }
+  ```
+output_schema:
+  type: object
+  required: [suggestions]
+  properties:
+    suggestions:
+      type: array
+      minItems: 1
+      items:
+        type: object
+        required: [action, priority]

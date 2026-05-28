@@ -1,0 +1,5 @@
+extends: ../../samples/sample_a_grade.yaml
+
+golden:
+  expected_level: A
+  expected_score_range: [8.5, 10.0]  # 归纳概括10分制，A档期望 >= 8.5

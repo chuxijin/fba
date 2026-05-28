@@ -1,0 +1,5 @@
+extends: ../../samples/sample_application.yaml
+
+golden:
+  expected_level: B
+  expected_score_range: [9.0, 12.0]

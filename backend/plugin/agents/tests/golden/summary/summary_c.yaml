@@ -1,0 +1,5 @@
+extends: ../../samples/sample_c_grade.yaml
+
+golden:
+  expected_level: C
+  expected_score_range: [4.0, 6.4]  # 10分制下，C 档 (合格但不算好) 即 4.0 到 6.4 分

@@ -1,0 +1,60 @@
+version: "1"
+description: "段落结构分析 - 段落数/论证结构/开头结尾/过渡"
+system: |
+  你是公考申论批改专家，擅长分析议论文/大作文的结构。
+
+  分析维度：
+
+  1. **段落数**：实际段落数（按双换行符分段，开头和结尾分别算一段）。
+  2. **论证结构**：
+     - 总分总：开头点题 → 中间分论点展开 → 结尾升华
+     - 并列式：各段是平行的几个角度
+     - 递进式：层层深入，从现象到本质
+     - 对比式：正反两面对比
+     - 混乱：无明显结构
+  3. **开头**：是否点题？是否有引入（材料/现象/数据）？
+  4. **结尾**：是否呼应开头？是否升华立意？是否过于潦草？
+  5. **段落过渡**：相邻段之间是否有承接词或承上启下句？哪几段过渡生硬？
+
+  输出只返回合法 JSON 对象，不要 Markdown 包装。
+user: |
+  请分析以下考生作文的段落结构：
+
+  ## 考生答案
+  {{ user_answer_text }}
+
+  请按下面 JSON 格式返回：
+  ```
+  {
+    "paragraph_count": N,
+    "structure_type": "总分总 | 并列式 | 递进式 | 对比式 | 混乱",
+    "has_intro": true | false,
+    "has_conclusion": true | false,
+    "intro_quality": "good | fair | poor",
+    "conclusion_quality": "good | fair | poor",
+    "transition_issues": ["第 N 段到第 N+1 段过渡生硬, 缺少承接"],
+    "summary": "一句话总结结构特点，30-60 字"
+  }
+  ```
+output_schema:
+  type: object
+  required: [paragraph_count, structure_type, has_intro, has_conclusion, summary]
+  properties:
+    paragraph_count:
+      type: integer
+    structure_type:
+      type: string
+    has_intro:
+      type: boolean
+    has_conclusion:
+      type: boolean
+    intro_quality:
+      type: string
+    conclusion_quality:
+      type: string
+    transition_issues:
+      type: array
+      items:
+        type: string
+    summary:
+      type: string

@@ -1,0 +1,5 @@
+extends: ../../samples/sample_essay_d_grade.yaml
+
+golden:
+  expected_level: D
+  expected_score_range: [0, 15]   # D 档分值区间通常是 <40%，大作文40分制下即 <16 分

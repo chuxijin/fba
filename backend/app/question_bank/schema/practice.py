@@ -340,6 +340,7 @@ class BatchUpsertPracticeRecordsResult(SchemaBase):
     """批量提交作答结果"""
 
     upserted_count: int = Field(ge=0, description='写入记录数')
+    records: list[dict[str, Any]] = Field(default_factory=list, description='已保存作答记录')
     judge_results: list[PracticeJudgeResultItem] = Field(default_factory=list, description='即时判题结果')
 
 

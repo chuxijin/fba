@@ -1,0 +1,5 @@
+extends: ../../samples/sample_countermeasure.yaml
+
+golden:
+  expected_level: C
+  expected_score_range: [4.0, 6.0]

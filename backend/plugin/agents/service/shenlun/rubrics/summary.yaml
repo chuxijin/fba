@@ -1,0 +1,41 @@
+version: "1"
+description: "归纳概括题评分细则 - 全面/准确/条理/语言四维度, 总分 10"
+total: 10
+grade_labels:
+  A: 优秀
+  B: 良好
+  C: 合格
+  D: 不合格
+dimensions:
+  - name: 全面性
+    max_score: 4
+    weight: 0.40
+    levels:
+      A: 全面覆盖所有核心要点, 无遗漏
+      B: 覆盖大部分要点, 个别次要要点遗漏
+      C: 遗漏较多重要要点
+      D: 仅答到少数要点或要点偏题
+  - name: 准确性
+    max_score: 3
+    weight: 0.30
+    levels:
+      A: 要点表达准确, 紧扣材料原意
+      B: 要点基本准确, 略有偏差
+      C: 部分要点表达不准, 与材料原意有距离
+      D: 多处要点表达错误或脱离材料
+  - name: 条理性
+    max_score: 2
+    weight: 0.20
+    levels:
+      A: 分点清晰, 逻辑严密, 总分结构完整
+      B: 分点清晰, 逻辑较好
+      C: 分点不够清晰, 部分内容重复或混杂
+      D: 无分点意识, 罗列混乱
+  - name: 语言
+    max_score: 1
+    weight: 0.10
+    levels:
+      A: 用词规范, 简洁凝练
+      B: 用词基本规范
+      C: 用词偶有不当
+      D: 病句较多或表达不清

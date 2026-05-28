@@ -1,0 +1,49 @@
+version: "1"
+description: "大作文评分细则 - 五维度加权制, 总分 40"
+total: 40
+grade_labels:
+  A: 一类卷
+  B: 二类卷
+  C: 三类卷
+  D: 四类卷
+dimensions:
+  - name: 立意
+    max_score: 12
+    weight: 0.30
+    levels:
+      A: 立意精准, 紧扣题旨且有思想深度
+      B: 立意明确, 基本符合题旨
+      C: 立意尚可, 略有偏差
+      D: 立意偏题或浅显
+  - name: 结构
+    max_score: 8
+    weight: 0.20
+    levels:
+      A: 结构严谨, 层次分明, 段落过渡自然
+      B: 结构清晰, 层次基本到位
+      C: 结构尚可, 个别段落衔接生硬
+      D: 结构混乱或逻辑跳跃
+  - name: 论证
+    max_score: 10
+    weight: 0.25
+    levels:
+      A: 论据充分, 案例典型, 论证有力
+      B: 论据基本充分, 论证较有力
+      C: 论据偏少或案例陈旧
+      D: 论据空洞或论证缺失
+  - name: 文采
+    max_score: 6
+    weight: 0.15
+    levels:
+      A: 语言生动, 表达精准, 富有感染力
+      B: 语言通顺, 表达清晰
+      C: 语言基本通顺, 表达略平淡
+      D: 语病较多或表达不清
+  - name: 规范
+    max_score: 4
+    weight: 0.10
+    levels:
+      A: 格式规范, 字数达标, 书写工整
+      B: 格式基本规范, 偶有小瑕疵
+      C: 格式或字数有缺陷
+      D: 格式严重不规范
