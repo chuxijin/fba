@@ -299,10 +299,7 @@ class HomeService:
     @staticmethod
     async def _get_created_session_count(db: AsyncSession, user_id: int) -> int:
         """获取用户创建的会话总数"""
-        stmt = select(func.count(PracticeSession.id)).where(
-            PracticeSession.user_id == user_id,
-            PracticeSession.del_flag.is_(False),
-        )
+        stmt = select(func.count(PracticeSession.id)).where(PracticeSession.user_id == user_id)
         result = await db.scalar(stmt)
         return int(result or 0)
 

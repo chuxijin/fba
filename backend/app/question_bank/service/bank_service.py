@@ -192,12 +192,14 @@ class BankService:
 
         progress_stmt = (
             select(
-                func.count(PracticeRecord.id),
+                func.count(sa.distinct(PracticeRecord.question_id)),
                 func.count(
-                    sa.case(
-                        (PracticeRecord.is_correct.is_(True), PracticeRecord.id),
-                        else_=None,
-                    )
+                    sa.distinct(
+                        sa.case(
+                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            else_=None,
+                        )
+                    ),
                 ),
             )
             .join(QuestionPlacement, PracticeRecord.placement_id == QuestionPlacement.id)
@@ -226,12 +228,14 @@ class BankService:
             select(
                 QuestionPlacement.chapter_id,
                 Question.type,
-                func.count(PracticeRecord.id),
+                func.count(sa.distinct(PracticeRecord.question_id)),
                 func.count(
-                    sa.case(
-                        (PracticeRecord.is_correct.is_(True), PracticeRecord.id),
-                        else_=None,
-                    )
+                    sa.distinct(
+                        sa.case(
+                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            else_=None,
+                        )
+                    ),
                 ),
             )
             .join(QuestionPlacement, PracticeRecord.placement_id == QuestionPlacement.id)
@@ -268,12 +272,14 @@ class BankService:
         stmt = (
             select(
                 Question.type,
-                func.count(PracticeRecord.id),
+                func.count(sa.distinct(PracticeRecord.question_id)),
                 func.count(
-                    sa.case(
-                        (PracticeRecord.is_correct.is_(True), PracticeRecord.id),
-                        else_=None,
-                    )
+                    sa.distinct(
+                        sa.case(
+                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            else_=None,
+                        )
+                    ),
                 ),
             )
             .join(QuestionPlacement, PracticeRecord.placement_id == QuestionPlacement.id)
@@ -490,12 +496,14 @@ class BankService:
         progress_stmt = (
             select(
                 QuestionPlacement.chapter_id,
-                func.count(PracticeRecord.id),
+                func.count(sa.distinct(PracticeRecord.question_id)),
                 func.count(
-                    sa.case(
-                        (PracticeRecord.is_correct.is_(True), PracticeRecord.id),
-                        else_=None,
-                    )
+                    sa.distinct(
+                        sa.case(
+                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            else_=None,
+                        )
+                    ),
                 ),
             )
             .join(QuestionPlacement, PracticeRecord.placement_id == QuestionPlacement.id)
@@ -629,12 +637,14 @@ class BankService:
         progress_stmt = (
             select(
                 QuestionPlacement.bank_id,
-                func.count(PracticeRecord.id),
+                func.count(sa.distinct(PracticeRecord.question_id)),
                 func.count(
-                    sa.case(
-                        (PracticeRecord.is_correct.is_(True), PracticeRecord.id),
-                        else_=None,
-                    )
+                    sa.distinct(
+                        sa.case(
+                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            else_=None,
+                        )
+                    ),
                 ),
             )
             .join(QuestionPlacement, PracticeRecord.placement_id == QuestionPlacement.id)
@@ -669,12 +679,14 @@ class BankService:
             select(
                 QuestionPlacement.bank_id,
                 Question.type,
-                func.count(PracticeRecord.id),
+                func.count(sa.distinct(PracticeRecord.question_id)),
                 func.count(
-                    sa.case(
-                        (PracticeRecord.is_correct.is_(True), PracticeRecord.id),
-                        else_=None,
-                    )
+                    sa.distinct(
+                        sa.case(
+                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            else_=None,
+                        )
+                    ),
                 ),
             )
             .join(QuestionPlacement, PracticeRecord.placement_id == QuestionPlacement.id)

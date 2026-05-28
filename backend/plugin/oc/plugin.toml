@@ -1,0 +1,15 @@
+[plugin]
+summary = 'Offer Coming - 求职工具平台'
+version = '0.0.1'
+description = '求职招聘跟踪与辅助系统，包含校招/实习岗位管理、投递记录、简历管理(AI)、内推码广场、爬虫、反馈等功能。依赖插件: config(商店配置); 依赖模块: app/admin(用户体系)。'
+author = 'oc'
+tags = ["task", "ai"]
+database = ["mysql", "postgresql"]
+depends_on = ["config"]
+
+[app]
+router = ['v1']
+
+[settings]
+CRAWLER_COOKIE = ""
+CRAWLER_NOTIFY_EMAIL = ""

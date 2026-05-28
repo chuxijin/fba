@@ -9,3 +9,5 @@ class ConfigType(StrEnum):
     login = 'LOGIN'
     task = 'Task'
     storage = 'STORAGE'
+    shop = 'SHOP'
+    crawler = 'CRAWLER'

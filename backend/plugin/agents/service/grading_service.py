@@ -308,6 +308,7 @@ class GradingService:
             stage=task.stage,
             progress=task.progress,
             report=report,
+            state_snapshot=task.state_snapshot,
             error_code=task.error_code,
             error_message=task.error_message,
             created_time=task.created_time,

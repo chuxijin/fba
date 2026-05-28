@@ -130,3 +130,17 @@ async def load_storage_config(db: AsyncSession) -> None:
     }
     await _load_config(db, 'storage', mapping, 'STORAGE_CONFIG_STATUS')
 
+
+async def load_crawler_config(db: AsyncSession) -> None:
+    """
+    获取爬虫配置
+
+    :param db: 数据库会话
+    :return:
+    """
+    mapping = {
+        'CRAWLER_COOKIE': str,
+        'CRAWLER_NOTIFY_EMAIL': str,
+    }
+    await _load_config(db, 'crawler', mapping, 'CRAWLER_CONFIG_STATUS')
+

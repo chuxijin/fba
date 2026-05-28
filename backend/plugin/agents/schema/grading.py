@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from datetime import datetime
+from typing import Any
 
 from pydantic import Field
 
@@ -46,6 +47,7 @@ class GradingDetail(SchemaBase):
     stage: str | None = Field(default=None, description='当前阶段')
     progress: float = Field(description='进度 0-1')
     report: AgentReport | None = Field(default=None, description='最终批改报告')
+    state_snapshot: dict[str, Any] | None = Field(default=None, description='中间快照')
     error_code: str | None = Field(default=None, description='错误码')
     error_message: str | None = Field(default=None, description='错误信息')
     created_time: datetime = Field(description='创建时间')

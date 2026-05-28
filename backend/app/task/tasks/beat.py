@@ -80,4 +80,9 @@ def get_local_beat_schedule() -> dict[str, dict[str, Any]]:
             'task': 'cleanup_expired_render_books',
             'schedule': TzAwareCrontab('0', '4'),
         },
+        'OC 爬取校招岗位数据': {
+            'task': 'crawl_jobs_task',
+            'schedule': TzAwareCrontab('0', '*/6'),
+            'args': ['campus'],
+        },
     }

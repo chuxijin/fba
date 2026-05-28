@@ -165,7 +165,14 @@ class KnowledgePointService:
             select(
                 kp_value_expr,
                 func.count(func.distinct(PracticeRecord.question_id)).label('answer_count'),
-                func.sum(sa.case((PracticeRecord.is_correct.is_(True), 1), else_=0)).label('correct_count'),
+                func.count(
+                    sa.distinct(
+                        sa.case(
+                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            else_=None,
+                        )
+                    )
+                ).label('correct_count'),
             )
             .select_from(PracticeRecord)
             .join(Question, PracticeRecord.question_id == Question.id)

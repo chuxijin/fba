@@ -5,8 +5,10 @@ from fastapi import APIRouter, Request
 from backend.app.question_bank.schema.user_settings import (
     GetStudyPreferenceResponse,
     InitDomainPreferenceParam,
+    PracticeDataResetResult,
     UpdateStudyPreferenceParam,
 )
+from backend.app.question_bank.service.practice_data_reset_service import practice_data_reset_service
 from backend.app.question_bank.service.user_settings_service import user_settings_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -63,3 +65,12 @@ async def init_domain_preference(
     )
     return response_base.success(data={'custom_tabs': custom_tabs})
 
+
+@router.delete('/practice-data', summary='重置做题数据', name='qbank_reset_practice_data', dependencies=[DependsJwtAuth])
+async def reset_practice_data(
+    request: Request,
+    db: CurrentSessionTransaction,
+) -> ResponseSchemaModel[PracticeDataResetResult]:
+    """重置做题数据"""
+    data = await practice_data_reset_service.reset_user_practice_data(db=db, user_id=request.user.id)
+    return response_base.success(data=data)

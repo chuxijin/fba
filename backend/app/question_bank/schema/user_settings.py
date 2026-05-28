@@ -58,3 +58,15 @@ class InitDomainPreferenceParam(BaseModel):
 
     domain_code: StudyDomainCode = Field(description='选择的学习领域编码')
 
+
+class PracticeDataResetResult(BaseModel):
+    """做题数据重置结果"""
+
+    ai_evaluation_count: int = Field(default=0, description='删除的 AI 批改记录数')
+    practice_record_count: int = Field(default=0, description='删除的答题记录数')
+    session_question_count: int = Field(default=0, description='删除的会话题目快照数')
+    practice_session_count: int = Field(default=0, description='删除的练习会话数')
+    wrong_question_count: int = Field(default=0, description='删除的错题记录数')
+    check_in_count: int = Field(default=0, description='删除的打卡记录数')
+    daily_rank_count: int = Field(default=0, description='删除的每日排名记录数')
+    stats_reset_count: int = Field(default=0, description='重置的统计快照数')
