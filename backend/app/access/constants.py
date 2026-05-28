@@ -132,6 +132,7 @@ class ResourceType(str, Enum):
     VIDEO = 'video'
     LIVE = 'live'
     CATEGORY = 'category'
+    AGENT_SHENLUN = 'agent_shenlun'
 
 
 class ReasonCode(str, Enum):

@@ -41,6 +41,12 @@ class Quest(Base, UserMixin):
     require_image: Mapped[bool] = mapped_column(default=False, comment='是否必填图片')
     require_link: Mapped[bool] = mapped_column(default=False, comment='是否必填链接')
     review_required: Mapped[bool] = mapped_column(default=True, comment='是否需要人工审核')
+    review_strategy: Mapped[str] = mapped_column(
+        sa.String(64),
+        default='manual',
+        comment='审核策略(manual/auto_pass/order_phone_required)',
+    )
+    submission_schema: Mapped[dict | None] = mapped_column(sa.JSON, default=None, comment='结构化提交字段配置')
     reward_type: Mapped[str] = mapped_column(sa.String(32), default='points', comment='奖励类型(vip/points/feature)')
     reward_data: Mapped[dict | None] = mapped_column(sa.JSON, default=None, comment='奖励数据')
     trigger_type: Mapped[str | None] = mapped_column(

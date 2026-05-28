@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from backend.app.access.api.v1.dashboard import router as dashboard_router
+from backend.app.access.api.v1.debug import router as debug_router
 from backend.app.access.api.v1.domain import router as domain_router
 from backend.app.access.api.v1.entitlement import router as entitlement_router
 from backend.app.access.api.v1.grant import router as grant_router
@@ -26,5 +27,6 @@ v1.include_router(rule_router, prefix='/access/rules', tags=['资源规则'])
 v1.include_router(grant_router, prefix='/access/grants', tags=['直接授予'])
 v1.include_router(redeem_router, prefix='/access/redeem', tags=['兑换配置'])
 v1.include_router(my_router, prefix='/access/my', tags=['我的权益'])
+v1.include_router(debug_router, prefix='/access/decide', tags=['权益决策调试'])
 
 router = v1

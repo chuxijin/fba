@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from backend.common.reward.dispatcher import dispatch_reward, register_fulfiller, revoke_reward
-from backend.common.reward.fulfiller import BaseRewardFulfiller, FeatureFulfiller, PointsFulfiller, VipFulfiller
+from backend.common.reward.fulfiller import (
+    BaseRewardFulfiller,
+    ChaojiCourseFulfiller,
+    FeatureFulfiller,
+    PointsFulfiller,
+    VipFulfiller,
+)
 
 __all__ = [
     'dispatch_reward',
@@ -11,4 +17,5 @@ __all__ = [
     'VipFulfiller',
     'PointsFulfiller',
     'FeatureFulfiller',
+    'ChaojiCourseFulfiller',
 ]

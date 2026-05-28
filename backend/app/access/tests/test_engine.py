@@ -120,6 +120,33 @@ async def test_engine_grants_via_subscription_and_skips_trial(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_engine_free_pass_overrides_inherited_paid_rule(monkeypatch) -> None:
+    """子资源限免规则应覆盖父级继承的付费规则"""
+    _patch_pipeline(
+        monkeypatch,
+        rules=[
+            make_rule(
+                GrantMode.FREE_PASS,
+                entitlement_code='qbank.kaoyan.real.free_pass',
+                rule_id=1,
+                priority=100,
+            ),
+            make_rule(GrantMode.ACCESS, entitlement_code='qbank.kaoyan.access', rule_id=2),
+        ],
+        snapshot=FakeSnapshot(),
+    )
+
+    engine = AccessDecisionEngine()
+    db = _StubSession()
+    decision = await engine.decide(db, make_ctx())
+
+    assert decision.allowed
+    assert decision.reason_code == ReasonCode.FREE_PASS
+    assert decision.matched_grant == 'qbank.kaoyan.real.free_pass'
+    assert db.added == []
+
+
+@pytest.mark.asyncio
 async def test_engine_falls_through_to_quota_trial(monkeypatch) -> None:
     """订阅未命中 + 无直接授予 → 走试看, 扣减成功放行"""
 

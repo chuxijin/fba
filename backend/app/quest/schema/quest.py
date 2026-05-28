@@ -28,6 +28,8 @@ class CreateQuestParam(SchemaBase):
     require_image: bool = Field(default=False, description='是否必填图片')
     require_link: bool = Field(default=False, description='是否必填链接')
     review_required: bool = Field(default=True, description='是否需要人工审核')
+    review_strategy: str = Field(default='manual', max_length=64, description='审核策略')
+    submission_schema: dict | None = Field(None, description='结构化提交字段配置')
     reward_type: str = Field(default='points', max_length=32, description='奖励类型(vip/points/feature)')
     reward_data: dict | None = Field(None, description='奖励数据')
     trigger_type: str | None = Field(None, max_length=64, description='自动触发类型(空=人工领取)')
@@ -55,6 +57,8 @@ class UpdateQuestParam(SchemaBase):
     require_image: bool | None = Field(None, description='是否必填图片')
     require_link: bool | None = Field(None, description='是否必填链接')
     review_required: bool | None = Field(None, description='是否需要人工审核')
+    review_strategy: str | None = Field(None, max_length=64, description='审核策略')
+    submission_schema: dict | None = Field(None, description='结构化提交字段配置')
     reward_type: str | None = Field(None, max_length=32, description='奖励类型')
     reward_data: dict | None = Field(None, description='奖励数据')
     trigger_type: str | None = Field(None, max_length=64, description='自动触发类型(空=人工领取)')
@@ -87,6 +91,8 @@ class GetQuestDetail(SchemaBase):
     require_image: bool = Field(description='是否必填图片')
     require_link: bool = Field(description='是否必填链接')
     review_required: bool = Field(description='是否需要人工审核')
+    review_strategy: str = Field(description='审核策略')
+    submission_schema: dict | None = Field(None, description='结构化提交字段配置')
     reward_type: str = Field(description='奖励类型')
     reward_data: dict | None = Field(None, description='奖励数据')
     trigger_type: str | None = Field(None, description='自动触发类型(空=人工领取)')
@@ -114,6 +120,7 @@ class SubmitClaimParam(SchemaBase):
 
     submission_links: list[str] | None = Field(None, description='提交链接列表')
     submission_images: list[str] | None = Field(None, description='提交图片列表')
+    submission_data: dict | None = Field(None, description='结构化提交数据')
     submission_note: str | None = Field(None, description='提交说明')
 
 
@@ -130,6 +137,7 @@ class GetClaimDetail(SchemaBase):
     expire_time: datetime | None = Field(None, description='领取过期时间')
     submission_links: list[str] | None = Field(None, description='提交链接列表')
     submission_images: list[str] | None = Field(None, description='提交图片列表')
+    submission_data: dict | None = Field(None, description='结构化提交数据')
     submission_note: str | None = Field(None, description='提交说明')
     submit_time: datetime | None = Field(None, description='提交时间')
     review_remark: str | None = Field(None, description='审核备注')

@@ -119,25 +119,41 @@ class ClaimService:
                 raise errors.RequestError(msg='该任务必须填写文字说明')
             # 兼容：如果都配置成 false，但 submission_required=True，那么至少提交任意一种
             if not (quest.require_link or quest.require_image or quest.require_note):
-                if not (obj.submission_links or obj.submission_images or obj.submission_note):
+                if not (
+                    obj.submission_links
+                    or obj.submission_images
+                    or obj.submission_data
+                    or obj.submission_note
+                ):
                     raise errors.RequestError(msg='请填写任务提交内容')
 
         update_data: dict[str, Any] = {
             'submission_links': obj.submission_links,
             'submission_images': obj.submission_images,
+            'submission_data': obj.submission_data,
             'submission_note': obj.submission_note,
             'submit_time': timezone.now(),
             'claim_status': 1,
         }
         await quest_claim_dao.update_model(db, claim_id, update_data, commit=False)
 
-        # 不需要审核时，提交即触发发奖（避免循环依赖，本地导入）
-        if not quest.review_required:
+        await db.flush()
+        updated_claim = await quest_claim_dao.select_model(db, claim_id)
+        review_strategy = (quest.review_strategy or 'manual').strip()
+
+        # 不需要审核且未配置自动审核策略时，提交即触发发奖（避免循环依赖，本地导入）
+        if not quest.review_required and review_strategy == 'manual':
             from backend.app.quest.service.reward_service import reward_service
 
-            await db.flush()
-            updated_claim = await quest_claim_dao.select_model(db, claim_id)
             await reward_service.grant_for_claim(db=db, claim=updated_claim, quest=quest)
+            await db.commit()
+            updated_claim = await quest_claim_dao.select_model(db, claim_id)
+            return GetClaimDetail.model_validate(updated_claim)
+
+        from backend.app.quest.service.auto_review_service import auto_review_service
+
+        auto_reviewed = await auto_review_service.handle_after_submit(db=db, quest=quest, claim=updated_claim)
+        if auto_reviewed is not None:
             await db.commit()
             updated_claim = await quest_claim_dao.select_model(db, claim_id)
             return GetClaimDetail.model_validate(updated_claim)

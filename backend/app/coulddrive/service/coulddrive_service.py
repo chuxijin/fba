@@ -89,8 +89,11 @@ class DriverRegistry:
         :param drive_type: 驱动类型枚举
         """
         def decorator(driver_class: type['BaseDriveClient']):
-            cls._drivers[drive_type] = driver_class
-            log.info(f"✅ 已注册驱动: {drive_type.value} -> {driver_class.__name__}")
+            try:
+                cls._drivers[drive_type] = driver_class
+            except Exception as e:
+                log.error(f"驱动注册失败: {drive_type.value} -> {driver_class.__name__}, 错误: {e}")
+                raise
             return driver_class
 
         return decorator

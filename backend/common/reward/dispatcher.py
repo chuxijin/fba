@@ -3,13 +3,28 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.common.log import log
-from backend.common.reward.fulfiller import BaseRewardFulfiller, FeatureFulfiller, PointsFulfiller, VipFulfiller
+from backend.common.reward.fulfiller import (
+    BaseRewardFulfiller,
+    ChaojiCourseFulfiller,
+    FeatureFulfiller,
+    PointsFulfiller,
+    VipFulfiller,
+)
 
 # 权益类型 → 履约策略的注册表
+# reward_type 命名约定:
+# 1. 使用 snake_case, 描述“发放什么/由谁发放”, 不描述审核条件
+# 2. 新增第三方履约时, 先在 fulfiller.py 新增 XxxFulfiller, 再在这里注册
+# 3. quest_task.reward_type 必须与这里的 key 一致, quest_task.reward_data 放该履约器需要的配置
+# 示例:
+# - chaoji_course: 调超级考研代理后台开通课程
+# - baidu_netdisk_code: 发放网盘兑换码
+# - external_coupon: 调第三方接口发券
 _FULFILLER_REGISTRY: dict[str, BaseRewardFulfiller] = {
     'vip': VipFulfiller(),
     'points': PointsFulfiller(),
     'feature': FeatureFulfiller(),
+    'chaoji_course': ChaojiCourseFulfiller(),
 }
 
 

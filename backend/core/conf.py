@@ -576,6 +576,15 @@ class Settings(BaseSettings):
     SMSBAO_API_KEY: str = ''  # 短信宝 ApiKey（后台获取，比密码 MD5 更安全）
     SMSBAO_CONTENT_TEMPLATE: str = ''  # 自定义短信内容模板（可选）
 
+    ##################################################
+    # [ App ] 超级考研代理开通
+    ##################################################
+    CHAOJI_KAOYAN_BASE_URL: str = 'https://www.chaojikaoyan.com'
+    CHAOJI_KAOYAN_AGENT_TEL: str = ''
+    CHAOJI_KAOYAN_AGENT_KEY: str = ''
+    CHAOJI_KAOYAN_ORDER_TYPE: int = 6
+    CHAOJI_KAOYAN_REQUEST_TIMEOUT: int = 20
+
 
     @model_validator(mode='before')
     @classmethod

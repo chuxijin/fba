@@ -31,6 +31,7 @@ class QuestClaim(Base):
     expire_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='领取过期时间')
     submission_links: Mapped[list | None] = mapped_column(sa.JSON, default=None, comment='提交链接列表')
     submission_images: Mapped[list | None] = mapped_column(sa.JSON, default=None, comment='提交图片列表')
+    submission_data: Mapped[dict | None] = mapped_column(sa.JSON, default=None, comment='结构化提交数据')
     submission_note: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='提交说明')
     submit_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='提交时间')
     review_remark: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='审核备注')

@@ -35,6 +35,7 @@ class RewardService:
         :return:
         """
         payload = dict(quest.reward_data or {})
+        payload['claim_submission_data'] = claim.submission_data or {}
         payload['source'] = RewardService.SOURCE
         payload['source_key'] = source_key
         payload.setdefault(
