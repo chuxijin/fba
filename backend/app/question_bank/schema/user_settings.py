@@ -63,7 +63,9 @@ class PracticeDataResetResult(BaseModel):
     """做题数据重置结果"""
 
     ai_evaluation_count: int = Field(default=0, description='删除的 AI 批改记录数')
+    agent_task_count: int = Field(default=0, description='删除的申论 Agent 批改任务数')
     practice_record_count: int = Field(default=0, description='删除的答题记录数')
+    progress_count: int = Field(default=0, description='删除的内容进度汇总数')
     session_question_count: int = Field(default=0, description='删除的会话题目快照数')
     practice_session_count: int = Field(default=0, description='删除的练习会话数')
     wrong_question_count: int = Field(default=0, description='删除的错题记录数')

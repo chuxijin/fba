@@ -14,9 +14,12 @@ from backend.app.question_bank.model import (
     UserPracticeStats,
     WrongQuestionBook,
 )
+from backend.app.question_bank.crud.crud_user_bank_progress import user_bank_progress_dao
 from backend.app.question_bank.schema.user_settings import PracticeDataResetResult
 from backend.common.log import log
 from backend.database.redis import redis_client
+from backend.plugin.agents.model import AgentTask
+from backend.plugin.agents.schema.report import AgentType
 
 
 class PracticeDataResetService:
@@ -59,9 +62,16 @@ class PracticeDataResetService:
         ai_evaluation_result = await db.execute(
             delete(PracticeAIEvaluation).where(PracticeAIEvaluation.user_id == user_id)
         )
+        agent_task_result = await db.execute(
+            delete(AgentTask).where(
+                AgentTask.user_id == user_id,
+                AgentTask.agent_type == AgentType.shenlun.value,
+            )
+        )
         practice_record_result = await db.execute(
             delete(PracticeRecord).where(PracticeRecord.user_id == user_id)
         )
+        progress_count = await user_bank_progress_dao.delete_by_user(db=db, user_id=user_id)
         session_question_result = await db.execute(
             delete(SessionQuestion).where(SessionQuestion.session_id.in_(user_session_ids))
         )
@@ -95,7 +105,9 @@ class PracticeDataResetService:
 
         return PracticeDataResetResult(
             ai_evaluation_count=cls._affected_count(ai_evaluation_result.rowcount),
+            agent_task_count=cls._affected_count(agent_task_result.rowcount),
             practice_record_count=cls._affected_count(practice_record_result.rowcount),
+            progress_count=progress_count,
             session_question_count=cls._affected_count(session_question_result.rowcount),
             practice_session_count=cls._affected_count(practice_session_result.rowcount),
             wrong_question_count=cls._affected_count(wrong_question_result.rowcount),

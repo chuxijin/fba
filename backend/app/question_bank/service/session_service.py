@@ -23,6 +23,7 @@ from backend.app.question_bank.crud.crud_question import (
     question_statistics_dao,
 )
 from backend.app.question_bank.crud.crud_session_question import session_question_dao
+from backend.app.question_bank.crud.crud_user_bank_progress import user_bank_progress_dao
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
@@ -52,6 +53,7 @@ from backend.app.question_bank.service.ai_evaluation_service import (
     SUBJECTIVE_QUESTION_TYPES,
     practice_ai_evaluation_service,
 )
+from backend.app.question_bank.service.bank_mount_service import COLLECTION_BANK_TYPE, bank_mount_service
 from backend.app.question_bank.service.check_in_service import check_in_service
 from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
@@ -378,6 +380,7 @@ class SessionService:
         *,
         placements: list[QuestionPlacement],
         bank_id: int | None = None,
+        bank_ids: list[int] | None = None,
         chapter_id: int | None = None,
         chapter_scope_ids: list[int] | None = None,
     ) -> QuestionPlacement | None:
@@ -386,6 +389,7 @@ class SessionService:
 
         :param placements: 候选挂载列表
         :param bank_id: 题库 ID
+        :param bank_ids: 题库 ID 列表
         :param chapter_id: 章节 ID
         :param chapter_scope_ids: 章节及子章节 ID 列表
         :return:
@@ -394,6 +398,24 @@ class SessionService:
             return None
 
         sorted_candidates = sorted(placements, key=lambda item: (item.sort_order, item.id))
+
+        if bank_ids:
+            bank_id_set = set(bank_ids)
+            if chapter_id is not None:
+                for placement in sorted_candidates:
+                    if placement.bank_id in bank_id_set and placement.chapter_id == chapter_id:
+                        return placement
+                if chapter_scope_ids:
+                    chapter_scope_set = set(chapter_scope_ids)
+                    for placement in sorted_candidates:
+                        if placement.bank_id in bank_id_set and placement.chapter_id in chapter_scope_set:
+                            return placement
+                return None
+
+            for placement in sorted_candidates:
+                if placement.bank_id in bank_id_set:
+                    return placement
+            return None
 
         if bank_id is not None and chapter_id is not None:
             for placement in sorted_candidates:
@@ -425,6 +447,37 @@ class SessionService:
 
         return sorted_candidates[0]
 
+    @staticmethod
+    async def _resolve_placement_bank_scope(
+        *,
+        db: AsyncSession,
+        bank_id: int | None,
+    ) -> list[int] | None:
+        """
+        解析实际筛题题库范围
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :return:
+        """
+        if bank_id is None:
+            return None
+
+        stmt = select(QuestionBank.id, QuestionBank.bank_type).where(
+            QuestionBank.id == bank_id,
+            QuestionBank.status == 1,
+        )
+        row = (await db.execute(stmt)).first()
+        if not row:
+            raise errors.NotFoundError(msg='刷题内容不存在或已下架')
+        if int(row.bank_type or 0) != COLLECTION_BANK_TYPE:
+            return [bank_id]
+
+        return await bank_mount_service.get_active_descendant_item_ids(
+            db,
+            collection_id=bank_id,
+        )
+
     # ------------------------------------------------------------------
     #  Session 生命周期
     # ------------------------------------------------------------------
@@ -449,9 +502,16 @@ class SessionService:
         :param obj: 创建会话参数
         :return:
         """
+        bank_scope_ids = await cls._resolve_placement_bank_scope(db=db, bank_id=obj.bank_id)
+        collect_param = cls._build_collect_param(obj=obj, source_type='placement')
+        if obj.bank_id is not None:
+            collect_param.cat_id = None
+        if bank_scope_ids and obj.bank_id is not None and obj.bank_id not in bank_scope_ids:
+            collect_param.bank_ids = bank_scope_ids
+
         collect_result = await question_selector_service.collect_question_ids(
             db=db,
-            params=cls._build_collect_param(obj=obj, source_type='placement'),
+            params=collect_param,
             user_id=user_id,
         )
         chapter_scope_ids = await question_selector_service.resolve_chapter_scope_ids(
@@ -462,6 +522,7 @@ class SessionService:
             db=db,
             question_ids=collect_result.question_ids,
             bank_id=obj.bank_id,
+            bank_ids=bank_scope_ids,
             chapter_id=obj.chapter_id,
             chapter_scope_ids=chapter_scope_ids,
         )
@@ -500,10 +561,12 @@ class SessionService:
         :return:
         """
         # ---- 1. 根据 question_ids 查询 placement ----
+        bank_scope_ids = await cls._resolve_placement_bank_scope(db=db, bank_id=obj.bank_id)
         placements = await cls._query_placements_by_question_ids(
             db=db,
             question_ids=obj.question_ids,
             bank_id=obj.bank_id,
+            bank_ids=bank_scope_ids,
             chapter_id=obj.chapter_id,
             chapter_scope_ids=await question_selector_service.resolve_chapter_scope_ids(
                 db=db,
@@ -547,6 +610,7 @@ class SessionService:
         db: AsyncSession,
         question_ids: list[int],
         bank_id: int | None = None,
+        bank_ids: list[int] | None = None,
         chapter_id: int | None = None,
         chapter_scope_ids: list[int] | None = None,
     ) -> list[QuestionPlacement]:
@@ -556,6 +620,7 @@ class SessionService:
         :param db: 数据库会话
         :param question_ids: 题目 ID 列表
         :param bank_id: 题库 ID
+        :param bank_ids: 题库 ID 列表
         :param chapter_id: 篇章 ID
         :param chapter_scope_ids: 篇章及子篇章 ID 列表
         :return:
@@ -587,6 +652,7 @@ class SessionService:
             matched_placement = cls._pick_placement_by_context(
                 placements=placement_map.get(question_id, []),
                 bank_id=bank_id,
+                bank_ids=bank_ids,
                 chapter_id=chapter_id,
                 chapter_scope_ids=chapter_scope_ids,
             )
@@ -938,6 +1004,10 @@ class SessionService:
         upserted_records: list[PracticeRecord] = []
         if records_dict:
             upserted_records = await practice_record_dao.batch_upsert(db=db, records=records_dict)
+            await user_bank_progress_dao.upsert_by_record_ids(
+                db=db,
+                record_ids=[int(record.id) for record in upserted_records],
+            )
             result['records'] = [
                 {
                     'record_id': int(record.id),
@@ -1110,6 +1180,7 @@ class SessionService:
         if not records:
             raise errors.NotFoundError(msg='没有答题记录可提交')
 
+        pre_submit_unjudged_qids = {record.question_id for record in records if record.is_correct is None}
         question_ids = [r.question_id for r in records]
         stmt = (
             select(Question)
@@ -1260,53 +1331,62 @@ class SessionService:
                 })
 
             # 3d. 汇总错题本（按 question_id 宽松匹配，忽略 placement）
-            existing_wrong_list = existing_wrong_by_qid.get(record.question_id, [])
-            if not is_correct:
-                if existing_wrong_list:
-                    for existing_wrong in existing_wrong_list:
-                        wrong_update_rows.append({
-                            'filter_wrong_id': existing_wrong.id,
-                            'set_wrong_count': existing_wrong.wrong_count + 1,
-                            'set_correct_streak': 0,
-                            'set_last_wrong_time': submit_time,
-                            'set_last_practice_time': existing_wrong.last_practice_time,
-                            'set_is_mastered': False,
-                            'set_mastered_time': None,
+            should_update_wrong_book = (
+                question.type in SUBJECTIVE_QUESTION_TYPES
+                or record.question_id in pre_submit_unjudged_qids
+            )
+            if should_update_wrong_book:
+                existing_wrong_list = existing_wrong_by_qid.get(record.question_id, [])
+                if not is_correct:
+                    if existing_wrong_list:
+                        for existing_wrong in existing_wrong_list:
+                            wrong_update_rows.append({
+                                'filter_wrong_id': existing_wrong.id,
+                                'set_wrong_count': existing_wrong.wrong_count + 1,
+                                'set_correct_streak': 0,
+                                'set_last_wrong_time': submit_time,
+                                'set_last_practice_time': existing_wrong.last_practice_time,
+                                'set_is_mastered': False,
+                                'set_mastered_time': None,
+                            })
+                    else:
+                        wrong_create_rows.append({
+                            'user_id': user_id,
+                            'question_id': record.question_id,
+                            'placement_id': placement_id,
+                            'wrong_count': 1,
+                            'correct_streak': 0,
+                            'first_wrong_time': submit_time,
+                            'last_wrong_time': submit_time,
+                            'last_practice_time': None,
+                            'is_mastered': False,
+                            'mastered_time': None,
+                            'created_by': user_id,
                         })
                 else:
-                    wrong_create_rows.append({
-                        'user_id': user_id,
-                        'question_id': record.question_id,
-                        'placement_id': placement_id,
-                        'wrong_count': 1,
-                        'correct_streak': 0,
-                        'first_wrong_time': submit_time,
-                        'last_wrong_time': submit_time,
-                        'last_practice_time': None,
-                        'is_mastered': False,
-                        'mastered_time': None,
-                        'created_by': user_id,
-                    })
-            else:
-                for existing_wrong in existing_wrong_list:
-                    new_streak = existing_wrong.correct_streak + 1
-                    is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
-                    mastered_time = existing_wrong.mastered_time
-                    if is_mastered and mastered_time is None:
-                        mastered_time = submit_time
-                    wrong_update_rows.append({
-                        'filter_wrong_id': existing_wrong.id,
-                        'set_wrong_count': existing_wrong.wrong_count,
-                        'set_correct_streak': new_streak,
-                        'set_last_wrong_time': existing_wrong.last_wrong_time,
-                        'set_last_practice_time': submit_time,
-                        'set_is_mastered': is_mastered,
-                        'set_mastered_time': mastered_time,
-                    })
+                    for existing_wrong in existing_wrong_list:
+                        new_streak = existing_wrong.correct_streak + 1
+                        is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
+                        mastered_time = existing_wrong.mastered_time
+                        if is_mastered and mastered_time is None:
+                            mastered_time = submit_time
+                        wrong_update_rows.append({
+                            'filter_wrong_id': existing_wrong.id,
+                            'set_wrong_count': existing_wrong.wrong_count,
+                            'set_correct_streak': new_streak,
+                            'set_last_wrong_time': existing_wrong.last_wrong_time,
+                            'set_last_practice_time': submit_time,
+                            'set_is_mastered': is_mastered,
+                            'set_mastered_time': mastered_time,
+                        })
 
         # 4. 批量落库
         if judged_record_rows:
-            await practice_record_dao.batch_upsert(db=db, records=judged_record_rows)
+            judged_records = await practice_record_dao.batch_upsert(db=db, records=judged_record_rows)
+            await user_bank_progress_dao.upsert_by_record_ids(
+                db=db,
+                record_ids=[int(record.id) for record in judged_records],
+            )
 
         if question_stats_rows:
             await question_statistics_dao.batch_update_stats(db=db, items=question_stats_rows)
@@ -1336,12 +1416,11 @@ class SessionService:
             total_score=total_score if total_score > 0 else None,
         )
 
-        # 6. 增量更新用户统计快照（只统计本次新判的记录，避免与异步任务重复）
-        # 刷题模式：每题 Celery process_record_side_effects 已增量过 → newly_judged 为空 → 跳过
-        # 考试模式 / 异常情况：record.is_correct 仍为 NULL → 此刻首次判 → 增量
-        newly_judged_qids = {r.question_id for r in records if r.is_correct is None}
-        if newly_judged_qids:
-            newly_rows = [row for row in judged_record_rows if row['question_id'] in newly_judged_qids]
+        # 6. 增量更新用户统计快照（只统计提交前尚未判题的记录，避免与异步任务重复）
+        # 刷题模式：每题 Celery process_record_side_effects 已增量过 → 提交前已判 → 跳过
+        # 考试模式 / 主观题手动未批改：提交前仍未判 → 此刻首次判 → 增量
+        if pre_submit_unjudged_qids:
+            newly_rows = [row for row in judged_record_rows if row['question_id'] in pre_submit_unjudged_qids]
             await user_practice_stats_dao.increment(
                 db=db,
                 user_id=user_id,

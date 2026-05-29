@@ -239,7 +239,7 @@ class QuestionImportService:
 
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
 
         # ============ 第一阶段：导入材料 ============
         material_id_map: dict[str, int] = {}
@@ -419,7 +419,7 @@ class QuestionImportService:
                         )
                         existing_count += 1
                         action = 'exists'
-                        message = row_message or '当前题库已存在，已更新挂载信息'
+                        message = row_message or '当前内容已存在，已更新挂载信息'
                     else:
                         db.add(QuestionPlacement(
                             question_id=existing_qid,
@@ -999,7 +999,7 @@ class QuestionImportService:
 
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
 
         # -------- 1. 保存公共材料 --------
         material_id_map: dict[str | int, int] = {}

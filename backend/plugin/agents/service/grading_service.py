@@ -5,6 +5,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.common.exception import errors
@@ -208,15 +209,15 @@ class GradingService:
                 await db.commit()
                 return
 
+            task = await self._get_task_for_update(db=db, task_id=task_id)
+            if task is None:
+                return
+
             quota_decision = await quota_provider.consume_quota(
                 db=db,
                 user_id=task.user_id,
                 agent_type=agent_type,
             )
-
-            task = await agent_task_dao.get(db=db, pk=task_id)
-            if task is None:
-                raise errors.NotFoundError(msg=f'批改任务不存在 task_id={task_id}')
             await agent_task_dao.mark_completed(
                 db=db,
                 task=task,
@@ -246,6 +247,18 @@ class GradingService:
                 error_message=error_message,
             )
             await db.commit()
+
+    @staticmethod
+    async def _get_task_for_update(db: AsyncSession, task_id: int) -> AgentTask | None:
+        """
+        锁定并获取任务
+
+        :param db: 数据库会话
+        :param task_id: 任务 ID
+        :return:
+        """
+        stmt = select(AgentTask).where(AgentTask.id == task_id).with_for_update()
+        return (await db.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
     def _build_state(task: AgentTask) -> GradingState:

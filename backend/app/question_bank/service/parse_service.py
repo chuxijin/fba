@@ -220,7 +220,7 @@ class ParseService:
 
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise ValueError('题库不存在')
+            raise ValueError('刷题内容不存在')
 
         filename = await upload_file(file, folder='temp_pdf')
         file_path = UPLOAD_DIR / filename
@@ -255,7 +255,7 @@ class ParseService:
         """
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise ValueError('题库不存在')
+            raise ValueError('刷题内容不存在')
 
         safe_bank_name = safe_path_segment(bank.name, default='bank')
         result = await ocr_service.recover_document(
@@ -353,7 +353,7 @@ class ParseService:
 
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise ValueError('题库不存在')
+            raise ValueError('刷题内容不存在')
 
         yield {'type': 'stage', 'stage': 'parse', 'message': '正在解析文档...'}
 

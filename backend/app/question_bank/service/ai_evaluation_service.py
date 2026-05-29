@@ -15,6 +15,8 @@ from sqlalchemy.orm import selectinload
 from backend.app.question_bank.crud.crud_ai_evaluation import practice_ai_evaluation_dao
 from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
+from backend.app.question_bank.crud.crud_user_bank_progress import user_bank_progress_dao
+from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.model import PracticeAIEvaluation, PracticeRecord, PracticeSession, Question
 from backend.app.question_bank.model.question import QuestionAnalysis
 from backend.common.exception import errors
@@ -730,6 +732,11 @@ class PracticeAIEvaluationService:
                         'created_by': record.user_id,
                     },
                 )
+                should_increment_stats = (
+                    trigger_source == 'manual'
+                    and session.status == 'in_progress'
+                    and record.is_correct is None
+                )
                 await practice_record_dao.update_judge_result(
                     db=db,
                     record_id=record.id,
@@ -739,6 +746,15 @@ class PracticeAIEvaluationService:
                     judged_at=finished_at,
                     judge_version=judge_version or QUESTION_EVAL_PROMPT_VERSION,
                 )
+                await user_bank_progress_dao.upsert_by_record_ids(db=db, record_ids=[int(record.id)])
+                if should_increment_stats:
+                    await user_practice_stats_dao.increment(
+                        db=db,
+                        user_id=record.user_id,
+                        answered=1,
+                        correct=1 if is_correct else 0,
+                        duration=record.answer_time or 0,
+                    )
                 evaluation_map[record.id] = evaluation
 
         return evaluation_map

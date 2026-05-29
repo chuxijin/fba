@@ -269,7 +269,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
 
     async def delete(self, db: AsyncSession, session_id: int) -> int:
         """
-        删除练习会话（级联删除关联的答题记录）
+        逻辑删除练习会话（保留答题记录和累计统计）
 
         :param db: 数据库会话
         :param session_id: 会话 ID

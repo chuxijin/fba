@@ -6,6 +6,7 @@ from backend.app.question_bank.api.v1.activation import router as activation_rou
 from backend.app.question_bank.api.v1.ai_evaluation import router as ai_evaluation_router
 from backend.app.question_bank.api.v1.auth import router as auth_router
 from backend.app.question_bank.api.v1.bank import router as bank_router
+from backend.app.question_bank.api.v1.bank_mount import router as bank_mount_router
 from backend.app.question_bank.api.v1.chapter import router as chapter_router
 from backend.app.question_bank.api.v1.favorite import router as favorite_router
 from backend.app.question_bank.api.v1.home import router as home_router
@@ -31,6 +32,7 @@ router.include_router(user_message_router, prefix='/messages', tags=['用户消�
 router.include_router(study_domain_router, prefix='/study-domains', tags=['学习领域'])
 router.include_router(home_router, prefix='/home', tags=['首页'])
 router.include_router(bank_router, prefix='/banks', tags=['题库'])
+router.include_router(bank_mount_router, prefix='/bank-mounts', tags=['刷题内容挂载'])
 router.include_router(chapter_router, prefix='/chapters', tags=['题库章节'])
 router.include_router(material_router, prefix='/materials', tags=['题目材料'])
 router.include_router(question_router, prefix='/questions', tags=['题目'])

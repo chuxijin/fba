@@ -54,7 +54,7 @@ async def get_practice_questions(
     if bank_id:
         perm_key = f'practice:bank:{bank_id}'
         if not await verify_permission(request, perm_key):
-            raise errors.ForbiddenError(msg=f'您没有该题库的刷题权限，需要权限: {perm_key}')
+            raise errors.ForbiddenError(msg=f'您没有该内容的刷题权限，需要权限: {perm_key}')
 
     questions = await practice_service.get_practice_questions(
         db=db,

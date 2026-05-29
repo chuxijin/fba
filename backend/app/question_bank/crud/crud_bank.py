@@ -119,6 +119,40 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         result = await db.execute(stmt)
         return [dict(row) for row in result.mappings().all()]
 
+    async def get_mappings_by_ids(self, db: AsyncSession, bank_ids: list[int]) -> list[dict]:
+        """
+        按 ID 列表获取内容映射
+
+        :param db: 数据库会话
+        :param bank_ids: 内容 ID 列表
+        :return:
+        """
+        if not bank_ids:
+            return []
+
+        stmt = select(self.model.__table__).where(self.model.id.in_(bank_ids))
+        result = await db.execute(stmt)
+        return [dict(row) for row in result.mappings().all()]
+
+    async def get_progress_count_mappings_by_ids(self, db: AsyncSession, bank_ids: list[int]) -> list[dict]:
+        """
+        按 ID 列表获取进度摘要需要的内容映射
+
+        :param db: 数据库会话
+        :param bank_ids: 内容 ID 列表
+        :return:
+        """
+        if not bank_ids:
+            return []
+
+        stmt = select(
+            self.model.id,
+            self.model.bank_type,
+            self.model.q_count_cache,
+        ).where(self.model.id.in_(bank_ids))
+        result = await db.execute(stmt)
+        return [dict(row) for row in result.mappings().all()]
+
     async def create(self, db: AsyncSession, obj: CreateBankParam, *, created_by: int) -> None:
         """
         创建题库

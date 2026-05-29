@@ -216,7 +216,9 @@ class QuestionSelectorService:
         needs_bank_join: bool,
         chapter_scope_ids: list[int] | None,
     ):
-        if params.bank_id is not None:
+        if params.bank_ids:
+            stmt = stmt.where(QuestionPlacement.bank_id.in_(params.bank_ids))
+        elif params.bank_id is not None:
             stmt = stmt.where(QuestionPlacement.bank_id == params.bank_id)
         if chapter_scope_ids:
             stmt = stmt.where(QuestionPlacement.chapter_id.in_(chapter_scope_ids))
@@ -283,7 +285,7 @@ class QuestionSelectorService:
         )
         needs_placement_exists = any(
             value is not None for value in (params.bank_id, params.chapter_id, params.review_status, params.is_active)
-        ) or needs_bank_join
+        ) or bool(params.bank_ids) or needs_bank_join
         if needs_placement_exists:
             placement_stmt = select(1).select_from(QuestionPlacement).where(QuestionPlacement.question_id == Question.id)
             placement_stmt = cls._apply_placement_filters(

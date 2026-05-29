@@ -4,8 +4,10 @@
 
 from .ai_evaluation import PracticeAIEvaluation
 from .bank import QuestionBank
+from .bank_mount import QuestionBankMount
 from .chapter import QuestionChapter
 from .practice import PracticeRecord, PracticeSession, SessionQuestion, WrongQuestionBook
+from .progress import UserBankQuestionProgress
 from .question import (
     OptionContent,
     Question,
@@ -26,6 +28,7 @@ from .user_message import UserMessage, UserMessageRead
 __all__ = [
     'PracticeAIEvaluation',
     'QuestionBank',
+    'QuestionBankMount',
     'QuestionChapter',
     'Question',
     'OptionContent',
@@ -40,6 +43,7 @@ __all__ = [
     'PracticeSession',
     'SessionQuestion',
     'PracticeRecord',
+    'UserBankQuestionProgress',
     'WrongQuestionBook',
     'UserAccount',
     'UserCheckIn',

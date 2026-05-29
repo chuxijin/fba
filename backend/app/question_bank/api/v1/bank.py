@@ -42,76 +42,76 @@ async def get_authenticated_user_id(request: Request) -> int:
     return int(user.id)
 
 
-@router.get('/recommend', summary='获取推荐题库', name='qbank_get_recommend_banks')
+@router.get('/recommend', summary='获取推荐刷题内容', name='qbank_get_recommend_banks')
 async def get_recommend_banks(
     db: CurrentSession,
 ) -> ResponseSchemaModel[list[GetBankDetail]]:
-    """🌍 公开接口 - 获取全局热门推荐题库（最近7天做题最多的前5个）"""
+    """🌍 公开接口 - 获取全局热门推荐刷题内容（最近 7 天做题最多的前 5 个）"""
     data = await bank_service.get_recommend_banks(db=db)
     return response_base.success(data=data)
 
 
 @router.get(
     '/progress/summary',
-    summary='批量获取题库进度摘要',
+    summary='批量获取刷题内容进度摘要',
     name='qbank_get_bank_progress_summary',
     dependencies=[DependsJwtAuth],
 )
 async def get_bank_progress_summary(
     request: Request,
     db: CurrentSession,
-    bank_ids: Annotated[list[int] | None, Query(description='题库 ID 列表')] = None,
-    cat_id: Annotated[int | None, Query(description='分类 ID（自动展开子孙分类下的所有题库）')] = None,
+    bank_ids: Annotated[list[int] | None, Query(description='内容 ID 列表')] = None,
+    cat_id: Annotated[int | None, Query(description='分类 ID（自动展开子孙分类下的所有内容）')] = None,
 ) -> ResponseSchemaModel[list[BankProgressSummary]]:
-    """🔒 登录接口 - 批量获取题库累计进度摘要"""
+    """🔒 登录接口 - 批量获取刷题内容累计进度摘要"""
     data = await bank_service.get_progress_summaries(
         db=db, bank_ids=bank_ids, cat_id=cat_id, user_id=request.user.id,
     )
     return response_base.success(data=data)
 
 
-@router.get('/{pk}', summary='获取题库详情', name='qbank_get_bank')
+@router.get('/{pk}', summary='获取刷题内容详情', name='qbank_get_bank')
 async def get_bank(
-    db: CurrentSession, pk: Annotated[int, Path(description='题库 ID')]
+    db: CurrentSession, pk: Annotated[int, Path(description='内容 ID')]
 ) -> ResponseSchemaModel[GetBankDetailWithChapters]:
-    """🌍 公开接口 - 任何人都可以查看题库详情（含章节树）"""
+    """🌍 公开接口 - 任何人都可以查看刷题内容详情（含章节树）"""
     data = await bank_service.get(db=db, pk=pk)
     return response_base.success(data=data)
 
 
 @router.get(
     '/{pk}/chapter-progress',
-    summary='获取题库章节进度',
+    summary='获取刷题内容章节进度',
     name='qbank_get_bank_chapter_progress',
     dependencies=[DependsJwtAuth],
 )
 async def get_bank_chapter_progress(
     request: Request,
     db: CurrentSession,
-    pk: Annotated[int, Path(description='题库 ID')],
+    pk: Annotated[int, Path(description='内容 ID')],
 ) -> ResponseSchemaModel[GetBankChapterProgress]:
-    """🔒 登录接口 - 获取用户在指定题库下的章节做题进度"""
+    """🔒 登录接口 - 获取用户在指定刷题内容下的章节做题进度"""
     data = await bank_service.get_chapter_progress(db=db, bank_id=pk, user_id=request.user.id)
     return response_base.success(data=data)
 
 
 @router.get(
     '/{pk}/questions/all',
-    summary='获取题库下所有题目（含答案）',
+    summary='获取刷题内容下所有题目（含答案）',
     name='qbank_get_bank_questions_all',
     dependencies=[DependsJwtAuth],
 )
 async def get_bank_questions_all(
     request: Request,
     db: CurrentSession,
-    pk: Annotated[int, Path(description='题库 ID')],
+    pk: Annotated[int, Path(description='内容 ID')],
     offset: Annotated[int, Query(ge=0, description='偏移量')] = 0,
     limit: Annotated[int, Query(ge=1, le=500, description='每批数量上限')] = 200,
 ) -> ResponseSchemaModel:
     """
-    🌍 公开接口 - 分批获取指定题库下的题目（包含答案和解析）
+    🌍 公开接口 - 分批获取指定刷题内容下的题目（包含答案和解析）
 
-    - 支持 offset / limit 分批拉取，避免大题库一次性 OOM
+    - 支持 offset / limit 分批拉取，避免大内容一次性 OOM
     - 用于导出或离线使用
     """
     await membership_service.verify_bank_access(db=db, user_id=request.user.id, bank_id=pk)
@@ -136,18 +136,18 @@ async def get_bank_questions_all(
     })
 
 
-@router.get('', summary='获取题库树形列表', name='qbank_get_bank_list')
+@router.get('', summary='获取刷题内容树形列表', name='qbank_get_bank_list')
 async def get_bank_list(
     db: CurrentSession,
     cat_id: Annotated[int | None, Query(description='分类 ID')] = None,
-    status: Annotated[int | None, Query(description='题库状态')] = None,
+    status: Annotated[int | None, Query(description='内容状态')] = None,
     keyword: Annotated[str | None, Query(description='关键字搜索')] = None,
-    bank_type: Annotated[int | None, Query(description='内容类型: 1=题库, 2=试卷, 3=合集')] = None,
-    parent_id: Annotated[int | None, Query(description='父级题库 ID')] = None,
+    bank_type: Annotated[int | None, Query(description='内容类型: 1=习题, 2=试卷, 3=合集')] = None,
+    parent_id: Annotated[int | None, Query(description='父级合集 ID')] = None,
     study_domain: Annotated[str | None, Query(description='学习领域编码')] = None,
-    exclude_empty: Annotated[bool, Query(description='是否过滤掉无题目的空题库(含递归判断)')] = True,
+    exclude_empty: Annotated[bool, Query(description='是否过滤掉无题目的空内容(含递归判断)')] = True,
 ) -> ResponseModel:
-    """🌍 公开接口 - 任何人都可以查看题库树形列表"""
+    """🌍 公开接口 - 任何人都可以查看刷题内容树形列表"""
     data = await bank_service.get_list(
         db=db,
         cat_id=cat_id,
@@ -163,7 +163,7 @@ async def get_bank_list(
 
 @router.post(
     '',
-    summary='创建题库',
+    summary='创建刷题内容',
     name='qbank_create_bank',
     dependencies=[
         DependsJwtAuth,
@@ -172,7 +172,7 @@ async def get_bank_list(
     ],
 )
 async def create_bank(request: Request, db: CurrentSessionTransaction, obj: CreateBankParam) -> ResponseModel:
-    """🔐 管理员接口 - 只有管理员可以创建题库"""
+    """🔐 管理员接口 - 只有管理员可以创建刷题内容"""
     user_id = await get_authenticated_user_id(request)
     await bank_service.create(db=db, obj=obj, created_by=user_id)
     return response_base.success()
@@ -180,7 +180,7 @@ async def create_bank(request: Request, db: CurrentSessionTransaction, obj: Crea
 
 @router.put(
     '/{pk}',
-    summary='更新题库',
+    summary='更新刷题内容',
     name='qbank_update_bank',
     dependencies=[
         DependsJwtAuth,
@@ -189,9 +189,9 @@ async def create_bank(request: Request, db: CurrentSessionTransaction, obj: Crea
     ],
 )
 async def update_bank(
-    request: Request, db: CurrentSessionTransaction, pk: Annotated[int, Path(description='题库 ID')], obj: UpdateBankParam
+    request: Request, db: CurrentSessionTransaction, pk: Annotated[int, Path(description='内容 ID')], obj: UpdateBankParam
 ) -> ResponseModel:
-    """🔐 管理员接口 - 只有管理员可以更新题库"""
+    """🔐 管理员接口 - 只有管理员可以更新刷题内容"""
     user_id = await get_authenticated_user_id(request)
     count = await bank_service.update(db=db, pk=pk, obj=obj, updated_by=user_id)
     if count > 0:
@@ -201,7 +201,7 @@ async def update_bank(
 
 @router.delete(
     '',
-    summary='删除题库',
+    summary='删除刷题内容',
     name='qbank_delete_bank',
     dependencies=[
         DependsJwtAuth,
@@ -210,7 +210,7 @@ async def update_bank(
     ],
 )
 async def delete_bank(db: CurrentSessionTransaction, obj: DeleteBankParam) -> ResponseModel:
-    """🔐 管理员接口 - 只有管理员可以删除题库"""
+    """🔐 管理员接口 - 只有管理员可以删除刷题内容"""
     count = await bank_service.delete(db=db, obj=obj)
     if count > 0:
         return response_base.success()

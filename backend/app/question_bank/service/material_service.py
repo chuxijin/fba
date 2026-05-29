@@ -105,12 +105,12 @@ class MaterialService:
         # 验证题库存在
         bank = await bank_dao.get(db, obj.bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
 
         # 检查标题是否重复
         existing = await material_dao.get_by_title(db, obj.bank_id, obj.title)
         if existing:
-            raise errors.ConflictError(msg='该题库中已存在同名材料')
+            raise errors.ConflictError(msg='该内容中已存在同名材料')
 
         material = await material_dao.create(db, obj, created_by=created_by)
         await db.flush()
@@ -134,12 +134,12 @@ class MaterialService:
         # 验证题库存在
         bank = await bank_dao.get(db, obj.bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
 
         # 检查标题是否重复（排除自身）
         existing = await material_dao.get_by_title(db, obj.bank_id, obj.title)
         if existing and existing.id != pk:
-            raise errors.ConflictError(msg='该题库中已存在同名材料')
+            raise errors.ConflictError(msg='该内容中已存在同名材料')
 
         return await material_dao.update(db, pk, obj, updated_by=updated_by)
 
@@ -204,4 +204,3 @@ class MaterialService:
 
 
 material_service: MaterialService = MaterialService()
-

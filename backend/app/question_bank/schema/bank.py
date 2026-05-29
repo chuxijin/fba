@@ -11,29 +11,29 @@ from backend.common.schema import SchemaBase
 
 
 class BankSchemaBase(SchemaBase):
-    """题库基础"""
+    """刷题内容基础"""
 
     cat_id: int = Field(description='分类 ID')
-    name: str = Field(max_length=128, description='题库名称')
+    name: str = Field(max_length=128, description='内容名称')
     code: str = Field(max_length=32, description='业务编码')
     desc: str | None = Field(None, description='描述')
     year: int | None = Field(None, ge=1900, le=2100, description='年份（试卷用）')
     cover_url: str | None = Field(None, description='封面地址')
     difficulty: Decimal | None = Field(None, ge=0, description='整体难度')
-    bank_type: Literal[1, 2, 3] = Field(default=1, description='内容类型: 1=题库, 2=试卷, 3=合集')
+    bank_type: Literal[1, 2, 3] = Field(default=1, description='内容类型: 1=习题, 2=试卷, 3=合集')
     scene_mask: int = Field(default=1, ge=0, description='可用场景位标记: 1=练习, 2=考试, 4=模考, 8=错题重练')
-    parent_id: int | None = Field(None, description='父题库 ID')
+    parent_id: int | None = Field(None, description='父合集 ID')
     sort_order: int = Field(default=0, description='排序权重')
-    chapter_source_bank_id: int | None = Field(None, description='篇章来源题库 ID')
+    chapter_source_bank_id: int | None = Field(None, description='篇章来源内容 ID')
     status: int = Field(default=1, ge=0, description='状态')
 
 
 class GetBankDetail(BankSchemaBase):
-    """题库详情"""
+    """刷题内容详情"""
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(description='题库 ID')
+    id: int = Field(description='内容 ID')
     q_count_cache: int = Field(description='缓存题量')
     total_score_cache: Decimal = Field(description='缓存总分')
     buy_count: int = Field(description='购买数量')
@@ -44,14 +44,14 @@ class GetBankDetail(BankSchemaBase):
 
 
 class GetBankDetailWithChapters(GetBankDetail):
-    """题库详情"""
+    """刷题内容详情"""
 
     question_type_counts: dict[str, int] = Field(default_factory=dict, description='题型题量统计')
     chapters: list[GetChapterTree] = Field(default_factory=list, description='篇章树')
 
 
 class GetBankWithRelationDetail(GetBankDetail):
-    """题库关联详情"""
+    """刷题内容关联详情"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -68,28 +68,28 @@ class QuestionTypeProgress(SchemaBase):
 
 
 class BankParam(SchemaBase):
-    """题库查询参数"""
+    """刷题内容查询参数"""
 
     cat_id: int | None = Field(None, description='分类 ID')
-    status: int | None = Field(None, ge=0, description='题库状态')
+    status: int | None = Field(None, ge=0, description='内容状态')
     keyword: str | None = Field(None, description='关键字搜索')
-    bank_type: Literal[1, 2, 3] | None = Field(None, description='内容类型: 1=题库, 2=试卷, 3=合集')
-    parent_id: int | None = Field(None, description='父题库 ID')
+    bank_type: Literal[1, 2, 3] | None = Field(None, description='内容类型: 1=习题, 2=试卷, 3=合集')
+    parent_id: int | None = Field(None, description='父合集 ID')
     scene_mask: int | None = Field(None, ge=0, description='可用场景位标记')
 
 
 class CreateBankParam(BankSchemaBase):
-    """创建题库参数"""
+    """创建刷题内容参数"""
 
 
 class UpdateBankParam(BankSchemaBase):
-    """更新题库参数"""
+    """更新刷题内容参数"""
 
 
 class DeleteBankParam(SchemaBase):
-    """删除题库参数"""
+    """删除刷题内容参数"""
 
-    ids: list[int] = Field(description='题库 ID 列表')
+    ids: list[int] = Field(description='内容 ID 列表')
 
 
 class ChapterProgressNode(SchemaBase):
@@ -107,9 +107,9 @@ class ChapterProgressNode(SchemaBase):
 
 
 class GetBankChapterProgress(SchemaBase):
-    """题库篇章进度"""
+    """刷题内容篇章进度"""
 
-    bank_id: int = Field(description='题库 ID')
+    bank_id: int = Field(description='内容 ID')
     total_question_count: int = Field(default=0, description='总题数')
     total_answer_count: int = Field(default=0, description='总已做题数')
     total_correct_count: int = Field(default=0, description='总答对数')
@@ -118,9 +118,9 @@ class GetBankChapterProgress(SchemaBase):
 
 
 class BankProgressSummary(SchemaBase):
-    """题库进度摘要"""
+    """刷题内容进度摘要"""
 
-    bank_id: int = Field(description='题库 ID')
+    bank_id: int = Field(description='内容 ID')
     question_count: int = Field(default=0, description='题目总数')
     answer_count: int = Field(default=0, description='已做题数')
     correct_count: int = Field(default=0, description='答对数')

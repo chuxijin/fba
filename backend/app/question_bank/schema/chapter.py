@@ -46,7 +46,7 @@ class GetChapterWithRelationDetail(GetChapterDetail):
 
     model_config = ConfigDict(from_attributes=True)
 
-    bank: ChapterBankBrief | None = Field(None, description='所属题库信息')
+    bank: ChapterBankBrief | None = Field(None, description='所属内容信息')
 
 
 class GetChapterTree(GetChapterDetail):

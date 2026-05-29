@@ -41,7 +41,7 @@ class ChapterService:
         if not parent_chapter:
             raise errors.NotFoundError(msg='父级章节不存在')
         if parent_chapter.bank_id != bank_id:
-            raise errors.ForbiddenError(msg='父级章节不属于当前题库')
+            raise errors.ForbiddenError(msg='父级章节不属于当前内容')
         if current_chapter_id is not None and parent_chapter.id == current_chapter_id:
             raise errors.ForbiddenError(msg='禁止关联自身为父级')
 
@@ -84,7 +84,7 @@ class ChapterService:
         """
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
 
         source_bank_id = bank.chapter_source_bank_id or bank.id
         chapter_list = await chapter_dao.get_by_bank(db, source_bank_id)
@@ -127,9 +127,9 @@ class ChapterService:
         """
         bank = await bank_dao.get(db, obj.bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
         if (bank.chapter_source_bank_id or bank.id) != bank.id:
-            raise errors.ForbiddenError(msg='当前题库复用其他题库章节，请在章节源题库中维护章节')
+            raise errors.ForbiddenError(msg='当前内容复用其他内容章节，请在章节源内容中维护章节')
 
         existing_chapter = await chapter_dao.get_by_name(
             db=db, bank_id=obj.bank_id, name=obj.name, parent_id=obj.parent_id,
@@ -161,9 +161,9 @@ class ChapterService:
 
         bank = await bank_dao.get(db, obj.bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
         if (bank.chapter_source_bank_id or bank.id) != bank.id:
-            raise errors.ForbiddenError(msg='当前题库复用其他题库章节，请在章节源题库中维护章节')
+            raise errors.ForbiddenError(msg='当前内容复用其他内容章节，请在章节源内容中维护章节')
 
         existing_chapter = await chapter_dao.get_by_name(
             db=db, bank_id=obj.bank_id, name=obj.name, parent_id=obj.parent_id,

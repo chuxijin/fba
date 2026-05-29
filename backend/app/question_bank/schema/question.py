@@ -207,6 +207,12 @@ class QuestionCollectParam(SchemaBase):
         description='显式指定题目 ID 列表；传入后优先在该范围内继续过滤',
     )
     bank_id: int | None = Field(None, gt=0, description='题库 ID（筛题上下文）')
+    bank_ids: list[int] | None = Field(
+        None,
+        min_length=1,
+        max_length=5000,
+        description='题库 ID 列表（筛题上下文）',
+    )
     chapter_id: int | None = Field(None, gt=0, description='章节 ID（筛题上下文）')
     year_end: int | None = Field(None, ge=1900, le=2100, description='结束年份（按试卷年份）')
     year_start: int | None = Field(None, ge=1900, le=2100, description='起始年份（按试卷年份）')
@@ -308,7 +314,7 @@ class GetQuestionDynamicCollectionItem(SchemaBase):
     name: str = Field(description='题库名称')
     code: str = Field(description='题库编码')
     desc: str | None = Field(None, description='题库描述')
-    bank_type: int = Field(description='内容类型')
+    bank_type: int = Field(description='内容类型: 1=习题, 2=试卷, 3=合集')
     difficulty: Decimal | None = Field(None, description='难度')
     parent_id: int | None = Field(None, description='父级题库 ID')
     q_count_cache: int = Field(default=0, description='题库缓存题量')

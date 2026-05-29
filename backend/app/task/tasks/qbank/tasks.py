@@ -12,6 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
 from backend.app.question_bank.crud.crud_daily_rank import daily_rank_dao
+from backend.app.question_bank.crud.crud_user_bank_progress import user_bank_progress_dao
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
@@ -195,6 +196,9 @@ async def process_record_side_effects(
                 existing_wrongs_by_qid.setdefault(wrong.question_id, []).append(wrong)
 
             for record in records:
+                if record.is_correct is not None:
+                    continue
+
                 question = question_map.get(record.question_id)
                 if not question:
                     continue
@@ -293,6 +297,8 @@ async def process_record_side_effects(
                 correct=correct_count,
                 duration=duration_sum,
             )
+
+        await user_bank_progress_dao.upsert_by_record_ids(db=db, record_ids=record_ids)
 
     # 5. Redis 错题统计缓存失效（出事务后做）
     if wrong_create_rows or wrong_update_rows:

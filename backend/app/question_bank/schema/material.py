@@ -36,7 +36,7 @@ class GetMaterialWithRelationDetail(GetMaterialDetail):
 
     model_config = ConfigDict(from_attributes=True)
 
-    bank: ChapterBankBrief | None = Field(None, description='所属题库信息')
+    bank: ChapterBankBrief | None = Field(None, description='所属内容信息')
     question_count: int = Field(default=0, description='关联题目数量')
 
 

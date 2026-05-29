@@ -102,7 +102,7 @@ class MembershipService:
         """
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
 
         await cls._decide_resource(
             db=db,
@@ -110,7 +110,7 @@ class MembershipService:
             resource_type=ResourceType.QBANK,
             resource_id=bank_id,
             consume_trial=False,
-            deny_message='当前题库需要会员权限',
+            deny_message='当前内容需要会员权限',
         )
 
     @classmethod
@@ -143,7 +143,7 @@ class MembershipService:
         """
         bank = await bank_dao.get(db, bank_id)
         if not bank:
-            raise errors.NotFoundError(msg='题库不存在')
+            raise errors.NotFoundError(msg='刷题内容不存在')
 
         chapter = await chapter_dao.get(db, chapter_id)
         if not chapter:
@@ -201,7 +201,7 @@ class MembershipService:
             db=db, source_bank_id=chapter.bank_id
         )
         if not candidate_bank_ids:
-            raise errors.NotFoundError(msg='篇章关联题库不存在')
+            raise errors.NotFoundError(msg='篇章关联内容不存在')
         if len(candidate_bank_ids) > 1:
             raise errors.RequestError(msg='当前篇章被多个题库复用, 请传 bank_id 明确题库上下文')
 
