@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import json
-import time
 import uuid
 
 from datetime import timedelta
@@ -21,7 +20,6 @@ from backend.app.admin.schema.user import GetUserInfoWithRelationDetail
 from backend.common.context import ctx
 from backend.common.dataclasses import AccessToken, NewToken, RefreshToken, TokenPayload
 from backend.common.exception import errors
-from backend.common.log import log
 from backend.core.conf import settings
 from backend.database.db import async_db_session
 from backend.database.redis import redis_client
@@ -29,19 +27,6 @@ from backend.utils.timezone import timezone
 
 # JWT dependency injection
 DependsJwtAuth = Depends(HTTPBearer())
-
-def _should_log_access_my_perf() -> bool:
-    """判断是否记录 access my 临时耗时日志"""
-    if not ctx.exists():
-        return False
-    return bool(getattr(ctx, 'access_my_perf_path', None))
-
-
-def _access_my_perf_path() -> str:
-    """获取 access my 临时耗时日志路径"""
-    if not ctx.exists():
-        return ''
-    return getattr(ctx, 'access_my_perf_path', '') or ''
 
 
 class TokenInvalidReason(StrEnum):
@@ -421,49 +406,21 @@ async def get_jwt_user(user_id: int) -> GetUserInfoWithRelationDetail:
     :param user_id:
     :return:
     """
-    should_log_perf = _should_log_access_my_perf()
-    path = _access_my_perf_path()
-
-    redis_start = time.perf_counter()
     cache_user = await redis_client.get(f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}')
-    if should_log_perf:
-        log.info(
-            f'access-my-perf | {path} | jwt.user_cache_get='
-            f'{(time.perf_counter() - redis_start) * 1000:.3f}ms hit={bool(cache_user)}'
-        )
-
     if not cache_user:
-        db_start = time.perf_counter()
         async with async_db_session() as db:
             current_user = await get_current_user(db, user_id)
             user = GetUserInfoWithRelationDetail.model_validate(current_user)
-            if should_log_perf:
-                log.info(
-                    f'access-my-perf | {path} | jwt.user_db_load='
-                    f'{(time.perf_counter() - db_start) * 1000:.3f}ms'
-                )
 
-            set_start = time.perf_counter()
             await redis_client.setex(
                 f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}',
                 settings.TOKEN_EXPIRE_SECONDS,
                 user.model_dump_json(),
             )
-            if should_log_perf:
-                log.info(
-                    f'access-my-perf | {path} | jwt.user_cache_set='
-                    f'{(time.perf_counter() - set_start) * 1000:.3f}ms'
-                )
     else:
-        parse_start = time.perf_counter()
         # TODO: 在恰当的时机，应替换为使用 model_validate_json
         # https://docs.pydantic.dev/latest/concepts/json/#partial-json-parsing
         user = GetUserInfoWithRelationDetail.model_validate(from_json(cache_user, allow_partial=True))
-        if should_log_perf:
-            log.info(
-                f'access-my-perf | {path} | jwt.user_cache_parse='
-                f'{(time.perf_counter() - parse_start) * 1000:.3f}ms'
-            )
     return user
 
 
@@ -474,28 +431,10 @@ async def jwt_authentication(token: str) -> GetUserInfoWithRelationDetail:
     :param token: JWT token
     :return:
     """
-    should_log_perf = _should_log_access_my_perf()
-    path = _access_my_perf_path()
-
-    total_start = time.perf_counter()
-    decode_start = time.perf_counter()
     token_payload = jwt_decode(token)
-    if should_log_perf:
-        log.info(
-            f'access-my-perf | {path} | jwt.decode='
-            f'{(time.perf_counter() - decode_start) * 1000:.3f}ms'
-        )
-
     ctx.user_id = token_payload.user_id
 
-    token_get_start = time.perf_counter()
     redis_token = await redis_client.get(f'{settings.TOKEN_REDIS_PREFIX}:{ctx.user_id}:{token_payload.session_uuid}')
-    if should_log_perf:
-        log.info(
-            f'access-my-perf | {path} | jwt.token_get='
-            f'{(time.perf_counter() - token_get_start) * 1000:.3f}ms hit={bool(redis_token)}'
-        )
-
     if not redis_token:
         invalid_message = await get_token_invalid_message(ctx.user_id, token_payload.session_uuid)
         raise errors.TokenError(msg=invalid_message or 'Token 已过期')
@@ -504,13 +443,7 @@ async def jwt_authentication(token: str) -> GetUserInfoWithRelationDetail:
         await mark_session_invalid(ctx.user_id, token_payload.session_uuid, reason=TokenInvalidReason.permission_changed)
         raise errors.TokenError(msg='Token 已失效')
 
-    user = await get_jwt_user(ctx.user_id)
-    if should_log_perf:
-        log.info(
-            f'access-my-perf | {path} | jwt.total='
-            f'{(time.perf_counter() - total_start) * 1000:.3f}ms'
-        )
-    return user
+    return await get_jwt_user(ctx.user_id)
 
 
 def superuser_verify(request: Request, _token: str = DependsJwtAuth) -> bool:

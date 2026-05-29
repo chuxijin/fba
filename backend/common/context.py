@@ -24,7 +24,6 @@ class TypedContextProtocol(Protocol):
     language: str
 
     user_id: int | None
-    access_my_perf_path: str | None
 
 
 class TypedContext(_Context):
