@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import time
+
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
@@ -9,8 +11,10 @@ from backend.app.access.engine.cycle import build_cycle_key
 from backend.app.access.engine.ledger import ledger_service
 from backend.app.access.schema.entitlement import GetMyEntitlement
 from backend.app.access.schema.ledger import GetQuotaBalance
+from backend.app.access.schema.my import GetMyAccessSummary
 from backend.app.access.schema.subscription import GetMySubscription, GetMySubscriptionLedger
 from backend.app.access.service.my_service import my_access_service
+from backend.common.log import log
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
@@ -30,8 +34,13 @@ async def get_my_subscriptions(
 ) -> ResponseSchemaModel[list[GetMySubscription]]:
     """我的订阅列表"""
     user_id = int(request.user.id)
+    perf_start = time.perf_counter()
     data = await my_access_service.get_subscriptions(
         db=db, user_id=user_id, only_active=only_active
+    )
+    log.info(
+        f'access-my-perf | {request.url.path} | api.service='
+        f'{(time.perf_counter() - perf_start) * 1000:.3f}ms user_id={user_id}'
     )
     return response_base.success(data=data)
 
@@ -47,7 +56,33 @@ async def get_my_entitlements(
 ) -> ResponseSchemaModel[list[GetMyEntitlement]]:
     """我的权益列表"""
     user_id = int(request.user.id)
+    perf_start = time.perf_counter()
     data = await my_access_service.get_entitlements(db=db, user_id=user_id)
+    log.info(
+        f'access-my-perf | {request.url.path} | api.service='
+        f'{(time.perf_counter() - perf_start) * 1000:.3f}ms user_id={user_id}'
+    )
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/summary',
+    summary='我的权益汇总',
+    dependencies=[DependsJwtAuth],
+)
+async def get_my_access_summary(
+    request: Request,
+    db: CurrentSession,
+    force_refresh: Annotated[bool, Query(description='强制刷新缓存')] = False,
+) -> ResponseSchemaModel[GetMyAccessSummary]:
+    """我的权益汇总"""
+    user_id = int(request.user.id)
+    perf_start = time.perf_counter()
+    data = await my_access_service.get_summary(db=db, user_id=user_id, force_refresh=force_refresh)
+    log.info(
+        f'access-my-perf | {request.url.path} | api.service='
+        f'{(time.perf_counter() - perf_start) * 1000:.3f}ms user_id={user_id}'
+    )
     return response_base.success(data=data)
 
 

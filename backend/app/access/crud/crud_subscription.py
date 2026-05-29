@@ -7,7 +7,7 @@ from sqlalchemy import Row, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.access.constants import SubscriptionSource, SubscriptionStatus
+from backend.app.access.constants import CommonStatus, SubscriptionSource, SubscriptionStatus
 from backend.app.access.model.subscription import Subscription
 from backend.utils.timezone import timezone
 
@@ -59,6 +59,160 @@ class CRUDSubscription(CRUDPlus[Subscription]):
             stmt = stmt.where(self.model.status == status)
         stmt = stmt.order_by(self.model.id.desc())
         return (await db.execute(stmt)).scalars().all()
+
+    async def list_my_subscription_rows(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        only_active: bool,
+        ts: datetime,
+    ) -> Sequence[Row]:
+        """
+        获取我的订阅展示行
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param only_active: 是否仅当前有效
+        :param ts: 时间点
+        :return:
+        """
+        from backend.app.access.model.domain import StudyDomain
+        from backend.app.access.model.pack import EntitlementPack
+        from backend.app.access.model.template import SubscriptionTemplate, TemplatePack
+
+        stmt = (
+            select(
+                self.model.id.label('subscription_id'),
+                self.model.template_id.label('template_id'),
+                self.model.valid_period.label('valid_period'),
+                self.model.status.label('status'),
+                self.model.created_time.label('created_time'),
+                SubscriptionTemplate.code.label('template_code'),
+                SubscriptionTemplate.name.label('template_name'),
+                SubscriptionTemplate.cover_image.label('cover_image'),
+                EntitlementPack.id.label('pack_id'),
+                EntitlementPack.code.label('pack_code'),
+                EntitlementPack.grade.label('pack_grade'),
+                StudyDomain.code.label('domain_code'),
+            )
+            .join(SubscriptionTemplate, SubscriptionTemplate.id == self.model.template_id)
+            .outerjoin(TemplatePack, TemplatePack.template_id == self.model.template_id)
+            .outerjoin(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
+            .outerjoin(StudyDomain, StudyDomain.id == EntitlementPack.domain_id)
+            .where(
+                self.model.user_id == user_id,
+                self.model.status == SubscriptionStatus.ACTIVE,
+            )
+            .order_by(self.model.id.desc(), TemplatePack.id.asc())
+        )
+        if only_active:
+            stmt = stmt.where(self.model.valid_period.contains(ts))
+        return (await db.execute(stmt)).all()
+
+    async def list_my_access_graph_rows(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        ts: datetime,
+    ) -> Sequence[Row]:
+        """
+        获取我的订阅与订阅权益聚合行
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param ts: 时间点
+        :return:
+        """
+        from backend.app.access.model.domain import StudyDomain
+        from backend.app.access.model.entitlement import Entitlement
+        from backend.app.access.model.pack import EntitlementPack, PackItem
+        from backend.app.access.model.template import SubscriptionTemplate, TemplatePack
+
+        stmt = (
+            select(
+                self.model.id.label('subscription_id'),
+                self.model.template_id.label('template_id'),
+                self.model.valid_period.label('valid_period'),
+                self.model.status.label('status'),
+                self.model.created_time.label('created_time'),
+                SubscriptionTemplate.code.label('template_code'),
+                SubscriptionTemplate.name.label('template_name'),
+                SubscriptionTemplate.cover_image.label('cover_image'),
+                EntitlementPack.id.label('pack_id'),
+                EntitlementPack.code.label('pack_code'),
+                EntitlementPack.grade.label('pack_grade'),
+                StudyDomain.code.label('domain_code'),
+                PackItem.value_int.label('value_int'),
+                PackItem.value_meta.label('value_meta'),
+                Entitlement.id.label('entitlement_id'),
+                Entitlement.code.label('entitlement_code'),
+                Entitlement.name.label('entitlement_name'),
+                Entitlement.category.label('entitlement_category'),
+                Entitlement.description.label('entitlement_description'),
+            )
+            .select_from(self.model)
+            .join(SubscriptionTemplate, SubscriptionTemplate.id == self.model.template_id)
+            .outerjoin(TemplatePack, TemplatePack.template_id == self.model.template_id)
+            .outerjoin(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
+            .outerjoin(StudyDomain, StudyDomain.id == EntitlementPack.domain_id)
+            .outerjoin(
+                PackItem,
+                (PackItem.pack_id == EntitlementPack.id) & (PackItem.status == CommonStatus.ACTIVE),
+            )
+            .outerjoin(Entitlement, Entitlement.id == PackItem.entitlement_id)
+            .where(
+                self.model.user_id == user_id,
+                self.model.status == SubscriptionStatus.ACTIVE,
+                self.model.valid_period.contains(ts),
+            )
+            .order_by(self.model.id.desc(), TemplatePack.id.asc(), PackItem.id.asc())
+        )
+        return (await db.execute(stmt)).all()
+
+    async def list_active_entitlement_rows_for_user(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        ts: datetime,
+    ) -> Sequence[Row]:
+        """
+        获取用户有效订阅权益行
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param ts: 时间点
+        :return:
+        """
+        from backend.app.access.model.entitlement import Entitlement
+        from backend.app.access.model.pack import PackItem
+        from backend.app.access.model.template import TemplatePack
+
+        stmt = (
+            select(
+                Entitlement.id.label('entitlement_id'),
+                Entitlement.code.label('entitlement_code'),
+                Entitlement.name.label('entitlement_name'),
+                Entitlement.category.label('entitlement_category'),
+                Entitlement.description.label('entitlement_description'),
+                PackItem.value_int.label('value_int'),
+                PackItem.value_meta.label('value_meta'),
+            )
+            .select_from(self.model)
+            .join(TemplatePack, TemplatePack.template_id == self.model.template_id)
+            .join(PackItem, PackItem.pack_id == TemplatePack.pack_id)
+            .join(Entitlement, Entitlement.id == PackItem.entitlement_id)
+            .where(
+                self.model.user_id == user_id,
+                self.model.status == SubscriptionStatus.ACTIVE,
+                self.model.valid_period.contains(ts),
+                PackItem.status == CommonStatus.ACTIVE,
+            )
+            .order_by(Entitlement.code.asc(), PackItem.id.asc())
+        )
+        return (await db.execute(stmt)).all()
 
     async def get_select(
         self,

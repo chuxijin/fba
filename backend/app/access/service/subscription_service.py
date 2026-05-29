@@ -91,6 +91,7 @@ class SubscriptionService:
         )
         db.add(sub)
         await db.flush()
+        await SubscriptionService._invalidate_user_access_cache(obj.user_id)
 
         # 发送用户消息通知
         try:
@@ -159,6 +160,7 @@ class SubscriptionService:
         )
         db.add(sub)
         await db.flush()
+        await SubscriptionService._invalidate_user_access_cache(user_id)
 
         # 发送用户消息通知
         try:
@@ -198,10 +200,15 @@ class SubscriptionService:
         :param obj: 取消参数
         :return:
         """
-        await SubscriptionService.get(db, pk=pk)
-        return await subscription_dao.update_model(
+        sub = await subscription_dao.select_model(db, pk)
+        if not sub:
+            raise errors.NotFoundError(msg='订阅不存在')
+        count = await subscription_dao.update_model(
             db, pk, {'status': SubscriptionStatus.CANCELLED, 'cancel_reason': obj.cancel_reason}
         )
+        if count > 0:
+            await SubscriptionService._invalidate_user_access_cache(sub.user_id)
+        return count
 
     @staticmethod
     async def revoke_by_source(
@@ -235,6 +242,8 @@ class SubscriptionService:
         for sub in rows:
             sub.status = SubscriptionStatus.REFUNDED
             sub.cancel_reason = reason or '退款撤销'
+        if rows:
+            await SubscriptionService._invalidate_user_access_cache(user_id)
         return len(rows)
 
     @staticmethod
@@ -285,6 +294,7 @@ class SubscriptionService:
             current_upper = existing.valid_period.upper or timezone.now()
             new_upper = current_upper + timedelta(days=days)
             existing.valid_period = Range(existing.valid_period.lower, new_upper, bounds='[)')
+            await SubscriptionService._invalidate_user_access_cache(user_id)
 
             # 发送用户订阅续期消息通知
             try:
@@ -357,6 +367,18 @@ class SubscriptionService:
             if grade in seen:
                 return grade
         return 'basic'
+
+    @staticmethod
+    async def _invalidate_user_access_cache(user_id: int) -> None:
+        """
+        删除用户权益汇总缓存
+
+        :param user_id: 用户 ID
+        :return:
+        """
+        from backend.app.access.service.my_service import my_access_service
+
+        await my_access_service.invalidate_summary_cache(user_id)
 
 
 subscription_service: SubscriptionService = SubscriptionService()

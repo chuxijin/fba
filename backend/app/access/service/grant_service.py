@@ -77,6 +77,7 @@ class DirectGrantService:
         )
         db.add(grant)
         await db.flush()
+        await DirectGrantService._invalidate_user_access_cache(obj.user_id)
 
         # 发送用户消息通知
         try:
@@ -114,8 +115,23 @@ class DirectGrantService:
         :param pk: 授予 ID
         :return:
         """
-        await DirectGrantService.get(db, pk=pk)
-        return await direct_grant_dao.update_model(db, pk, {'status': CommonStatus.ARCHIVED})
+        grant = await DirectGrantService.get(db, pk=pk)
+        count = await direct_grant_dao.update_model(db, pk, {'status': CommonStatus.ARCHIVED})
+        if count > 0:
+            await DirectGrantService._invalidate_user_access_cache(grant.user_id)
+        return count
+
+    @staticmethod
+    async def _invalidate_user_access_cache(user_id: int) -> None:
+        """
+        删除用户权益汇总缓存
+
+        :param user_id: 用户 ID
+        :return:
+        """
+        from backend.app.access.service.my_service import my_access_service
+
+        await my_access_service.invalidate_summary_cache(user_id)
 
 
 direct_grant_service: DirectGrantService = DirectGrantService()

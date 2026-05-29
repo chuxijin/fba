@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import time
+
 from typing import Any
 
 from fastapi import Request, Response
@@ -9,11 +11,19 @@ from starlette.authentication import AuthenticationError as StarletteAuthenticat
 from starlette.requests import HTTPConnection
 
 from backend.app.admin.schema.user import GetUserInfoWithRelationDetail
+from backend.common.context import ctx
 from backend.common.exception.errors import TokenError
 from backend.common.log import log
 from backend.common.security.jwt import jwt_authentication
 from backend.core.conf import settings
 from backend.utils.serializers import MsgSpecJSONResponse
+
+
+_ACCESS_MY_PERF_PATHS = {
+    '/api/v1/access/my/summary',
+    '/api/v1/access/my/subscriptions',
+    '/api/v1/access/my/entitlements',
+}
 
 
 class AuthenticationError(StarletteAuthenticationError):
@@ -90,6 +100,10 @@ class JwtAuthMiddleware(AuthenticationBackend):
         if token is None:
             return None
 
+        path = request.url.path
+        should_log_perf = path in _ACCESS_MY_PERF_PATHS
+        ctx.access_my_perf_path = path if should_log_perf else None
+        perf_start = time.perf_counter()
         try:
             user = await jwt_authentication(token)
         except TokenError as exc:
@@ -98,7 +112,12 @@ class JwtAuthMiddleware(AuthenticationBackend):
             log.exception(f'JWT 授权异常：{e}')
             raise AuthenticationError(code=getattr(e, 'code', 500), msg=getattr(e, 'msg', 'Internal Server Error'))
 
+        if should_log_perf:
+            log.info(
+                f'access-my-perf | {path} | jwt.authenticate='
+                f'{(time.perf_counter() - perf_start) * 1000:.3f}ms user_id={user.id}'
+            )
+
         # 请注意，此返回使用非标准模式，所以在认证通过时，将丢失某些标准特性
         # 标准返回模式请查看：https://www.starlette.io/authentication/
         return AuthCredentials(['authenticated']), user
-

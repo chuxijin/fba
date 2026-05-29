@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import time
+
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.engine import Row
 
 from backend.app.access.constants import (
     CycleType,
@@ -24,10 +28,16 @@ from backend.app.access.model.subscription import Subscription
 from backend.app.access.model.template import SubscriptionTemplate
 from backend.app.access.schema.base import TimePeriodOutput
 from backend.app.access.schema.entitlement import GetMyEntitlement
+from backend.app.access.schema.my import GetMyAccessSummary
 from backend.app.access.schema.subscription import GetMySubscription, GetMySubscriptionLedger
 from backend.app.access.service.subscription_service import subscription_service
+from backend.common.context import ctx
+from backend.common.log import log
+from backend.database.redis import redis_client
 from backend.utils.timezone import timezone
 
+
+_MY_ACCESS_SUMMARY_CACHE_TTL = 30
 
 _GRADE_WEIGHTS = {
     'basic': 0,
@@ -39,6 +49,59 @@ _GRADE_WEIGHTS = {
 
 class MyAccessService:
     """我的权益聚合服务"""
+
+    @staticmethod
+    def _should_log_perf() -> bool:
+        """判断是否记录临时耗时日志"""
+        if not ctx.exists():
+            return False
+        return bool(getattr(ctx, 'access_my_perf_path', None))
+
+    @staticmethod
+    def _perf_path() -> str:
+        """获取临时耗时日志路径"""
+        if not ctx.exists():
+            return ''
+        return getattr(ctx, 'access_my_perf_path', '') or ''
+
+    @staticmethod
+    def _log_perf(segment: str, start_time: float, extra: str = '') -> None:
+        """
+        记录临时耗时日志
+
+        :param segment: 分段名称
+        :param start_time: 开始时间
+        :param extra: 额外信息
+        :return:
+        """
+        if not MyAccessService._should_log_perf():
+            return
+
+        suffix = f' {extra}' if extra else ''
+        log.info(
+            f'access-my-perf | {MyAccessService._perf_path()} | {segment}='
+            f'{(time.perf_counter() - start_time) * 1000:.3f}ms{suffix}'
+        )
+
+    @staticmethod
+    def _summary_cache_key(user_id: int) -> str:
+        """
+        获取我的权益汇总缓存键
+
+        :param user_id: 用户 ID
+        :return:
+        """
+        return f'access:my:summary:{user_id}'
+
+    @staticmethod
+    async def invalidate_summary_cache(user_id: int) -> None:
+        """
+        删除我的权益汇总缓存
+
+        :param user_id: 用户 ID
+        :return:
+        """
+        await redis_client.delete(MyAccessService._summary_cache_key(user_id))
 
     @staticmethod
     async def get_subscriptions(
@@ -55,22 +118,24 @@ class MyAccessService:
         :param only_active: 是否仅当前有效
         :return:
         """
-        subs = (
-            await subscription_service.list_active(db=db, user_id=user_id)
-            if only_active
-            else await subscription_service.list_for_user(
-                db=db, user_id=user_id, status=SubscriptionStatus.ACTIVE
-            )
+        total_start = time.perf_counter()
+        rows_start = time.perf_counter()
+        rows = await subscription_dao.list_my_subscription_rows(
+            db,
+            user_id=user_id,
+            only_active=only_active,
+            ts=timezone.now(),
         )
-        if not subs:
+        MyAccessService._log_perf('service.subscriptions.query_rows', rows_start, f'count={len(rows)}')
+        if not rows:
+            MyAccessService._log_perf('service.subscriptions.total', total_start, 'count=0')
             return []
 
-        context = await MyAccessService._load_subscription_context(db, subs)
-        return [
-            MyAccessService._build_subscription_item(sub, context)
-            for sub in subs
-            if sub.template_id in context['templates']
-        ]
+        build_start = time.perf_counter()
+        result = MyAccessService._build_subscription_items_from_rows(rows)
+        MyAccessService._log_perf('service.subscriptions.build', build_start, f'count={len(result)}')
+        MyAccessService._log_perf('service.subscriptions.total', total_start, f'count={len(result)}')
+        return result
 
     @staticmethod
     async def get_entitlements(db: AsyncSession, *, user_id: int) -> list[GetMyEntitlement]:
@@ -81,42 +146,79 @@ class MyAccessService:
         :param user_id: 用户 ID
         :return:
         """
+        total_start = time.perf_counter()
         now = timezone.now()
-        active_subs = await subscription_dao.list_active_for_user(db, user_id, now)
-        subscription_context = await MyAccessService._get_subscription_entitlement_context(db, active_subs)
-        entitlement_codes = set(subscription_context['entitlement_codes'])
 
-        grants = await direct_grant_dao.list_active_for_user(db, user_id=user_id, ts=now)
-        entitlement_codes.update(grant.entitlement_code for grant in grants)
-        if not entitlement_codes:
+        rows_start = time.perf_counter()
+        subscription_rows = await subscription_dao.list_active_entitlement_rows_for_user(
+            db,
+            user_id=user_id,
+            ts=now,
+        )
+        MyAccessService._log_perf(
+            'service.entitlements.query_subscription_rows',
+            rows_start,
+            f'count={len(subscription_rows)}',
+        )
+
+        collect_start = time.perf_counter()
+        entitlement_map: dict[str, dict[str, Any]] = {}
+        pack_items: list[dict[str, Any]] = []
+        for row in subscription_rows:
+            code = str(row.entitlement_code)
+            entitlement_map.setdefault(
+                code,
+                {
+                    'code': code,
+                    'name': row.entitlement_name,
+                    'category': row.entitlement_category,
+                    'description': row.entitlement_description,
+                },
+            )
+            pack_items.append({
+                'entitlement_code': code,
+                'value_int': row.value_int,
+                'value_meta': row.value_meta or {},
+            })
+        MyAccessService._log_perf(
+            'service.entitlements.collect_subscription_rows',
+            collect_start,
+            f'entitlement_count={len(entitlement_map)}',
+        )
+
+        grant_start = time.perf_counter()
+        grant_rows = await direct_grant_dao.list_active_entitlement_rows_for_user(
+            db,
+            user_id=user_id,
+            ts=now,
+        )
+        MyAccessService._log_perf('service.entitlements.query_grant_rows', grant_start, f'count={len(grant_rows)}')
+        for row in grant_rows:
+            code = str(row.entitlement_code)
+            entitlement_map.setdefault(
+                code,
+                {
+                    'code': code,
+                    'name': row.entitlement_name,
+                    'category': row.entitlement_category,
+                    'description': row.entitlement_description,
+                },
+            )
+
+        if not entitlement_map:
+            MyAccessService._log_perf('service.entitlements.total', total_start, 'count=0')
             return []
-
-        # 复用订阅上下文里已加载的 entitlement, 仅对纯 direct_grant 引入的 code 再补一次查询
-        sub_entitlement_map = subscription_context.get('entitlement_map')
-        entitlement_map: dict[str, Entitlement] = {}
-        if isinstance(sub_entitlement_map, dict):
-            for entitlement in sub_entitlement_map.values():
-                if isinstance(entitlement, Entitlement):
-                    entitlement_map[entitlement.code] = entitlement
-
-        grant_only_codes = sorted(entitlement_codes - set(entitlement_map.keys()))
-        if grant_only_codes:
-            extras = await entitlement_dao.get_by_codes(db, grant_only_codes)
-            for entitlement in extras:
-                entitlement_map[entitlement.code] = entitlement
 
         # 聚合 QUOTA 类型权益的当前余额: 优先取 ledger 现存余额, 否则按 pack_item 配置回退
         quota_codes = [
             code
-            for code in entitlement_codes
-            if code in entitlement_map and entitlement_map[code].category == EntitlementCategory.QUOTA
+            for code, entitlement in entitlement_map.items()
+            if entitlement['category'] == EntitlementCategory.QUOTA
         ]
         balances: dict[str, int] = {}
         if quota_codes:
-            cycle_types = MyAccessService._get_quota_cycle_types(
-                subscription_context,
-                quota_codes,
-            )
+            quota_start = time.perf_counter()
+            cycle_types = MyAccessService._get_quota_cycle_types_from_items(pack_items, quota_codes)
             entitlement_cycle_keys = {
                 code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
                 for code in quota_codes
@@ -129,23 +231,231 @@ class MyAccessService:
                 entitlement_cycle_keys=entitlement_cycle_keys,
                 scope_key='global',
             )
+            MyAccessService._log_perf(
+                'service.entitlements.query_quota_balances',
+                quota_start,
+                f'quota_count={len(quota_codes)} balance_count={len(balances)}',
+            )
+
             missing_codes = sorted(set(quota_codes) - set(balances))
             if missing_codes:
-                fallback_limits = MyAccessService._compute_quota_limits_from_context(
-                    subscription_context,
+                fallback_start = time.perf_counter()
+                fallback_limits = MyAccessService._compute_quota_limits_from_items(
+                    pack_items,
+                    missing_codes,
+                )
+                for code in missing_codes:
+                    balances[code] = fallback_limits.get(code, 0)
+                MyAccessService._log_perf(
+                    'service.entitlements.quota_fallback',
+                    fallback_start,
+                    f'count={len(missing_codes)}',
+                )
+
+        build_start = time.perf_counter()
+        result = [
+            GetMyEntitlement(
+                code=entitlement['code'],
+                name=entitlement['name'],
+                category=entitlement['category'],
+                description=entitlement['description'],
+                balance=balances.get(code),
+            )
+            for code, entitlement in sorted(entitlement_map.items())
+        ]
+        MyAccessService._log_perf('service.entitlements.build', build_start, f'count={len(result)}')
+        MyAccessService._log_perf('service.entitlements.total', total_start, f'count={len(result)}')
+        return result
+
+    @staticmethod
+    async def _build_entitlements_from_rows(
+        db: AsyncSession,
+        *,
+        user_id: int,
+        now: datetime,
+        subscription_rows: Sequence[Row],
+    ) -> list[GetMyEntitlement]:
+        """
+        从订阅权益聚合行构建权益列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param now: 当前时间
+        :param subscription_rows: 订阅权益聚合行
+        :return:
+        """
+        collect_start = time.perf_counter()
+        entitlement_map: dict[str, dict[str, Any]] = {}
+        pack_items: list[dict[str, Any]] = []
+        for row in subscription_rows:
+            if not row.entitlement_code:
+                continue
+
+            code = str(row.entitlement_code)
+            entitlement_map.setdefault(
+                code,
+                {
+                    'code': code,
+                    'name': row.entitlement_name,
+                    'category': row.entitlement_category,
+                    'description': row.entitlement_description,
+                },
+            )
+            pack_items.append({
+                'entitlement_code': code,
+                'value_int': row.value_int,
+                'value_meta': row.value_meta or {},
+            })
+        MyAccessService._log_perf(
+            'service.summary.collect_entitlements',
+            collect_start,
+            f'entitlement_count={len(entitlement_map)}',
+        )
+
+        grant_start = time.perf_counter()
+        grant_rows = await direct_grant_dao.list_active_entitlement_rows_for_user(
+            db,
+            user_id=user_id,
+            ts=now,
+        )
+        MyAccessService._log_perf('service.summary.query_grant_rows', grant_start, f'count={len(grant_rows)}')
+        for row in grant_rows:
+            code = str(row.entitlement_code)
+            entitlement_map.setdefault(
+                code,
+                {
+                    'code': code,
+                    'name': row.entitlement_name,
+                    'category': row.entitlement_category,
+                    'description': row.entitlement_description,
+                },
+            )
+
+        if not entitlement_map:
+            return []
+
+        quota_codes = [
+            code
+            for code, entitlement in entitlement_map.items()
+            if entitlement['category'] == EntitlementCategory.QUOTA
+        ]
+        balances: dict[str, int] = {}
+        if quota_codes:
+            quota_start = time.perf_counter()
+            cycle_types = MyAccessService._get_quota_cycle_types_from_items(pack_items, quota_codes)
+            entitlement_cycle_keys = {
+                code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
+                for code in quota_codes
+            }
+            from backend.app.access.crud.crud_ledger import quota_ledger_dao
+
+            balances = await quota_ledger_dao.get_latest_entries(
+                db,
+                user_id=user_id,
+                entitlement_cycle_keys=entitlement_cycle_keys,
+                scope_key='global',
+            )
+            MyAccessService._log_perf(
+                'service.summary.query_quota_balances',
+                quota_start,
+                f'quota_count={len(quota_codes)} balance_count={len(balances)}',
+            )
+
+            missing_codes = sorted(set(quota_codes) - set(balances))
+            if missing_codes:
+                fallback_limits = MyAccessService._compute_quota_limits_from_items(
+                    pack_items,
                     missing_codes,
                 )
                 for code in missing_codes:
                     balances[code] = fallback_limits.get(code, 0)
 
         return [
-            MyAccessService._build_entitlement_item(
-                entitlement_map[code],
+            GetMyEntitlement(
+                code=entitlement['code'],
+                name=entitlement['name'],
+                category=entitlement['category'],
+                description=entitlement['description'],
                 balance=balances.get(code),
             )
-            for code in sorted(entitlement_codes)
-            if code in entitlement_map
+            for code, entitlement in sorted(entitlement_map.items())
         ]
+
+    @staticmethod
+    async def get_summary(
+        db: AsyncSession,
+        *,
+        user_id: int,
+        force_refresh: bool = False,
+    ) -> GetMyAccessSummary:
+        """
+        获取我的权益汇总
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param force_refresh: 是否强制刷新
+        :return:
+        """
+        total_start = time.perf_counter()
+        cache_key = MyAccessService._summary_cache_key(user_id)
+        if not force_refresh:
+            cache_start = time.perf_counter()
+            cache_value = await redis_client.get(cache_key)
+            MyAccessService._log_perf(
+                'service.summary.cache_get',
+                cache_start,
+                f'hit={bool(cache_value)}',
+            )
+            if cache_value:
+                parse_start = time.perf_counter()
+                result = GetMyAccessSummary.model_validate_json(cache_value)
+                MyAccessService._log_perf('service.summary.cache_parse', parse_start)
+                MyAccessService._log_perf(
+                    'service.summary.total',
+                    total_start,
+                    f'subscriptions={len(result.subscriptions)} entitlements={len(result.entitlements)} cached=true',
+                )
+                return result
+
+        now = timezone.now()
+
+        graph_start = time.perf_counter()
+        graph_rows = await subscription_dao.list_my_access_graph_rows(db, user_id=user_id, ts=now)
+        MyAccessService._log_perf('service.summary.query_access_graph', graph_start, f'count={len(graph_rows)}')
+
+        build_subscriptions_start = time.perf_counter()
+        subscriptions = MyAccessService._build_subscription_items_from_rows(graph_rows)
+        MyAccessService._log_perf(
+            'service.summary.build_subscriptions',
+            build_subscriptions_start,
+            f'count={len(subscriptions)}',
+        )
+
+        entitlements_start = time.perf_counter()
+        entitlements = await MyAccessService._build_entitlements_from_rows(
+            db,
+            user_id=user_id,
+            now=now,
+            subscription_rows=graph_rows,
+        )
+        MyAccessService._log_perf('service.summary.build_entitlements', entitlements_start, f'count={len(entitlements)}')
+        MyAccessService._log_perf(
+            'service.summary.total',
+            total_start,
+            f'subscriptions={len(subscriptions)} entitlements={len(entitlements)}',
+        )
+        result = GetMyAccessSummary(
+            subscriptions=subscriptions,
+            entitlements=entitlements,
+        )
+        cache_set_start = time.perf_counter()
+        await redis_client.setex(
+            cache_key,
+            _MY_ACCESS_SUMMARY_CACHE_TTL,
+            result.model_dump_json(),
+        )
+        MyAccessService._log_perf('service.summary.cache_set', cache_set_start)
+        return result
 
     @staticmethod
     async def get_subscription_ledger(
@@ -203,13 +513,39 @@ class MyAccessService:
         :return:
         """
         template_ids = list({sub.template_id for sub in subs})
+        template_start = time.perf_counter()
         templates = await subscription_template_dao.select_models(db, id__in=template_ids)
+        MyAccessService._log_perf(
+            'service.subscriptions.context.templates',
+            template_start,
+            f'ids={len(template_ids)} count={len(templates)}',
+        )
+
+        relation_start = time.perf_counter()
         relations = await template_pack_dao.get_by_templates(db, template_ids)
+        MyAccessService._log_perf(
+            'service.subscriptions.context.template_packs',
+            relation_start,
+            f'count={len(relations)}',
+        )
+
         pack_ids = list({relation.pack_id for relation in relations})
+        pack_start = time.perf_counter()
         packs = await entitlement_pack_dao.select_models(db, id__in=pack_ids)
+        MyAccessService._log_perf(
+            'service.subscriptions.context.packs',
+            pack_start,
+            f'ids={len(pack_ids)} count={len(packs)}',
+        )
 
         domain_ids = list({pack.domain_id for pack in packs if pack.domain_id is not None})
+        domain_start = time.perf_counter()
         domains = await study_domain_dao.select_models(db, id__in=domain_ids) if domain_ids else []
+        MyAccessService._log_perf(
+            'service.subscriptions.context.domains',
+            domain_start,
+            f'ids={len(domain_ids)} count={len(domains)}',
+        )
 
         template_pack_ids: dict[int, list[int]] = {}
         for relation in relations:
@@ -242,9 +578,23 @@ class MyAccessService:
             }
 
         template_ids = list({sub.template_id for sub in subs})
+        relation_start = time.perf_counter()
         relations = await template_pack_dao.get_by_templates(db, template_ids)
+        MyAccessService._log_perf(
+            'service.entitlements.context.template_packs',
+            relation_start,
+            f'template_ids={len(template_ids)} count={len(relations)}',
+        )
+
         pack_ids = list({relation.pack_id for relation in relations})
+        pack_item_start = time.perf_counter()
         pack_items = await pack_item_dao.get_by_packs(db, pack_ids)
+        MyAccessService._log_perf(
+            'service.entitlements.context.pack_items',
+            pack_item_start,
+            f'pack_ids={len(pack_ids)} count={len(pack_items)}',
+        )
+
         entitlement_ids = list({item.entitlement_id for item in pack_items})
         if not entitlement_ids:
             return {
@@ -253,7 +603,14 @@ class MyAccessService:
                 'entitlement_map': {},
             }
 
+        entitlement_start = time.perf_counter()
         entitlements = await entitlement_dao.select_models(db, id__in=entitlement_ids)
+        MyAccessService._log_perf(
+            'service.entitlements.context.entitlements',
+            entitlement_start,
+            f'ids={len(entitlement_ids)} count={len(entitlements)}',
+        )
+
         entitlement_map = {entitlement.id: entitlement for entitlement in entitlements}
         entitlement_codes = {entitlement.code for entitlement in entitlements}
         return {
@@ -332,6 +689,136 @@ class MyAccessService:
             if value > quota_limits.get(entitlement.code, 0):
                 quota_limits[entitlement.code] = value
         return quota_limits
+
+    @staticmethod
+    def _get_quota_cycle_types_from_items(
+        pack_items: list[dict[str, Any]],
+        quota_codes: list[str],
+    ) -> dict[str, str]:
+        """
+        从聚合行获取配额周期类型
+
+        :param pack_items: 权益包成员行
+        :param quota_codes: 配额权益编码
+        :return:
+        """
+        code_set = set(quota_codes)
+        cycle_types: dict[str, str] = {}
+        quota_values: dict[str, int] = {}
+        for item in pack_items:
+            code = item.get('entitlement_code')
+            if code not in code_set:
+                continue
+
+            value = item.get('value_int')
+            value = value if value is not None else 1
+            current_value = quota_values.get(str(code), 0)
+            if value < current_value:
+                continue
+
+            value_meta = item.get('value_meta') or {}
+            cycle_type = value_meta.get('cycle_type') or CycleType.MONTHLY
+            cycle_types[str(code)] = str(getattr(cycle_type, 'value', cycle_type))
+            quota_values[str(code)] = value
+        return cycle_types
+
+    @staticmethod
+    def _compute_quota_limits_from_items(
+        pack_items: list[dict[str, Any]],
+        quota_codes: list[str],
+    ) -> dict[str, int]:
+        """
+        从聚合行计算配额上限
+
+        :param pack_items: 权益包成员行
+        :param quota_codes: 配额权益编码
+        :return:
+        """
+        code_set = set(quota_codes)
+        quota_limits: dict[str, int] = {}
+        for item in pack_items:
+            code = item.get('entitlement_code')
+            if code not in code_set:
+                continue
+
+            value = item.get('value_int')
+            value = value if value is not None else 0
+            if value > quota_limits.get(str(code), 0):
+                quota_limits[str(code)] = value
+        return quota_limits
+
+    @staticmethod
+    def _build_subscription_items_from_rows(rows: Sequence[Row]) -> list[GetMySubscription]:
+        """
+        从聚合行构建我的订阅项
+
+        :param rows: 聚合查询行
+        :return:
+        """
+        grouped: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            item = grouped.setdefault(
+                row.subscription_id,
+                {
+                    'id': row.subscription_id,
+                    'template_id': row.template_id,
+                    'template_code': row.template_code,
+                    'template_name': row.template_name,
+                    'cover_image': row.cover_image,
+                    'valid_period': row.valid_period,
+                    'valid_from': row.valid_period.lower,
+                    'valid_to': row.valid_period.upper,
+                    'status': row.status,
+                    'created_time': row.created_time,
+                    'packs': [],
+                    'domain_codes': [],
+                },
+            )
+            if row.pack_id is not None:
+                item['packs'].append({
+                    'id': row.pack_id,
+                    'code': row.pack_code,
+                    'grade': MyAccessService._source_value(row.pack_grade),
+                })
+            if row.domain_code and row.domain_code not in item['domain_codes']:
+                item['domain_codes'].append(row.domain_code)
+
+        result: list[GetMySubscription] = []
+        for item in grouped.values():
+            primary_pack = MyAccessService._primary_pack_dict(item['packs'])
+            result.append(
+                GetMySubscription(
+                    id=item['id'],
+                    template_code=item['template_code'],
+                    template_name=item['template_name'],
+                    pack_code=primary_pack['code'] if primary_pack else None,
+                    grade=primary_pack['grade'] if primary_pack else 'basic',
+                    domain_codes=item['domain_codes'],
+                    cover_image=item['cover_image'],
+                    valid_period=TimePeriodOutput.from_range(item['valid_period']),
+                    valid_from=item['valid_from'],
+                    valid_to=item['valid_to'],
+                    status=item['status'],
+                    created_time=item['created_time'],
+                )
+            )
+        return result
+
+    @staticmethod
+    def _primary_pack_dict(packs: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
+        """
+        获取主权益包字典
+
+        :param packs: 权益包字典列表
+        :return:
+        """
+        if not packs:
+            return None
+        return sorted(
+            packs,
+            key=lambda pack: _GRADE_WEIGHTS.get(str(pack.get('grade')), 0),
+            reverse=True,
+        )[0]
 
     @staticmethod
     def _build_subscription_item(sub: Subscription, context: dict[str, dict]) -> GetMySubscription:

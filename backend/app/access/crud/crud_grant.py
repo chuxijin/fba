@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import Select, select
+from sqlalchemy import Row, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -38,6 +38,41 @@ class CRUDDirectGrant(CRUDPlus[DirectGrant]):
             )
         )
         return (await db.execute(stmt)).scalars().all()
+
+    async def list_active_entitlement_rows_for_user(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        ts: datetime,
+    ) -> Sequence[Row]:
+        """
+        获取用户有效直接授权权益行
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param ts: 时间点
+        :return:
+        """
+        from backend.app.access.model.entitlement import Entitlement
+
+        stmt = (
+            select(
+                Entitlement.id.label('entitlement_id'),
+                Entitlement.code.label('entitlement_code'),
+                Entitlement.name.label('entitlement_name'),
+                Entitlement.category.label('entitlement_category'),
+                Entitlement.description.label('entitlement_description'),
+            )
+            .select_from(self.model)
+            .join(Entitlement, Entitlement.code == self.model.entitlement_code)
+            .where(
+                self.model.user_id == user_id,
+                self.model.status == CommonStatus.ACTIVE,
+                self.model.valid_period.contains(ts),
+            )
+        )
+        return (await db.execute(stmt)).all()
 
     async def get_select(
         self,
