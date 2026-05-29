@@ -1,7 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import json
+import time
 import uuid
 
 from datetime import timedelta
+from enum import StrEnum
 from typing import Any
 
 from fastapi import Depends, Request
@@ -17,6 +21,7 @@ from backend.app.admin.schema.user import GetUserInfoWithRelationDetail
 from backend.common.context import ctx
 from backend.common.dataclasses import AccessToken, NewToken, RefreshToken, TokenPayload
 from backend.common.exception import errors
+from backend.common.log import log
 from backend.core.conf import settings
 from backend.database.db import async_db_session
 from backend.database.redis import redis_client
@@ -24,6 +29,56 @@ from backend.utils.timezone import timezone
 
 # JWT dependency injection
 DependsJwtAuth = Depends(HTTPBearer())
+
+def _should_log_access_my_perf() -> bool:
+    """判断是否记录 access my 临时耗时日志"""
+    if not ctx.exists():
+        return False
+    return bool(getattr(ctx, 'access_my_perf_path', None))
+
+
+def _access_my_perf_path() -> str:
+    """获取 access my 临时耗时日志路径"""
+    if not ctx.exists():
+        return ''
+    return getattr(ctx, 'access_my_perf_path', '') or ''
+
+
+class TokenInvalidReason(StrEnum):
+    """Token 失效原因"""
+
+    session_replaced = 'session_replaced'
+    permission_changed = 'permission_changed'
+    password_changed = 'password_changed'
+
+
+TOKEN_INVALID_REASON_MESSAGES: dict[str, str] = {
+    TokenInvalidReason.session_replaced.value: '账号已在其他设备登录，请重新登录',
+    TokenInvalidReason.permission_changed.value: '登录状态已失效，请重新登录',
+    TokenInvalidReason.password_changed.value: '密码已变更，请重新登录',
+}
+
+
+def _invalid_reason_key(user_id: int, session_uuid: str) -> str:
+    """
+    构造 token 失效原因 key
+
+    :param user_id: 用户 ID
+    :param session_uuid: 会话 UUID
+    :return:
+    """
+    return f'{settings.TOKEN_INVALID_REASON_REDIS_PREFIX}:{user_id}:{session_uuid}'
+
+
+def _refresh_invalid_reason_key(user_id: int, session_uuid: str) -> str:
+    """
+    构造 refresh token 失效原因 key
+
+    :param user_id: 用户 ID
+    :param session_uuid: 会话 UUID
+    :return:
+    """
+    return f'{settings.TOKEN_REFRESH_INVALID_REASON_REDIS_PREFIX}:{user_id}:{session_uuid}'
 
 
 def jwt_encode(payload: dict[str, Any]) -> str:
@@ -34,6 +89,141 @@ def jwt_encode(payload: dict[str, Any]) -> str:
     :return:
     """
     return jwt.encode(payload, settings.TOKEN_SECRET_KEY, settings.TOKEN_ALGORITHM)
+
+
+async def mark_user_tokens_invalid(
+    user_id: int,
+    *,
+    reason: TokenInvalidReason,
+    token_prefix: str,
+    reason_key_builder: Any,
+    default_ttl_seconds: int,
+    exclude_session_uuid: str | None = None,
+) -> None:
+    """
+    标记用户当前 token 会话的失效原因
+
+    :param user_id: 用户 ID
+    :param reason: 失效原因
+    :param token_prefix: token Redis key 前缀
+    :param reason_key_builder: 失效原因 key 构造函数
+    :param default_ttl_seconds: 默认 TTL 秒数
+    :param exclude_session_uuid: 排除的会话 UUID
+    :return:
+    """
+    keys = await redis_client.get_prefix(f'{token_prefix}:{user_id}:')
+    for key in keys:
+        session_uuid = key.rsplit(':', 1)[-1]
+        if exclude_session_uuid and session_uuid == exclude_session_uuid:
+            continue
+
+        ttl = await redis_client.ttl(key)
+        if ttl <= 0:
+            ttl = default_ttl_seconds
+
+        await redis_client.setex(reason_key_builder(user_id, session_uuid), ttl, reason.value)
+
+
+async def mark_user_sessions_invalid(
+    user_id: int,
+    *,
+    reason: TokenInvalidReason,
+    exclude_session_uuid: str | None = None,
+) -> None:
+    """
+    标记用户当前 access token 会话的失效原因
+
+    :param user_id: 用户 ID
+    :param reason: 失效原因
+    :param exclude_session_uuid: 排除的会话 UUID
+    :return:
+    """
+    await mark_user_tokens_invalid(
+        user_id,
+        reason=reason,
+        token_prefix=settings.TOKEN_REDIS_PREFIX,
+        reason_key_builder=_invalid_reason_key,
+        default_ttl_seconds=settings.TOKEN_EXPIRE_SECONDS,
+        exclude_session_uuid=exclude_session_uuid,
+    )
+
+
+async def mark_user_refresh_sessions_invalid(
+    user_id: int,
+    *,
+    reason: TokenInvalidReason,
+    exclude_session_uuid: str | None = None,
+) -> None:
+    """
+    标记用户当前 refresh token 会话的失效原因
+
+    :param user_id: 用户 ID
+    :param reason: 失效原因
+    :param exclude_session_uuid: 排除的会话 UUID
+    :return:
+    """
+    await mark_user_tokens_invalid(
+        user_id,
+        reason=reason,
+        token_prefix=settings.TOKEN_REFRESH_REDIS_PREFIX,
+        reason_key_builder=_refresh_invalid_reason_key,
+        default_ttl_seconds=settings.TOKEN_REFRESH_EXPIRE_SECONDS,
+        exclude_session_uuid=exclude_session_uuid,
+    )
+
+
+async def mark_session_invalid(
+    user_id: int,
+    session_uuid: str,
+    *,
+    reason: TokenInvalidReason,
+    token_key: str | None = None,
+) -> None:
+    """
+    标记单个 access token 会话的失效原因
+
+    :param user_id: 用户 ID
+    :param session_uuid: 会话 UUID
+    :param reason: 失效原因
+    :param token_key: 已知的 token Redis key
+    :return:
+    """
+    key = token_key or f'{settings.TOKEN_REDIS_PREFIX}:{user_id}:{session_uuid}'
+    ttl = await redis_client.ttl(key)
+    if ttl <= 0:
+        ttl = settings.TOKEN_EXPIRE_SECONDS
+
+    await redis_client.setex(_invalid_reason_key(user_id, session_uuid), ttl, reason.value)
+
+
+async def get_token_invalid_message(user_id: int, session_uuid: str) -> str | None:
+    """
+    获取 token 失效提示
+
+    :param user_id: 用户 ID
+    :param session_uuid: 会话 UUID
+    :return:
+    """
+    reason = await redis_client.get(_invalid_reason_key(user_id, session_uuid))
+    if not reason:
+        return None
+
+    return TOKEN_INVALID_REASON_MESSAGES.get(reason, '登录状态已失效，请重新登录')
+
+
+async def get_refresh_token_invalid_message(user_id: int, session_uuid: str) -> str | None:
+    """
+    获取 refresh token 失效提示
+
+    :param user_id: 用户 ID
+    :param session_uuid: 会话 UUID
+    :return:
+    """
+    reason = await redis_client.get(_refresh_invalid_reason_key(user_id, session_uuid))
+    if not reason:
+        return None
+
+    return TOKEN_INVALID_REASON_MESSAGES.get(reason, '登录状态已失效，请重新登录')
 
 
 def jwt_decode(token: str) -> TokenPayload:
@@ -84,6 +274,7 @@ async def create_access_token(user_id: int, *, multi_login: bool, **kwargs) -> A
     })
 
     if not multi_login:
+        await mark_user_sessions_invalid(user_id, reason=TokenInvalidReason.session_replaced)
         await redis_client.delete_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user_id}')
 
     await redis_client.setex(
@@ -120,6 +311,7 @@ async def create_refresh_token(session_uuid: str, user_id: int, *, multi_login: 
     })
 
     if not multi_login:
+        await mark_user_refresh_sessions_invalid(user_id, reason=TokenInvalidReason.session_replaced)
         await redis_client.delete_prefix(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}')
 
     await redis_client.setex(
@@ -150,12 +342,15 @@ async def create_new_token(
     """
     redis_refresh_token = await redis_client.get(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}:{session_uuid}')
     if not redis_refresh_token or redis_refresh_token != refresh_token:
-        raise errors.TokenError(msg='Refresh Token 已过期，请重新登录')
+        invalid_message = await get_refresh_token_invalid_message(user_id, session_uuid)
+        if not invalid_message:
+            invalid_message = await get_token_invalid_message(user_id, session_uuid)
+        raise errors.TokenError(msg=invalid_message or 'Refresh Token 已过期，请重新登录')
 
     await redis_client.delete(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}:{session_uuid}')
     await redis_client.delete(f'{settings.TOKEN_REDIS_PREFIX}:{user_id}:{session_uuid}')
 
-    new_access_token = await create_access_token(user_id, multi_login=multi_login, **kwargs)
+    new_access_token = await create_access_token(user_id, multi_login=True, **kwargs)
     new_refresh_token = await create_refresh_token(new_access_token.session_uuid, user_id, multi_login=multi_login)
     return NewToken(
         new_access_token=new_access_token.access_token,
@@ -226,20 +421,49 @@ async def get_jwt_user(user_id: int) -> GetUserInfoWithRelationDetail:
     :param user_id:
     :return:
     """
+    should_log_perf = _should_log_access_my_perf()
+    path = _access_my_perf_path()
+
+    redis_start = time.perf_counter()
     cache_user = await redis_client.get(f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}')
+    if should_log_perf:
+        log.info(
+            f'access-my-perf | {path} | jwt.user_cache_get='
+            f'{(time.perf_counter() - redis_start) * 1000:.3f}ms hit={bool(cache_user)}'
+        )
+
     if not cache_user:
+        db_start = time.perf_counter()
         async with async_db_session() as db:
             current_user = await get_current_user(db, user_id)
             user = GetUserInfoWithRelationDetail.model_validate(current_user)
+            if should_log_perf:
+                log.info(
+                    f'access-my-perf | {path} | jwt.user_db_load='
+                    f'{(time.perf_counter() - db_start) * 1000:.3f}ms'
+                )
+
+            set_start = time.perf_counter()
             await redis_client.setex(
                 f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}',
                 settings.TOKEN_EXPIRE_SECONDS,
                 user.model_dump_json(),
             )
+            if should_log_perf:
+                log.info(
+                    f'access-my-perf | {path} | jwt.user_cache_set='
+                    f'{(time.perf_counter() - set_start) * 1000:.3f}ms'
+                )
     else:
+        parse_start = time.perf_counter()
         # TODO: 在恰当的时机，应替换为使用 model_validate_json
         # https://docs.pydantic.dev/latest/concepts/json/#partial-json-parsing
         user = GetUserInfoWithRelationDetail.model_validate(from_json(cache_user, allow_partial=True))
+        if should_log_perf:
+            log.info(
+                f'access-my-perf | {path} | jwt.user_cache_parse='
+                f'{(time.perf_counter() - parse_start) * 1000:.3f}ms'
+            )
     return user
 
 
@@ -250,16 +474,43 @@ async def jwt_authentication(token: str) -> GetUserInfoWithRelationDetail:
     :param token: JWT token
     :return:
     """
+    should_log_perf = _should_log_access_my_perf()
+    path = _access_my_perf_path()
+
+    total_start = time.perf_counter()
+    decode_start = time.perf_counter()
     token_payload = jwt_decode(token)
+    if should_log_perf:
+        log.info(
+            f'access-my-perf | {path} | jwt.decode='
+            f'{(time.perf_counter() - decode_start) * 1000:.3f}ms'
+        )
+
     ctx.user_id = token_payload.user_id
+
+    token_get_start = time.perf_counter()
     redis_token = await redis_client.get(f'{settings.TOKEN_REDIS_PREFIX}:{ctx.user_id}:{token_payload.session_uuid}')
+    if should_log_perf:
+        log.info(
+            f'access-my-perf | {path} | jwt.token_get='
+            f'{(time.perf_counter() - token_get_start) * 1000:.3f}ms hit={bool(redis_token)}'
+        )
+
     if not redis_token:
-        raise errors.TokenError(msg='Token 已过期')
+        invalid_message = await get_token_invalid_message(ctx.user_id, token_payload.session_uuid)
+        raise errors.TokenError(msg=invalid_message or 'Token 已过期')
 
     if token != redis_token:
+        await mark_session_invalid(ctx.user_id, token_payload.session_uuid, reason=TokenInvalidReason.permission_changed)
         raise errors.TokenError(msg='Token 已失效')
 
-    return await get_jwt_user(ctx.user_id)
+    user = await get_jwt_user(ctx.user_id)
+    if should_log_perf:
+        log.info(
+            f'access-my-perf | {path} | jwt.total='
+            f'{(time.perf_counter() - total_start) * 1000:.3f}ms'
+        )
+    return user
 
 
 def superuser_verify(request: Request, _token: str = DependsJwtAuth) -> bool:
@@ -281,5 +532,3 @@ def superuser_verify(request: Request, _token: str = DependsJwtAuth) -> bool:
 
 # 超级管理员鉴权依赖注入
 DependsSuperUser = Depends(superuser_verify)
-
-

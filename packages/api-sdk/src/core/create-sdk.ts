@@ -1,6 +1,6 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosResponse, type AxiosStatic, type InternalAxiosRequestConfig } from 'axios'
 import { ApiError, CanceledError, NetworkError, TimeoutError, UnauthorizedError } from './errors'
-import type { HookRequestCtx, RetryOptions, SdkInstance, SetupSdkOptions } from './types'
+import type { HookRequestCtx, RetryOptions, SdkInstance, SetupSdkOptions, UnauthorizedContext } from './types'
 
 const TOKEN_EXPIRED_MSG = 'Token 已过期'
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -180,13 +180,17 @@ async function dedupedRefresh(state: InstanceState, opts: SetupSdkOptions): Prom
  * :param state: 当前 SDK 实例的内部状态
  * :param opts: SDK 配置
  */
-async function fireUnauthorizedOnce(state: InstanceState, opts: SetupSdkOptions): Promise<void> {
+async function fireUnauthorizedOnce(
+  state: InstanceState,
+  opts: SetupSdkOptions,
+  ctx?: UnauthorizedContext,
+): Promise<void> {
   if (state.unauthorizedFired) {
     return
   }
   state.unauthorizedFired = true
   try {
-    await opts.onUnauthorized?.()
+    await opts.onUnauthorized?.(ctx)
   }
   catch (err) {
     console.error('[sdk] onUnauthorized handler error', err)
@@ -222,13 +226,13 @@ async function handle401(args: Handle401Args): Promise<Handle401Result> {
   const { instance, state, opts, config, msg } = args
 
   if (!config) {
-    await fireUnauthorizedOnce(state, opts)
+    await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data })
     return { replayed: false }
   }
 
   if (config._retry) {
     // 已经重放过一次, 还是 401 → 不再尝试 refresh, 让外层处理
-    await fireUnauthorizedOnce(state, opts)
+    await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data })
     return { replayed: false }
   }
 
@@ -246,7 +250,7 @@ async function handle401(args: Handle401Args): Promise<Handle401Result> {
     }
   }
 
-  await fireUnauthorizedOnce(state, opts)
+  await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data })
   return { replayed: false }
 }
 

@@ -53,6 +53,12 @@ export interface RetryOptions {
   retryOnNetworkError?: boolean
 }
 
+export interface UnauthorizedContext {
+  msg?: string
+  status?: number
+  data?: unknown
+}
+
 /**
  * Plugin: 横切关注点的模块化封装 (sentry / 日志 / metrics 等)
  *
@@ -88,7 +94,7 @@ export interface SetupSdkOptions {
   onTokenExpired?: () => Promise<boolean>
 
   /** 401 兜底回调 (refresh 失败 / refresh 不可用 / 不可恢复的 401), 通常用于跳登录页 */
-  onUnauthorized?: () => void | Promise<void>
+  onUnauthorized?: (ctx?: UnauthorizedContext) => void | Promise<void>
 
   /** 业务错误回调 (code !== 200, 不含 401) */
   onError?: (error: ApiError) => void

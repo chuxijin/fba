@@ -21,7 +21,13 @@ from backend.common.enums import UserPermissionType
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
 from backend.common.response.response_code import CustomErrorCode
-from backend.common.security.jwt import get_token, jwt_decode
+from backend.common.security.jwt import (
+    TokenInvalidReason,
+    get_token,
+    jwt_decode,
+    mark_user_refresh_sessions_invalid,
+    mark_user_sessions_invalid,
+)
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 from backend.utils.sensitive_words import validate_no_sensitive_words
@@ -173,6 +179,16 @@ class UserService:
                     # 系统管理员修改自身时，除当前 token 外，其他 token 失效
                     if not new_multi_login:
                         key_prefix = f'{settings.TOKEN_REDIS_PREFIX}:{user.id}'
+                        await mark_user_sessions_invalid(
+                            user.id,
+                            reason=TokenInvalidReason.permission_changed,
+                            exclude_session_uuid=token_payload.session_uuid,
+                        )
+                        await mark_user_refresh_sessions_invalid(
+                            user.id,
+                            reason=TokenInvalidReason.permission_changed,
+                            exclude_session_uuid=token_payload.session_uuid,
+                        )
                         await redis_client.delete_prefix(
                             key_prefix,
                             exclude=f'{key_prefix}:{token_payload.session_uuid}',
@@ -181,6 +197,8 @@ class UserService:
                     # 系统管理员修改他人时，他人 token 全部失效
                     if not new_multi_login:
                         key_prefix = f'{settings.TOKEN_REDIS_PREFIX}:{user.id}'
+                        await mark_user_sessions_invalid(user.id, reason=TokenInvalidReason.permission_changed)
+                        await mark_user_refresh_sessions_invalid(user.id, reason=TokenInvalidReason.permission_changed)
                         await redis_client.delete_prefix(key_prefix)
             case _:
                 raise errors.RequestError(msg='权限类型不存在')
@@ -208,6 +226,8 @@ class UserService:
         history_obj = CreateUserPasswordHistoryParam(user_id=user.id, password=user.password)
         await password_security_service.save_password_history(db, history_obj)
         await user_dao.update_password_changed_time(db, user.id)
+        await mark_user_sessions_invalid(user.id, reason=TokenInvalidReason.password_changed)
+        await mark_user_refresh_sessions_invalid(user.id, reason=TokenInvalidReason.password_changed)
         await redis_client.delete_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user.id}')
         await redis_client.delete_prefix(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user.id}')
         await redis_client.delete_prefix(f'{settings.JWT_USER_REDIS_PREFIX}:{user.id}')
@@ -380,6 +400,8 @@ class UserService:
         history_obj = CreateUserPasswordHistoryParam(user_id=user.id, password=user.password)
         await password_security_service.save_password_history(db, history_obj)
         await user_dao.update_password_changed_time(db, user.id)
+        await mark_user_sessions_invalid(user_id, reason=TokenInvalidReason.password_changed)
+        await mark_user_refresh_sessions_invalid(user_id, reason=TokenInvalidReason.password_changed)
         await redis_client.delete_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user_id}')
         await redis_client.delete_prefix(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}')
         await redis_client.delete_prefix(f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}')
@@ -398,6 +420,8 @@ class UserService:
         if not user:
             raise errors.NotFoundError(msg='用户不存在')
         count = await user_dao.delete(db, user.id)
+        await mark_user_sessions_invalid(user.id, reason=TokenInvalidReason.permission_changed)
+        await mark_user_refresh_sessions_invalid(user.id, reason=TokenInvalidReason.permission_changed)
         await redis_client.delete_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user.id}')
         await redis_client.delete_prefix(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user.id}')
         await redis_client.delete_prefix(f'{settings.JWT_USER_REDIS_PREFIX}:{user.id}')
