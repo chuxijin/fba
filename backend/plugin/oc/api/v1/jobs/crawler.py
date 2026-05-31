@@ -6,7 +6,9 @@ from backend.plugin.oc.schema.crawler import CrawlerParam, CrawlerResult
 from backend.plugin.oc.service.crawler_service import crawler
 from backend.common.response.response_code import CustomResponseCode
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
+from backend.core.conf import settings
 from backend.database.db import CurrentSession
+from backend.utils.dynamic_config import load_crawler_config
 
 router = APIRouter()
 
@@ -23,14 +25,16 @@ async def crawl_jobs(
     :param param: 爬虫参数
     :return: 爬取结果统计
     """
-    # 验证参数
     if param.end_page < param.start_page:
         return response_base.fail(code=CustomResponseCode.HTTP_400, msg='结束页码不能小于开始页码')
 
     if param.job_type not in ['campus', 'intern']:
         return response_base.fail(code=CustomResponseCode.HTTP_400, msg='岗位类型必须是 campus 或 intern')
 
-    # 执行爬虫
+    # 加载动态配置，未传 cookie 时使用数据库中的配置
+    await load_crawler_config(db)
+    cookie = param.cookie or getattr(settings, 'CRAWLER_COOKIE', '') or None
+
     result = await crawler.crawl_and_save(
         db=db,
         start_page=param.start_page,
@@ -38,7 +42,7 @@ async def crawl_jobs(
         job_type=param.job_type,
         delay=param.delay,
         nonce=param.nonce,
-        cookie=param.cookie,
+        cookie=cookie,
     )
 
     return response_base.success(data=result)

@@ -12,4 +12,3 @@ router = ['v1']
 
 [settings]
 CRAWLER_COOKIE = ""
-CRAWLER_NOTIFY_EMAIL = ""

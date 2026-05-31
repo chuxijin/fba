@@ -140,7 +140,6 @@ async def load_crawler_config(db: AsyncSession) -> None:
     """
     mapping = {
         'CRAWLER_COOKIE': str,
-        'CRAWLER_NOTIFY_EMAIL': str,
     }
     await _load_config(db, 'crawler', mapping, 'CRAWLER_CONFIG_STATUS')
 
