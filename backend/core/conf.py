@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # .env 当前环境
     ENVIRONMENT: Literal['dev', 'prod']
 
+    # 机器标识
+    MACHINE_ID: str = 'unknown'
+
     # FastAPI
     FASTAPI_API_V1_PATH: str = '/api/v1'
     FASTAPI_TITLE: str = 'fba'
@@ -201,6 +204,7 @@ class Settings(BaseSettings):
         'http://localhost:5174',
         'http://localhost:5175',
         'http://127.0.0.1:5500',
+        'http://localhost:9001',
         'https://zyas.top',
         'https://api.yzxj.vip',
         'https://api-test.yzxj.vip',

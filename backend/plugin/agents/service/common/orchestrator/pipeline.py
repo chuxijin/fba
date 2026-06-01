@@ -134,7 +134,7 @@ class Pipeline:
             section_obj = getattr(ctx.state, node.section.value, None)
             if section_obj is not None:
                 section_data = (
-                    section_obj.model_dump() if hasattr(section_obj, 'model_dump') else section_obj
+                    section_obj.model_dump(mode='json') if hasattr(section_obj, 'model_dump') else section_obj
                 )
                 await self._publish(
                     ctx,
@@ -203,6 +203,6 @@ class Pipeline:
         for section_name in SectionName:
             section_obj = getattr(ctx.state, section_name.value, None)
             if section_obj is not None and hasattr(section_obj, 'model_dump'):
-                snapshot[section_name.value] = section_obj.model_dump()
-        snapshot['traces'] = [t.model_dump() for t in ctx.state.traces]
+                snapshot[section_name.value] = section_obj.model_dump(mode='json')
+        snapshot['traces'] = [t.model_dump(mode='json') for t in ctx.state.traces]
         return snapshot

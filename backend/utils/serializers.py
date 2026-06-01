@@ -43,6 +43,7 @@ class MsgSpecJSONResponse(JSONResponse):
             ensure_ascii=False,  # 不转义 Unicode 字符，保留中文
             default=nan_safe_encoder,  # 处理 NaN、Infinity 和无法序列化的类型
             allow_nan=False,  # 禁止输出 NaN/Infinity，强制使用 default 处理
+            separators=(',', ':'),
         ).encode('utf-8')
 
 

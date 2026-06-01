@@ -65,7 +65,7 @@ async def review(ctx: NodeContext) -> None:
         user_prompt=user,
         output_type=ReviewerOutput,
         temperature=0.3,
-        max_tokens=1500,
+        max_tokens=8192,
     )
     ctx.last_llm_stats = stats
 

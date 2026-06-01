@@ -26,7 +26,7 @@ async def parse_material(ctx: NodeContext) -> None:
         user_prompt=user,
         output_type=MaterialParserOutput,
         temperature=0.2,
-        max_tokens=2000,
+        max_tokens=8192,
     )
     ctx.last_llm_stats = stats
 

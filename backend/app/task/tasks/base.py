@@ -66,7 +66,7 @@ class TaskBase(Task):
             from backend.plugin.notify.service.notify_service import notify_service
 
             await notify_service.send(
-                title=f'定时任务执行失败: {task_name}',
+                title=f'[{settings.MACHINE_ID}] 定时任务执行失败: {task_name}',
                 content=(
                     f'任务ID: {task_id}\n'
                     f'异常: {str(exc)[:500]}'
@@ -84,7 +84,7 @@ class TaskBase(Task):
             from backend.plugin.notify.service.notify_service import notify_service
 
             await notify_service.send(
-                title=f'定时任务警告: {task_name}',
+                title=f'[{settings.MACHINE_ID}] 定时任务警告: {task_name}',
                 content=(
                     f'任务ID: {task_id}\n'
                     f'警告: {message}'

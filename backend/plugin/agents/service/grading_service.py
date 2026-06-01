@@ -41,6 +41,40 @@ _PIPELINE_BUILDERS = {
 }
 
 
+def _friendly_grading_error_message(error_message: str | None) -> str:
+    """
+    转换为用户可理解的批改失败提示
+
+    :param error_message: 原始错误信息
+    :return:
+    """
+    message = str(error_message or '').strip()
+    if not message:
+        return '批改暂时失败，请稍后重试'
+
+    lower_message = message.lower()
+    internal_patterns = (
+        'llm',
+        'max_tokens',
+        'token limit',
+        'modelresponse',
+        'output_type',
+        'output_retries',
+        'answeranalyzeroutput',
+        'validationerror',
+        'pydantic',
+        'traceback',
+        'json',
+    )
+    if any(pattern in lower_message for pattern in internal_patterns):
+        return '本次批改生成内容较长，AI 暂时没能稳定完成评分。请稍后重新批改，或适当精简答案后再试。'
+
+    if len(message) > 80:
+        return '批改暂时失败，请稍后重试'
+
+    return message
+
+
 class GradingService:
     """批改业务服务"""
 
@@ -56,7 +90,7 @@ class GradingService:
 
         task = await agent_task_dao.create_task(
             db=db,
-            agent_type=params.agent_type.value,
+            agent_type=str(getattr(params.agent_type, 'value', params.agent_type)),
             user_id=params.user_id,
             provider_id=params.provider_id,
             model_id=params.model_id,
@@ -142,7 +176,11 @@ class GradingService:
             await self._execute(task_id)
         except Exception as e:
             log.exception(f'Agent 批改任务失败 task_id={task_id}: {e!s}')
-            await self._mark_failed(task_id, error_code=type(e).__name__, error_message=str(e))
+            await self._mark_failed(
+                task_id,
+                error_code=type(e).__name__,
+                error_message=_friendly_grading_error_message(str(e)),
+            )
 
     async def _execute(self, task_id: int) -> None:
         """
@@ -323,7 +361,7 @@ class GradingService:
             report=report,
             state_snapshot=task.state_snapshot,
             error_code=task.error_code,
-            error_message=task.error_message,
+            error_message=_friendly_grading_error_message(task.error_message) if task.error_message else None,
             created_time=task.created_time,
             updated_time=task.updated_time,
         )

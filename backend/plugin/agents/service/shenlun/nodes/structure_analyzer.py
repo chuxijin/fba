@@ -34,7 +34,7 @@ async def analyze_structure(ctx: NodeContext) -> None:
         user_prompt=user,
         output_type=StructureAnalyzerOutput,
         temperature=0.2,
-        max_tokens=1500,
+        max_tokens=8192,
     )
     ctx.last_llm_stats = stats
 

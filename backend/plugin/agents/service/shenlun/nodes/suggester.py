@@ -33,7 +33,7 @@ async def suggest(ctx: NodeContext) -> None:
         user_prompt=user,
         output_type=SuggesterOutput,
         temperature=0.4,
-        max_tokens=2000,
+        max_tokens=8192,
     )
     ctx.last_llm_stats = stats
 

@@ -25,7 +25,7 @@ async def classify(ctx: NodeContext) -> None:
         user_prompt=user,
         output_type=ClassifierOutput,
         temperature=0.0,
-        max_tokens=300,
+        max_tokens=8192,
     )
     ctx.last_llm_stats = stats
 

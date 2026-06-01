@@ -49,7 +49,7 @@ async def diagnose(ctx: NodeContext) -> None:
         user_prompt=user,
         output_type=DiagnoserOutput,
         temperature=0.3,
-        max_tokens=2000,
+        max_tokens=8192,
     )
     ctx.last_llm_stats = stats
 

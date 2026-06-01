@@ -27,7 +27,7 @@ async def analyze_reference(ctx: NodeContext) -> None:
         user_prompt=user,
         output_type=ReferenceAnalyzerOutput,
         temperature=0.1,
-        max_tokens=3000,
+        max_tokens=8192,
     )
     ctx.last_llm_stats = stats
 
