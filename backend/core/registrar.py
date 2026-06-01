@@ -62,10 +62,6 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
     # 创建操作日志任务
     opera_log_task = asyncio.create_task(OperaLogMiddleware.consumer())
 
-    # 初始化 Firebase 推送服务
-    from backend.app.jia.service.push_service import push_service
-
-    push_service.initialize()
     # 启动缓存 Pub/Sub 监听器
     cache_pubsub_manager.start_listener()
 

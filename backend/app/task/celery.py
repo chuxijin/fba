@@ -19,10 +19,6 @@ def init_celery_tracing(*args, **kwargs) -> None:
     if settings.GRAFANA_METRICS_ENABLE:
         CeleryInstrumentor().instrument()
 
-    # 初始化 Firebase 推送服务
-    from backend.app.jia.service.push_service import PushService
-
-    PushService.initialize()
 
 
 def find_task_packages() -> list[str]:
