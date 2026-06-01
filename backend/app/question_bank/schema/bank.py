@@ -117,6 +117,34 @@ class GetBankChapterProgress(SchemaBase):
     chapters: list[ChapterProgressNode] = Field(default_factory=list, description='篇章进度树')
 
 
+class ChapterProgressTreeNode(SchemaBase):
+    """篇章进度树节点（结构 + 进度合并）"""
+
+    id: int = Field(description='篇章 ID')
+    name: str = Field(description='篇章名称')
+    sort_order: int = Field(default=0, description='排序权重')
+    parent_id: int | None = Field(None, description='父级篇章 ID')
+    q_count_cache: int = Field(default=0, description='缓存题量')
+    question_type_counts: dict[str, int] = Field(default_factory=dict, description='题型题量统计')
+    answer_count: int = Field(default=0, description='已做题数')
+    correct_count: int = Field(default=0, description='答对数')
+    correct_ratio: Decimal = Field(default=Decimal('0'), description='正确率')
+    question_type_progress: dict[str, QuestionTypeProgress] = Field(default_factory=dict, description='题型进度统计')
+    children: list['ChapterProgressTreeNode'] = Field(default_factory=list, description='子篇章')
+
+
+class GetBankChapterProgressWithTree(SchemaBase):
+    """刷题内容篇章进度（含完整章节树）"""
+
+    bank_id: int = Field(description='内容 ID')
+    total_question_count: int = Field(default=0, description='总题数')
+    total_answer_count: int = Field(default=0, description='总已做题数')
+    total_correct_count: int = Field(default=0, description='总答对数')
+    correct_ratio: Decimal = Field(default=Decimal('0'), description='总正确率')
+    question_type_progress: dict[str, QuestionTypeProgress] = Field(default_factory=dict, description='题型进度统计')
+    chapters: list[ChapterProgressTreeNode] = Field(default_factory=list, description='篇章进度树')
+
+
 class BankProgressSummary(SchemaBase):
     """刷题内容进度摘要"""
 

@@ -15,6 +15,26 @@ QuestionType = Literal['single', 'multiple', 'judgement', 'fill', 'shortAnswer']
 AnswerCardStatus = Literal['correct', 'wrong', 'unanswered']
 
 KnowledgePointValue = str | int | dict[str, Any]
+PracticeHomeFilter = Literal['bank']
+
+
+class GetPracticeHomeNode(SchemaBase):
+    """刷题首页节点"""
+
+    id: int = Field(description='节点 ID')
+    name: str = Field(description='节点名称')
+    count: int = Field(default=0, ge=0, description='题量')
+    answerCount: int = Field(default=0, ge=0, description='已做题数')
+    children: list['GetPracticeHomeNode'] | None = Field(None, description='子节点')
+
+
+class GetPracticeHomeResponse(SchemaBase):
+    """刷题首页内容"""
+
+    study_domain: str = Field(description='学习领域编码')
+    cat_id: int | None = Field(None, description='分类 ID')
+    filter: PracticeHomeFilter = Field(description='首页过滤类型')
+    items: list[GetPracticeHomeNode] = Field(default_factory=list, description='首页节点')
 
 
 # ===== chapter brief for session =====

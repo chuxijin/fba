@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import WrongQuestionBook
-from backend.app.question_bank.schema.wrong_question import WrongQuestionStatistics
+from backend.app.question_bank.schema.wrong_question import WrongQuestionChapterCountItem, WrongQuestionStatistics
 from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
 from backend.common.exception import errors
 from backend.common.log import log
@@ -313,6 +313,32 @@ class WrongQuestionService:
         }
         await WrongQuestionService._set_cached_statistics(cache_key, data)
         return data
+
+    @staticmethod
+    async def get_bank_chapter_counts(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int,
+    ) -> list[WrongQuestionChapterCountItem]:
+        """
+        获取当前题库章节错题计数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param bank_id: 题库 ID
+        :return:
+        """
+        rows = await wrong_question_dao.get_bank_chapter_counts(db=db, user_id=user_id, bank_id=bank_id)
+        return [
+            WrongQuestionChapterCountItem(
+                bank_id=int(row['bank_id']),
+                chapter_id=row['chapter_id'],
+                count=int(row['count'] or 0),
+            )
+            for row in rows
+            if row['bank_id'] is not None
+        ]
 
     @staticmethod
     async def get_grouped(

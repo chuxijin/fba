@@ -132,6 +132,35 @@ class CRUDBankMount(CRUDPlus[QuestionBankMount]):
         result = await db.execute(stmt)
         return [dict(row) for row in result.mappings().all()]
 
+    async def get_child_relation_mappings(
+        self,
+        db: AsyncSession,
+        *,
+        collection_ids: list[int],
+        status: int = 1,
+    ) -> list[dict]:
+        """
+        获取指定合集下的挂载关系
+
+        :param db: 数据库会话
+        :param collection_ids: 合集 ID 列表
+        :param status: 状态
+        :return:
+        """
+        if not collection_ids:
+            return []
+
+        stmt = (
+            select(self.model.__table__)
+            .where(
+                self.model.status == status,
+                self.model.collection_id.in_(collection_ids),
+            )
+            .order_by(self.model.collection_id.asc(), self.model.sort_order.asc(), self.model.id.asc())
+        )
+        result = await db.execute(stmt)
+        return [dict(row) for row in result.mappings().all()]
+
     async def get_detail_mappings(
         self,
         db: AsyncSession,

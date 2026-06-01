@@ -8,6 +8,7 @@ from backend.app.question_bank.crud.crud_wrong_question import wrong_question_da
 from backend.app.question_bank.schema.wrong_question import (
     GetWrongQuestionDetail,
     GetWrongQuestionListItem,
+    WrongQuestionChapterCountItem,
     WrongQuestionAnswerCorrectParam,
     WrongQuestionGroupItem,
     WrongQuestionQueryParam,
@@ -81,6 +82,27 @@ async def get_question_ids(
         db=db, user_id=request.user.id, bank_id=bank_id, chapter_id=chapter_id, knowledge_point=knowledge_point,
     )
     return response_base.success(data=ids)
+
+
+@router.get(
+    '/bank-chapter-counts',
+    summary='获取当前题库章节错题计数',
+    name='qbank_wrong_question_bank_chapter_counts',
+    dependencies=[DependsJwtAuth],
+)
+async def get_bank_chapter_counts(
+    request: Request,
+    db: CurrentSession,
+    bank_id: int,
+) -> ResponseSchemaModel[list[WrongQuestionChapterCountItem]]:
+    """获取当前题库下各章节未掌握错题数量"""
+    await membership_service.verify_bank_list_access(db=db, user_id=request.user.id, bank_id=bank_id)
+    data = await wrong_question_service.get_bank_chapter_counts(
+        db=db,
+        user_id=request.user.id,
+        bank_id=bank_id,
+    )
+    return response_base.success(data=data)
 
 
 # ===== 详情 =====

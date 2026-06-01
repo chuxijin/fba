@@ -8,7 +8,7 @@ from backend.app.question_bank.schema.bank import (
     BankProgressSummary,
     CreateBankParam,
     DeleteBankParam,
-    GetBankChapterProgress,
+    GetBankChapterProgressWithTree,
     GetBankDetail,
     GetBankDetailWithChapters,
     UpdateBankParam,
@@ -89,7 +89,7 @@ async def get_bank_chapter_progress(
     request: Request,
     db: CurrentSession,
     pk: Annotated[int, Path(description='内容 ID')],
-) -> ResponseSchemaModel[GetBankChapterProgress]:
+) -> ResponseSchemaModel[GetBankChapterProgressWithTree]:
     """🔒 登录接口 - 获取用户在指定刷题内容下的章节做题进度"""
     data = await bank_service.get_chapter_progress(db=db, bank_id=pk, user_id=request.user.id)
     return response_base.success(data=data)

@@ -19,7 +19,9 @@ from backend.app.question_bank.model.question import Question, QuestionPlacement
 from backend.app.question_bank.schema.bank import (
     BankProgressSummary,
     ChapterProgressNode,
+    ChapterProgressTreeNode,
     GetBankChapterProgress,
+    GetBankChapterProgressWithTree,
     GetBankDetailWithChapters,
 )
 from backend.app.question_bank.service.bank_mount_service import COLLECTION_BANK_TYPE, bank_mount_service
@@ -532,7 +534,7 @@ class BankProgressService:
         db: AsyncSession,
         bank_id: int,
         user_id: int,
-    ) -> GetBankChapterProgress:
+    ) -> GetBankChapterProgressWithTree:
         """
         构造合集进度
 
@@ -556,12 +558,15 @@ class BankProgressService:
             bank_ids=item_ids,
             user_id=user_id,
         )
-        return GetBankChapterProgress(
+        merged_type_progress = cls.build_question_type_progress(question_type_counts, question_type_progress)
+        return GetBankChapterProgressWithTree(
             bank_id=bank_id,
             total_question_count=question_count,
             total_answer_count=answer_count,
             total_correct_count=correct_count,
-            question_type_progress=cls.build_question_type_progress(question_type_counts, question_type_progress),
+            correct_ratio=round(correct_count / answer_count * 100, 1) if answer_count > 0 else 0,
+            question_type_progress=merged_type_progress,
+            chapters=[],
         )
 
     @classmethod
@@ -571,7 +576,7 @@ class BankProgressService:
         db: AsyncSession,
         bank_id: int,
         user_id: int,
-    ) -> GetBankChapterProgress:
+    ) -> GetBankChapterProgressWithTree:
         """
         构造无篇章内容进度
 
@@ -591,12 +596,15 @@ class BankProgressService:
             bank_id=bank_id,
             user_id=user_id,
         )
-        return GetBankChapterProgress(
+        merged_type_progress = cls.build_question_type_progress(question_type_counts, question_type_progress)
+        return GetBankChapterProgressWithTree(
             bank_id=bank_id,
             total_question_count=question_count,
             total_answer_count=answer_count,
             total_correct_count=correct_count,
-            question_type_progress=cls.build_question_type_progress(question_type_counts, question_type_progress),
+            correct_ratio=round(correct_count / answer_count * 100, 1) if answer_count > 0 else 0,
+            question_type_progress=merged_type_progress,
+            chapters=[],
         )
 
     @classmethod
@@ -655,6 +663,90 @@ class BankProgressService:
         return root_nodes
 
     @classmethod
+    def _build_chapter_progress_tree(
+        cls,
+        *,
+        chapter_list: Sequence[QuestionChapter],
+        q_count_map: dict[int, int],
+        answer_map: dict[int, int],
+        correct_map: dict[int, int],
+        question_type_count_map: dict[int, dict[str, int]],
+        question_type_progress_map: dict[int, dict[str, dict[str, int]]],
+    ) -> list[ChapterProgressTreeNode]:
+        """
+        构造篇章进度树节点（结构 + 进度合并）
+
+        :param chapter_list: 篇章列表
+        :param q_count_map: 篇章题量映射
+        :param answer_map: 篇章作答映射
+        :param correct_map: 篇章答对映射
+        :param question_type_count_map: 篇章题型题量映射
+        :param question_type_progress_map: 篇章题型进度映射
+        :return:
+        """
+        raw_nodes: dict[int, dict[str, Any]] = {}
+        for chapter in chapter_list:
+            answer_count = answer_map.get(chapter.id, 0)
+            correct_count = correct_map.get(chapter.id, 0)
+            raw_nodes[chapter.id] = {
+                'id': chapter.id,
+                'name': chapter.name,
+                'sort_order': chapter.sort_order,
+                'parent_id': chapter.parent_id,
+                'q_count_cache': q_count_map.get(chapter.id, 0),
+                'question_type_counts': dict(question_type_count_map.get(chapter.id, {})),
+                'answer_count': answer_count,
+                'correct_count': correct_count,
+                'correct_ratio': round(correct_count / answer_count * 100, 1) if answer_count > 0 else 0,
+                'question_type_progress': cls.build_question_type_progress(
+                    question_type_count_map.get(chapter.id, {}),
+                    question_type_progress_map.get(chapter.id, {}),
+                ),
+                'children': [],
+            }
+
+        # 构建树形结构（dict 层面）
+        root_dicts: list[dict[str, Any]] = []
+        for info in raw_nodes.values():
+            parent_id = info.pop('parent_id', None)
+            if parent_id and parent_id in raw_nodes:
+                raw_nodes[parent_id]['children'].append(info)
+            else:
+                root_dicts.append(info)
+
+        cls._sort_dict_tree(root_dicts)
+
+        # dict → ChapterProgressTreeNode 递归转换
+        def to_node(d: dict[str, Any]) -> ChapterProgressTreeNode:
+            return ChapterProgressTreeNode(
+                id=d['id'],
+                name=d['name'],
+                sort_order=d['sort_order'],
+                q_count_cache=d['q_count_cache'],
+                question_type_counts=d['question_type_counts'],
+                answer_count=d['answer_count'],
+                correct_count=d['correct_count'],
+                correct_ratio=d['correct_ratio'],
+                question_type_progress=d['question_type_progress'],
+                children=[to_node(c) for c in d.get('children', [])],
+            )
+
+        return [to_node(d) for d in root_dicts]
+
+    @classmethod
+    def _sort_dict_tree(cls, nodes: list[dict[str, Any]]) -> None:
+        """
+        排序篇章进度字典树
+
+        :param nodes: 篇章进度字典节点列表
+        :return:
+        """
+        nodes.sort(key=lambda item: item.get('sort_order', 0))
+        for node in nodes:
+            if node.get('children'):
+                cls._sort_dict_tree(node['children'])
+
+    @classmethod
     def _sort_and_rollup_chapter_progress(cls, nodes: list[dict[str, Any]]) -> None:
         """
         排序并向上汇总篇章进度
@@ -697,9 +789,9 @@ class BankProgressService:
         return result
 
     @classmethod
-    async def get_chapter_progress(cls, *, db: AsyncSession, bank_id: int, user_id: int) -> GetBankChapterProgress:
+    async def get_chapter_progress(cls, *, db: AsyncSession, bank_id: int, user_id: int) -> GetBankChapterProgressWithTree:
         """
-        获取用户在指定内容下的篇章做题进度
+        获取用户在指定内容下的篇章做题进度（含完整章节树）
 
         :param db: 数据库会话
         :param bank_id: 内容 ID
@@ -738,7 +830,7 @@ class BankProgressService:
             chapter_ids=chapter_ids,
         )
 
-        root_nodes = cls._build_chapter_progress_nodes(
+        tree_nodes = cls._build_chapter_progress_tree(
             chapter_list=chapter_list,
             q_count_map=q_count_map,
             answer_map=answer_map,
@@ -747,13 +839,30 @@ class BankProgressService:
             question_type_progress_map=question_type_progress_map,
         )
 
-        return GetBankChapterProgress(
+        total_question_count = sum(q_count_map.values())
+        total_answer_count = sum(answer_map.values())
+        total_correct_count = sum(correct_map.values())
+
+        # 从原始数据直接合并题型进度
+        merged_type_count: dict[str, int] = {}
+        for counts in question_type_count_map.values():
+            cls.merge_question_type_counts(merged_type_count, counts)
+        merged_type_answer_correct: dict[str, dict[str, int]] = {}
+        for progress in question_type_progress_map.values():
+            for qtype, item in progress.items():
+                cur = merged_type_answer_correct.setdefault(qtype, {'answer_count': 0, 'correct_count': 0})
+                cur['answer_count'] += int(item.get('answer_count') or 0)
+                cur['correct_count'] += int(item.get('correct_count') or 0)
+        merged_type_progress = cls.build_question_type_progress(merged_type_count, merged_type_answer_correct)
+
+        return GetBankChapterProgressWithTree(
             bank_id=bank_id,
-            total_question_count=sum(q_count_map.values()),
-            total_answer_count=sum(answer_map.values()),
-            total_correct_count=sum(correct_map.values()),
-            question_type_progress=cls._merge_root_question_type_progress(root_nodes),
-            chapters=[ChapterProgressNode(**item) for item in root_nodes],
+            total_question_count=total_question_count,
+            total_answer_count=total_answer_count,
+            total_correct_count=total_correct_count,
+            correct_ratio=round(total_correct_count / total_answer_count * 100, 1) if total_answer_count > 0 else 0,
+            question_type_progress=merged_type_progress,
+            chapters=tree_nodes,
         )
 
     @staticmethod

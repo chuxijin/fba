@@ -639,7 +639,9 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         db: AsyncSession,
         user_id: int,
         bank_id: int | None = None,
+        bank_ids: list[int] | None = None,
         chapter_id: int | None = None,
+        chapter_ids: list[int] | None = None,
         knowledge_point: str | None = None,
         recent_days: int | None = None,
     ) -> list[int]:
@@ -649,7 +651,9 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param bank_id: 题库 ID
+        :param bank_ids: 题库 ID 列表
         :param chapter_id: 章节 ID
+        :param chapter_ids: 章节 ID 列表
         :param knowledge_point: 知识点名称
         :return:
         """
@@ -662,14 +666,19 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             .order_by(WrongQuestionBook.last_wrong_time.desc())
         )
 
-        if bank_id is not None or chapter_id is not None:
+        has_bank_filter = bank_id is not None or bool(bank_ids)
+        if has_bank_filter or chapter_id is not None or chapter_ids:
             stmt = stmt.join(
                 QuestionPlacement,
                 QuestionPlacement.id == WrongQuestionBook.placement_id,
             )
-            if bank_id is not None:
+            if bank_ids:
+                stmt = stmt.where(QuestionPlacement.bank_id.in_(bank_ids))
+            elif bank_id is not None:
                 stmt = stmt.where(QuestionPlacement.bank_id == bank_id)
-            if chapter_id is not None:
+            if chapter_ids:
+                stmt = stmt.where(QuestionPlacement.chapter_id.in_(chapter_ids))
+            elif chapter_id is not None:
                 stmt = stmt.where(QuestionPlacement.chapter_id == chapter_id)
 
         if knowledge_point is not None:
@@ -694,12 +703,18 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         rows = (await db.execute(stmt)).scalars().all()
         return list(rows)
 
-    async def get_bank_chapter_counts(self, db: AsyncSession, user_id: int) -> list[dict]:
+    async def get_bank_chapter_counts(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int | None = None,
+    ) -> list[dict]:
         """
         按 bank_id + chapter_id 分组统计未掌握错题数
 
         :param db: 数据库会话
         :param user_id: 用户 ID
+        :param bank_id: 题库 ID
         :return:
         """
         stmt = (
@@ -714,8 +729,11 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 WrongQuestionBook.user_id == user_id,
                 WrongQuestionBook.is_mastered == False,  # noqa: E712
             )
-            .group_by(QuestionPlacement.bank_id, QuestionPlacement.chapter_id)
         )
+        if bank_id is not None:
+            stmt = stmt.where(QuestionPlacement.bank_id == bank_id)
+
+        stmt = stmt.group_by(QuestionPlacement.bank_id, QuestionPlacement.chapter_id)
         rows = (await db.execute(stmt)).all()
         return [{'bank_id': r.bank_id, 'chapter_id': r.chapter_id, 'count': r.count} for r in rows]
 

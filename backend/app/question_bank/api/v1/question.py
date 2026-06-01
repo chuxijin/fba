@@ -206,10 +206,19 @@ async def collect_questions(
             knowledge_point=obj.knowledge_point,
         )
 
-        if obj.content_status is None:
+        if obj.source_type == 'placement' and obj.content_status is None:
             obj.content_status = 10
         if obj.source_type == 'placement' and obj.is_active is None:
             obj.is_active = True
+
+    # 个人来源（错题/收藏/笔记）：展开父题库为包含所有后代题库的 ID 列表
+    if obj.source_type != 'placement' and obj.bank_id and not obj.bank_ids:
+        from backend.app.question_bank.service.group_tree import get_descendant_bank_ids
+
+        descendant_ids = await get_descendant_bank_ids(db, obj.bank_id)
+        if len(descendant_ids) > 1:
+            obj.bank_ids = descendant_ids
+            obj.bank_id = None
 
     data = await question_selector_service.collect_question_ids(
         db=db,

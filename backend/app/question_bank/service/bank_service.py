@@ -241,6 +241,7 @@ class BankService:
             keyword=keyword,
             bank_type=bank_type,
             parent_id=None if can_use_mount_tree else parent_id,
+            order_by_created_time=False,
         )
         tree_data = None
         if can_use_mount_tree:
@@ -260,6 +261,7 @@ class BankService:
                     keyword=keyword,
                     bank_type=bank_type,
                     parent_id=parent_id,
+                    order_by_created_time=False,
                 )
             tree_data = get_tree_data(bank_select, sort_key='sort_order')
 

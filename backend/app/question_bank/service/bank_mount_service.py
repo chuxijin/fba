@@ -197,11 +197,23 @@ class BankMountService:
         return await bank_mount_dao.get_relation_mappings(db, bank_ids=bank_ids, status=1)
 
     @staticmethod
+    async def get_active_child_mount_mappings(db: AsyncSession, *, collection_ids: list[int]) -> list[dict[str, Any]]:
+        """
+        获取启用子挂载映射
+
+        :param db: 数据库会话
+        :param collection_ids: 合集 ID 列表
+        :return:
+        """
+        return await bank_mount_dao.get_child_relation_mappings(db, collection_ids=collection_ids, status=1)
+
+    @staticmethod
     async def _expand_mount_tree_banks(
         *,
         db: AsyncSession,
         initial_bank_ids: set[int],
         status: int | None,
+        initial_bank_rows: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[int, dict[str, Any]], list[dict[str, Any]]]:
         """
         递归扩展挂载树涉及的内容
@@ -209,12 +221,25 @@ class BankMountService:
         :param db: 数据库会话
         :param initial_bank_ids: 初始内容 ID
         :param status: 内容状态
+        :param initial_bank_rows: 已加载的初始内容映射
         :return:
         """
         if not initial_bank_ids:
             return {}, []
 
-        bank_rows = await bank_dao.get_mappings_by_ids(db, list(initial_bank_ids))
+        loaded_bank_ids: set[int] = set()
+        bank_rows: list[dict[str, Any]] = []
+        for row in initial_bank_rows or []:
+            bank_id = int(row['id'])
+            if bank_id not in initial_bank_ids:
+                continue
+            loaded_bank_ids.add(bank_id)
+            bank_rows.append(row)
+
+        missing_bank_ids = list(initial_bank_ids - loaded_bank_ids)
+        if missing_bank_ids:
+            bank_rows.extend(await bank_dao.get_mappings_by_ids(db, missing_bank_ids))
+
         bank_by_id = {
             int(row['id']): row
             for row in bank_rows
@@ -225,7 +250,7 @@ class BankMountService:
         mount_by_id: dict[int, dict[str, Any]] = {}
 
         while pending_ids:
-            mount_rows = await BankMountService.get_active_mount_mappings(db, bank_ids=list(pending_ids))
+            mount_rows = await BankMountService.get_active_child_mount_mappings(db, collection_ids=list(pending_ids))
             pending_ids = set()
             missing_item_ids: set[int] = set()
             for row in mount_rows:
@@ -385,6 +410,7 @@ class BankMountService:
             db=db,
             initial_bank_ids=initial_bank_ids,
             status=status,
+            initial_bank_rows=bank_select,
         )
         relation_rows = BankMountService._merge_parent_relation_rows(
             bank_by_id=bank_by_id,

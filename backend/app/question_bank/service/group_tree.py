@@ -241,6 +241,30 @@ def build_bank_tree(
     return _clean_fields(bank_tree)
 
 
+async def get_descendant_bank_ids(db: AsyncSession, bank_id: int) -> list[int]:
+    """
+    获取题库及其所有后代题库 ID
+
+    :param db: 数据库会话
+    :param bank_id: 题库 ID
+    :return:
+    """
+    all_banks = await _load_all_banks(db)
+    children_map: dict[int, list[int]] = defaultdict(list)
+    for row in all_banks:
+        parent_id = row.get('parent_id')
+        if parent_id is not None:
+            children_map[int(parent_id)].append(int(row['id']))
+
+    result: list[int] = []
+    pending = [bank_id]
+    while pending:
+        current = pending.pop()
+        result.append(current)
+        pending.extend(children_map.get(current, []))
+    return result
+
+
 async def load_kp_categories(db: AsyncSession) -> list[Category | dict[str, Any]]:
     """
     加载知识点分类

@@ -140,6 +140,47 @@ class SessionService:
         return 'practice'
 
     @classmethod
+    def _normalize_exam_config(cls, session_type: str, exam_config: dict[str, Any] | None) -> dict[str, Any] | None:
+        """
+        规范考试配置
+
+        :param session_type: 会话类型
+        :param exam_config: 考试配置
+        :return:
+        """
+        if session_type != 'exam':
+            return exam_config
+
+        normalized = dict(exam_config or {})
+        normalized.setdefault('practice_mode', 'exam')
+
+        time_limit_minutes = cls._parse_positive_int(normalized.get('time_limit'))
+        if time_limit_minutes <= 0:
+            normalized.pop('time_limit', None)
+            return normalized
+
+        normalized['time_limit'] = max(1, min(300, time_limit_minutes))
+        return normalized
+
+    @staticmethod
+    def _parse_positive_int(value: Any) -> int:
+        """
+        解析正整数
+
+        :param value: 原始值
+        :return:
+        """
+        if isinstance(value, bool):
+            return 0
+        if isinstance(value, int):
+            return value if value > 0 else 0
+        if isinstance(value, float):
+            return int(value) if value > 0 and value.is_integer() else 0
+        if isinstance(value, str) and value.strip().isdigit():
+            return int(value.strip())
+        return 0
+
+    @classmethod
     def _build_contextual_practice_name(
         cls,
         *,
@@ -1171,9 +1212,10 @@ class SessionService:
 
         # 考试模式：校验时间限制
         if session.session_type == 'exam' and session.exam_config:
-            time_limit = session.exam_config.get('time_limit')
-            if time_limit and obj.total_time > time_limit:
-                raise errors.ForbiddenError(msg=f'考试已超时（限时 {time_limit} 秒）')
+            time_limit_minutes = SessionService._parse_positive_int(session.exam_config.get('time_limit'))
+            time_limit_seconds = time_limit_minutes * 60
+            if time_limit_seconds > 0 and obj.total_time > time_limit_seconds:
+                raise errors.ForbiddenError(msg=f'考试已超时（限时 {time_limit_minutes} 分钟）')
 
         # 2. 查询答题记录 + 题目 + 解析
         records = await practice_record_dao.get_by_session(db=db, session_id=session_id)
@@ -1890,6 +1932,7 @@ class SessionService:
                 user_id=None if is_review_session else user_id,
             )
 
+        obj.exam_config = cls._normalize_exam_config(obj.session_type, obj.exam_config)
         source_snapshot = cls._build_session_source_snapshot(obj)
         source_key = cls._build_session_source_key(source_snapshot)
 
@@ -1919,12 +1962,17 @@ class SessionService:
             user_id=user_id,
         )
         question_ids = collect_result.question_ids
+        chapter_scope_ids = await question_selector_service.resolve_chapter_scope_ids(
+            db=db,
+            chapter_id=obj.chapter_id,
+        )
 
         placements = await cls._query_placements_by_question_ids(
             db=db,
             question_ids=question_ids,
             bank_id=obj.bank_id,
             chapter_id=obj.chapter_id,
+            chapter_scope_ids=chapter_scope_ids,
         )
         return await cls._create_session_snapshot(
             db=db,

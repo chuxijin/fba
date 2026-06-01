@@ -9,6 +9,7 @@ from backend.app.question_bank.schema.question import (
     GetQuestionListItem,
     QuestionAnalysisItem,
 )
+from backend.app.question_bank.schema.practice import GetPracticeHomeResponse, PracticeHomeFilter
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.practice_service import practice_service
 from backend.app.question_bank.service.question_service import question_service
@@ -19,6 +20,35 @@ from backend.common.security.permission import verify_permission
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
+
+
+@router.get('/home', summary='获取刷题首页内容', name='qbank_practice_home')
+async def get_practice_home(
+    request: Request,
+    db: CurrentSession,
+    study_domain: Annotated[str, Query(description='学习领域编码')],
+    cat_id: Annotated[int | None, Query(gt=0, description='分类 ID')] = None,
+    filter_type: Annotated[PracticeHomeFilter, Query(alias='filter', description='首页过滤类型')] = 'bank',
+) -> ResponseSchemaModel[GetPracticeHomeResponse]:
+    """
+    获取刷题首页内容
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param study_domain: 学习领域编码
+    :param cat_id: 分类 ID
+    :param filter_type: 首页过滤类型
+    :return:
+    """
+    user_id = getattr(request.user, 'id', None)
+    data = await practice_service.get_home(
+        db=db,
+        study_domain=study_domain,
+        cat_id=cat_id,
+        filter_type=filter_type,
+        user_id=int(user_id) if user_id is not None else None,
+    )
+    return response_base.success(data=data)
 
 
 @router.get('/questions', summary='获取练习题目列表', name='practice_get_questions', dependencies=[DependsJwtAuth])

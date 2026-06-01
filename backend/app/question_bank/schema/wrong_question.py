@@ -141,3 +141,11 @@ class WrongQuestionGroupItem(SchemaBase):
     group_id: int | None = Field(None, description='分组 ID（按题库时为 bank_id，按知识点时为 None）')
     group_name: str = Field(description='分组名称')
     count: int = Field(ge=0, description='错题数量')
+
+
+class WrongQuestionChapterCountItem(SchemaBase):
+    """章节错题计数"""
+
+    bank_id: int = Field(description='题库 ID')
+    chapter_id: int | None = Field(None, description='章节 ID')
+    count: int = Field(ge=0, description='未掌握错题数量')

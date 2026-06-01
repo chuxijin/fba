@@ -364,13 +364,16 @@ class QuestionSelectorService:
         params: QuestionCollectParam,
         user_id: int,
         knowledge_name: str | None,
+        chapter_scope_ids: list[int] | None,
     ) -> list[int]:
         if params.source_type == 'wrong':
             return await wrong_question_dao.get_question_ids(
                 db=db,
                 user_id=user_id,
-                bank_id=params.bank_id,
+                bank_id=params.bank_id if not params.bank_ids else None,
+                bank_ids=params.bank_ids or None,
                 chapter_id=params.chapter_id,
+                chapter_ids=chapter_scope_ids,
                 knowledge_point=knowledge_name,
                 recent_days=params.recent_days,
             )
@@ -436,6 +439,7 @@ class QuestionSelectorService:
                     params=params,
                     user_id=user_id,
                     knowledge_name=knowledge_name,
+                    chapter_scope_ids=chapter_scope_ids,
                 )
             )
             if explicit_ids:

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -81,6 +82,7 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         keyword: str | None = None,
         bank_type: int | None = None,
         parent_id: int | None = None,
+        order_by_created_time: bool = True,
     ) -> list[dict]:
         """
         获取所有题库映射，跳过 ORM 实例化提升性能
@@ -92,10 +94,9 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         :param keyword: 关键字搜索
         :param bank_type: 内容类型
         :param parent_id: 父级 ID
+        :param order_by_created_time: 是否按创建时间排序
         :return:
         """
-        from sqlalchemy import and_
-
         filters = []
         if cat_ids is not None:
             filters.append(self.model.cat_id.in_(cat_ids))
@@ -114,8 +115,47 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         if filters:
             stmt = stmt.where(and_(*filters))
             
-        stmt = stmt.order_by(self.model.created_time.desc())
+        if order_by_created_time:
+            stmt = stmt.order_by(self.model.created_time.desc())
 
+        result = await db.execute(stmt)
+        return [dict(row) for row in result.mappings().all()]
+
+    async def get_home_mappings(
+        self,
+        db: AsyncSession,
+        *,
+        cat_ids: list[int] | None = None,
+        status: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        获取刷题首页内容映射
+
+        :param db: 数据库会话
+        :param cat_ids: 分类 ID 列表
+        :param status: 题库状态
+        :return:
+        """
+        filters = []
+        if cat_ids is not None:
+            filters.append(self.model.cat_id.in_(cat_ids))
+        if status is not None:
+            filters.append(self.model.status == status)
+
+        stmt = select(
+            self.model.id,
+            self.model.cat_id,
+            self.model.name,
+            self.model.bank_type,
+            self.model.parent_id,
+            self.model.sort_order,
+            self.model.status,
+            self.model.q_count_cache,
+        )
+        if filters:
+            stmt = stmt.where(and_(*filters))
+
+        stmt = stmt.order_by(self.model.sort_order.asc(), self.model.id.asc())
         result = await db.execute(stmt)
         return [dict(row) for row in result.mappings().all()]
 
