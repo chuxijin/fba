@@ -157,6 +157,13 @@ class MyAccessService:
         balances: dict[str, int] = {}
         if quota_codes:
             cycle_types = MyAccessService._get_quota_cycle_types_from_items(pack_items, quota_codes)
+            # 从 resource_rule metadata 补查未命中的配额周期类型
+            missing_cycle_codes = [code for code in quota_codes if code not in cycle_types]
+            if missing_cycle_codes:
+                rule_cycle_types = await MyAccessService._get_quota_cycle_types_from_rules(
+                    db, missing_cycle_codes,
+                )
+                cycle_types.update(rule_cycle_types)
             entitlement_cycle_keys = {
                 code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
                 for code in quota_codes
@@ -179,6 +186,7 @@ class MyAccessService:
                 for code in missing_codes:
                     balances[code] = fallback_limits.get(code, 0)
 
+        entitlement_map = MyAccessService._filter_covered_trials(entitlement_map)
         return [
             GetMyEntitlement(
                 code=entitlement['code'],
@@ -257,6 +265,13 @@ class MyAccessService:
         balances: dict[str, int] = {}
         if quota_codes:
             cycle_types = MyAccessService._get_quota_cycle_types_from_items(pack_items, quota_codes)
+            # 从 resource_rule metadata 补查未命中的配额周期类型
+            missing_cycle_codes = [code for code in quota_codes if code not in cycle_types]
+            if missing_cycle_codes:
+                rule_cycle_types = await MyAccessService._get_quota_cycle_types_from_rules(
+                    db, missing_cycle_codes,
+                )
+                cycle_types.update(rule_cycle_types)
             entitlement_cycle_keys = {
                 code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
                 for code in quota_codes
@@ -279,6 +294,7 @@ class MyAccessService:
                 for code in missing_codes:
                     balances[code] = fallback_limits.get(code, 0)
 
+        entitlement_map = MyAccessService._filter_covered_trials(entitlement_map)
         return [
             GetMyEntitlement(
                 code=entitlement['code'],
@@ -555,6 +571,52 @@ class MyAccessService:
             cycle_type = value_meta.get('cycle_type') or CycleType.MONTHLY
             cycle_types[str(code)] = str(getattr(cycle_type, 'value', cycle_type))
             quota_values[str(code)] = value
+        return cycle_types
+
+    @staticmethod
+    def _filter_covered_trials(entitlement_map: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        """
+        过滤被完整权限覆盖的试看配额
+
+        若用户拥有 access 类型的 *.view 权益, 则隐藏同前缀的 *.trial 配额
+
+        :param entitlement_map: 权益映射
+        :return:
+        """
+        access_codes = {
+            code for code, ent in entitlement_map.items()
+            if ent['category'] == EntitlementCategory.ACCESS
+        }
+        return {
+            code: ent for code, ent in entitlement_map.items()
+            if not (code.endswith('.trial') and code.replace('.trial', '.view') in access_codes)
+        }
+
+    @staticmethod
+    async def _get_quota_cycle_types_from_rules(
+        db: AsyncSession,
+        quota_codes: list[str],
+    ) -> dict[str, str]:
+        """
+        从 resource_rule metadata 获取配额周期类型
+
+        :param db: 数据库会话
+        :param quota_codes: 配额权益编码
+        :return:
+        """
+        from sqlalchemy import select as sa_select
+
+        from backend.app.access.model.rule import ResourceRule
+
+        stmt = sa_select(ResourceRule).where(
+            ResourceRule.entitlement_code.in_(quota_codes),
+            ResourceRule.status == 'active',
+        )
+        rules = (await db.execute(stmt)).scalars().all()
+        cycle_types: dict[str, str] = {}
+        for rule in rules:
+            cycle_type = (rule.metadata_ or {}).get('cycle_type', CycleType.MONTHLY)
+            cycle_types[rule.entitlement_code] = str(getattr(cycle_type, 'value', cycle_type))
         return cycle_types
 
     @staticmethod

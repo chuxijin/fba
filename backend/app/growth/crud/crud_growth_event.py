@@ -23,5 +23,28 @@ class CRUDGrowthEvent(CRUDPlus[GrowthEvent]):
         stmt = select(self.model).where(self.model.idempotency_key == idempotency_key)
         return (await db.execute(stmt)).scalars().first()
 
+    async def list_by_user(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        limit: int = 50,
+    ) -> list[GrowthEvent]:
+        """
+        查询用户成长流水
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param limit: 数量上限
+        :return:
+        """
+        stmt = (
+            select(self.model)
+            .where(self.model.user_id == user_id)
+            .order_by(self.model.occurred_at.desc(), self.model.id.desc())
+            .limit(limit)
+        )
+        return list((await db.execute(stmt)).scalars().all())
+
 
 growth_event_dao: CRUDGrowthEvent = CRUDGrowthEvent(GrowthEvent)

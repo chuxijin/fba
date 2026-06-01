@@ -41,7 +41,27 @@ class QuotaTrialEvaluator(BaseEvaluator):
             return None
 
         if not ctx.consume_trial:
-            self._log_pass(explanation, self.name, '调用方禁止扣减试看额度')
+            for rule in trial_rules:
+                cycle_type = (rule.metadata_ or {}).get('cycle_type', CycleType.MONTHLY)
+                balance = await ledger_service.get_balance(
+                    db,
+                    user_id=ctx.user_id,
+                    entitlement_code=rule.entitlement_code,
+                    cycle_type=cycle_type,
+                )
+                if balance > 0:
+                    self._log_allow(
+                        explanation,
+                        self.name,
+                        '试看配额充足(预检)',
+                        matched={'entitlement_code': rule.entitlement_code, 'balance': balance},
+                    )
+                    return Decision.allow(
+                        reason_code=ReasonCode.QUOTA_TRIAL,
+                        matched_grant=rule.entitlement_code,
+                        explanation=explanation,
+                    )
+            self._log_pass(explanation, self.name, '所有试看配额均已耗尽')
             return Decision.deny(reason_code=ReasonCode.QUOTA_EXHAUSTED, explanation=explanation)
 
         for rule in trial_rules:
@@ -49,12 +69,13 @@ class QuotaTrialEvaluator(BaseEvaluator):
             idempotency_key = (
                 f'trial:{ctx.user_id}:{rule.entitlement_code}:{source_ref}'
             )
+            cycle_type = (rule.metadata_ or {}).get('cycle_type', CycleType.MONTHLY)
             entry = await ledger_service.try_consume(
                 db,
                 user_id=ctx.user_id,
                 entitlement_code=rule.entitlement_code,
                 amount=1,
-                cycle_type=CycleType.MONTHLY,
+                cycle_type=cycle_type,
                 scope_key='global',
                 source='trial',
                 source_ref=source_ref,

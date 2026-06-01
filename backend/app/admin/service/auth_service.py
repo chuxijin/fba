@@ -242,7 +242,7 @@ class AuthService:
         """
         refresh_token = request.cookies.get(settings.COOKIE_REFRESH_TOKEN_KEY)
         if not refresh_token:
-            raise errors.RequestError(msg='Refresh Token 已过期，请重新登录')
+            raise errors.TokenError(msg='Refresh Token 已过期，请重新登录')
 
         token_payload = jwt_decode(refresh_token)
         user = await user_dao.get(db, token_payload.user_id)
@@ -254,7 +254,7 @@ class AuthService:
         if not user.is_multi_login and [
             key for key in token_keys if not key.endswith(f':{token_payload.session_uuid}')
         ]:
-            raise errors.ForbiddenError(msg='此用户已在异地登录，请重新登录并及时修改密码')
+            raise errors.TokenError(msg='此用户已在异地登录，请重新登录并及时修改密码')
         new_token = await create_new_token(
             refresh_token,
             token_payload.session_uuid,

@@ -129,6 +129,7 @@ class SubscriptionService:
         source_ref: str | None = None,
         start_at: datetime | None = None,
         parent_subscription_id: int | None = None,
+        duration_days: int | None = None,
     ) -> Subscription:
         """
         基于模板自动开通订阅(自动计算 valid_period)
@@ -140,6 +141,7 @@ class SubscriptionService:
         :param source_ref: 来源引用
         :param start_at: 开始时间, 空则取当前
         :param parent_subscription_id: 父订阅 ID
+        :param duration_days: 覆盖模板时长(天), 空则用模板默认时长
         :return:
         """
         template = await subscription_template_dao.get_by_code(db, template_code)
@@ -147,7 +149,8 @@ class SubscriptionService:
             raise errors.NotFoundError(msg=f'订阅模板不存在: {template_code}')
 
         start = start_at or timezone.now()
-        end = start + timedelta(days=template.duration_days) if template.duration_days else None
+        days = duration_days if duration_days and duration_days > 0 else template.duration_days
+        end = start + timedelta(days=days) if days else None
         period = Range(start, end, bounds='[)')
 
         sub = Subscription(
@@ -327,6 +330,7 @@ class SubscriptionService:
             template_code=template_code,
             source=source,
             source_ref=source_ref,
+            duration_days=days,
         )
 
     @staticmethod
