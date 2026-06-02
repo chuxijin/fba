@@ -132,8 +132,7 @@ async def simulate_bot_activity() -> dict:
         return {'error': str(e)}
 
 
-@celery_app.task(name='qbank_process_record_side_effects')
-async def process_record_side_effects(
+async def process_record_side_effects_async(
     user_id: int,
     session_id: int,
     record_ids: list[int],
@@ -330,3 +329,30 @@ async def process_record_side_effects(
         'wrongs_created': len(wrong_create_rows),
         'wrongs_updated': len(wrong_update_rows),
     }
+
+
+@celery_app.task(name='qbank_process_record_side_effects')
+async def process_record_side_effects(
+    user_id: int,
+    session_id: int,
+    record_ids: list[int],
+    allow_judge_now: bool = True,
+    practice_mode: str | None = None,
+) -> dict:
+    """
+    Celery 入口：异步处理答题记录副作用
+
+    :param user_id: 用户 ID
+    :param session_id: 会话 ID
+    :param record_ids: 答题记录 ID 列表
+    :param allow_judge_now: 是否允许立即判题
+    :param practice_mode: 做题模式
+    :return:
+    """
+    return await process_record_side_effects_async(
+        user_id=user_id,
+        session_id=session_id,
+        record_ids=record_ids,
+        allow_judge_now=allow_judge_now,
+        practice_mode=practice_mode,
+    )

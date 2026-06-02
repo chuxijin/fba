@@ -1036,7 +1036,7 @@ class SessionService:
             exam_config=session.exam_config,
             source_snapshot=session.source_snapshot,
         )
-        allow_judge_now = obj.judge_now and practice_mode == SessionService.PRACTICE_MODE_PRACTICE
+        allow_judge_now = practice_mode == SessionService.PRACTICE_MODE_PRACTICE
 
         sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session.session_questions}
 

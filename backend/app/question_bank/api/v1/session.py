@@ -261,9 +261,9 @@ async def upsert_records(
     # 这里通过 BackgroundTasks 在响应发送后投递，确保任务读到的是已提交数据。
     async_payload = result.pop('_async_payload', None)
     if async_payload is not None:
-        from backend.app.task.tasks.qbank.tasks import process_record_side_effects
+        from backend.app.task.tasks.qbank.tasks import process_record_side_effects_async
 
-        background_tasks.add_task(process_record_side_effects.delay, **async_payload)
+        background_tasks.add_task(process_record_side_effects_async, **async_payload)
 
     return response_base.success(data=result)
 

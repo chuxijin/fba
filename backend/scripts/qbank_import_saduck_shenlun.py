@@ -904,15 +904,23 @@ async def import_one_paper(
         await db.execute(select(QuestionPlacement).where(QuestionPlacement.bank_id == paper_bank.id))
     ).scalars().all()
     placement_by_sort: dict[int, QuestionPlacement] = {}
+    placement_by_question_id: dict[int, QuestionPlacement] = {}
     question_id_list = [int(row.question_id) for row in placement_rows]
     for row in placement_rows:
         sort_key = int(row.sort_order or 0)
-        current = placement_by_sort.get(sort_key)
-        if current is None:
+        question_key = int(row.question_id)
+        sort_current = placement_by_sort.get(sort_key)
+        if sort_current is None:
             placement_by_sort[sort_key] = row
+        elif not sort_current.is_active and row.is_active:
+            placement_by_sort[sort_key] = row
+
+        current = placement_by_question_id.get(question_key)
+        if current is None:
+            placement_by_question_id[question_key] = row
             continue
         if not current.is_active and row.is_active:
-            placement_by_sort[sort_key] = row
+            placement_by_question_id[question_key] = row
 
     question_by_id: dict[int, Question] = {}
     if question_id_list:
@@ -929,11 +937,11 @@ async def import_one_paper(
             str(question_raw.get("require") or ""),
         )
 
-        placement = placement_by_sort.get(q_index)
+        placement_by_old_sort = placement_by_sort.get(q_index)
         question_row: Question | None = None
         local_question_id = 0
-        if placement is not None:
-            local_question_id = int(placement.question_id)
+        if placement_by_old_sort is not None:
+            local_question_id = int(placement_by_old_sort.question_id)
             question_row = question_by_id.get(local_question_id)
 
         if question_row is None:
@@ -966,6 +974,7 @@ async def import_one_paper(
             question_id=local_question_id,
         )
         question_row.stem = stem_html
+        question_row.options = None
         question_ids.append(local_question_id)
         stats.questions_upserted += 1
 
@@ -1004,6 +1013,7 @@ async def import_one_paper(
             db.add(analysis)
             stats.analyses_upserted += 1
 
+        placement = placement_by_question_id.get(local_question_id)
         if placement is None:
             placement = QuestionPlacement(
                 question_id=local_question_id,
@@ -1017,9 +1027,8 @@ async def import_one_paper(
                 created_by=args.created_by,
             )
             db.add(placement)
-            placement_by_sort[q_index] = placement
+            placement_by_question_id[local_question_id] = placement
         else:
-            placement.question_id = local_question_id
             placement.sort_order = q_index
             placement.is_active = True
             placement.score = score_value

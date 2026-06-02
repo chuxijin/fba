@@ -1885,17 +1885,17 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
 
             placement_stmt = select(QuestionPlacement).where(QuestionPlacement.bank_id == bank.id)
             existing_placements = (await db.execute(placement_stmt)).scalars().all()
-            placement_map_by_sort: dict[int, QuestionPlacement] = {}
+            placement_map_by_question_id: dict[int, QuestionPlacement] = {}
             bank_question_ids: list[int] = []
             for item in existing_placements:
                 bank_question_ids.append(int(item.question_id))
-                sort_key = int(item.sort_order or 0)
-                current = placement_map_by_sort.get(sort_key)
+                question_key = int(item.question_id)
+                current = placement_map_by_question_id.get(question_key)
                 if current is None:
-                    placement_map_by_sort[sort_key] = item
+                    placement_map_by_question_id[question_key] = item
                     continue
                 if not current.is_active and item.is_active:
-                    placement_map_by_sort[sort_key] = item
+                    placement_map_by_question_id[question_key] = item
 
             existing_rel_map: dict[int, dict[int, int]] = {}
             if bank_question_ids:
@@ -1934,24 +1934,23 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                 if placement_score is not None and placement_score <= Decimal("0"):
                     placement_score = None
 
-                placement = placement_map_by_sort.get(sort_order)
+                placement = placement_map_by_question_id.get(local_qid)
                 if placement is None:
-                    db.add(
-                        QuestionPlacement(
-                            question_id=local_qid,
-                            bank_id=bank.id,
-                            chapter_id=chapter_id,
-                            sort_order=sort_order,
-                            is_active=True,
-                            score=placement_score,
-                            review_status=10,
-                            scene_mask=None,
-                            created_by=args.created_by,
-                        )
+                    placement = QuestionPlacement(
+                        question_id=local_qid,
+                        bank_id=bank.id,
+                        chapter_id=chapter_id,
+                        sort_order=sort_order,
+                        is_active=True,
+                        score=placement_score,
+                        review_status=10,
+                        scene_mask=None,
+                        created_by=args.created_by,
                     )
+                    db.add(placement)
+                    placement_map_by_question_id[local_qid] = placement
                     p_created += 1
                 else:
-                    placement.question_id = local_qid
                     placement.chapter_id = chapter_id
                     placement.sort_order = sort_order
                     placement.is_active = True

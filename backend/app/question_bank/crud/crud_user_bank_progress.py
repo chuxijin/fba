@@ -74,7 +74,7 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
                 QuestionPlacement.chapter_id,
                 SessionQuestion.session_id,
                 SessionQuestion.id.label('last_session_question_id'),
-                func.coalesce(SessionQuestion.is_correct, False).label('is_correct'),
+                SessionQuestion.is_correct.label('is_correct'),
                 func.coalesce(SessionQuestion.created_time, func.now()).label('first_answered_time'),
                 answered_time.label('last_answered_time'),
                 correct_time.label('last_correct_time'),
@@ -111,7 +111,11 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
             'chapter_id': excluded.chapter_id,
             'last_session_id': excluded.last_session_id,
             'last_session_question_id': excluded.last_session_question_id,
-            'is_correct': sa.or_(progress.is_correct.is_(True), excluded.is_correct.is_(True)),
+            'is_correct': sa.case(
+                (progress.is_correct.is_(True), True),
+                (excluded.is_correct.isnot(None), excluded.is_correct),
+                else_=progress.is_correct,
+            ),
             'first_answered_time': func.least(progress.first_answered_time, excluded.first_answered_time),
             'last_answered_time': func.greatest(progress.last_answered_time, excluded.last_answered_time),
             'last_correct_time': sa.case(
@@ -180,7 +184,7 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
                     chapter_id=row.chapter_id,
                     last_session_id=row.session_id,
                     last_session_question_id=row.last_session_question_id,
-                    is_correct=row.is_correct is True,
+                    is_correct=row.is_correct,
                     first_answered_time=row.created_time or answered_time,
                     last_answered_time=answered_time,
                     last_correct_time=last_correct_time,
@@ -192,7 +196,8 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
             progress.chapter_id = row.chapter_id
             progress.last_session_id = row.session_id
             progress.last_session_question_id = row.last_session_question_id
-            progress.is_correct = progress.is_correct or row.is_correct is True
+            if row.is_correct is not None:
+                progress.is_correct = progress.is_correct is True or row.is_correct is True
             progress.first_answered_time = min(progress.first_answered_time, row.created_time or answered_time)
             progress.last_answered_time = max(progress.last_answered_time, answered_time)
             if last_correct_time is not None:

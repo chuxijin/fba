@@ -227,7 +227,7 @@ class CheckInService:
         :param user_id: 用户 ID
         :return:
         """
-        today_start = datetime.combine(timezone.now().date(), datetime.min.time())
+        today_start = datetime.combine(timezone.now().date(), datetime.min.time(), tzinfo=timezone.tz_info)
         stmt = (
             select(func.count(SessionQuestion.id))
             .where(
@@ -249,7 +249,7 @@ class CheckInService:
         :param user_id: 用户 ID
         :return:
         """
-        today_start = datetime.combine(timezone.now().date(), datetime.min.time())
+        today_start = datetime.combine(timezone.now().date(), datetime.min.time(), tzinfo=timezone.tz_info)
         stmt = select(
             func.count(SessionQuestion.id).label('practice_count'),
             func.coalesce(func.sum(SessionQuestion.answer_time), 0).label('practice_duration'),

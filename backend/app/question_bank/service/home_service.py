@@ -18,6 +18,8 @@ from backend.app.question_bank.schema.home import (
     HomeUserReportData,
     WeekPracticeStats,
 )
+from backend.common.enums import DataBaseType
+from backend.core.conf import settings
 from backend.app.question_bank.service.rank_service import rank_service
 from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
@@ -167,15 +169,28 @@ class HomeService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _local_date_expr(column: sa.ColumnElement) -> sa.ColumnElement:
+        """
+        构建应用时区日期表达式
+
+        :param column: 日期时间字段
+        :return:
+        """
+        if DataBaseType.postgresql == settings.DATABASE_TYPE:
+            return func.date(func.timezone(settings.DATETIME_TIMEZONE, column))
+        return func.date(column)
+
+    @staticmethod
     async def _get_week_stats(db: AsyncSession, user_id: int) -> WeekPracticeStats:
         """获取本周刷题统计"""
         today = timezone.now().date()
         week_start = today - timedelta(days=today.weekday())
-        week_start_dt = datetime.combine(week_start, datetime.min.time())
+        week_start_dt = datetime.combine(week_start, datetime.min.time(), tzinfo=timezone.tz_info)
+        practice_date_expr = HomeService._local_date_expr(SessionQuestion.created_time)
 
         stmt = (
             select(
-                func.date(SessionQuestion.created_time).label('practice_date'),
+                practice_date_expr.label('practice_date'),
                 func.count(SessionQuestion.id).label('count'),
                 func.coalesce(func.sum(func.cast(SessionQuestion.is_correct, sa.Integer)), 0).label('correct_count'),
                 func.coalesce(func.sum(SessionQuestion.answer_time), 0).label('duration'),
@@ -186,7 +201,7 @@ class HomeService:
                 SessionQuestion.user_answer.isnot(None),
                 SessionQuestion.is_correct.isnot(None),
             )
-            .group_by(func.date(SessionQuestion.created_time))
+            .group_by(practice_date_expr)
         )
 
         result = await db.execute(stmt)
