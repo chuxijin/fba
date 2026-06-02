@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import hashlib
-
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
@@ -12,15 +10,12 @@ from sqlalchemy import bindparam, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import selectinload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import (
-    OptionContent,
     Question,
     QuestionAnalysis,
-    QuestionOption,
-    QuestionOptionStats,
     QuestionPlacement,
     QuestionStatistics,
 )
@@ -30,7 +25,6 @@ from backend.app.question_bank.schema.question import (
     QuestionCoreBase,
     UpdateQuestionStatisticsParam,
     UpsertQuestionAnalysisItem,
-    UpsertQuestionOptionItem,
     UpsertQuestionPlacementItem,
 )
 from backend.common.enums import DataBaseType
@@ -69,7 +63,6 @@ class CRUDQuestion(CRUDPlus[Question]):
                 selectinload(Question.materials),
                 selectinload(Question.placements).joinedload(QuestionPlacement.bank),
                 selectinload(Question.placements).joinedload(QuestionPlacement.chapter),
-                selectinload(Question.options).joinedload(QuestionOption.content_ref),
             )
         )
         result = await db.execute(stmt)
@@ -95,7 +88,6 @@ class CRUDQuestion(CRUDPlus[Question]):
         options_list = [
             selectinload(Question.placements).joinedload(QuestionPlacement.bank),
             selectinload(Question.placements).joinedload(QuestionPlacement.chapter),
-            selectinload(Question.options).joinedload(QuestionOption.content_ref),
         ]
 
         if include_analysis:
@@ -142,7 +134,6 @@ class CRUDQuestion(CRUDPlus[Question]):
         options_list = [
             selectinload(Question.placements).joinedload(QuestionPlacement.bank),
             selectinload(Question.placements).joinedload(QuestionPlacement.chapter),
-            selectinload(Question.options).joinedload(QuestionOption.content_ref),
         ]
 
         if include_analysis:
@@ -477,326 +468,6 @@ class CRUDQuestionPlacement(CRUDPlus[QuestionPlacement]):
 
         await db.flush()
         return kept
-
-
-# ============ Option CRUD ============
-
-
-class CRUDOptionContent(CRUDPlus[OptionContent]):
-    """Option content dao"""
-
-    @staticmethod
-    def _normalize_content(content: str) -> str:
-        """规范化选项内容"""
-        return content.replace('\r\n', '\n').strip()
-
-    @staticmethod
-    def _build_content_hash(content: str) -> str:
-        """构建选项内容哈希"""
-        return hashlib.sha256(content.encode('utf-8')).hexdigest()
-
-    async def get_by_hash(self, db: AsyncSession, *, content_hash: str) -> OptionContent | None:
-        """
-        根据哈希获取选项内容
-
-        :param db: 数据库会话
-        :param content_hash: 内容哈希
-        :return:
-        """
-        stmt = select(OptionContent).where(OptionContent.content_hash == content_hash)
-        result = await db.execute(stmt)
-        return result.scalars().first()
-
-    async def get_or_create_by_content(self, db: AsyncSession, *, content: str) -> OptionContent:
-        """
-        根据内容获取或创建选项
-
-        :param db: 数据库会话
-        :param content: 选项内容
-        :return:
-        """
-        normalized_content = self._normalize_content(content)
-        content_hash = self._build_content_hash(normalized_content)
-
-        existing = await self.get_by_hash(db, content_hash=content_hash)
-        if existing:
-            return existing
-
-        option_content = OptionContent(content_hash=content_hash, content=normalized_content)
-        db.add(option_content)
-        await db.flush()
-        return option_content
-
-
-class CRUDQuestionOption(CRUDPlus[QuestionOption]):
-    """Question option dao"""
-
-    async def list_by_question(self, db: AsyncSession, *, question_id: int) -> Sequence[QuestionOption]:
-        """
-        查询题目的所有选项
-
-        :param db: 数据库会话
-        :param question_id: 题目 ID
-        :return:
-        """
-        stmt = (
-            select(QuestionOption)
-            .where(QuestionOption.question_id == question_id)
-            .options(joinedload(QuestionOption.content_ref))
-            .order_by(QuestionOption.sort_order.asc(), QuestionOption.option_code.asc())
-        )
-        result = await db.execute(stmt)
-        return result.scalars().all()
-
-    async def replace_by_items(
-        self,
-        db: AsyncSession,
-        *,
-        question_id: int,
-        items: list[UpsertQuestionOptionItem],
-        option_content_crud: CRUDOptionContent,
-    ) -> Sequence[QuestionOption]:
-        """
-        根据标准化选项列表替换题目选项
-
-        :param db: 数据库会话
-        :param question_id: 题目 ID
-        :param items: 选项列表
-        :param option_content_crud: 选项内容 dao
-        :return:
-        """
-        existing_options = await self.list_by_question(db, question_id=question_id)
-        existing_map: dict[str, QuestionOption] = {item.option_code: item for item in existing_options}
-
-        incoming_codes: set[str] = set()
-        for item in items:
-            code = item.option_code.strip().upper()
-            incoming_codes.add(code)
-
-            content_ref = await option_content_crud.get_or_create_by_content(db, content=item.content)
-            current = existing_map.get(code)
-            if current:
-                current.content_id = content_ref.id
-                current.sort_order = item.sort_order
-                current.is_active = item.is_active
-            else:
-                db.add(
-                    QuestionOption(
-                        question_id=question_id,
-                        option_code=code,
-                        content_id=content_ref.id,
-                        sort_order=item.sort_order,
-                        is_active=item.is_active,
-                    )
-                )
-
-        for option_code, current in existing_map.items():
-            if option_code not in incoming_codes:
-                current.is_active = False
-
-        await db.flush()
-        return await self.list_by_question(db, question_id=question_id)
-
-
-class CRUDQuestionOptionStats(CRUDPlus[QuestionOptionStats]):
-    """Question option stats dao"""
-
-    async def increment_by_codes(
-        self,
-        db: AsyncSession,
-        *,
-        placement_id: int,
-        question_id: int,
-        option_codes: list[str],
-        is_correct: bool,
-    ) -> None:
-        """
-        根据选中的选项编码增加统计
-
-        :param db: 数据库会话
-        :param placement_id: 挂载 ID
-        :param question_id: 题目 ID
-        :param option_codes: 选中的选项编码
-        :param is_correct: 本次答题是否正确
-        """
-        normalized_codes = sorted({str(code).strip().upper() for code in option_codes if str(code).strip()})
-        if not normalized_codes:
-            return
-
-        option_stmt = select(QuestionOption).where(
-            QuestionOption.question_id == question_id,
-            QuestionOption.option_code.in_(normalized_codes),
-        )
-        option_result = await db.execute(option_stmt)
-        option_rows = option_result.scalars().all()
-        option_map = {item.option_code: item for item in option_rows}
-        if not option_map:
-            return
-
-        valid_codes = list(option_map.keys())
-        stats_stmt = select(QuestionOptionStats).where(
-            QuestionOptionStats.placement_id == placement_id,
-            QuestionOptionStats.option_code.in_(valid_codes),
-        )
-        stats_result = await db.execute(stats_stmt)
-        stats_rows = stats_result.scalars().all()
-        stats_map = {item.option_code: item for item in stats_rows}
-
-        for option_code in valid_codes:
-            option_row = option_map[option_code]
-            stats_row = stats_map.get(option_code)
-
-            if stats_row:
-                stats_row.option_id = option_row.id
-                stats_row.selected_count += 1
-                if is_correct:
-                    stats_row.correct_selected_count += 1
-                else:
-                    stats_row.wrong_selected_count += 1
-                continue
-
-            db.add(
-                QuestionOptionStats(
-                    placement_id=placement_id,
-                    question_id=question_id,
-                    option_id=option_row.id,
-                    option_code=option_code,
-                    selected_count=1,
-                    correct_selected_count=1 if is_correct else 0,
-                    wrong_selected_count=0 if is_correct else 1,
-                )
-            )
-
-        await db.flush()
-
-    async def batch_increment_by_records(self, db: AsyncSession, records: list[dict]) -> None:
-        """
-        批量更新选项统计
-
-        :param db: 数据库会话
-        :param records: 选项统计增量列表
-        :return:
-        """
-        if not records:
-            return
-
-        if DataBaseType.postgresql != settings.DATABASE_TYPE:
-            for record in records:
-                await self.increment_by_codes(
-                    db=db,
-                    placement_id=record['placement_id'],
-                    question_id=record['question_id'],
-                    option_codes=record['option_codes'],
-                    is_correct=record['is_correct'],
-                )
-            return
-
-        aggregated: dict[tuple[int, int, str], dict] = {}
-        question_ids: set[int] = set()
-        option_codes: set[str] = set()
-        for record in records:
-            placement_id = record.get('placement_id')
-            if placement_id is None:
-                continue
-
-            question_id = record['question_id']
-            is_correct = bool(record['is_correct'])
-            normalized_codes = sorted({
-                str(code).strip().upper()
-                for code in record.get('option_codes', [])
-                if str(code).strip()
-            })
-            for option_code in normalized_codes:
-                key = (placement_id, question_id, option_code)
-                item = aggregated.get(key)
-                if item is None:
-                    item = {
-                        'placement_id': placement_id,
-                        'question_id': question_id,
-                        'option_code': option_code,
-                        'selected_delta': 0,
-                        'correct_delta': 0,
-                        'wrong_delta': 0,
-                    }
-                    aggregated[key] = item
-
-                item['selected_delta'] += 1
-                if is_correct:
-                    item['correct_delta'] += 1
-                else:
-                    item['wrong_delta'] += 1
-
-                question_ids.add(question_id)
-                option_codes.add(option_code)
-
-        if not aggregated:
-            return
-
-        option_stmt = select(QuestionOption).where(
-            QuestionOption.question_id.in_(question_ids),
-            QuestionOption.option_code.in_(option_codes),
-        )
-        option_rows = (await db.execute(option_stmt)).scalars().all()
-        option_map = {(item.question_id, item.option_code): item for item in option_rows}
-
-        payloads: list[dict] = []
-        insert_rows: list[dict] = []
-        current_time = timezone.now()
-        for item in aggregated.values():
-            option_row = option_map.get((item['question_id'], item['option_code']))
-            if option_row is None:
-                continue
-
-            payloads.append({
-                'filter_placement_id': item['placement_id'],
-                'filter_option_code': item['option_code'],
-                'set_question_id': item['question_id'],
-                'set_option_id': option_row.id,
-                'selected_delta': item['selected_delta'],
-                'correct_delta': item['correct_delta'],
-                'wrong_delta': item['wrong_delta'],
-            })
-            insert_rows.append({
-                'placement_id': item['placement_id'],
-                'question_id': item['question_id'],
-                'option_id': option_row.id,
-                'option_code': item['option_code'],
-                'selected_count': 0,
-                'correct_selected_count': 0,
-                'wrong_selected_count': 0,
-                'created_time': current_time,
-            })
-
-        if not payloads:
-            return
-
-        insert_stmt = postgresql.insert(QuestionOptionStats).values(insert_rows)
-        insert_stmt = insert_stmt.on_conflict_do_nothing(
-            constraint='uq_study_question_option_stats_placement_code'
-        )
-        await db.execute(insert_stmt)
-
-        update_stmt = (
-            sa_update(QuestionOptionStats.__table__)
-            .where(
-                QuestionOptionStats.placement_id == bindparam('filter_placement_id'),
-                QuestionOptionStats.option_code == bindparam('filter_option_code'),
-            )
-            .values(
-                question_id=bindparam('set_question_id'),
-                option_id=bindparam('set_option_id'),
-                selected_count=QuestionOptionStats.selected_count + bindparam('selected_delta'),
-                correct_selected_count=(
-                    QuestionOptionStats.correct_selected_count + bindparam('correct_delta')
-                ),
-                wrong_selected_count=(
-                    QuestionOptionStats.wrong_selected_count + bindparam('wrong_delta')
-                ),
-            )
-            .execution_options(synchronize_session=False)
-        )
-        await db.execute(update_stmt, payloads)
-        await db.flush()
 
 
 # ============ Analysis CRUD ============
@@ -1375,9 +1046,6 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
 # ============ 导出实例 ============
 
 question_dao: CRUDQuestion = CRUDQuestion(Question)
-option_content_dao: CRUDOptionContent = CRUDOptionContent(OptionContent)
-question_option_dao: CRUDQuestionOption = CRUDQuestionOption(QuestionOption)
-question_option_stats_dao: CRUDQuestionOptionStats = CRUDQuestionOptionStats(QuestionOptionStats)
 question_placement_dao: CRUDQuestionPlacement = CRUDQuestionPlacement(QuestionPlacement)
 question_analysis_dao: CRUDQuestionAnalysis = CRUDQuestionAnalysis(QuestionAnalysis)
 question_statistics_dao: CRUDQuestionStatistics = CRUDQuestionStatistics(QuestionStatistics)

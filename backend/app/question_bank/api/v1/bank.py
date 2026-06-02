@@ -144,7 +144,6 @@ async def get_bank_list(
     keyword: Annotated[str | None, Query(description='关键字搜索')] = None,
     bank_type: Annotated[int | None, Query(description='内容类型: 1=习题, 2=试卷, 3=合集')] = None,
     parent_id: Annotated[int | None, Query(description='父级合集 ID')] = None,
-    study_domain: Annotated[str | None, Query(description='学习领域编码')] = None,
     exclude_empty: Annotated[bool, Query(description='是否过滤掉无题目的空内容(含递归判断)')] = True,
 ) -> ResponseModel:
     """🌍 公开接口 - 任何人都可以查看刷题内容树形列表"""
@@ -155,7 +154,6 @@ async def get_bank_list(
         keyword=keyword,
         bank_type=bank_type,
         parent_id=parent_id,
-        study_domain=study_domain,
         exclude_empty=exclude_empty,
     )
     return response_base.success(data=data)

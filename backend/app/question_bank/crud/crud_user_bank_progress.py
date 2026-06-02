@@ -8,7 +8,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.question_bank.model.practice import PracticeRecord
+from backend.app.question_bank.model.practice import SessionQuestion
 from backend.app.question_bank.model.progress import UserBankQuestionProgress
 from backend.app.question_bank.model.question import QuestionPlacement
 from backend.common.enums import DataBaseType
@@ -57,31 +57,34 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
         from sqlalchemy.dialects.postgresql import insert as pg_insert
 
         progress = UserBankQuestionProgress
-        answered_time = func.coalesce(PracticeRecord.updated_time, PracticeRecord.created_time, func.now())
+        answered_time = func.coalesce(SessionQuestion.updated_time, SessionQuestion.created_time, func.now())
         correct_time = sa.case(
             (
-                PracticeRecord.is_correct.is_(True),
-                func.coalesce(PracticeRecord.judged_at, PracticeRecord.updated_time, PracticeRecord.created_time, func.now()),
+                SessionQuestion.is_correct.is_(True),
+                func.coalesce(SessionQuestion.judged_at, SessionQuestion.updated_time, SessionQuestion.created_time, func.now()),
             ),
             else_=None,
         )
         source_stmt = (
             select(
-                PracticeRecord.user_id,
+                SessionQuestion.user_id,
                 QuestionPlacement.bank_id,
-                PracticeRecord.question_id,
-                PracticeRecord.placement_id,
-                func.coalesce(PracticeRecord.is_correct, False).label('is_correct'),
-                func.coalesce(PracticeRecord.created_time, func.now()).label('first_answered_time'),
+                SessionQuestion.question_id,
+                SessionQuestion.placement_id,
+                QuestionPlacement.chapter_id,
+                SessionQuestion.session_id,
+                SessionQuestion.id.label('last_session_question_id'),
+                func.coalesce(SessionQuestion.is_correct, False).label('is_correct'),
+                func.coalesce(SessionQuestion.created_time, func.now()).label('first_answered_time'),
                 answered_time.label('last_answered_time'),
                 correct_time.label('last_correct_time'),
-                func.coalesce(PracticeRecord.created_time, func.now()).label('created_time'),
+                func.coalesce(SessionQuestion.created_time, func.now()).label('created_time'),
                 answered_time.label('updated_time'),
             )
-            .join(QuestionPlacement, QuestionPlacement.id == PracticeRecord.placement_id)
+            .join(QuestionPlacement, QuestionPlacement.id == SessionQuestion.placement_id)
             .where(
-                PracticeRecord.id.in_(record_ids),
-                PracticeRecord.user_answer.isnot(None),
+                SessionQuestion.id.in_(record_ids),
+                SessionQuestion.user_answer.isnot(None),
             )
         )
         stmt = pg_insert(progress).from_select(
@@ -90,6 +93,9 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
                 'bank_id',
                 'question_id',
                 'placement_id',
+                'chapter_id',
+                'last_session_id',
+                'last_session_question_id',
                 'is_correct',
                 'first_answered_time',
                 'last_answered_time',
@@ -102,6 +108,9 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
         excluded = stmt.excluded
         update_values = {
             'placement_id': excluded.placement_id,
+            'chapter_id': excluded.chapter_id,
+            'last_session_id': excluded.last_session_id,
+            'last_session_question_id': excluded.last_session_question_id,
             'is_correct': sa.or_(progress.is_correct.is_(True), excluded.is_correct.is_(True)),
             'first_answered_time': func.least(progress.first_answered_time, excluded.first_answered_time),
             'last_answered_time': func.greatest(progress.last_answered_time, excluded.last_answered_time),
@@ -130,19 +139,22 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
         """
         source_stmt = (
             select(
-                PracticeRecord.user_id,
+                SessionQuestion.user_id,
                 QuestionPlacement.bank_id,
-                PracticeRecord.question_id,
-                PracticeRecord.placement_id,
-                PracticeRecord.is_correct,
-                PracticeRecord.created_time,
-                PracticeRecord.updated_time,
-                PracticeRecord.judged_at,
+                SessionQuestion.question_id,
+                SessionQuestion.placement_id,
+                QuestionPlacement.chapter_id,
+                SessionQuestion.session_id,
+                SessionQuestion.id.label('last_session_question_id'),
+                SessionQuestion.is_correct,
+                SessionQuestion.created_time,
+                SessionQuestion.updated_time,
+                SessionQuestion.judged_at,
             )
-            .join(QuestionPlacement, QuestionPlacement.id == PracticeRecord.placement_id)
+            .join(QuestionPlacement, QuestionPlacement.id == SessionQuestion.placement_id)
             .where(
-                PracticeRecord.id.in_(record_ids),
-                PracticeRecord.user_answer.isnot(None),
+                SessionQuestion.id.in_(record_ids),
+                SessionQuestion.user_answer.isnot(None),
             )
         )
         rows = (await db.execute(source_stmt)).all()
@@ -165,6 +177,9 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
                     bank_id=row.bank_id,
                     question_id=row.question_id,
                     placement_id=row.placement_id,
+                    chapter_id=row.chapter_id,
+                    last_session_id=row.session_id,
+                    last_session_question_id=row.last_session_question_id,
                     is_correct=row.is_correct is True,
                     first_answered_time=row.created_time or answered_time,
                     last_answered_time=answered_time,
@@ -174,6 +189,9 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
                 continue
 
             progress.placement_id = row.placement_id
+            progress.chapter_id = row.chapter_id
+            progress.last_session_id = row.session_id
+            progress.last_session_question_id = row.last_session_question_id
             progress.is_correct = progress.is_correct or row.is_correct is True
             progress.first_answered_time = min(progress.first_answered_time, row.created_time or answered_time)
             progress.last_answered_time = max(progress.last_answered_time, answered_time)

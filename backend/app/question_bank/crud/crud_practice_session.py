@@ -15,6 +15,36 @@ from backend.app.question_bank.model.question import QuestionPlacement
 class CRUDPracticeSession(CRUDPlus[PracticeSession]):
     """练习会话数据库操作类"""
 
+    async def get_by_key(self, db: AsyncSession, session_key: str) -> PracticeSession | None:
+        """
+        按 session_key 获取练习会话
+
+        :param db: 数据库会话
+        :param session_key: 会话唯一标识
+        :return:
+        """
+        return await self.select_model_by_column(db, session_key=session_key)
+
+    async def get_detail_by_key(self, db: AsyncSession, session_key: str) -> PracticeSession | None:
+        """
+        按 session_key 获取练习会话详情（含会话题目快照）
+
+        :param db: 数据库会话
+        :param session_key: 会话唯一标识
+        :return:
+        """
+        stmt = (
+            select(PracticeSession)
+            .where(PracticeSession.session_key == session_key)
+            .options(
+                selectinload(PracticeSession.session_questions)
+                .selectinload(SessionQuestion.placement)
+                .selectinload(QuestionPlacement.chapter),
+            )
+        )
+        result = await db.execute(stmt)
+        return result.unique().scalars().first()
+
     async def get(self, db: AsyncSession, session_id: int) -> PracticeSession | None:
         """
         获取练习会话详情
@@ -40,7 +70,6 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
                 selectinload(PracticeSession.session_questions)
                 .selectinload(SessionQuestion.placement)
                 .selectinload(QuestionPlacement.chapter),
-                selectinload(PracticeSession.records),
             )
         )
         result = await db.execute(stmt)

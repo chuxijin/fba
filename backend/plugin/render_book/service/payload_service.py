@@ -898,10 +898,10 @@ class RenderPayloadService:
                 type_label=QUESTION_TYPE_LABELS.get(question.type, question.type),
                 stem_text=question.stem,
                 options=[
-                    RenderQuestionOptionPayload(key=option.option_code, content_text=option.content_ref.content if option.content_ref else '')
+                    RenderQuestionOptionPayload(key=option['option_code'], content_text=option['content'])
                     for option in sorted(
-                        [row for row in question.options or [] if row.is_active],
-                        key=lambda row: (row.sort_order, row.option_code),
+                        [row for row in question.options or [] if row.get('is_active', True)],
+                        key=lambda row: (row.get('sort_order', 0), row['option_code']),
                     )
                 ],
                 answer_text=cls._format_answer_text(analysis.answer_data if analysis else None),

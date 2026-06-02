@@ -18,7 +18,10 @@ from backend.app.question_bank.schema.note import (
     UpdateQuestionNoteParam,
 )
 from backend.app.question_bank.schema.question import UpdateQuestionStatisticsParam
-from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
+from backend.app.question_bank.service.category_filter_service import (
+    CategoryQuestionFilter,
+    category_filter_service,
+)
 from backend.common.exception import errors
 from backend.utils.sensitive_words import validate_no_sensitive_words
 
@@ -27,21 +30,21 @@ class NoteService:
     """笔记服务类"""
 
     @staticmethod
-    async def _get_study_domain_filter(
+    async def _get_category_filter(
         *,
         db: AsyncSession,
-        study_domain: str | None,
-    ) -> StudyDomainQuestionFilter | None:
+        cat_id: int | None,
+        kp_cat_id: int | None,
+    ) -> CategoryQuestionFilter | None:
         """
-        获取领域过滤上下文
+        获取分类过滤上下文
 
         :param db: 数据库会话
-        :param study_domain: 领域编码
+        :param cat_id: 题库目录分类 ID
+        :param kp_cat_id: 知识点分类 ID
         :return:
         """
-        if study_domain is None:
-            return None
-        return await study_domain_service.get_question_filter(db=db, code=study_domain)
+        return await category_filter_service.get_question_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
 
     @staticmethod
     async def create_note(*, db: AsyncSession, user_id: int, obj: CreateQuestionNoteParam) -> QuestionNote:
@@ -447,22 +450,24 @@ class NoteService:
         *,
         db: AsyncSession,
         user_id: int,
-        study_domain: str | None = None,
+        cat_id: int | None = None,
+        kp_cat_id: int | None = None,
     ) -> dict:
         """
         获取笔记统计数据
 
         :param db: 数据库会话
         :param user_id: 用户 ID
-        :param study_domain: 领域编码
+        :param cat_id: 题库目录分类 ID
+        :param kp_cat_id: 知识点分类 ID
         :return:
         """
-        domain_filter = await NoteService._get_study_domain_filter(db=db, study_domain=study_domain)
-        if domain_filter:
+        category_filter = await NoteService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
+        if category_filter and cat_id is not None:
             return await question_note_dao.get_statistics_by_bank_ids(
                 db=db,
                 user_id=user_id,
-                bank_ids=domain_filter.bank_ids,
+                bank_ids=category_filter.bank_ids,
             )
         return await question_note_dao.get_statistics(db=db, user_id=user_id)
 
@@ -472,7 +477,8 @@ class NoteService:
         db: AsyncSession,
         user_id: int,
         group_by: str,
-        study_domain: str | None = None,
+        cat_id: int | None = None,
+        kp_cat_id: int | None = None,
     ) -> list[dict]:
         """
         获取分组统计
@@ -482,22 +488,22 @@ class NoteService:
         :param group_by: 分组方式
         :return:
         """
-        domain_filter = await NoteService._get_study_domain_filter(db=db, study_domain=study_domain)
+        category_filter = await NoteService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
         if group_by == 'knowledge_point':
             rows = await question_note_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
-            if not domain_filter:
+            if not category_filter or kp_cat_id is None:
                 return rows
             return [
                 item for item in rows
-                if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+                if str(item['group_name'] or '').strip() in category_filter.knowledge_names
             ]
 
         rows = await question_note_dao.get_grouped_by_bank(db=db, user_id=user_id)
-        if not domain_filter:
+        if not category_filter or cat_id is None:
             return rows
         return [
             item for item in rows
-            if item['group_id'] is not None and int(item['group_id']) in domain_filter.bank_ids
+            if item['group_id'] is not None and int(item['group_id']) in category_filter.bank_ids
         ]
 
     @staticmethod
@@ -506,7 +512,8 @@ class NoteService:
         db: AsyncSession,
         user_id: int,
         group_by: str = 'knowledge_point',
-        study_domain: str | None = None,
+        cat_id: int | None = None,
+        kp_cat_id: int | None = None,
     ) -> dict:
         """
         获取统计和树形分组
@@ -523,25 +530,25 @@ class NoteService:
             load_kp_categories,
         )
 
-        domain_filter = await NoteService._get_study_domain_filter(db=db, study_domain=study_domain)
-        stats = await NoteService.get_statistics(db=db, user_id=user_id, study_domain=study_domain)
+        category_filter = await NoteService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
+        stats = await NoteService.get_statistics(db=db, user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id)
 
         if group_by == 'knowledge_point':
             flat_counts = await question_note_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
-            if domain_filter:
+            if category_filter and kp_cat_id is not None:
                 flat_counts = [
                     item for item in flat_counts
-                    if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+                    if str(item['group_name'] or '').strip() in category_filter.knowledge_names
                 ]
             count_map = {item['group_name']: item['count'] for item in flat_counts}
             categories = await load_kp_categories(db)
             groups = build_kp_tree(categories, count_map)
         else:
             flat_counts = await question_note_dao.get_bank_chapter_counts(db=db, user_id=user_id)
-            if domain_filter:
+            if category_filter and cat_id is not None:
                 flat_counts = [
                     row for row in flat_counts
-                    if row['bank_id'] is not None and int(row['bank_id']) in domain_filter.bank_ids
+                    if row['bank_id'] is not None and int(row['bank_id']) in category_filter.bank_ids
                 ]
             count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
             bank_ids = {row['bank_id'] for row in flat_counts if row['bank_id'] is not None}

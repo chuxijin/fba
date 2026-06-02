@@ -60,7 +60,8 @@ class CRUDRenderBookJob(CRUDPlus[RenderBookJob]):
         mode: str | None = None,
         user_id: int | None = None,
         keyword: str | None = None,
-        study_domain: str | None = None,
+        cat_id: int | None = None,
+        kp_cat_id: int | None = None,
         bank_ids: set[int] | None = None,
         with_files: bool = True,
         include_deleted: bool = False,
@@ -88,13 +89,18 @@ class CRUDRenderBookJob(CRUDPlus[RenderBookJob]):
                 | self.model.subtitle.ilike(like_keyword)
                 | self.model.job_id.ilike(like_keyword)
             )
-        if study_domain:
-            conditions = [self.model.metadata_json['study_domain'].as_string() == study_domain]
+        if cat_id is not None or kp_cat_id is not None:
+            conditions = []
+            if cat_id is not None:
+                conditions.append(cast(self.model.metadata_json['cat_id'].as_string(), sa.BigInteger) == cat_id)
+            if kp_cat_id is not None:
+                conditions.append(cast(self.model.metadata_json['kp_cat_id'].as_string(), sa.BigInteger) == kp_cat_id)
             if bank_ids:
                 conditions.append(
                     cast(self.model.metadata_json['bank_id'].as_string(), sa.BigInteger).in_(bank_ids)
                 )
-            stmt = stmt.where(or_(*conditions))
+            if conditions:
+                stmt = stmt.where(or_(*conditions))
 
         return stmt.order_by(self.model.created_time.desc(), self.model.id.desc())
 

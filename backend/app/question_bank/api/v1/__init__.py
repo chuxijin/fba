@@ -17,7 +17,6 @@ from backend.app.question_bank.api.v1.parse import router as parse_router
 from backend.app.question_bank.api.v1.practice import router as practice_router
 from backend.app.question_bank.api.v1.question import router as question_router
 from backend.app.question_bank.api.v1.session import router as session_router
-from backend.app.question_bank.api.v1.study_domain import router as study_domain_router
 from backend.app.question_bank.api.v1.upload import router as upload_router
 from backend.app.question_bank.api.v1.user_message import router as user_message_router
 from backend.app.question_bank.api.v1.user_settings import router as user_settings_router
@@ -29,7 +28,6 @@ router.include_router(auth_router, prefix='/auth', tags=['认证'])
 router.include_router(ai_evaluation_router, prefix='/ai-evaluations', tags=['AI 判分'])
 router.include_router(user_settings_router, prefix='/settings', tags=['用户设置'])
 router.include_router(user_message_router, prefix='/messages', tags=['用户消息'])
-router.include_router(study_domain_router, prefix='/study-domains', tags=['学习领域'])
 router.include_router(home_router, prefix='/home', tags=['首页'])
 router.include_router(bank_router, prefix='/banks', tags=['题库'])
 router.include_router(bank_mount_router, prefix='/bank-mounts', tags=['刷题内容挂载'])

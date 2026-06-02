@@ -356,45 +356,66 @@ class GiveMeOCCrawler:
 
                 # 保存到数据库
                 for job_data in jobs:
+                    # 确保有 source_id
+                    if not job_data.get('source_id'):
+                        log.warning(f"跳过没有 source_id 的数据: {job_data['company_name']}")
+                        continue
+
+                    # 用 savepoint 隔离每条记录，单条失败不影响其他
                     try:
-                        # 确保有 source_id
-                        if not job_data.get('source_id'):
-                            log.warning(f"跳过没有 source_id 的数据: {job_data['company_name']}")
-                            continue
+                        async with db.begin_nested():
+                            if job_type == 'campus':
+                                existing = await campus_recruit_dao.get(db, job_data['source_id'])
 
-                        # 检查是否已存在（通过 id 判断）
-                        if job_type == 'campus':
-                            existing = await campus_recruit_dao.get(db, job_data['source_id'])
-
-                            if existing:
-                                # 更新已有数据 - 保留用户设置的 application_status
-                                update_param = UpdateCampusRecruitParam(
-                                    company_name=job_data['company_name'],
-                                    company_type=job_data['company_type'] or '未知',
-                                    company_size=job_data.get('company_size'),
-                                    industry=job_data['industry'] or '未知',
-                                    recruitment_type=job_data['recruitment_type'] or '未知',
-                                    recruit_target=job_data['recruit_target'] or '未知',
-                                    location=job_data['location'] or '未知',
-                                    positions=job_data['positions'],
-                                    # 不更新 application_status，保留用户设置
-                                    update_time=job_data['update_time'] or datetime.now().date(),
-                                    deadline=job_data.get('deadline'),
-                                    apply_link=job_data.get('apply_link'),
-                                    notice_link=job_data.get('notice_link'),
-                                    referral_code=job_data.get('referral_code'),
-                                    exam_info=job_data.get('exam_info'),
-                                    remark=job_data.get('remark'),
-                                )
-                                await campus_recruit_dao.update_model(db, job_data['source_id'], update_param)
-                                total_skipped += 1
+                                if existing:
+                                    update_param = UpdateCampusRecruitParam(
+                                        company_name=job_data['company_name'],
+                                        company_type=job_data['company_type'] or '未知',
+                                        company_size=job_data.get('company_size'),
+                                        industry=job_data['industry'] or '未知',
+                                        recruitment_type=job_data['recruitment_type'] or '未知',
+                                        recruit_target=job_data['recruit_target'] or '未知',
+                                        location=job_data['location'] or '未知',
+                                        positions=job_data['positions'],
+                                        update_time=job_data['update_time'] or datetime.now().date(),
+                                        deadline=job_data.get('deadline'),
+                                        apply_link=job_data.get('apply_link'),
+                                        notice_link=job_data.get('notice_link'),
+                                        referral_code=job_data.get('referral_code'),
+                                        exam_info=job_data.get('exam_info'),
+                                        remark=job_data.get('remark'),
+                                    )
+                                    await campus_recruit_dao.update_model(db, job_data['source_id'], update_param)
+                                    total_skipped += 1
+                                else:
+                                    param = CreateCampusRecruitParam(
+                                        id=job_data['source_id'],
+                                        company_name=job_data['company_name'],
+                                        company_type=job_data['company_type'] or '未知',
+                                        company_size=job_data.get('company_size'),
+                                        industry=job_data['industry'] or '未知',
+                                        recruitment_type=job_data['recruitment_type'] or '未知',
+                                        recruit_target=job_data['recruit_target'] or '未知',
+                                        location=job_data['location'] or '未知',
+                                        positions=job_data['positions'],
+                                        application_status='未投递',
+                                        update_time=job_data['update_time'] or datetime.now().date(),
+                                        deadline=job_data.get('deadline'),
+                                        apply_link=job_data.get('apply_link'),
+                                        notice_link=job_data.get('notice_link'),
+                                        referral_code=job_data.get('referral_code'),
+                                        exam_info=job_data.get('exam_info'),
+                                        remark=job_data.get('remark'),
+                                    )
+                                    await campus_recruit_dao.create(db, param)
+                                    total_saved += 1
                             else:
-                                # 创建新记录
-                                param = CreateCampusRecruitParam(
+                                existing = await intern_recruit_dao.get(db, job_data['source_id'])
+
+                                param = CreateInternRecruitParam(
                                     id=job_data['source_id'],
                                     company_name=job_data['company_name'],
                                     company_type=job_data['company_type'] or '未知',
-                                    company_size=job_data.get('company_size'),
                                     industry=job_data['industry'] or '未知',
                                     recruitment_type=job_data['recruitment_type'] or '未知',
                                     recruit_target=job_data['recruit_target'] or '未知',
@@ -406,57 +427,21 @@ class GiveMeOCCrawler:
                                     apply_link=job_data.get('apply_link'),
                                     notice_link=job_data.get('notice_link'),
                                     referral_code=job_data.get('referral_code'),
-                                    exam_info=job_data.get('exam_info'),
                                     remark=job_data.get('remark'),
                                 )
-                                await campus_recruit_dao.create(db, param)
-                                total_saved += 1
-                        else:
-                            existing = await intern_recruit_dao.get(db, job_data['source_id'])
 
-                            # 创建参数
-                            param = CreateInternRecruitParam(
-                                id=job_data['source_id'],
-                                company_name=job_data['company_name'],
-                                company_type=job_data['company_type'] or '未知',
-                                industry=job_data['industry'] or '未知',
-                                recruitment_type=job_data['recruitment_type'] or '未知',
-                                recruit_target=job_data['recruit_target'] or '未知',
-                                location=job_data['location'] or '未知',
-                                positions=job_data['positions'],
-                                application_status='未投递',
-                                update_time=job_data['update_time'] or datetime.now().date(),
-                                deadline=job_data.get('deadline'),
-                                apply_link=job_data.get('apply_link'),
-                                notice_link=job_data.get('notice_link'),
-                                referral_code=job_data.get('referral_code'),
-                                remark=job_data.get('remark'),
-                            )
-
-                            if existing:
-                                # 更新已有数据
-                                update_param = UpdateInternRecruitParam(**param.model_dump(exclude={'id'}))
-                                await intern_recruit_dao.update_model(db, job_data['source_id'], update_param)
-                                total_skipped += 1
-                            else:
-                                # 创建新记录
-                                await intern_recruit_dao.create(db, param)
-                                total_saved += 1
+                                if existing:
+                                    update_param = UpdateInternRecruitParam(**param.model_dump(exclude={'id'}))
+                                    await intern_recruit_dao.update_model(db, job_data['source_id'], update_param)
+                                    total_skipped += 1
+                                else:
+                                    await intern_recruit_dao.create(db, param)
+                                    total_saved += 1
 
                     except Exception as e:
-                        error_msg = f"保存失败: {job_data['company_name']} - {str(e)}"
-                        log.error(error_msg)
-                        errors.append(error_msg)
+                        log.warning(f"保存失败: {job_data['company_name']} - {str(e)}")
+                        errors.append(f"保存失败: {job_data['company_name']} - {str(e)}")
                         continue
-
-                # 每页数据处理完立即提交，避免大事务失败导致所有数据丢失
-                try:
-                    await db.commit()
-                    log.info(f'第 {page} 页数据已提交到数据库')
-                except Exception as e:
-                    log.error(f'第 {page} 页提交失败: {str(e)}')
-                    await db.rollback()
-                    errors.append(f'第 {page} 页提交失败: {str(e)}')
 
                 # 请求间隔（倒序爬取，只要不是最后一页就需要延迟）
                 if page > start_page:

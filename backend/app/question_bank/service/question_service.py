@@ -9,7 +9,7 @@ from decimal import Decimal
 from math import ceil
 from typing import Any
 
-from sqlalchemy import cast, func, or_, select, update
+from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,30 +18,25 @@ from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.crud.crud_question import (
-    option_content_dao,
     question_analysis_dao,
     question_dao,
-    question_option_dao,
     question_placement_dao,
     question_statistics_dao,
 )
 from backend.app.question_bank.model import (
-    OptionContent,
     Question,
     QuestionAnalysis,
     QuestionBank,
     QuestionChapter,
-    QuestionOption,
-    QuestionOptionStats,
     QuestionPlacement,
     QuestionStatistics,
 )
 from backend.app.question_bank.schema.question import (
     CreateQuestionParam,
     DeleteQuestionParam,
-    QuestionOptionStatsItem,
     UpdateQuestionParam,
     UpdateQuestionStatisticsParam,
+    UpsertQuestionOptionItem,
     UpsertQuestionPlacementItem,
 )
 from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
@@ -126,22 +121,64 @@ class QuestionService:
         return min(candidates, key=lambda item: item.id)
 
     @staticmethod
+    def normalize_options(
+        options: list[dict[str, Any]] | list[UpsertQuestionOptionItem] | None,
+        *,
+        active_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        """
+        规范化题目选项
+
+        :param options: 选项列表
+        :param active_only: 是否只返回启用选项
+        :return:
+        """
+        normalized_options: list[dict[str, Any]] = []
+        for index, item in enumerate(options or []):
+            if isinstance(item, UpsertQuestionOptionItem):
+                raw_option = item.model_dump()
+            elif isinstance(item, dict):
+                raw_option = item
+            else:
+                continue
+
+            option_code = str(raw_option.get('option_code') or raw_option.get('code') or '').strip().upper()
+            content = str(raw_option.get('content') or '').strip()
+            if not option_code or not content:
+                continue
+
+            is_active = raw_option.get('is_active')
+            if is_active is None:
+                is_active = True
+            if active_only and not bool(is_active):
+                continue
+
+            sort_order = raw_option.get('sort_order')
+            if isinstance(sort_order, bool) or not isinstance(sort_order, int):
+                sort_order = index
+
+            normalized_options.append({
+                'option_code': option_code,
+                'content': content,
+                'sort_order': sort_order,
+                'is_active': bool(is_active),
+            })
+
+        return sorted(normalized_options, key=lambda option: (option['sort_order'], option['option_code']))
+
+    @staticmethod
     def build_options_data(*, question: Question) -> dict | None:
-        """从规范化选项行构建 options_data"""
-        option_rows = question.options or []
-        if not option_rows:
+        """从题目 JSONB 选项构建 options_data"""
+        sorted_rows = QuestionService.normalize_options(question.options, active_only=True)
+        if not sorted_rows:
             return None
 
-        active_rows = [item for item in option_rows if item.is_active]
-        if not active_rows:
-            return None
-
-        sorted_rows = sorted(active_rows, key=lambda item: (item.sort_order, item.option_code))
         options_data: dict[str, dict[str, str]] = {}
         for row in sorted_rows:
-            options_data[row.option_code] = {
-                'code': row.option_code,
-                'content': row.content_ref.content if row.content_ref else '',
+            option_code = row['option_code']
+            options_data[option_code] = {
+                'code': option_code,
+                'content': row['content'],
             }
 
         return options_data
@@ -385,20 +422,7 @@ class QuestionService:
             ]
 
         # 详情接口对齐 GetQuestionDetail schema：补齐 options / placements
-        option_rows = question.options or []
-        sorted_options = sorted(option_rows, key=lambda item: (item.sort_order, item.option_code))
-        data['options'] = [
-            {
-                'id': item.id,
-                'question_id': item.question_id,
-                'option_code': item.option_code,
-                'content_id': item.content_id,
-                'content': item.content_ref.content if item.content_ref else '',
-                'sort_order': item.sort_order,
-                'is_active': item.is_active,
-            }
-            for item in sorted_options
-        ]
+        data['options'] = QuestionService.normalize_options(question.options)
 
         placement_rows = question.placements or []
         sorted_placements = sorted(
@@ -654,18 +678,7 @@ class QuestionService:
 
         option_text = (option_keyword or '').strip()
         if option_text:
-            option_exists = (
-                select(1)
-                .select_from(QuestionOption)
-                .join(OptionContent, OptionContent.id == QuestionOption.content_id)
-                .where(
-                    QuestionOption.question_id == Question.id,
-                    QuestionOption.is_active.is_(True),
-                    OptionContent.content.ilike(f'%{option_text}%'),
-                )
-                .exists()
-            )
-            stmt = stmt.where(option_exists)
+            stmt = stmt.where(cast(Question.options, String).ilike(f'%{option_text}%'))
 
         analysis_text = (analysis_keyword or '').strip()
         if analysis_text:
@@ -756,10 +769,8 @@ class QuestionService:
         question = await question_dao.create(db, obj.core, user_id)
 
         # 3. 写选项
-        if obj.options:
-            await question_option_dao.replace_by_items(
-                db, question_id=question.id, items=obj.options, option_content_crud=option_content_dao,
-            )
+        question.options = QuestionService.normalize_options(obj.options)
+        await db.flush()
 
         # 4. 写挂载
         await question_placement_dao.replace_for_question(
@@ -804,9 +815,8 @@ class QuestionService:
 
         # 2. 更新选项（全量替换）
         if obj.options is not None:
-            await question_option_dao.replace_by_items(
-                db, question_id=pk, items=obj.options, option_content_crud=option_content_dao,
-            )
+            question.options = QuestionService.normalize_options(obj.options)
+            await db.flush()
             count = max(count, 1)
 
         # 3. 更新挂载（全量替换）
@@ -1068,64 +1078,6 @@ class QuestionService:
             raise errors.NotFoundError(msg='题目不存在')
 
         return await question_statistics_dao.get_or_create(db, question_id)
-
-    @staticmethod
-    async def get_option_stats(
-        *,
-        db: AsyncSession,
-        question_id: int,
-        bank_id: int | None = None,
-        chapter_id: int | None = None,
-    ) -> list[QuestionOptionStatsItem]:
-        """获取题目各挂载点下的选项统计"""
-        question = await question_dao.get_with_relations(db, question_id)
-        if not question:
-            raise errors.NotFoundError(msg='题目不存在')
-
-        placement_candidates = question.placements or []
-        target_placements = [
-            placement
-            for placement in placement_candidates
-            if (bank_id is None or placement.bank_id == bank_id)
-            and (chapter_id is None or placement.chapter_id == chapter_id)
-        ]
-        if not target_placements:
-            return []
-
-        active_options = [item for item in question.options if item.is_active] if question.options else []
-        if not active_options:
-            return []
-
-        placement_ids = [placement.id for placement in target_placements]
-        stmt = select(QuestionOptionStats).where(
-            QuestionOptionStats.question_id == question_id,
-            QuestionOptionStats.placement_id.in_(placement_ids),
-        )
-        result = await db.execute(stmt)
-        stats_rows = result.scalars().all()
-        stats_map = {(row.placement_id, row.option_code): row for row in stats_rows}
-
-        sorted_options = sorted(active_options, key=lambda item: (item.sort_order, item.option_code))
-        sorted_placements = sorted(target_placements, key=lambda item: (item.bank_id, item.chapter_id or 0, item.sort_order))
-
-        items: list[QuestionOptionStatsItem] = []
-        for placement in sorted_placements:
-            for option in sorted_options:
-                stats = stats_map.get((placement.id, option.option_code))
-                items.append(
-                    QuestionOptionStatsItem(
-                        placement_id=placement.id,
-                        bank_id=placement.bank_id,
-                        chapter_id=placement.chapter_id,
-                        option_code=option.option_code,
-                        option_content=option.content_ref.content if option.content_ref else '',
-                        selected_count=stats.selected_count if stats else 0,
-                        correct_selected_count=stats.correct_selected_count if stats else 0,
-                        wrong_selected_count=stats.wrong_selected_count if stats else 0,
-                    )
-                )
-
-        return items
 
     @staticmethod
     async def update_statistics(*, db: AsyncSession, question_id: int, obj: UpdateQuestionStatisticsParam) -> None:

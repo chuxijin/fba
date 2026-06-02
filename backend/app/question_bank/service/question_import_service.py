@@ -16,7 +16,6 @@ from backend.app.question_bank.model import (
     Question,
     QuestionAnalysis,
     QuestionChapter,
-    QuestionOption,
     QuestionPlacement,
 )
 from backend.app.question_bank.model.question import question_material_relation
@@ -36,6 +35,7 @@ from backend.app.question_bank.schema.question_import import (
     MaterialImportRow,
     QuestionImportRow,
 )
+from backend.app.question_bank.service.question_service import QuestionService
 from backend.common.exception import errors
 from backend.utils.answer_parser import extract_option_codes, split_answer_text
 
@@ -564,7 +564,6 @@ class QuestionImportService:
             select(Question)
             .where(Question.id.in_(candidate_ids))
             .options(
-                selectinload(Question.options).joinedload(QuestionOption.content_ref),
                 selectinload(Question.analyses),
                 selectinload(Question.placements),
             )
@@ -659,16 +658,12 @@ class QuestionImportService:
         :return:
         """
         options: list[UpsertQuestionOptionItem] = []
-        for option in question.options or []:
-            if not option.is_active:
-                continue
-            if not option.content_ref:
-                continue
+        for option in QuestionService.normalize_options(question.options, active_only=True):
             options.append(UpsertQuestionOptionItem(
-                option_code=option.option_code,
-                content=option.content_ref.content,
-                sort_order=option.sort_order,
-                is_active=option.is_active,
+                option_code=option['option_code'],
+                content=option['content'],
+                sort_order=option['sort_order'],
+                is_active=option['is_active'],
             ))
 
         return QuestionImportService._build_question_fingerprint(

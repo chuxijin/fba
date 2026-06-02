@@ -32,15 +32,21 @@ async def get_statistics(
     request: Request,
     db: CurrentSession,
     group_by: str | None = None,
-    study_domain: str | None = None,
+    cat_id: int | None = None,
+    kp_cat_id: int | None = None,
 ) -> ResponseSchemaModel:
     """获取用户的错题本统计数据，传 group_by 时返回树形分组"""
     if group_by:
         data = await wrong_question_service.get_statistics_with_groups(
-            db=db, user_id=request.user.id, group_by=group_by, study_domain=study_domain,
+            db=db, user_id=request.user.id, group_by=group_by, cat_id=cat_id, kp_cat_id=kp_cat_id,
         )
         return response_base.success(data=data)
-    stats = await wrong_question_service.get_statistics(db=db, user_id=request.user.id, study_domain=study_domain)
+    stats = await wrong_question_service.get_statistics(
+        db=db,
+        user_id=request.user.id,
+        cat_id=cat_id,
+        kp_cat_id=kp_cat_id,
+    )
     return response_base.success(data=stats)
 
 
@@ -49,14 +55,16 @@ async def get_grouped(
     request: Request,
     db: CurrentSession,
     group_by: str = 'bank',
-    study_domain: str | None = None,
+    cat_id: int | None = None,
+    kp_cat_id: int | None = None,
 ) -> ResponseSchemaModel[list[WrongQuestionGroupItem]]:
     """按题库或知识点分组聚合错题数量"""
     data = await wrong_question_service.get_grouped(
         db=db,
         user_id=request.user.id,
         group_by=group_by,
-        study_domain=study_domain,
+        cat_id=cat_id,
+        kp_cat_id=kp_cat_id,
     )
     return response_base.success(data=data)
 

@@ -243,7 +243,7 @@ class BankProgressService:
         progress_model = user_bank_progress_dao.model
         stmt = (
             select(
-                QuestionPlacement.chapter_id,
+                progress_model.chapter_id,
                 Question.type,
                 func.count(sa.distinct(progress_model.question_id)),
                 func.count(
@@ -256,14 +256,13 @@ class BankProgressService:
                 ),
             )
             .select_from(progress_model)
-            .join(QuestionPlacement, QuestionPlacement.id == progress_model.placement_id)
             .join(Question, Question.id == progress_model.question_id)
             .where(
                 progress_model.user_id == user_id,
                 progress_model.bank_id == bank_id,
-                QuestionPlacement.chapter_id.in_(chapter_ids),
+                progress_model.chapter_id.in_(chapter_ids),
             )
-            .group_by(QuestionPlacement.chapter_id, Question.type)
+            .group_by(progress_model.chapter_id, Question.type)
         )
         rows = (await db.execute(stmt)).all()
 
@@ -298,7 +297,7 @@ class BankProgressService:
         progress_model = user_bank_progress_dao.model
         progress_stmt = (
             select(
-                QuestionPlacement.chapter_id,
+                progress_model.chapter_id,
                 func.count(sa.distinct(progress_model.question_id)),
                 func.count(
                     sa.distinct(
@@ -310,13 +309,12 @@ class BankProgressService:
                 ),
             )
             .select_from(progress_model)
-            .join(QuestionPlacement, QuestionPlacement.id == progress_model.placement_id)
             .where(
                 progress_model.user_id == user_id,
                 progress_model.bank_id == bank_id,
-                QuestionPlacement.chapter_id.in_(chapter_ids),
+                progress_model.chapter_id.in_(chapter_ids),
             )
-            .group_by(QuestionPlacement.chapter_id)
+            .group_by(progress_model.chapter_id)
         )
         rows = (await db.execute(progress_stmt)).all()
 
@@ -327,6 +325,45 @@ class BankProgressService:
                 continue
             answer_map[int(chapter_id)] = int(answer_count or 0)
             correct_map[int(chapter_id)] = int(correct_count or 0)
+
+        return answer_map, correct_map
+
+    @staticmethod
+    def _build_chapter_count_map_from_type_count(
+        question_type_count_map: dict[int, dict[str, int]],
+    ) -> dict[int, int]:
+        """
+        从篇章题型题量统计篇章题量
+
+        :param question_type_count_map: 篇章题型题量映射
+        :return:
+        """
+        return {
+            chapter_id: sum(int(count or 0) for count in type_counts.values())
+            for chapter_id, type_counts in question_type_count_map.items()
+        }
+
+    @staticmethod
+    def _build_chapter_answer_correct_maps_from_type_progress(
+        question_type_progress_map: dict[int, dict[str, dict[str, int]]],
+    ) -> tuple[dict[int, int], dict[int, int]]:
+        """
+        从篇章题型进度统计篇章作答和答对数量
+
+        :param question_type_progress_map: 篇章题型进度映射
+        :return:
+        """
+        answer_map: dict[int, int] = {}
+        correct_map: dict[int, int] = {}
+        for chapter_id, type_progress in question_type_progress_map.items():
+            answer_map[chapter_id] = sum(
+                int(progress.get('answer_count') or 0)
+                for progress in type_progress.values()
+            )
+            correct_map[chapter_id] = sum(
+                int(progress.get('correct_count') or 0)
+                for progress in type_progress.values()
+            )
 
         return answer_map, correct_map
 
@@ -811,23 +848,20 @@ class BankProgressService:
             return await cls._build_overall_chapter_progress(db=db, bank_id=bank_id, user_id=user_id)
 
         chapter_ids = [chapter.id for chapter in chapter_list]
-        q_count_map = await cls.get_chapter_count_map(db, bank_id=bank_id, chapter_ids=chapter_ids)
         question_type_count_map = await cls.get_chapter_question_type_count_map(
             db=db,
             bank_id=bank_id,
             chapter_ids=chapter_ids,
         )
+        q_count_map = cls._build_chapter_count_map_from_type_count(question_type_count_map)
         question_type_progress_map = await cls._get_chapter_question_type_progress_map(
             db=db,
             bank_id=bank_id,
             user_id=user_id,
             chapter_ids=chapter_ids,
         )
-        answer_map, correct_map = await cls._get_chapter_answer_correct_maps(
-            db=db,
-            bank_id=bank_id,
-            user_id=user_id,
-            chapter_ids=chapter_ids,
+        answer_map, correct_map = cls._build_chapter_answer_correct_maps_from_type_progress(
+            question_type_progress_map,
         )
 
         tree_nodes = cls._build_chapter_progress_tree(
@@ -882,7 +916,13 @@ class BankProgressService:
         """
         has_collection = False
         if cat_id is not None:
-            cat_ids = await category_dao.get_all_children_ids(db, cat_id)
+            cat_ids = await category_dao.get_subtree_ids_by_path(
+                db,
+                cat_id,
+                app_code='youanshang',
+                type_='product_catalog',
+                status=True,
+            )
             stmt = select(QuestionBank.id).where(
                 QuestionBank.cat_id.in_(cat_ids),
                 QuestionBank.status == 1,

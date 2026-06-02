@@ -16,7 +16,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.app.question_bank.crud.crud_question import option_content_dao, question_option_dao
 from backend.app.question_bank.model import (
     Question,
     QuestionAnalysis,
@@ -24,7 +23,7 @@ from backend.app.question_bank.model import (
     QuestionMaterial,
     QuestionPlacement,
 )
-from backend.app.question_bank.schema.question import UpsertQuestionOptionItem
+from backend.app.question_bank.service.question_service import QuestionService
 from backend.database.db import async_db_session
 from backend.scripts.qbank_image_mirror import QbankImageMirror
 
@@ -344,39 +343,34 @@ async def process_bank(
                 analysis.content = content
                 stats.analysis_updated += 1
 
-            options = await question_option_dao.list_by_question(db, question_id=qid)
+            options = QuestionService.normalize_options(question.options)
             if options:
                 stats.option_question_total += 1
 
-            option_items: list[UpsertQuestionOptionItem] = []
+            option_items: list[dict[str, object]] = []
             option_changed = False
             for option in options:
-                source_content = option.content_ref.content if option.content_ref else ""
+                source_content = str(option['content'])
                 mirrored_content, changed = await mirror_html_text(
                     mirror=mirror,
                     html=source_content,
                     bank_code=target.bank_code,
-                    field_name=f"option_{option.option_code}",
+                    field_name=f"option_{option['option_code']}",
                     question_id=qid,
                 )
                 if changed:
                     option_changed = True
                 option_items.append(
-                    UpsertQuestionOptionItem(
-                        option_code=option.option_code,
-                        content=mirrored_content,
-                        sort_order=option.sort_order,
-                        is_active=option.is_active,
-                    )
+                    {
+                        'option_code': option['option_code'],
+                        'content': mirrored_content,
+                        'sort_order': option['sort_order'],
+                        'is_active': option['is_active'],
+                    }
                 )
 
             if option_changed and option_items:
-                await question_option_dao.replace_by_items(
-                    db,
-                    question_id=qid,
-                    items=option_items,
-                    option_content_crud=option_content_dao,
-                )
+                question.options = QuestionService.normalize_options(option_items)
                 stats.option_question_updated += 1
 
         await db.flush()

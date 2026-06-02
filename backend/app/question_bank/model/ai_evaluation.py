@@ -16,7 +16,7 @@ from backend.common.model import Base, TimeZone, UniversalText, UserMixin, id_ke
 CompatibleJSONB = sa.JSON().with_variant(JSONB, 'postgresql')
 
 if TYPE_CHECKING:
-    from .practice import PracticeRecord, PracticeSession
+    from .practice import PracticeSession, SessionQuestion
     from .question import Question
     from .user import UserAccount
 
@@ -28,7 +28,7 @@ class PracticeAIEvaluation(Base, UserMixin):
     __table_args__ = (
         sa.Index('idx_practice_ai_eval_user_target_created', 'user_id', 'target_type', 'created_time'),
         sa.Index('idx_practice_ai_eval_session_latest', 'session_id', 'target_type', 'is_latest'),
-        sa.Index('idx_practice_ai_eval_record_latest', 'practice_record_id', 'is_latest'),
+        sa.Index('idx_practice_ai_eval_sq_latest', 'session_question_id', 'is_latest'),
         sa.Index('idx_practice_ai_eval_question_created', 'question_id', 'created_time'),
         sa.CheckConstraint(
             "target_type IN ('question_eval','session_summary')",
@@ -66,11 +66,11 @@ class PracticeAIEvaluation(Base, UserMixin):
         default=None,
         comment='练习会话 ID',
     )
-    practice_record_id: Mapped[int | None] = mapped_column(
+    session_question_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_practice_record.id', ondelete='CASCADE'),
+        sa.ForeignKey('study_session_question.id', ondelete='CASCADE'),
         default=None,
-        comment='答题记录 ID',
+        comment='会话题目 ID（答题记录）',
     )
     question_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
@@ -100,5 +100,5 @@ class PracticeAIEvaluation(Base, UserMixin):
 
     account: Mapped[UserAccount] = relationship(init=False, lazy='noload')
     session: Mapped[PracticeSession | None] = relationship(init=False, lazy='noload')
-    practice_record: Mapped[PracticeRecord | None] = relationship(init=False, lazy='noload')
+    session_question: Mapped[SessionQuestion | None] = relationship(init=False, lazy='noload')
     question: Mapped[Question | None] = relationship(init=False, lazy='noload')

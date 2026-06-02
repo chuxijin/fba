@@ -7,7 +7,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.question_bank.model import QuestionBank
+from backend.app.question_bank.model import QuestionBank, QuestionBankMount
 from backend.app.question_bank.schema.bank import CreateBankParam, UpdateBankParam
 
 
@@ -246,7 +246,7 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         :param parent_ids: 父级题库 ID 列表
         :return:
         """
-        stmt = (
+        parent_stmt = (
             select(
                 QuestionBank.parent_id,
                 func.count(QuestionBank.id).label('child_count'),
@@ -255,10 +255,29 @@ class CRUDBank(CRUDPlus[QuestionBank]):
             .where(QuestionBank.status == 1)
             .group_by(QuestionBank.parent_id)
         )
+        mount_stmt = (
+            select(
+                QuestionBankMount.collection_id,
+                func.count(QuestionBankMount.item_id).label('child_count'),
+            )
+            .join(QuestionBank, QuestionBank.id == QuestionBankMount.item_id)
+            .where(QuestionBankMount.collection_id.in_(parent_ids))
+            .where(QuestionBankMount.status == 1)
+            .where(QuestionBank.status == 1)
+            .group_by(QuestionBankMount.collection_id)
+        )
 
-        result = await db.execute(stmt)
-        rows = result.all()
-        return {row.parent_id: row.child_count for row in rows}
+        child_counts = {parent_id: 0 for parent_id in parent_ids}
+        parent_result = await db.execute(parent_stmt)
+        for row in parent_result.all():
+            child_counts[int(row.parent_id)] = int(row.child_count or 0)
+
+        mount_result = await db.execute(mount_stmt)
+        for row in mount_result.all():
+            collection_id = int(row.collection_id)
+            child_counts[collection_id] = max(child_counts.get(collection_id, 0), int(row.child_count or 0))
+
+        return child_counts
 
 
 bank_dao: CRUDBank = CRUDBank(QuestionBank)

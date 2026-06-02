@@ -2,16 +2,11 @@
 # -*- coding: utf-8 -*-
 import json
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.admin.model.category import Category
 from backend.app.question_bank.crud.crud_user import user_account_dao
-from backend.app.question_bank.schema.user_settings import CustomTab, GetStudyPreferenceResponse
-from backend.app.question_bank.service.study_domain_config import (
-    get_study_domain_default_tab_codes,
-    normalize_study_domain_code,
-)
+from backend.app.question_bank.schema.user_settings import CategoryCustomTabs, GetStudyPreferenceResponse
+from backend.app.question_bank.service.category_filter_service import category_filter_service
 from backend.common.exception import errors
 
 
@@ -46,9 +41,9 @@ class UserSettingsService:
             return 3
 
     @staticmethod
-    async def get_current_domain(*, db: AsyncSession, user_id: int) -> str:
+    async def get_current_category_ids(*, db: AsyncSession, user_id: int) -> tuple[int | None, int | None]:
         """
-        获取当前学习领域
+        获取当前分类偏好
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -56,10 +51,10 @@ class UserSettingsService:
         """
         user = await user_account_dao.get_by_sys_user_id(db, user_id)
         if not user:
-            return normalize_study_domain_code(None)
+            return None, None
 
         settings = UserSettingsService._load_settings(user.study_preference_settings)
-        return normalize_study_domain_code(settings.get('current_domain'))
+        return settings.get('current_cat_id'), settings.get('current_kp_cat_id')
 
     @staticmethod
     def _normalize_theme_mode(value: str | None) -> str:
@@ -67,6 +62,25 @@ class UserSettingsService:
         if value in ('light', 'dark', 'auto'):
             return value
         return 'light'
+
+    @staticmethod
+    def _normalize_category_custom_tabs(value: dict | None) -> dict:
+        """
+        规范化分类 Tab 配置
+
+        :param value: 原始分类 Tab 配置
+        :return:
+        """
+        if not isinstance(value, dict):
+            return {}
+
+        result: dict = {}
+        for scope_key, tabs in value.items():
+            if not isinstance(tabs, list):
+                result[str(scope_key)] = []
+                continue
+            result[str(scope_key)] = tabs
+        return result
 
     @staticmethod
     async def get_study_preference(*, db: AsyncSession, user_id: int) -> GetStudyPreferenceResponse:
@@ -83,15 +97,15 @@ class UserSettingsService:
 
         settings = UserSettingsService._load_settings(user.study_preference_settings)
         practice_mode = settings.get('practice_mode', 'practice')
-        custom_tabs = settings.get('custom_tabs', [])
+        category_custom_tabs = UserSettingsService._normalize_category_custom_tabs(settings.get('category_custom_tabs'))
         mastery_threshold = settings.get('mastery_threshold', 3)
-        current_domain = normalize_study_domain_code(settings.get('current_domain'))
         theme_mode = UserSettingsService._normalize_theme_mode(settings.get('theme_mode'))
 
         return GetStudyPreferenceResponse(
-            current_domain=current_domain,
+            current_cat_id=settings.get('current_cat_id'),
+            current_kp_cat_id=settings.get('current_kp_cat_id'),
             practice_mode=practice_mode,
-            custom_tabs=custom_tabs,
+            category_custom_tabs=category_custom_tabs,
             mastery_threshold=mastery_threshold,
             theme_mode=theme_mode,
         )
@@ -101,9 +115,10 @@ class UserSettingsService:
         *,
         db: AsyncSession,
         user_id: int,
-        current_domain: str | None,
+        current_cat_id: int | None,
+        current_kp_cat_id: int | None,
         practice_mode: str | None,
-        custom_tabs: list[CustomTab] | None,
+        category_custom_tabs: CategoryCustomTabs | None,
         mastery_threshold: int | None,
         theme_mode: str | None,
     ) -> None:
@@ -113,7 +128,7 @@ class UserSettingsService:
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param practice_mode: 练习模式
-        :param custom_tabs: 自定义标签页
+        :param category_custom_tabs: 按分类范围隔离的自定义标签页
         :param mastery_threshold: 错题掌握阈值
         :param theme_mode: 主题模式（light/dark/auto）
         """
@@ -123,14 +138,20 @@ class UserSettingsService:
 
         current_settings = UserSettingsService._load_settings(user.study_preference_settings)
 
-        if current_domain is not None:
-            current_settings['current_domain'] = normalize_study_domain_code(current_domain)
+        if current_cat_id is not None:
+            current_settings['current_cat_id'] = current_cat_id
+
+        if current_kp_cat_id is not None:
+            current_settings['current_kp_cat_id'] = current_kp_cat_id
 
         if practice_mode is not None:
             current_settings['practice_mode'] = practice_mode
 
-        if custom_tabs is not None:
-            current_settings['custom_tabs'] = [tab.model_dump() for tab in custom_tabs]
+        if category_custom_tabs is not None:
+            current_settings['category_custom_tabs'] = {
+                str(scope_key): [tab.model_dump() for tab in tabs]
+                for scope_key, tabs in category_custom_tabs.items()
+            }
 
         if mastery_threshold is not None:
             current_settings['mastery_threshold'] = mastery_threshold
@@ -145,53 +166,35 @@ class UserSettingsService:
         )
 
     @staticmethod
-    async def initialize_domain_preference(*, db: AsyncSession, user_id: int, domain_code: str) -> list[dict]:
+    async def initialize_category_preference(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        cat_id: int,
+        kp_cat_id: int | None,
+    ) -> dict:
         """
-        新用户选择领域后初始化默认偏好（current_domain + 默认 custom_tabs）
+        新用户选择分类后初始化默认偏好
 
         :param db: 数据库会话
         :param user_id: 用户 ID
-        :param domain_code: 学习领域编码
+        :param cat_id: 题库目录分类 ID
+        :param kp_cat_id: 知识点分类 ID
         :return:
         """
         user = await user_account_dao.get_by_sys_user_id(db, user_id)
         if not user:
             raise errors.NotFoundError(msg='用户不存在')
 
-        normalized_domain = normalize_study_domain_code(domain_code)
-        tab_codes = get_study_domain_default_tab_codes(normalized_domain)
-
-        # 根据 code 从分类表批量查出 id 和 name
-        custom_tabs: list[dict] = []
-        if tab_codes:
-            stmt = (
-                select(Category.id, Category.name, Category.code, Category.sort_order)
-                .where(Category.code.in_(tab_codes))
-                .order_by(Category.sort_order)
-            )
-            rows = (await db.execute(stmt)).all()
-
-            # 按 tab_codes 的顺序排列
-            code_order = {code: idx for idx, code in enumerate(tab_codes)}
-            sorted_rows = sorted(rows, key=lambda r: code_order.get(r.code, 999))
-
-            custom_tabs = [
-                {
-                    'id': str(row.id),
-                    'name': row.name,
-                    'category_id': row.id,
-                    'category_name': row.name,
-                    'bank_id': None,
-                    'bank_name': None,
-                    'is_fixed': False,
-                    'order': idx,
-                }
-                for idx, row in enumerate(sorted_rows)
-            ]
-
         current_settings = UserSettingsService._load_settings(user.study_preference_settings)
-        current_settings['current_domain'] = normalized_domain
-        current_settings['custom_tabs'] = custom_tabs
+        category_custom_tabs = UserSettingsService._normalize_category_custom_tabs(
+            current_settings.get('category_custom_tabs'),
+        )
+        scope_key = category_filter_service.build_scope_key(cat_id=cat_id, kp_cat_id=kp_cat_id)
+        category_custom_tabs.setdefault(scope_key, [])
+        current_settings['current_cat_id'] = cat_id
+        current_settings['current_kp_cat_id'] = kp_cat_id
+        current_settings['category_custom_tabs'] = category_custom_tabs
 
         await user_account_dao.update_model(
             db,
@@ -199,7 +202,7 @@ class UserSettingsService:
             {'study_preference_settings': json.dumps(current_settings)},
         )
 
-        return custom_tabs
+        return category_custom_tabs
 
 
 user_settings_service = UserSettingsService()

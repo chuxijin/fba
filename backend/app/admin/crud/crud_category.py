@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -271,6 +271,90 @@ class CRUDCategory(CRUDPlus[Category]):
         stmt = select(final_cte.c.id)
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_subtree_ids_by_path(
+        self,
+        db: AsyncSession,
+        root_id: int,
+        *,
+        app_code: str | None = None,
+        type_: str | None = None,
+        status: bool | None = True,
+    ) -> list[int]:
+        """
+        通过物化路径获取子树分类 ID（包含自身）
+
+        :param db: 数据库会话
+        :param root_id: 根分类 ID
+        :param app_code: 应用标识
+        :param type_: 分类类型
+        :param status: 状态
+        :return:
+        """
+        root = await self.get(db, root_id)
+        if root is None:
+            return []
+
+        path_prefix = root.path or str(root.id)
+        filters = [
+            or_(
+                Category.id == root_id,
+                Category.path == path_prefix,
+                Category.path.like(f'{path_prefix}/%'),
+            )
+        ]
+        if app_code is not None:
+            filters.append(Category.app_code == app_code)
+        if type_ is not None:
+            filters.append(Category.type == type_)
+        if status is not None:
+            filters.append(Category.status == status)
+
+        stmt = select(Category.id).where(*filters).order_by(Category.level.asc(), Category.sort_order.asc())
+        result = await db.execute(stmt)
+        return [int(category_id) for category_id in result.scalars().all()]
+
+    async def get_subtree_names_by_path(
+        self,
+        db: AsyncSession,
+        root_id: int,
+        *,
+        app_code: str | None = None,
+        type_: str | None = None,
+        status: bool | None = True,
+    ) -> set[str]:
+        """
+        通过物化路径获取子树分类名称（包含自身）
+
+        :param db: 数据库会话
+        :param root_id: 根分类 ID
+        :param app_code: 应用标识
+        :param type_: 分类类型
+        :param status: 状态
+        :return:
+        """
+        root = await self.get(db, root_id)
+        if root is None:
+            return set()
+
+        path_prefix = root.path or str(root.id)
+        filters = [
+            or_(
+                Category.id == root_id,
+                Category.path == path_prefix,
+                Category.path.like(f'{path_prefix}/%'),
+            )
+        ]
+        if app_code is not None:
+            filters.append(Category.app_code == app_code)
+        if type_ is not None:
+            filters.append(Category.type == type_)
+        if status is not None:
+            filters.append(Category.status == status)
+
+        stmt = select(Category.name).where(*filters)
+        result = await db.execute(stmt)
+        return {str(name).strip() for name in result.scalars().all() if str(name or '').strip()}
 
     async def get_subtree_by_root_codes(
         self,

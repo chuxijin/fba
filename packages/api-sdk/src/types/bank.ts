@@ -66,5 +66,4 @@ export interface BankListParams {
   keyword?: string;
   bank_type?: BankType;
   parent_id?: number;
-  study_domain?: string;
 }

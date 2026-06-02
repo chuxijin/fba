@@ -33,10 +33,7 @@ export interface QuestionPlacementItem {
 
 /** 选项 */
 export interface QuestionOptionItem {
-  id: number;
-  question_id: number;
   option_code: string;
-  content_id: number;
   content: string;
   sort_order: number;
   is_active: boolean;
@@ -134,13 +131,6 @@ export interface GetQuestionSolution {
   option_select_stats: Record<string, unknown> | null;
 }
 
-/** 选项统计�?*/
-export interface QuestionOptionStatsItem {
-  option_code: string;
-  count: number;
-  rate: number;
-}
-
 /** 题目笔记详情 */
 export interface GetQuestionNoteDetail {
   id: number;
@@ -217,7 +207,6 @@ export interface QuestionCollectResult {
 
 /** 创建/更新选项参数 */
 export interface UpsertQuestionOptionItem {
-  id?: number;
   option_code: string;
   content: string;
   sort_order?: number;

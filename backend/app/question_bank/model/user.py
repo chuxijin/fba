@@ -14,7 +14,7 @@ from backend.common.model import Base, TimeZone, UniversalText, id_key
 if TYPE_CHECKING:
     from backend.app.admin.model import User
 
-    from .practice import PracticeRecord, PracticeSession, WrongQuestionBook
+    from .practice import PracticeSession, SessionQuestion, WrongQuestionBook
     from .statistics import UserCheckIn
 
 
@@ -65,6 +65,6 @@ class UserAccount(Base):
 
     # ============ 练习刷题关系 ============
     practice_sessions: Mapped[list['PracticeSession']] = relationship(init=False, back_populates='account', lazy='noload')
-    practice_records: Mapped[list['PracticeRecord']] = relationship(init=False, back_populates='account', lazy='noload')
+    session_questions: Mapped[list['SessionQuestion']] = relationship(init=False, back_populates='account', lazy='noload')
     wrong_questions: Mapped[list['WrongQuestionBook']] = relationship(init=False, back_populates='account', lazy='noload')
     check_ins: Mapped[list['UserCheckIn']] = relationship(init=False, back_populates='account', lazy='noload')

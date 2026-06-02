@@ -46,7 +46,8 @@ export interface QbankCheckInParam {
 
 export interface QbankStatisticsParams {
   group_by?: string;
-  study_domain?: string;
+  cat_id?: number;
+  kp_cat_id?: number;
 }
 
 export interface QbankKnowledgePointChild {

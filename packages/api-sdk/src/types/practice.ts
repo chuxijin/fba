@@ -47,6 +47,12 @@ export interface SessionQuestionItem {
   question_type: QuestionType;
   full_score: number;
   chapter?: SessionChapterBrief | null;
+  user_answer?: unknown;
+  is_correct?: boolean | null;
+  score?: number | null;
+  answer_time?: number;
+  judged_at?: string | null;
+  judge_version?: string | null;
 }
 
 /** 鍗曟浣滅瓟璁板綍鍙傛暟 */
@@ -132,6 +138,7 @@ export interface GetPracticeRecordSessionItem {
 /** 缁冧範浼氳瘽鍒楄〃椤?*/
 export interface GetPracticeSessionListItem {
   id: number;
+  session_key: string;
   user_id: number;
   session_type: SessionType;
   status: SessionStatus;
@@ -165,7 +172,6 @@ export interface ChapterDistributionItem {
 export interface GetPracticeSessionDetail extends GetPracticeSessionListItem {
   chapter_distribution: ChapterDistributionItem[];
   session_questions: SessionQuestionItem[];
-  records: GetPracticeRecordSessionItem[];
 }
 
 /** 缁冧範浼氳瘽鏌ヨ鍙傛暟 */

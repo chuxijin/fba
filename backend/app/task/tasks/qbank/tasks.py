@@ -16,9 +16,9 @@ from backend.app.question_bank.crud.crud_user_bank_progress import user_bank_pro
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
-    PracticeRecord,
     PracticeSession,
     Question,
+    SessionQuestion,
     UserAccount,
 )
 from backend.app.task.celery import celery_app
@@ -55,17 +55,19 @@ async def _update_daily_user_ranks() -> dict:
         stmt = (
             select(
                 UserAccount.user_id.label('user_id'),
-                func.count(PracticeRecord.id).label('practice_count'),
-                func.sum(func.cast(PracticeRecord.is_correct, sa.Integer)).label('correct_count'),
+                func.count(SessionQuestion.id).label('practice_count'),
+                func.sum(func.cast(SessionQuestion.is_correct, sa.Integer)).label('correct_count'),
             )
             .outerjoin(
-                PracticeRecord,
-                (PracticeRecord.user_id == UserAccount.user_id)
-                & (PracticeRecord.created_time >= yesterday_start)
-                & (PracticeRecord.created_time < today_start),
+                SessionQuestion,
+                (SessionQuestion.user_id == UserAccount.user_id)
+                & (SessionQuestion.created_time >= yesterday_start)
+                & (SessionQuestion.created_time < today_start)
+                & (SessionQuestion.user_answer.isnot(None))
+                & (SessionQuestion.is_correct.isnot(None)),
             )
             .group_by(UserAccount.user_id)
-            .order_by(func.count(PracticeRecord.id).desc())
+            .order_by(func.count(SessionQuestion.id).desc())
         )
 
         result = await db.execute(stmt)
@@ -136,14 +138,16 @@ async def process_record_side_effects(
     session_id: int,
     record_ids: list[int],
     allow_judge_now: bool = True,
+    practice_mode: str | None = None,
 ) -> dict:
     """
     异步处理答题记录的副作用：服务端判题 + 错题本维护 + 进度同步 + 统计快照 + 缓存失效
 
     :param user_id: 用户 ID
     :param session_id: 会话 ID
-    :param record_ids: 已落盘的 PracticeRecord ID 列表
+    :param record_ids: 已落盘的 SessionQuestion ID 列表
     :param allow_judge_now: 是否允许立即判题（考试模式下应为 False）
+    :param practice_mode: 做题模式
     :return:
     """
     from backend.app.question_bank.service.question_service import QuestionService
@@ -153,6 +157,8 @@ async def process_record_side_effects(
         return {'processed': 0}
 
     SUBJECTIVE_TYPES = {'shortAnswer', 'essay'}
+    if practice_mode == 'memorize':
+        allow_judge_now = False
 
     judge_time = timezone.now()
     wrong_create_rows: list[dict] = []
@@ -163,7 +169,7 @@ async def process_record_side_effects(
 
     async with async_db_session.begin() as db:
         # 1. 加载记录
-        record_stmt = select(PracticeRecord).where(PracticeRecord.id.in_(record_ids))
+        record_stmt = select(SessionQuestion).where(SessionQuestion.id.in_(record_ids))
         records = (await db.execute(record_stmt)).scalars().all()
         if not records:
             return {'processed': 0}
@@ -278,14 +284,25 @@ async def process_record_side_effects(
 
         # 3. 会话进度（考试模式也要做）
         count_subq = (
-            select(func.count(PracticeRecord.id))
-            .where(PracticeRecord.session_id == session_id)
+            select(func.count(SessionQuestion.id))
+            .where(
+                SessionQuestion.session_id == session_id,
+                SessionQuestion.user_answer.isnot(None),
+            )
+            .scalar_subquery()
+        )
+        time_subq = (
+            select(func.coalesce(func.sum(SessionQuestion.answer_time), 0))
+            .where(
+                SessionQuestion.session_id == session_id,
+                SessionQuestion.user_answer.isnot(None),
+            )
             .scalar_subquery()
         )
         await db.execute(
             update(PracticeSession)
             .where(PracticeSession.id == session_id)
-            .values(completed_count=count_subq)
+            .values(completed_count=count_subq, total_time=time_subq)
         )
 
         # 4. 用户练习统计快照（仅 allow_judge_now 时增量）

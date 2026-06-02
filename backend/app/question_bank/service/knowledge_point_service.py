@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_category import category_dao
 from backend.app.admin.model.category import Category
-from backend.app.question_bank.model.practice import PracticeRecord
+from backend.app.question_bank.model.practice import SessionQuestion
 from backend.app.question_bank.model.question import Question
 from backend.app.question_bank.schema.knowledge_point import (
     GetKpDetailResponse,
@@ -164,22 +164,22 @@ class KnowledgePointService:
         stmt = (
             select(
                 kp_value_expr,
-                func.count(func.distinct(PracticeRecord.question_id)).label('answer_count'),
+                func.count(func.distinct(SessionQuestion.question_id)).label('answer_count'),
                 func.count(
                     sa.distinct(
                         sa.case(
-                            (PracticeRecord.is_correct.is_(True), PracticeRecord.question_id),
+                            (SessionQuestion.is_correct.is_(True), SessionQuestion.question_id),
                             else_=None,
                         )
                     )
                 ).label('correct_count'),
             )
-            .select_from(PracticeRecord)
-            .join(Question, PracticeRecord.question_id == Question.id)
+            .select_from(SessionQuestion)
+            .join(Question, SessionQuestion.question_id == Question.id)
             .join(kp_elem, literal_column('true'))
             .where(
-                PracticeRecord.user_id == user_id,
-                PracticeRecord.user_answer.isnot(None),
+                SessionQuestion.user_id == user_id,
+                SessionQuestion.user_answer.isnot(None),
                 Question.knowledge_point.isnot(None),
             )
             .group_by(kp_value_expr)

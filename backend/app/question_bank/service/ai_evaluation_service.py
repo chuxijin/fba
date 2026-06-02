@@ -13,11 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.question_bank.crud.crud_ai_evaluation import practice_ai_evaluation_dao
-from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
+from backend.app.question_bank.crud.crud_session_question import session_question_dao
 from backend.app.question_bank.crud.crud_user_bank_progress import user_bank_progress_dao
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
-from backend.app.question_bank.model import PracticeAIEvaluation, PracticeRecord, PracticeSession, Question
+from backend.app.question_bank.model import PracticeAIEvaluation, PracticeSession, Question, SessionQuestion
 from backend.app.question_bank.model.question import QuestionAnalysis
 from backend.common.exception import errors
 from backend.plugin.ai.model.model import AIModel
@@ -472,7 +472,7 @@ class PracticeAIEvaluationService:
         db: AsyncSession,
         provider: AIProvider | None,
         model_name: str | None,
-        record: PracticeRecord,
+        record: SessionQuestion,
         trigger_source: str,
         prompt_version: str,
         full_score: Decimal,
@@ -493,14 +493,14 @@ class PracticeAIEvaluationService:
         :param error_message: 错误信息
         :return:
         """
-        await practice_ai_evaluation_dao.mark_record_not_latest(db=db, practice_record_id=record.id)
+        await practice_ai_evaluation_dao.mark_record_not_latest(db=db, session_question_id=record.id)
         now = timezone.now()
         return await practice_ai_evaluation_dao.create(
             db=db,
             obj={
                 'user_id': record.user_id,
                 'session_id': record.session_id,
-                'practice_record_id': record.id,
+                'session_question_id': record.id,
                 'question_id': record.question_id,
                 'target_type': 'question_eval',
                 'trigger_source': trigger_source,
@@ -528,7 +528,7 @@ class PracticeAIEvaluationService:
         *,
         db: AsyncSession,
         session: PracticeSession,
-        records: Sequence[PracticeRecord],
+        records: Sequence[SessionQuestion],
         question_map: dict[int, Question],
         trigger_source: str,
         force_regenerate: bool,
@@ -547,7 +547,7 @@ class PracticeAIEvaluationService:
         :return:
         """
         evaluation_map: dict[int, PracticeAIEvaluation] = {}
-        subjective_records: list[PracticeRecord] = []
+        subjective_records: list[SessionQuestion] = []
 
         for record in records:
             question = question_map.get(record.question_id)
@@ -557,7 +557,7 @@ class PracticeAIEvaluationService:
             if not force_regenerate:
                 latest = await practice_ai_evaluation_dao.get_latest_question_eval(
                     db=db,
-                    practice_record_id=record.id,
+                    session_question_id=record.id,
                 )
                 if latest and latest.status == 'succeeded':
                     evaluation_map[record.id] = latest
@@ -705,13 +705,13 @@ class PracticeAIEvaluationService:
                     'judge_version': judge_version,
                 }
 
-                await practice_ai_evaluation_dao.mark_record_not_latest(db=db, practice_record_id=record.id)
+                await practice_ai_evaluation_dao.mark_record_not_latest(db=db, session_question_id=record.id)
                 evaluation = await practice_ai_evaluation_dao.create(
                     db=db,
                     obj={
                         'user_id': record.user_id,
                         'session_id': record.session_id,
-                        'practice_record_id': record.id,
+                        'session_question_id': record.id,
                         'question_id': record.question_id,
                         'target_type': 'question_eval',
                         'trigger_source': trigger_source,
@@ -737,7 +737,7 @@ class PracticeAIEvaluationService:
                     and session.status == 'in_progress'
                     and record.is_correct is None
                 )
-                await practice_record_dao.update_judge_result(
+                await session_question_dao.update_judge_result(
                     db=db,
                     record_id=record.id,
                     is_correct=is_correct,
@@ -766,7 +766,7 @@ class PracticeAIEvaluationService:
         db: AsyncSession,
         record_id: int,
         user_id: int,
-    ) -> tuple[PracticeRecord, PracticeSession, Question]:
+    ) -> tuple[SessionQuestion, PracticeSession, Question]:
         """
         获取用户作答记录及题目
 
@@ -776,12 +776,12 @@ class PracticeAIEvaluationService:
         :return:
         """
         stmt = (
-            select(PracticeRecord)
-            .where(PracticeRecord.id == record_id)
+            select(SessionQuestion)
+            .where(SessionQuestion.id == record_id)
             .options(
-                selectinload(PracticeRecord.session),
-                selectinload(PracticeRecord.question).selectinload(Question.analyses),
-                selectinload(PracticeRecord.question).selectinload(Question.materials),
+                selectinload(SessionQuestion.session),
+                selectinload(SessionQuestion.question).selectinload(Question.analyses),
+                selectinload(SessionQuestion.question).selectinload(Question.materials),
             )
         )
         result = await db.execute(stmt)
@@ -824,7 +824,7 @@ class PracticeAIEvaluationService:
 
         latest = await practice_ai_evaluation_dao.get_latest_question_eval(
             db=db,
-            practice_record_id=record_id,
+            session_question_id=record_id,
         )
         if latest and not force_regenerate:
             return latest
@@ -872,7 +872,7 @@ class PracticeAIEvaluationService:
         if session.status != 'in_progress':
             raise errors.ForbiddenError(msg='会话已提交，暂不支持重新 AI 判分')
 
-        records = await practice_record_dao.get_by_session(db=db, session_id=session_id)
+        records = await session_question_dao.get_by_session(db=db, session_id=session_id)
         if not records:
             raise errors.NotFoundError(msg='当前会话暂无作答记录')
 
@@ -899,7 +899,7 @@ class PracticeAIEvaluationService:
 
         return sorted(
             evaluation_map.values(),
-            key=lambda item: (item.practice_record_id or 0, item.id),
+            key=lambda item: (item.session_question_id or 0, item.id),
         )
 
     @classmethod
@@ -928,7 +928,7 @@ class PracticeAIEvaluationService:
 
         evaluation = await practice_ai_evaluation_dao.get_latest_question_eval(
             db=db,
-            practice_record_id=record.id,
+            session_question_id=record.id,
         )
         if not evaluation:
             raise errors.NotFoundError(msg='该题暂无 AI 判分结果')
@@ -1050,7 +1050,7 @@ class PracticeAIEvaluationService:
             db=db,
             session_id=session_id,
         )
-        evaluation_map = {item.practice_record_id: item for item in latest_evaluations if item.practice_record_id is not None}
+        evaluation_map = {item.session_question_id: item for item in latest_evaluations if item.session_question_id is not None}
 
         model, provider = await cls._resolve_runtime_model(db=db)
         wrong_records = [item for item in records if item.is_correct is False]
@@ -1112,7 +1112,7 @@ class PracticeAIEvaluationService:
             obj={
                 'user_id': user_id,
                 'session_id': session_id,
-                'practice_record_id': None,
+                'session_question_id': None,
                 'question_id': None,
                 'target_type': 'session_summary',
                 'trigger_source': 'manual',

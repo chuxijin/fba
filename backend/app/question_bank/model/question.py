@@ -35,27 +35,6 @@ question_material_relation = sa.Table(
 )
 
 
-class OptionContent(Base):
-    """选项内容表"""
-
-    __tablename__ = 'study_option_content'
-    __table_args__ = (
-        sa.UniqueConstraint('content_hash', name='uq_study_option_content_hash'),
-        sa.Index('idx_option_content_hash', 'content_hash'),
-        {'comment': '选项内容表'},
-    )
-
-    id: Mapped[id_key] = mapped_column(init=False)
-    content_hash: Mapped[str] = mapped_column(sa.String(64), comment='内容哈希')
-    content: Mapped[str] = mapped_column(UniversalText, comment='选项内容')
-
-    question_options: Mapped[list[QuestionOption]] = relationship(
-        init=False,
-        back_populates='content_ref',
-        lazy='noload',
-    )
-
-
 class QuestionPlacement(Base, UserMixin):
     """题目挂载表"""
 
@@ -102,12 +81,6 @@ class QuestionPlacement(Base, UserMixin):
     bank: Mapped['QuestionBank'] = relationship(init=False, back_populates='placements', lazy='noload')
     chapter: Mapped['QuestionChapter | None'] = relationship(init=False, back_populates='placements', lazy='noload')
     question: Mapped['Question'] = relationship(init=False, back_populates='placements', lazy='noload')
-    option_stats: Mapped[list[QuestionOptionStats]] = relationship(
-        init=False,
-        back_populates='placement',
-        lazy='noload',
-        cascade='all, delete-orphan',
-    )
 
 
 from pgvector.sqlalchemy import Vector
@@ -148,6 +121,11 @@ class Question(Base, UserMixin):
         default=None,
         comment='考点标签',
     )
+    options: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        CompatibleJSONB,
+        default=None,
+        comment='选项列表: [{option_code, content, sort_order, is_active}]',
+    )
     content_status: Mapped[int] = mapped_column(
         sa.SmallInteger,
         default=10,
@@ -184,87 +162,6 @@ class Question(Base, UserMixin):
         lazy='noload',
         cascade='all, delete-orphan',
     )
-    options: Mapped[list[QuestionOption]] = relationship(
-        init=False,
-        back_populates='question',
-        lazy='noload',
-        cascade='all, delete-orphan',
-    )
-
-
-class QuestionOption(Base):
-    """题目选项表"""
-
-    __tablename__ = 'study_question_option'
-    __table_args__ = (
-        sa.UniqueConstraint('question_id', 'option_code', name='uq_study_question_option_question_code'),
-        sa.Index('idx_question_option_question_sort', 'question_id', 'sort_order'),
-        sa.Index('idx_question_option_content', 'content_id'),
-        sa.Index('idx_question_option_question_active', 'question_id', 'is_active'),
-        {'comment': '题目选项表'},
-    )
-
-    id: Mapped[id_key] = mapped_column(init=False)
-    question_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_question.id', ondelete='CASCADE'),
-        comment='题目 ID',
-    )
-    option_code: Mapped[str] = mapped_column(sa.String(16), comment='选项编码')
-    content_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_option_content.id', ondelete='RESTRICT'),
-        comment='选项内容 ID',
-    )
-    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序')
-    is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
-
-    question: Mapped[Question] = relationship(init=False, back_populates='options', lazy='noload')
-    content_ref: Mapped[OptionContent] = relationship(init=False, back_populates='question_options', lazy='joined')
-    option_stats: Mapped[list[QuestionOptionStats]] = relationship(
-        init=False,
-        back_populates='option',
-        lazy='noload',
-    )
-
-
-class QuestionOptionStats(Base):
-    """选项统计表"""
-
-    __tablename__ = 'study_question_option_stats'
-    __table_args__ = (
-        sa.UniqueConstraint('placement_id', 'option_code', name='uq_study_question_option_stats_placement_code'),
-        sa.Index('idx_option_stats_question', 'question_id'),
-        sa.Index('idx_option_stats_option', 'option_id'),
-        sa.Index('idx_option_stats_placement', 'placement_id'),
-        sa.Index('idx_option_stats_placement_selected', 'placement_id', 'selected_count'),
-        {'comment': '选项统计表'},
-    )
-
-    id: Mapped[id_key] = mapped_column(init=False)
-    placement_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_question_placement.id', ondelete='CASCADE'),
-        comment='挂载 ID',
-    )
-    question_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_question.id', ondelete='CASCADE'),
-        comment='题目 ID',
-    )
-    option_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_question_option.id', ondelete='CASCADE'),
-        comment='选项 ID',
-    )
-    option_code: Mapped[str] = mapped_column(sa.String(16), comment='选项编码')
-    selected_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='被选次数')
-    correct_selected_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='答对时被选次数')
-    wrong_selected_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='答错时被选次数')
-
-    placement: Mapped[QuestionPlacement] = relationship(init=False, back_populates='option_stats', lazy='noload')
-    question: Mapped[Question] = relationship(init=False, lazy='noload')
-    option: Mapped[QuestionOption] = relationship(init=False, back_populates='option_stats', lazy='noload')
 
 
 class QuestionAnalysis(Base, UserMixin):

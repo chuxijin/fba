@@ -100,10 +100,17 @@ async def fetch_pending_batch(db, limit: int) -> list[dict]:
         SELECT
             q.id,
             q.stem,
-            array_agg(oc.content ORDER BY qo.sort_order) FILTER (WHERE oc.content IS NOT NULL) AS options
+            array_agg(option_item.content ORDER BY option_item.sort_order, option_item.option_code)
+                FILTER (WHERE option_item.content IS NOT NULL) AS options
         FROM study_question q
-        LEFT JOIN study_question_option qo ON qo.question_id = q.id AND qo.is_active = true
-        LEFT JOIN study_option_content oc ON oc.id = qo.content_id
+        LEFT JOIN LATERAL (
+            SELECT
+                item ->> 'option_code' AS option_code,
+                item ->> 'content' AS content,
+                COALESCE((item ->> 'sort_order')::int, 0) AS sort_order
+            FROM jsonb_array_elements(COALESCE(q.options, '[]'::jsonb)) AS item
+            WHERE COALESCE((item ->> 'is_active')::boolean, true) = true
+        ) AS option_item ON true
         WHERE q.content_vector IS NULL
         GROUP BY q.id, q.stem
         ORDER BY q.id

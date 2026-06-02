@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.model import User
 from backend.app.question_bank.crud.crud_daily_rank import daily_rank_dao
-from backend.app.question_bank.model import PracticeRecord, UserAccount, UserPracticeStats
+from backend.app.question_bank.model import SessionQuestion, UserAccount, UserPracticeStats
 from backend.app.question_bank.schema.home import RankItem, RankListData, RankUserInfo, UserRankInfo
 from backend.utils.timezone import timezone
 
@@ -65,16 +65,18 @@ class RankService:
         stmt = (
             select(
                 UserAccount.user_id.label('user_id'),
-                func.count(PracticeRecord.id).label('practice_count'),
+                func.count(SessionQuestion.id).label('practice_count'),
             )
             .outerjoin(
-                PracticeRecord,
-                (PracticeRecord.user_id == UserAccount.user_id)
-                & (PracticeRecord.created_time >= yesterday_start)
-                & (PracticeRecord.created_time < today_start),
+                SessionQuestion,
+                (SessionQuestion.user_id == UserAccount.user_id)
+                & (SessionQuestion.created_time >= yesterday_start)
+                & (SessionQuestion.created_time < today_start)
+                & (SessionQuestion.user_answer.isnot(None))
+                & (SessionQuestion.is_correct.isnot(None)),
             )
             .group_by(UserAccount.user_id)
-            .order_by(func.count(PracticeRecord.id).desc())
+            .order_by(func.count(SessionQuestion.id).desc())
         )
 
         result = await db.execute(stmt)

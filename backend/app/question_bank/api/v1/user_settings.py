@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 
 from backend.app.question_bank.schema.user_settings import (
     GetStudyPreferenceResponse,
-    InitDomainPreferenceParam,
+    InitCategoryPreferenceParam,
     PracticeDataResetResult,
     UpdateStudyPreferenceParam,
 )
@@ -37,9 +37,10 @@ async def update_study_preference(
     await user_settings_service.update_study_preference(
         db=db,
         user_id=request.user.id,
-        current_domain=param.current_domain,
+        current_cat_id=param.current_cat_id,
+        current_kp_cat_id=param.current_kp_cat_id,
         practice_mode=param.practice_mode,
-        custom_tabs=param.custom_tabs,
+        category_custom_tabs=param.category_custom_tabs,
         mastery_threshold=param.mastery_threshold,
         theme_mode=param.theme_mode,
     )
@@ -47,23 +48,24 @@ async def update_study_preference(
 
 
 @router.post(
-    '/study-preference/init-domain',
-    summary='新用户初始化领域偏好',
-    name='qbank_init_domain_preference',
+    '/study-preference/init-category',
+    summary='新用户初始化分类偏好',
+    name='qbank_init_category_preference',
     dependencies=[DependsJwtAuth],
 )
-async def init_domain_preference(
+async def init_category_preference(
     request: Request,
     db: CurrentSessionTransaction,
-    param: InitDomainPreferenceParam,
+    param: InitCategoryPreferenceParam,
 ) -> ResponseModel:
-    """新用户选择领域后初始化默认偏好"""
-    custom_tabs = await user_settings_service.initialize_domain_preference(
+    """新用户选择分类后初始化默认偏好"""
+    category_custom_tabs = await user_settings_service.initialize_category_preference(
         db=db,
         user_id=request.user.id,
-        domain_code=param.domain_code,
+        cat_id=param.cat_id,
+        kp_cat_id=param.kp_cat_id,
     )
-    return response_base.success(data={'custom_tabs': custom_tabs})
+    return response_base.success(data={'category_custom_tabs': category_custom_tabs})
 
 
 @router.delete('/practice-data', summary='重置做题数据', name='qbank_reset_practice_data', dependencies=[DependsJwtAuth])

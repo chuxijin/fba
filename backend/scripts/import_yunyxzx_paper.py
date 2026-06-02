@@ -17,7 +17,6 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.crud.crud_question import option_content_dao, question_option_dao
 from backend.app.question_bank.model import (
     PracticeSession,
     QuestionAnalysis,
@@ -28,6 +27,7 @@ from backend.app.question_bank.model import (
 )
 from backend.app.question_bank.model.question import Question
 from backend.app.question_bank.schema.question import UpsertQuestionOptionItem
+from backend.app.question_bank.service.question_service import QuestionService
 from backend.database.db import async_db_session
 
 SOURCE = 'yunyxzx'
@@ -764,12 +764,7 @@ async def import_questions(
             UpsertQuestionOptionItem(option_code=code, content=content, sort_order=option_index)
             for option_index, (code, content) in enumerate(remote.options, start=1)
         ]
-        await question_option_dao.replace_by_items(
-            db,
-            question_id=question.id,
-            items=option_items,
-            option_content_crud=option_content_dao,
-        )
+        question.options = QuestionService.normalize_options(option_items)
         await replace_analysis(db, question_id=question.id, remote=remote, created_by=created_by)
         await upsert_placement(
             db=db,

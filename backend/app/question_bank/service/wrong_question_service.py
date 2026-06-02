@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import WrongQuestionBook
 from backend.app.question_bank.schema.wrong_question import WrongQuestionChapterCountItem, WrongQuestionStatistics
-from backend.app.question_bank.service.study_domain_service import StudyDomainQuestionFilter, study_domain_service
+from backend.app.question_bank.service.category_filter_service import (
+    CategoryQuestionFilter,
+    category_filter_service,
+)
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.database.redis import redis_client
@@ -20,16 +23,23 @@ class WrongQuestionService:
     """错题本服务类"""
 
     @staticmethod
-    def _statistics_cache_key(*, user_id: int, study_domain: str | None, group_by: str | None = None) -> str:
+    def _statistics_cache_key(
+        *,
+        user_id: int,
+        cat_id: int | None,
+        kp_cat_id: int | None,
+        group_by: str | None = None,
+    ) -> str:
         """
         构建错题统计缓存 key
 
         :param user_id: 用户 ID
-        :param study_domain: 学习领域
+        :param cat_id: 题库目录分类 ID
+        :param kp_cat_id: 知识点分类 ID
         :param group_by: 分组方式
         :return:
         """
-        domain = study_domain or 'all'
+        domain = category_filter_service.build_scope_key(cat_id=cat_id, kp_cat_id=kp_cat_id)
         group = group_by or 'summary'
         return f'qbank:wrong:statistics:{user_id}:{domain}:{group}'
 
@@ -82,21 +92,21 @@ class WrongQuestionService:
             log.warning('清理错题统计缓存失败: {}', e)
 
     @staticmethod
-    async def _get_study_domain_filter(
+    async def _get_category_filter(
         *,
         db: AsyncSession,
-        study_domain: str | None,
-    ) -> StudyDomainQuestionFilter | None:
+        cat_id: int | None,
+        kp_cat_id: int | None,
+    ) -> CategoryQuestionFilter | None:
         """
-        获取领域过滤上下文
+        获取分类过滤上下文
 
         :param db: 数据库会话
-        :param study_domain: 领域编码
+        :param cat_id: 题库目录分类 ID
+        :param kp_cat_id: 知识点分类 ID
         :return:
         """
-        if study_domain is None:
-            return None
-        return await study_domain_service.get_question_filter(db=db, code=study_domain)
+        return await category_filter_service.get_question_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
 
     @staticmethod
     async def get_wrong_question(*, db: AsyncSession, wrong_id: int, user_id: int) -> WrongQuestionBook:
@@ -202,7 +212,8 @@ class WrongQuestionService:
         *,
         db: AsyncSession,
         user_id: int,
-        study_domain: str | None = None,
+        cat_id: int | None = None,
+        kp_cat_id: int | None = None,
     ) -> WrongQuestionStatistics:
         """
         获取用户的错题本统计数据
@@ -211,17 +222,17 @@ class WrongQuestionService:
         :param user_id: 用户 ID
         :return:
         """
-        cache_key = WrongQuestionService._statistics_cache_key(user_id=user_id, study_domain=study_domain)
+        cache_key = WrongQuestionService._statistics_cache_key(user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id)
         cached = await WrongQuestionService._get_cached_statistics(cache_key)
         if cached:
             return WrongQuestionStatistics(**cached)
 
-        domain_filter = await WrongQuestionService._get_study_domain_filter(db=db, study_domain=study_domain)
-        if domain_filter:
+        category_filter = await WrongQuestionService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
+        if category_filter and cat_id is not None:
             stats = await wrong_question_dao.get_statistics_by_bank_ids(
                 db=db,
                 user_id=user_id,
-                bank_ids=domain_filter.bank_ids,
+                bank_ids=category_filter.bank_ids,
             )
         else:
             stats = await wrong_question_dao.get_statistics(db=db, user_id=user_id)
@@ -243,7 +254,8 @@ class WrongQuestionService:
         db: AsyncSession,
         user_id: int,
         group_by: str = 'knowledge_point',
-        study_domain: str | None = None,
+        cat_id: int | None = None,
+        kp_cat_id: int | None = None,
     ) -> dict:
         """
         获取错题统计与树形分组数据
@@ -255,7 +267,8 @@ class WrongQuestionService:
         """
         cache_key = WrongQuestionService._statistics_cache_key(
             user_id=user_id,
-            study_domain=study_domain,
+            cat_id=cat_id,
+            kp_cat_id=kp_cat_id,
             group_by=group_by,
         )
         cached = await WrongQuestionService._get_cached_statistics(cache_key)
@@ -269,32 +282,32 @@ class WrongQuestionService:
             load_kp_categories,
         )
 
-        domain_filter = await WrongQuestionService._get_study_domain_filter(db=db, study_domain=study_domain)
-        if domain_filter:
+        category_filter = await WrongQuestionService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
+        if category_filter and cat_id is not None:
             stats = await wrong_question_dao.get_statistics_by_bank_ids(
                 db=db,
                 user_id=user_id,
-                bank_ids=domain_filter.bank_ids,
+                bank_ids=category_filter.bank_ids,
             )
         else:
             stats = await wrong_question_dao.get_statistics(db=db, user_id=user_id)
 
         if group_by == 'knowledge_point':
             flat_counts = await wrong_question_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
-            if domain_filter:
+            if category_filter and kp_cat_id is not None:
                 flat_counts = [
                     item for item in flat_counts
-                    if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+                    if str(item['group_name'] or '').strip() in category_filter.knowledge_names
                 ]
             count_map = {item['group_name']: item['count'] for item in flat_counts}
             categories = await load_kp_categories(db)
             groups = build_kp_tree(categories, count_map)
         else:
             flat_counts = await wrong_question_dao.get_bank_chapter_counts(db=db, user_id=user_id)
-            if domain_filter:
+            if category_filter and cat_id is not None:
                 flat_counts = [
                     row for row in flat_counts
-                    if row['bank_id'] is not None and int(row['bank_id']) in domain_filter.bank_ids
+                    if row['bank_id'] is not None and int(row['bank_id']) in category_filter.bank_ids
                 ]
             count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
             bank_ids = {row['bank_id'] for row in flat_counts if row['bank_id'] is not None}
@@ -346,7 +359,8 @@ class WrongQuestionService:
         db: AsyncSession,
         user_id: int,
         group_by: str,
-        study_domain: str | None = None,
+        cat_id: int | None = None,
+        kp_cat_id: int | None = None,
     ) -> list[dict]:
         """
         按题库或知识点分组聚合错题数量
@@ -356,22 +370,22 @@ class WrongQuestionService:
         :param group_by: 分组方式
         :return:
         """
-        domain_filter = await WrongQuestionService._get_study_domain_filter(db=db, study_domain=study_domain)
+        category_filter = await WrongQuestionService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
         if group_by == 'knowledge_point':
             rows = await wrong_question_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
-            if not domain_filter:
+            if not category_filter or kp_cat_id is None:
                 return rows
             return [
                 item for item in rows
-                if str(item['group_name'] or '').strip() in domain_filter.knowledge_names
+                if str(item['group_name'] or '').strip() in category_filter.knowledge_names
             ]
 
         rows = await wrong_question_dao.get_grouped_by_bank(db=db, user_id=user_id)
-        if not domain_filter:
+        if not category_filter or cat_id is None:
             return rows
         return [
             item for item in rows
-            if item['group_id'] is not None and int(item['group_id']) in domain_filter.bank_ids
+            if item['group_id'] is not None and int(item['group_id']) in category_filter.bank_ids
         ]
 
     @staticmethod

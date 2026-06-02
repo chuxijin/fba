@@ -72,15 +72,10 @@ class UpsertQuestionPlacementItem(SchemaBase):
 class QuestionOptionItem(SchemaBase):
     """选项响应项"""
 
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int = Field(description='选项 ID')
-    question_id: int = Field(description='题目 ID')
     option_code: str = Field(description='选项编码')
-    content_id: int = Field(description='选项内容 ID')
     content: str = Field(description='选项内容')
-    sort_order: int = Field(ge=0, description='排序')
-    is_active: bool = Field(description='是否启用')
+    sort_order: int = Field(default=0, ge=0, description='排序')
+    is_active: bool = Field(default=True, description='是否启用')
 
 
 class UpsertQuestionOptionItem(SchemaBase):
@@ -164,19 +159,6 @@ class UpdateQuestionStatisticsParam(SchemaBase):
     option_select: list[str] | None = Field(None, description='被选选项')
     collect_delta: int | None = Field(None, description='收藏数变化')
     note_delta: int | None = Field(None, description='笔记数变化')
-
-
-class QuestionOptionStatsItem(SchemaBase):
-    """选项统计项"""
-
-    placement_id: int = Field(description='挂载 ID')
-    bank_id: int = Field(description='题库 ID')
-    chapter_id: int | None = Field(None, description='章节 ID')
-    option_code: str = Field(description='选项编码')
-    option_content: str = Field(description='选项内容')
-    selected_count: int = Field(ge=0, description='被选次数')
-    correct_selected_count: int = Field(ge=0, description='答对时被选次数')
-    wrong_selected_count: int = Field(ge=0, description='答错时被选次数')
 
 
 # ===== 查询参数 =====

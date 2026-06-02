@@ -22,7 +22,6 @@ from backend.app.question_bank.schema.bank import (
 )
 from backend.app.question_bank.service.bank_mount_service import COLLECTION_BANK_TYPE, bank_mount_service
 from backend.app.question_bank.service.bank_progress_service import bank_progress_service
-from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.common.exception import errors
 from backend.utils.build_tree import get_tree_data
 from backend.utils.timezone import timezone
@@ -200,7 +199,6 @@ class BankService:
         keyword: str | None = None,
         bank_type: int | None = None,
         parent_id: int | None = None,
-        study_domain: str | None = None,
         exclude_empty: bool = True,
     ) -> list[dict[str, Any]]:
         """
@@ -212,26 +210,19 @@ class BankService:
         :param keyword: 关键字搜索
         :param bank_type: 内容类型
         :param parent_id: 父级 ID
-        :param study_domain: 学习领域编码
         :return:
         """
         cat_ids = None
         if cat_id is not None:
-            cat_ids = await category_dao.get_all_children_ids(db, cat_id)
-        if study_domain is not None:
-            domain_cat_ids = await study_domain_service.get_product_catalog_category_ids(
-                db=db,
-                code=study_domain,
+            cat_ids = await category_dao.get_subtree_ids_by_path(
+                db,
+                cat_id,
+                app_code='youanshang',
+                type_='product_catalog',
+                status=True,
             )
-            if not domain_cat_ids:
+            if not cat_ids:
                 return []
-
-            if cat_ids is None:
-                cat_ids = list(domain_cat_ids)
-            else:
-                cat_ids = list(set(cat_ids) & domain_cat_ids)
-                if not cat_ids:
-                    return []
 
         can_use_mount_tree = keyword is None and bank_type is None
         bank_select = await bank_dao.get_all_mappings(
@@ -271,7 +262,7 @@ class BankService:
                 child_counts = await bank_dao.count_children_by_parent_ids(db, collection_ids)
                 for item in tree_data:
                     if item.get('bank_type') == 3 and item['id'] in child_counts:
-                        item['q_count_cache'] = child_counts[item['id']]
+                        item['child_count'] = child_counts[item['id']]
 
         if exclude_empty:
             tree_data = BankService._prune_empty_branches(tree_data)

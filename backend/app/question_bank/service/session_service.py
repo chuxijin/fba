@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import random
+import uuid
 
 from decimal import Decimal
 from typing import Any
@@ -16,10 +17,8 @@ from sqlalchemy.orm import joinedload, load_only, selectinload
 
 from backend.app.growth.crud import experience_rule_dao
 from backend.app.growth.service import experience_service
-from backend.app.question_bank.crud.crud_practice_record import practice_record_dao
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_question import (
-    question_option_stats_dao,
     question_statistics_dao,
 )
 from backend.app.question_bank.crud.crud_session_question import session_question_dao
@@ -27,21 +26,18 @@ from backend.app.question_bank.crud.crud_user_bank_progress import user_bank_pro
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
-    OptionContent,
-    PracticeRecord,
     PracticeSession,
     Question,
     QuestionAnalysis,
     QuestionBank,
     QuestionChapter,
-    QuestionOption,
     QuestionPlacement,
     SessionQuestion,
     WrongQuestionBook,
 )
 from backend.app.question_bank.schema.practice import (
     AnswerCardItem,
-    BatchUpsertPracticeRecordsParam,
+    BatchUpsertSessionQuestionsParam,
     CreatePracticeSessionParam,
     CreateSessionFromIdsParam,
     SessionReport,
@@ -55,10 +51,10 @@ from backend.app.question_bank.service.ai_evaluation_service import (
 )
 from backend.app.question_bank.service.bank_mount_service import COLLECTION_BANK_TYPE, bank_mount_service
 from backend.app.question_bank.service.check_in_service import check_in_service
+from backend.app.question_bank.service.category_filter_service import category_filter_service
 from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
-from backend.app.question_bank.service.study_domain_service import study_domain_service
 from backend.common.exception import errors
 from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
@@ -68,6 +64,10 @@ log = logging.getLogger(__name__)
 
 class SessionService:
     """练习会话服务类（唯一刷题写入入口）"""
+
+    PRACTICE_MODE_EXAM = 'exam'
+    PRACTICE_MODE_PRACTICE = 'practice'
+    PRACTICE_MODE_MEMORIZE = 'memorize'
 
     @staticmethod
     def _clean_session_name(value: Any) -> str | None:
@@ -133,11 +133,17 @@ class SessionService:
         config_mode = (exam_config or {}).get('practice_mode')
         snapshot_mode = (source_snapshot or {}).get('practice_mode')
         mode = str(config_mode or snapshot_mode or '').strip()
-        if mode:
+        if mode in {'exercise', 'brush'}:
+            return SessionService.PRACTICE_MODE_PRACTICE
+        if mode in {
+            SessionService.PRACTICE_MODE_EXAM,
+            SessionService.PRACTICE_MODE_PRACTICE,
+            SessionService.PRACTICE_MODE_MEMORIZE,
+        }:
             return mode
         if session_type == 'exam':
-            return 'exam'
-        return 'practice'
+            return SessionService.PRACTICE_MODE_EXAM
+        return SessionService.PRACTICE_MODE_PRACTICE
 
     @classmethod
     def _normalize_exam_config(cls, session_type: str, exam_config: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -774,6 +780,7 @@ class SessionService:
         total_score = sum(placement.score or Decimal('0') for placement in placements)
 
         session_dict = {
+            'session_key': uuid.uuid4().hex,
             'user_id': user_id,
             'session_type': session_type,
             'bank_id': resolved_bank_id,
@@ -792,6 +799,7 @@ class SessionService:
         session_question_items: list[dict[str, Any]] = []
         for index, placement in enumerate(placements, start=1):
             session_question_items.append({
+                'user_id': user_id,
                 'seq_no': index,
                 'question_id': placement.question_id,
                 'placement_id': placement.id,
@@ -907,7 +915,7 @@ class SessionService:
                     }
                 chapter_distribution[None]['question_count'] += 1
 
-            # 构造题目数据（包含 chapter）
+            # 构造题目数据（包含 chapter 和答题数据）
             session_questions_data.append({
                 'id': sq.id,
                 'session_id': sq.session_id,
@@ -917,6 +925,12 @@ class SessionService:
                 'question_type': sq.question_type,
                 'full_score': sq.full_score,
                 'chapter': chapter_data,
+                'user_answer': sq.user_answer,
+                'is_correct': sq.is_correct,
+                'score': sq.score,
+                'answer_time': sq.answer_time,
+                'judged_at': sq.judged_at,
+                'judge_version': sq.judge_version,
             })
 
         # 转换为列表并按题目数量降序排序
@@ -931,7 +945,6 @@ class SessionService:
             **session.__dict__,
             'chapter_distribution': distribution_list,
             'session_questions': session_questions_data,
-            'records': session.records,
         }
 
     @staticmethod
@@ -990,7 +1003,7 @@ class SessionService:
 
     @staticmethod
     async def upsert_records(
-        *, db: AsyncSession, user_id: int, obj: BatchUpsertPracticeRecordsParam
+        *, db: AsyncSession, user_id: int, obj: BatchUpsertSessionQuestionsParam
     ) -> dict[str, Any]:
         """
         批量创建/更新答题记录（基于 session_id + question_id 幂等）
@@ -1018,8 +1031,12 @@ class SessionService:
         if session.status != 'in_progress':
             raise errors.ForbiddenError(msg='会话已结束，不可作答')
 
-        # 考试模式不允许异步任务判题（保持原 allow_judge_now 语义）
-        allow_judge_now = obj.judge_now and session.session_type != 'exam'
+        practice_mode = SessionService._resolve_practice_mode(
+            session_type=session.session_type,
+            exam_config=session.exam_config,
+            source_snapshot=session.source_snapshot,
+        )
+        allow_judge_now = obj.judge_now and practice_mode == SessionService.PRACTICE_MODE_PRACTICE
 
         sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session.session_questions}
 
@@ -1028,6 +1045,10 @@ class SessionService:
             sq = sq_map.get(item.question_id)
             if not sq:
                 continue
+            if item.user_answer is None and practice_mode != SessionService.PRACTICE_MODE_MEMORIZE:
+                raise errors.RequestError(msg='非背题模式必须提交用户答案')
+            if sq.is_correct is not None and practice_mode == SessionService.PRACTICE_MODE_PRACTICE:
+                raise errors.ForbiddenError(msg='该题已出答案，不允许修改答案')
 
             records_dict.append({
                 'session_id': obj.session_id,
@@ -1035,19 +1056,47 @@ class SessionService:
                 'question_id': item.question_id,
                 'placement_id': sq.placement_id,
                 'seq_no': sq.seq_no,
-                'user_answer': item.user_answer,
+                'question_type': sq.question_type,
+                'user_answer': item.user_answer if item.user_answer is not None else {'mode': 'memorize', 'viewed': True},
                 'answer_time': item.answer_time,
                 'full_score': sq.full_score,
             })
 
-        result: dict[str, Any] = {'upserted_count': len(records_dict), 'records': [], 'judge_results': []}
+        result: dict[str, Any] = {
+            'upserted_count': len(records_dict),
+            'completed_count': session.completed_count,
+            'total_count': session.total_count,
+            'total_time': session.total_time,
+            'progress_percent': (
+                Decimal(str(round(session.completed_count / session.total_count * 100, 2)))
+                if session.total_count > 0 else Decimal('0')
+            ),
+            'records': [],
+            'judge_results': [],
+        }
 
-        upserted_records: list[PracticeRecord] = []
+        upserted_records: list[SessionQuestion] = []
         if records_dict:
-            upserted_records = await practice_record_dao.batch_upsert(db=db, records=records_dict)
+            upserted_records = await session_question_dao.batch_upsert_answer(db=db, records=records_dict)
             await user_bank_progress_dao.upsert_by_record_ids(
                 db=db,
                 record_ids=[int(record.id) for record in upserted_records],
+            )
+            completed_count, total_time = await session_question_dao.get_answered_progress_by_session(
+                db,
+                obj.session_id,
+            )
+            await practice_session_dao.update_progress(
+                db,
+                obj.session_id,
+                completed_count=completed_count,
+                total_time=total_time,
+            )
+            result['completed_count'] = completed_count
+            result['total_time'] = total_time
+            result['progress_percent'] = (
+                Decimal(str(round(completed_count / session.total_count * 100, 2)))
+                if session.total_count > 0 else Decimal('0')
             )
             result['records'] = [
                 {
@@ -1067,12 +1116,13 @@ class SessionService:
                 'session_id': obj.session_id,
                 'record_ids': [int(r.id) for r in upserted_records],
                 'allow_judge_now': allow_judge_now,
+                'practice_mode': practice_mode,
             }
 
         return result
 
     @staticmethod
-    async def get_record(*, db: AsyncSession, record_id: int, user_id: int) -> PracticeRecord:
+    async def get_record(*, db: AsyncSession, record_id: int, user_id: int) -> SessionQuestion:
         """
         获取答题记录详情
 
@@ -1081,7 +1131,7 @@ class SessionService:
         :param user_id: 用户 ID
         :return:
         """
-        record = await practice_record_dao.get(db=db, record_id=record_id)
+        record = await session_question_dao.get(db=db, record_id=record_id)
         if not record:
             raise errors.NotFoundError(msg='记录不存在')
         if record.user_id != user_id:
@@ -1090,7 +1140,7 @@ class SessionService:
         return record
 
     @staticmethod
-    async def get_session_records(*, db: AsyncSession, session_id: int, user_id: int) -> list[PracticeRecord]:
+    async def get_session_records(*, db: AsyncSession, session_id: int, user_id: int) -> list[SessionQuestion]:
         """
         获取会话的所有答题记录
 
@@ -1101,7 +1151,7 @@ class SessionService:
         """
         await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
 
-        return await practice_record_dao.get_by_session(db=db, session_id=session_id)
+        return await session_question_dao.get_records_by_session(db=db, session_id=session_id)
 
     # ------------------------------------------------------------------
     #  提交会话（判题 + 统计 + 错题本 一次事务）
@@ -1210,17 +1260,48 @@ class SessionService:
         if session.status != 'in_progress':
             raise errors.ForbiddenError(msg='会话状态异常，无法提交')
 
+        practice_mode = SessionService._resolve_practice_mode(
+            session_type=session.session_type,
+            exam_config=session.exam_config,
+            source_snapshot=session.source_snapshot,
+        )
+
         # 考试模式：校验时间限制
-        if session.session_type == 'exam' and session.exam_config:
+        if practice_mode == SessionService.PRACTICE_MODE_EXAM and session.exam_config:
             time_limit_minutes = SessionService._parse_positive_int(session.exam_config.get('time_limit'))
             time_limit_seconds = time_limit_minutes * 60
             if time_limit_seconds > 0 and obj.total_time > time_limit_seconds:
                 raise errors.ForbiddenError(msg=f'考试已超时（限时 {time_limit_minutes} 分钟）')
 
         # 2. 查询答题记录 + 题目 + 解析
-        records = await practice_record_dao.get_by_session(db=db, session_id=session_id)
+        records = await session_question_dao.get_records_by_session(db=db, session_id=session_id)
         if not records:
             raise errors.NotFoundError(msg='没有答题记录可提交')
+
+        if practice_mode == SessionService.PRACTICE_MODE_MEMORIZE:
+            await user_bank_progress_dao.upsert_by_record_ids(
+                db=db,
+                record_ids=[int(record.id) for record in records],
+            )
+            completed_count = len(records)
+            await practice_session_dao.mark_completed(
+                db=db,
+                session_id=session_id,
+                submit_time=timezone.now(),
+                completed_count=completed_count,
+                correct_count=0,
+                wrong_count=0,
+                total_time=obj.total_time,
+            )
+            return SubmitPracticeSessionResult(
+                completed_count=completed_count,
+                correct_count=0,
+                wrong_count=0,
+                accuracy_rate=Decimal('0'),
+                score=None,
+                total_score=None,
+                reward_exp=0,
+            )
 
         pre_submit_unjudged_qids = {record.question_id for record in records if record.is_correct is None}
         question_ids = [r.question_id for r in records]
@@ -1248,7 +1329,6 @@ class SessionService:
         correct_count = 0
         judged_record_rows: list[dict[str, Any]] = []
         question_stats_rows: list[dict[str, Any]] = []
-        option_stat_rows: list[dict[str, Any]] = []
         wrong_create_rows: list[dict[str, Any]] = []
         wrong_update_rows: list[dict[str, Any]] = []
 
@@ -1363,16 +1443,7 @@ class SessionService:
                 'option_select_counts': option_select_counts,
             })
 
-            # 3c. 汇总选项统计
-            if selected_codes and placement_id is not None:
-                option_stat_rows.append({
-                    'placement_id': placement_id,
-                    'question_id': record.question_id,
-                    'option_codes': selected_codes,
-                    'is_correct': is_correct,
-                })
-
-            # 3d. 汇总错题本（按 question_id 宽松匹配，忽略 placement）
+            # 3c. 汇总错题本（按 question_id 宽松匹配，忽略 placement）
             should_update_wrong_book = (
                 question.type in SUBJECTIVE_QUESTION_TYPES
                 or record.question_id in pre_submit_unjudged_qids
@@ -1424,7 +1495,7 @@ class SessionService:
 
         # 4. 批量落库
         if judged_record_rows:
-            judged_records = await practice_record_dao.batch_upsert(db=db, records=judged_record_rows)
+            judged_records = await session_question_dao.batch_upsert_answer(db=db, records=judged_record_rows)
             await user_bank_progress_dao.upsert_by_record_ids(
                 db=db,
                 record_ids=[int(record.id) for record in judged_records],
@@ -1432,9 +1503,6 @@ class SessionService:
 
         if question_stats_rows:
             await question_statistics_dao.batch_update_stats(db=db, items=question_stats_rows)
-
-        if option_stat_rows:
-            await question_option_stats_dao.batch_increment_by_records(db=db, records=option_stat_rows)
 
         if wrong_create_rows:
             await wrong_question_dao.batch_create(db=db, rows=wrong_create_rows)
@@ -1539,22 +1607,19 @@ class SessionService:
         )
 
         # 构造答题卡 + 错题列表
-        record_map: dict[int, PracticeRecord] = {r.question_id: r for r in session.records}
         answer_items: list[AnswerCardItem] = []
         wrong_question_ids: list[int] = []
 
         for sq in session.session_questions:
-            record = record_map.get(sq.question_id)
-
-            if record is None:
+            if sq.user_answer is None:
                 status = 'unanswered'
                 answer_time = 0
-            elif record.is_correct:
+            elif sq.is_correct:
                 status = 'correct'
-                answer_time = record.answer_time or 0
+                answer_time = sq.answer_time or 0
             else:
                 status = 'wrong'
-                answer_time = record.answer_time or 0
+                answer_time = sq.answer_time or 0
                 wrong_question_ids.append(sq.question_id)
 
             answer_items.append(
@@ -1605,7 +1670,6 @@ class SessionService:
             user_id=user_id,
         )
         session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
-        records = await practice_record_dao.get_by_session(db=db, session_id=session_id)
 
         # 批量查题目 + 解析 + 选项
         question_ids = [sq.question_id for sq in session_questions]
@@ -1624,22 +1688,10 @@ class SessionService:
                     QuestionAnalysis.content,
                     QuestionAnalysis.is_default,
                 ),
-                selectinload(Question.options)
-                .load_only(
-                    QuestionOption.id,
-                    QuestionOption.question_id,
-                    QuestionOption.option_code,
-                    QuestionOption.sort_order,
-                    QuestionOption.is_active,
-                )
-                .joinedload(QuestionOption.content_ref)
-                .load_only(OptionContent.content),
             )
         )
         result = await db.execute(stmt)
         question_map: dict[int, Question] = {q.id: q for q in result.scalars().all()}
-
-        record_map: dict[int, PracticeRecord] = {record.question_id: record for record in records}
 
         solutions: list[dict] = []
         for sq in session_questions:
@@ -1647,7 +1699,6 @@ class SessionService:
             if not q:
                 continue
 
-            record = record_map.get(sq.question_id)
             analysis = None
             if q.analyses:
                 analysis = next((a for a in q.analyses if a.is_default), q.analyses[0])
@@ -1668,11 +1719,11 @@ class SessionService:
                 'options': options_list,
                 'correct_answer': correct_answer,
                 'analysis': analysis.content if analysis else None,
-                'user_answer': record.user_answer if record else None,
-                'is_correct': record.is_correct if record else None,
-                'score': record.score if record else None,
+                'user_answer': sq.user_answer,
+                'is_correct': sq.is_correct,
+                'score': sq.score,
                 'full_score': sq.full_score,
-                'answer_time': record.answer_time if record else 0,
+                'answer_time': sq.answer_time or 0,
             })
 
         return solutions
@@ -1733,7 +1784,6 @@ class SessionService:
             select(Question)
             .where(Question.id.in_(question_ids))
             .options(
-                selectinload(Question.options).joinedload(QuestionOption.content_ref),
                 selectinload(Question.materials),
             )
         )
@@ -1749,15 +1799,13 @@ class SessionService:
                 continue
 
             # 构建选项数组
-            options_list: list[dict[str, str]] = []
-            if question.options:
-                active_options = [opt for opt in question.options if opt.is_active]
-                sorted_options = sorted(active_options, key=lambda x: (x.sort_order, x.option_code))
-                for opt in sorted_options:
-                    options_list.append({
-                        'option_code': opt.option_code,
-                        'content': opt.content_ref.content if opt.content_ref else '',
-                    })
+            options_list = [
+                {
+                    'option_code': option['option_code'],
+                    'content': option['content'],
+                }
+                for option in question_service.normalize_options(question.options, active_only=True)
+            ]
 
             # 提取材料 ID 列表
             material_ids = [m.id for m in question.materials] if question.materials else []
@@ -1834,7 +1882,8 @@ class SessionService:
         user_id: int,
         session_type: str | None = None,
         status: str | None = None,
-        study_domain: str | None = None,
+        cat_id: int | None = None,
+        kp_cat_id: int | None = None,
     ) -> select:
         """
         获取会话列表查询表达式
@@ -1843,13 +1892,18 @@ class SessionService:
         :param user_id: 用户 ID
         :param session_type: 会话类型
         :param status: 状态
-        :param study_domain: 学习领域编码
+        :param cat_id: 题库目录分类 ID
+        :param kp_cat_id: 知识点分类 ID
         :return:
         """
         resolved_bank_ids = None
-        if study_domain is not None:
-            domain_filter = await study_domain_service.get_question_filter(db=db, code=study_domain)
-            resolved_bank_ids = list(domain_filter.bank_ids)
+        category_filter = await category_filter_service.get_question_filter(
+            db=db,
+            cat_id=cat_id,
+            kp_cat_id=kp_cat_id,
+        )
+        if category_filter and cat_id is not None:
+            resolved_bank_ids = list(category_filter.bank_ids)
 
         return await practice_session_dao.get_select(
             user_id=user_id, session_type=session_type, bank_ids=resolved_bank_ids, status=status,
@@ -1870,7 +1924,7 @@ class SessionService:
         :param question_id: 题目 ID
         :return:
         """
-        return await practice_record_dao.get_select(
+        return await session_question_dao.get_select(
             user_id=user_id, session_id=session_id, question_id=question_id,
         )
 

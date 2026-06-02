@@ -53,7 +53,6 @@ export type {
   QuestionCoreBase,
   QuestionListParams,
   QuestionOptionItem,
-  QuestionOptionStatsItem,
   QuestionPlacementItem,
   QuestionType,
   ReviewStatus,

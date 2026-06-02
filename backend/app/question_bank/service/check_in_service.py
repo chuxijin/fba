@@ -13,7 +13,7 @@ from backend.app.growth.model.experience_rule import ExperienceRule
 from backend.app.growth.service import experience_service
 from backend.app.question_bank.crud.crud_check_in import check_in_dao
 from backend.app.question_bank.crud.crud_user_practice_stats import user_practice_stats_dao
-from backend.app.question_bank.model import PracticeRecord, UserCheckIn, UserPracticeStats
+from backend.app.question_bank.model import SessionQuestion, UserCheckIn, UserPracticeStats
 from backend.app.question_bank.schema.home import CheckInCalendarData, CheckInCalendarDay, CheckInInfo, CheckInResult
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
@@ -229,10 +229,12 @@ class CheckInService:
         """
         today_start = datetime.combine(timezone.now().date(), datetime.min.time())
         stmt = (
-            select(func.count(PracticeRecord.id))
+            select(func.count(SessionQuestion.id))
             .where(
-                PracticeRecord.user_id == user_id,
-                PracticeRecord.created_time >= today_start,
+                SessionQuestion.user_id == user_id,
+                SessionQuestion.created_time >= today_start,
+                SessionQuestion.user_answer.isnot(None),
+                SessionQuestion.is_correct.isnot(None),
             )
         )
         result = await db.scalar(stmt)
@@ -249,11 +251,13 @@ class CheckInService:
         """
         today_start = datetime.combine(timezone.now().date(), datetime.min.time())
         stmt = select(
-            func.count(PracticeRecord.id).label('practice_count'),
-            func.coalesce(func.sum(PracticeRecord.answer_time), 0).label('practice_duration'),
+            func.count(SessionQuestion.id).label('practice_count'),
+            func.coalesce(func.sum(SessionQuestion.answer_time), 0).label('practice_duration'),
         ).where(
-            PracticeRecord.user_id == user_id,
-            PracticeRecord.created_time >= today_start,
+            SessionQuestion.user_id == user_id,
+            SessionQuestion.created_time >= today_start,
+            SessionQuestion.user_answer.isnot(None),
+            SessionQuestion.is_correct.isnot(None),
         )
         row = (await db.execute(stmt)).one()
         return {

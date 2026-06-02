@@ -39,7 +39,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                     noload(Question.analyses),
                     noload(Question.materials),
                     noload(Question.placements),
-                    noload(Question.options),
                 ),
                 # placement → bank（阻止 parent selectin）→ category / chapter
                 selectinload(WrongQuestionBook.placement)
@@ -521,7 +520,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                     noload(Question.analyses),
                     noload(Question.materials),
                     noload(Question.placements),
-                    noload(Question.options),
                 ),
                 # placement → bank（阻止 parent selectin）→ category / chapter
                 selectinload(WrongQuestionBook.placement)

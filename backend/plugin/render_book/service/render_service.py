@@ -14,7 +14,7 @@ import httpx
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.service.study_domain_service import study_domain_service
+from backend.app.question_bank.service.category_filter_service import category_filter_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.pagination import _CustomPageParams, paging_list_data
@@ -425,12 +425,13 @@ class RenderService:
         params: RenderJobListParams,
     ) -> dict:
         bank_ids: set[int] | None = None
-        if params.study_domain:
-            domain_filter = await study_domain_service.get_question_filter(
+        if params.cat_id is not None:
+            category_filter = await category_filter_service.get_question_filter(
                 db=db,
-                code=params.study_domain,
+                cat_id=params.cat_id,
+                kp_cat_id=params.kp_cat_id,
             )
-            bank_ids = domain_filter.bank_ids
+            bank_ids = category_filter.bank_ids if category_filter else set()
 
         stmt = render_book_job_dao.build_list_stmt(
             job_id=params.job_id,
@@ -439,7 +440,8 @@ class RenderService:
             mode=params.mode,
             user_id=params.user_id,
             keyword=params.keyword,
-            study_domain=params.study_domain,
+            cat_id=params.cat_id,
+            kp_cat_id=params.kp_cat_id,
             bank_ids=bank_ids,
             with_files=True,
         )

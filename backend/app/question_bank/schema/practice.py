@@ -15,7 +15,7 @@ QuestionType = Literal['single', 'multiple', 'judgement', 'fill', 'shortAnswer']
 AnswerCardStatus = Literal['correct', 'wrong', 'unanswered']
 
 KnowledgePointValue = str | int | dict[str, Any]
-PracticeHomeFilter = Literal['bank']
+PracticeHomeFilter = Literal['bank', 'keypoint']
 
 
 class GetPracticeHomeNode(SchemaBase):
@@ -31,8 +31,9 @@ class GetPracticeHomeNode(SchemaBase):
 class GetPracticeHomeResponse(SchemaBase):
     """刷题首页内容"""
 
-    study_domain: str = Field(description='学习领域编码')
-    cat_id: int | None = Field(None, description='分类 ID')
+    cat_id: int = Field(description='题库目录分类 ID')
+    kp_cat_id: int | None = Field(None, description='知识点分类 ID')
+    tab_id: int = Field(description='Tab ID')
     filter: PracticeHomeFilter = Field(description='首页过滤类型')
     items: list[GetPracticeHomeNode] = Field(default_factory=list, description='首页节点')
 
@@ -92,7 +93,7 @@ class PracticeSessionQueryParam(SchemaBase):
 
 # ===== session question snapshot =====
 class SessionQuestionItem(SchemaBase):
-    """会话题目快照"""
+    """会话题目快照（含答题数据）"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -104,6 +105,12 @@ class SessionQuestionItem(SchemaBase):
     question_type: QuestionType = Field(description='题型')
     full_score: Decimal = Field(ge=Decimal('0'), description='满分')
     chapter: SessionChapterBrief | None = Field(None, description='题目所属章节')
+    user_answer: dict | list | str | None = Field(None, description='用户答案')
+    is_correct: bool | None = Field(None, description='是否正确')
+    score: Decimal | None = Field(None, description='得分')
+    answer_time: int = Field(default=0, ge=0, description='本题用时（秒）')
+    judged_at: datetime | None = Field(None, description='判题时间')
+    judge_version: str | None = Field(None, description='判题规则版本')
 
 
 # ===== practice record =====
@@ -113,14 +120,14 @@ class UpsertPracticeRecordItem(SchemaBase):
     seq_no: int = Field(ge=1, description='题序')
     question_id: int = Field(gt=0, description='题目 ID')
     placement_id: int = Field(gt=0, description='挂载 ID')
-    user_answer: dict[str, Any] | list[Any] | str = Field(description='用户答案（JSON 兼容）')
+    user_answer: dict[str, Any] | list[Any] | str | None = Field(None, description='用户答案（JSON 兼容）')
     answer_time: int = Field(ge=0, le=7200, description='本题耗时（秒）')
 
 
-class BatchUpsertPracticeRecordsParam(SchemaBase):
+class BatchUpsertSessionQuestionsParam(SchemaBase):
     """批量提交/更新作答记录"""
 
-    session_id: int = Field(gt=0, description='会话 ID')
+    session_id: int | None = Field(default=None, gt=0, description='会话 ID（由 API 层从路径自动填充）')
     records: list[UpsertPracticeRecordItem] = Field(min_length=1, max_length=500, description='作答记录列表')
     judge_now: bool = Field(default=False, description='是否立即判题')
 
@@ -189,6 +196,7 @@ class GetPracticeSessionListItem(SchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='会话 ID')
+    session_key: str = Field(description='会话唯一标识')
     user_id: int = Field(description='用户 ID')
     session_type: SessionType = Field(description='会话类型')
     status: SessionStatus = Field(description='会话状态')
@@ -223,8 +231,7 @@ class GetPracticeSessionDetail(GetPracticeSessionListItem):
     """练习会话详情"""
 
     chapter_distribution: list[ChapterDistributionItem] = Field(default_factory=list, description='章节分布统计')
-    session_questions: list[SessionQuestionItem] = Field(default_factory=list, description='会话题目快照')
-    records: list[GetPracticeRecordSessionItem] = Field(default_factory=list, description='作答记录列表')
+    session_questions: list[SessionQuestionItem] = Field(default_factory=list, description='会话题目快照（含答题数据）')
 
 
 class SubmitPracticeSessionParam(SchemaBase):
@@ -360,6 +367,10 @@ class BatchUpsertPracticeRecordsResult(SchemaBase):
     """批量提交作答结果"""
 
     upserted_count: int = Field(ge=0, description='写入记录数')
+    completed_count: int = Field(default=0, ge=0, description='当前已完成题数')
+    total_count: int = Field(default=0, ge=0, description='会话总题数')
+    total_time: int = Field(default=0, ge=0, description='当前累计用时（秒）')
+    progress_percent: Decimal = Field(default=Decimal('0'), ge=Decimal('0'), description='当前完成进度（0-100）')
     records: list[dict[str, Any]] = Field(default_factory=list, description='已保存作答记录')
     judge_results: list[PracticeJudgeResultItem] = Field(default_factory=list, description='即时判题结果')
 

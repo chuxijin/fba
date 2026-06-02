@@ -6,7 +6,6 @@ from sqlalchemy.sql import Select
 
 from backend.app.question_bank.model import (
     PracticeAIEvaluation,
-    PracticeRecord,
     PracticeSession,
     SessionQuestion,
     UserCheckIn,
@@ -69,7 +68,7 @@ class PracticeDataResetService:
             )
         )
         practice_record_result = await db.execute(
-            delete(PracticeRecord).where(PracticeRecord.user_id == user_id)
+            delete(SessionQuestion).where(SessionQuestion.user_id == user_id, SessionQuestion.user_answer.isnot(None))
         )
         progress_count = await user_bank_progress_dao.delete_by_user(db=db, user_id=user_id)
         session_question_result = await db.execute(

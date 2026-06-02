@@ -6,17 +6,14 @@ from .ai_evaluation import PracticeAIEvaluation
 from .bank import QuestionBank
 from .bank_mount import QuestionBankMount
 from .chapter import QuestionChapter
-from .practice import PracticeRecord, PracticeSession, SessionQuestion, WrongQuestionBook
+from .practice import PracticeSession, SessionQuestion, WrongQuestionBook
 from .progress import UserBankQuestionProgress
 from .question import (
-    OptionContent,
     Question,
     QuestionAnalysis,
     QuestionFavorite,
     QuestionMaterial,
     QuestionNote,
-    QuestionOption,
-    QuestionOptionStats,
     QuestionPlacement,
     QuestionStatistics,
     UserNoteVote,
@@ -31,9 +28,6 @@ __all__ = [
     'QuestionBankMount',
     'QuestionChapter',
     'Question',
-    'OptionContent',
-    'QuestionOption',
-    'QuestionOptionStats',
     'QuestionAnalysis',
     'QuestionStatistics',
     'QuestionNote',
@@ -42,7 +36,6 @@ __all__ = [
     'QuestionPlacement',
     'PracticeSession',
     'SessionQuestion',
-    'PracticeRecord',
     'UserBankQuestionProgress',
     'WrongQuestionBook',
     'UserAccount',

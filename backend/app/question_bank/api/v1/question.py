@@ -12,7 +12,6 @@ from backend.app.question_bank.schema.question import (
     DeleteQuestionParam,
     QuestionCollectParam,
     QuestionCollectResult,
-    QuestionOptionStatsItem,
     UpdateQuestionParam,
 )
 from backend.app.question_bank.schema.question_import import (
@@ -28,11 +27,23 @@ from backend.app.question_bank.service.question_selector_service import question
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.session_service import session_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.exception import errors
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
+
+
+async def _resolve_session_id(db: CurrentSession, session_key: str, user_id: int) -> int:
+    """按 session_key 解析会话 ID 并校验归属"""
+    from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
+    session = await practice_session_dao.get_by_key(db, session_key)
+    if not session:
+        raise errors.NotFoundError(msg='会话不存在')
+    if session.user_id != user_id:
+        raise errors.ForbiddenError(msg='无权访问此会话')
+    return session.id
 
 
 def _should_bypass_membership_checks(request: Request) -> bool:
@@ -229,7 +240,7 @@ async def collect_questions(
 
 
 @router.get(
-    '/sessions/{session_id}/favorites',
+    '/sessions/{session_key}/favorites',
     summary='按会话批量检查收藏状态',
     name='qbank_get_session_favorites',
     dependencies=[DependsJwtAuth],
@@ -237,20 +248,20 @@ async def collect_questions(
 async def get_session_favorites(
     request: Request,
     db: CurrentSession,
-    session_id: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseSchemaModel[dict[int, bool]]:
     """按会话批量检查收藏状态"""
-    await membership_service.verify_session_access(db=db, user_id=request.user.id, session_id=session_id)
+    sid = await _resolve_session_id(db, session_key, request.user.id)
     status_map = await favorite_service.batch_check_favorites_by_session(
         db=db,
         user_id=request.user.id,
-        session_id=session_id,
+        session_id=sid,
     )
     return response_base.success(data=status_map)
 
 
 @router.get(
-    '/sessions/{session_id}/notes',
+    '/sessions/{session_key}/notes',
     summary='按会话批量查询笔记',
     name='qbank_get_session_notes',
     dependencies=[DependsJwtAuth],
@@ -258,14 +269,14 @@ async def get_session_favorites(
 async def get_session_notes(
     request: Request,
     db: CurrentSession,
-    session_id: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseSchemaModel[dict[int, GetQuestionNoteDetail]]:
     """按会话批量查询笔记"""
-    await membership_service.verify_session_access(db=db, user_id=request.user.id, session_id=session_id)
+    sid = await _resolve_session_id(db, session_key, request.user.id)
     note_map = await note_service.batch_get_notes_by_session(
         db=db,
         user_id=request.user.id,
-        session_id=session_id,
+        session_id=sid,
     )
     return response_base.success(data=note_map)
 
@@ -515,32 +526,6 @@ async def get_question_statistics(
     return response_base.success(data=data)
 
 
-@router.get(
-    '/{pk}/option-stats',
-    summary='获取题目选项统计',
-    name='qbank_get_question_option_stats',
-    dependencies=[DependsJwtAuth],
-)
-async def get_question_option_stats(
-    request: Request,
-    db: CurrentSession,
-    pk: Annotated[int, Path(description='题目 ID')],
-    bank_id: Annotated[int | None, Query(description='题库 ID')] = None,
-    chapter_id: Annotated[int | None, Query(description='章节 ID')] = None,
-) -> ResponseSchemaModel[list[QuestionOptionStatsItem]]:
-    """获取题目各挂载点下的选项统计"""
-    if not _should_bypass_membership_checks(request):
-        await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
-
-    data = await question_service.get_option_stats(
-        db=db,
-        question_id=pk,
-        bank_id=bank_id,
-        chapter_id=chapter_id,
-    )
-    return response_base.success(data=data)
-
-
 # ============ 批量导入相关接口 ============
 
 
@@ -600,7 +585,7 @@ async def import_from_excel(
 
 
 @router.get(
-    '/sessions/{session_id}',
+    '/sessions/{session_key}',
     summary='获取会话题目静态内容和材料',
     name='qbank_get_session_questions',
     dependencies=[DependsJwtAuth],
@@ -608,7 +593,7 @@ async def import_from_excel(
 async def get_session_questions(
     request: Request,
     db: CurrentSession,
-    session_id: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseSchemaModel[dict[str, Any]]:
     """
     获取会话题目静态内容和去重材料
@@ -617,7 +602,8 @@ async def get_session_questions(
     - 材料独立返回并去重
     - 前端不再逐题拉取题干/选项/材料
     """
+    sid = await _resolve_session_id(db, session_key, request.user.id)
     data = await session_service.get_session_questions_with_materials(
-        db=db, session_id=session_id, user_id=request.user.id
+        db=db, session_id=sid, user_id=request.user.id
     )
     return response_base.success(data=data)

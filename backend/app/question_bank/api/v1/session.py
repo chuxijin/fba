@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Path, Query, Request
 
 from backend.app.question_bank.schema.practice import (
     BatchUpsertPracticeRecordsResult,
-    BatchUpsertPracticeRecordsParam,
+    BatchUpsertSessionQuestionsParam,
     CreatePracticeSessionParam,
     GetPracticeRecordDetail,
     GetPracticeRecordListItem,
@@ -21,10 +21,22 @@ from backend.app.question_bank.service.session_service import session_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.exception import errors
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
+
+
+async def _resolve_session_id(db: CurrentSession, session_key: str, user_id: int) -> int:
+    """按 session_key 解析会话 ID 并校验归属"""
+    from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
+    session = await practice_session_dao.get_by_key(db, session_key)
+    if not session:
+        raise errors.NotFoundError(msg='会话不存在')
+    if session.user_id != user_id:
+        raise errors.ForbiddenError(msg='无权访问此会话')
+    return session.id
 
 
 # ============ 练习会话接口 ============
@@ -155,7 +167,8 @@ async def get_sessions(
     db: CurrentSession,
     session_type: Annotated[str | None, Query(description='会话类型')] = None,
     status: Annotated[str | None, Query(description='状态')] = None,
-    study_domain: Annotated[str | None, Query(description='学习领域编码')] = None,
+    cat_id: Annotated[int | None, Query(gt=0, description='题库目录分类 ID')] = None,
+    kp_cat_id: Annotated[int | None, Query(gt=0, description='知识点分类 ID')] = None,
 ) -> ResponseSchemaModel[PageData[GetPracticeSessionListItem]]:
     """获取用户的练习会话列表"""
     stmt = await session_service.get_session_list_select(
@@ -163,60 +176,65 @@ async def get_sessions(
         user_id=request.user.id,
         session_type=session_type,
         status=status,
-        study_domain=study_domain,
+        cat_id=cat_id,
+        kp_cat_id=kp_cat_id,
     )
     page_data = await paging_data(db, stmt, GetPracticeSessionListItem)
     return response_base.success(data=page_data)
 
 
-@router.get('/{pk}', summary='获取练习会话详情', name='qbank_practice_get_session', dependencies=[DependsJwtAuth])
+@router.get('/{session_key}', summary='获取练习会话详情', name='qbank_practice_get_session', dependencies=[DependsJwtAuth])
 async def get_session(
     request: Request,
     db: CurrentSession,
-    pk: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """获取练习会话详情"""
+    sid = await _resolve_session_id(db, session_key, request.user.id)
     session_data = await session_service.get_session_detail(
-        db=db, session_id=pk, user_id=request.user.id
+        db=db, session_id=sid, user_id=request.user.id
     )
     return response_base.success(data=session_data)
 
 
-@router.post('/{pk}/submit', summary='提交练习会话', name='qbank_practice_submit_session', dependencies=[DependsJwtAuth])
+@router.post('/{session_key}/submit', summary='提交练习会话', name='qbank_practice_submit_session', dependencies=[DependsJwtAuth])
 async def submit_session(
     request: Request,
     db: CurrentSessionTransaction,
-    pk: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
     obj: SubmitPracticeSessionParam,
 ) -> ResponseSchemaModel[SubmitPracticeSessionResult]:
     """提交练习会话"""
+    sid = await _resolve_session_id(db, session_key, request.user.id)
     result = await session_service.submit_session(
-        db=db, session_id=pk, user_id=request.user.id, obj=obj,
+        db=db, session_id=sid, user_id=request.user.id, obj=obj,
     )
     return response_base.success(data=result)
 
 
-@router.post('/{pk}/abandon', summary='放弃练习会话', name='qbank_practice_abandon_session', dependencies=[DependsJwtAuth])
+@router.post('/{session_key}/abandon', summary='放弃练习会话', name='qbank_practice_abandon_session', dependencies=[DependsJwtAuth])
 async def abandon_session(
     request: Request,
     db: CurrentSessionTransaction,
-    pk: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseModel:
     """放弃练习会话"""
-    count = await session_service.abandon_session(db=db, session_id=pk, user_id=request.user.id)
+    sid = await _resolve_session_id(db, session_key, request.user.id)
+    count = await session_service.abandon_session(db=db, session_id=sid, user_id=request.user.id)
     if count > 0:
         return response_base.success()
     return response_base.fail()
 
 
-@router.delete('/{pk}', summary='删除练习会话', name='qbank_practice_delete_session', dependencies=[DependsJwtAuth])
+@router.delete('/{session_key}', summary='删除练习会话', name='qbank_practice_delete_session', dependencies=[DependsJwtAuth])
 async def delete_session(
     request: Request,
     db: CurrentSessionTransaction,
-    pk: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseModel:
     """删除练习会话"""
-    count = await session_service.delete_session(db=db, session_id=pk, user_id=request.user.id)
+    sid = await _resolve_session_id(db, session_key, request.user.id)
+    count = await session_service.delete_session(db=db, session_id=sid, user_id=request.user.id)
     if count > 0:
         return response_base.success()
     return response_base.fail()
@@ -225,16 +243,17 @@ async def delete_session(
 # ============ 答题记录接口 ============
 
 
-@router.post('/{pk}/records', summary='批量提交或更新答题记录', name='qbank_practice_upsert_records', dependencies=[DependsJwtAuth])
+@router.post('/{session_key}/records', summary='批量提交或更新答题记录', name='qbank_practice_upsert_records', dependencies=[DependsJwtAuth])
 async def upsert_records(
     request: Request,
     db: CurrentSessionTransaction,
     background_tasks: BackgroundTasks,
-    pk: Annotated[int, Path(description='会话 ID')],
-    obj: BatchUpsertPracticeRecordsParam,
+    session_key: Annotated[str, Path(description='会话 Key')],
+    obj: BatchUpsertSessionQuestionsParam,
 ) -> ResponseSchemaModel[BatchUpsertPracticeRecordsResult]:
     """批量创建或更新答题记录"""
-    obj.session_id = pk
+    sid = await _resolve_session_id(db, session_key, request.user.id)
+    obj.session_id = sid
     result = await session_service.upsert_records(db=db, user_id=request.user.id, obj=obj)
 
     # 同步路径只做"用户当下要看的事"：鉴权 / 落盘 / 即时判题。
@@ -280,37 +299,40 @@ async def get_records(
     return response_base.success(data=page_data)
 
 
-@router.get('/{pk}/records', summary='获取会话全部答题记录', name='qbank_practice_get_session_records', dependencies=[DependsJwtAuth])
+@router.get('/{session_key}/records', summary='获取会话全部答题记录', name='qbank_practice_get_session_records', dependencies=[DependsJwtAuth])
 async def get_session_records(
     request: Request,
     db: CurrentSession,
-    pk: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseSchemaModel[list[GetPracticeRecordDetail]]:
     """获取会话全部答题记录"""
-    records = await session_service.get_session_records(db=db, session_id=pk, user_id=request.user.id)
+    sid = await _resolve_session_id(db, session_key, request.user.id)
+    records = await session_service.get_session_records(db=db, session_id=sid, user_id=request.user.id)
     return response_base.success(data=[GetPracticeRecordDetail.model_validate(item) for item in records])
 
 
 # ============ 报告 / 解析 ============
 
 
-@router.get('/{pk}/report', summary='获取会话答题报告', name='qbank_practice_get_session_report', dependencies=[DependsJwtAuth])
+@router.get('/{session_key}/report', summary='获取会话答题报告', name='qbank_practice_get_session_report', dependencies=[DependsJwtAuth])
 async def get_session_report(
     request: Request,
     db: CurrentSession,
-    pk: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseSchemaModel[SessionReport]:
     """获取会话答题报告"""
-    report = await session_service.get_session_report(db=db, session_id=pk, user_id=request.user.id)
+    sid = await _resolve_session_id(db, session_key, request.user.id)
+    report = await session_service.get_session_report(db=db, session_id=sid, user_id=request.user.id)
     return response_base.success(data=report)
 
 
-@router.get('/{pk}/solution', summary='获取会话答案解析', name='qbank_practice_get_session_solution', dependencies=[DependsJwtAuth])
+@router.get('/{session_key}/solution', summary='获取会话答案解析', name='qbank_practice_get_session_solution', dependencies=[DependsJwtAuth])
 async def get_session_solution(
     request: Request,
     db: CurrentSession,
-    pk: Annotated[int, Path(description='会话 ID')],
+    session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseModel:
     """获取会话全部题目的答案与解析"""
-    solutions = await session_service.get_session_solution(db=db, session_id=pk, user_id=request.user.id)
+    sid = await _resolve_session_id(db, session_key, request.user.id)
+    solutions = await session_service.get_session_solution(db=db, session_id=sid, user_id=request.user.id)
     return response_base.success(data=solutions)

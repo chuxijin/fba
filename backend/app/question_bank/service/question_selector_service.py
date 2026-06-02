@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import cast, or_, select
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,12 +13,10 @@ from backend.app.question_bank.crud.crud_question_favorite import question_favor
 from backend.app.question_bank.crud.crud_question_note import question_note_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.model import (
-    OptionContent,
     Question,
     QuestionAnalysis,
     QuestionBank,
     QuestionChapter,
-    QuestionOption,
     QuestionPlacement,
 )
 from backend.app.question_bank.schema.question import QuestionCollectParam, QuestionCollectResult
@@ -105,17 +103,7 @@ class QuestionSelectorService:
 
     @staticmethod
     def _build_option_exists(option_keyword: str):
-        return (
-            select(1)
-            .select_from(QuestionOption)
-            .join(OptionContent, OptionContent.id == QuestionOption.content_id)
-            .where(
-                QuestionOption.question_id == Question.id,
-                QuestionOption.is_active.is_(True),
-                OptionContent.content.ilike(f'%{option_keyword}%'),
-            )
-            .exists()
-        )
+        return cast(Question.options, String).ilike(f'%{option_keyword}%')
 
     @staticmethod
     def _build_analysis_exists(analysis_keyword: str):

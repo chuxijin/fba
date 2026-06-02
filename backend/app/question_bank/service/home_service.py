@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.model import PracticeRecord, PracticeSession, UserCheckIn, UserPracticeStats
+from backend.app.question_bank.model import PracticeSession, SessionQuestion, UserCheckIn, UserPracticeStats
 from backend.app.question_bank.schema.home import (
     CheckInInfo,
     DailyPractice,
@@ -175,16 +175,18 @@ class HomeService:
 
         stmt = (
             select(
-                func.date(PracticeRecord.created_time).label('practice_date'),
-                func.count(PracticeRecord.id).label('count'),
-                func.coalesce(func.sum(func.cast(PracticeRecord.is_correct, sa.Integer)), 0).label('correct_count'),
-                func.coalesce(func.sum(PracticeRecord.answer_time), 0).label('duration'),
+                func.date(SessionQuestion.created_time).label('practice_date'),
+                func.count(SessionQuestion.id).label('count'),
+                func.coalesce(func.sum(func.cast(SessionQuestion.is_correct, sa.Integer)), 0).label('correct_count'),
+                func.coalesce(func.sum(SessionQuestion.answer_time), 0).label('duration'),
             )
             .where(
-                PracticeRecord.user_id == user_id,
-                PracticeRecord.created_time >= week_start_dt,
+                SessionQuestion.user_id == user_id,
+                SessionQuestion.created_time >= week_start_dt,
+                SessionQuestion.user_answer.isnot(None),
+                SessionQuestion.is_correct.isnot(None),
             )
-            .group_by(func.date(PracticeRecord.created_time))
+            .group_by(func.date(SessionQuestion.created_time))
         )
 
         result = await db.execute(stmt)

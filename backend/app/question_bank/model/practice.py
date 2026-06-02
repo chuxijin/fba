@@ -31,6 +31,7 @@ class PracticeSession(Base, UserMixin):
         sa.Index('idx_session_user_start_time', 'user_id', 'start_time'),
         sa.Index('idx_session_bank_chapter_status', 'bank_id', 'chapter_id', 'status'),
         sa.Index('idx_session_user_status_source_key', 'user_id', 'status', 'source_key'),
+        sa.Index('idx_session_key', 'session_key'),
         sa.CheckConstraint(
             "session_type IN ('chapter','bank','random','exam','wrong','favorite','note')",
             name='ck_practice_session_type',
@@ -57,6 +58,9 @@ class PracticeSession(Base, UserMixin):
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
+    session_key: Mapped[str] = mapped_column(
+        sa.String(32), unique=True, comment='会话唯一标识',
+    )
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
@@ -116,16 +120,10 @@ class PracticeSession(Base, UserMixin):
         lazy='noload',
         cascade='all, delete-orphan',
     )
-    records: Mapped[list[PracticeRecord]] = relationship(
-        init=False,
-        back_populates='session',
-        lazy='noload',
-        cascade='all, delete-orphan',
-    )
 
 
 class SessionQuestion(Base):
-    """会话题目明细表"""
+    """会话题目明细表（含答题记录）"""
 
     __tablename__ = 'study_session_question'
     __table_args__ = (
@@ -133,13 +131,17 @@ class SessionQuestion(Base):
         sa.UniqueConstraint('session_id', 'question_id', name='uq_session_question_question'),
         sa.Index('idx_session_question_question', 'question_id'),
         sa.Index('idx_session_question_placement', 'placement_id'),
+        sa.Index('idx_session_question_user_time', 'user_id', 'created_time'),
+        sa.Index('idx_session_question_question_correct', 'question_id', 'is_correct'),
         sa.CheckConstraint('seq_no > 0', name='ck_session_question_seq'),
         sa.CheckConstraint(
             "question_type IN ('single','multiple','judgement','fill','shortAnswer')",
             name='ck_session_question_type',
         ),
         sa.CheckConstraint('full_score >= 0', name='ck_session_question_score'),
-        {'comment': '会话题目明细表'},
+        sa.CheckConstraint('answer_time >= 0', name='ck_session_question_answer_time'),
+        sa.CheckConstraint('score IS NULL OR score >= 0', name='ck_session_question_record_score'),
+        {'comment': '会话题目明细表（含答题记录）'},
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
@@ -147,6 +149,11 @@ class SessionQuestion(Base):
         sa.BigInteger,
         sa.ForeignKey('study_practice_session.id', ondelete='CASCADE'),
         comment='会话 ID',
+    )
+    user_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
+        comment='用户 ID',
     )
     question_id: Mapped[int] = mapped_column(
         sa.BigInteger,
@@ -165,64 +172,20 @@ class SessionQuestion(Base):
     full_score: Mapped[Decimal] = mapped_column(
         sa.Numeric(8, 2), default=Decimal('0'), comment='满分',
     )
-
-    # ============ 关系 ============
-    session: Mapped[PracticeSession] = relationship(init=False, back_populates='session_questions', lazy='noload')
-    question: Mapped[Question] = relationship(init=False, lazy='noload')
-    placement: Mapped[QuestionPlacement] = relationship(init=False, lazy='noload')
-
-
-class PracticeRecord(Base):
-    """答题记录表"""
-
-    __tablename__ = 'study_practice_record'
-    __table_args__ = (
-        sa.UniqueConstraint('session_id', 'question_id', name='uq_practice_record_session_question'),
-        sa.Index('idx_practice_record_session_seq', 'session_id', 'seq_no'),
-        sa.Index('idx_practice_record_user_time', 'user_id', 'created_time'),
-        sa.Index('idx_practice_record_question_correct', 'question_id', 'is_correct'),
-        sa.Index('idx_practice_record_placement_question', 'placement_id', 'question_id'),
-        sa.CheckConstraint('seq_no > 0', name='ck_practice_record_seq'),
-        sa.CheckConstraint('answer_time >= 0', name='ck_practice_record_time'),
-        sa.CheckConstraint('full_score >= 0 AND (score IS NULL OR score >= 0)', name='ck_practice_record_score'),
-        {'comment': '答题记录表'},
-    )
-
-    id: Mapped[id_key] = mapped_column(init=False)
-    session_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_practice_session.id', ondelete='CASCADE'),
-        comment='练习会话 ID',
-    )
-    user_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
-        comment='用户 ID',
-    )
-    question_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_question.id', ondelete='CASCADE'),
-        comment='题目 ID',
-    )
-    placement_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('study_question_placement.id', ondelete='RESTRICT'),
-        comment='挂载 ID（避免多挂载歧义）',
-    )
-    seq_no: Mapped[int] = mapped_column(sa.Integer, comment='题目在会话中的顺序（从 1 开始）')
-    user_answer: Mapped[dict | list | str] = mapped_column(CompatibleJSONB, comment='用户答案')
-    is_correct: Mapped[bool | None] = mapped_column(default=None, comment='是否正确（提交前可空）')
+    # ============ 答题记录字段（原 PracticeRecord 合并） ============
+    user_answer: Mapped[dict | list | str | None] = mapped_column(CompatibleJSONB, default=None, comment='用户答案')
+    is_correct: Mapped[bool | None] = mapped_column(default=None, comment='是否正确（刷题即时写入，做题交卷写入）')
     score: Mapped[Decimal | None] = mapped_column(sa.Numeric(8, 2), default=None, comment='得分')
-    full_score: Mapped[Decimal] = mapped_column(sa.Numeric(8, 2), default=Decimal('0'), comment='满分')
     answer_time: Mapped[int] = mapped_column(sa.Integer, default=0, comment='本题用时（秒）')
     judged_at: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='判题时间')
     judge_version: Mapped[str | None] = mapped_column(sa.String(32), default=None, comment='判题规则版本')
 
     # ============ 关系 ============
-    account: Mapped[UserAccount] = relationship(init=False, back_populates='practice_records', lazy='noload')
-    session: Mapped[PracticeSession] = relationship(init=False, back_populates='records', lazy='noload')
+    session: Mapped[PracticeSession] = relationship(init=False, back_populates='session_questions', lazy='noload')
+    account: Mapped[UserAccount] = relationship(init=False, lazy='noload')
     question: Mapped[Question] = relationship(init=False, lazy='noload')
     placement: Mapped[QuestionPlacement] = relationship(init=False, lazy='noload')
+
 
 
 class WrongQuestionBook(Base, UserMixin):

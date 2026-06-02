@@ -20,7 +20,7 @@
 当前主要适用于以下表与模块：
 
 1. 题目：`study_question`
-2. 选项：`study_question_option`、`study_option_content`
+2. 选项：`study_question.options`
 3. 解析：`study_question_analysis`
 4. 材料：`study_question_material`
 5. 题目-材料关联：`study_question_material_relation`
@@ -29,7 +29,7 @@
 当前代码中的关键消费字段：
 
 1. [question.py](D:/100_Work/101_Program/Proj/fba/backend/app/question_bank/model/question.py) 中的：
-   `Question.stem`、`OptionContent.content`、`QuestionAnalysis.content`、`QuestionAnalysis.answer_data`、`QuestionMaterial.content`
+   `Question.stem`、`Question.options`、`QuestionAnalysis.content`、`QuestionAnalysis.answer_data`、`QuestionMaterial.content`
 2. [payload.py](D:/100_Work/101_Program/Proj/fba/backend/plugin/render_book/schema/payload.py) 中的：
    `stem_text`、`options`、`analysis_text`、`material_ids`、`source_label`
 3. [payload_service.py](D:/100_Work/101_Program/Proj/fba/backend/plugin/render_book/service/payload_service.py) 中的：
@@ -107,9 +107,9 @@
 
 建议映射：
 
-1. `study_question_option.option_code`
+1. `study_question.options[].option_code`
    存 `A` / `B` / `C` / `D`
-2. `study_option_content.content`
+2. `study_question.options[].content`
    存选项正文，允许 HTML 富文本，公式保留 LaTeX
 
 清洗要求：

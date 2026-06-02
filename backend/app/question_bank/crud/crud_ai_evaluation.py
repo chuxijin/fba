@@ -41,19 +41,19 @@ class CRUDPracticeAIEvaluation(CRUDPlus[PracticeAIEvaluation]):
         self,
         db: AsyncSession,
         *,
-        practice_record_id: int,
+        session_question_id: int,
     ) -> PracticeAIEvaluation | None:
         """
         获取记录最新单题评估
 
         :param db: 数据库会话
-        :param practice_record_id: 作答记录 ID
+        :param session_question_id: 作答记录 ID
         :return:
         """
         stmt = (
             select(PracticeAIEvaluation)
             .where(
-                PracticeAIEvaluation.practice_record_id == practice_record_id,
+                PracticeAIEvaluation.session_question_id == session_question_id,
                 PracticeAIEvaluation.target_type == 'question_eval',
                 PracticeAIEvaluation.is_latest.is_(True),
             )
@@ -107,23 +107,23 @@ class CRUDPracticeAIEvaluation(CRUDPlus[PracticeAIEvaluation]):
                 PracticeAIEvaluation.target_type == 'question_eval',
                 PracticeAIEvaluation.is_latest.is_(True),
             )
-            .order_by(PracticeAIEvaluation.practice_record_id.asc(), PracticeAIEvaluation.id.desc())
+            .order_by(PracticeAIEvaluation.session_question_id.asc(), PracticeAIEvaluation.id.desc())
         )
         result = await db.execute(stmt)
         return result.scalars().all()
 
-    async def mark_record_not_latest(self, db: AsyncSession, *, practice_record_id: int) -> int:
+    async def mark_record_not_latest(self, db: AsyncSession, *, session_question_id: int) -> int:
         """
         将记录历史评估标记为非最新
 
         :param db: 数据库会话
-        :param practice_record_id: 作答记录 ID
+        :param session_question_id: 作答记录 ID
         :return:
         """
         return await self.update_model_by_column(
             db,
             {'is_latest': False},
-            practice_record_id=practice_record_id,
+            session_question_id=session_question_id,
             target_type='question_eval',
             is_latest=True,
         )

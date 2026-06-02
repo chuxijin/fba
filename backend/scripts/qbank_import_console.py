@@ -25,10 +25,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.app.question_bank.crud.crud_question import option_content_dao, question_analysis_dao, question_option_dao
+from backend.app.question_bank.crud.crud_question import question_analysis_dao
 from backend.app.question_bank.model import Question, QuestionBank, QuestionChapter, QuestionMaterial, QuestionPlacement
 from backend.app.question_bank.model.question import question_material_relation
 from backend.app.question_bank.schema.question import UpsertQuestionAnalysisItem, UpsertQuestionOptionItem
+from backend.app.question_bank.service.question_service import QuestionService
 from backend.database.db import async_db_session
 from backend.scripts.qbank_image_mirror import QbankImageMirror
 
@@ -1836,12 +1837,8 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
 
             if trace_each_question:
                 print(f"[DB][QUESTION] replace_options qid={qid}")
-            await question_option_dao.replace_by_items(
-                db,
-                question_id=local_question_id,
-                items=options,
-                option_content_crud=option_content_dao,
-            )
+            qobj.options = QuestionService.normalize_options(options)
+            await db.flush()
 
             if trace_each_question:
                 print(f"[DB][QUESTION] replace_analyses qid={qid}")
@@ -2092,8 +2089,6 @@ async def clear_question_locks() -> list[int]:
       and c.relname in (
           'study_question',
           'study_question_placement',
-          'study_question_option',
-          'study_option_content',
           'study_question_analysis'
       )
       and (
