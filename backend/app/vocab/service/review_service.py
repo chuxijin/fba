@@ -102,14 +102,14 @@ class ReviewService:
             commit=False,
         )
 
-        await db.commit()
-
         await checkin_service.update_daily_progress(
             db=db,
             user_id=user_id,
             is_new_word=is_new,
             duration_ms=obj.duration_ms,
         )
+
+        await db.commit()
 
         return ReviewResult(
             next_due=update_data['due'],

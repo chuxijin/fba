@@ -99,9 +99,13 @@ async def get_my_books(request: Request, db: CurrentSession) -> ResponseModel:
 
 # ============ 学习核心 ============
 @router.get('/study/session', summary='获取今日学习会话')
-async def get_study_session(request: Request, db: CurrentSession) -> ResponseSchemaModel[GetStudySession]:
-    """获取今日学习会话（待复习 + 新词）"""
-    data = await study_service.get_study_session(db=db, user_id=request.user.id)
+async def get_study_session(
+    request: Request,
+    db: CurrentSession,
+    mode: Annotated[str, Query(description='模式: all-所有, learn-仅新词, review-仅复习')] = 'all',
+) -> ResponseSchemaModel[GetStudySession]:
+    """获取今日学习会话（待复习、新词或全部）"""
+    data = await study_service.get_study_session(db=db, user_id=request.user.id, mode=mode)
     return response_base.success(data=data)
 
 

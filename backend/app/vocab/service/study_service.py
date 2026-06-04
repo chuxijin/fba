@@ -36,43 +36,48 @@ class StudyService:
         return detail
 
     @staticmethod
-    async def get_study_session(*, db: AsyncSession, user_id: int) -> GetStudySession:
+    async def get_study_session(*, db: AsyncSession, user_id: int, mode: str = 'all') -> GetStudySession:
         """
         获取今日学习会话
 
         :param db: 数据库会话
         :param user_id: 用户 ID
+        :param mode: 模式: all-所有, learn-仅新词, review-仅复习
         :return:
         """
         setting = await user_setting_dao.get_or_create(db, user_id)
         now = timezone.now()
 
-        review_limit = setting.daily_review_limit if setting.daily_review_limit > 0 else 200
-        due_user_words = await user_word_dao.get_due_words(db, user_id, now, limit=review_limit)
-
         words: list[StudySessionWord] = []
-        for uw in due_user_words:
-            word = await word_dao.select_model(db, uw.word_id)
-            if word:
-                detail = await StudyService._build_word_detail(db, word)
-                words.append(StudySessionWord(word=detail, is_new=False, user_word_id=uw.id))
-
-        review_count = len(words)
+        review_count = 0
         new_count = 0
 
-        active_ub = await user_book_dao.get_active_book(db, user_id)
-        if active_ub:
-            needed = setting.daily_new_target
-            learned_ids = await user_word_dao.get_learned_word_ids(db, user_id)
-            book_word_ids = await book_word_dao.get_word_ids_by_book(db, active_ub.book_id)
-            new_word_ids = [wid for wid in book_word_ids if wid not in learned_ids][:needed]
-
-            for word_id in new_word_ids:
-                word = await word_dao.select_model(db, word_id)
+        # 1. 待复习词（在 'all' 或 'review' 模式下加载）
+        if mode in ('all', 'review'):
+            review_limit = setting.daily_review_limit if setting.daily_review_limit > 0 else 200
+            due_user_words = await user_word_dao.get_due_words(db, user_id, now, limit=review_limit)
+            for uw in due_user_words:
+                word = await word_dao.select_model(db, uw.word_id)
                 if word:
                     detail = await StudyService._build_word_detail(db, word)
-                    words.append(StudySessionWord(word=detail, is_new=True, user_word_id=None))
-                    new_count += 1
+                    words.append(StudySessionWord(word=detail, is_new=False, user_word_id=uw.id))
+            review_count = len(words)
+
+        # 2. 新词（在 'all' 或 'learn' 模式下加载）
+        if mode in ('all', 'learn'):
+            active_ub = await user_book_dao.get_active_book(db, user_id)
+            if active_ub:
+                needed = setting.daily_new_target
+                learned_ids = await user_word_dao.get_learned_word_ids(db, user_id)
+                book_word_ids = await book_word_dao.get_word_ids_by_book(db, active_ub.book_id)
+                new_word_ids = [wid for wid in book_word_ids if wid not in learned_ids][:needed]
+
+                for word_id in new_word_ids:
+                    word = await word_dao.select_model(db, word_id)
+                    if word:
+                        detail = await StudyService._build_word_detail(db, word)
+                        words.append(StudySessionWord(word=detail, is_new=True, user_word_id=None))
+                        new_count += 1
 
         return GetStudySession(words=words, new_count=new_count, review_count=review_count, total=len(words))
 
