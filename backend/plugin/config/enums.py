@@ -11,3 +11,5 @@ class ConfigType(StrEnum):
     storage = 'STORAGE'
     shop = 'SHOP'
     crawler = 'CRAWLER'
+    invite = 'INVITE'
+

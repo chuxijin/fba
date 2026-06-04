@@ -3,10 +3,13 @@
 import logging
 import re
 
+from collections import deque
 from datetime import date, datetime, time
 from typing import Any
 
 import httpx
+
+from sqlalchemy import text
 
 from backend.app.content.crud.crud_content import content_dao
 from backend.app.content.schema.content import CreateContentParam, UpdateContentParam
@@ -22,6 +25,61 @@ SYSTEM_USER_ID = 1
 CONTENT_TYPE_SHIZHEN = 'shizhen'
 DEFAULT_TAGS = ['时政', '新闻联播']
 APP_CODE_GONGKAO = 'gongkao'
+
+
+def build_hanyu_matcher(words: list[tuple[int, str]]) -> list[dict[str, Any]]:
+    """
+    构建汉语词汇匹配自动机
+
+    :param words: 词汇 ID 与名称列表
+    :return:
+    """
+    nodes: list[dict[str, Any]] = [{'next': {}, 'fail': 0, 'out': []}]
+    for word_id, word in words:
+        current_index = 0
+        for char in word:
+            next_nodes = nodes[current_index]['next']
+            if char not in next_nodes:
+                next_nodes[char] = len(nodes)
+                nodes.append({'next': {}, 'fail': 0, 'out': []})
+            current_index = next_nodes[char]
+        nodes[current_index]['out'].append(word_id)
+
+    queue: deque[int] = deque()
+    for next_index in nodes[0]['next'].values():
+        queue.append(next_index)
+
+    while queue:
+        current_index = queue.popleft()
+        current_node = nodes[current_index]
+        for char, next_index in current_node['next'].items():
+            fail_index = current_node['fail']
+            while fail_index and char not in nodes[fail_index]['next']:
+                fail_index = nodes[fail_index]['fail']
+            nodes[next_index]['fail'] = nodes[fail_index]['next'].get(char, 0)
+            nodes[next_index]['out'].extend(nodes[nodes[next_index]['fail']]['out'])
+            queue.append(next_index)
+
+    return nodes
+
+
+def match_hanyu_ids(text: str, matcher: list[dict[str, Any]]) -> set[int]:
+    """
+    匹配文本中的汉语词汇 ID
+
+    :param text: 待扫描文本
+    :param matcher: 汉语词汇匹配自动机
+    :return:
+    """
+    matched_ids: set[int] = set()
+    current_index = 0
+    for char in text:
+        while current_index and char not in matcher[current_index]['next']:
+            current_index = matcher[current_index]['fail']
+        current_index = matcher[current_index]['next'].get(char, 0)
+        if matcher[current_index]['out']:
+            matched_ids.update(matcher[current_index]['out'])
+    return matched_ids
 
 
 def build_content_slug(daily_date: date) -> str:
@@ -162,3 +220,117 @@ async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
                 result['error_count'] += 1
                 logger.error('Failed to process news record: %s', exc)
     return result
+
+
+@celery_app.task(name='update_hanyu_frequency')
+async def update_hanyu_frequency() -> dict[str, Any]:
+    """更新汉语词汇使用频次"""
+    result: dict[str, Any] = {
+        'success': True,
+        'total_count': 0,
+        'updated_count': 0,
+        'error_count': 0,
+        'elapsed_seconds': 0,
+        'message': '',
+    }
+    start_time = datetime.now()
+    logger.info('开始统计汉语词汇使用频次（言语理解与表达题干与选项）...')
+
+    try:
+        async with async_db_session.begin() as db:
+            idiom_sql = text("""
+                SELECT id, name, frequency
+                FROM gk_hanyu
+                WHERE type = '成语'
+                  AND NULLIF(BTRIM(name), '') IS NOT NULL
+            """)
+            idiom_rows = (await db.execute(idiom_sql)).mappings().all()
+            result['total_count'] = len(idiom_rows)
+
+            target_text_sql = text("""
+                WITH target_questions AS (
+                    SELECT q.id, q.stem, q.options
+                    FROM study_question q
+                    WHERE q.knowledge_point IS NOT NULL
+                      AND q.knowledge_point::text LIKE '%言语理解与表达%'
+                ),
+                target_texts AS (
+                    SELECT
+                        tq.id AS question_id,
+                        tq.stem AS content
+                    FROM target_questions tq
+                    WHERE NULLIF(BTRIM(tq.stem), '') IS NOT NULL
+
+                    UNION ALL
+
+                    SELECT
+                        tq.id AS question_id,
+                        option_item.item ->> 'content' AS content
+                    FROM target_questions tq
+                    CROSS JOIN LATERAL jsonb_array_elements(
+                        COALESCE(tq.options, '[]'::jsonb)
+                    ) AS option_item(item)
+                    WHERE COALESCE(option_item.item ->> 'is_active', 'true') <> 'false'
+                      AND NULLIF(BTRIM(option_item.item ->> 'content'), '') IS NOT NULL
+                )
+                SELECT question_id, content
+                FROM target_texts
+            """)
+            text_rows = (await db.execute(target_text_sql)).mappings().all()
+            target_text_count = len(text_rows)
+
+            matcher = build_hanyu_matcher([
+                (int(row['id']), str(row['name']))
+                for row in idiom_rows
+            ])
+            frequency_map = {int(row['id']): 0 for row in idiom_rows}
+            question_hanyu_ids: dict[int, set[int]] = {}
+            for row in text_rows:
+                content = strip_html_tags(str(row['content'] or ''))
+                if not content:
+                    continue
+                question_id = int(row['question_id'])
+                question_matches = question_hanyu_ids.setdefault(question_id, set())
+                question_matches.update(match_hanyu_ids(content, matcher))
+
+            for matched_ids in question_hanyu_ids.values():
+                for word_id in matched_ids:
+                    frequency_map[word_id] += 1
+
+            update_params: list[dict[str, int]] = []
+            for row in idiom_rows:
+                word_id = int(row['id'])
+                frequency = frequency_map[word_id]
+                if int(row['frequency'] or 0) == frequency:
+                    continue
+                update_params.append({'id': word_id, 'frequency': frequency})
+
+            if update_params:
+                await db.execute(
+                    text("""
+                        UPDATE gk_hanyu
+                        SET frequency = :frequency
+                        WHERE id = :id
+                    """),
+                    update_params,
+                )
+            result['updated_count'] = len(update_params)
+
+        elapsed = (datetime.now() - start_time).total_seconds()
+        result['elapsed_seconds'] = round(elapsed, 2)
+        result['message'] = (
+            f"频次统计完成（言语理解与表达题干与选项）: 总计 {result['total_count']} 个成语, "
+            f"扫描 {len(question_hanyu_ids)} 道题 / {target_text_count} 段题干选项文本, "
+            f"更新 {result['updated_count']} 条记录, "
+            f"耗时 {result['elapsed_seconds']} 秒"
+        )
+        logger.info(result['message'])
+        return result
+    except Exception as exc:
+        elapsed = (datetime.now() - start_time).total_seconds()
+        result['success'] = False
+        result['error_count'] = 1
+        result['elapsed_seconds'] = round(elapsed, 2)
+        result['message'] = f'频次统计失败: {exc}'
+        logger.exception('汉语词汇频次统计失败')
+        return result

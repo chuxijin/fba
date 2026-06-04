@@ -126,6 +126,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/sms/login/sms',  # 短信验证码登录
         f'{FASTAPI_API_V1_PATH}/payment/pay/notify',  # 微信支付回调
         f'{FASTAPI_API_V1_PATH}/payment/pay/refund-notify',  # 微信退款回调
+        f'{FASTAPI_API_V1_PATH}/invite/codes/share-config',  # 新增：分享有礼卡片配置免鉴权
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         re.compile(rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$'),
