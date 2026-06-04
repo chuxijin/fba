@@ -25,6 +25,7 @@ class GetPracticeHomeNode(SchemaBase):
     name: str = Field(description='节点名称')
     count: int = Field(default=0, ge=0, description='题量')
     answerCount: int = Field(default=0, ge=0, description='已做题数')
+    bank_type: int = Field(default=1, description='内容类型: 1=习题, 2=试卷, 3=合集')
     children: list['GetPracticeHomeNode'] | None = Field(None, description='子节点')
 
 

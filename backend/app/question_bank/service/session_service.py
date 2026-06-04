@@ -1016,11 +1016,10 @@ class SessionService:
         :param obj: 批量提交参数
         :return:
         """
-        # 鉴权 + 加载 session_questions（用于过滤合法题目 + 取 placement_id / seq_no / full_score）
+        # 鉴权 + 加载 session（题目明细按本次提交的 question_id 单独查询）
         session_stmt = (
             select(PracticeSession)
             .where(PracticeSession.id == obj.session_id)
-            .options(selectinload(PracticeSession.session_questions))
         )
         session_result = await db.execute(session_stmt)
         session = session_result.scalars().first()
@@ -1038,7 +1037,13 @@ class SessionService:
         )
         allow_judge_now = practice_mode == SessionService.PRACTICE_MODE_PRACTICE
 
-        sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session.session_questions}
+        request_question_ids = list(dict.fromkeys(item.question_id for item in obj.records))
+        session_questions = await session_question_dao.get_by_session_question_ids(
+            db,
+            int(obj.session_id),
+            request_question_ids,
+        )
+        sq_map: dict[int, SessionQuestion] = {sq.question_id: sq for sq in session_questions}
 
         records_dict: list[dict] = []
         for item in obj.records:
@@ -1078,10 +1083,6 @@ class SessionService:
         upserted_records: list[SessionQuestion] = []
         if records_dict:
             upserted_records = await session_question_dao.batch_upsert_answer(db=db, records=records_dict)
-            await user_bank_progress_dao.upsert_by_record_ids(
-                db=db,
-                record_ids=[int(record.id) for record in upserted_records],
-            )
             completed_count, total_time = await session_question_dao.get_answered_progress_by_session(
                 db,
                 obj.session_id,

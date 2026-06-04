@@ -246,24 +246,25 @@ async def delete_session(
 @router.post('/{session_key}/records', summary='批量提交或更新答题记录', name='qbank_practice_upsert_records', dependencies=[DependsJwtAuth])
 async def upsert_records(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSession,
     background_tasks: BackgroundTasks,
     session_key: Annotated[str, Path(description='会话 Key')],
     obj: BatchUpsertSessionQuestionsParam,
 ) -> ResponseSchemaModel[BatchUpsertPracticeRecordsResult]:
     """批量创建或更新答题记录"""
-    sid = await _resolve_session_id(db, session_key, request.user.id)
-    obj.session_id = sid
-    result = await session_service.upsert_records(db=db, user_id=request.user.id, obj=obj)
+    async with db.begin():
+        sid = await _resolve_session_id(db, session_key, request.user.id)
+        obj.session_id = sid
+        result = await session_service.upsert_records(db=db, user_id=request.user.id, obj=obj)
 
-    # 同步路径只做"用户当下要看的事"：鉴权 / 落盘 / 即时判题。
+    # 同步路径只做"用户当下要看的事"：鉴权 / 落盘 / 会话轻量进度。
     # 错题本维护 / 进度同步 / 统计快照增量改为事务提交后由 Celery 异步处理，
-    # 这里通过 BackgroundTasks 在响应发送后投递，确保任务读到的是已提交数据。
+    # 这里通过 BackgroundTasks 在响应发送后投递 Celery，确保任务读到的是已提交数据。
     async_payload = result.pop('_async_payload', None)
     if async_payload is not None:
-        from backend.app.task.tasks.qbank.tasks import process_record_side_effects_async
+        from backend.app.task.tasks.qbank.tasks import process_record_side_effects
 
-        background_tasks.add_task(process_record_side_effects_async, **async_payload)
+        background_tasks.add_task(process_record_side_effects.delay, **async_payload)
 
     return response_base.success(data=result)
 

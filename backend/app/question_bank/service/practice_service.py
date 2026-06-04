@@ -72,6 +72,7 @@ class PracticeService:
                 name=str(node.get('name') or ''),
                 count=count,
                 answerCount=answer_count,
+                bank_type=int(node.get('bank_type') or 1),
                 children=children or None,
             ))
 
