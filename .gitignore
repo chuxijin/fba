@@ -83,12 +83,16 @@ mini/
 packages/api-sdk/openapi.json
 packages/api-sdk/src/generated/
 
-
 # 质量检查
 requirements-quality.txt
 scripts/check-quality.ps1
 backend/scripts/quality.sh
 .github/workflows/quality.yml
 
-# uv lock 文件（如需跟踪可移除此行）
-# uv.lock
+# AI 工具缓存
+.claude/
+.serena/
+.agents/
+.superpowers/
+superpowers/
+.codegraph/

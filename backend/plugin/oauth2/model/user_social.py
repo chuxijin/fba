@@ -10,7 +10,8 @@ class UserSocial(Base):
 
     __tablename__ = 'sys_user_social'
     __table_args__ = (
-        sa.UniqueConstraint('source', 'openid', name='uq_oauth2_source_openid'),
+        sa.UniqueConstraint('user_id', 'source', 'deleted', name='uk_sys_user_social_user_id_source_deleted'),
+        sa.UniqueConstraint('sid', 'source', 'deleted', name='uk_sys_user_social_sid_source_deleted'),
         sa.Index('ix_oauth2_unionid', 'unionid'),
         {'comment': '用户社交表（OAuth2）'},
     )

@@ -32,7 +32,8 @@ from backend.middleware.i18n_middleware import I18nMiddleware
 from backend.middleware.jwt_auth_middleware import JwtAuthMiddleware
 from backend.middleware.opera_log_middleware import OperaLogMiddleware
 from backend.middleware.state_middleware import StateMiddleware
-from backend.plugin.core import build_final_router, setup_plugins
+from backend.plugin.hooks import init_plugin_otel_hooks, register_plugin_hooks
+from backend.plugin.router import build_final_router
 from backend.utils.demo_mode import demo_site
 from backend.utils.openapi import ensure_unique_route_names, simplify_operation_ids
 from backend.utils.serializers import MsgSpecJSONResponse
@@ -65,25 +66,26 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
     # 启动缓存 Pub/Sub 监听器
     cache_pubsub_manager.start_listener()
 
-    yield
+    try:
+        yield
+    finally:
+        # 停止缓存 Pub/Sub 监听器
+        await cache_pubsub_manager.stop_listener()
 
-    # 停止缓存 Pub/Sub 监听器
-    await cache_pubsub_manager.stop_listener()
+        # 取消操作日志任务
+        if not opera_log_task.done():
+            opera_log_task.cancel()
+            try:
+                await opera_log_task
+            except asyncio.CancelledError:
+                pass
 
-    # 取消操作日志任务
-    if not opera_log_task.done():
-        opera_log_task.cancel()
-        try:
-            await opera_log_task
-        except asyncio.CancelledError:
-            pass
+        # 释放 snowflake 节点
+        if settings.SNOWFLAKE_ENABLED or settings.DATABASE_PK_MODE == 'snowflake':
+            await snowflake.shutdown()
 
-    # 释放 snowflake 节点
-    if settings.SNOWFLAKE_ENABLED or settings.DATABASE_PK_MODE == 'snowflake':
-        await snowflake.shutdown()
-
-    # 关闭 redis 连接
-    await redis_client.aclose()
+        # 关闭 redis 连接
+        await redis_client.aclose()
 
 
 def register_app() -> FastAPI:
@@ -110,8 +112,8 @@ def register_app() -> FastAPI:
     register_page(app)
     register_exception(app)
 
-    # 初始化插件
-    setup_plugins(app)
+    # 注册插件钩子
+    register_plugin_hooks(app)
 
     if settings.GRAFANA_METRICS_ENABLE:
         register_metrics(app)
@@ -270,8 +272,7 @@ def register_metrics(app: FastAPI) -> None:
     :return:
     """
     metrics_app = make_asgi_app()
-    app.mount('/metrics', metrics_app)
+    app.mount(settings.GRAFANA_METRICS_PATH, metrics_app)
 
-    # OTel 链路追踪依赖 Grafana Alloy（gRPC），仅在 prod 环境初始化
-    if settings.ENVIRONMENT == 'prod':
-        init_otel(app)
+    init_otel(app)
+    init_plugin_otel_hooks(app)
