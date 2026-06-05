@@ -40,6 +40,39 @@ QUESTION_HEADERS = [
     '材料编号',
 ]
 
+QUESTION_TYPE_NAMES = {
+    '单选',
+    '单选题',
+    '多选',
+    '多选题',
+    '选择题',
+    '判断',
+    '判断题',
+    '填空',
+    '填空题',
+    '简答',
+    '简答题',
+    '解答',
+    '解答题',
+    '分析题',
+}
+
+QUESTION_TYPE_MAPPING = {
+    '单选': '单选',
+    '单选题': '单选',
+    '多选': '多选',
+    '多选题': '多选',
+    '判断': '判断',
+    '判断题': '判断',
+    '填空': '填空',
+    '填空题': '填空',
+    '简答': '简答',
+    '简答题': '简答',
+    '解答': '简答',
+    '解答题': '简答',
+    '分析题': '简答',
+}
+
 
 def read_text(path: Path) -> str:
     """
@@ -202,16 +235,18 @@ def load_response_objects(input_path: Path) -> list[dict[str, Any]]:
     return responses
 
 
-def normalize_question_type(question: dict[str, Any], chapter_name: str | None = None) -> str:
+def normalize_question_type(question: dict[str, Any], chapter_names: list[str] | None = None) -> str:
     """
     转换题型
 
     :param question: 题目数据
-    :param chapter_name: 章节名称
+    :param chapter_names: 章节名称列表
     :return: 不添加返回说明
     """
-    if chapter_name in {'单选', '多选', '判断', '填空', '简答'}:
-        return chapter_name
+    if chapter_names:
+        for chapter_name in reversed(chapter_names):
+            if chapter_name in QUESTION_TYPE_MAPPING:
+                return QUESTION_TYPE_MAPPING[chapter_name]
 
     raw_type = question.get('type')
     type_mapping = {
@@ -229,6 +264,38 @@ def normalize_question_type(question: dict[str, Any], chapter_name: str | None =
         return '多选'
 
     return '单选'
+
+
+def clean_chapter_names(chapter_names: list[str]) -> list[str]:
+    """
+    清洗章节目录
+
+    :param chapter_names: 原始章节名称列表
+    :return: 不添加返回说明
+    """
+    return [name for name in chapter_names if name and name not in QUESTION_TYPE_NAMES]
+
+
+def build_chapter_tuple(chapter_names: list[str]) -> tuple[str, str, str, str, str]:
+    """
+    构建章节元组
+
+    :param chapter_names: 原始章节名称列表
+    :return: 不添加返回说明
+    """
+    clean_names = clean_chapter_names(chapter_names)
+    knowledge_name = ''
+    if clean_names:
+        knowledge_name = clean_names[0]
+    elif chapter_names:
+        knowledge_name = chapter_names[0]
+
+    padded_names = clean_names[:3]
+    while len(padded_names) < 3:
+        padded_names.append('')
+
+    question_type = normalize_question_type({}, chapter_names)
+    return padded_names[0], padded_names[1], padded_names[2], knowledge_name, question_type
 
 
 def normalize_difficulty(raw_difficulty: Any) -> str:
@@ -309,7 +376,7 @@ def collect_analysis_map(responses: list[dict[str, Any]]) -> dict[int, str]:
     return analysis_map
 
 
-def build_chapter_path_map(responses: list[dict[str, Any]]) -> dict[int, tuple[str, str, str]]:
+def build_chapter_path_map(responses: list[dict[str, Any]]) -> dict[int, tuple[str, str, str, str, str]]:
     """
     从响应中构建章节映射
 
@@ -334,7 +401,7 @@ def build_chapter_path_map(responses: list[dict[str, Any]]) -> dict[int, tuple[s
             if isinstance(item_id, int) and 'parent_id' in item and 'name' in item:
                 item_map[item_id] = item
 
-    path_map: dict[int, tuple[str, str, str]] = {}
+    path_map: dict[int, tuple[str, str, str, str, str]] = {}
     for item_id, item in item_map.items():
         names: list[str] = []
         current: dict[str, Any] | None = item
@@ -349,10 +416,7 @@ def build_chapter_path_map(responses: list[dict[str, Any]]) -> dict[int, tuple[s
             current = item_map.get(parent_id)
 
         names.reverse()
-        while len(names) < 3:
-            names.append('')
-
-        path_map[item_id] = (names[0], names[1], names[2])
+        path_map[item_id] = build_chapter_tuple(names)
 
     return path_map
 
@@ -418,7 +482,7 @@ def clear_sheet_rows(ws: Any, start_row: int = 2) -> None:
 def build_excel_row(
     index: int,
     question: dict[str, Any],
-    chapter_path_map: dict[int, tuple[str, str, str]],
+    chapter_path_map: dict[int, tuple[str, str, str, str, str]],
     analysis_map: dict[int, str],
 ) -> list[Any]:
     """
@@ -438,21 +502,13 @@ def build_excel_row(
     level1_name = ''
     level2_name = ''
     level3_name = ''
+    knowledge_name = ''
+    mapped_question_type = ''
     eid = question.get('eid')
     if isinstance(eid, int) and eid in chapter_path_map:
-        level1_name, level2_name, level3_name = chapter_path_map[eid]
+        level1_name, level2_name, level3_name, knowledge_name, mapped_question_type = chapter_path_map[eid]
 
-    question_type = normalize_question_type(question, level3_name)
-    if level1_name in {'单选题', '单选'}:
-        question_type = '单选'
-    if level1_name in {'多选题', '多选'}:
-        question_type = '多选'
-    if level1_name in {'分析题', '简答题', '简答'}:
-        question_type = '简答'
-    if level1_name in {'填空题', '填空'}:
-        question_type = '填空'
-    if level1_name in {'解答题', '解答'}:
-        question_type = '简答'
+    question_type = mapped_question_type or normalize_question_type(question)
 
     return [
         index,
@@ -469,14 +525,14 @@ def build_excel_row(
         level1_name,
         level2_name,
         level3_name,
-        question.get('original_book_number') or '',
+        knowledge_name or question.get('original_book_number') or '',
         '',
     ]
 
 
 def write_excel(
     questions: list[dict[str, Any]],
-    chapter_path_map: dict[int, tuple[str, str, str]],
+    chapter_path_map: dict[int, tuple[str, str, str, str, str]],
     analysis_map: dict[int, str],
     template_path: Path,
     output_path: Path,

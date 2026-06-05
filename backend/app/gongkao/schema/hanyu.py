@@ -93,3 +93,4 @@ class GetHanyuListDetail(SchemaBase):
     structure: str | None = Field(None, description='结构')
     frequency: int = Field(description='使用频次')
     created_time: datetime = Field(description='创建时间')
+    in_notebook: bool | None = Field(None, description='是否已加入生词本')

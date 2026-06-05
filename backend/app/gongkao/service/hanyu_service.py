@@ -503,7 +503,24 @@ class HanyuService:
         :return:
         """
         hanyu_select = await hanyu_dao.get_select(params)
-        return await paging_data(db, hanyu_select)
+        page_data = await paging_data(db, hanyu_select)
+
+        user_id = getattr(params, 'user_id', None)
+        if user_id and page_data.get('items'):
+            from backend.app.gongkao.model.hanyu_notebook import GkHanyuNotebook
+            from sqlalchemy import select
+
+            item_ids = [item['id'] for item in page_data['items']]
+            stmt = select(GkHanyuNotebook.hanyu_id).where(
+                GkHanyuNotebook.user_id == user_id,
+                GkHanyuNotebook.hanyu_id.in_(item_ids),
+            )
+            result = await db.execute(stmt)
+            notebook_ids = set(result.scalars().all())
+            for item in page_data['items']:
+                item['in_notebook'] = item['id'] in notebook_ids
+
+        return page_data
 
     @staticmethod
     async def get_types(*, db: AsyncSession) -> list[str]:
