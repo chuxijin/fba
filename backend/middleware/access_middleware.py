@@ -53,13 +53,15 @@ class AccessMiddleware(BaseHTTPMiddleware):
             elapsed = round((time.perf_counter() - perf_time) * 1000, 3)
             if should_record_metrics:
                 inc_fastapi_exception(method=method, path=path, exception_type=type(e).__name__)
+                error_status_code = getattr(e, 'code', StandardResponseCode.HTTP_500)
                 observe_fastapi_request_cost_time(
-                    method=method, path=path, elapsed=elapsed, trace_id=get_request_trace_id()
+                    method=method, path=path, elapsed=elapsed, trace_id=get_request_trace_id(),
+                    status_code=error_status_code,
                 )
                 inc_fastapi_response(
                     method=method,
                     path=path,
-                    status_code=getattr(e, 'code', StandardResponseCode.HTTP_500),
+                    status_code=error_status_code,
                 )
             raise
         else:
@@ -83,7 +85,8 @@ class AccessMiddleware(BaseHTTPMiddleware):
                 if exception_type is not None:
                     inc_fastapi_exception(method=method, path=path, exception_type=exception_type)
                 observe_fastapi_request_cost_time(
-                    method=method, path=path, elapsed=elapsed, trace_id=get_request_trace_id()
+                    method=method, path=path, elapsed=elapsed, trace_id=get_request_trace_id(),
+                    status_code=exception_code or response.status_code,
                 )
                 inc_fastapi_response(
                     method=method,
