@@ -52,10 +52,6 @@ def get_local_beat_schedule() -> dict[str, dict[str, Any]]:
             'task': 'sync_daily_news_to_shizhen',
             'schedule': TzAwareCrontab('0', '8'),
         },
-        '更新物品状态': {
-            'task': 'update_jia_item_status',
-            'schedule': TzAwareCrontab('0'),
-        },
         '检查过期用户角色': {
             'task': 'check_expired_user_roles',
             'schedule': TzAwareCrontab('30'),
