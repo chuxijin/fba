@@ -14,6 +14,7 @@ from backend.app.admin.service.opera_log_service import opera_log_service
 from backend.common.context import ctx
 from backend.common.enums import StatusType
 from backend.common.log import log
+from backend.common.observability.prometheus.fastapi import observe_fastapi_request_cost_time
 from backend.common.observability.prometheus.queue import observe_queue_size
 from backend.common.queue import batch_consume
 from backend.common.response.response_code import StandardResponseCode
