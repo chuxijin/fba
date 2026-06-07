@@ -13,6 +13,18 @@ from backend.app.access.crud.crud_template import template_pack_dao
 from backend.app.access.model.grant import DirectGrant
 from backend.app.access.model.pack import PackItem
 from backend.app.access.model.subscription import Subscription
+from backend.common.cache.redis_cache import RedisCache
+from backend.common.cache.serializers import JsonSerializer
+
+
+_SNAPSHOT_CACHE_TTL = 60
+
+
+snapshot_payload_cache: RedisCache[dict[str, Any]] = RedisCache(
+    prefix='access:snapshot',
+    ttl=_SNAPSHOT_CACHE_TTL,
+    serializer=JsonSerializer(),
+)
 
 
 class UserGrantSnapshot:
@@ -26,6 +38,9 @@ class UserGrantSnapshot:
         pack_items: Sequence[PackItem],
         direct_grants: Sequence[DirectGrant],
         entitlement_value_map: dict[str, int],
+        cached_direct_grant_codes: set[str] | None = None,
+        cached_subscription_ids: list[int] | None = None,
+        cached_direct_grant_ids: list[int] | None = None,
     ) -> None:
         self.user_id = user_id
         self.ts = ts
@@ -33,6 +48,16 @@ class UserGrantSnapshot:
         self._pack_items = list(pack_items)
         self._direct_grants = list(direct_grants)
         self._entitlement_value_map = dict(entitlement_value_map)
+        # 缓存命中路径: 仅持有 codes/ids, 不持有 ORM 对象, 用于 has_direct_grant 与 to_audit_dict
+        self._cached_direct_grant_codes = (
+            set(cached_direct_grant_codes) if cached_direct_grant_codes is not None else None
+        )
+        self._cached_subscription_ids = (
+            list(cached_subscription_ids) if cached_subscription_ids is not None else None
+        )
+        self._cached_direct_grant_ids = (
+            list(cached_direct_grant_ids) if cached_direct_grant_ids is not None else None
+        )
 
     @property
     def subscriptions(self) -> list[Subscription]:
@@ -74,7 +99,20 @@ class UserGrantSnapshot:
         :param code: 权益编码
         :return:
         """
+        if self._cached_direct_grant_codes is not None:
+            return code in self._cached_direct_grant_codes
         return any(grant.entitlement_code == code for grant in self._direct_grants)
+
+    def to_cache_payload(self) -> dict[str, Any]:
+        """构造可 JSON 序列化的缓存 payload"""
+        return {
+            'user_id': self.user_id,
+            'ts_iso': self.ts.isoformat(),
+            'entitlement_value_map': dict(self._entitlement_value_map),
+            'subscription_ids': [s.id for s in self._subscriptions],
+            'direct_grant_codes': sorted({g.entitlement_code for g in self._direct_grants}),
+            'direct_grant_ids': [g.id for g in self._direct_grants],
+        }
 
 
 class SnapshotService:
@@ -83,13 +121,70 @@ class SnapshotService:
     @classmethod
     async def load(cls, db: AsyncSession, *, user_id: int, ts: datetime) -> UserGrantSnapshot:
         """
-        构建用户在指定时刻的权益快照
+        构建用户在指定时刻的权益快照(命中 Redis 缓存优先)
+
+        缓存语义边界:
+        - 命中缓存的 snapshot 仅适用于"判断 code 是否拥有"类调用
+          (has_subscription_entitlement / has_direct_grant / get_subscription_value)
+        - 命中缓存时 subscriptions/direct_grants/pack_items 三个 ORM 列表为空
+          仅 deny 路径写决策日志时才需要完整 ORM 对象, 命中放行不写日志, 因此降级安全
+        - TTL=60s 兜底: 即使有遗漏的失效点(例如 expire_due 定时任务批量过期)
+          最坏情况是过期 60 秒内还能错误放行, 业务可接受
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param ts: 时间点
         :return:
         """
+        cached = await cls._load_from_cache(user_id=user_id, ts=ts)
+        if cached is not None:
+            return cached
+
+        snapshot = await cls._load_from_db(db=db, user_id=user_id, ts=ts)
+        await cls._save_to_cache(snapshot)
+        return snapshot
+
+    @classmethod
+    async def _load_from_cache(
+        cls, *, user_id: int, ts: datetime
+    ) -> UserGrantSnapshot | None:
+        """尝试从 Redis 加载用户权益快照"""
+        payload = await snapshot_payload_cache.get(user_id)
+        if not payload:
+            return None
+
+        return UserGrantSnapshot(
+            user_id=user_id,
+            ts=ts,
+            subscriptions=[],
+            pack_items=[],
+            direct_grants=[],
+            entitlement_value_map=payload.get('entitlement_value_map') or {},
+            cached_direct_grant_codes=set(payload.get('direct_grant_codes') or []),
+            cached_subscription_ids=list(payload.get('subscription_ids') or []),
+            cached_direct_grant_ids=list(payload.get('direct_grant_ids') or []),
+        )
+
+    @classmethod
+    async def _save_to_cache(cls, snapshot: UserGrantSnapshot) -> None:
+        """将快照语义写入 Redis"""
+        await snapshot_payload_cache.set(snapshot.user_id, value=snapshot.to_cache_payload())
+
+    @staticmethod
+    async def invalidate_cache(user_id: int) -> None:
+        """
+        失效用户权益快照缓存
+
+        :param user_id: 用户 ID
+        :return:
+        """
+        await snapshot_payload_cache.invalidate(user_id)
+
+    @classmethod
+    async def _load_from_db(
+        cls, *, db: AsyncSession, user_id: int, ts: datetime
+    ) -> UserGrantSnapshot:
+        """从 DB 全量构建用户权益快照(原始路径, 5+ 条 SQL)"""
         subscriptions = await subscription_dao.list_active_for_user(db, user_id, ts)
         direct_grants = await direct_grant_dao.list_active_for_user(db, user_id=user_id, ts=ts)
 
@@ -141,11 +236,17 @@ class SnapshotService:
     @classmethod
     def to_audit_dict(cls, snapshot: UserGrantSnapshot) -> dict[str, Any]:
         """
-        生成可审计字典(用于决策日志 context)
+        生成可审计字典(用于决策日志 context, 兼容缓存路径)
 
         :param snapshot: 用户权益快照
         :return:
         """
+        if snapshot._cached_subscription_ids is not None:
+            return {
+                'subscription_ids': list(snapshot._cached_subscription_ids),
+                'direct_grant_ids': list(snapshot._cached_direct_grant_ids or []),
+                'entitlement_codes': sorted(snapshot.entitlement_codes),
+            }
         return {
             'subscription_ids': [s.id for s in snapshot.subscriptions],
             'direct_grant_ids': [g.id for g in snapshot.direct_grants],

@@ -3,7 +3,8 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import Row, Select, select
+from sqlalchemy import Integer, Row, Select, literal, select, union_all
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -169,6 +170,73 @@ class CRUDSubscription(CRUDPlus[Subscription]):
             )
             .order_by(self.model.id.desc(), TemplatePack.id.asc(), PackItem.id.asc())
         )
+        return (await db.execute(stmt)).all()
+
+    async def list_my_access_entitlement_rows(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        ts: datetime,
+    ) -> Sequence[Row]:
+        """
+        获取我的有效权益聚合行
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param ts: 时间点
+        :return:
+        """
+        from backend.app.access.model.entitlement import Entitlement
+        from backend.app.access.model.grant import DirectGrant
+        from backend.app.access.model.pack import PackItem
+        from backend.app.access.model.template import TemplatePack
+
+        subscription_stmt = (
+            select(
+                Entitlement.code.label('entitlement_code'),
+                Entitlement.name.label('entitlement_name'),
+                Entitlement.category.label('entitlement_category'),
+                Entitlement.description.label('entitlement_description'),
+                PackItem.value_int.label('value_int'),
+                PackItem.value_meta.label('value_meta'),
+                literal('subscription').label('row_source'),
+            )
+            .select_from(self.model)
+            .join(TemplatePack, TemplatePack.template_id == self.model.template_id)
+            .join(
+                PackItem,
+                (PackItem.pack_id == TemplatePack.pack_id) & (PackItem.status == CommonStatus.ACTIVE),
+            )
+            .join(Entitlement, Entitlement.id == PackItem.entitlement_id)
+            .where(
+                self.model.user_id == user_id,
+                self.model.status == SubscriptionStatus.ACTIVE,
+                self.model.valid_period.contains(ts),
+            )
+            .distinct()
+        )
+        direct_grant_stmt = (
+            select(
+                Entitlement.code.label('entitlement_code'),
+                Entitlement.name.label('entitlement_name'),
+                Entitlement.category.label('entitlement_category'),
+                Entitlement.description.label('entitlement_description'),
+                literal(None, type_=Integer).label('value_int'),
+                literal(None, type_=JSONB).label('value_meta'),
+                literal('direct_grant').label('row_source'),
+            )
+            .select_from(DirectGrant)
+            .join(Entitlement, Entitlement.code == DirectGrant.entitlement_code)
+            .where(
+                DirectGrant.user_id == user_id,
+                DirectGrant.status == CommonStatus.ACTIVE,
+                DirectGrant.valid_period.contains(ts),
+            )
+            .distinct()
+        )
+        entitlement_rows = union_all(subscription_stmt, direct_grant_stmt).subquery()
+        stmt = select(entitlement_rows).order_by(entitlement_rows.c.entitlement_code.asc())
         return (await db.execute(stmt)).all()
 
     async def list_active_entitlement_rows_for_user(

@@ -9,6 +9,7 @@ from backend.app.access.schema.template import (
     CreateTemplateParam,
     GetTemplateDetail,
     GetTemplateDetailWithPacks,
+    GetTemplateListItem,
     SetTemplatePacksParam,
     UpdateTemplateParam,
 )
@@ -42,10 +43,14 @@ async def get_template_list(
     db: CurrentSession,
     kind: Annotated[TemplateKind | None, Query(description='模板类型')] = None,
     status: Annotated[CommonStatus | None, Query(description='状态')] = None,
-) -> ResponseSchemaModel[PageData[GetTemplateDetail]]:
+) -> ResponseSchemaModel[PageData[GetTemplateListItem]]:
     """分页获取订阅模板"""
     stmt = await subscription_template_service.get_select(kind=kind, status=status)
-    page_data = await paging_data(db, stmt)
+    page_data = await paging_data(db, stmt, schema_cls=GetTemplateDetail)
+    page_data['items'] = await subscription_template_service.build_list_items(
+        db=db,
+        templates=page_data['items'],
+    )
     return response_base.success(data=page_data)
 
 

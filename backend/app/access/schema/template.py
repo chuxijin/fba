@@ -71,6 +71,23 @@ class GetTemplateDetail(SchemaBase):
     updated_time: datetime | None = Field(default=None, description='更新时间')
 
 
+class TemplatePackBrief(SchemaBase):
+    """模板关联权益包摘要"""
+
+    code: str = Field(description='权益包编码')
+    name: str = Field(description='权益包名称')
+    domain_id: int | None = Field(default=None, description='所属领域 ID')
+    domain_code: str | None = Field(default=None, description='所属领域编码')
+
+
+class GetTemplateListItem(GetTemplateDetail):
+    """订阅模板列表项"""
+
+    pack_codes: list[str] = Field(default_factory=list, description='关联权益包编码')
+    domain_codes: list[str] = Field(default_factory=list, description='关联领域编码')
+    packs: list[TemplatePackBrief] = Field(default_factory=list, description='关联权益包摘要')
+
+
 class GetTemplateDetailWithPacks(GetTemplateDetail):
     """订阅模板详情(含关联权益包)"""
 

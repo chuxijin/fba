@@ -29,11 +29,19 @@ from backend.app.access.schema.entitlement import GetMyEntitlement
 from backend.app.access.schema.my import GetMyAccessSummary
 from backend.app.access.schema.subscription import GetMySubscription, GetMySubscriptionLedger
 from backend.app.access.service.subscription_service import subscription_service
-from backend.database.redis import redis_client
+from backend.common.cache.redis_cache import RedisCache
+from backend.common.cache.serializers import PydanticSerializer
 from backend.utils.timezone import timezone
 
 
 _MY_ACCESS_SUMMARY_CACHE_TTL = 30
+
+
+my_summary_cache: RedisCache[GetMyAccessSummary] = RedisCache(
+    prefix='access:my:summary',
+    ttl=_MY_ACCESS_SUMMARY_CACHE_TTL,
+    serializer=PydanticSerializer(GetMyAccessSummary),
+)
 
 _GRADE_WEIGHTS = {
     'basic': 0,
@@ -47,24 +55,17 @@ class MyAccessService:
     """我的权益聚合服务"""
 
     @staticmethod
-    def _summary_cache_key(user_id: int) -> str:
-        """
-        获取我的权益汇总缓存键
-
-        :param user_id: 用户 ID
-        :return:
-        """
-        return f'access:my:summary:{user_id}'
-
-    @staticmethod
     async def invalidate_summary_cache(user_id: int) -> None:
         """
-        删除我的权益汇总缓存
+        删除我的权益汇总缓存(同时联动失效 snapshot 缓存)
 
         :param user_id: 用户 ID
         :return:
         """
-        await redis_client.delete(MyAccessService._summary_cache_key(user_id))
+        from backend.app.access.engine.snapshot import snapshot_service
+
+        await my_summary_cache.invalidate(user_id)
+        await snapshot_service.invalidate_cache(user_id)
 
     @staticmethod
     async def get_subscriptions(
@@ -148,6 +149,10 @@ class MyAccessService:
         if not entitlement_map:
             return []
 
+        entitlement_map = MyAccessService._filter_covered_trials(entitlement_map)
+        if not entitlement_map:
+            return []
+
         # 聚合 QUOTA 类型权益的当前余额: 优先取 ledger 现存余额, 否则按 pack_item 配置回退
         quota_codes = [
             code
@@ -186,7 +191,6 @@ class MyAccessService:
                 for code in missing_codes:
                     balances[code] = fallback_limits.get(code, 0)
 
-        entitlement_map = MyAccessService._filter_covered_trials(entitlement_map)
         return [
             GetMyEntitlement(
                 code=entitlement['code'],
@@ -205,6 +209,7 @@ class MyAccessService:
         user_id: int,
         now: datetime,
         subscription_rows: Sequence[Row],
+        include_direct_grants: bool = True,
     ) -> list[GetMyEntitlement]:
         """
         从订阅权益聚合行构建权益列表
@@ -213,6 +218,7 @@ class MyAccessService:
         :param user_id: 用户 ID
         :param now: 当前时间
         :param subscription_rows: 订阅权益聚合行
+        :param include_direct_grants: 是否补查直接授予
         :return:
         """
         entitlement_map: dict[str, dict[str, Any]] = {}
@@ -231,29 +237,36 @@ class MyAccessService:
                     'description': row.entitlement_description,
                 },
             )
-            pack_items.append({
-                'entitlement_code': code,
-                'value_int': row.value_int,
-                'value_meta': row.value_meta or {},
-            })
+            row_source = getattr(row, 'row_source', 'subscription')
+            if row_source != 'direct_grant':
+                pack_items.append({
+                    'entitlement_code': code,
+                    'value_int': row.value_int,
+                    'value_meta': row.value_meta or {},
+                })
 
-        grant_rows = await direct_grant_dao.list_active_entitlement_rows_for_user(
-            db,
-            user_id=user_id,
-            ts=now,
-        )
-        for row in grant_rows:
-            code = str(row.entitlement_code)
-            entitlement_map.setdefault(
-                code,
-                {
-                    'code': code,
-                    'name': row.entitlement_name,
-                    'category': row.entitlement_category,
-                    'description': row.entitlement_description,
-                },
+        if include_direct_grants:
+            grant_rows = await direct_grant_dao.list_active_entitlement_rows_for_user(
+                db,
+                user_id=user_id,
+                ts=now,
             )
+            for row in grant_rows:
+                code = str(row.entitlement_code)
+                entitlement_map.setdefault(
+                    code,
+                    {
+                        'code': code,
+                        'name': row.entitlement_name,
+                        'category': row.entitlement_category,
+                        'description': row.entitlement_description,
+                    },
+                )
 
+        if not entitlement_map:
+            return []
+
+        entitlement_map = MyAccessService._filter_covered_trials(entitlement_map)
         if not entitlement_map:
             return []
 
@@ -294,7 +307,6 @@ class MyAccessService:
                 for code in missing_codes:
                     balances[code] = fallback_limits.get(code, 0)
 
-        entitlement_map = MyAccessService._filter_covered_trials(entitlement_map)
         return [
             GetMyEntitlement(
                 code=entitlement['code'],
@@ -321,34 +333,39 @@ class MyAccessService:
         :param force_refresh: 是否强制刷新
         :return:
         """
-        cache_key = MyAccessService._summary_cache_key(user_id)
-        if not force_refresh:
-            cache_value = await redis_client.get(cache_key)
-            if cache_value:
-                return GetMyAccessSummary.model_validate_json(cache_value)
+        if force_refresh:
+            await my_summary_cache.invalidate(user_id)
 
-        now = timezone.now()
+        async def factory() -> GetMyAccessSummary:
+            now = timezone.now()
 
-        graph_rows = await subscription_dao.list_my_access_graph_rows(db, user_id=user_id, ts=now)
+            subscription_rows = await subscription_dao.list_my_subscription_rows(
+                db,
+                user_id=user_id,
+                only_active=True,
+                ts=now,
+            )
+            entitlement_rows = await subscription_dao.list_my_access_entitlement_rows(
+                db,
+                user_id=user_id,
+                ts=now,
+            )
 
-        subscriptions = MyAccessService._build_subscription_items_from_rows(graph_rows)
+            subscriptions = MyAccessService._build_subscription_items_from_rows(subscription_rows)
+            entitlements = await MyAccessService._build_entitlements_from_rows(
+                db,
+                user_id=user_id,
+                now=now,
+                subscription_rows=entitlement_rows,
+                include_direct_grants=False,
+            )
+            return GetMyAccessSummary(
+                subscriptions=subscriptions,
+                entitlements=entitlements,
+            )
 
-        entitlements = await MyAccessService._build_entitlements_from_rows(
-            db,
-            user_id=user_id,
-            now=now,
-            subscription_rows=graph_rows,
-        )
-        result = GetMyAccessSummary(
-            subscriptions=subscriptions,
-            entitlements=entitlements,
-        )
-        await redis_client.setex(
-            cache_key,
-            _MY_ACCESS_SUMMARY_CACHE_TTL,
-            result.model_dump_json(),
-        )
-        return result
+        result = await my_summary_cache.get_or_set(user_id, factory=factory)
+        return result if result is not None else GetMyAccessSummary(subscriptions=[], entitlements=[])
 
     @staticmethod
     async def get_subscription_ledger(

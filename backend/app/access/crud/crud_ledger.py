@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
-from sqlalchemy import Select, func, select, tuple_
+from sqlalchemy import Select, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -99,25 +99,22 @@ class CRUDQuotaLedger(CRUDPlus[QuotaLedger]):
             return {}
 
         pairs = list(entitlement_cycle_keys.items())
-        row_number = func.row_number().over(
-            partition_by=self.model.entitlement_code,
-            order_by=(self.model.occurred_at.desc(), self.model.id.desc()),
-        )
-        latest_stmt = (
+        stmt = (
             select(
                 self.model.entitlement_code.label('entitlement_code'),
                 self.model.balance_after.label('balance_after'),
-                row_number.label('row_number'),
             )
             .where(
                 self.model.user_id == user_id,
                 self.model.scope_key == scope_key,
                 tuple_(self.model.entitlement_code, self.model.cycle_key).in_(pairs),
             )
-            .subquery()
-        )
-        stmt = select(latest_stmt.c.entitlement_code, latest_stmt.c.balance_after).where(
-            latest_stmt.c.row_number == 1
+            .distinct(self.model.entitlement_code)
+            .order_by(
+                self.model.entitlement_code.asc(),
+                self.model.occurred_at.desc(),
+                self.model.id.desc(),
+            )
         )
         rows = (await db.execute(stmt)).all()
         return {str(row.entitlement_code): int(row.balance_after or 0) for row in rows}

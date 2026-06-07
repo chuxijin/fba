@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.access.constants import CommonStatus, TemplateKind
+from backend.app.access.crud.crud_domain import study_domain_dao
 from backend.app.access.crud.crud_pack import entitlement_pack_dao
 from backend.app.access.crud.crud_template import subscription_template_dao, template_pack_dao
 from backend.app.access.model.pack import EntitlementPack
 from backend.app.access.model.template import SubscriptionTemplate, TemplatePack
 from backend.app.access.schema.template import (
     CreateTemplateParam,
+    GetTemplateDetail,
     GetTemplateDetailWithPacks,
+    GetTemplateListItem,
     SetTemplatePacksParam,
+    TemplatePackBrief,
     UpdateTemplateParam,
 )
 from backend.common.exception import errors
@@ -110,6 +115,75 @@ class SubscriptionTemplateService:
         return await subscription_template_dao.get_select(kind=kind, status=status)
 
     @staticmethod
+    async def build_list_items(
+        db: AsyncSession,
+        *,
+        templates: Sequence[GetTemplateDetail | dict[str, Any]],
+    ) -> list[GetTemplateListItem]:
+        """
+        构建模板列表项
+
+        :param db: 数据库会话
+        :param templates: 模板基础数据
+        :return:
+        """
+        template_details = [
+            item if isinstance(item, GetTemplateDetail) else GetTemplateDetail.model_validate(item)
+            for item in templates
+        ]
+        if not template_details:
+            return []
+
+        template_ids = [template.id for template in template_details]
+        relations = await template_pack_dao.get_by_templates(db, template_ids)
+        pack_ids = list({relation.pack_id for relation in relations})
+        packs = await entitlement_pack_dao.select_models(db, id__in=pack_ids) if pack_ids else []
+        domain_ids = list({pack.domain_id for pack in packs if pack.domain_id is not None})
+        domains = await study_domain_dao.select_models(db, id__in=domain_ids) if domain_ids else []
+
+        relation_map: dict[int, list[TemplatePack]] = {}
+        for relation in relations:
+            relation_map.setdefault(relation.template_id, []).append(relation)
+
+        pack_map = {pack.id: pack for pack in packs}
+        domain_code_map = {domain.id: domain.code for domain in domains}
+        items: list[GetTemplateListItem] = []
+        for template in template_details:
+            pack_briefs: list[TemplatePackBrief] = []
+            domain_codes: list[str] = []
+
+            for relation in relation_map.get(template.id, []):
+                pack = pack_map.get(relation.pack_id)
+                if pack is None:
+                    continue
+
+                domain_code = None
+                if pack.domain_id is not None:
+                    domain_code = domain_code_map.get(pack.domain_id)
+                    if domain_code and domain_code not in domain_codes:
+                        domain_codes.append(domain_code)
+
+                pack_briefs.append(
+                    TemplatePackBrief(
+                        code=pack.code,
+                        name=pack.name,
+                        domain_id=pack.domain_id,
+                        domain_code=domain_code,
+                    )
+                )
+
+            items.append(
+                GetTemplateListItem(
+                    **template.model_dump(),
+                    pack_codes=[pack.code for pack in pack_briefs],
+                    domain_codes=domain_codes,
+                    packs=pack_briefs,
+                )
+            )
+
+        return items
+
+    @staticmethod
     async def create(db: AsyncSession, *, obj: CreateTemplateParam) -> None:
         """
         创建模板(可选附带权益包关联)
@@ -125,10 +199,10 @@ class SubscriptionTemplateService:
         data = obj.model_dump(exclude={'pack_codes', 'sale_period'})
         if obj.sale_period is not None:
             data['sale_period'] = obj.sale_period.to_range()
-        
+
         if 'metadata' in data:
             data['metadata_'] = data.pop('metadata')
-            
+
         template = SubscriptionTemplate(**data)
         db.add(template)
         await db.flush()
@@ -150,10 +224,10 @@ class SubscriptionTemplateService:
         data = obj.model_dump(exclude_unset=True, exclude={'sale_period'})
         if obj.sale_period is not None:
             data['sale_period'] = obj.sale_period.to_range()
-            
+
         if 'metadata' in data:
             data['metadata_'] = data.pop('metadata')
-            
+
         return await subscription_template_dao.update_model(db, pk, data)
 
     @staticmethod
