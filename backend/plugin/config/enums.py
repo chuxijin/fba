@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from backend.common.enums import StrEnum
 
 
@@ -12,4 +14,4 @@ class ConfigType(StrEnum):
     shop = 'SHOP'
     crawler = 'CRAWLER'
     invite = 'INVITE'
-
+    official_account = 'OFFICIAL_ACCOUNT'

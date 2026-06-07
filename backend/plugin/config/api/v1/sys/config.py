@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Query
@@ -8,9 +10,11 @@ from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.plugin.config.enums import ConfigType
 from backend.plugin.config.schema.config import (
     CreateConfigParam,
     GetConfigDetail,
+    GetFrontendConfigs,
     UpdateConfigParam,
     UpdateConfigsParam,
 )
@@ -26,6 +30,15 @@ async def get_all_configs(
 ) -> ResponseSchemaModel[list[GetConfigDetail]]:
     configs = await config_service.get_all(db=db, type=type)
     return response_base.success(data=configs)
+
+
+@router.get('/frontend', summary='获取前端参数配置')
+async def get_frontend_configs(
+    db: CurrentSession,
+    type: Annotated[ConfigType, Query(description='参数配置类型')],
+) -> ResponseSchemaModel[GetFrontendConfigs]:
+    configs = await config_service.get_frontend_configs(db=db, type=type)
+    return response_base.success(data={'configs': configs})
 
 
 @router.get('/{pk}', summary='获取参数配置详情', dependencies=[DependsJwtAuth])

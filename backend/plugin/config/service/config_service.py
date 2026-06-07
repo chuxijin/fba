@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from collections.abc import Sequence
 from typing import Any
 
@@ -58,6 +60,19 @@ class ConfigService:
         """
         config_select = await config_dao.get_select(name=name, type=type)
         return await paging_data(db, config_select)
+
+    @staticmethod
+    @cached(f'{settings.CACHE_CONFIG_REDIS_PREFIX}:frontend', key='type')
+    async def get_frontend_configs(*, db: AsyncSession, type: str) -> dict[str, str]:
+        """
+        获取前端参数配置映射
+
+        :param db: 数据库会话
+        :param type: 参数配置类型
+        :return:
+        """
+        configs = await config_dao.get_frontend_by_type(db, type)
+        return {config.key: config.value for config in configs}
 
     @staticmethod
     @cache_invalidate(settings.CACHE_CONFIG_REDIS_PREFIX)

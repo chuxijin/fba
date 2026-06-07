@@ -25,4 +25,12 @@ values
 (2069061886627938317, '密码最大长度', 'USER_SECURITY', 'USER_PASSWORD_MAX_LENGTH', '32', false, null, now(), null),
 (2069061886627938318, '密码必须包含特殊字符', 'USER_SECURITY', 'USER_PASSWORD_REQUIRE_SPECIAL_CHAR', 'false', false, null, now(), null),
 (2069061886627938319, '状态', 'LOGIN', 'LOGIN_CONFIG_STATUS', '1', false, null, now(), null),
-(2069061886627938320, '验证码开关', 'LOGIN', 'LOGIN_CAPTCHA_ENABLED', 'true', false, null, now(), null);
+(2069061886627938320, '验证码开关', 'LOGIN', 'LOGIN_CAPTCHA_ENABLED', 'true', false, null, now(), null),
+(2069061886627938321, '公众号名称', 'OFFICIAL_ACCOUNT', 'OFFICIAL_ACCOUNT_NAME', '有岸上', true, '激活权益页展示名称', now(), null),
+(2069061886627938322, '公众号原始 ID', 'OFFICIAL_ACCOUNT', 'OFFICIAL_ACCOUNT_ORIGINAL_ID', '', true, '用于打开公众号主页，格式通常为 gh_xxx', now(), null),
+(2069061886627938323, '公众号微信号', 'OFFICIAL_ACCOUNT', 'OFFICIAL_ACCOUNT_WECHAT_ID', '', true, '用于打开公众号会话', now(), null),
+(2069061886627938324, '公众号回复词', 'OFFICIAL_ACCOUNT', 'OFFICIAL_ACCOUNT_REPLY_KEYWORD', '激活', true, '用户在公众号后台回复的关键词', now(), null),
+(2069061886627938325, '公众号文章链接', 'OFFICIAL_ACCOUNT', 'OFFICIAL_ACCOUNT_ARTICLE_URL', '', true, '可选，用于打开购买或激活说明文章', now(), null),
+(2069061886627938326, '启用公众号会话', 'OFFICIAL_ACCOUNT', 'OFFICIAL_ACCOUNT_ENABLE_CHAT', 'true', true, '是否在小程序展示公众号会话入口', now(), null),
+(2069061886627938327, '启用公众号主页', 'OFFICIAL_ACCOUNT', 'OFFICIAL_ACCOUNT_ENABLE_PROFILE', 'true', true, '是否在小程序展示公众号主页入口', now(), null),
+(2069061886627938328, '启用公众号文章', 'OFFICIAL_ACCOUNT', 'OFFICIAL_ACCOUNT_ENABLE_ARTICLE', 'false', true, '是否在小程序展示公众号文章入口', now(), null);

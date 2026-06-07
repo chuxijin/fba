@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
 from sqlalchemy import Select
@@ -36,6 +38,16 @@ class CRUDConfig(CRUDPlus[Config]):
             filters['type'] = type
 
         return await self.select_models(db, **filters)
+
+    async def get_frontend_by_type(self, db: AsyncSession, type: str) -> Sequence[Config]:
+        """
+        通过类型获取前端参数配置
+
+        :param db: 数据库会话
+        :param type: 参数配置类型
+        :return:
+        """
+        return await self.select_models(db, type=type, is_frontend=True, deleted=0)
 
     async def get_all_by_ids(self, db: AsyncSession, pks: list[int]) -> Sequence[Config]:
         """

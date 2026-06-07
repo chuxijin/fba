@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from datetime import datetime
 
 from pydantic import ConfigDict, Field
@@ -38,3 +40,9 @@ class GetConfigDetail(ConfigSchemaBase):
     id: int = Field(description='参数配置 ID')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
+
+
+class GetFrontendConfigs(SchemaBase):
+    """前端参数配置"""
+
+    configs: dict[str, str] = Field(description='前端参数配置映射')
