@@ -66,9 +66,10 @@ async def get_quest_list_for_admin(
     db: CurrentSession,
     status: Annotated[int | None, Query(description='状态过滤')] = None,
     keyword: Annotated[str | None, Query(description='搜索关键词')] = None,
+    domain_code: Annotated[str | None, Query(description='领域码过滤')] = None,
 ) -> ResponseModel:
     """管理端获取任务列表"""
-    data = await quest_service.get_quest_list(db=db, status=status, keyword=keyword)
+    data = await quest_service.get_quest_list(db=db, status=status, keyword=keyword, domain_code=domain_code)
     return response_base.success(data=data)
 
 

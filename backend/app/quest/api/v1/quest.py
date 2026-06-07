@@ -21,10 +21,11 @@ async def get_quest_list(
     status: Annotated[int | None, Query(description='状态过滤')] = None,
     keyword: Annotated[str | None, Query(description='搜索关键词')] = None,
     only_active: Annotated[bool, Query(description='只看进行中')] = False,
+    domain_code: Annotated[str | None, Query(description='领域码过滤')] = None,
 ) -> ResponseModel:
     """获取任务列表"""
     data = await quest_service.get_quest_list(
-        db=db, status=status, keyword=keyword, only_active=only_active
+        db=db, status=status, keyword=keyword, only_active=only_active, domain_code=domain_code
     )
     return response_base.success(data=data)
 

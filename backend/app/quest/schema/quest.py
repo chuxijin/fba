@@ -36,6 +36,7 @@ class CreateQuestParam(SchemaBase):
     trigger_target: int = Field(default=0, ge=0, description='自动触发达成阈值(0 当 trigger_type 为空时无意义)')
     trigger_payload: dict | None = Field(None, description='自动触发匹配条件(预留)')
     sort: int = Field(default=0, description='排序(数字越小越靠前)')
+    domain_codes: list[str] | None = Field(None, description='关联领域码列表(空=全部领域可见)')
 
 
 class UpdateQuestParam(SchemaBase):
@@ -65,6 +66,7 @@ class UpdateQuestParam(SchemaBase):
     trigger_target: int | None = Field(None, ge=0, description='自动触发达成阈值')
     trigger_payload: dict | None = Field(None, description='自动触发匹配条件(预留)')
     sort: int | None = Field(None, description='排序')
+    domain_codes: list[str] | None = Field(None, description='关联领域码列表(空=全部领域可见)')
 
 
 class GetQuestDetail(SchemaBase):
@@ -99,6 +101,7 @@ class GetQuestDetail(SchemaBase):
     trigger_target: int = Field(description='自动触发达成阈值')
     trigger_payload: dict | None = Field(None, description='自动触发匹配条件')
     sort: int = Field(description='排序')
+    domain_codes: list[str] | None = Field(None, description='关联领域码列表(空=全部领域可见)')
     created_by: int = Field(description='创建者')
     updated_by: int | None = Field(None, description='修改者')
     created_time: datetime = Field(description='创建时间')

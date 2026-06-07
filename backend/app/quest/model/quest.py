@@ -65,3 +65,4 @@ class Quest(Base, UserMixin):
         comment='自动触发匹配条件(预留扩展, 如 channel 限定)',
     )
     sort: Mapped[int] = mapped_column(default=0, comment='排序(数字越小越靠前)')
+    domain_codes: Mapped[list | None] = mapped_column(sa.JSON, default=None, comment='关联领域码列表(空=全部领域可见)')

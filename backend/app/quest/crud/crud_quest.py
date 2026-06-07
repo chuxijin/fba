@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import Select, and_, func, or_, select
+from sqlalchemy import Select, String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -49,6 +49,7 @@ class CRUDQuest(CRUDPlus[Quest]):
         status: int | None = None,
         keyword: str | None = None,
         only_active: bool = False,
+        domain_code: str | None = None,
     ) -> Select:
         """
         获取任务列表查询表达式
@@ -56,6 +57,7 @@ class CRUDQuest(CRUDPlus[Quest]):
         :param status: 状态过滤
         :param keyword: 搜索关键词（匹配名称/任务码）
         :param only_active: 是否只看进行中（status=1）
+        :param domain_code: 领域码过滤
         :return:
         """
         stmt = select(Quest)
@@ -69,6 +71,10 @@ class CRUDQuest(CRUDPlus[Quest]):
         if keyword:
             keyword_like = f'%{keyword}%'
             conditions.append(or_(Quest.name.like(keyword_like), Quest.code.like(keyword_like)))
+
+        if domain_code:
+            domain_like = f'%"{domain_code}"%'
+            conditions.append(or_(Quest.domain_codes.is_(None), cast(Quest.domain_codes, String).like(domain_like)))
 
         if conditions:
             stmt = stmt.where(and_(*conditions))
