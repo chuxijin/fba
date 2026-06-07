@@ -1,12 +1,14 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from datetime import date
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.common.model import Base, id_key
+from backend.common.model import DataClassBase, DateTimeMixin
 
 
-class InternRecruit(Base):
+class InternRecruit(DataClassBase, DateTimeMixin):
     """实习岗位表"""
 
     __tablename__ = 'oc_intern_recruit'

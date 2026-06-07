@@ -1,10 +1,12 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.common.model import Base, id_key
+from backend.common.model import DataClassBase, DateTimeMixin, id_key
 
 
-class OCResource(Base):
+class OCResource(DataClassBase, DateTimeMixin):
     """笔试面试资料包模型"""
 
     __tablename__ = 'oc_resource'

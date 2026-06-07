@@ -1,12 +1,14 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.common.model import Base, id_key
+from backend.common.model import DataClassBase, DateTimeMixin, id_key
 
 
-class UserApplication(Base):
+class UserApplication(DataClassBase, DateTimeMixin):
     """用户投递记录表"""
 
     __tablename__ = 'oc_user_application'
