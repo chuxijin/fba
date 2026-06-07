@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.crud.crud_bank import bank_dao
+from backend.app.question_bank.cache.bank_cache import get_bank_snapshot
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.model import QuestionChapter
 from backend.app.question_bank.model.question import QuestionPlacement
@@ -82,7 +82,7 @@ class ChapterService:
         :param bank_id: 题库 ID
         :return:
         """
-        bank = await bank_dao.get(db, bank_id)
+        bank = await get_bank_snapshot(db, bank_id)
         if not bank:
             raise errors.NotFoundError(msg='刷题内容不存在')
 
@@ -125,7 +125,7 @@ class ChapterService:
         :param obj: 创建章节参数
         :return:
         """
-        bank = await bank_dao.get(db, obj.bank_id)
+        bank = await get_bank_snapshot(db, obj.bank_id)
         if not bank:
             raise errors.NotFoundError(msg='刷题内容不存在')
         if (bank.chapter_source_bank_id or bank.id) != bank.id:
@@ -159,7 +159,7 @@ class ChapterService:
         if not chapter:
             raise errors.NotFoundError(msg='章节不存在')
 
-        bank = await bank_dao.get(db, obj.bank_id)
+        bank = await get_bank_snapshot(db, obj.bank_id)
         if not bank:
             raise errors.NotFoundError(msg='刷题内容不存在')
         if (bank.chapter_source_bank_id or bank.id) != bank.id:

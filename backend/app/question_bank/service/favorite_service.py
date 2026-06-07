@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import json
-
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,26 +18,33 @@ from backend.app.question_bank.service.category_filter_service import (
     CategoryQuestionFilter,
     category_filter_service,
 )
+from backend.common.cache.redis_cache import RedisCache
+from backend.common.cache.serializers import JsonSerializer
 from backend.common.exception import errors
-from backend.common.log import log
-from backend.database.redis import redis_client
 
 FAVORITE_STATISTICS_CACHE_TTL = 30
+
+
+favorite_statistics_cache: RedisCache[dict] = RedisCache(
+    prefix='qbank:favorite:statistics',
+    ttl=FAVORITE_STATISTICS_CACHE_TTL,
+    serializer=JsonSerializer(),
+)
 
 
 class FavoriteService:
     """收藏服务类"""
 
     @staticmethod
-    def _statistics_cache_key(
+    def _statistics_key_parts(
         *,
         user_id: int,
         cat_id: int | None,
         kp_cat_id: int | None,
         group_by: str | None = None,
-    ) -> str:
+    ) -> tuple[int, str, str]:
         """
-        构建收藏统计缓存 key
+        构建收藏统计缓存键的元组
 
         :param user_id: 用户 ID
         :param cat_id: 题库目录分类 ID
@@ -49,42 +54,7 @@ class FavoriteService:
         """
         domain = category_filter_service.build_scope_key(cat_id=cat_id, kp_cat_id=kp_cat_id)
         group = group_by or 'summary'
-        return f'qbank:favorite:statistics:{user_id}:{domain}:{group}'
-
-    @staticmethod
-    async def _get_cached_statistics(key: str) -> dict | None:
-        """
-        获取收藏统计缓存
-
-        :param key: 缓存 key
-        :return:
-        """
-        try:
-            cached = await redis_client.get(key)
-        except Exception as e:
-            log.warning('读取收藏统计缓存失败: {}', e)
-            return None
-
-        if not cached:
-            return None
-        try:
-            return json.loads(cached)
-        except json.JSONDecodeError:
-            return None
-
-    @staticmethod
-    async def _set_cached_statistics(key: str, data: dict) -> None:
-        """
-        写入收藏统计缓存
-
-        :param key: 缓存 key
-        :param data: 缓存数据
-        :return:
-        """
-        try:
-            await redis_client.setex(key, FAVORITE_STATISTICS_CACHE_TTL, json.dumps(data, ensure_ascii=False))
-        except Exception as e:
-            log.warning('写入收藏统计缓存失败: {}', e)
+        return user_id, domain, group
 
     @staticmethod
     async def _clear_statistics_cache(user_id: int) -> None:
@@ -94,10 +64,7 @@ class FavoriteService:
         :param user_id: 用户 ID
         :return:
         """
-        try:
-            await redis_client.delete_prefix(f'qbank:favorite:statistics:{user_id}:')
-        except Exception as e:
-            log.warning('清理收藏统计缓存失败: {}', e)
+        await favorite_statistics_cache.invalidate_prefix(user_id)
 
     @staticmethod
     async def _get_category_filter(
@@ -394,43 +361,45 @@ class FavoriteService:
         :param user_id: 用户 ID
         :return:
         """
-        cache_key = FavoriteService._statistics_cache_key(user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id)
-        cached = await FavoriteService._get_cached_statistics(cache_key)
-        if cached:
-            return FavoriteStatistics(**cached)
+        key_parts = FavoriteService._statistics_key_parts(user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id)
 
-        category_filter = await FavoriteService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
-        if category_filter and cat_id is not None:
-            folder_rows = await question_favorite_dao.get_folder_counts_by_bank_ids(
-                db=db,
-                user_id=user_id,
-                bank_ids=category_filter.bank_ids,
+        async def factory() -> dict:
+            category_filter = await FavoriteService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
+            if category_filter and cat_id is not None:
+                folder_rows = await question_favorite_dao.get_folder_counts_by_bank_ids(
+                    db=db,
+                    user_id=user_id,
+                    bank_ids=category_filter.bank_ids,
+                )
+            else:
+                folder_rows = await question_favorite_dao.get_folder_counts(db=db, user_id=user_id)
+
+            total_count = 0
+            folder_count = 0
+            folder_stats: list[FolderInfo] = []
+            for row in folder_rows:
+                count = int(row['count'] or 0)
+                total_count += count
+
+                folder_name = row['folder_name']
+                if folder_name:
+                    folder_count += 1
+                    folder_stats.append(FolderInfo(folder_name=str(folder_name), count=count))
+                    continue
+
+                folder_stats.insert(0, FolderInfo(folder_name='未分组', count=count))
+
+            stats = FavoriteStatistics(
+                total_count=total_count,
+                folder_count=folder_count,
+                folders=folder_stats,
             )
-        else:
-            folder_rows = await question_favorite_dao.get_folder_counts(db=db, user_id=user_id)
+            return stats.model_dump()
 
-        total_count = 0
-        folder_count = 0
-        folder_stats: list[FolderInfo] = []
-        for row in folder_rows:
-            count = int(row['count'] or 0)
-            total_count += count
-
-            folder_name = row['folder_name']
-            if folder_name:
-                folder_count += 1
-                folder_stats.append(FolderInfo(folder_name=str(folder_name), count=count))
-                continue
-
-            folder_stats.insert(0, FolderInfo(folder_name='未分组', count=count))
-
-        stats = FavoriteStatistics(
-            total_count=total_count,
-            folder_count=folder_count,
-            folders=folder_stats,
+        cached = await favorite_statistics_cache.get_or_set(*key_parts, factory=factory)
+        return FavoriteStatistics(**cached) if cached else FavoriteStatistics(
+            total_count=0, folder_count=0, folders=[]
         )
-        await FavoriteService._set_cached_statistics(cache_key, stats.model_dump())
-        return stats
 
     @staticmethod
     async def get_statistics_with_groups(
@@ -449,56 +418,54 @@ class FavoriteService:
         :param group_by: 分组方式
         :return:
         """
-        cache_key = FavoriteService._statistics_cache_key(
+        cache_key = FavoriteService._statistics_key_parts(
             user_id=user_id,
             cat_id=cat_id,
             kp_cat_id=kp_cat_id,
             group_by=group_by,
         )
-        cached = await FavoriteService._get_cached_statistics(cache_key)
-        if cached:
-            return cached
 
-        from backend.app.question_bank.service.group_tree import (
-            build_bank_tree,
-            build_kp_tree,
-            load_banks_and_chapters,
-            load_kp_categories,
-        )
+        async def factory() -> dict:
+            from backend.app.question_bank.service.group_tree import (
+                build_bank_tree,
+                build_kp_tree,
+                load_banks_and_chapters,
+                load_kp_categories,
+            )
 
-        category_filter = await FavoriteService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
-        stats = await FavoriteService.get_statistics(db=db, user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id)
+            category_filter = await FavoriteService._get_category_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
+            stats = await FavoriteService.get_statistics(db=db, user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id)
 
-        if group_by == 'knowledge_point':
-            flat_counts = await question_favorite_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
-            if category_filter and kp_cat_id is not None:
-                flat_counts = [
-                    item for item in flat_counts
-                    if str(item['group_name'] or '').strip() in category_filter.knowledge_names
-                ]
-            count_map = {item['group_name']: item['count'] for item in flat_counts}
-            categories = await load_kp_categories(db)
-            groups = build_kp_tree(categories, count_map)
-        else:
-            flat_counts = await question_favorite_dao.get_bank_chapter_counts(db=db, user_id=user_id)
-            if category_filter and cat_id is not None:
-                flat_counts = [
-                    row for row in flat_counts
-                    if row['bank_id'] is not None and int(row['bank_id']) in category_filter.bank_ids
-                ]
-            count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
-            bank_ids = {row['bank_id'] for row in flat_counts if row['bank_id'] is not None}
-            chapter_ids = {row['chapter_id'] for row in flat_counts if row['chapter_id'] is not None}
-            banks, chapters = await load_banks_and_chapters(db, bank_ids, chapter_ids)
-            groups = build_bank_tree(banks, chapters, count_map)
+            if group_by == 'knowledge_point':
+                flat_counts = await question_favorite_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
+                if category_filter and kp_cat_id is not None:
+                    flat_counts = [
+                        item for item in flat_counts
+                        if str(item['group_name'] or '').strip() in category_filter.knowledge_names
+                    ]
+                count_map = {item['group_name']: item['count'] for item in flat_counts}
+                categories = await load_kp_categories(db)
+                groups = build_kp_tree(categories, count_map)
+            else:
+                flat_counts = await question_favorite_dao.get_bank_chapter_counts(db=db, user_id=user_id)
+                if category_filter and cat_id is not None:
+                    flat_counts = [
+                        row for row in flat_counts
+                        if row['bank_id'] is not None and int(row['bank_id']) in category_filter.bank_ids
+                    ]
+                count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
+                bank_ids = {row['bank_id'] for row in flat_counts if row['bank_id'] is not None}
+                chapter_ids = {row['chapter_id'] for row in flat_counts if row['chapter_id'] is not None}
+                banks, chapters = await load_banks_and_chapters(db, bank_ids, chapter_ids)
+                groups = build_bank_tree(banks, chapters, count_map)
 
-        data = {
-            'total_count': stats.total_count,
-            'folder_count': stats.folder_count,
-            'groups': groups,
-        }
-        await FavoriteService._set_cached_statistics(cache_key, data)
-        return data
+            return {
+                'total_count': stats.total_count,
+                'folder_count': stats.folder_count,
+                'groups': groups,
+            }
+
+        return await favorite_statistics_cache.get_or_set(*cache_key, factory=factory) or {}
 
     @staticmethod
     async def get_grouped(

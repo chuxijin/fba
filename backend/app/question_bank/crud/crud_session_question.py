@@ -91,6 +91,35 @@ class CRUDSessionQuestion(CRUDPlus[SessionQuestion]):
             )
         await db.flush()
 
+    async def batch_create_pristine(
+        self, db: AsyncSession, session_id: int, items: list[dict]
+    ) -> None:
+        """
+        批量创建会话题目明细(零冲突场景, 跳过 on_conflict_do_nothing 冲突探测)
+
+        仅用于全新 session: session_id 刚 INSERT 出来, 此时表中绝不可能存在
+        相同 (session_id, question_id) 的行, 因此跳过冲突检测能省一次唯一索引扫描
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID(必须是刚创建的全新 ID)
+        :param items: 题目明细列表
+        """
+        if not items:
+            return
+
+        now = timezone.now()
+        rows: list[dict] = []
+        for item in items:
+            row = dict(item)
+            row['session_id'] = session_id
+            row.setdefault('created_time', now)
+            row.setdefault('updated_time', None)
+            rows.append(row)
+
+        stmt = pg_insert(SessionQuestion).values(rows)
+        await db.execute(stmt)
+        await db.flush()
+
     async def batch_upsert_answer(self, db: AsyncSession, records: list[dict]) -> list[SessionQuestion]:
         """
         批量创建或更新答题数据（按 session_id + question_id 冲突更新，数据库级 upsert）

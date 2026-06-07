@@ -39,9 +39,9 @@ from backend.app.question_bank.schema.question import (
     UpsertQuestionOptionItem,
     UpsertQuestionPlacementItem,
 )
+from backend.app.question_bank.cache.question_cache import collections_cache, solution_static_cache
 from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
 from backend.common.exception import errors
-from backend.database.redis import redis_client
 from backend.utils.answer_parser import extract_option_codes, split_answer_text
 from backend.utils.timezone import timezone
 
@@ -624,14 +624,10 @@ class QuestionService:
         cache_hash = hashlib.sha256(
             json.dumps(cache_payload, ensure_ascii=False, sort_keys=True).encode('utf-8')
         ).hexdigest()
-        cache_key = f'qbank:collections:v1:{cache_hash}'
 
-        try:
-            cached = await redis_client.get(cache_key)
-            if cached:
-                return json.loads(cached)
-        except Exception:
-            log.warning('Redis 缓存读取失败，跳过缓存', exc_info=True)
+        cached = await collections_cache.get(cache_hash)
+        if cached is not None:
+            return cached
 
         cat_ids = await category_dao.get_all_children_ids(db, cat_id) if cat_id is not None else None
 
@@ -737,10 +733,7 @@ class QuestionService:
         rows = (await db.execute(stmt)).mappings().all()
         data = [dict(row) for row in rows]
 
-        try:
-            await redis_client.set(cache_key, json.dumps(data, ensure_ascii=False, default=str), ex=60)
-        except Exception:
-            log.warning('Redis 缓存写入失败', exc_info=True)
+        await collections_cache.set(cache_hash, value=data)
 
         return data
 
@@ -929,23 +922,15 @@ class QuestionService:
         """
         # 静态部分（correct_answer / analysis / correct_rate / option_select_stats / full_score 等）
         # 与 user_answer 无关，按 question_id 强缓存。is_correct 由 user_answer 在外层动态比对。
-        cache_key = f'qbank:solution:static:{question_id}'
         static_payload: dict[str, Any] | None = None
         question_type: str | None = None
         answer_data: Any = None
 
-        try:
-            cached = await redis_client.get(cache_key)
-        except Exception:
-            cached = None
-        if cached:
-            try:
-                cached_obj = json.loads(cached)
-                static_payload = cached_obj.get('static')
-                question_type = cached_obj.get('question_type')
-                answer_data = cached_obj.get('answer_data')
-            except (json.JSONDecodeError, TypeError):
-                static_payload = None
+        cached_obj = await solution_static_cache.get(question_id)
+        if cached_obj:
+            static_payload = cached_obj.get('static')
+            question_type = cached_obj.get('question_type')
+            answer_data = cached_obj.get('answer_data')
 
         if static_payload is None:
             stmt = (
@@ -973,22 +958,14 @@ class QuestionService:
             question_type = question.type
             answer_data = analysis.answer_data
 
-            try:
-                await redis_client.set(
-                    cache_key,
-                    json.dumps(
-                        {
-                            'static': static_payload,
-                            'question_type': question_type,
-                            'answer_data': answer_data,
-                        },
-                        ensure_ascii=False,
-                        default=str,
-                    ),
-                    ex=86400,
-                )
-            except Exception:
-                log.warning('Redis 写入 solution 缓存失败 question_id=%s', question_id, exc_info=True)
+            await solution_static_cache.set(
+                question_id,
+                value={
+                    'static': static_payload,
+                    'question_type': question_type,
+                    'answer_data': answer_data,
+                },
+            )
 
         payload = dict(static_payload)
         if user_answer is not None and question_type and answer_data is not None:

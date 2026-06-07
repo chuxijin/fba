@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Path, Query, Request
+from loguru import logger
 
 from backend.app.question_bank.schema.practice import (
     BatchUpsertPracticeRecordsResult,
@@ -49,24 +51,35 @@ async def create_session(
     obj: CreatePracticeSessionParam,
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """创建练习会话"""
+    # 分段计时埋点（性能诊断用，定位瓶颈后可移除）
+    timings: list[tuple[str, float]] = []
+    total_start = perf_counter()
+
     # 复习类会话（错题/收藏/笔记）的题目来自用户付费期已生成的私有数据，跳过题库/筛选/知识点权限校验
     is_review_session = obj.session_type in {'wrong', 'favorite', 'note'}
 
+    t0 = perf_counter()
+    membership_detail: list[tuple[str, float]] = []
     if obj.chapter_id is not None:
+        m0 = perf_counter()
         obj.bank_id = await membership_service.resolve_bank_context_for_chapter(
             db=db,
             chapter_id=obj.chapter_id,
             bank_id=obj.bank_id,
             user_id=None if is_review_session else request.user.id,
         )
+        membership_detail.append(('resolve_bank_context_for_chapter', perf_counter() - m0))
     elif obj.bank_id and not is_review_session:
+        m0 = perf_counter()
         await membership_service.verify_bank_list_access(
             db=db,
             user_id=request.user.id,
             bank_id=obj.bank_id,
         )
+        membership_detail.append(('verify_bank_list_access', perf_counter() - m0))
 
     if not is_review_session:
+        m0 = perf_counter()
         await membership_service.verify_filter_access(
             db=db,
             user_id=request.user.id,
@@ -75,17 +88,43 @@ async def create_session(
             year_start=obj.year_start,
             year_end=obj.year_end,
         )
+        membership_detail.append(('verify_filter_access', perf_counter() - m0))
+        m0 = perf_counter()
         await membership_service.verify_knowledge_access(
             db=db,
             user_id=request.user.id,
             knowledge_point=obj.knowledge_point,
         )
+        membership_detail.append(('verify_knowledge_access', perf_counter() - m0))
+    timings.append(('membership_checks', perf_counter() - t0))
 
+    t0 = perf_counter()
     new_session = await session_service.create_unified_session(db=db, user_id=request.user.id, obj=obj)
+    timings.append(('create_unified_session', perf_counter() - t0))
+
+    t0 = perf_counter()
     session = await session_service.get_session_detail(
         db=db, session_id=new_session.id, user_id=request.user.id
     )
-    return response_base.success(data=GetPracticeSessionDetail.model_validate(session))
+    timings.append(('get_session_detail_after_create', perf_counter() - t0))
+
+    t0 = perf_counter()
+    response = response_base.success(data=GetPracticeSessionDetail.model_validate(session))
+    timings.append(('pydantic_serialize', perf_counter() - t0))
+
+    logger.debug(
+        'create_session_timing | user_id={} session_type={} chapter_id={} bank_id={} is_review={} new_session_id={} total={:.1f}ms detail={} membership={}',
+        request.user.id,
+        obj.session_type,
+        obj.chapter_id,
+        obj.bank_id,
+        is_review_session,
+        new_session.id,
+        (perf_counter() - total_start) * 1000,
+        ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
+        ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in membership_detail) or 'none',
+    )
+    return response
 
 
 @router.get('/latest', summary='获取最新进行中的会话', name='qbank_practice_get_latest_session', dependencies=[DependsJwtAuth])
@@ -190,9 +229,22 @@ async def get_session(
     session_key: Annotated[str, Path(description='会话 Key')],
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """获取练习会话详情"""
-    sid = await _resolve_session_id(db, session_key, request.user.id)
-    session_data = await session_service.get_session_detail(
-        db=db, session_id=sid, user_id=request.user.id
+    timings: list[tuple[str, float]] = []
+    total_start = perf_counter()
+
+    # Cut #1：单 SQL 完成 key→id 解析 + 归属校验 + selectinload 详情
+    t0 = perf_counter()
+    session_data = await session_service.get_session_detail_by_key(
+        db=db, session_key=session_key, user_id=request.user.id
+    )
+    timings.append(('get_session_detail_by_key', perf_counter() - t0))
+
+    logger.debug(
+        'get_session_route_timing | user_id={} session_id={} total={:.1f}ms detail={}',
+        request.user.id,
+        session_data.get('id'),
+        (perf_counter() - total_start) * 1000,
+        ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
     )
     return response_base.success(data=session_data)
 

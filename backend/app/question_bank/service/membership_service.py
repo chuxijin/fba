@@ -91,16 +91,25 @@ class MembershipService:
         return snapshot.has_direct_grant(entitlement_code)
 
     @classmethod
-    async def verify_bank_access(cls, *, db: AsyncSession, user_id: int, bank_id: int) -> None:
+    async def verify_bank_access(
+        cls,
+        *,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int,
+        bank: Any | None = None,
+    ) -> None:
         """
         校验用户是否有访问题库的权限
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param bank_id: 题库 ID
+        :param bank: 已加载的题库对象, 传入则跳过 DB 查询
         :return:
         """
-        bank = await bank_dao.get(db, bank_id)
+        if bank is None:
+            bank = await bank_dao.get(db, bank_id)
         if not bank:
             raise errors.NotFoundError(msg='刷题内容不存在')
 
@@ -131,7 +140,13 @@ class MembershipService:
 
     @classmethod
     async def verify_bank_chapter_relation(
-        cls, *, db: AsyncSession, bank_id: int, chapter_id: int
+        cls,
+        *,
+        db: AsyncSession,
+        bank_id: int,
+        chapter_id: int,
+        bank: Any | None = None,
+        chapter: Any | None = None,
     ) -> None:
         """
         校验篇章是否属于题库当前篇章来源
@@ -139,13 +154,17 @@ class MembershipService:
         :param db: 数据库会话
         :param bank_id: 题库 ID
         :param chapter_id: 篇章 ID
+        :param bank: 已加载的题库对象, 传入则跳过 DB 查询
+        :param chapter: 已加载的篇章对象, 传入则跳过 DB 查询
         :return:
         """
-        bank = await bank_dao.get(db, bank_id)
+        if bank is None:
+            bank = await bank_dao.get(db, bank_id)
         if not bank:
             raise errors.NotFoundError(msg='刷题内容不存在')
 
-        chapter = await chapter_dao.get(db, chapter_id)
+        if chapter is None:
+            chapter = await chapter_dao.get(db, chapter_id)
         if not chapter:
             raise errors.NotFoundError(msg='篇章不存在')
 
@@ -192,9 +211,15 @@ class MembershipService:
             raise errors.NotFoundError(msg='篇章不存在')
 
         if bank_id is not None:
-            await cls.verify_bank_chapter_relation(db=db, bank_id=bank_id, chapter_id=chapter_id)
+            # Cut A: 一次性加载 bank, 复用给后续 verify_bank_chapter_relation + verify_bank_access
+            bank = await bank_dao.get(db, bank_id)
+            await cls.verify_bank_chapter_relation(
+                db=db, bank_id=bank_id, chapter_id=chapter_id, bank=bank, chapter=chapter,
+            )
             if user_id is not None:
-                await cls.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+                await cls.verify_bank_access(
+                    db=db, user_id=user_id, bank_id=bank_id, bank=bank,
+                )
             return bank_id
 
         candidate_bank_ids = await cls._get_active_bank_ids_by_chapter_source(

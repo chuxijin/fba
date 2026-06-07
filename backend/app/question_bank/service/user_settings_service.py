@@ -64,6 +64,22 @@ class UserSettingsService:
         return 'light'
 
     @staticmethod
+    def _normalize_random_practice_count(value: int | str | None) -> int:
+        """规范化随机练习题目数"""
+        try:
+            count = int(value or 20)
+        except Exception:
+            return 20
+        return max(10, min(100, count))
+
+    @staticmethod
+    def _normalize_random_practice_year_range(value: str | None) -> str:
+        """规范化随机练习年份范围"""
+        if value in ('last_3_years', 'last_5_years'):
+            return value
+        return 'unlimited'
+
+    @staticmethod
     def _normalize_category_custom_tabs(value: dict | None) -> dict:
         """
         规范化分类 Tab 配置
@@ -100,6 +116,12 @@ class UserSettingsService:
         category_custom_tabs = UserSettingsService._normalize_category_custom_tabs(settings.get('category_custom_tabs'))
         mastery_threshold = settings.get('mastery_threshold', 3)
         theme_mode = UserSettingsService._normalize_theme_mode(settings.get('theme_mode'))
+        random_practice_count = UserSettingsService._normalize_random_practice_count(
+            settings.get('random_practice_count'),
+        )
+        random_practice_year_range = UserSettingsService._normalize_random_practice_year_range(
+            settings.get('random_practice_year_range'),
+        )
 
         return GetStudyPreferenceResponse(
             current_cat_id=settings.get('current_cat_id'),
@@ -108,6 +130,8 @@ class UserSettingsService:
             category_custom_tabs=category_custom_tabs,
             mastery_threshold=mastery_threshold,
             theme_mode=theme_mode,
+            random_practice_count=random_practice_count,
+            random_practice_year_range=random_practice_year_range,
         )
 
     @staticmethod
@@ -121,6 +145,8 @@ class UserSettingsService:
         category_custom_tabs: CategoryCustomTabs | None,
         mastery_threshold: int | None,
         theme_mode: str | None,
+        random_practice_count: int | None,
+        random_practice_year_range: str | None,
     ) -> None:
         """
         更新学习偏好设置
@@ -131,6 +157,8 @@ class UserSettingsService:
         :param category_custom_tabs: 按分类范围隔离的自定义标签页
         :param mastery_threshold: 错题掌握阈值
         :param theme_mode: 主题模式（light/dark/auto）
+        :param random_practice_count: 随机练习题目数
+        :param random_practice_year_range: 随机练习年份范围
         """
         user = await user_account_dao.get_by_sys_user_id(db, user_id)
         if not user:
@@ -158,6 +186,16 @@ class UserSettingsService:
 
         if theme_mode is not None:
             current_settings['theme_mode'] = UserSettingsService._normalize_theme_mode(theme_mode)
+
+        if random_practice_count is not None:
+            current_settings['random_practice_count'] = UserSettingsService._normalize_random_practice_count(
+                random_practice_count,
+            )
+
+        if random_practice_year_range is not None:
+            current_settings['random_practice_year_range'] = UserSettingsService._normalize_random_practice_year_range(
+                random_practice_year_range,
+            )
 
         await user_account_dao.update_model(
             db,

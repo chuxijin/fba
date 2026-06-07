@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model import QuestionChapter
@@ -34,7 +36,15 @@ class CRUDChapter(CRUDPlus[QuestionChapter]):
         :param bank_id: 题库 ID
         :return:
         """
-        return await self.select_models_order(db, 'sort_order', 'asc', bank_id=bank_id)
+        # noload 显式禁用 QuestionChapter.bank 的 selectin 预加载，避免多发一条 SELECT bank
+        stmt = (
+            select(QuestionChapter)
+            .where(QuestionChapter.bank_id == bank_id)
+            .options(noload(QuestionChapter.bank))
+            .order_by(QuestionChapter.sort_order.asc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
     async def get_children(self, db: AsyncSession, parent_id: int) -> Sequence[QuestionChapter]:
         """

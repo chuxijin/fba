@@ -2,12 +2,15 @@
 # -*- coding: utf-8 -*-
 from collections import defaultdict
 from collections.abc import Sequence
+from time import perf_counter
 from typing import Any
 
 import sqlalchemy as sa
 
+from loguru import logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.crud.crud_bank import bank_dao
@@ -835,35 +838,87 @@ class BankProgressService:
         :param user_id: 用户 ID
         :return:
         """
-        bank = await bank_dao.get(db, bank_id)
-        if not bank:
+        # 分段计时埋点（性能诊断用，定位瓶颈后可移除）
+        timings: list[tuple[str, float]] = []
+        total_start = perf_counter()
+
+        # 一条 SQL 同时取 bank 主信息 + 章节列表（合集分支 ON 恒 false，自动跳过 chapter 扫描）
+        chapter_source = sa.func.coalesce(QuestionBank.chapter_source_bank_id, QuestionBank.id)
+        stmt = (
+            select(QuestionBank, QuestionChapter)
+            .outerjoin(
+                QuestionChapter,
+                sa.and_(
+                    QuestionChapter.bank_id == chapter_source,
+                    QuestionBank.bank_type != COLLECTION_BANK_TYPE,
+                ),
+            )
+            .where(QuestionBank.id == bank_id)
+            .options(noload(QuestionChapter.bank))
+            .order_by(QuestionChapter.sort_order.asc().nulls_last())
+        )
+        t0 = perf_counter()
+        rows = (await db.execute(stmt)).all()
+        timings.append(('sql1_bank_with_chapters', perf_counter() - t0))
+
+        if not rows:
             raise errors.NotFoundError(msg='刷题内容不存在')
 
-        if bank.bank_type == COLLECTION_BANK_TYPE:
-            return await cls._build_collection_chapter_progress(db=db, bank_id=bank_id, user_id=user_id)
+        bank: QuestionBank = rows[0][0]
+        chapter_list: list[QuestionChapter] = [row[1] for row in rows if row[1] is not None]
 
-        source_bank_id = cls.resolve_chapter_source_bank_id(bank)
-        chapter_list = await chapter_dao.get_by_bank(db, source_bank_id)
+        if bank.bank_type == COLLECTION_BANK_TYPE:
+            t0 = perf_counter()
+            result = await cls._build_collection_chapter_progress(db=db, bank_id=bank_id, user_id=user_id)
+            timings.append(('collection_branch', perf_counter() - t0))
+            logger.debug(
+                'chapter_progress_timing | bank_id={} user_id={} branch=collection total={:.1f}ms detail={}',
+                bank_id,
+                user_id,
+                (perf_counter() - total_start) * 1000,
+                ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
+            )
+            return result
+
         if not chapter_list:
-            return await cls._build_overall_chapter_progress(db=db, bank_id=bank_id, user_id=user_id)
+            t0 = perf_counter()
+            result = await cls._build_overall_chapter_progress(db=db, bank_id=bank_id, user_id=user_id)
+            timings.append(('overall_branch', perf_counter() - t0))
+            logger.debug(
+                'chapter_progress_timing | bank_id={} user_id={} branch=overall total={:.1f}ms detail={}',
+                bank_id,
+                user_id,
+                (perf_counter() - total_start) * 1000,
+                ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
+            )
+            return result
 
         chapter_ids = [chapter.id for chapter in chapter_list]
+
+        t0 = perf_counter()
         question_type_count_map = await cls.get_chapter_question_type_count_map(
             db=db,
             bank_id=bank_id,
             chapter_ids=chapter_ids,
         )
+        timings.append(('sql2_qtype_count_map', perf_counter() - t0))
+
         q_count_map = cls._build_chapter_count_map_from_type_count(question_type_count_map)
+
+        t0 = perf_counter()
         question_type_progress_map = await cls._get_chapter_question_type_progress_map(
             db=db,
             bank_id=bank_id,
             user_id=user_id,
             chapter_ids=chapter_ids,
         )
+        timings.append(('sql3_qtype_progress_map', perf_counter() - t0))
+
         answer_map, correct_map = cls._build_chapter_answer_correct_maps_from_type_progress(
             question_type_progress_map,
         )
 
+        t0 = perf_counter()
         tree_nodes = cls._build_chapter_progress_tree(
             chapter_list=chapter_list,
             q_count_map=q_count_map,
@@ -872,7 +927,9 @@ class BankProgressService:
             question_type_count_map=question_type_count_map,
             question_type_progress_map=question_type_progress_map,
         )
+        timings.append(('build_tree', perf_counter() - t0))
 
+        t0 = perf_counter()
         total_question_count = sum(q_count_map.values())
         total_answer_count = sum(answer_map.values())
         total_correct_count = sum(correct_map.values())
@@ -889,7 +946,7 @@ class BankProgressService:
                 cur['correct_count'] += int(item.get('correct_count') or 0)
         merged_type_progress = cls.build_question_type_progress(merged_type_count, merged_type_answer_correct)
 
-        return GetBankChapterProgressWithTree(
+        result = GetBankChapterProgressWithTree(
             bank_id=bank_id,
             total_question_count=total_question_count,
             total_answer_count=total_answer_count,
@@ -898,6 +955,17 @@ class BankProgressService:
             question_type_progress=merged_type_progress,
             chapters=tree_nodes,
         )
+        timings.append(('aggregate_and_serialize', perf_counter() - t0))
+
+        logger.debug(
+            'chapter_progress_timing | bank_id={} user_id={} branch=normal chapters={} total={:.1f}ms detail={}',
+            bank_id,
+            user_id,
+            len(chapter_list),
+            (perf_counter() - total_start) * 1000,
+            ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
+        )
+        return result
 
     @staticmethod
     async def _resolve_progress_summary_bank_ids(

@@ -8,8 +8,10 @@ import random
 import uuid
 
 from decimal import Decimal
+from time import perf_counter
 from typing import Any
 
+from loguru import logger
 from sqlalchemy import cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -342,6 +344,9 @@ class SessionService:
         exam_config = obj.exam_config or {}
         practice_mode = exam_config.get('practice_mode')
         time_limit = exam_config.get('time_limit')
+        question_types: list[str] | None = None
+        if obj.question_types:
+            question_types = sorted(set(obj.question_types))
 
         return {
             'session_type': obj.session_type,
@@ -354,6 +359,7 @@ class SessionService:
             'year_end': obj.year_end,
             'knowledge_point_ids': kp_ids,
             'knowledge_point_names': kp_names,
+            'question_types': question_types,
             'limit': obj.limit,
             'shuffle': obj.shuffle,
             'practice_mode': practice_mode,
@@ -549,32 +555,45 @@ class SessionService:
         :param obj: 创建会话参数
         :return:
         """
-        bank_scope_ids = await cls._resolve_placement_bank_scope(db=db, bank_id=obj.bank_id)
+        cs_timings: list[tuple[str, float]] = []
+        cs_total_start = perf_counter()
+
+        t0 = perf_counter()
+        # Cut Y4: bank_scope 和 chapter_scope 两段 SQL 完全独立, 并行省墙时间
+        bank_scope_ids, chapter_scope_ids = await asyncio.gather(
+            cls._resolve_placement_bank_scope(db=db, bank_id=obj.bank_id),
+            question_selector_service.resolve_chapter_scope_ids(db=db, chapter_id=obj.chapter_id),
+        )
+        cs_timings.append(('cs_resolve_bank_and_chapter_scope', perf_counter() - t0))
+
         collect_param = cls._build_collect_param(obj=obj, source_type='placement')
         if obj.bank_id is not None:
             collect_param.cat_id = None
         if bank_scope_ids and obj.bank_id is not None and obj.bank_id not in bank_scope_ids:
             collect_param.bank_ids = bank_scope_ids
 
+        t0 = perf_counter()
         collect_result = await question_selector_service.collect_question_ids(
             db=db,
             params=collect_param,
             user_id=user_id,
         )
-        chapter_scope_ids = await question_selector_service.resolve_chapter_scope_ids(
-            db=db,
-            chapter_id=obj.chapter_id,
-        )
-        placements = await cls._query_placements_by_question_ids(
+        cs_timings.append(('cs_collect_question_ids', perf_counter() - t0))
+
+        t0 = perf_counter()
+        placements, prefetched_question_type_map = await cls._query_placements_by_question_ids(
             db=db,
             question_ids=collect_result.question_ids,
             bank_id=obj.bank_id,
             bank_ids=bank_scope_ids,
             chapter_id=obj.chapter_id,
             chapter_scope_ids=chapter_scope_ids,
+            with_question_type=True,
         )
+        cs_timings.append(('cs_query_placements', perf_counter() - t0))
 
-        return await cls._create_session_snapshot(
+        t0 = perf_counter()
+        new_session = await cls._create_session_snapshot(
             db=db,
             user_id=user_id,
             session_type=obj.session_type,
@@ -587,7 +606,21 @@ class SessionService:
             source_snapshot=source_snapshot,
             shuffle=obj.shuffle,
             limit=obj.limit,
+            prefetched_question_type_map=prefetched_question_type_map,
         )
+        cs_timings.append(('cs_create_snapshot', perf_counter() - t0))
+
+        logger.debug(
+            'create_session_inner_timing | user_id={} bank_id={} chapter_id={} q_count={} placement_count={} total={:.1f}ms detail={}',
+            user_id,
+            obj.bank_id,
+            obj.chapter_id,
+            len(collect_result.question_ids),
+            len(placements),
+            (perf_counter() - cs_total_start) * 1000,
+            ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in cs_timings),
+        )
+        return new_session
 
     @classmethod
     async def create_session_from_ids(
@@ -660,7 +693,8 @@ class SessionService:
         bank_ids: list[int] | None = None,
         chapter_id: int | None = None,
         chapter_scope_ids: list[int] | None = None,
-    ) -> list[QuestionPlacement]:
+        with_question_type: bool = False,
+    ) -> list[QuestionPlacement] | tuple[list[QuestionPlacement], dict[int, str]]:
         """
         根据题目 ID 列表反查挂载
 
@@ -670,9 +704,12 @@ class SessionService:
         :param bank_ids: 题库 ID 列表
         :param chapter_id: 篇章 ID
         :param chapter_scope_ids: 篇章及子篇章 ID 列表
+        :param with_question_type: True 时一起返回 question_type_map, 省一次独立查询
         :return:
         """
         if not question_ids:
+            if with_question_type:
+                return [], {}
             return []
 
         stmt = (
@@ -706,6 +743,18 @@ class SessionService:
             if matched_placement is not None:
                 placements.append(matched_placement)
 
+        if with_question_type:
+            # Cut Y3: 复用本次查询拿到的题目集合, 一次性查 question.type, 省一次独立 SQL
+            picked_question_ids = list({placement.question_id for placement in placements})
+            question_type_map: dict[int, str] = {}
+            if picked_question_ids:
+                type_stmt = select(Question.id, Question.type).where(
+                    Question.id.in_(picked_question_ids)
+                )
+                type_rows = (await db.execute(type_stmt)).all()
+                question_type_map = {row[0]: row[1] for row in type_rows}
+            return placements, question_type_map
+
         return placements
 
     @staticmethod
@@ -723,6 +772,7 @@ class SessionService:
         source_snapshot: dict[str, Any] | None = None,
         shuffle: bool = False,
         limit: int | None = None,
+        prefetched_question_type_map: dict[int, str] | None = None,
     ) -> PracticeSession:
         """
         根据挂载列表写入会话快照
@@ -741,9 +791,13 @@ class SessionService:
         :param limit: 限制题数
         :return:
         """
+        snap_timings: list[tuple[str, float]] = []
+        snap_total_start = perf_counter()
+
         if not placements:
             raise errors.NotFoundError(msg='没有可用的题目')
 
+        t0 = perf_counter()
         if shuffle:
             random.shuffle(placements)
 
@@ -758,6 +812,7 @@ class SessionService:
 
         if not placements:
             raise errors.NotFoundError(msg='没有可用的题目')
+        snap_timings.append(('snap_dedup_limit', perf_counter() - t0))
 
         first_placement = placements[0]
         resolved_bank_id = bank_id or first_placement.bank_id
@@ -773,10 +828,17 @@ class SessionService:
             total_count=len(placements),
         )
 
-        question_type_map = await SessionService._get_question_type_map(
-            db=db,
-            question_ids=list({placement.question_id for placement in placements}),
-        )
+        t0 = perf_counter()
+        # Cut Y3: 优先使用上游预取的 question_type_map (来自 _query_placements_by_question_ids)
+        if prefetched_question_type_map is not None:
+            question_type_map = prefetched_question_type_map
+        else:
+            question_type_map = await SessionService._get_question_type_map(
+                db=db,
+                question_ids=list({placement.question_id for placement in placements}),
+            )
+        snap_timings.append(('snap_question_type_map', perf_counter() - t0))
+
         total_score = sum(placement.score or Decimal('0') for placement in placements)
 
         session_dict = {
@@ -794,7 +856,9 @@ class SessionService:
             'exam_config': exam_config,
             'created_by': user_id,
         }
+        t0 = perf_counter()
         new_session = await practice_session_dao.create(db=db, obj_dict=session_dict)
+        snap_timings.append(('snap_create_session', perf_counter() - t0))
 
         session_question_items: list[dict[str, Any]] = []
         for index, placement in enumerate(placements, start=1):
@@ -806,10 +870,23 @@ class SessionService:
                 'question_type': question_type_map.get(placement.question_id, 'single'),
                 'full_score': placement.score or Decimal('0'),
             })
-        await session_question_dao.batch_create(
+        t0 = perf_counter()
+        # Cut #4b: 全新 session 走 batch_create_pristine 跳过 on_conflict_do_nothing
+        # 新 session_id 刚 INSERT, 表中绝无相同 (session_id, question_id) 行
+        await session_question_dao.batch_create_pristine(
             db=db,
             session_id=new_session.id,
             items=session_question_items,
+        )
+        snap_timings.append(('snap_batch_create_questions', perf_counter() - t0))
+
+        logger.debug(
+            'create_session_snapshot_timing | user_id={} session_id={} placement_count={} total={:.1f}ms detail={}',
+            user_id,
+            new_session.id,
+            len(placements),
+            (perf_counter() - snap_total_start) * 1000,
+            ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in snap_timings),
         )
 
         log.info(
@@ -860,27 +937,12 @@ class SessionService:
         return session
 
     @staticmethod
-    async def get_session_detail(*, db: AsyncSession, session_id: int, user_id: int) -> dict:
-        """
-        获取练习会话详情（含会话题目快照和答题记录）
-
-        :param db: 数据库会话
-        :param session_id: 会话 ID
-        :param user_id: 用户 ID
-        :return:
-        """
-        session = await SessionService._get_owned_session_detail(
-            db=db,
-            session_id=session_id,
-            user_id=user_id,
-        )
-
-        # 计算章节分布统计 & 构造 session_questions 数据
-        chapter_distribution = {}
-        session_questions_data = []
+    def _build_session_detail_response_dict(session: PracticeSession) -> dict:
+        """根据已加载的 session（含 session_questions/placement/chapter）构造详情字典"""
+        chapter_distribution: dict = {}
+        session_questions_data: list[dict] = []
 
         for sq in session.session_questions:
-            # 获取章节信息
             chapter_data = None
             if sq.placement and sq.placement.chapter:
                 chapter = sq.placement.chapter
@@ -893,7 +955,6 @@ class SessionService:
                     'sort_order': chapter.sort_order,
                 }
 
-                # 统计章节分布
                 chapter_key = chapter.id
                 if chapter_key not in chapter_distribution:
                     chapter_distribution[chapter_key] = {
@@ -905,7 +966,6 @@ class SessionService:
                     }
                 chapter_distribution[chapter_key]['question_count'] += 1
             else:
-                # 未分类章节
                 if None not in chapter_distribution:
                     chapter_distribution[None] = {
                         'chapter_id': None,
@@ -915,7 +975,6 @@ class SessionService:
                     }
                 chapter_distribution[None]['question_count'] += 1
 
-            # 构造题目数据（包含 chapter 和答题数据）
             session_questions_data.append({
                 'id': sq.id,
                 'session_id': sq.session_id,
@@ -933,19 +992,90 @@ class SessionService:
                 'judge_version': sq.judge_version,
             })
 
-        # 转换为列表并按题目数量降序排序
         distribution_list = sorted(
             chapter_distribution.values(),
             key=lambda x: x['question_count'],
             reverse=True,
         )
 
-        # 构造返回数据
         return {
             **session.__dict__,
             'chapter_distribution': distribution_list,
             'session_questions': session_questions_data,
         }
+
+    @staticmethod
+    async def get_session_detail(*, db: AsyncSession, session_id: int, user_id: int) -> dict:
+        """
+        获取练习会话详情（含会话题目快照和答题记录）
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :param user_id: 用户 ID
+        :return:
+        """
+        timings: list[tuple[str, float]] = []
+        total_start = perf_counter()
+
+        t0 = perf_counter()
+        session = await SessionService._get_owned_session_detail(
+            db=db,
+            session_id=session_id,
+            user_id=user_id,
+        )
+        timings.append(('sql_get_detail_with_selectin', perf_counter() - t0))
+
+        t0 = perf_counter()
+        result = SessionService._build_session_detail_response_dict(session)
+        timings.append(('build_response_dict', perf_counter() - t0))
+
+        logger.debug(
+            'session_detail_timing | session_id={} user_id={} sq_count={} total={:.1f}ms detail={}',
+            session_id,
+            user_id,
+            len(result['session_questions']),
+            (perf_counter() - total_start) * 1000,
+            ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
+        )
+        return result
+
+    @staticmethod
+    async def get_session_detail_by_key(
+        *, db: AsyncSession, session_key: str, user_id: int
+    ) -> dict:
+        """
+        按 session_key 获取练习会话详情（一条 SQL 取代 by_key + by_id 两步）
+
+        :param db: 数据库会话
+        :param session_key: 会话唯一标识
+        :param user_id: 用户 ID
+        :return:
+        """
+        timings: list[tuple[str, float]] = []
+        total_start = perf_counter()
+
+        t0 = perf_counter()
+        session = await practice_session_dao.get_detail_by_key(db=db, session_key=session_key)
+        if not session:
+            raise errors.NotFoundError(msg='会话不存在')
+        if session.user_id != user_id:
+            raise errors.ForbiddenError(msg='无权访问此会话')
+        timings.append(('sql_get_detail_by_key_with_selectin', perf_counter() - t0))
+
+        t0 = perf_counter()
+        result = SessionService._build_session_detail_response_dict(session)
+        timings.append(('build_response_dict', perf_counter() - t0))
+
+        logger.debug(
+            'session_detail_by_key_timing | session_key={} session_id={} user_id={} sq_count={} total={:.1f}ms detail={}',
+            session_key,
+            session.id,
+            user_id,
+            len(result['session_questions']),
+            (perf_counter() - total_start) * 1000,
+            ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
+        )
+        return result
 
     @staticmethod
     async def get_latest_session(
@@ -1731,34 +1861,58 @@ class SessionService:
 
     @staticmethod
     async def get_session_questions_with_materials(
-        *, db: AsyncSession, session_id: int, user_id: int
+        *, db: AsyncSession, session_key: str, user_id: int
     ) -> dict[str, Any]:
         """
         获取会话题目静态内容和去重材料
 
         :param db: 数据库会话
-        :param session_id: 会话 ID
+        :param session_key: 会话唯一标识
         :param user_id: 用户 ID
         :return: 包含 questions 和 materials 的字典
         """
-        # 1. 获取会话题目快照（按 seq_no 排序）
-        await SessionService._get_owned_session(db=db, session_id=session_id, user_id=user_id)
+        # 分段计时埋点（性能诊断用，定位瓶颈后可移除）
+        timings: list[tuple[str, float]] = []
+        total_start = perf_counter()
+
+        # 1. 一条 SQL 同时完成 key→id 解析 + 归属校验（替代旧的 _resolve_session_id + _get_owned_session 两次 SQL）
+        t0 = perf_counter()
+        session = await practice_session_dao.get_by_key(db=db, session_key=session_key)
+        if not session:
+            raise errors.NotFoundError(msg='会话不存在')
+        if session.user_id != user_id:
+            raise errors.ForbiddenError(msg='无权访问此会话')
+        session_id = session.id
+        timings.append(('sql1_resolve_session_by_key', perf_counter() - t0))
+
+        t0 = perf_counter()
         session_questions = await session_question_dao.list_by_session(db=db, session_id=session_id)
+        timings.append(('sql2_list_session_questions', perf_counter() - t0))
         if not session_questions:
+            logger.debug(
+                'session_questions_timing | session_id={} user_id={} sq_count=0 total={:.1f}ms detail={}',
+                session_id,
+                user_id,
+                (perf_counter() - total_start) * 1000,
+                ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
+            )
             return {'questions': [], 'materials': []}
 
         placement_ids = [sq.placement_id for sq in session_questions if sq.placement_id]
         placement_bank_map: dict[int, int] = {}
+        t0 = perf_counter()
         if placement_ids:
             placement_stmt = select(QuestionPlacement.id, QuestionPlacement.bank_id).where(
                 QuestionPlacement.id.in_(placement_ids)
             )
             placement_rows = (await db.execute(placement_stmt)).all()
             placement_bank_map = {row.id: row.bank_id for row in placement_rows}
+        timings.append(('sql3_placement_bank_map', perf_counter() - t0))
 
         bank_ids = sorted(set(placement_bank_map.values()))
         bank_info_map: dict[int, Any] = {}
         bank_material_map: dict[int, list[int]] = {}
+        t0 = perf_counter()
         if bank_ids:
             from backend.app.question_bank.model.bank import QuestionBank
             from backend.app.question_bank.model.question import QuestionMaterial
@@ -1767,19 +1921,33 @@ class SessionService:
             bank_rows = (await db.execute(bank_stmt)).scalars().all()
             bank_info_map = {bank.id: bank for bank in bank_rows}
 
-            bank_material_stmt = (
-                select(QuestionMaterial.id, QuestionMaterial.bank_id)
-                .where(
-                    QuestionMaterial.bank_id.in_(bank_ids),
-                    QuestionMaterial.is_active.is_(True),
+            # Cut #3：仅当 session 涉及"申论"题库时才预取材料 ID
+            # 非申论 session 完全跳过这条 SQL（典型 50-100ms 收益）
+            shenlun_bank_ids = [
+                bid for bid, bank in bank_info_map.items()
+                if '申论' in str(getattr(bank, 'name', '') or '')
+                or '申论' in str(getattr(bank, 'desc', '') or '')
+            ]
+            if shenlun_bank_ids:
+                bank_material_stmt = (
+                    select(QuestionMaterial.id, QuestionMaterial.bank_id)
+                    .where(
+                        QuestionMaterial.bank_id.in_(shenlun_bank_ids),
+                        QuestionMaterial.is_active.is_(True),
+                    )
+                    .order_by(
+                        QuestionMaterial.bank_id.asc(),
+                        QuestionMaterial.sort_order.asc(),
+                        QuestionMaterial.id.asc(),
+                    )
                 )
-                .order_by(QuestionMaterial.bank_id.asc(), QuestionMaterial.sort_order.asc(), QuestionMaterial.id.asc())
-            )
-            bank_material_rows = (await db.execute(bank_material_stmt)).all()
-            for row in bank_material_rows:
-                bank_material_map.setdefault(row.bank_id, []).append(row.id)
+                bank_material_rows = (await db.execute(bank_material_stmt)).all()
+                for row in bank_material_rows:
+                    bank_material_map.setdefault(row.bank_id, []).append(row.id)
+        timings.append(('sql4_bank_and_bank_materials', perf_counter() - t0))
 
         # 2. 批量查询题目详情（含选项和材料关联）
+        t0 = perf_counter()
         question_ids = [sq.question_id for sq in session_questions]
         stmt = (
             select(Question)
@@ -1790,8 +1958,10 @@ class SessionService:
         )
         result = await db.execute(stmt)
         question_map: dict[int, Question] = {q.id: q for q in result.unique().scalars().all()}
+        timings.append(('sql5_questions_with_materials_relation', perf_counter() - t0))
 
         # 3. 构建题目列表（按 seq_no 排序）
+        t0 = perf_counter()
         questions_list: list[dict[str, Any]] = []
         all_material_ids: set[int] = set()
         for sq in session_questions:
@@ -1830,8 +2000,10 @@ class SessionService:
                 'knowledge_point': question.knowledge_point,
                 'difficulty': question.difficulty,
             })
+        timings.append(('build_questions_list', perf_counter() - t0))
 
         # 4. 去重并批量查询材料
+        t0 = perf_counter()
         materials_list: list[dict[str, Any]] = []
         if all_material_ids:
             from backend.app.question_bank.model.question import QuestionMaterial
@@ -1847,8 +2019,10 @@ class SessionService:
                     'title': material.title,
                     'content': material.content,
                 })
+        timings.append(('sql6_materials_full', perf_counter() - t0))
 
         # 5. 批量解析知识点 code → 显示名称
+        t0 = perf_counter()
         all_kp_codes: set[str] = set()
         for q_item in questions_list:
             kp_raw = q_item.get('knowledge_point')
@@ -1866,7 +2040,18 @@ class SessionService:
                         for kp in kp_raw
                         if isinstance(kp, str) and kp.strip()
                     ]
+        timings.append(('sql7_resolve_kp_codes', perf_counter() - t0))
 
+        logger.debug(
+            'session_questions_timing | session_id={} user_id={} sq_count={} q_count={} mat_count={} total={:.1f}ms detail={}',
+            session_id,
+            user_id,
+            len(session_questions),
+            len(questions_list),
+            len(materials_list),
+            (perf_counter() - total_start) * 1000,
+            ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
+        )
         return {
             'questions': questions_list,
             'materials': materials_list,
@@ -1975,7 +2160,14 @@ class SessionService:
         :param obj: 创建会话参数
         :return:
         """
-        if obj.chapter_id is not None:
+        unified_timings: list[tuple[str, float]] = []
+        unified_total_start = perf_counter()
+
+        t0 = perf_counter()
+        # Cut #4a: 仅当调用方未提供 bank_id 时才兜底解析
+        # POST /sessions 路由层已经做过 membership_service.resolve_bank_context_for_chapter
+        # bank_id 已被填回 obj，这里再做一次纯属浪费 ~113ms
+        if obj.chapter_id is not None and obj.bank_id is None:
             from backend.app.question_bank.service.membership_service import membership_service
 
             # 复习类会话（错题/收藏/笔记）跳过题库权限校验，只做 chapter → bank 上下文解析
@@ -1986,11 +2178,15 @@ class SessionService:
                 bank_id=obj.bank_id,
                 user_id=None if is_review_session else user_id,
             )
+        unified_timings.append(('uni_resolve_bank_ctx', perf_counter() - t0))
 
+        t0 = perf_counter()
         obj.exam_config = cls._normalize_exam_config(obj.session_type, obj.exam_config)
         source_snapshot = cls._build_session_source_snapshot(obj)
         source_key = cls._build_session_source_key(source_snapshot)
+        unified_timings.append(('uni_build_source_key', perf_counter() - t0))
 
+        t0 = perf_counter()
         latest_session = await practice_session_dao.get_latest_session(
             db=db,
             user_id=user_id,
@@ -1999,29 +2195,53 @@ class SessionService:
             chapter_id=obj.chapter_id,
             source_key=source_key,
         )
+        unified_timings.append(('uni_get_latest_session', perf_counter() - t0))
         if latest_session:
+            logger.debug(
+                'create_unified_session_timing | user_id={} session_type={} branch=reused total={:.1f}ms detail={}',
+                user_id,
+                obj.session_type,
+                (perf_counter() - unified_total_start) * 1000,
+                ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in unified_timings),
+            )
             return latest_session
 
         if obj.session_type not in {'wrong', 'favorite', 'note'}:
-            return await cls.create_session(
+            t0 = perf_counter()
+            new_session = await cls.create_session(
                 db=db,
                 user_id=user_id,
                 obj=obj,
                 source_key=source_key,
                 source_snapshot=source_snapshot,
             )
+            unified_timings.append(('uni_create_session', perf_counter() - t0))
+            logger.debug(
+                'create_unified_session_timing | user_id={} session_type={} branch=normal total={:.1f}ms detail={}',
+                user_id,
+                obj.session_type,
+                (perf_counter() - unified_total_start) * 1000,
+                ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in unified_timings),
+            )
+            return new_session
 
+        t0 = perf_counter()
         collect_result = await question_selector_service.collect_question_ids(
             db=db,
             params=cls._build_collect_param(obj=obj, source_type=obj.session_type),
             user_id=user_id,
         )
+        unified_timings.append(('uni_collect_question_ids_review', perf_counter() - t0))
         question_ids = collect_result.question_ids
+
+        t0 = perf_counter()
         chapter_scope_ids = await question_selector_service.resolve_chapter_scope_ids(
             db=db,
             chapter_id=obj.chapter_id,
         )
+        unified_timings.append(('uni_resolve_chapter_scope', perf_counter() - t0))
 
+        t0 = perf_counter()
         placements = await cls._query_placements_by_question_ids(
             db=db,
             question_ids=question_ids,
@@ -2029,7 +2249,10 @@ class SessionService:
             chapter_id=obj.chapter_id,
             chapter_scope_ids=chapter_scope_ids,
         )
-        return await cls._create_session_snapshot(
+        unified_timings.append(('uni_query_placements_review', perf_counter() - t0))
+
+        t0 = perf_counter()
+        new_session = await cls._create_session_snapshot(
             db=db,
             user_id=user_id,
             session_type=obj.session_type,
@@ -2043,6 +2266,16 @@ class SessionService:
             shuffle=obj.shuffle,
             limit=obj.limit,
         )
+        unified_timings.append(('uni_create_snapshot_review', perf_counter() - t0))
+
+        logger.debug(
+            'create_unified_session_timing | user_id={} session_type={} branch=review total={:.1f}ms detail={}',
+            user_id,
+            obj.session_type,
+            (perf_counter() - unified_total_start) * 1000,
+            ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in unified_timings),
+        )
+        return new_session
 
 
 session_service: SessionService = SessionService()

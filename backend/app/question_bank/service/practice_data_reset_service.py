@@ -15,8 +15,7 @@ from backend.app.question_bank.model import (
 )
 from backend.app.question_bank.crud.crud_user_bank_progress import user_bank_progress_dao
 from backend.app.question_bank.schema.user_settings import PracticeDataResetResult
-from backend.common.log import log
-from backend.database.redis import redis_client
+from backend.app.question_bank.service.wrong_question_service import WrongQuestionService
 from backend.plugin.agents.model import AgentTask
 from backend.plugin.agents.schema.report import AgentType
 
@@ -42,10 +41,7 @@ class PracticeDataResetService:
         :param user_id: 用户 ID
         :return:
         """
-        try:
-            await redis_client.delete_prefix(f'qbank:wrong:statistics:{user_id}:')
-        except Exception as e:
-            log.warning('重置做题数据后清理缓存失败: {}', e)
+        await WrongQuestionService._clear_statistics_cache(user_id)
 
     @classmethod
     async def reset_user_practice_data(cls, *, db: AsyncSession, user_id: int) -> PracticeDataResetResult:

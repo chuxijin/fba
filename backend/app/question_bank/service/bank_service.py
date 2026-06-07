@@ -8,6 +8,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_category import category_dao
+from backend.app.question_bank.cache.bank_cache import (
+    bank_cache,
+    get_bank_snapshot,
+    invalidate_bank_snapshots,
+)
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_chapter import chapter_dao
 from backend.app.question_bank.model.bank import QuestionBank
@@ -53,7 +58,7 @@ class BankService:
         if parent_id is None:
             return
 
-        parent_bank = await bank_dao.get(db, parent_id)
+        parent_bank = await get_bank_snapshot(db, parent_id)
         if not parent_bank:
             raise errors.NotFoundError(msg='父合集不存在')
         if current_bank_id is not None and parent_bank.id == current_bank_id:
@@ -66,7 +71,7 @@ class BankService:
                 raise errors.ForbiddenError(msg='合集父子关系存在循环')
             visited_ids.add(current_parent.id)
 
-            next_parent = await bank_dao.get(db, current_parent.parent_id)
+            next_parent = await get_bank_snapshot(db, current_parent.parent_id)
             if not next_parent:
                 break
             if current_bank_id is not None and next_parent.id == current_bank_id:
@@ -86,7 +91,7 @@ class BankService:
         :param source_bank_id: 章节来源题库 ID
         :return:
         """
-        source_bank = await bank_dao.get(db, source_bank_id)
+        source_bank = await get_bank_snapshot(db, source_bank_id)
         if not source_bank:
             raise errors.NotFoundError(msg='章节来源内容不存在')
 
@@ -241,6 +246,7 @@ class BankService:
                 bank_select=bank_select,
                 status=status,
                 parent_id=parent_id,
+                parent_relation_cat_ids=set(cat_ids) if cat_ids is not None else None,
             )
 
         if tree_data is None:
@@ -354,6 +360,8 @@ class BankService:
         await BankService._validate_chapter_source_bank(db=db, source_bank_id=target_source_bank_id)
 
         count = await bank_dao.update(db, pk, obj, updated_by=updated_by)
+        if count > 0:
+            await bank_cache.invalidate(pk)
         return count
 
     @staticmethod
@@ -366,6 +374,8 @@ class BankService:
         :return:
         """
         count = await bank_dao.delete(db, obj.ids)
+        if count > 0:
+            await invalidate_bank_snapshots(obj.ids)
         return count
 
 

@@ -3,11 +3,14 @@
 from collections import defaultdict, deque
 from typing import Any
 
+from sqlalchemy import select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank.cache.bank_cache import BankSnapshot, get_bank_snapshot
 from backend.app.question_bank.crud.crud_bank import bank_dao
 from backend.app.question_bank.crud.crud_bank_mount import bank_mount_dao
 from backend.app.question_bank.model.bank import QuestionBank
+from backend.app.question_bank.model.bank_mount import QuestionBankMount
 from backend.app.question_bank.schema.bank_mount import (
     CreateBankMountParam,
     DeleteBankMountParam,
@@ -23,7 +26,7 @@ class BankMountService:
     """刷题内容挂载服务类"""
 
     @staticmethod
-    async def _get_bank_or_404(db: AsyncSession, bank_id: int, label: str) -> QuestionBank:
+    async def _get_bank_or_404(db: AsyncSession, bank_id: int, label: str) -> BankSnapshot:
         """
         获取刷题内容
 
@@ -32,7 +35,7 @@ class BankMountService:
         :param label: 错误提示标签
         :return:
         """
-        bank = await bank_dao.get(db, bank_id)
+        bank = await get_bank_snapshot(db, bank_id)
         if not bank:
             raise errors.NotFoundError(msg=f'{label}不存在')
         return bank
@@ -214,6 +217,7 @@ class BankMountService:
         initial_bank_ids: set[int],
         status: int | None,
         initial_bank_rows: list[dict[str, Any]] | None = None,
+        parent_relation_cat_ids: set[int] | None = None,
     ) -> tuple[dict[int, dict[str, Any]], list[dict[str, Any]]]:
         """
         递归扩展挂载树涉及的内容
@@ -222,62 +226,77 @@ class BankMountService:
         :param initial_bank_ids: 初始内容 ID
         :param status: 内容状态
         :param initial_bank_rows: 已加载的初始内容映射
+        :param parent_relation_cat_ids: 允许按旧父级关系扩展的分类 ID
         :return:
         """
         if not initial_bank_ids:
             return {}, []
 
-        loaded_bank_ids: set[int] = set()
-        bank_rows: list[dict[str, Any]] = []
-        for row in initial_bank_rows or []:
-            bank_id = int(row['id'])
-            if bank_id not in initial_bank_ids:
-                continue
-            loaded_bank_ids.add(bank_id)
-            bank_rows.append(row)
+        anchor_filters = [QuestionBank.id.in_(initial_bank_ids)]
+        if status is not None:
+            anchor_filters.append(QuestionBank.status == status)
 
-        missing_bank_ids = list(initial_bank_ids - loaded_bank_ids)
-        if missing_bank_ids:
-            bank_rows.extend(await bank_dao.get_mappings_by_ids(db, missing_bank_ids))
+        mount_relation_stmt = select(
+            QuestionBankMount.collection_id.label('parent_id'),
+            QuestionBankMount.item_id.label('child_id'),
+        ).where(QuestionBankMount.status == 1)
+        if parent_relation_cat_ids is None or parent_relation_cat_ids:
+            parent_relation_filters = [QuestionBank.parent_id.isnot(None)]
+            if parent_relation_cat_ids is not None:
+                parent_relation_filters.append(QuestionBank.cat_id.in_(parent_relation_cat_ids))
 
-        bank_by_id = {
-            int(row['id']): row
-            for row in bank_rows
-            if status is None or int(row.get('status') or 0) == status
-        }
-        known_ids = set(bank_by_id)
-        pending_ids = set(bank_by_id)
-        mount_by_id: dict[int, dict[str, Any]] = {}
+            parent_relation_stmt = select(
+                QuestionBank.parent_id.label('parent_id'),
+                QuestionBank.id.label('child_id'),
+            ).where(*parent_relation_filters)
+            relation_edges = union_all(mount_relation_stmt, parent_relation_stmt).cte('relation_edges')
+        else:
+            relation_edges = mount_relation_stmt.cte('relation_edges')
 
-        while pending_ids:
-            mount_rows = await BankMountService.get_active_child_mount_mappings(db, collection_ids=list(pending_ids))
-            pending_ids = set()
-            missing_item_ids: set[int] = set()
-            for row in mount_rows:
-                mount_id = int(row['id'])
-                if mount_id in mount_by_id:
-                    continue
-                mount_by_id[mount_id] = row
-                collection_id = int(row['collection_id'])
-                if collection_id not in known_ids:
-                    continue
-                item_id = int(row['item_id'])
-                if item_id not in known_ids:
-                    missing_item_ids.add(item_id)
+        reachable_banks = (
+            select(QuestionBank.id.label('bank_id'))
+            .where(*anchor_filters)
+            .cte('reachable_banks', recursive=True)
+        )
 
-            if not missing_item_ids:
-                continue
+        recursive_filters = [QuestionBank.id == relation_edges.c.child_id]
+        if status is not None:
+            recursive_filters.append(QuestionBank.status == status)
 
-            extra_rows = await bank_dao.get_mappings_by_ids(db, list(missing_item_ids))
-            for row in extra_rows:
-                if status is not None and int(row.get('status') or 0) != status:
-                    continue
-                bank_id = int(row['id'])
-                bank_by_id[bank_id] = row
-                known_ids.add(bank_id)
-                pending_ids.add(bank_id)
+        recursive_stmt = (
+            select(relation_edges.c.child_id.label('bank_id'))
+            .select_from(relation_edges)
+            .join(reachable_banks, relation_edges.c.parent_id == reachable_banks.c.bank_id)
+            .join(QuestionBank, QuestionBank.id == relation_edges.c.child_id)
+            .where(*recursive_filters)
+        )
+        reachable_banks = reachable_banks.union(recursive_stmt)
 
-        return bank_by_id, list(mount_by_id.values())
+        reachable_ids = select(reachable_banks.c.bank_id)
+        bank_stmt = select(QuestionBank.__table__).where(QuestionBank.id.in_(reachable_ids))
+        bank_result = await db.execute(bank_stmt)
+        bank_by_id = {int(row['id']): dict(row) for row in bank_result.mappings().all()}
+
+        if not bank_by_id:
+            return {}, []
+
+        mount_stmt = (
+            select(QuestionBankMount.__table__)
+            .where(
+                QuestionBankMount.status == 1,
+                QuestionBankMount.collection_id.in_(select(reachable_banks.c.bank_id)),
+                QuestionBankMount.item_id.in_(select(reachable_banks.c.bank_id)),
+            )
+            .order_by(
+                QuestionBankMount.collection_id.asc(),
+                QuestionBankMount.sort_order.asc(),
+                QuestionBankMount.id.asc(),
+            )
+        )
+        mount_result = await db.execute(mount_stmt)
+        mount_rows = [dict(row) for row in mount_result.mappings().all()]
+
+        return bank_by_id, mount_rows
 
     @staticmethod
     def _build_tree_from_mounts(
@@ -390,6 +409,7 @@ class BankMountService:
         bank_select: list[dict[str, Any]],
         status: int | None,
         parent_id: int | None,
+        parent_relation_cat_ids: set[int] | None = None,
     ) -> list[dict[str, Any]] | None:
         """
         获取挂载内容树
@@ -398,6 +418,7 @@ class BankMountService:
         :param bank_select: 初始内容列表
         :param status: 内容状态
         :param parent_id: 父合集 ID
+        :param parent_relation_cat_ids: 允许按旧父级关系扩展的分类 ID
         :return:
         """
         initial_bank_ids = {int(item['id']) for item in bank_select}
@@ -411,6 +432,7 @@ class BankMountService:
             initial_bank_ids=initial_bank_ids,
             status=status,
             initial_bank_rows=bank_select,
+            parent_relation_cat_ids=parent_relation_cat_ids,
         )
         relation_rows = BankMountService._merge_parent_relation_rows(
             bank_by_id=bank_by_id,

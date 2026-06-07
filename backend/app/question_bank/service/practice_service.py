@@ -101,19 +101,29 @@ class PracticeService:
         if bank.bank_type != 3:
             raise errors.RequestError(msg='当前 Tab 不是题库合集')
 
-        category_ids = await category_filter_service.get_product_catalog_category_ids(
+        if not await category_filter_service.is_product_catalog_category_in_subtree(
             db=db,
-            cat_id=cat_id,
-        )
-        if int(bank.cat_id) not in category_ids:
+            root_cat_id=cat_id,
+            target_cat_id=int(bank.cat_id),
+        ):
             raise errors.RequestError(msg='题库合集不属于当前题库目录')
 
-        bank_rows = await bank_dao.get_home_mappings(db, cat_ids=[int(bank.cat_id)], status=1)
+        bank_rows = [{
+            'id': int(bank.id),
+            'cat_id': int(bank.cat_id),
+            'name': bank.name,
+            'bank_type': int(bank.bank_type),
+            'parent_id': bank.parent_id,
+            'sort_order': int(bank.sort_order or 0),
+            'status': int(bank.status),
+            'q_count_cache': int(bank.q_count_cache or 0),
+        }]
         tree_data = await bank_mount_service.get_mount_tree(
             db=db,
             bank_select=bank_rows,
             status=1,
             parent_id=tab_id,
+            parent_relation_cat_ids={int(bank.cat_id)},
         )
         if tree_data is None:
             tree_data = []

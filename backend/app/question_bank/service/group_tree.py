@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import json
-
 from collections import defaultdict
 from typing import Any
 
@@ -11,13 +9,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.admin.model.category import Category
 from backend.app.question_bank.model.bank import QuestionBank
 from backend.app.question_bank.model.chapter import QuestionChapter
-from backend.database.redis import redis_client
+from backend.common.cache.redis_cache import RedisCache
+from backend.common.cache.serializers import JsonSerializer
 from backend.utils.build_tree import traversal_to_tree
 
 GROUP_TREE_CACHE_TTL = 300
-KP_CATEGORY_CACHE_KEY = 'qbank:group_tree:kp_categories:v2'
-ALL_BANKS_CACHE_KEY = 'qbank:group_tree:all_banks:v1'
-ALL_CHAPTERS_CACHE_KEY = 'qbank:group_tree:all_chapters:v1'
+
+
+all_banks_cache: RedisCache[list[dict[str, Any]]] = RedisCache(
+    prefix='qbank:group_tree:all_banks:v1',
+    ttl=GROUP_TREE_CACHE_TTL,
+    serializer=JsonSerializer(),
+    local=True,
+    invalidate_pubsub=True,
+)
+
+all_chapters_cache: RedisCache[list[dict[str, Any]]] = RedisCache(
+    prefix='qbank:group_tree:all_chapters:v1',
+    ttl=GROUP_TREE_CACHE_TTL,
+    serializer=JsonSerializer(),
+    local=True,
+    invalidate_pubsub=True,
+)
+
+kp_categories_cache: RedisCache[list[dict[str, Any]]] = RedisCache(
+    prefix='qbank:group_tree:kp_categories:v2',
+    ttl=GROUP_TREE_CACHE_TTL,
+    serializer=JsonSerializer(),
+    local=True,
+    invalidate_pubsub=True,
+)
 
 
 def _value(item: Any, key: str) -> Any:
@@ -27,93 +48,57 @@ def _value(item: Any, key: str) -> Any:
     return getattr(item, key, None)
 
 
-async def _get_cached_rows(cache_key: str) -> list[dict[str, Any]] | None:
-    """读取缓存行"""
-    try:
-        cached = await redis_client.get(cache_key)
-    except Exception:
-        return None
-
-    if not cached:
-        return None
-
-    try:
-        rows = json.loads(cached)
-    except (TypeError, ValueError):
-        return None
-
-    if isinstance(rows, list):
-        return rows
-    return None
-
-
-async def _set_cached_rows(cache_key: str, rows: list[dict[str, Any]]) -> None:
-    """写入缓存行"""
-    try:
-        await redis_client.set(
-            cache_key,
-            json.dumps(rows, ensure_ascii=False),
-            ex=GROUP_TREE_CACHE_TTL,
-        )
-    except Exception:
-        return
-
-
 async def _load_all_banks(db: AsyncSession) -> list[dict[str, Any]]:
     """加载全部题库元数据"""
-    cached_rows = await _get_cached_rows(ALL_BANKS_CACHE_KEY)
-    if cached_rows is not None:
-        return cached_rows
 
-    stmt = select(
-        QuestionBank.id,
-        QuestionBank.name,
-        QuestionBank.parent_id,
-    )
-    rows = (await db.execute(stmt)).all()
-    bank_rows = [
-        {
-            'id': row.id,
-            'name': row.name,
-            'parent_id': row.parent_id,
-        }
-        for row in rows
-    ]
-    await _set_cached_rows(ALL_BANKS_CACHE_KEY, bank_rows)
-    return bank_rows
+    async def factory() -> list[dict[str, Any]]:
+        stmt = select(
+            QuestionBank.id,
+            QuestionBank.name,
+            QuestionBank.parent_id,
+        )
+        rows = (await db.execute(stmt)).all()
+        return [
+            {
+                'id': row.id,
+                'name': row.name,
+                'parent_id': row.parent_id,
+            }
+            for row in rows
+        ]
+
+    return await all_banks_cache.get_or_set(factory=factory) or []
 
 
 async def _load_all_chapters(db: AsyncSession) -> list[dict[str, Any]]:
     """加载全部章节元数据"""
-    cached_rows = await _get_cached_rows(ALL_CHAPTERS_CACHE_KEY)
-    if cached_rows is not None:
-        return cached_rows
 
-    stmt = (
-        select(
-            QuestionChapter.id,
-            QuestionChapter.bank_id,
-            QuestionChapter.parent_id,
-            QuestionChapter.name,
-            QuestionChapter.level,
-            QuestionChapter.sort_order,
+    async def factory() -> list[dict[str, Any]]:
+        stmt = (
+            select(
+                QuestionChapter.id,
+                QuestionChapter.bank_id,
+                QuestionChapter.parent_id,
+                QuestionChapter.name,
+                QuestionChapter.level,
+                QuestionChapter.sort_order,
+            )
+            .order_by(QuestionChapter.level, QuestionChapter.sort_order)
         )
-        .order_by(QuestionChapter.level, QuestionChapter.sort_order)
-    )
-    rows = (await db.execute(stmt)).all()
-    chapter_rows = [
-        {
-            'id': row.id,
-            'bank_id': row.bank_id,
-            'parent_id': row.parent_id,
-            'name': row.name,
-            'level': row.level,
-            'sort_order': row.sort_order,
-        }
-        for row in rows
-    ]
-    await _set_cached_rows(ALL_CHAPTERS_CACHE_KEY, chapter_rows)
-    return chapter_rows
+        rows = (await db.execute(stmt)).all()
+        return [
+            {
+                'id': row.id,
+                'bank_id': row.bank_id,
+                'parent_id': row.parent_id,
+                'name': row.name,
+                'level': row.level,
+                'sort_order': row.sort_order,
+            }
+            for row in rows
+        ]
+
+    return await all_chapters_cache.get_or_set(factory=factory) or []
 
 
 def _sum_counts(node: dict) -> int:
@@ -272,36 +257,34 @@ async def load_kp_categories(db: AsyncSession) -> list[Category | dict[str, Any]
     :param db: 数据库会话
     :return:
     """
-    cached_rows = await _get_cached_rows(KP_CATEGORY_CACHE_KEY)
-    if cached_rows is not None:
-        return cached_rows
 
-    stmt = (
-        select(
-            Category.id,
-            Category.parent_id,
-            Category.name,
-            Category.sort_order,
+    async def factory() -> list[dict[str, Any]]:
+        stmt = (
+            select(
+                Category.id,
+                Category.parent_id,
+                Category.name,
+                Category.sort_order,
+            )
+            .where(
+                Category.app_code == 'youanshang',
+                Category.type == 'knowledge_point',
+                Category.status.is_(True),
+            )  # noqa: E712
+            .order_by(Category.level, Category.sort_order)
         )
-        .where(
-            Category.app_code == 'youanshang',
-            Category.type == 'knowledge_point',
-            Category.status.is_(True),
-        )  # noqa: E712
-        .order_by(Category.level, Category.sort_order)
-    )
-    rows = (await db.execute(stmt)).all()
-    category_rows = [
-        {
-            'id': row.id,
-            'parent_id': row.parent_id,
-            'name': row.name,
-            'sort_order': row.sort_order,
-        }
-        for row in rows
-    ]
-    await _set_cached_rows(KP_CATEGORY_CACHE_KEY, category_rows)
-    return category_rows
+        rows = (await db.execute(stmt)).all()
+        return [
+            {
+                'id': row.id,
+                'parent_id': row.parent_id,
+                'name': row.name,
+                'sort_order': row.sort_order,
+            }
+            for row in rows
+        ]
+
+    return await kp_categories_cache.get_or_set(factory=factory) or []
 
 
 async def load_banks_and_chapters(

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import json
-
 from dataclasses import dataclass
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank.model.bank import QuestionBank
-from backend.common.log import log
-from backend.database.redis import redis_client
+from backend.common.cache.redis_cache import RedisCache
+from backend.common.cache.serializers import DataclassSerializer
 
 QBANK_CATEGORY_APP_CODE = 'youanshang'
 QBANK_CATEGORY_FILTER_CACHE_TTL = 3600
@@ -24,6 +24,39 @@ class CategoryQuestionFilter:
     kp_cat_id: int | None
     bank_ids: set[int]
     knowledge_names: set[str]
+
+
+def _filter_to_dict(value: CategoryQuestionFilter) -> dict[str, Any]:
+    """CategoryQuestionFilter → JSON 可序列化字典(set → list)"""
+    return {
+        'cat_id': value.cat_id,
+        'kp_cat_id': value.kp_cat_id,
+        'bank_ids': list(value.bank_ids),
+        'knowledge_names': list(value.knowledge_names),
+    }
+
+
+def _filter_from_dict(data: dict[str, Any]) -> CategoryQuestionFilter:
+    """JSON 字典 → CategoryQuestionFilter(list → set)"""
+    return CategoryQuestionFilter(
+        cat_id=data.get('cat_id'),
+        kp_cat_id=data.get('kp_cat_id'),
+        bank_ids=set(data.get('bank_ids') or []),
+        knowledge_names=set(data.get('knowledge_names') or []),
+    )
+
+
+category_filter_cache: RedisCache[CategoryQuestionFilter] = RedisCache(
+    prefix='qbank:category_filter',
+    ttl=QBANK_CATEGORY_FILTER_CACHE_TTL,
+    serializer=DataclassSerializer(
+        CategoryQuestionFilter,
+        to_dict=_filter_to_dict,
+        from_dict=_filter_from_dict,
+    ),
+    local=True,
+    invalidate_pubsub=True,
+)
 
 
 class CategoryFilterService:
@@ -62,6 +95,41 @@ class CategoryFilterService:
             status=True,
         )
         return set(category_ids)
+
+    @staticmethod
+    async def is_product_catalog_category_in_subtree(
+        *,
+        db: AsyncSession,
+        root_cat_id: int | None,
+        target_cat_id: int,
+    ) -> bool:
+        """
+        判断题库目录分类是否属于指定子树
+
+        :param db: 数据库会话
+        :param root_cat_id: 根分类 ID
+        :param target_cat_id: 目标分类 ID
+        :return:
+        """
+        if root_cat_id is None or target_cat_id <= 0:
+            return False
+
+        root_category = aliased(category_dao.model)
+        target_category = aliased(category_dao.model)
+        path_prefix = func.coalesce(func.nullif(root_category.path, ''), cast(root_category.id, String))
+        stmt = select(exists().where(
+            root_category.id == int(root_cat_id),
+            target_category.id == int(target_cat_id),
+            target_category.app_code == QBANK_CATEGORY_APP_CODE,
+            target_category.type == 'product_catalog',
+            target_category.status.is_(True),
+            or_(
+                target_category.id == root_category.id,
+                target_category.path == path_prefix,
+                target_category.path.like(func.concat(path_prefix, '/%')),
+            ),
+        ))
+        return bool(await db.scalar(stmt))
 
     @staticmethod
     async def get_knowledge_point_names(*, db: AsyncSession, kp_cat_id: int | None) -> set[str]:
@@ -145,47 +213,20 @@ class CategoryFilterService:
         if cat_id is None and kp_cat_id is None:
             return None
 
-        cache_key = f'qbank:category_filter:{cls.build_scope_key(cat_id=cat_id, kp_cat_id=kp_cat_id)}'
-        try:
-            cached = await redis_client.get(cache_key)
-        except Exception as exc:
-            log.warning('读取题库分类过滤缓存失败: {}', exc)
-            cached = None
+        scope_key = cls.build_scope_key(cat_id=cat_id, kp_cat_id=kp_cat_id)
 
-        if cached:
-            data = json.loads(cached)
+        async def factory() -> CategoryQuestionFilter:
+            category_ids = await cls.get_product_catalog_category_ids(db=db, cat_id=cat_id)
+            bank_ids = await cls.get_bank_ids_by_category_ids(db=db, category_ids=category_ids)
+            knowledge_names = await cls.get_knowledge_point_names(db=db, kp_cat_id=kp_cat_id)
             return CategoryQuestionFilter(
-                cat_id=data.get('cat_id'),
-                kp_cat_id=data.get('kp_cat_id'),
-                bank_ids=set(data.get('bank_ids') or []),
-                knowledge_names=set(data.get('knowledge_names') or []),
+                cat_id=cat_id,
+                kp_cat_id=kp_cat_id,
+                bank_ids=bank_ids,
+                knowledge_names=knowledge_names,
             )
 
-        category_ids = await cls.get_product_catalog_category_ids(db=db, cat_id=cat_id)
-        bank_ids = await cls.get_bank_ids_by_category_ids(db=db, category_ids=category_ids)
-        knowledge_names = await cls.get_knowledge_point_names(db=db, kp_cat_id=kp_cat_id)
-
-        result = CategoryQuestionFilter(
-            cat_id=cat_id,
-            kp_cat_id=kp_cat_id,
-            bank_ids=bank_ids,
-            knowledge_names=knowledge_names,
-        )
-        try:
-            await redis_client.setex(
-                cache_key,
-                QBANK_CATEGORY_FILTER_CACHE_TTL,
-                json.dumps({
-                    'cat_id': result.cat_id,
-                    'kp_cat_id': result.kp_cat_id,
-                    'bank_ids': list(result.bank_ids),
-                    'knowledge_names': list(result.knowledge_names),
-                }, ensure_ascii=False),
-            )
-        except Exception as exc:
-            log.warning('写入题库分类过滤缓存失败: {}', exc)
-
-        return result
+        return await category_filter_cache.get_or_set(scope_key, factory=factory)
 
 
 category_filter_service: CategoryFilterService = CategoryFilterService()

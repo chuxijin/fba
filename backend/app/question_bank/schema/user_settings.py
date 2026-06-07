@@ -21,6 +21,7 @@ CategoryCustomTabs = dict[str, list[CustomTab]]
 
 
 ThemeMode = Literal['light', 'dark', 'auto']
+RandomPracticeYearRange = Literal['unlimited', 'last_3_years', 'last_5_years']
 
 
 class StudyPreferenceSettings(BaseModel):
@@ -32,6 +33,8 @@ class StudyPreferenceSettings(BaseModel):
     category_custom_tabs: CategoryCustomTabs = Field(default_factory=dict, description='按分类范围隔离的自定义 Tab 列表')
     mastery_threshold: int = Field(default=3, ge=1, le=20, description='错题连续答对掌握阈值')
     theme_mode: ThemeMode = Field(default='light', description='主题模式：light/dark/auto')
+    random_practice_count: int = Field(default=20, ge=10, le=100, description='随机练习题目数')
+    random_practice_year_range: RandomPracticeYearRange = Field(default='unlimited', description='随机练习年份范围')
 
 
 class UpdateStudyPreferenceParam(BaseModel):
@@ -43,6 +46,8 @@ class UpdateStudyPreferenceParam(BaseModel):
     category_custom_tabs: CategoryCustomTabs | None = Field(None, description='按分类范围隔离的自定义 Tab 列表')
     mastery_threshold: int | None = Field(None, ge=1, le=20, description='错题连续答对掌握阈值')
     theme_mode: ThemeMode | None = Field(None, description='主题模式：light/dark/auto')
+    random_practice_count: int | None = Field(None, ge=10, le=100, description='随机练习题目数')
+    random_practice_year_range: RandomPracticeYearRange | None = Field(None, description='随机练习年份范围')
 
 
 class GetStudyPreferenceResponse(BaseModel):
@@ -54,6 +59,8 @@ class GetStudyPreferenceResponse(BaseModel):
     category_custom_tabs: CategoryCustomTabs = Field(default_factory=dict, description='按分类范围隔离的自定义 Tab 列表')
     mastery_threshold: int = Field(default=3, description='错题连续答对掌握阈值')
     theme_mode: ThemeMode = Field(default='light', description='主题模式：light/dark/auto')
+    random_practice_count: int = Field(default=20, description='随机练习题目数')
+    random_practice_year_range: RandomPracticeYearRange = Field(default='unlimited', description='随机练习年份范围')
 
 
 class InitCategoryPreferenceParam(BaseModel):

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 from collections.abc import Sequence
+from time import perf_counter
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, File, Form, Path, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from loguru import logger
 
 from backend.app.question_bank.model import QuestionAnalysis, QuestionStatistics
 from backend.app.question_bank.schema.note import GetQuestionNoteDetail
@@ -602,8 +604,21 @@ async def get_session_questions(
     - 材料独立返回并去重
     - 前端不再逐题拉取题干/选项/材料
     """
-    sid = await _resolve_session_id(db, session_key, request.user.id)
+    timings: list[tuple[str, float]] = []
+    total_start = perf_counter()
+
+    # Cut #1：service 内部一条 SQL 完成 key→id 解析 + 归属校验，省掉路由层 _resolve_session_id
+    t0 = perf_counter()
     data = await session_service.get_session_questions_with_materials(
-        db=db, session_id=sid, user_id=request.user.id
+        db=db, session_key=session_key, user_id=request.user.id
+    )
+    timings.append(('get_session_questions_with_materials', perf_counter() - t0))
+
+    logger.debug(
+        'get_session_questions_route_timing | user_id={} session_key={} total={:.1f}ms detail={}',
+        request.user.id,
+        session_key,
+        (perf_counter() - total_start) * 1000,
+        ', '.join(f'{name}={cost * 1000:.1f}ms' for name, cost in timings),
     )
     return response_base.success(data=data)
