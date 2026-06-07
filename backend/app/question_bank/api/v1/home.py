@@ -9,6 +9,7 @@ from backend.app.question_bank.schema.home import (
     CheckInParam,
     CheckInResult,
     HomeDashboardData,
+    PracticeActivityData,
     RankListData,
 )
 from backend.app.question_bank.service.check_in_service import check_in_service
@@ -38,6 +39,20 @@ async def get_home_dashboard(
     """
     dashboard_data = await home_service.get_dashboard_data(db=db, user_id=request.user.id)
     return response_base.success(data=dashboard_data)
+
+
+@router.get('/practice-activity', summary='获取练习活跃趋势', name='home_practice_activity', dependencies=[DependsJwtAuth])
+async def get_practice_activity(
+    request: Request,
+    db: CurrentSession,
+) -> ResponseSchemaModel[PracticeActivityData]:
+    """
+    👤 客户端首页 - 获取练习活跃趋势
+
+    返回近 30 天、当月每日、近 12 个月的做题数量。
+    """
+    activity_data = await home_service.get_practice_activity(db=db, user_id=request.user.id)
+    return response_base.success(data=activity_data)
 
 
 @router.post('/check-in', summary='用户打卡', name='home_check_in', dependencies=[DependsJwtAuth])

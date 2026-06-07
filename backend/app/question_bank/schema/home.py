@@ -19,6 +19,29 @@ class DailyPractice(SchemaBase):
     duration: int = Field(description='练习时长（秒）')
 
 
+class PracticeActivityDay(SchemaBase):
+    """练习活跃日"""
+
+    date: datetime.date = Field(description='日期')
+    count: int = Field(default=0, description='做题数量')
+
+
+class PracticeActivityMonth(SchemaBase):
+    """练习活跃月"""
+
+    month: str = Field(description='月份，格式 YYYY-MM')
+    label: str = Field(description='展示文案')
+    count: int = Field(default=0, description='做题数量')
+
+
+class PracticeActivityData(SchemaBase):
+    """练习活跃趋势"""
+
+    last_30_days: list[PracticeActivityDay] = Field(default_factory=list, description='近 30 天每日做题数')
+    current_month_days: list[PracticeActivityDay] = Field(default_factory=list, description='当月每日做题数')
+    last_12_months: list[PracticeActivityMonth] = Field(default_factory=list, description='近 12 个月做题数')
+
+
 class WeekPracticeStats(SchemaBase):
     """本周刷题统计"""
 

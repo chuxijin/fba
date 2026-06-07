@@ -16,6 +16,9 @@ from backend.app.question_bank.schema.home import (
     DailyPractice,
     HomeDashboardData,
     HomeUserReportData,
+    PracticeActivityData,
+    PracticeActivityDay,
+    PracticeActivityMonth,
     WeekPracticeStats,
 )
 from backend.common.enums import DataBaseType
@@ -179,6 +182,195 @@ class HomeService:
         if DataBaseType.postgresql == settings.DATABASE_TYPE:
             return func.date(func.timezone(settings.DATETIME_TIMEZONE, column))
         return func.date(column)
+
+    @staticmethod
+    def _local_month_expr(column: sa.ColumnElement) -> sa.ColumnElement:
+        """
+        构建应用时区月份表达式
+
+        :param column: 日期时间字段
+        :return:
+        """
+        if DataBaseType.postgresql == settings.DATABASE_TYPE:
+            return func.to_char(func.timezone(settings.DATETIME_TIMEZONE, column), 'YYYY-MM')
+        return func.date_format(column, '%Y-%m')
+
+    @staticmethod
+    def _answer_time_expr() -> sa.ColumnElement:
+        """构建真实作答时间表达式"""
+        return func.coalesce(SessionQuestion.updated_time, SessionQuestion.created_time)
+
+    @staticmethod
+    def _normalize_date(value: object) -> date:
+        """
+        归一化数据库日期值
+
+        :param value: 数据库返回日期值
+        :return:
+        """
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        return date.fromisoformat(str(value)[:10])
+
+    @staticmethod
+    def _shift_month(month_start: date, offset: int) -> date:
+        """
+        按月偏移
+
+        :param month_start: 月初日期
+        :param offset: 偏移月份
+        :return:
+        """
+        month_index = month_start.year * 12 + month_start.month - 1 + offset
+        return date(month_index // 12, month_index % 12 + 1, 1)
+
+    @staticmethod
+    def _month_key(month_start: date) -> str:
+        """
+        生成月份键
+
+        :param month_start: 月初日期
+        :return:
+        """
+        return f'{month_start.year}-{month_start.month:02d}'
+
+    @staticmethod
+    async def get_practice_activity(*, db: AsyncSession, user_id: int) -> PracticeActivityData:
+        """
+        获取练习活跃趋势
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        today = timezone.now().date()
+        last_30_start = today - timedelta(days=29)
+        current_month_start = date(today.year, today.month, 1)
+        last_12_month_start = HomeService._shift_month(current_month_start, -11)
+
+        last_30_days = await HomeService._get_daily_activity(db, user_id, last_30_start, today)
+        current_month_days = await HomeService._get_daily_activity(db, user_id, current_month_start, today)
+        last_12_months = await HomeService._get_monthly_activity(
+            db,
+            user_id,
+            last_12_month_start,
+            current_month_start,
+        )
+
+        return PracticeActivityData(
+            last_30_days=last_30_days,
+            current_month_days=current_month_days,
+            last_12_months=last_12_months,
+        )
+
+    @staticmethod
+    async def _get_daily_activity(
+        db: AsyncSession,
+        user_id: int,
+        start_date: date,
+        end_date: date,
+    ) -> list[PracticeActivityDay]:
+        """
+        获取每日做题数量
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param start_date: 开始日期
+        :param end_date: 结束日期
+        :return:
+        """
+        answer_time = HomeService._answer_time_expr()
+        practice_date_expr = HomeService._local_date_expr(answer_time)
+        start_time = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.tz_info)
+        end_time = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.tz_info)
+
+        stmt = (
+            select(
+                practice_date_expr.label('practice_date'),
+                func.count(SessionQuestion.id).label('count'),
+            )
+            .where(
+                SessionQuestion.user_id == user_id,
+                answer_time >= start_time,
+                answer_time < end_time,
+                SessionQuestion.user_answer.isnot(None),
+            )
+            .group_by(practice_date_expr)
+        )
+        rows = (await db.execute(stmt)).all()
+        count_map = {
+            HomeService._normalize_date(row.practice_date): int(row.count or 0)
+            for row in rows
+        }
+
+        days: list[PracticeActivityDay] = []
+        current_date = start_date
+        while current_date <= end_date:
+            days.append(PracticeActivityDay(date=current_date, count=count_map.get(current_date, 0)))
+            current_date += timedelta(days=1)
+
+        return days
+
+    @staticmethod
+    async def _get_monthly_activity(
+        db: AsyncSession,
+        user_id: int,
+        start_month: date,
+        end_month: date,
+    ) -> list[PracticeActivityMonth]:
+        """
+        获取每月做题数量
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param start_month: 开始月份月初
+        :param end_month: 结束月份月初
+        :return:
+        """
+        answer_time = HomeService._answer_time_expr()
+        practice_month_expr = HomeService._local_month_expr(answer_time)
+        start_time = datetime.combine(start_month, datetime.min.time(), tzinfo=timezone.tz_info)
+        end_time = datetime.combine(
+            HomeService._shift_month(end_month, 1),
+            datetime.min.time(),
+            tzinfo=timezone.tz_info,
+        )
+
+        stmt = (
+            select(
+                practice_month_expr.label('practice_month'),
+                func.count(SessionQuestion.id).label('count'),
+            )
+            .where(
+                SessionQuestion.user_id == user_id,
+                answer_time >= start_time,
+                answer_time < end_time,
+                SessionQuestion.user_answer.isnot(None),
+            )
+            .group_by(practice_month_expr)
+        )
+        rows = (await db.execute(stmt)).all()
+        count_map = {
+            str(row.practice_month)[:7]: int(row.count or 0)
+            for row in rows
+        }
+
+        months: list[PracticeActivityMonth] = []
+        current_month = start_month
+        while current_month <= end_month:
+            month_key = HomeService._month_key(current_month)
+            months.append(
+                PracticeActivityMonth(
+                    month=month_key,
+                    label=f'{current_month.month}月',
+                    count=count_map.get(month_key, 0),
+                )
+            )
+            current_month = HomeService._shift_month(current_month, 1)
+
+        return months
 
     @staticmethod
     async def _get_week_stats(db: AsyncSession, user_id: int) -> WeekPracticeStats:
