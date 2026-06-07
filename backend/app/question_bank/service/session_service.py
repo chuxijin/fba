@@ -1544,6 +1544,7 @@ class SessionService:
                 'question_id': record.question_id,
                 'placement_id': placement_id,
                 'seq_no': record.seq_no,
+                'question_type': question.type,
                 'user_answer': record.user_answer,
                 'answer_time': record.answer_time,
                 'full_score': full,
@@ -1811,7 +1812,7 @@ class SessionService:
             select(Question)
             .where(Question.id.in_(question_ids))
             .options(
-                load_only(Question.id, Question.stem, Question.type),
+                load_only(Question.id, Question.stem, Question.type, Question.options),
                 selectinload(Question.analyses).load_only(
                     QuestionAnalysis.id,
                     QuestionAnalysis.question_id,
