@@ -5,6 +5,7 @@
 
 用法:
     python backend/scripts/extract_kaoyantu_from_burp.py --input burp_items.xml
+    python backend/scripts/extract_kaoyantu_from_burp.py --input old.xml patch.xml --output backend/scripts/outputs/merged.xlsx
     python backend/scripts/extract_kaoyantu_from_burp.py --input burp_raw.txt --output backend/scripts/outputs/burp_questions.xlsx
 """
 import argparse
@@ -20,6 +21,13 @@ from openpyxl.styles import Alignment
 
 DEFAULT_TEMPLATE = r'D:\100_Work\101_Program\Proj\excel\question_import_template.xlsx'
 DEFAULT_OUTPUT = 'backend/scripts/outputs/kaoyantu_burp_questions.xlsx'
+DEFAULT_EMPTY_ANALYSIS = '暂无解析'
+TARGET_HOST = 'api.kaoyantu.top'
+TARGET_PATHS = {
+    '/routine/auth_api/get_question_list_by_page',
+    '/routine/auth_api/get_earmark_list',
+    '/routine/auth_api/get_question_ids',
+}
 
 QUESTION_HEADERS = [
     '序号',
@@ -120,7 +128,7 @@ def extract_http_body(raw_response: str) -> str:
     return raw_response.strip()
 
 
-def extract_bodies_from_burp_xml(path: Path) -> list[str]:
+def extract_bodies_from_burp_xml(path: Path) -> tuple[list[str], dict[str, int]]:
     """
     从 Burp XML 提取响应正文
 
@@ -129,17 +137,35 @@ def extract_bodies_from_burp_xml(path: Path) -> list[str]:
     """
     tree = ET.parse(path)
     bodies: list[str] = []
+    stats = {
+        'burp_items': 0,
+        'target_items': 0,
+        'skipped_items': 0,
+        'empty_response_items': 0,
+    }
     for item in tree.findall('.//item'):
+        stats['burp_items'] += 1
+        host = (item.findtext('host') or '').strip()
+        request_path = (item.findtext('path') or '').strip()
+        if host != TARGET_HOST or request_path not in TARGET_PATHS:
+            stats['skipped_items'] += 1
+            continue
+
+        stats['target_items'] += 1
         response_node = item.find('response')
         if response_node is None:
+            stats['empty_response_items'] += 1
             continue
 
         raw_response = decode_burp_response(response_node)
         body = extract_http_body(raw_response)
         if body:
             bodies.append(body)
+            continue
 
-    return bodies
+        stats['empty_response_items'] += 1
+
+    return bodies, stats
 
 
 def extract_balanced_json_objects(text: str) -> list[str]:
@@ -190,7 +216,7 @@ def extract_balanced_json_objects(text: str) -> list[str]:
     return objects
 
 
-def extract_bodies_from_raw_text(path: Path) -> list[str]:
+def extract_bodies_from_raw_text(path: Path) -> tuple[list[str], dict[str, int]]:
     """
     从普通文本提取 JSON 正文
 
@@ -206,10 +232,15 @@ def extract_bodies_from_raw_text(path: Path) -> list[str]:
             continue
         bodies.append(json_text)
 
-    return bodies
+    return bodies, {
+        'burp_items': 0,
+        'target_items': len(bodies),
+        'skipped_items': 0,
+        'empty_response_items': 0,
+    }
 
 
-def load_response_objects(input_path: Path) -> list[dict[str, Any]]:
+def load_response_objects(input_path: Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """
     加载响应 JSON 对象
 
@@ -218,21 +249,49 @@ def load_response_objects(input_path: Path) -> list[dict[str, Any]]:
     """
     head = read_text(input_path)[:200].lstrip()
     if input_path.suffix.lower() == '.xml' or head.startswith('<?xml') or head.startswith('<items'):
-        bodies = extract_bodies_from_burp_xml(input_path)
+        bodies, stats = extract_bodies_from_burp_xml(input_path)
     else:
-        bodies = extract_bodies_from_raw_text(input_path)
+        bodies, stats = extract_bodies_from_raw_text(input_path)
 
     responses: list[dict[str, Any]] = []
+    json_error_count = 0
     for body in bodies:
         try:
             parsed = json.loads(body)
         except json.JSONDecodeError:
+            json_error_count += 1
             continue
 
         if isinstance(parsed, dict):
             responses.append(parsed)
 
-    return responses
+    stats['json_error_count'] = json_error_count
+    return responses, stats
+
+
+def load_all_response_objects(input_paths: list[Path]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """
+    加载多个输入文件响应
+
+    :param input_paths: 输入文件路径列表
+    :return: 不添加返回说明
+    """
+    all_responses: list[dict[str, Any]] = []
+    merged_stats = {
+        'input_files': len(input_paths),
+        'burp_items': 0,
+        'target_items': 0,
+        'skipped_items': 0,
+        'empty_response_items': 0,
+        'json_error_count': 0,
+    }
+    for input_path in input_paths:
+        responses, stats = load_response_objects(input_path)
+        all_responses.extend(responses)
+        for key in ('burp_items', 'target_items', 'skipped_items', 'empty_response_items', 'json_error_count'):
+            merged_stats[key] += stats.get(key, 0)
+
+    return all_responses, merged_stats
 
 
 def normalize_question_type(question: dict[str, Any], chapter_names: list[str] | None = None) -> str:
@@ -243,10 +302,9 @@ def normalize_question_type(question: dict[str, Any], chapter_names: list[str] |
     :param chapter_names: 章节名称列表
     :return: 不添加返回说明
     """
-    if chapter_names:
-        for chapter_name in reversed(chapter_names):
-            if chapter_name in QUESTION_TYPE_MAPPING:
-                return QUESTION_TYPE_MAPPING[chapter_name]
+    answer = str(question.get('answer') or '')
+    if len(re.findall(r'[A-Z]', answer.upper())) > 1:
+        return '多选'
 
     raw_type = question.get('type')
     type_mapping = {
@@ -259,11 +317,23 @@ def normalize_question_type(question: dict[str, Any], chapter_names: list[str] |
     if raw_type in type_mapping:
         return type_mapping[raw_type]
 
-    answer = str(question.get('answer') or '')
-    if len(re.findall(r'[A-Z]', answer.upper())) > 1:
-        return '多选'
+    if chapter_names:
+        for chapter_name in reversed(chapter_names):
+            if chapter_name in QUESTION_TYPE_MAPPING:
+                return QUESTION_TYPE_MAPPING[chapter_name]
 
     return '单选'
+
+
+def has_multiple_option_answer(question: dict[str, Any]) -> bool:
+    """
+    判断是否为多选答案
+
+    :param question: 题目数据
+    :return: 不添加返回说明
+    """
+    answer = str(question.get('answer') or '')
+    return len(re.findall(r'[A-Z]', answer.upper())) > 1
 
 
 def clean_chapter_names(chapter_names: list[str]) -> list[str]:
@@ -322,12 +392,31 @@ def normalize_difficulty(raw_difficulty: Any) -> str:
     return '中等'
 
 
-def extract_analysis(question: dict[str, Any], analysis_map: dict[int, str] | None = None) -> str:
+def normalize_score(question_type: str) -> int:
+    """
+    转换分数
+
+    :param question_type: 题型
+    :return: 不添加返回说明
+    """
+    if question_type == '多选':
+        return 2
+
+    return 1
+
+
+def extract_analysis(
+    question: dict[str, Any],
+    analysis_map: dict[int, str] | None = None,
+    *,
+    use_fallback: bool = True,
+) -> str:
     """
     提取解析内容
 
     :param question: 题目数据
     :param analysis_map: 题目 ID 与解析内容映射
+    :param use_fallback: 是否使用默认空解析文案
     :return: 不添加返回说明
     """
     question_id = question.get('id')
@@ -347,6 +436,9 @@ def extract_analysis(question: dict[str, Any], analysis_map: dict[int, str] | No
     for candidate in candidates:
         if candidate:
             return str(candidate)
+
+    if use_fallback:
+        return DEFAULT_EMPTY_ANALYSIS
 
     return ''
 
@@ -466,6 +558,50 @@ def collect_questions(responses: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return questions
 
 
+def build_missing_analysis_ids(questions: list[dict[str, Any]], analysis_map: dict[int, str]) -> list[int]:
+    """
+    构建缺失解析题目 ID 列表
+
+    :param questions: 题目列表
+    :param analysis_map: 解析映射
+    :return: 不添加返回说明
+    """
+    missing_ids: list[int] = []
+    for question in questions:
+        question_id = question.get('id')
+        if not isinstance(question_id, int):
+            continue
+
+        if question_id not in analysis_map and not extract_analysis(question, use_fallback=False):
+            missing_ids.append(question_id)
+
+    return missing_ids
+
+
+def filter_questions_with_analysis(
+    questions: list[dict[str, Any]],
+    analysis_map: dict[int, str],
+) -> list[dict[str, Any]]:
+    """
+    过滤有真实解析的题目
+
+    :param questions: 题目列表
+    :param analysis_map: 解析映射
+    :return: 不添加返回说明
+    """
+    filtered_questions: list[dict[str, Any]] = []
+    for question in questions:
+        question_id = question.get('id')
+        if isinstance(question_id, int) and question_id in analysis_map:
+            filtered_questions.append(question)
+            continue
+
+        if extract_analysis(question, use_fallback=False):
+            filtered_questions.append(question)
+
+    return filtered_questions
+
+
 def clear_sheet_rows(ws: Any, start_row: int = 2) -> None:
     """
     清空模板数据行
@@ -508,7 +644,9 @@ def build_excel_row(
     if isinstance(eid, int) and eid in chapter_path_map:
         level1_name, level2_name, level3_name, knowledge_name, mapped_question_type = chapter_path_map[eid]
 
-    question_type = mapped_question_type or normalize_question_type(question)
+    question_type = normalize_question_type(question)
+    if mapped_question_type and not has_multiple_option_answer(question):
+        question_type = mapped_question_type
 
     return [
         index,
@@ -521,7 +659,7 @@ def build_excel_row(
         question.get('answer') or '',
         extract_analysis(question, analysis_map),
         normalize_difficulty(question.get('difficulty')),
-        1,
+        normalize_score(question_type),
         level1_name,
         level2_name,
         level3_name,
@@ -577,15 +715,21 @@ def write_excel(
 def main() -> None:
     """执行 Burp 响应提取"""
     parser = argparse.ArgumentParser(description='从 Burp 导出文件提取考研兔题目到 Excel')
-    parser.add_argument('--input', required=True, help='Burp 导出的 XML 或普通文本文件')
+    parser.add_argument('--input', required=True, nargs='+', help='Burp 导出的 XML 或普通文本文件，可传多个')
     parser.add_argument('--template', default=DEFAULT_TEMPLATE, help='Excel 模板路径')
     parser.add_argument('--output', default=DEFAULT_OUTPUT, help='输出 Excel 路径')
+    parser.add_argument('--only-with-analysis', action='store_true', help='只导出有真实解析的题目，适合补充包')
     args = parser.parse_args()
 
-    responses = load_response_objects(Path(args.input))
+    input_paths = [Path(input_path) for input_path in args.input]
+    responses, load_stats = load_all_response_objects(input_paths)
     chapter_path_map = build_chapter_path_map(responses)
     analysis_map = collect_analysis_map(responses)
     questions = collect_questions(responses)
+    all_questions_count = len(questions)
+    if args.only_with_analysis:
+        questions = filter_questions_with_analysis(questions, analysis_map)
+
     if not questions:
         raise RuntimeError('未从 Burp 文件中提取到题目数据')
 
@@ -598,12 +742,18 @@ def main() -> None:
     )
 
     analysis_count = sum(1 for question in questions if extract_analysis(question, analysis_map))
+    missing_analysis_ids = build_missing_analysis_ids(questions, analysis_map)
     print(json.dumps({
+        **load_stats,
         'responses': len(responses),
+        'all_questions': all_questions_count,
         'questions': len(questions),
+        'filtered_without_analysis': all_questions_count - len(questions),
         'chapter_mappings': len(chapter_path_map),
         'analysis_mappings': len(analysis_map),
         'analysis_count': analysis_count,
+        'missing_analysis_count': len(missing_analysis_ids),
+        'missing_analysis_ids': missing_analysis_ids[:50],
         'output': args.output,
     }, ensure_ascii=False, indent=2))
 
