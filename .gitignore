@@ -71,6 +71,7 @@ videos/
 debug_materials.py
 status.json
 claude.md
+200
 
 # CI/质量检查工具缓存
 .playwright-mcp/
