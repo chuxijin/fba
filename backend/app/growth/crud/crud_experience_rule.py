@@ -15,7 +15,6 @@ class CRUDExperienceRule(CRUDPlus[ExperienceRule]):
         db: AsyncSession,
         *,
         event_code: str,
-        family_code: str | None = None,
         cycle_day: int | None = None,
     ) -> ExperienceRule | None:
         """
@@ -23,7 +22,6 @@ class CRUDExperienceRule(CRUDPlus[ExperienceRule]):
 
         :param db: 数据库会话
         :param event_code: 事件编码
-        :param family_code: 用户族群
         :param cycle_day: 周期第几天
         :return:
         """
@@ -35,8 +33,6 @@ class CRUDExperienceRule(CRUDPlus[ExperienceRule]):
         rows = (await db.execute(stmt)).scalars().all()
 
         for rule in rows:
-            if rule.family_code is not None and rule.family_code != family_code:
-                continue
             if rule.cycle_day is not None and rule.cycle_day != cycle_day:
                 continue
             return rule

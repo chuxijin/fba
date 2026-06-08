@@ -23,14 +23,11 @@ router = APIRouter()
 async def get_account_list(
     db: CurrentSession,
     user_id: Annotated[int | None, Query(description='用户 ID')] = None,
-    family_code: Annotated[str | None, Query(description='族群')] = None,
 ) -> ResponseSchemaModel[PageData[GetGrowthAccountDetail]]:
     """分页查询经验账户"""
     stmt = select(GrowthAccount)
     if user_id is not None:
         stmt = stmt.where(GrowthAccount.user_id == user_id)
-    if family_code is not None:
-        stmt = stmt.where(GrowthAccount.family_code == family_code)
     stmt = stmt.order_by(GrowthAccount.user_id.asc())
     page_data = await paging_data(db, stmt)
     return response_base.success(data=page_data)

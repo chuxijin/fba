@@ -214,7 +214,6 @@ export interface SubmitPracticeSessionResult {
   check_in_reward_exp?: number;
   is_auto_checked_in?: boolean;
   check_in_streak?: number | null;
-  family_code?: string | null;
   current_grade?: string | null;
   total_exp?: number | null;
   available_exp?: number | null;

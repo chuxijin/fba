@@ -169,12 +169,10 @@ class PointsFulfiller(BaseRewardFulfiller):
             log.warning(f'经验发放失败: user_id={user_id}, reason=missing_source_key')
             return False
 
-        family_code = await experience_service.resolve_reward_family(db, user_id=user_id)
         try:
             await experience_service.add_experience(
                 db,
                 user_id=user_id,
-                family_code=str(family_code),
                 exp_delta=amount,
                 source=source,
                 source_key=source_key,
@@ -186,7 +184,7 @@ class PointsFulfiller(BaseRewardFulfiller):
 
         log.info(
             f'经验发放成功: user_id={user_id}, amount={amount}, '
-            f'family={family_code}, source={source}, source_key={source_key}'
+            f'source={source}, source_key={source_key}'
         )
         return True
 
@@ -210,12 +208,10 @@ class PointsFulfiller(BaseRewardFulfiller):
             log.warning(f'经验撤销失败: user_id={user_id}, reason=missing_source_key')
             return False
 
-        family_code = await experience_service.resolve_reward_family(db, user_id=user_id)
         try:
             await experience_service.consume_experience(
                 db,
                 user_id=user_id,
-                family_code=str(family_code),
                 exp_delta=amount,
                 source='reward_revoke',
                 source_key=f'revoke:{source_key}',
@@ -227,7 +223,7 @@ class PointsFulfiller(BaseRewardFulfiller):
 
         log.info(
             f'经验撤销成功: user_id={user_id}, amount={amount}, '
-            f'family={family_code}, source_key={source_key}'
+            f'source_key={source_key}'
         )
         return True
 

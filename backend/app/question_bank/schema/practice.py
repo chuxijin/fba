@@ -256,7 +256,6 @@ class SubmitPracticeSessionResult(SchemaBase):
     check_in_reward_exp: int = Field(default=0, ge=0, description='本次自动签到奖励经验')
     is_auto_checked_in: bool = Field(default=False, description='本次是否自动签到')
     check_in_streak: int | None = Field(default=None, description='连续签到天数')
-    family_code: str | None = Field(default=None, description='入账等级族群')
     tier_grade: int | None = Field(default=None, description='当前等级')
     exp: int | None = Field(default=None, description='累计经验')
     available_exp: int | None = Field(default=None, description='可用经验')

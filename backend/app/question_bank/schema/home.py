@@ -112,7 +112,6 @@ class CheckInResult(SchemaBase):
     practice_count: int = Field(description='当日做题数')
     practice_duration: int = Field(description='当日练习时长（秒）')
     reward_exp: int = Field(description='本次奖励经验')
-    family_code: str | None = Field(default=None, description='入账等级族群')
     tier_grade: int | None = Field(default=None, description='当前等级')
     exp: int | None = Field(default=None, description='累计经验')
     available_exp: int | None = Field(default=None, description='可用经验')

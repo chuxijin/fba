@@ -22,13 +22,10 @@ router = APIRouter()
 async def get_my_progress(
     request: Request,
     db: CurrentSession,
-    family_code: Annotated[str | None, Query(description='族群过滤')] = None,
-) -> ResponseSchemaModel[list[GetGrowthProgress]]:
+) -> ResponseSchemaModel[GetGrowthProgress | None]:
     """我的成长进度"""
     user_id = int(request.user.id)
-    data = await experience_service.get_user_progress(
-        db, user_id=user_id, family_code=family_code
-    )
+    data = await experience_service.get_user_progress(db, user_id=user_id)
     return response_base.success(data=data)
 
 

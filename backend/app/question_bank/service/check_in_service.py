@@ -46,7 +46,7 @@ class CheckInService:
     @staticmethod
     async def _get_reward_context(
         *, db: AsyncSession, user_id: int
-    ) -> tuple[str, int, ExperienceRule | None]:
+    ) -> tuple[int, ExperienceRule | None]:
         """
         获取签到奖励上下文
 
@@ -54,16 +54,14 @@ class CheckInService:
         :param user_id: 用户 ID
         :return:
         """
-        family_code = await experience_service.resolve_reward_family(db, user_id=user_id)
         streak_before_today = await check_in_dao.get_streak(db, user_id)
         cycle_day = (streak_before_today % 7) + 1
         reward_rule = await experience_rule_dao.get_active_rule(
             db,
             event_code='check_in',
-            family_code=family_code,
             cycle_day=cycle_day,
         )
-        return family_code, cycle_day, reward_rule
+        return cycle_day, reward_rule
 
     @staticmethod
     async def try_auto_check_in(*, db: AsyncSession, user_id: int) -> CheckInResult | None:
@@ -80,7 +78,7 @@ class CheckInService:
         if existing:
             return None
 
-        _, _, reward_rule = await CheckInService._get_reward_context(db=db, user_id=user_id)
+        _, reward_rule = await CheckInService._get_reward_context(db=db, user_id=user_id)
         if not reward_rule:
             return None
         if today_summary['practice_count'] < reward_rule.min_practice_count:
@@ -129,7 +127,7 @@ class CheckInService:
                 reward_exp=0,
             )
 
-        family_code, cycle_day, reward_rule = await CheckInService._get_reward_context(db=db, user_id=user_id)
+        cycle_day, reward_rule = await CheckInService._get_reward_context(db=db, user_id=user_id)
         if reward_rule and practice_count < reward_rule.min_practice_count:
             raise errors.RequestError(msg=f'今日做题满 {reward_rule.min_practice_count} 题后可签到')
         if reward_rule and practice_duration < reward_rule.min_practice_duration:
@@ -144,7 +142,6 @@ class CheckInService:
             progress = await experience_service.add_experience(
                 db,
                 user_id=user_id,
-                family_code=family_code,
                 exp_delta=reward_exp,
                 source='check_in',
                 source_key=f'check_in:{user_id}:{today.isoformat()}',
@@ -165,7 +162,6 @@ class CheckInService:
             practice_count=practice_count,
             practice_duration=practice_duration,
             reward_exp=reward_exp,
-            family_code=family_code,
             tier_grade=progress.get('current_grade') if progress else None,
             exp=progress.get('total_exp') if progress else None,
             available_exp=progress.get('available_exp') if progress else None,

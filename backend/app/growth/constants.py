@@ -13,14 +13,12 @@ class GrowthEventOp(str, Enum):
 
 
 class FamilyCode(str, Enum):
-    """成长族群"""
+    """成长族群（仅用于经验规则配置，不再影响用户经验账户）"""
 
     FREE = 'FREE'
     VIP = 'VIP'
     SVIP = 'SVIP'
 
-
-DEFAULT_FAMILY = FamilyCode.FREE.value
 
 # 等级阈值: {等级: 达到该等级所需累计经验}
 # 等比数列 ratio=1.4, 10 级累计 5000

@@ -15,7 +15,6 @@ class GetGrowthAccountDetail(SchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     user_id: int = Field(description='用户 ID')
-    family_code: str = Field(description='族群')
     total_exp: int = Field(description='累计经验')
     available_exp: int = Field(description='可用经验')
     current_grade: int = Field(description='当前等级')
@@ -24,7 +23,6 @@ class GetGrowthAccountDetail(SchemaBase):
 class GetGrowthProgress(SchemaBase):
     """成长进度"""
 
-    family_code: str = Field(description='族群')
     total_exp: int = Field(description='累计经验')
     available_exp: int = Field(description='可用经验')
     current_grade: int = Field(description='当前等级')
@@ -35,7 +33,6 @@ class AddExperienceParam(SchemaBase):
     """加经验值"""
 
     user_id: int = Field(description='用户 ID')
-    family_code: str = Field(max_length=16, description='族群')
     exp_delta: int = Field(gt=0, description='经验增量')
     source: str = Field(max_length=32, description='来源标识')
     source_key: str = Field(max_length=128, description='来源幂等键')

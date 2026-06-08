@@ -1312,26 +1312,23 @@ class SessionService:
         if correct_count <= 0:
             return {'reward_exp': 0}
 
-        family_code = await experience_service.resolve_reward_family(db, user_id=user_id)
         reward_rule = await experience_rule_dao.get_active_rule(
             db,
             event_code='practice_correct',
-            family_code=family_code,
         )
         if not reward_rule:
-            return {'reward_exp': 0, 'family_code': family_code}
+            return {'reward_exp': 0}
 
         if completed_count < reward_rule.min_practice_count:
-            return {'reward_exp': 0, 'family_code': family_code}
+            return {'reward_exp': 0}
 
         if total_time < reward_rule.min_practice_duration:
-            return {'reward_exp': 0, 'family_code': family_code}
+            return {'reward_exp': 0}
 
         reward_exp = reward_rule.exp_delta * correct_count
         progress = await experience_service.add_experience(
             db,
             user_id=user_id,
-            family_code=family_code,
             exp_delta=reward_exp,
             source='practice_correct',
             source_key=f'practice_correct:{session_id}',
@@ -1339,7 +1336,6 @@ class SessionService:
         )
         return {
             'reward_exp': reward_exp,
-            'family_code': family_code,
             'tier_grade': progress.get('current_grade'),
             'exp': progress.get('total_exp'),
             'available_exp': progress.get('available_exp'),
@@ -1686,7 +1682,6 @@ class SessionService:
         latest_progress: dict[str, int | str | None] = reward_progress
         if check_in_result and check_in_result.reward_exp > 0:
             latest_progress = {
-                'family_code': check_in_result.family_code,
                 'tier_grade': check_in_result.tier_grade,
                 'exp': check_in_result.exp,
                 'available_exp': check_in_result.available_exp,
@@ -1712,7 +1707,6 @@ class SessionService:
             check_in_reward_exp=check_in_reward_exp,
             is_auto_checked_in=bool(check_in_result),
             check_in_streak=check_in_result.check_in_streak if check_in_result else None,
-            family_code=latest_progress.get('family_code'),
             tier_grade=latest_progress.get('tier_grade'),
             exp=latest_progress.get('exp'),
             available_exp=latest_progress.get('available_exp'),
