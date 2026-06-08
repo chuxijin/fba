@@ -41,7 +41,12 @@ class CRUDChapter(CRUDPlus[QuestionChapter]):
             select(QuestionChapter)
             .where(QuestionChapter.bank_id == bank_id)
             .options(noload(QuestionChapter.bank))
-            .order_by(QuestionChapter.sort_order.asc())
+            .order_by(
+                QuestionChapter.level.asc(),
+                QuestionChapter.parent_id.asc().nullsfirst(),
+                QuestionChapter.sort_order.asc(),
+                QuestionChapter.id.asc(),
+            )
         )
         result = await db.execute(stmt)
         return result.scalars().all()

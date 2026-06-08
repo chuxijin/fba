@@ -1128,12 +1128,17 @@ class QuestionService:
                     parent_id=parent_id,
                 )
                 if not chapter:
+                    sort_order = await QuestionService._get_next_chapter_sort_order(
+                        db=db,
+                        bank_id=source_bank_id,
+                        parent_id=parent_id,
+                    )
                     param = CreateChapterParam(
                         bank_id=source_bank_id,
                         name=name,
                         level=level,
                         parent_id=parent_id,
-                        sort_order=0,
+                        sort_order=sort_order,
                     )
                     await chapter_dao.create(db, param)
                     await db.flush()
@@ -1147,6 +1152,32 @@ class QuestionService:
             parent_id = chapter_cache[cache_key]
 
         return parent_id
+
+    @staticmethod
+    async def _get_next_chapter_sort_order(
+        *,
+        db: AsyncSession,
+        bank_id: int,
+        parent_id: int | None,
+    ) -> int:
+        """
+        获取同级章节下一个排序值
+
+        :param db: 数据库会话
+        :param bank_id: 题库 ID
+        :param parent_id: 父级章节 ID
+        :return:
+        """
+        stmt = select(func.coalesce(func.max(QuestionChapter.sort_order), 0)).where(
+            QuestionChapter.bank_id == bank_id,
+        )
+        if parent_id is None:
+            stmt = stmt.where(QuestionChapter.parent_id.is_(None))
+        else:
+            stmt = stmt.where(QuestionChapter.parent_id == parent_id)
+
+        max_sort_order = (await db.execute(stmt)).scalar() or 0
+        return int(max_sort_order) + 10
 
     @staticmethod
     async def _update_placement_caches(

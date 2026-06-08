@@ -20,5 +20,5 @@ class VocabUserSetting(Base):
     reminder_enabled: Mapped[bool] = mapped_column(default=False, comment='是否开启提醒')
     reminder_time: Mapped[str | None] = mapped_column(sa.String(5), default=None, comment='提醒时间(如 08:30)')
     preferred_mode: Mapped[str] = mapped_column(sa.String(20), default='recognize', comment='偏好学习模式')
-    auto_pronunciation: Mapped[bool] = mapped_column(default=True, comment='自动播放发音')
+    auto_pronunciation: Mapped[bool] = mapped_column(default=False, comment='自动播放发音')
     pronunciation_type: Mapped[str] = mapped_column(sa.String(5), default='us', comment='发音偏好(us/uk)')
