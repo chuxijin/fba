@@ -49,8 +49,9 @@ class StudyPlan(Base, UserMixin):
     )
     template_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
+        sa.ForeignKey('study_plan_template.id', ondelete='SET NULL'),
         default=None,
-        comment='来源模板 ID（软引用 study_plan_template，T1.3 后补外键）',
+        comment='来源模板 ID',
     )
 
     # ============ 关系 ============
