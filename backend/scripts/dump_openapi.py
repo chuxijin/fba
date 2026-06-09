@@ -27,7 +27,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 from fastapi import FastAPI  # noqa: E402
 
 from backend.core.conf import settings  # noqa: E402
-from backend.plugin.core import build_final_router  # noqa: E402
+from backend.plugin.router import build_final_router  # noqa: E402
 from backend.utils.openapi import ensure_unique_route_names, simplify_operation_ids  # noqa: E402
 
 

@@ -255,13 +255,13 @@ pages/study/mentor               # 我的导师（P2 加）
 | # | 任务 | 状态 | 备注 |
 |---|---|---|---|
 | T3.1 | 调整 `tabbar/config.ts`，新增规划 tab | ✅ | tab 配 roles=['study_plan_internal']；后端 /me 接口命中白名单时追加虚拟角色；不命中用户完全看不到规划 tab |
-| T3.2 | `pages/study/index.vue` 重构为今日计划首页 | ⬜ | 复用现有 935 行视情决定 |
-| T3.3 | `pages/study/item/[id].vue` 模块详情页（多态渲染） | ⬜ | |
+| T3.2 | `pages/study/index.vue` 重构为今日计划首页 | ✅ | 完整今日聚合视图：进度卡 + 模块列表（4 类 module_type 各异图标）+ 历史提醒铃铛 + 资料大厅入口；4 种异常态（loading/error/empty plan/empty items）；SDK 自动同步 20 个 study_plan 接口 |
+| T3.3 | `pages/study/item/index.vue` 模块详情页（多态渲染） | ⬜ | 占位页已建（todo 实现） |
 | T3.4 | 复习模块组件（文章 + 网盘链接 + 已读按钮） | ⬜ | |
 | T3.5 | 刷题模块跳转 + 完成回调 | ⬜ | 与现有 practice 模块联动 |
 | T3.6 | 错题复盘模块跳转 + 完成回调 | ⬜ | 与现有错题复盘联动 |
-| T3.7 | 历史记录页 | ⬜ | |
-| T3.8 | 灰度判断：根据用户白名单显示/隐藏 tab | ⬜ | |
+| T3.7 | 历史记录页 | ⬜ | 占位页已建 |
+| T3.8 | 灰度判断：根据用户白名单显示/隐藏 tab | ✅ | 已通过 T3.1 的虚拟角色机制完成（D26）|
 
 ### Phase 4 — 管理后台（PC，约 3 天）
 | # | 任务 | 状态 | 备注 |
@@ -333,3 +333,4 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-09 | null | T2.8：20 个 endpoint 全部落地（学员/导师/管理三端），含 student_service 完整封装启动+完成业务流；FastAPI app 整体装配验证通过 |
 | 2026-06-09 | null | T2.9：30 个 pytest 真值表测试通过；统一 20 个 endpoint 函数名加 study_plan_ 前缀（解决 fba 项目级唯一性约束）；**Phase 2 全部 9 个任务完成 → 后端 MVP 闭环就绪** |
 | 2026-06-09 | null | T3.1 + D26：tabbar 启用规划 tab；后端 /me 追加虚拟角色 study_plan_internal；未命中用户完全看不到 tab |
+| 2026-06-09 | null | T3.2：今日计划首页完整实现；SDK 同步生成 20 个 study_plan 方法；修复 dump_openapi.py 的陈旧 import 路径 |
