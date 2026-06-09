@@ -261,6 +261,17 @@ async def submit_session(
     result = await session_service.submit_session(
         db=db, session_id=sid, user_id=request.user.id, obj=obj,
     )
+
+    from backend.app.study_plan.service.session_hook import handle_session_completed
+
+    await handle_session_completed(
+        db,
+        session_key=session_key,
+        user_id=request.user.id,
+        correct_count=result.correct_count,
+        total_count=result.completed_count,
+    )
+
     return response_base.success(data=result)
 
 
@@ -273,7 +284,15 @@ async def abandon_session(
     """放弃练习会话"""
     sid = await _resolve_session_id(db, session_key, request.user.id)
     count = await session_service.abandon_session(db=db, session_id=sid, user_id=request.user.id)
+
     if count > 0:
+        from backend.app.study_plan.service.session_hook import handle_session_abandoned
+
+        await handle_session_abandoned(
+            db,
+            session_key=session_key,
+            user_id=request.user.id,
+        )
         return response_base.success()
     return response_base.fail()
 

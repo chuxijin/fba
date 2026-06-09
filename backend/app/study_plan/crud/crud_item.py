@@ -102,6 +102,25 @@ class CRUDStudyPlanItem(CRUDPlus[StudyPlanItem]):
         """
         return await self.update_model(db, item_id, {'extra': extra})
 
+    async def get_by_session_key(self, db: AsyncSession, session_key: str) -> StudyPlanItem | None:
+        """
+        根据 extra->>'session_key' 反查关联的计划项
+
+        :param db: 数据库会话
+        :param session_key: 题库练习会话 key
+        :return:
+        """
+        stmt = (
+            select(StudyPlanItem)
+            .where(
+                StudyPlanItem.deleted == 0,
+                StudyPlanItem.extra.op('->>')('session_key') == session_key,
+            )
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
     async def bulk_skip_pending_before(
         self, db: AsyncSession, before_date: date,
     ) -> int:
