@@ -91,6 +91,17 @@ class CRUDStudyPlanItem(CRUDPlus[StudyPlanItem]):
         """
         return await self.update_model(db, item_id, {'status': status})
 
+    async def update_extra(self, db: AsyncSession, item_id: int, extra: dict) -> int:
+        """
+        覆写计划项 extra（JSONB）
+
+        :param db: 数据库会话
+        :param item_id: 计划项 ID
+        :param extra: 新的 extra 字典
+        :return:
+        """
+        return await self.update_model(db, item_id, {'extra': extra})
+
     async def bulk_skip_pending_before(
         self, db: AsyncSession, before_date: date,
     ) -> int:

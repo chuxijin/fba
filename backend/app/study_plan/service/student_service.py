@@ -5,6 +5,8 @@ from typing import Any, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank.schema.practice import CreatePracticeSessionParam
+from backend.app.question_bank.service.session_service import session_service
 from backend.app.study_plan.crud import study_plan_dao, study_plan_item_dao, study_plan_record_dao
 from backend.app.study_plan.model.item import StudyPlanItem
 from backend.app.study_plan.model.plan import StudyPlan
@@ -16,6 +18,43 @@ from backend.app.study_plan.schema.item import (
 from backend.app.study_plan.service.completion import check_completion
 from backend.app.study_plan.service.wrong_review_service import select_wrong_review_questions
 from backend.common.exception import errors
+
+
+async def _ensure_practice_session(
+    db: AsyncSession, item: StudyPlanItem,
+) -> str:
+    """
+    刷题类按需创建题库练习会话；已存在则复用
+
+    :param db: 数据库会话
+    :param item: 计划项
+    :return:
+    """
+    extra = dict(item.extra or {})
+    existing = extra.get('session_key')
+    if isinstance(existing, str) and existing:
+        return existing
+
+    if item.ref_type != 'question_set' or item.ref_id is None:
+        raise errors.RequestError(msg='刷题模块未配置题库（ref_type/ref_id 缺失）')
+
+    question_count = extra.get('question_count')
+    create_param = CreatePracticeSessionParam(
+        session_type='bank',
+        practice_name=item.title,
+        bank_id=item.ref_id,
+        limit=int(question_count) if question_count else None,
+    )
+    session = await session_service.create_session(
+        db=db,
+        user_id=item.user_id,
+        obj=create_param,
+    )
+
+    extra['session_key'] = session.session_key
+    await study_plan_item_dao.update_extra(db, item.id, extra)
+    item.extra = extra
+    return session.session_key
 
 
 async def get_item_for_user(
@@ -92,7 +131,7 @@ async def start_item(
     db: AsyncSession, item_id: int, user_id: int,
 ) -> StartStudyPlanItemResult:
     """
-    启动计划项；wrong_review 类型实时计算错题列表
+    启动计划项；wrong_review 实时算错题；practice 按需绑定题库 session
 
     :param db: 数据库会话
     :param item_id: 计划项 ID
@@ -111,6 +150,9 @@ async def start_item(
             'question_ids': question_ids,
             'empty_hint': '近期没有需要复盘的错题，要不要做点新题？' if not question_ids else None,
         }
+    elif item.module_type == 'practice':
+        session_key = await _ensure_practice_session(db, item)
+        payload = {'session_key': session_key}
 
     if item.status == 'pending':
         await study_plan_item_dao.update_status(db, item_id, 'in_progress')
