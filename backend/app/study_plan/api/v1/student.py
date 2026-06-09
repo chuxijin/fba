@@ -31,7 +31,7 @@ router = APIRouter(
 
 
 @router.get('/today', summary='获取今日计划', response_model=ResponseSchemaModel[TodayStudyPlanDetail])
-async def get_today(request: Request, db: CurrentSession) -> ResponseSchemaModel[TodayStudyPlanDetail]:
+async def study_plan_get_today(request: Request, db: CurrentSession) -> ResponseSchemaModel[TodayStudyPlanDetail]:
     detail = await get_today_plan(db, request.user.id)
     return response_base.success(data=detail)
 
@@ -41,7 +41,7 @@ async def get_today(request: Request, db: CurrentSession) -> ResponseSchemaModel
     summary='获取计划项详情',
     response_model=ResponseSchemaModel[GetStudyPlanItemDetail],
 )
-async def get_item(
+async def study_plan_get_item(
     request: Request,
     db: CurrentSession,
     item_id: int = Path(description='计划项 ID'),
@@ -55,7 +55,7 @@ async def get_item(
     summary='启动计划项',
     response_model=ResponseSchemaModel[StartStudyPlanItemResult],
 )
-async def start(
+async def study_plan_start(
     request: Request,
     db: CurrentSessionTransaction,
     item_id: int = Path(description='计划项 ID'),
@@ -69,7 +69,7 @@ async def start(
     summary='提交计划项完成',
     response_model=ResponseSchemaModel[GetStudyPlanRecordDetail],
 )
-async def complete(
+async def study_plan_complete(
     request: Request,
     db: CurrentSessionTransaction,
     param: CompleteStudyPlanItemParam,
@@ -80,7 +80,7 @@ async def complete(
 
 
 @router.get('/me/plans', summary='我的计划列表', response_model=ResponseSchemaModel[list[GetStudyPlanDetail]])
-async def list_my_plans(
+async def study_plan_list_my_plans(
     request: Request, db: CurrentSession,
 ) -> ResponseSchemaModel[list[GetStudyPlanDetail]]:
     plans = await study_plan_dao.list_by_user(db, request.user.id)
@@ -90,7 +90,7 @@ async def list_my_plans(
 
 
 @router.get('/me/uncompleted-count', summary='历史未完成项数量（提醒铃铛）', response_model=ResponseSchemaModel[int])
-async def my_uncompleted_count(
+async def study_plan_my_uncompleted_count(
     request: Request, db: CurrentSession,
 ) -> ResponseSchemaModel[int]:
     count = await count_uncompleted_history(db, request.user.id)

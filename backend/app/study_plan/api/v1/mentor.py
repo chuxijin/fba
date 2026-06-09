@@ -37,7 +37,7 @@ router = APIRouter()
         DependsRBAC,
     ],
 )
-async def create_plan_from_template(
+async def study_plan_create_plan_from_template(
     request: Request,
     db: CurrentSessionTransaction,
     param: InstantiateStudyPlanTemplateParam,
@@ -55,7 +55,7 @@ async def create_plan_from_template(
         DependsRBAC,
     ],
 )
-async def create_blank_plan(
+async def study_plan_create_blank_plan(
     request: Request,
     db: CurrentSessionTransaction,
     param: CreateStudyPlanParam,
@@ -84,7 +84,7 @@ async def create_blank_plan(
         DependsRBAC,
     ],
 )
-async def list_plans_for_student(
+async def study_plan_list_plans_for_student(
     db: CurrentSession,
     student_id: int = Query(description='学员用户 ID'),
 ) -> ResponseSchemaModel[list[GetStudyPlanDetail]]:
@@ -103,7 +103,7 @@ async def list_plans_for_student(
         DependsRBAC,
     ],
 )
-async def get_plan_progress(
+async def study_plan_get_plan_progress(
     db: CurrentSession,
     plan_id: int = Path(description='计划 ID'),
 ) -> ResponseSchemaModel[StudyPlanProgress]:
@@ -128,7 +128,7 @@ async def get_plan_progress(
         DependsRBAC,
     ],
 )
-async def list_items_of_plan(
+async def study_plan_list_items_of_plan(
     db: CurrentSession,
     plan_id: int = Path(description='计划 ID'),
 ) -> ResponseSchemaModel[list[GetStudyPlanItemDetail]]:

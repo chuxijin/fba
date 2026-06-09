@@ -44,7 +44,7 @@ router = APIRouter()
     response_model=ResponseSchemaModel[GetStudyPlanItemDetail],
     dependencies=[Depends(RequestPermission('study_plan:admin:write')), DependsRBAC],
 )
-async def add_item(
+async def study_plan_add_item(
     request: Request,
     db: CurrentSessionTransaction,
     param: CreateStudyPlanItemParam,
@@ -81,7 +81,7 @@ async def add_item(
     response_model=ResponseSchemaModel[GetStudyPlanItemDetail],
     dependencies=[Depends(RequestPermission('study_plan:admin:write')), DependsRBAC],
 )
-async def update_item(
+async def study_plan_update_item(
     db: CurrentSessionTransaction,
     param: UpdateStudyPlanItemParam,
     item_id: int = Path(description='计划项 ID'),
@@ -102,7 +102,7 @@ async def update_item(
     summary='删除计划项',
     dependencies=[Depends(RequestPermission('study_plan:admin:write')), DependsRBAC],
 )
-async def delete_item(
+async def study_plan_delete_item(
     db: CurrentSessionTransaction,
     item_id: int = Path(description='计划项 ID'),
 ) -> ResponseModel:
@@ -119,7 +119,7 @@ async def delete_item(
     response_model=ResponseSchemaModel[GetStudyPlanTemplateDetail],
     dependencies=[Depends(RequestPermission('study_plan:admin:write')), DependsRBAC],
 )
-async def create_template(
+async def study_plan_create_template(
     request: Request,
     db: CurrentSessionTransaction,
     param: CreateStudyPlanTemplateParam,
@@ -161,7 +161,7 @@ async def create_template(
     response_model=ResponseSchemaModel[GetStudyPlanTemplateDetail],
     dependencies=[Depends(RequestPermission('study_plan:admin:write')), DependsRBAC],
 )
-async def update_template(
+async def study_plan_update_template(
     db: CurrentSessionTransaction,
     param: UpdateStudyPlanTemplateParam,
     template_id: int = Path(description='模板 ID'),
@@ -182,7 +182,7 @@ async def update_template(
     response_model=ResponseSchemaModel[list[GetStudyPlanTemplateDetail]],
     dependencies=[Depends(RequestPermission('study_plan:admin:read')), DependsRBAC],
 )
-async def list_templates(
+async def study_plan_list_templates(
     db: CurrentSession,
 ) -> ResponseSchemaModel[list[GetStudyPlanTemplateDetail]]:
     tpls = await study_plan_template_dao.list_active(db)
@@ -197,7 +197,7 @@ async def list_templates(
     response_model=ResponseSchemaModel[GetStudyPlanTemplateWithItemsDetail],
     dependencies=[Depends(RequestPermission('study_plan:admin:read')), DependsRBAC],
 )
-async def get_template(
+async def study_plan_get_template(
     db: CurrentSession,
     template_id: int = Path(description='模板 ID'),
 ) -> ResponseSchemaModel[GetStudyPlanTemplateWithItemsDetail]:
@@ -216,7 +216,7 @@ async def get_template(
     response_model=ResponseSchemaModel[GetMentorStudentDetail],
     dependencies=[Depends(RequestPermission('study_plan:admin:write')), DependsRBAC],
 )
-async def assign_mentor_student(
+async def study_plan_assign_mentor_student(
     request: Request,
     db: CurrentSessionTransaction,
     param: AssignMentorStudentParam,
@@ -244,7 +244,7 @@ async def assign_mentor_student(
     response_model=ResponseSchemaModel[GetMentorStudentDetail],
     dependencies=[Depends(RequestPermission('study_plan:admin:write')), DependsRBAC],
 )
-async def update_mentor_student_status(
+async def study_plan_update_mentor_student_status(
     db: CurrentSessionTransaction,
     param: UpdateMentorStudentStatusParam,
     relation_id: int = Path(description='关系 ID'),
