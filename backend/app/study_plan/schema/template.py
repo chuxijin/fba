@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import ConfigDict, Field
@@ -84,4 +84,4 @@ class InstantiateStudyPlanTemplateParam(SchemaBase):
     template_id: int = Field(description='来源模板 ID')
     user_id: int = Field(description='目标学员用户 ID')
     title: str = Field(min_length=1, max_length=255, description='计划标题')
-    start_date: datetime = Field(description='起始日期')
+    start_date: date = Field(description='起始日期')

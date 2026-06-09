@@ -23,15 +23,25 @@ class CRUDStudyPlan(CRUDPlus[StudyPlan]):
         """
         return await self.select_model(db, plan_id, deleted=0)
 
-    async def get_active_by_user(self, db: AsyncSession, user_id: int) -> StudyPlan | None:
+    async def list_active_by_user(self, db: AsyncSession, user_id: int) -> Sequence[StudyPlan]:
         """
-        获取学员当前生效的计划
+        获取学员所有生效中的计划（支持多 active 并存）
 
         :param db: 数据库会话
         :param user_id: 学员用户 ID
         :return:
         """
-        return await self.select_model_by_column(db, user_id=user_id, status='active', deleted=0)
+        stmt = (
+            select(StudyPlan)
+            .where(
+                StudyPlan.user_id == user_id,
+                StudyPlan.status == 'active',
+                StudyPlan.deleted == 0,
+            )
+            .order_by(StudyPlan.start_date.desc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
     async def list_by_user(self, db: AsyncSession, user_id: int) -> Sequence[StudyPlan]:
         """
@@ -49,11 +59,11 @@ class CRUDStudyPlan(CRUDPlus[StudyPlan]):
         result = await db.execute(stmt)
         return result.scalars().all()
 
-    async def get_by_user_covering_date(
+    async def list_active_covering_date(
         self, db: AsyncSession, user_id: int, target_date: date,
-    ) -> StudyPlan | None:
+    ) -> Sequence[StudyPlan]:
         """
-        获取学员在指定日期覆盖范围内的生效计划
+        获取学员在指定日期覆盖范围内的所有生效计划（支持多 active 并存）
 
         :param db: 数据库会话
         :param user_id: 学员用户 ID
@@ -69,10 +79,10 @@ class CRUDStudyPlan(CRUDPlus[StudyPlan]):
                 StudyPlan.start_date <= target_date,
                 StudyPlan.end_date >= target_date,
             )
-            .order_by(StudyPlan.start_date.desc())
+            .order_by(StudyPlan.start_date.asc())
         )
         result = await db.execute(stmt)
-        return result.scalars().first()
+        return result.scalars().all()
 
 
 study_plan_dao = CRUDStudyPlan(StudyPlan)

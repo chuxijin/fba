@@ -43,23 +43,24 @@ def _calc_progress(items: list[StudyPlanItem]) -> StudyPlanProgress:
 
 async def get_today_plan(db: AsyncSession, user_id: int) -> TodayStudyPlanDetail:
     """
-    获取学员的今日计划聚合视图
+    获取学员的今日计划聚合视图（支持多 active 计划合并展示）
 
     :param db: 数据库会话
     :param user_id: 学员用户 ID
     :return:
     """
     today = timezone.now().date()
-    plan = await study_plan_dao.get_by_user_covering_date(db, user_id, today)
-    if plan is None:
+    active_plans = await study_plan_dao.list_active_covering_date(db, user_id, today)
+    if not active_plans:
         raise errors.NotFoundError(msg='您当前没有进行中的学习计划')
 
+    primary_plan = active_plans[0]
     items = list(await study_plan_item_dao.list_by_user_and_date(db, user_id, today))
-    day_index, total_days = _calc_day_index(plan, today)
+    day_index, total_days = _calc_day_index(primary_plan, today)
 
     return TodayStudyPlanDetail(
-        plan_id=plan.id,
-        plan_title=plan.title,
+        plan_id=primary_plan.id,
+        plan_title=primary_plan.title,
         today=today,
         day_index=day_index,
         total_days=total_days,

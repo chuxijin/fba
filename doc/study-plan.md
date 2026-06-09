@@ -33,6 +33,10 @@
 | D19 | 跨天处理时机 | 方案 A：Celery beat 定时扫 | 项目已有 Celery + 18 个定时任务，零新增基础设施；status 自描述、统计便利 |
 | D20 | 错题选题策略 | MVP 用"近 7 天 + 未掌握 top N=10"，TODO 升级 | 算法侧未来对接能力评估模型，避免堵住 MVP（U10）|
 | D21 | 后台鉴权 | RBAC：superuser 自动通过 admin；运营在后台给用户加"导师"角色 | 复用项目现有 RBAC 体系；学员/导师/管理员三层闸门各管各的 |
+| D22 | 模板 ref 失效处理 | 不预先校验，直接复制 ref_id | 作者维护，失效罕见；T2.6/T2.8 单点校验已足够 |
+| D23 | 多 active 计划 | 允许并存 | 多导师各管一个模块（行测/申论），共享学员 |
+| D24 | 今日页展示形态 | 合并展示，不按 plan 分卡 | 学员心智单元是"今日要做的事"，主计划取 start_date 最早者 |
+| D25 | 模板 extra 克隆策略 | 完全克隆（deepcopy），不支持 override | 真要调整就先改模板再实例化；schema 简洁 |
 
 ---
 
@@ -238,8 +242,8 @@ pages/study/mentor               # 我的导师（P2 加）
 |---|---|---|---|
 | T2.1 | CRUD：`study_plan` / `item` / `record` | ✅ | crud_plan/item/record + 业务命名查询；真实 db smoke 验证通过 |
 | T2.2 | CRUD：`template` / `mentor_student` | ✅ | crud_template/mentor，含按导师/学员维度反查 |
-| T2.3 | Service：今日计划查询（含进度计算） | ✅ | today_service.get_today_plan + count_uncompleted_history；严格日历计算 day_index |
-| T2.4 | Service：模板 → 实例化为 plan + items | ⬜ | 关键复杂度点 |
+| T2.3 | Service：今日计划查询（含进度计算） | ✅ | today_service.get_today_plan + count_uncompleted_history；严格日历计算 day_index；支持多 active 合并展示（D24）|
+| T2.4 | Service：模板 → 实例化为 plan + items | ✅ | template_service.instantiate_template；含 deepcopy extra、严格日历 + duration_days 计算 end_date；端到端 db smoke 验证（5 天模板 → 10 个 items）|
 | T2.5 | Service：跨天处理（按日期定时 job 标记未完成） | ⬜ | 已确认走 Celery beat（接 T1 现有 18 个定时任务）|
 | T2.6 | Service：错题复盘动态选题（首版规则：近 7 天未掌握 top N） | ⬜ | TODO 占位，未来对接能力评估模型（U10）|
 | T2.7 | Service：完成判定四类逻辑 | ✅ | service/completion.py，纯函数 + CompletionCheckResult；10 条真值表测试通过 |
@@ -322,3 +326,5 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-09 | null | T1.6 + T1.7：灰度白名单 + 依赖注入校验 + 21 个 Pydantic schema 落地；**Phase 1 全部 7 个任务完成** |
 | 2026-06-09 | null | Phase 2 决策落定：D18 严格日历 / D19 Celery beat 跨天扫 / D20 错题选题 TODO（U10）/ D21 RBAC（superuser admin + mentor 角色） |
 | 2026-06-09 | null | T2.1 + T2.2 + T2.3 + T2.7：6 个 dao + 完成判定 + 今日计划聚合服务；真实 db smoke + 10 条真值表测试通过 |
+| 2026-06-09 | null | Phase 2 决策深化：D22-D25（ref 失效不校验 / 多 active / 合并展示 / extra 完全克隆）|
+| 2026-06-09 | null | T2.4：模板实例化 service 完成；plan dao 重构（list_active_covering_date 替代单 plan 取法）；today_service 适配多 plan；端到端 db smoke 验证通过 |
