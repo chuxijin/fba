@@ -8,12 +8,14 @@ from backend.app.study_plan.schema.item import (
     GetStudyPlanItemDetail,
     StartStudyPlanItemResult,
 )
-from backend.app.study_plan.schema.plan import GetStudyPlanDetail
+from backend.app.study_plan.schema.plan import GetStudyPlanDetail, StudyPlanProgress
 from backend.app.study_plan.schema.record import GetStudyPlanRecordDetail
 from backend.app.study_plan.schema.today import TodayStudyPlanDetail
 from backend.app.study_plan.service.student_service import (
     complete_item,
     get_item_for_user,
+    get_plan_progress_for_user,
+    list_items_of_my_plan,
     start_item,
 )
 from backend.app.study_plan.service.today_service import (
@@ -95,3 +97,33 @@ async def study_plan_my_uncompleted_count(
 ) -> ResponseSchemaModel[int]:
     count = await count_uncompleted_history(db, request.user.id)
     return response_base.success(data=count)
+
+
+@router.get(
+    '/me/plans/{plan_id}/items',
+    summary='我的某计划的所有 items（总体规划页）',
+    response_model=ResponseSchemaModel[list[GetStudyPlanItemDetail]],
+)
+async def study_plan_list_my_plan_items(
+    request: Request,
+    db: CurrentSession,
+    plan_id: int = Path(description='计划 ID'),
+) -> ResponseSchemaModel[list[GetStudyPlanItemDetail]]:
+    items = await list_items_of_my_plan(db, plan_id, request.user.id)
+    return response_base.success(
+        data=[GetStudyPlanItemDetail.model_validate(it) for it in items],
+    )
+
+
+@router.get(
+    '/me/plans/{plan_id}/progress',
+    summary='我的某计划的进度（总体规划页顶部）',
+    response_model=ResponseSchemaModel[StudyPlanProgress],
+)
+async def study_plan_my_plan_progress(
+    request: Request,
+    db: CurrentSession,
+    plan_id: int = Path(description='计划 ID'),
+) -> ResponseSchemaModel[StudyPlanProgress]:
+    progress = await get_plan_progress_for_user(db, plan_id, request.user.id)
+    return response_base.success(data=StudyPlanProgress(**progress))

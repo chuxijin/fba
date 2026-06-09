@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """学员端业务编排服务（启动 / 完成模块）"""
-from typing import Any
+from typing import Any, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.study_plan.crud import study_plan_item_dao, study_plan_record_dao
+from backend.app.study_plan.crud import study_plan_dao, study_plan_item_dao, study_plan_record_dao
 from backend.app.study_plan.model.item import StudyPlanItem
+from backend.app.study_plan.model.plan import StudyPlan
 from backend.app.study_plan.model.record import StudyPlanRecord
 from backend.app.study_plan.schema.item import (
     CompleteStudyPlanItemParam,
@@ -34,6 +35,57 @@ async def get_item_for_user(
     if item.user_id != user_id:
         raise errors.ForbiddenError(msg='不是您的计划项')
     return item
+
+
+async def get_plan_for_user(db: AsyncSession, plan_id: int, user_id: int) -> StudyPlan:
+    """
+    获取计划并校验归属（学员视角）
+
+    :param db: 数据库会话
+    :param plan_id: 计划 ID
+    :param user_id: 学员用户 ID
+    :return:
+    """
+    plan = await study_plan_dao.get(db, plan_id)
+    if plan is None:
+        raise errors.NotFoundError(msg='计划不存在')
+    if plan.user_id != user_id:
+        raise errors.ForbiddenError(msg='不是您的计划')
+    return plan
+
+
+async def list_items_of_my_plan(
+    db: AsyncSession, plan_id: int, user_id: int,
+) -> Sequence[StudyPlanItem]:
+    """
+    获取学员某计划的全部 items（按 plan_date + order_index）
+
+    :param db: 数据库会话
+    :param plan_id: 计划 ID
+    :param user_id: 学员用户 ID
+    :return:
+    """
+    await get_plan_for_user(db, plan_id, user_id)
+    return await study_plan_item_dao.list_by_plan(db, plan_id)
+
+
+async def get_plan_progress_for_user(
+    db: AsyncSession, plan_id: int, user_id: int,
+) -> dict[str, int]:
+    """
+    计算学员某计划的整体完成进度
+
+    :param db: 数据库会话
+    :param plan_id: 计划 ID
+    :param user_id: 学员用户 ID
+    :return:
+    """
+    await get_plan_for_user(db, plan_id, user_id)
+    items = await study_plan_item_dao.list_by_plan(db, plan_id)
+    completed = sum(1 for it in items if it.status == 'completed')
+    total = len(items)
+    percent = int(completed * 100 / total) if total else 0
+    return {'completed': completed, 'total': total, 'percent': percent}
 
 
 async def start_item(
