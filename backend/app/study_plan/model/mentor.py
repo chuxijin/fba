@@ -40,10 +40,11 @@ class StudyMentorStudent(Base):
         sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
         comment='学员用户 ID',
     )
-    assigned_by: Mapped[int] = mapped_column(
+    assigned_by: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('sys_user.id', ondelete='SET NULL'),
-        comment='分配操作人（管理员 sys_user.id）',
+        default=None,
+        comment='分配操作人（管理员 sys_user.id；管理员注销后为 NULL）',
     )
     status: Mapped[str] = mapped_column(
         sa.String(16), default='active', comment='状态: active/paused',
