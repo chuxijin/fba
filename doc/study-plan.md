@@ -222,7 +222,7 @@ pages/study/mentor               # 我的导师（P2 加）
 |---|---|---|---|
 | T1.0 | 资料大厅迁移：`pages/study` → `pages/resource`、`pkg/study` → `pkg/resource` | ✅ | D17；含 6 处路径引用更新、tabbar 注释清理、新建 `pages/study/index.vue` 占位 |
 | T1.1 | 创建 `app/study_plan` 五件套目录 | ✅ | model/schema/crud/service/api 占位 + 主 router 挂载；导入链验证通过 |
-| T1.2 | 建模：`study_plan` + `study_plan_item` + `study_plan_record` | ⬜ | 含索引、CHECK 约束 |
+| T1.2 | 建模：`study_plan` + `study_plan_item` + `study_plan_record` | ✅ | 含 10 条 CHECK 约束、10 条索引；关系链双向打通；template_id 软引用待 T1.3 补 FK |
 | T1.3 | 建模：`study_plan_template` + `study_plan_template_item` | ⬜ | |
 | T1.4 | 建模：`study_mentor_student` | ⬜ | |
 | T1.5 | Alembic 迁移脚本生成 | ⬜ | |
@@ -311,3 +311,4 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-08 | null | 初版：完成 P0/P1 决策梳理，建立追踪体系 |
 | 2026-06-09 | null | D17 + T1.0：资料大厅迁移至 `pages/resource/`，`pages/study/` 让位给学习规划；tabbar 注释化预留 `规划` tab |
 | 2026-06-09 | null | T1.1：`app/study_plan` 五件套骨架就位 + 挂载主路由 + 导入链验证 |
+| 2026-06-09 | null | T1.2：3 张核心表落地（plan / item / record），10 条 CHECK + 10 条索引；mapper 关系链验证通过 |
