@@ -15,6 +15,7 @@ from backend.app.mcp.api.router import v1 as mcp_v1
 from backend.app.quest.api.router import v1 as quest_v1
 from backend.app.question_bank.api.router import v1 as question_bank_v1
 from backend.app.social.api.router import v1 as social_v1
+from backend.app.study_plan.api.router import v1 as study_plan_v1
 from backend.app.task.api.router import v1 as task_v1
 from backend.app.vocab.api.router import v1 as vocab_v1
 
@@ -37,3 +38,4 @@ router.include_router(content_v1)
 router.include_router(quest_v1)
 router.include_router(cms_v1)
 router.include_router(vocab_v1)
+router.include_router(study_plan_v1)
