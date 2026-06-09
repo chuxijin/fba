@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """题库 session 完成/放弃回调（由 question_bank API 层 lazy import 调用）"""
-from typing import Any
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.study_plan.crud import study_plan_item_dao
-from backend.app.study_plan.service.completion import check_completion
 from backend.common.log import log
 
 
@@ -19,9 +16,10 @@ async def handle_session_completed(
     total_count: int,
 ) -> None:
     """
-    题库 session 交卷后回调：尝试自动完成关联的 plan_item
+    题库 session 交卷后回调：自动完成关联的 plan_item
 
-    正确率不达标时静默跳过，不阻塞交卷，item 保持 in_progress。
+    考试模式语义：交卷 = 完成，分数是导师看的数据维度，不卡学员进度。
+    不做 completion check，直接标 completed 并写 record。
 
     :param db: 数据库会话
     :param session_key: 题库练习会话 key
@@ -36,18 +34,6 @@ async def handle_session_completed(
     if item.user_id != user_id:
         return
     if item.status == 'completed':
-        return
-
-    payload: dict[str, Any] = {
-        'correct_count': correct_count,
-        'total_count': total_count,
-    }
-    check = check_completion(item, payload)
-    if not check.ok:
-        log.info(
-            'session_hook: plan_item {} session_key={} 未自动完成: {}',
-            item.id, session_key, check.reason,
-        )
         return
 
     from backend.app.study_plan.model.record import StudyPlanRecord
