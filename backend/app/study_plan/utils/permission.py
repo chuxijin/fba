@@ -5,6 +5,8 @@ from fastapi import Request
 from backend.common.exception import errors
 from backend.core.conf import settings
 
+STUDY_PLAN_INTERNAL_ROLE = 'study_plan_internal'
+
 
 def is_user_in_whitelist(user_id: int) -> bool:
     """
@@ -17,6 +19,19 @@ def is_user_in_whitelist(user_id: int) -> bool:
     if not whitelist:
         return True
     return user_id in whitelist
+
+
+def get_virtual_roles_for_user(user_id: int) -> list[str]:
+    """
+    获取学员需要追加的虚拟角色名列表（用于前端 tabbar 灰度可见控制）
+
+    :param user_id: 用户 ID
+    :return:
+    """
+    whitelist = settings.STUDY_PLAN_WHITELIST
+    if whitelist and user_id in whitelist:
+        return [STUDY_PLAN_INTERNAL_ROLE]
+    return []
 
 
 class StudyPlanWhitelistGate:

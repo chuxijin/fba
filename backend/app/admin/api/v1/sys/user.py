@@ -28,6 +28,7 @@ async def get_current_user(request: Request, db: CurrentSession) -> ResponseSche
     # 查询当前用户的角色有效期记录，附带角色名称
     user_id = data['id']
     from backend.app.admin.crud.crud_user_role_expiry import user_role_expiry_dao
+    from backend.app.study_plan.utils.permission import get_virtual_roles_for_user
 
     expiry_records = await user_role_expiry_dao.get_by_user(db, user_id)
     if expiry_records:
@@ -44,6 +45,20 @@ async def get_current_user(request: Request, db: CurrentSession) -> ResponseSche
             }
             for r in expiry_records
         ]
+
+    # 追加学习规划灰度虚拟角色（命中白名单时返回 study_plan_internal）
+    virtual_roles = get_virtual_roles_for_user(user_id)
+    if virtual_roles:
+        existing = data.get('roles') or []
+        # roles 在该 schema 里序列化后是 list[str]（角色名），可直接 append；
+        # 如果 raw 仍是对象列表则保持兼容
+        if existing and isinstance(existing[0], dict):
+            for r in virtual_roles:
+                existing.append({'id': 0, 'name': r})
+        else:
+            existing.extend(virtual_roles)
+        data['roles'] = existing
+
     return response_base.success(data=data)
 
 

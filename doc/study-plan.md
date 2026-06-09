@@ -37,6 +37,7 @@
 | D23 | 多 active 计划 | 允许并存 | 多导师各管一个模块（行测/申论），共享学员 |
 | D24 | 今日页展示形态 | 合并展示，不按 plan 分卡 | 学员心智单元是"今日要做的事"，主计划取 start_date 最早者 |
 | D25 | 模板 extra 克隆策略 | 完全克隆（deepcopy），不支持 override | 真要调整就先改模板再实例化；schema 简洁 |
+| D26 | 灰度可见机制 | 白名单 = 虚拟角色 `study_plan_internal`；命中后 /me 接口追加该角色 | 复用前端现成的"按角色过滤 tabbar"机制；未命中用户完全看不到规划 tab |
 
 ---
 
@@ -253,7 +254,7 @@ pages/study/mentor               # 我的导师（P2 加）
 ### Phase 3 — 前端（小程序）（约 3 天）
 | # | 任务 | 状态 | 备注 |
 |---|---|---|---|
-| T3.1 | 调整 `tabbar/config.ts`，新增规划 tab | ⬜ | D1 |
+| T3.1 | 调整 `tabbar/config.ts`，新增规划 tab | ✅ | tab 配 roles=['study_plan_internal']；后端 /me 接口命中白名单时追加虚拟角色；不命中用户完全看不到规划 tab |
 | T3.2 | `pages/study/index.vue` 重构为今日计划首页 | ⬜ | 复用现有 935 行视情决定 |
 | T3.3 | `pages/study/item/[id].vue` 模块详情页（多态渲染） | ⬜ | |
 | T3.4 | 复习模块组件（文章 + 网盘链接 + 已读按钮） | ⬜ | |
@@ -331,3 +332,4 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-09 | null | T2.5 + T2.6：Celery 定时清理过期项任务（每天 0:30）+ 错题动态选题 MVP；任务自动注册 + beat schedule 落定 |
 | 2026-06-09 | null | T2.8：20 个 endpoint 全部落地（学员/导师/管理三端），含 student_service 完整封装启动+完成业务流；FastAPI app 整体装配验证通过 |
 | 2026-06-09 | null | T2.9：30 个 pytest 真值表测试通过；统一 20 个 endpoint 函数名加 study_plan_ 前缀（解决 fba 项目级唯一性约束）；**Phase 2 全部 9 个任务完成 → 后端 MVP 闭环就绪** |
+| 2026-06-09 | null | T3.1 + D26：tabbar 启用规划 tab；后端 /me 追加虚拟角色 study_plan_internal；未命中用户完全看不到 tab |
