@@ -22,8 +22,11 @@
 | D8 | 能力提升 | MVP 砍掉（前端已有独立功能但未对接后端） | 枚举保留 `ability`，待后端能力练习模块上线后接入 |
 | D9 | 计划模板机制 | **需要**，避免导师 1v1 手配压力 | 新增 `study_plan_template` + `study_plan_template_item` 两张表 |
 | D10 | 完成判定·复习 | 点击 `已读` 按钮即视为完成 | 不做停留时长判断（首版） |
-| D11 | 完成判定·刷题 | 题目全部做完 **且** 达到设定正确率 | `study_plan_item.extra` 存 `required_accuracy`（默认 0.6） |
+| D11 | 完成判定·刷题 | 考试模式：交卷即完成，分数不卡进度 | `extra` 存 `question_count` / `required_accuracy` 供导师参考；交卷后 session_hook 自动标 completed |
 | D12 | 完成判定·错题复盘 | 所有动态选出的错题均填完 `reasons` + `summary` | 与 `WrongQuestionReview` 表的 `reasons` + `summary` 字段对齐 |
+| D27 | practice session 绑定 | lazy 创建：首次 start_item 时按需调题库 create_session，session_key 写回 item.extra | 幂等：已有 session_key 则复用；不做预生成 |
+| D28 | practice 交卷回调 | question_bank session.py submit endpoint 末尾 lazy import study_plan hook | hook 用真实 correct_count/total_count 写 record 并标 completed；不卡正确率 |
+| D29 | practice 退出行为 | 做一半退出 = in_progress，下次继续同一个 session | 无"放弃"概念；session abandoned 时不标 skipped，清 session_key 让下次重建 |
 | D13 | 跨天处理 | 当日未完成 → 进历史记录，次日不在今日列表显示，仅提醒 | 计划按日期驱动；中断时全链条**顺延**（不丢失内容） |
 | D14 | 导师 ↔ 学员关系 | 多对多，**管理员分配** | 新增 `study_mentor_student` 关联表；学员不能自行申请导师 |
 | D15 | 灰度策略 | 方案 A：硬编码 `STUDY_PLAN_WHITELIST` 配置 | 用户量上来后切换数据库白名单表；不做百分比 / 标签灰度 |
@@ -162,10 +165,12 @@ STUDY_PLAN_WHITELIST: list[int] = []  # 灰度白名单，user_id 列表
 |---|---|---|
 | GET | `/api/v1/study/plan/today` | 获取今日计划（含模块列表 + 进度） |
 | GET | `/api/v1/study/plan/items/{item_id}` | 获取单个模块详情（含 ref 实体数据） |
-| POST | `/api/v1/study/plan/items/{item_id}/start` | 标记开始；错题复盘类型在此动态计算并返回错题列表 |
-| POST | `/api/v1/study/plan/items/{item_id}/complete` | 提交完成；服务端校验是否满足完成条件 |
-| GET | `/api/v1/study/plan/history` | 历史计划（含未完成项） |
-| GET | `/api/v1/study/plan/me` | 当前用户的计划概览（含绑定导师） |
+| POST | `/api/v1/study/plan/items/{item_id}/start` | 标记开始；practice 类按需创建题库 session 并返回 session_key |
+| POST | `/api/v1/study/plan/items/{item_id}/complete` | 提交完成；review 类手动调用，practice 类由交卷 hook 自动调用 |
+| GET | `/api/v1/study/plan/me/plans` | 我的计划列表 |
+| GET | `/api/v1/study/plan/me/plans/{plan_id}/items` | 某计划的全部 items（总体规划页用） |
+| GET | `/api/v1/study/plan/me/plans/{plan_id}/progress` | 某计划的整体进度 |
+| GET | `/api/v1/study/plan/me/uncompleted-count` | 历史未完成项数量（铃铛） |
 
 ### 3.2 导师端 / 管理端（PC 后台）
 
@@ -181,20 +186,28 @@ STUDY_PLAN_WHITELIST: list[int] = []  # 灰度白名单，user_id 列表
 | GET | `/api/v1/study/templates` | 模板列表 |
 | POST | `/api/v1/study/mentors/assign` | 管理员分配导师 ↔ 学员 |
 
-### 3.3 完成判定逻辑（service 层伪代码）
+### 3.3 完成判定逻辑
 ```
-def can_complete(item, payload):
-    if item.module_type == 'review':
-        return payload.get('read_acknowledged') is True
-    if item.module_type == 'practice':
-        required = item.extra.get('required_accuracy', 0.6)
-        accuracy = payload['correct_count'] / payload['total_count']
-        return payload['total_count'] == expected_total and accuracy >= required
-    if item.module_type == 'wrong_review':
-        # 校验所有动态错题均已写入 WrongQuestionReview，且 reasons + summary 非空
-        return all_reviewed_with_reasons_and_summary(item, payload)
-    if item.module_type == 'ability':
-        raise NotImplementedError  # MVP 不实现
+review:      手动点"我已读完" → 服务端校验 read_acknowledged=True
+practice:    交卷自动回调（session_hook）→ 交卷即完成，不卡正确率
+             手动 complete 路径仍走 completion check（兜底）
+wrong_review: 本期不实现
+ability:     MVP 不实现
+```
+
+### 3.4 题库 session 交卷回调机制
+```
+question_bank session.py POST /{key}/submit
+  → session_service.submit_session()（判题 + 统计）
+  → lazy import study_plan.session_hook.handle_session_completed
+    → 查 plan_item by extra->>'session_key'
+    → 写 StudyPlanRecord（correct_count / total_count）
+    → 标 plan_item.status = 'completed'
+    → 不卡正确率，交卷即完成
+
+question_bank session.py POST /{key}/abandon
+  → 不调 hook，plan_item 保持 in_progress
+  → session abandoned 后 session_key 清除，下次 start_item 创建新 session
 ```
 
 ---
@@ -208,10 +221,10 @@ def can_complete(item, payload):
 
 ### 4.2 页面结构
 ```
-pages/study/index                # 规划 tab 首页：今日计划 + 进度 + 子模块入口
+pages/study/index                # 规划 tab 首页：今日计划 + 进度 + 子模块入口 + 查看总体规划
 pages/study/item/[id]            # 计划项详情（按 module_type 渲染不同视图）
-pages/study/history              # 历史记录（含未完成提醒）
-pages/study/mentor               # 我的导师（P2 加）
+pages/study/overview             # 总体规划：日历网格 + 进度环 + 当日明细展开
+pages/study/history              # 历史记录（含未完成提醒，T3.7 占位）
 ```
 
 ### 4.3 学员端组件复用
@@ -255,13 +268,15 @@ pages/study/mentor               # 我的导师（P2 加）
 | # | 任务 | 状态 | 备注 |
 |---|---|---|---|
 | T3.1 | 调整 `tabbar/config.ts`，新增规划 tab | ✅ | tab 配 roles=['study_plan_internal']；后端 /me 接口命中白名单时追加虚拟角色；不命中用户完全看不到规划 tab |
-| T3.2 | `pages/study/index.vue` 重构为今日计划首页 | ✅ | 完整今日聚合视图：进度卡 + 模块列表（4 类 module_type 各异图标）+ 历史提醒铃铛 + 资料大厅入口；4 种异常态（loading/error/empty plan/empty items）；SDK 自动同步 20 个 study_plan 接口 |
-| T3.3 | `pages/study/item/index.vue` 模块详情页（多态渲染） | 🟡 | T3.3a 已完成 review 类（拉文章 + 网盘链接 + 我已读完按钮）；practice / wrong_review / ability 占位 |
-| T3.4 | 复习模块组件（文章 + 网盘链接 + 已读按钮） | ⬜ | |
-| T3.5 | 刷题模块跳转 + 完成回调 | ⬜ | 与现有 practice 模块联动 |
-| T3.6 | 错题复盘模块跳转 + 完成回调 | ⬜ | 与现有错题复盘联动 |
+| T3.2 | `pages/study/index.vue` 重构为今日计划首页 | ✅ | 完整今日聚合视图：进度卡 + 模块列表（4 类 module_type 各异图标）+ 历史提醒铃铛 + 资料大厅入口 + 查看总体规划入口；4 种异常态（loading/error/empty plan/empty items）；SDK 自动同步 20 个 study_plan 接口 |
+| T3.3 | `pages/study/item/index.vue` 模块详情页（多态渲染） | ✅ | review：拉文章 + 网盘链接 + 我已读完按钮；practice：信息卡 + 开始/继续练习按钮 → 跳题库 session 页，交卷自动回调完成；wrong_review / ability 占位 |
+| T3.4 | 复习模块组件（文章 + 网盘链接 + 已读按钮） | ✅ | 合并入 T3.3 的 review 类实现 |
+| T3.5 | 刷题模块：lazy session 创建 + 交卷自动回调 | ✅ | D27/D28/D29；start_item 按需调题库 create_session，session_key 存 extra；交卷 hook 自动标 completed；做一半退出保持 in_progress 可继续 |
+| T3.6 | 错题复盘模块 | ⏸️ | 本期不做，待错题反思能力完成后开放 |
 | T3.7 | 历史记录页 | ⬜ | 占位页已建 |
 | T3.8 | 灰度判断：根据用户白名单显示/隐藏 tab | ✅ | 已通过 T3.1 的虚拟角色机制完成（D26）|
+| T3.9 | 总体规划页（日历网格） | ✅ | `pages/study/overview/index.vue`：拉 active 计划全量 items + progress，7 列日历网格 + 模块圆点 + 当日明细展开 |
+| T3.10 | 学员端总体规划 API | ✅ | GET /me/plans/{id}/items + /progress，含 ownership 校验 |
 
 ### Phase 4 — 管理后台（PC，约 3 天）
 | # | 任务 | 状态 | 备注 |
@@ -301,15 +316,18 @@ pages/study/mentor               # 我的导师（P2 加）
 
 | 文件 | 作用 |
 |---|---|
-| `backend/app/content/model/content.py` | 复习内容承载（`sys_content`） |
-| `backend/app/question_bank/model/question.py` | 题目源 + `knowledge_point` 字段 |
-| `backend/app/question_bank/model/wrong_review.py` | 错题复盘记录表 |
-| `backend/app/question_bank/model/practice.py` | 错题本（`WrongQuestionBook`） |
-| `mini/src/tabbar/config.ts` | tabbar 配置（已在注释中预留 `规划` tab，开发完成后解开） |
-| `mini/src/pages/study/index.vue` | 新建占位页面，待学习规划首页实现 |
-| `mini/src/pages/resource/index.vue` | 资料大厅（旧 `pages/study/index.vue` 迁移而来，保留原功能） |
-| `mini/src/pkg/resource/` | 资料搜索 + 资料详情子页 |
-| `mini/src/pkg/ability/` | 已有 7 个能力练习子模块（待 U1 接入后端）|
+| `backend/app/study_plan/service/session_hook.py` | 题库 session 交卷回调：自动完成 plan_item |
+| `backend/app/study_plan/service/student_service.py` | 学员端业务编排：start/complete + practice session lazy 创建 |
+| `backend/app/study_plan/service/completion.py` | 完成判定四类逻辑（review/practice/wrong_review/ability） |
+| `backend/app/study_plan/service/template_service.py` | 模板实例化为 plan + items |
+| `backend/app/study_plan/utils/permission.py` | 灰度白名单 + 虚拟角色 |
+| `backend/app/question_bank/api/v1/session.py` | 题库 session API（submit/abandon endpoint 末尾挂 hook） |
+| `backend/scripts/instantiate_plan_for_user.py` | 一次性脚本：为指定用户实例化模板 |
+| `mini/src/pages/study/index.vue` | 今日计划首页 |
+| `mini/src/pages/study/item/index.vue` | 模块详情页（多态渲染） |
+| `mini/src/pages/study/overview/index.vue` | 总体规划（日历网格） |
+| `mini/src/pages/resource/index.vue` | 资料大厅（旧 study/index 迁移而来） |
+| `mini/src/pkg/practice/session/index.vue` | 题库做题页（practice 跳转目标） |
 | `backend/core/conf.py` | 白名单配置位置 |
 
 ---
@@ -335,3 +353,8 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-09 | null | T3.1 + D26：tabbar 启用规划 tab；后端 /me 追加虚拟角色 study_plan_internal；未命中用户完全看不到 tab |
 | 2026-06-09 | null | T3.2：今日计划首页完整实现；SDK 同步生成 20 个 study_plan 方法；修复 dump_openapi.py 的陈旧 import 路径 |
 | 2026-06-09 | null | 种子数据 + T3.3a：示范模板 SQL 落盘（国考 7 天试用）；review 类详情页完整闭环（学员可看 → 提交 → 进度更新）|
+| 2026-06-09 | null | 修复 qbank/auth/me 遗漏虚拟角色（/me 接口统一 apply_virtual_roles）；user_id=18 加白名单 |
+| 2026-06-09 | null | T3.9 + T3.10：总体规划页（日历网格）+ 学员端 /me/plans/{id}/items 和 /progress 接口；实例化脚本 instantiate_plan_for_user.py |
+| 2026-06-09 | null | D27 + T3.5：practice lazy 绑定 session_key（start_item 按需调题库 create_session）；前端 practice 跳转题库 session 页 |
+| 2026-06-09 | null | D28：题库 session 交卷自动回调 plan_item（session_hook.py，lazy import 避免循环依赖）；交卷即完成不卡正确率 |
+| 2026-06-09 | null | D29：practice 退出行为明确——做一半退出保持 in_progress 可继续；无"放弃"无"跳过"；删 handle_session_abandoned |
