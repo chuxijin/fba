@@ -29,6 +29,10 @@
 | D15 | 灰度策略 | 方案 A：硬编码 `STUDY_PLAN_WHITELIST` 配置 | 用户量上来后切换数据库白名单表；不做百分比 / 标签灰度 |
 | D16 | tab 名称 | `规划`（已写入 tabbar 注释草案） | 强调每日任务流属性；后续也可在 customTabbarList 微调 |
 | D17 | 资料大厅归位 | 旧 `pages/study/index.vue` 迁移至 `pages/resource/index.vue` | 让 `pages/study/` 完全归学习规划；不上 tabbar，作为辅助入口由学习规划首页引出 |
+| D18 | 日历策略 | 严格日历（含周末） | 计划本身可对周末做规划（包括"休息也是规划"），简单且可被 D13 顺延机制兜底 |
+| D19 | 跨天处理时机 | 方案 A：Celery beat 定时扫 | 项目已有 Celery + 18 个定时任务，零新增基础设施；status 自描述、统计便利 |
+| D20 | 错题选题策略 | MVP 用"近 7 天 + 未掌握 top N=10"，TODO 升级 | 算法侧未来对接能力评估模型，避免堵住 MVP（U10）|
+| D21 | 后台鉴权 | RBAC：superuser 自动通过 admin；运营在后台给用户加"导师"角色 | 复用项目现有 RBAC 体系；学员/导师/管理员三层闸门各管各的 |
 
 ---
 
@@ -232,14 +236,14 @@ pages/study/mentor               # 我的导师（P2 加）
 ### Phase 2 — 后端业务（约 4 天）
 | # | 任务 | 状态 | 备注 |
 |---|---|---|---|
-| T2.1 | CRUD：`study_plan` / `item` / `record` | ⬜ | |
-| T2.2 | CRUD：`template` / `mentor_student` | ⬜ | |
-| T2.3 | Service：今日计划查询（含进度计算） | ⬜ | |
+| T2.1 | CRUD：`study_plan` / `item` / `record` | ✅ | crud_plan/item/record + 业务命名查询；真实 db smoke 验证通过 |
+| T2.2 | CRUD：`template` / `mentor_student` | ✅ | crud_template/mentor，含按导师/学员维度反查 |
+| T2.3 | Service：今日计划查询（含进度计算） | ✅ | today_service.get_today_plan + count_uncompleted_history；严格日历计算 day_index |
 | T2.4 | Service：模板 → 实例化为 plan + items | ⬜ | 关键复杂度点 |
-| T2.5 | Service：跨天处理（按日期定时 job 标记未完成） | ⬜ | 可用 APScheduler 或独立 cron |
-| T2.6 | Service：错题复盘动态选题（首版规则：近 7 天未掌握 top N） | ⬜ | |
-| T2.7 | Service：完成判定四类逻辑 | ⬜ | 参见 §3.3 |
-| T2.8 | API 路由（学员端 6 个 + 后台端 9 个） | ⬜ | 见 §3.1/§3.2 |
+| T2.5 | Service：跨天处理（按日期定时 job 标记未完成） | ⬜ | 已确认走 Celery beat（接 T1 现有 18 个定时任务）|
+| T2.6 | Service：错题复盘动态选题（首版规则：近 7 天未掌握 top N） | ⬜ | TODO 占位，未来对接能力评估模型（U10）|
+| T2.7 | Service：完成判定四类逻辑 | ✅ | service/completion.py，纯函数 + CompletionCheckResult；10 条真值表测试通过 |
+| T2.8 | API 路由（学员端 6 个 + 后台端 9 个） | ⬜ | 学员端用白名单闸；后台端用 RBAC（study_plan:mentor / study_plan:admin）|
 | T2.9 | 关键 service 单元测试 | ⬜ | 重点测完成判定、模板实例化、跨天 |
 
 ### Phase 3 — 前端（小程序）（约 3 天）
@@ -284,6 +288,7 @@ pages/study/mentor               # 我的导师（P2 加）
 - **U7** 灰度方案从 A 升级到 B（数据库白名单表）
 - **U8** 错题复盘的艾宾浩斯遗忘曲线策略（首版用简单规则）
 - **U9** 计划完成提醒推送（订阅消息 / 公众号）
+- **U10** 错题复盘动态选题算法升级：首版用"近 7 天 + 未掌握 top N"，未来需对接能力评估模型实现智能推荐
 
 ---
 
@@ -315,3 +320,5 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-09 | null | T1.3 + T1.4：模板 2 张表 + 导师学员关联表落地，补上 plan.template_id 外键；6 张表 18 条 CHECK + 19 条索引 |
 | 2026-06-09 | null | T1.5：6 表已由 create_all 自动建好（列/约束/索引 100% 对齐 model）；落盘 init_tables.sql；mentor.assigned_by 改可空，待执行 1 条 ALTER |
 | 2026-06-09 | null | T1.6 + T1.7：灰度白名单 + 依赖注入校验 + 21 个 Pydantic schema 落地；**Phase 1 全部 7 个任务完成** |
+| 2026-06-09 | null | Phase 2 决策落定：D18 严格日历 / D19 Celery beat 跨天扫 / D20 错题选题 TODO（U10）/ D21 RBAC（superuser admin + mentor 角色） |
+| 2026-06-09 | null | T2.1 + T2.2 + T2.3 + T2.7：6 个 dao + 完成判定 + 今日计划聚合服务；真实 db smoke + 10 条真值表测试通过 |
