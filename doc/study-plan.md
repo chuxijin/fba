@@ -244,8 +244,8 @@ pages/study/mentor               # 我的导师（P2 加）
 | T2.2 | CRUD：`template` / `mentor_student` | ✅ | crud_template/mentor，含按导师/学员维度反查 |
 | T2.3 | Service：今日计划查询（含进度计算） | ✅ | today_service.get_today_plan + count_uncompleted_history；严格日历计算 day_index；支持多 active 合并展示（D24）|
 | T2.4 | Service：模板 → 实例化为 plan + items | ✅ | template_service.instantiate_template；含 deepcopy extra、严格日历 + duration_days 计算 end_date；端到端 db smoke 验证（5 天模板 → 10 个 items）|
-| T2.5 | Service：跨天处理（按日期定时 job 标记未完成） | ⬜ | 已确认走 Celery beat（接 T1 现有 18 个定时任务）|
-| T2.6 | Service：错题复盘动态选题（首版规则：近 7 天未掌握 top N） | ⬜ | TODO 占位，未来对接能力评估模型（U10）|
+| T2.5 | Service：跨天处理（按日期定时 job 标记未完成） | ✅ | tasks/study_plan/tasks.py + beat 注册（每天 0:30）；底层调 bulk_skip_pending_before；私有实现可独立测试 |
+| T2.6 | Service：错题复盘动态选题（首版规则：近 7 天未掌握 top N） | ✅ | wrong_review_service.select_wrong_review_questions；MVP 默认 30 天窗口（贴合公考节奏）；返回空属正常业务结果，由调用方兜底 |
 | T2.7 | Service：完成判定四类逻辑 | ✅ | service/completion.py，纯函数 + CompletionCheckResult；10 条真值表测试通过 |
 | T2.8 | API 路由（学员端 6 个 + 后台端 9 个） | ⬜ | 学员端用白名单闸；后台端用 RBAC（study_plan:mentor / study_plan:admin）|
 | T2.9 | 关键 service 单元测试 | ⬜ | 重点测完成判定、模板实例化、跨天 |
@@ -328,3 +328,4 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-09 | null | T2.1 + T2.2 + T2.3 + T2.7：6 个 dao + 完成判定 + 今日计划聚合服务；真实 db smoke + 10 条真值表测试通过 |
 | 2026-06-09 | null | Phase 2 决策深化：D22-D25（ref 失效不校验 / 多 active / 合并展示 / extra 完全克隆）|
 | 2026-06-09 | null | T2.4：模板实例化 service 完成；plan dao 重构（list_active_covering_date 替代单 plan 取法）；today_service 适配多 plan；端到端 db smoke 验证通过 |
+| 2026-06-09 | null | T2.5 + T2.6：Celery 定时清理过期项任务（每天 0:30）+ 错题动态选题 MVP；任务自动注册 + beat schedule 落定 |

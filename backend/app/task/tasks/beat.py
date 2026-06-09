@@ -81,4 +81,8 @@ def get_local_beat_schedule() -> dict[str, dict[str, Any]]:
             'schedule': TzAwareCrontab('0', '*/6'),
             'args': ['campus'],
         },
+        '学习规划过期项清理': {
+            'task': 'sweep_expired_study_plan_items',
+            'schedule': TzAwareCrontab('30', '0'),
+        },
     }
