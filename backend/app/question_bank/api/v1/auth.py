@@ -30,6 +30,7 @@ async def get_current_user_info(
     data = request.user.model_dump()
 
     from backend.app.admin.crud.crud_user_role_expiry import user_role_expiry_dao
+    from backend.app.study_plan.utils.permission import apply_virtual_roles
 
     expiry_records = await user_role_expiry_dao.get_by_user(db, request.user.id)
     if expiry_records:
@@ -45,5 +46,8 @@ async def get_current_user_info(
             }
             for item in expiry_records
         ]
+
+    # 追加学习规划灰度虚拟角色（命中白名单时返回 study_plan_internal）
+    apply_virtual_roles(data, request.user.id)
 
     return response_base.success(data=data)

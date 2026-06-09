@@ -34,6 +34,28 @@ def get_virtual_roles_for_user(user_id: int) -> list[str]:
     return []
 
 
+def apply_virtual_roles(data: dict, user_id: int) -> dict:
+    """
+    给 /me 类响应数据追加学习规划虚拟角色（in-place 修改并返回 data）
+
+    :param data: /me 接口的响应字典
+    :param user_id: 用户 ID
+    :return:
+    """
+    virtual_roles = get_virtual_roles_for_user(user_id)
+    if not virtual_roles:
+        return data
+
+    existing = data.get('roles') or []
+    if existing and isinstance(existing[0], dict):
+        for role_name in virtual_roles:
+            existing.append({'id': 0, 'name': role_name})
+    else:
+        existing.extend(virtual_roles)
+    data['roles'] = existing
+    return data
+
+
 class StudyPlanWhitelistGate:
     """学习规划灰度白名单依赖注入校验器"""
 
