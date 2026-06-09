@@ -226,8 +226,8 @@ pages/study/mentor               # 我的导师（P2 加）
 | T1.3 | 建模：`study_plan_template` + `study_plan_template_item` | ✅ | 含 6 条 CHECK + 5 条索引；模板↔模板项关系双向；plan.template_id FK 已补上 |
 | T1.4 | 建模：`study_mentor_student` | ✅ | 多对多关联表；含 mentor≠student 自指约束 + status 枚举；2 条业务索引 |
 | T1.5 | Alembic 迁移脚本生成 | ✅ | 改用 SQLAlchemy 渲染 SQL（init_tables.sql）；6 表已由 create_all 自动建好；待执行 1 条 ALTER 修 mentor.assigned_by 可空 |
-| T1.6 | `STUDY_PLAN_WHITELIST` 配置 + 依赖注入校验 | ⬜ | 写在 `core/conf.py` + 路由依赖 |
-| T1.7 | Schema 定义（Pydantic） | ⬜ | 严格遵循 `app/admin/schema/user.py` 风格 |
+| T1.6 | `STUDY_PLAN_WHITELIST` 配置 + 依赖注入校验 | ✅ | 配置位 core/conf.py；utils/permission.py 含 is_user_in_whitelist 纯函数 + StudyPlanWhitelistGate 校验类；空白名单 = 全员放行（开发友好） |
+| T1.7 | Schema 定义（Pydantic） | ✅ | 21 个 schema 分 7 个文件（plan/item/record/template/mentor/today/_types）；Literal 枚举约束；Create/Update/Detail 三档分明；CHECK 与 Field 内置约束齐全；未引入校验器（遵循 CLAUDE.md） |
 
 ### Phase 2 — 后端业务（约 4 天）
 | # | 任务 | 状态 | 备注 |
@@ -314,3 +314,4 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-09 | null | T1.2：3 张核心表落地（plan / item / record），10 条 CHECK + 10 条索引；mapper 关系链验证通过 |
 | 2026-06-09 | null | T1.3 + T1.4：模板 2 张表 + 导师学员关联表落地，补上 plan.template_id 外键；6 张表 18 条 CHECK + 19 条索引 |
 | 2026-06-09 | null | T1.5：6 表已由 create_all 自动建好（列/约束/索引 100% 对齐 model）；落盘 init_tables.sql；mentor.assigned_by 改可空，待执行 1 条 ALTER |
+| 2026-06-09 | null | T1.6 + T1.7：灰度白名单 + 依赖注入校验 + 21 个 Pydantic schema 落地；**Phase 1 全部 7 个任务完成** |
