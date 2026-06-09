@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""题库 session 完成/放弃回调（由 question_bank API 层 lazy import 调用）"""
+"""题库 session 交卷回调（由 question_bank API 层 lazy import 调用）"""
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.study_plan.crud import study_plan_item_dao
@@ -53,38 +53,4 @@ async def handle_session_completed(
     log.info(
         'session_hook: plan_item {} session_key={} 自动完成 (correct={}/{})',
         item.id, session_key, correct_count, total_count,
-    )
-
-
-async def handle_session_abandoned(
-    db: AsyncSession,
-    *,
-    session_key: str,
-    user_id: int,
-) -> None:
-    """
-    题库 session 放弃后回调：清除 plan_item 的 session_key 绑定
-
-    session 已 abandoned 无法复用，清除后下次点"开始练习"会 lazy 创建新 session。
-    plan_item 保持 in_progress，不标 skipped。
-
-    :param db: 数据库会话
-    :param session_key: 题库练习会话 key
-    :param user_id: 学员用户 ID
-    :return:
-    """
-    item = await study_plan_item_dao.get_by_session_key(db, session_key)
-    if item is None:
-        return
-    if item.user_id != user_id:
-        return
-    if item.status == 'completed':
-        return
-
-    extra = dict(item.extra or {})
-    extra.pop('session_key', None)
-    await study_plan_item_dao.update_extra(db, item.id, extra)
-    log.info(
-        'session_hook: plan_item {} session_key={} 清除绑定，下次进入将创建新 session',
-        item.id, session_key,
     )

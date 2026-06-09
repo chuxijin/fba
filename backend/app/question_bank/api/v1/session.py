@@ -284,15 +284,7 @@ async def abandon_session(
     """放弃练习会话"""
     sid = await _resolve_session_id(db, session_key, request.user.id)
     count = await session_service.abandon_session(db=db, session_id=sid, user_id=request.user.id)
-
     if count > 0:
-        from backend.app.study_plan.service.session_hook import handle_session_abandoned
-
-        await handle_session_abandoned(
-            db,
-            session_key=session_key,
-            user_id=request.user.id,
-        )
         return response_base.success()
     return response_base.fail()
 
