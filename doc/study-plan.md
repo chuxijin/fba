@@ -225,7 +225,7 @@ pages/study/mentor               # 我的导师（P2 加）
 | T1.2 | 建模：`study_plan` + `study_plan_item` + `study_plan_record` | ✅ | 含 10 条 CHECK 约束、10 条索引；关系链双向打通；template_id 软引用待 T1.3 补 FK |
 | T1.3 | 建模：`study_plan_template` + `study_plan_template_item` | ✅ | 含 6 条 CHECK + 5 条索引；模板↔模板项关系双向；plan.template_id FK 已补上 |
 | T1.4 | 建模：`study_mentor_student` | ✅ | 多对多关联表；含 mentor≠student 自指约束 + status 枚举；2 条业务索引 |
-| T1.5 | Alembic 迁移脚本生成 | ⬜ | |
+| T1.5 | Alembic 迁移脚本生成 | ✅ | 改用 SQLAlchemy 渲染 SQL（init_tables.sql）；6 表已由 create_all 自动建好；待执行 1 条 ALTER 修 mentor.assigned_by 可空 |
 | T1.6 | `STUDY_PLAN_WHITELIST` 配置 + 依赖注入校验 | ⬜ | 写在 `core/conf.py` + 路由依赖 |
 | T1.7 | Schema 定义（Pydantic） | ⬜ | 严格遵循 `app/admin/schema/user.py` 风格 |
 
@@ -313,3 +313,4 @@ pages/study/mentor               # 我的导师（P2 加）
 | 2026-06-09 | null | T1.1：`app/study_plan` 五件套骨架就位 + 挂载主路由 + 导入链验证 |
 | 2026-06-09 | null | T1.2：3 张核心表落地（plan / item / record），10 条 CHECK + 10 条索引；mapper 关系链验证通过 |
 | 2026-06-09 | null | T1.3 + T1.4：模板 2 张表 + 导师学员关联表落地，补上 plan.template_id 外键；6 张表 18 条 CHECK + 19 条索引 |
+| 2026-06-09 | null | T1.5：6 表已由 create_all 自动建好（列/约束/索引 100% 对齐 model）；落盘 init_tables.sql；mentor.assigned_by 改可空，待执行 1 条 ALTER |
