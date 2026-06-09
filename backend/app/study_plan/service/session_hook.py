@@ -77,7 +77,10 @@ async def handle_session_abandoned(
     user_id: int,
 ) -> None:
     """
-    题库 session 放弃后回调：将关联 plan_item 标记为 skipped
+    题库 session 放弃后回调：清除 plan_item 的 session_key 绑定
+
+    session 已 abandoned 无法复用，清除后下次点"开始练习"会 lazy 创建新 session。
+    plan_item 保持 in_progress，不标 skipped。
 
     :param db: 数据库会话
     :param session_key: 题库练习会话 key
@@ -89,11 +92,13 @@ async def handle_session_abandoned(
         return
     if item.user_id != user_id:
         return
-    if item.status in ('completed', 'skipped'):
+    if item.status == 'completed':
         return
 
-    await study_plan_item_dao.update_status(db, item.id, 'skipped')
+    extra = dict(item.extra or {})
+    extra.pop('session_key', None)
+    await study_plan_item_dao.update_extra(db, item.id, extra)
     log.info(
-        'session_hook: plan_item {} session_key={} 标记 skipped',
+        'session_hook: plan_item {} session_key={} 清除绑定，下次进入将创建新 session',
         item.id, session_key,
     )
