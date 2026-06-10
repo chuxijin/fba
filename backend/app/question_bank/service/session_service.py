@@ -1213,6 +1213,11 @@ class SessionService:
         upserted_records: list[SessionQuestion] = []
         if records_dict:
             upserted_records = await session_question_dao.batch_upsert_answer(db=db, records=records_dict)
+            # 同步落盘题目进度，保证客户端退出后立即可读到最新进度；判题后的 is_correct 由异步任务再次幂等修正
+            await user_bank_progress_dao.upsert_by_record_ids(
+                db=db,
+                record_ids=[int(record.id) for record in upserted_records],
+            )
             completed_count, total_time = await session_question_dao.get_answered_progress_by_session(
                 db,
                 obj.session_id,
