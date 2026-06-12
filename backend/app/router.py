@@ -13,6 +13,7 @@ from backend.app.mall.api.router import v1 as mall_v1
 from backend.app.payment.api.router import v1 as payment_v1
 from backend.app.mcp.api.router import v1 as mcp_v1
 from backend.app.quest.api.router import v1 as quest_v1
+from backend.app.question_generation.api.router import v1 as question_generation_v1
 from backend.app.question_bank.api.router import v1 as question_bank_v1
 from backend.app.social.api.router import v1 as social_v1
 from backend.app.study_plan.api.router import v1 as study_plan_v1
@@ -30,6 +31,7 @@ router.include_router(coulddrive_v1)
 router.include_router(mcp_v1)
 router.include_router(social_v1)
 router.include_router(question_bank_v1)
+router.include_router(question_generation_v1)
 router.include_router(gongkao_v1)
 router.include_router(invite_v1)
 router.include_router(mall_v1)

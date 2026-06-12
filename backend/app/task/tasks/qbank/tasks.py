@@ -316,6 +316,13 @@ async def process_record_side_effects_async(
 
         await user_bank_progress_dao.upsert_by_record_ids(db=db, record_ids=record_ids)
 
+        # 6. 重算受影响题目的难度
+        if allow_judge_now and objective_count > 0:
+            from backend.app.question_bank.crud.crud_question import question_statistics_dao
+            judged_question_ids = list({r.question_id for r in records if r.is_correct is not None})
+            for qid in judged_question_ids:
+                await question_statistics_dao.update_difficulty(db=db, question_id=qid)
+
     # 5. Redis 错题统计缓存失效（出事务后做）
     if wrong_create_rows or wrong_update_rows:
         from backend.app.question_bank.service.wrong_question_service import wrong_question_service
