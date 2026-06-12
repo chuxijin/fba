@@ -81,5 +81,34 @@ class CRUDStudyMentorStudent(CRUDPlus[StudyMentorStudent]):
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    async def list_relations(
+        self,
+        db: AsyncSession,
+        mentor_id: int | None = None,
+        student_id: int | None = None,
+        status: str | None = None,
+    ) -> Sequence[StudyMentorStudent]:
+        """
+        获取导师学员关系列表
+
+        :param db: 数据库会话
+        :param mentor_id: 导师用户 ID
+        :param student_id: 学员用户 ID
+        :param status: 关系状态
+        :return:
+        """
+        stmt = select(StudyMentorStudent).where(StudyMentorStudent.deleted == 0)
+
+        if mentor_id is not None:
+            stmt = stmt.where(StudyMentorStudent.mentor_id == mentor_id)
+        if student_id is not None:
+            stmt = stmt.where(StudyMentorStudent.student_id == student_id)
+        if status is not None:
+            stmt = stmt.where(StudyMentorStudent.status == status)
+
+        stmt = stmt.order_by(StudyMentorStudent.assigned_at.desc())
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
 
 study_mentor_student_dao = CRUDStudyMentorStudent(StudyMentorStudent)

@@ -80,7 +80,7 @@ class StudyPlanItem(Base, UserMixin):
     extra: Mapped[dict | None] = mapped_column(
         CompatibleJSONB,
         default=None,
-        comment='模块特定配置（如刷题 required_accuracy/knowledge_points/question_ids、复习 cloud_links）',
+        comment='模块特定配置（如刷题 required_accuracy/knowledge_points/question_ids、学习 cloud_links）',
     )
 
     # ============ 关系 ============

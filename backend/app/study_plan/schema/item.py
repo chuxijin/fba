@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import ConfigDict, Field
 
 from backend.app.study_plan.schema._types import ItemStatus, ModuleType, RefType
+from backend.app.study_plan.schema.record import GetStudyPlanRecordDetail
 from backend.common.schema import SchemaBase
 
 
@@ -52,6 +53,7 @@ class GetStudyPlanItemDetail(StudyPlanItemSchemaBase):
     user_id: int = Field(description='学员用户 ID')
     status: ItemStatus = Field(description='状态')
     created_time: datetime = Field(description='创建时间')
+    latest_record: GetStudyPlanRecordDetail | None = Field(default=None, description='最近完成记录')
 
 
 class StartStudyPlanItemResult(SchemaBase):
@@ -72,5 +74,5 @@ class CompleteStudyPlanItemParam(SchemaBase):
     score: int | None = Field(default=None, ge=0, description='得分（刷题类）')
     correct_count: int | None = Field(default=None, ge=0, description='正确题数（刷题类）')
     total_count: int | None = Field(default=None, ge=0, description='总题数（刷题类）')
-    read_acknowledged: bool | None = Field(default=None, description='复习类已读确认')
+    read_acknowledged: bool | None = Field(default=None, description='学习类已读确认')
     extra_data: dict[str, Any] | None = Field(default=None, description='扩展数据')

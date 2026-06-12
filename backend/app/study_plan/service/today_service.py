@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.study_plan.crud import study_plan_dao, study_plan_item_dao
 from backend.app.study_plan.model.item import StudyPlanItem
 from backend.app.study_plan.model.plan import StudyPlan
-from backend.app.study_plan.schema.item import GetStudyPlanItemDetail
 from backend.app.study_plan.schema.plan import StudyPlanProgress
 from backend.app.study_plan.schema.today import TodayStudyPlanDetail
+from backend.app.study_plan.service.item_detail_service import build_item_details
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
@@ -64,7 +64,7 @@ async def get_today_plan(db: AsyncSession, user_id: int) -> TodayStudyPlanDetail
         today=today,
         day_index=day_index,
         total_days=total_days,
-        items=[GetStudyPlanItemDetail.model_validate(it) for it in items],
+        items=await build_item_details(db, items),
         progress=_calc_progress(items),
     )
 

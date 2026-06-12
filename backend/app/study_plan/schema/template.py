@@ -26,6 +26,19 @@ class CreateStudyPlanTemplateItemParam(StudyPlanTemplateItemSchemaBase):
     """创建模板项参数"""
 
 
+class UpdateStudyPlanTemplateItemParam(SchemaBase):
+    """更新模板项参数"""
+
+    day_index: int | None = Field(default=None, ge=1, description='第几天')
+    order_index: int | None = Field(default=None, ge=0, description='当天顺序')
+    module_type: ModuleType | None = Field(default=None, description='模块类型')
+    title: str | None = Field(default=None, min_length=1, max_length=255, description='模块标题')
+    ref_type: RefType | None = Field(default=None, description='引用类型')
+    ref_id: int | None = Field(default=None, description='引用目标 ID')
+    expected_minutes: int | None = Field(default=None, ge=0, description='预计耗时分钟')
+    extra: dict[str, Any] | None = Field(default=None, description='模块特定配置')
+
+
 class GetStudyPlanTemplateItemDetail(StudyPlanTemplateItemSchemaBase):
     """模板项详情"""
 

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -51,11 +51,43 @@ class CRUDStudyPlanRecord(CRUDPlus[StudyPlanRecord]):
         stmt = (
             select(StudyPlanRecord)
             .where(StudyPlanRecord.item_id == item_id, StudyPlanRecord.deleted == 0)
-            .order_by(StudyPlanRecord.completed_at.desc())
+            .order_by(StudyPlanRecord.completed_at.desc(), StudyPlanRecord.id.desc())
             .limit(1)
         )
         result = await db.execute(stmt)
         return result.scalars().first()
+
+    async def list_latest_by_items(self, db: AsyncSession, item_ids: list[int]) -> Sequence[StudyPlanRecord]:
+        """
+        批量获取计划项最近一次完成记录
+
+        :param db: 数据库会话
+        :param item_ids: 计划项 ID 列表
+        :return:
+        """
+        if not item_ids:
+            return []
+
+        ranked = (
+            select(
+                StudyPlanRecord.id.label('id'),
+                func.row_number()
+                .over(
+                    partition_by=StudyPlanRecord.item_id,
+                    order_by=(StudyPlanRecord.completed_at.desc(), StudyPlanRecord.id.desc()),
+                )
+                .label('row_number'),
+            )
+            .where(StudyPlanRecord.item_id.in_(item_ids), StudyPlanRecord.deleted == 0)
+            .subquery()
+        )
+        stmt = (
+            select(StudyPlanRecord)
+            .join(ranked, StudyPlanRecord.id == ranked.c.id)
+            .where(ranked.c.row_number == 1)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
 
 study_plan_record_dao = CRUDStudyPlanRecord(StudyPlanRecord)

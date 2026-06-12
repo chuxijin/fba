@@ -25,7 +25,7 @@ class _StubItem:
 # ============ review ============
 
 class TestReviewCompletion:
-    """复习类完成判定"""
+    """学习类完成判定"""
 
     def test_review_without_acknowledge_should_fail(self) -> None:
         result = check_completion(_StubItem('review'), {})
@@ -157,10 +157,32 @@ class TestWrongReviewCompletion:
 # ============ ability ============
 
 class TestAbilityCompletion:
-    """能力提升类完成判定（D8：MVP 占位放行）"""
+    """能力提升类完成判定"""
 
-    def test_ability_always_passes_in_mvp(self) -> None:
+    def test_ability_without_target_should_pass(self) -> None:
         result = check_completion(_StubItem('ability'), {})
+        assert result.ok is True
+
+    def test_ability_with_target_without_counts_should_fail(self) -> None:
+        item = _StubItem('ability', {'question_count': 10, 'required_accuracy': 0.7})
+        result = check_completion(item, {})
+        assert result.ok is False
+
+    def test_ability_unfinished_count_should_fail(self) -> None:
+        item = _StubItem('ability', {'question_count': 10, 'required_accuracy': 0.7})
+        result = check_completion(item, {'correct_count': 8, 'total_count': 8})
+        assert result.ok is False
+        assert '8/10' in (result.reason or '')
+
+    def test_ability_low_accuracy_should_fail(self) -> None:
+        item = _StubItem('ability', {'question_count': 10, 'required_accuracy': 0.7})
+        result = check_completion(item, {'correct_count': 6, 'total_count': 10})
+        assert result.ok is False
+        assert '正确率' in (result.reason or '')
+
+    def test_ability_meet_target_should_pass(self) -> None:
+        item = _StubItem('ability', {'question_count': 10, 'required_accuracy': 0.7})
+        result = check_completion(item, {'correct_count': 7, 'total_count': 10})
         assert result.ok is True
 
 

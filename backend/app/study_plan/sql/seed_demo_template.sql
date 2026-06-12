@@ -24,7 +24,7 @@ INSERT INTO fba.study_plan_template (
   '国考冲刺 · 数量关系 7 天试用',
   7,
   'civil_service',
-  '示范模板：每天 2 项，覆盖复习 / 刷题 / 错题复盘三类模块',
+  '示范模板：每天 2 项，覆盖学习 / 刷题 / 错题复盘三类模块',
   TRUE,
   1,
   NOW(),

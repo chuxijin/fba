@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, Depends, Path, Request
+from fastapi import APIRouter, Depends, Path, Query, Request
 
 from backend.app.study_plan.crud import study_plan_dao, study_plan_item_dao
+from backend.app.study_plan.schema.ability import (
+    BatchSubmitStudyAbilityAttemptParam,
+    BatchSubmitStudyAbilityAttemptResult,
+    GetStudyPlanAbilityCatalogItem,
+    GetStudyUserCategoryProfileDetail,
+    SubmitStudyAbilityAttemptParam,
+    SubmitStudyAbilityAttemptResult,
+)
 from backend.app.study_plan.schema.item import (
     CompleteStudyPlanItemParam,
     GetStudyPlanItemDetail,
@@ -11,6 +19,13 @@ from backend.app.study_plan.schema.item import (
 from backend.app.study_plan.schema.plan import GetStudyPlanDetail, StudyPlanProgress
 from backend.app.study_plan.schema.record import GetStudyPlanRecordDetail
 from backend.app.study_plan.schema.today import TodayStudyPlanDetail
+from backend.app.study_plan.service.ability_catalog import list_ability_catalog_with_db
+from backend.app.study_plan.service.ability_profile import (
+    batch_submit_ability_attempts,
+    list_user_category_profiles,
+    submit_ability_attempt,
+)
+from backend.app.study_plan.service.item_detail_service import build_item_detail, build_item_details
 from backend.app.study_plan.service.student_service import (
     complete_item,
     get_item_for_user,
@@ -39,6 +54,73 @@ async def study_plan_get_today(request: Request, db: CurrentSession) -> Response
 
 
 @router.get(
+    '/ability-catalog',
+    summary='能力练习目录',
+    response_model=ResponseSchemaModel[list[GetStudyPlanAbilityCatalogItem]],
+)
+async def study_plan_get_ability_catalog(
+    db: CurrentSession,
+    domain: str | None = Query(default=None, description='业务领域'),
+) -> ResponseSchemaModel[list[GetStudyPlanAbilityCatalogItem]]:
+    catalog = await list_ability_catalog_with_db(
+        db,
+        domain=domain,
+        include_inactive=False,
+    )
+    return response_base.success(data=catalog)
+
+
+@router.post(
+    '/ability-attempts',
+    summary='提交能力练习记录',
+    response_model=ResponseSchemaModel[SubmitStudyAbilityAttemptResult],
+)
+async def study_plan_submit_ability_attempt(
+    request: Request,
+    db: CurrentSessionTransaction,
+    param: SubmitStudyAbilityAttemptParam,
+) -> ResponseSchemaModel[SubmitStudyAbilityAttemptResult]:
+    result = await submit_ability_attempt(db, request.user.id, param)
+    return response_base.success(data=result)
+
+
+@router.post(
+    '/ability-attempts/batch-sync',
+    summary='批量同步能力练习记录',
+    response_model=ResponseSchemaModel[BatchSubmitStudyAbilityAttemptResult],
+)
+async def study_plan_batch_sync_ability_attempts(
+    request: Request,
+    db: CurrentSessionTransaction,
+    param: BatchSubmitStudyAbilityAttemptParam,
+) -> ResponseSchemaModel[BatchSubmitStudyAbilityAttemptResult]:
+    result = await batch_submit_ability_attempts(db, request.user.id, param)
+    return response_base.success(data=result)
+
+
+@router.get(
+    '/ability-profile',
+    summary='我的能力画像',
+    response_model=ResponseSchemaModel[list[GetStudyUserCategoryProfileDetail]],
+)
+async def study_plan_get_ability_profile(
+    request: Request,
+    db: CurrentSession,
+    source_type: str | None = Query(default='ability', description='来源类型'),
+    category_id: int | None = Query(default=None, description='分类 ID'),
+    include_children: bool = Query(default=True, description='是否包含子孙分类'),
+) -> ResponseSchemaModel[list[GetStudyUserCategoryProfileDetail]]:
+    profiles = await list_user_category_profiles(
+        db,
+        request.user.id,
+        source_type,
+        category_id,
+        include_children,
+    )
+    return response_base.success(data=profiles)
+
+
+@router.get(
     '/items/{item_id}',
     summary='获取计划项详情',
     response_model=ResponseSchemaModel[GetStudyPlanItemDetail],
@@ -49,7 +131,7 @@ async def study_plan_get_item(
     item_id: int = Path(description='计划项 ID'),
 ) -> ResponseSchemaModel[GetStudyPlanItemDetail]:
     item = await get_item_for_user(db, item_id, request.user.id)
-    return response_base.success(data=GetStudyPlanItemDetail.model_validate(item))
+    return response_base.success(data=await build_item_detail(db, item))
 
 
 @router.post(
@@ -111,7 +193,7 @@ async def study_plan_list_my_plan_items(
 ) -> ResponseSchemaModel[list[GetStudyPlanItemDetail]]:
     items = await list_items_of_my_plan(db, plan_id, request.user.id)
     return response_base.success(
-        data=[GetStudyPlanItemDetail.model_validate(it) for it in items],
+        data=await build_item_details(db, items),
     )
 
 

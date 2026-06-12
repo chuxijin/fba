@@ -37,7 +37,7 @@ class CompletionCheckResult:
 
 def _check_review(item: StudyPlanItem, payload: dict[str, Any]) -> CompletionCheckResult:
     """
-    复习类完成判定：必须显式确认已读
+    学习类完成判定：必须显式确认已读
 
     :param item: 计划项
     :param payload: 完成提交参数
@@ -109,12 +109,42 @@ def _check_wrong_review(item: StudyPlanItem, payload: dict[str, Any]) -> Complet
 
 def _check_ability(item: StudyPlanItem, payload: dict[str, Any]) -> CompletionCheckResult:
     """
-    能力提升类完成判定：MVP 阶段未实现，先按"已点击完成"放行
+    能力提升类完成判定：配置题数或正确率时按训练结果校验
 
     :param item: 计划项
     :param payload: 完成提交参数
     :return:
     """
+    extra = item.extra or {}
+    expected_total = extra.get('question_count')
+    required_accuracy = extra.get('required_accuracy')
+
+    if not expected_total and required_accuracy is None:
+        return CompletionCheckResult.pass_()
+
+    correct_count = payload.get('correct_count')
+    total_count = payload.get('total_count')
+    if total_count is None or correct_count is None:
+        return CompletionCheckResult.fail('能力练习完成需要提交 correct_count 和 total_count')
+
+    if expected_total and total_count < expected_total:
+        return CompletionCheckResult.fail(
+            f'未完成全部训练（{total_count}/{expected_total}）',
+        )
+
+    if total_count <= 0:
+        return CompletionCheckResult.fail('训练总数无效')
+
+    if required_accuracy is None:
+        return CompletionCheckResult.pass_()
+
+    actual_accuracy = correct_count / total_count
+    target_accuracy = float(required_accuracy)
+    if actual_accuracy < target_accuracy:
+        return CompletionCheckResult.fail(
+            f'正确率 {actual_accuracy:.0%} 未达到要求 {target_accuracy:.0%}',
+        )
+
     return CompletionCheckResult.pass_()
 
 

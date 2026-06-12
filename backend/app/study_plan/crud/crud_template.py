@@ -48,6 +48,16 @@ class CRUDStudyPlanTemplate(CRUDPlus[StudyPlanTemplate]):
 class CRUDStudyPlanTemplateItem(CRUDPlus[StudyPlanTemplateItem]):
     """学习计划模板项数据库操作类"""
 
+    async def get(self, db: AsyncSession, item_id: int) -> StudyPlanTemplateItem | None:
+        """
+        获取模板项详情
+
+        :param db: 数据库会话
+        :param item_id: 模板项 ID
+        :return:
+        """
+        return await self.select_model(db, item_id, deleted=0)
+
     async def list_by_template(
         self, db: AsyncSession, template_id: int,
     ) -> Sequence[StudyPlanTemplateItem]:

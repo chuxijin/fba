@@ -36,3 +36,14 @@ class GetMentorStudentDetail(SchemaBase):
     status: MentorStatus = Field(description='状态')
     note: str | None = Field(default=None, description='分配备注')
     assigned_at: datetime = Field(description='分配时间')
+
+
+class GetMentorStudentOption(SchemaBase):
+    """导师学员选项"""
+
+    id: int = Field(description='关系 ID')
+    student_id: int = Field(description='学员用户 ID')
+    student_username: str | None = Field(default=None, description='学员用户名')
+    student_nickname: str | None = Field(default=None, description='学员昵称')
+    status: MentorStatus = Field(description='状态')
+    assigned_at: datetime = Field(description='分配时间')
