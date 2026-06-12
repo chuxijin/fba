@@ -21,6 +21,7 @@ from backend.app.growth.crud import experience_rule_dao
 from backend.app.growth.service import experience_service
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_question import (
+    INVALID_TIME_THRESHOLD,
     question_statistics_dao,
 )
 from backend.app.question_bank.crud.crud_session_question import session_question_dao
@@ -1568,12 +1569,18 @@ class SessionService:
                     current_count = option_select_counts.get(option_code, 0)
                     option_select_counts[option_code] = current_count + 1
 
+            # 有效数据过滤（answer_time < 3s 视为秒杀）
+            is_valid = record.answer_time is not None and record.answer_time >= INVALID_TIME_THRESHOLD
+
             question_stats_rows.append({
                 'question_id': record.question_id,
                 'attempt_count': 1,
                 'correct_count': 1 if is_correct else 0,
                 'answer_time_total': record.answer_time,
                 'option_select_counts': option_select_counts,
+                'valid_attempt_count': 1 if is_valid else 0,
+                'valid_correct_count': 1 if (is_valid and is_correct) else 0,
+                'valid_answer_time_total': record.answer_time if is_valid else Decimal('0'),
             })
 
             # 3c. 汇总错题本（按 question_id 宽松匹配，忽略 placement）

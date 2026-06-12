@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import logging
+import math
+
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
 
-from sqlalchemy import bindparam, select
+from sqlalchemy import bindparam, func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy_crud_plus import CRUDPlus
+
+from backend.app.question_bank.model.practice import SessionQuestion
+
+logger = logging.getLogger(__name__)
 
 from backend.app.question_bank.model import (
     Question,
@@ -30,6 +37,43 @@ from backend.app.question_bank.schema.question import (
 from backend.common.enums import DataBaseType
 from backend.core.conf import settings
 from backend.utils.timezone import timezone
+
+# ============ 难度计算常量与算法 ============
+
+MIN_VALID_ATTEMPTS = 50
+INVALID_TIME_THRESHOLD = Decimal('3')
+SIGMOID_K = 8.0
+
+
+def compute_difficulty(
+    valid_attempts: int,
+    valid_correct: int,
+    valid_avg_time: Decimal | None,
+    median_time: Decimal | None,
+) -> Decimal | None:
+    """
+    基于正确率 + 时间压力计算难度 (1.0-5.0)
+
+    :param valid_attempts: 有效答题次数
+    :param valid_correct: 有效答对次数
+    :param valid_avg_time: 有效平均答题时间
+    :param median_time: 该题有效答题时间中位数（自适应基准）
+    :return: 难度值或 None（数据不足时）
+    """
+    if valid_attempts < MIN_VALID_ATTEMPTS:
+        return None
+
+    p = valid_correct / valid_attempts
+    base = 1.0 + 4.0 / (1.0 + math.exp(-SIGMOID_K * (0.5 - p)))
+
+    if median_time and median_time > 0 and valid_avg_time and valid_avg_time > 0:
+        tf = float(max(Decimal('0.5'), min(Decimal('2.0'), valid_avg_time / median_time)))
+    else:
+        tf = 1.0
+
+    result = base * (0.7 + 0.3 * tf)
+    return Decimal(str(round(max(1.0, min(5.0, result)), 1)))
+
 
 # ============ Question CRUD ============
 
@@ -784,6 +828,26 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                 ) / new_attempt,
             )
 
+            # 有效数据追踪（过滤秒杀）
+            is_valid = obj.answer_time >= INVALID_TIME_THRESHOLD
+            if is_valid:
+                values['valid_attempt_count'] = QuestionStatistics.valid_attempt_count + attempt_delta
+                if correct_delta > 0:
+                    values['valid_correct_count'] = QuestionStatistics.valid_correct_count + correct_delta
+                new_valid_attempt = QuestionStatistics.valid_attempt_count + attempt_delta
+                values['valid_avg_answer_time'] = sa.case(
+                    (
+                        sa.or_(
+                            QuestionStatistics.valid_avg_answer_time.is_(None),
+                            QuestionStatistics.valid_attempt_count <= 0,
+                        ),
+                        obj.answer_time,
+                    ),
+                    else_=(
+                        (QuestionStatistics.valid_avg_answer_time * QuestionStatistics.valid_attempt_count) + obj.answer_time
+                    ) / new_valid_attempt,
+                )
+
         if obj.option_select is not None and len(obj.option_select) > 0:
             if DataBaseType.postgresql == settings.DATABASE_TYPE:
                 current_stats_expr = QuestionStatistics.option_select_stats
@@ -905,6 +969,9 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     'note_delta': 0,
                     'report_delta': 0,
                     'option_select_counts': {},
+                    'valid_attempt_count': 0,
+                    'valid_correct_count': 0,
+                    'valid_answer_time_total': Decimal('0'),
                 }
                 aggregated[question_id] = aggregated_item
 
@@ -934,6 +1001,16 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     normalized_key = str(option_key)
                     current_count = aggregated_item['option_select_counts'].get(normalized_key, 0)
                     aggregated_item['option_select_counts'][normalized_key] = current_count + int(count or 0)
+
+            # 有效数据聚合（由调用方过滤 answer_time < 3s）
+            valid_attempt = int(item.get('valid_attempt_count') or 0)
+            valid_correct = int(item.get('valid_correct_count') or 0)
+            aggregated_item['valid_attempt_count'] += valid_attempt
+            aggregated_item['valid_correct_count'] += valid_correct
+
+            valid_answer_time_total = item.get('valid_answer_time_total')
+            if valid_answer_time_total is not None:
+                aggregated_item['valid_answer_time_total'] += Decimal(str(valid_answer_time_total))
 
         question_ids = list(aggregated.keys())
         insert_time = timezone.now()
@@ -1007,6 +1084,37 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     Decimal(new_correct) * Decimal('100') / Decimal(new_attempt)
                 ).quantize(Decimal('0.01'))
 
+            # 有效统计滚动均值
+            current_valid_attempt = int(stats.valid_attempt_count or 0)
+            new_valid_attempt = current_valid_attempt + aggregated_item['valid_attempt_count']
+            new_valid_correct = int(stats.valid_correct_count or 0) + aggregated_item['valid_correct_count']
+            new_valid_avg_answer_time = stats.valid_avg_answer_time
+
+            if aggregated_item['valid_attempt_count'] > 0:
+                if current_valid_attempt <= 0 or stats.valid_avg_answer_time is None:
+                    new_valid_avg_answer_time = (
+                        aggregated_item['valid_answer_time_total']
+                        / Decimal(aggregated_item['valid_attempt_count'])
+                    ).quantize(Decimal('0.01'))
+                else:
+                    current_valid_avg = Decimal(str(stats.valid_avg_answer_time))
+                    total_valid_time = (
+                        current_valid_avg * Decimal(current_valid_attempt)
+                        + aggregated_item['valid_answer_time_total']
+                    )
+                    new_valid_avg_answer_time = (
+                        total_valid_time / Decimal(new_valid_attempt)
+                    ).quantize(Decimal('0.01'))
+
+            # 中位数 + 难度计算
+            median_time = await self.get_median_answer_time(db, question_id)
+            computed_difficulty = compute_difficulty(
+                valid_attempts=new_valid_attempt,
+                valid_correct=new_valid_correct,
+                valid_avg_time=new_valid_avg_answer_time,
+                median_time=median_time,
+            )
+
             payloads.append({
                 'filter_question_id': question_id,
                 'set_attempt_count': new_attempt,
@@ -1018,6 +1126,10 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                 'set_note_count': new_note,
                 'set_report_count': new_report,
                 'set_last_updated': current_time,
+                'set_valid_attempt_count': new_valid_attempt,
+                'set_valid_correct_count': new_valid_correct,
+                'set_valid_avg_answer_time': new_valid_avg_answer_time,
+                'set_computed_difficulty': computed_difficulty,
             })
 
         if not payloads:
@@ -1036,11 +1148,77 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                 note_count=bindparam('set_note_count'),
                 report_count=bindparam('set_report_count'),
                 last_updated=bindparam('set_last_updated'),
+                valid_attempt_count=bindparam('set_valid_attempt_count'),
+                valid_correct_count=bindparam('set_valid_correct_count'),
+                valid_avg_answer_time=bindparam('set_valid_avg_answer_time'),
             )
             .execution_options(synchronize_session=False)
         )
         await db.execute(update_stmt, payloads)
+
+        # 写回 Question.difficulty
+        difficulty_payloads = [
+            {'filter_question_id': p['filter_question_id'], 'set_difficulty': p['set_computed_difficulty']}
+            for p in payloads
+            if p['set_computed_difficulty'] is not None
+        ]
+        if difficulty_payloads:
+            difficulty_stmt = (
+                sa_update(Question.__table__)
+                .where(Question.id == bindparam('filter_question_id'))
+                .values(difficulty=bindparam('set_difficulty'))
+                .execution_options(synchronize_session=False)
+            )
+            await db.execute(difficulty_stmt, difficulty_payloads)
+
         await db.flush()
+
+    async def get_median_answer_time(self, db: AsyncSession, question_id: int) -> Decimal | None:
+        """
+        查询该题有效答题时间的中位数
+
+        :param db: 数据库会话
+        :param question_id: 题目 ID
+        :return: 中位数或 None
+        """
+        stmt = select(
+            func.percentile_cont(0.5).within_group(SessionQuestion.answer_time)
+        ).where(
+            SessionQuestion.question_id == question_id,
+            SessionQuestion.user_answer.isnot(None),
+            SessionQuestion.is_correct.isnot(None),
+            SessionQuestion.answer_time >= INVALID_TIME_THRESHOLD,
+        )
+        result = (await db.execute(stmt)).scalar()
+        if result is None:
+            return None
+        return Decimal(str(result)).quantize(Decimal('0.01'))
+
+    async def update_difficulty(self, db: AsyncSession, question_id: int) -> None:
+        """
+        重算单题难度并写回 Question.difficulty
+
+        :param db: 数据库会话
+        :param question_id: 题目 ID
+        """
+        stats = await self.get_by_question_id(db, question_id)
+        if not stats:
+            return
+
+        median_time = await self.get_median_answer_time(db, question_id)
+        difficulty = compute_difficulty(
+            valid_attempts=int(stats.valid_attempt_count or 0),
+            valid_correct=int(stats.valid_correct_count or 0),
+            valid_avg_time=stats.valid_avg_answer_time,
+            median_time=median_time,
+        )
+
+        stmt = (
+            sa_update(Question)
+            .where(Question.id == question_id)
+            .values(difficulty=difficulty)
+        )
+        await db.execute(stmt)
 
 
 # ============ 导出实例 ============

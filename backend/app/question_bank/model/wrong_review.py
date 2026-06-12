@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.common.model import Base, TimeZone, UserMixin, id_key
+from backend.common.model import Base, TimeZone, id_key
 from backend.utils.timezone import timezone
 
 CompatibleJSONB = sa.JSON().with_variant(JSONB, 'postgresql')
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .question import Question
 
 
-class WrongReasonTag(Base, UserMixin):
+class WrongReasonTag(Base):
     """错因标签表"""
 
     __tablename__ = 'study_wrong_reason_tag'
@@ -43,7 +43,7 @@ class WrongReasonTag(Base, UserMixin):
     display_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序权重')
 
 
-class WrongQuestionCustom(Base, UserMixin):
+class WrongQuestionCustom(Base):
     """自定义导入错题表"""
 
     __tablename__ = 'study_wrong_question_custom'
@@ -76,16 +76,12 @@ class WrongQuestionCustom(Base, UserMixin):
     reasons: Mapped[list | None] = mapped_column(CompatibleJSONB, default=None, comment='错因标签 ID 数组')
     summary: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='一句话复盘')
     duration_seconds: Mapped[int | None] = mapped_column(sa.Integer, default=None, comment='做题用时（秒）')
-    source: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='来源')
-    reasons: Mapped[list | None] = mapped_column(CompatibleJSONB, default=None, comment='错因标签 ID 数组')
-    summary: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='一句话复盘')
-    duration_seconds: Mapped[int | None] = mapped_column(sa.Integer, default=None, comment='做题用时（秒）')
 
     # ============ 关系 ============
     question: Mapped[Question | None] = relationship(init=False, lazy='noload')
 
 
-class WrongQuestionReview(Base, UserMixin):
+class WrongQuestionReview(Base):
     """错题复盘记录表"""
 
     __tablename__ = 'study_wrong_question_review'

@@ -29,7 +29,7 @@ class ReviewQuestionItem(SchemaBase):
     options_data: dict[str, Any] = Field(default_factory=dict, description='选项数据')
     answer_data: dict[str, Any] = Field(default_factory=dict, description='答案数据')
     analysis_content: str = Field(default='', description='解析内容')
-    difficulty: str = Field(default='medium', description='难度')
+    difficulty: str | None = Field(default=None, description='难度')
     knowledge_point: str | list[str] | None = Field(default=None, description='知识点')
     score: float = Field(default=1.0, description='分值')
     sort_order: int | None = Field(default=None, description='排序')

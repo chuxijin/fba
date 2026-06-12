@@ -396,7 +396,7 @@ class SessionQuestionItem(SchemaBase):
     material_ids: list[int] = Field(default_factory=list, description='材料 ID 列表')
     knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签（code）')
     knowledge_point_display: list[str] | None = Field(None, description='考点标签（名称）')
-    difficulty: str | None = Field(None, description='难度')
+    difficulty: Decimal | None = Field(None, description='难度 (1.0-5.0)')
 
 
 class SessionMaterialItem(SchemaBase):

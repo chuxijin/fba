@@ -17,6 +17,8 @@ from backend.app.question_bank.schema.wrong_review import (
     GetReviewListItem,
     ReviewQueryParam,
     UpdateCustomQuestionParam,
+    GetReviewDashboard,
+    TodayPendingItem,
 )
 from backend.app.question_bank.service.wrong_review_service import wrong_review_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
@@ -26,6 +28,47 @@ from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
+
+
+# ───────────────── 看板统计 ─────────────────
+
+
+@router.get(
+    '/dashboard',
+    summary='获取复盘看板数据',
+    name='qbank_wrong_review_dashboard',
+    dependencies=[DependsJwtAuth],
+)
+async def get_dashboard(
+    request: Request,
+    db: CurrentSession,
+    cat_id: int | None = None,
+    kp_cat_id: int | None = None,
+) -> ResponseSchemaModel[GetReviewDashboard]:
+    data = await wrong_review_service.get_dashboard(
+        db=db,
+        user_id=request.user.id,
+        cat_id=cat_id,
+        kp_cat_id=kp_cat_id,
+    )
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/today-pending',
+    summary='获取今日待复盘错题列表',
+    name='qbank_wrong_review_today_pending',
+    dependencies=[DependsJwtAuth],
+)
+async def get_today_pending(
+    request: Request,
+    db: CurrentSession,
+) -> ResponseSchemaModel[list[TodayPendingItem]]:
+    data = await wrong_review_service.get_today_pending_list(
+        db=db,
+        user_id=request.user.id,
+    )
+    return response_base.success(data=data)
 
 
 # ───────────────── 错因标签 ─────────────────

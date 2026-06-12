@@ -122,6 +122,8 @@ class CreateReviewParam(SchemaBase):
     duration_seconds: int = Field(ge=0, description='复盘用时（秒）')
     reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
     summary: str | None = Field(None, description='一句话复盘')
+    is_mastered: bool | None = Field(None, description='是否标记为已掌握')
+
 
 
 class GetReviewDetail(SchemaBase):
@@ -162,3 +164,50 @@ class ReviewQueryParam(SchemaBase):
     review_type: str | None = Field(None, description='按复盘类型筛选')
     start_date: datetime | None = Field(None, description='开始日期')
     end_date: datetime | None = Field(None, description='结束日期')
+
+
+# ───────────────── 看板统计 ─────────────────
+
+
+class ReasonDistributionItem(SchemaBase):
+    """错因分布"""
+
+    tag_id: int = Field(description='标签 ID')
+    tag_name: str = Field(description='标签名称')
+    color: str | None = Field(None, description='标签颜色')
+    count: int = Field(description='出现次数')
+    percentage: float = Field(description='占比百分比')
+
+
+class WrongDistributionItem(SchemaBase):
+    """错题分布"""
+
+    bank_id: int = Field(description='题库 ID')
+    bank_name: str = Field(description='题库名称')
+    wrong_count: int = Field(description='错题数量')
+    percentage: float = Field(description='占比百分比')
+
+
+class TodayPendingItem(SchemaBase):
+    """今日待复盘错题"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    wrong_book_id: int = Field(description='错题本记录 ID')
+    question_id: int = Field(description='题目 ID')
+    stem: str | None = Field(None, description='题干摘要')
+    bank_name: str | None = Field(None, description='题库名称')
+    wrong_count: int = Field(description='错误次数')
+    last_wrong_time: datetime | None = Field(None, description='最后错误时间')
+
+
+class GetReviewDashboard(SchemaBase):
+    """复盘看板数据"""
+
+    total_wrong_count: int = Field(description='总错题数')
+    unmastered_count: int = Field(description='未掌握数')
+    total_review_count: int = Field(description='总复盘记录数')
+    today_pending_count: int = Field(description='今日待复盘数')
+    reason_distribution: list[ReasonDistributionItem] = Field(default_factory=list, description='错因分布')
+    wrong_distribution: list[WrongDistributionItem] = Field(default_factory=list, description='错题分布')
+

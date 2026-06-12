@@ -667,11 +667,10 @@ class ReviewParseService:
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Font, PatternFill
 
-        diff_reverse: dict[str, str] = {
-            'easy': '简单',
-            'medium': '中等',
-            'hard': '困难',
-        }
+        def format_difficulty(val):
+            if val is None:
+                return '暂无'
+            return str(val)
 
         wb = Workbook()
         answer_items = answers or []
@@ -722,7 +721,7 @@ class ReviewParseService:
                 get_option('D'),
                 answer_str,
                 question.get('analysis_content', ''),
-                diff_reverse.get(question.get('difficulty', 'medium'), '中等'),
+                format_difficulty(question.get('difficulty')),
                 f'=IF(B{row_index}="多选", 2, IF(B{row_index}="单选", 1, ""))',
                 level1_name,
                 level2_name,

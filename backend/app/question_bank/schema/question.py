@@ -10,7 +10,7 @@ from backend.common.schema import SchemaBase
 
 # ===== 枚举字面值 =====
 QuestionTypeEnum = Literal['single', 'multiple', 'judgement', 'fill', 'shortAnswer']
-DifficultyEnum = Literal['easy', 'medium', 'hard']
+# DifficultyEnum removed — difficulty is now a numeric field (1.0-5.0)
 ContentStatusEnum = Literal[0, 10, 20]
 ReviewStatusEnum = Literal[0, 10, 20]
 AnalysisStatusEnum = Literal[0, 10, 20]
@@ -27,7 +27,7 @@ class QuestionCoreBase(SchemaBase):
 
     type: QuestionTypeEnum = Field(description='题型')
     stem: str = Field(min_length=1, description='题干（富文本）')
-    difficulty: DifficultyEnum = Field(default='medium', description='难度')
+    difficulty: Decimal | None = Field(None, ge=Decimal('1.0'), le=Decimal('5.0'), description='难度 (1.0-5.0)')
     default_score: Decimal = Field(default=Decimal('1.0'), ge=Decimal('0'), description='默认分值')
     knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签')
     content_status: ContentStatusEnum = Field(default=10, description='内容状态')
@@ -143,6 +143,9 @@ class GetQuestionStatisticsDetail(SchemaBase):
     correct_count: int = Field(ge=0, description='答对次数')
     correct_rate: Decimal = Field(ge=Decimal('0'), le=Decimal('100'), description='正确率（%）')
     avg_answer_time: Decimal | None = Field(None, ge=Decimal('0'), description='平均答题时间（秒）')
+    valid_attempt_count: int = Field(default=0, ge=0, description='有效答题次数')
+    valid_correct_count: int = Field(default=0, ge=0, description='有效答对次数')
+    valid_avg_answer_time: Decimal | None = Field(None, ge=Decimal('0'), description='有效平均答题时间（秒）')
     option_select_stats: dict[str, Any] | None = Field(None, description='选项选择统计')
     collect_count: int = Field(ge=0, description='收藏次数')
     note_count: int = Field(ge=0, description='笔记次数')
@@ -170,7 +173,7 @@ class QuestionQueryParam(SchemaBase):
     bank_id: int | None = Field(None, gt=0, description='题库 ID（通过挂载筛选）')
     chapter_id: int | None = Field(None, gt=0, description='章节 ID（通过挂载筛选）')
     type: QuestionTypeEnum | None = Field(None, description='题型')
-    difficulty: DifficultyEnum | None = Field(None, description='难度')
+    difficulty: Decimal | None = Field(None, description='难度')
     content_status: ContentStatusEnum | None = Field(None, description='内容状态')
     is_active: bool | None = Field(None, description='是否启用（挂载级别）')
     review_status: ReviewStatusEnum | None = Field(None, description='审核状态（挂载级别）')
@@ -212,7 +215,7 @@ class QuestionCollectParam(SchemaBase):
         max_length=20,
         description='题型过滤',
     )
-    difficulties: list[DifficultyEnum] | None = Field(
+    difficulties: list[Decimal] | None = Field(
         None,
         min_length=1,
         max_length=10,
@@ -276,7 +279,7 @@ class GetQuestionListItem(SchemaBase):
     id: int = Field(description='题目 ID')
     type: QuestionTypeEnum = Field(description='题型')
     stem: str = Field(description='题干')
-    difficulty: DifficultyEnum = Field(description='难度')
+    difficulty: Decimal | None = Field(None, description='难度 (1.0-5.0)')
     default_score: Decimal = Field(ge=Decimal('0'), description='默认分值')
     knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签（code）')
     knowledge_point_display: list[str] | None = Field(None, description='考点标签（名称）')
@@ -311,7 +314,7 @@ class GetQuestionDetail(SchemaBase):
     id: int = Field(description='题目 ID')
     type: QuestionTypeEnum = Field(description='题型')
     stem: str = Field(description='题干')
-    difficulty: DifficultyEnum = Field(description='难度')
+    difficulty: Decimal | None = Field(None, description='难度 (1.0-5.0)')
     default_score: Decimal = Field(ge=Decimal('0'), description='默认分值')
     knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签（code）')
     knowledge_point_display: list[str] | None = Field(None, description='考点标签（名称）')
@@ -333,7 +336,7 @@ class GetQuestionWithAnswer(SchemaBase):
     id: int = Field(description='题目 ID')
     type: QuestionTypeEnum = Field(description='题型')
     stem: str = Field(description='题干')
-    difficulty: DifficultyEnum = Field(description='难度')
+    difficulty: Decimal | None = Field(None, description='难度 (1.0-5.0)')
     default_score: Decimal = Field(ge=Decimal('0'), description='默认分值')
     knowledge_point: list[KnowledgePointValue] | None = Field(None, description='考点标签（code）')
     knowledge_point_display: list[str] | None = Field(None, description='考点标签（名称）')

@@ -50,11 +50,11 @@ TYPE_MAPPING: dict[str, str] = {
     '简答': 'shortAnswer', '简答题': 'shortAnswer',
 }
 
-# 难度映射
-DIFFICULTY_MAPPING: dict[str, str] = {
-    '简单': 'easy',
-    '中等': 'medium',
-    '困难': 'hard',
+# 难度由答题数据动态计算，导入时不预设
+DIFFICULTY_MAPPING: dict[str, None] = {
+    '简单': None,
+    '中等': None,
+    '困难': None,
 }
 
 
@@ -89,7 +89,7 @@ class QuestionImportService:
                 if not question_type:
                     raise ValueError(f'不支持的题型：{row.题型}')
 
-                difficulty = DIFFICULTY_MAPPING.get(row.难度 or '中等', 'medium')
+                difficulty = DIFFICULTY_MAPPING.get(row.难度 or '中等')
 
                 chapter_id = await QuestionImportService._resolve_import_chapter_id(
                     db=db,
@@ -298,7 +298,7 @@ class QuestionImportService:
                     raise ValueError(f'不支持的题型：{row.题型}')
 
                 # 难度
-                difficulty = DIFFICULTY_MAPPING.get(row.难度 or '中等', 'medium')
+                difficulty = DIFFICULTY_MAPPING.get(row.难度 or '中等')
 
                 # 章节
                 chapter_id = await QuestionImportService._resolve_import_chapter_id(
@@ -1038,7 +1038,7 @@ class QuestionImportService:
 
             # 2b. 基本字段
             q_type = q_data.get('type') or 'single'
-            q_diff = q_data.get('difficulty') or 'medium'
+            q_diff = q_data.get('difficulty') or None
             q_default_score = Decimal(str(q_data.get('score') or '1.0'))
 
             sort_order = q_data.get('sort_order')

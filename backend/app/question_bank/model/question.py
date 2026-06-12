@@ -106,10 +106,10 @@ class Question(Base, UserMixin):
         UniversalText,
         comment='题干（富文本）',
     )
-    difficulty: Mapped[str] = mapped_column(
-        sa.String(16),
-        default='medium',
-        comment='难度: easy/medium/hard',
+    difficulty: Mapped[Decimal | None] = mapped_column(
+        sa.Numeric(3, 1),
+        default=None,
+        comment='难度 (1.0-5.0, 基于答题统计动态计算)',
     )
     default_score: Mapped[Decimal] = mapped_column(
         sa.Numeric(6, 2),
@@ -249,6 +249,13 @@ class QuestionStatistics(Base):
         sa.Numeric(8, 2),
         default=None,
         comment='平均答题时间（秒）',
+    )
+    valid_attempt_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='有效答题次数 (过滤 answer_time < 3s)')
+    valid_correct_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='有效答对次数')
+    valid_avg_answer_time: Mapped[Decimal | None] = mapped_column(
+        sa.Numeric(8, 2),
+        default=None,
+        comment='有效平均答题时间（秒）',
     )
     option_select_stats: Mapped[dict | None] = mapped_column(
         CompatibleJSONB,

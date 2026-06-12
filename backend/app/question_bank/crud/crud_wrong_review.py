@@ -233,6 +233,46 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
         """
         return await self.delete_model(db, review_id)
 
+    async def count_by_user(self, db: AsyncSession, user_id: int) -> int:
+        """
+        统计用户的总复盘记录数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        from sqlalchemy import func
+        stmt = select(func.count()).select_from(WrongQuestionReview).where(
+            WrongQuestionReview.user_id == user_id
+        )
+        result = await db.execute(stmt)
+        return result.scalar() or 0
+
+    async def get_reason_counts(self, db: AsyncSession, user_id: int) -> list[tuple[int, int]]:
+        """
+        统计用户复盘记录中各错因标签的出现次数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(WrongQuestionReview.reasons)
+            .where(WrongQuestionReview.user_id == user_id)
+            .where(WrongQuestionReview.reasons.isnot(None))
+        )
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
+        counter: dict[int, int] = {}
+        for reasons_list in rows:
+            if not isinstance(reasons_list, list):
+                continue
+            for tag_id in reasons_list:
+                if isinstance(tag_id, int):
+                    counter[tag_id] = counter.get(tag_id, 0) + 1
+        return sorted(counter.items(), key=lambda x: x[1], reverse=True)
+
+
 
 reason_tag_dao: CRUDReasonTag = CRUDReasonTag(WrongReasonTag)
 custom_question_dao: CRUDWrongQuestionCustom = CRUDWrongQuestionCustom(WrongQuestionCustom)
