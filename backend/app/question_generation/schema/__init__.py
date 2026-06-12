@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from backend.app.question_generation.schema.question_generation import (
+    CandidateListItem,
+    CandidateReviewParam,
+    CandidateStatus,
+    CreateMaterialParam,
+    DeleteCandidateParam,
+    DeleteMaterialParam,
+    DeleteTaskParam,
+    GenerationTaskDetail,
+    GenerationTaskListItem,
+    GetCandidateDetail,
+    GetMaterialDetail,
+    GetMaterialListItem,
+    MaterialQueryParam,
+    MaterialStatus,
+    StartGenerationParam,
+    StartGenerationResult,
+    TaskStatus,
+    UpdateMaterialParam,
+)
+
+__all__ = [
+    'CandidateListItem',
+    'CandidateReviewParam',
+    'CandidateStatus',
+    'CreateMaterialParam',
+    'DeleteCandidateParam',
+    'DeleteMaterialParam',
+    'DeleteTaskParam',
+    'GenerationTaskDetail',
+    'GenerationTaskListItem',
+    'GetCandidateDetail',
+    'GetMaterialDetail',
+    'GetMaterialListItem',
+    'MaterialQueryParam',
+    'MaterialStatus',
+    'StartGenerationParam',
+    'StartGenerationResult',
+    'TaskStatus',
+    'UpdateMaterialParam',
+]
