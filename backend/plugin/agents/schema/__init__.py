@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from backend.plugin.agents.schema.event import AgentEvent, EventType
 from backend.plugin.agents.schema.grading import GradingDetail, GradingOcrResult, GradingStartParam, GradingStartResult
+from backend.plugin.agents.schema.question_generation import QuestionGenerationState
 from backend.plugin.agents.schema.report import (
     AgentReport,
     AgentTraceItem,
@@ -51,6 +52,7 @@ __all__ = [
     'GradingStartParam',
     'GradingStartResult',
     'GradingState',
+    'QuestionGenerationState',
     'IssueItem',
     'IssuesSection',
     'KeyPointItem',

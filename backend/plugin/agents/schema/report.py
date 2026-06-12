@@ -13,6 +13,7 @@ class AgentType(StrEnum):
     """Agent 类型"""
 
     shenlun = 'shenlun'
+    question_generation = 'question_generation'
     english_essay = 'english_essay'
     xingce = 'xingce'
     interview = 'interview'

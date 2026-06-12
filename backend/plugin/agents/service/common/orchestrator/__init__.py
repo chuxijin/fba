@@ -8,8 +8,10 @@ from backend.plugin.agents.service.common.orchestrator.pipeline import (
     Pipeline,
     PipelineStep,
 )
+from backend.plugin.agents.service.common.orchestrator.usage import build_usage_summary
 
 __all__ = [
+    'build_usage_summary',
     'Node',
     'NodeContext',
     'NodeContractError',

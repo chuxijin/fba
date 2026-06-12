@@ -15,6 +15,7 @@ from backend.plugin.agents.schema import (
     SectionName,
 )
 from backend.plugin.agents.service.common.orchestrator.context import NodeContext
+from backend.plugin.agents.service.common.orchestrator.usage import build_usage_summary
 from backend.utils.timezone import timezone
 
 NodeFunc = Callable[[NodeContext], Awaitable[None]]
@@ -107,28 +108,16 @@ class Pipeline:
             message=f'开始: {node.name}',
         )
 
-        await node.func(ctx)
+        try:
+            await node.func(ctx)
+        except Exception as exc:
+            await self._record_trace(ctx, node, started, started_perf, summary=f'{node.name} 失败: {exc!s}')
+            if self._on_checkpoint is not None:
+                snapshot = self._build_snapshot(ctx)
+                await self._on_checkpoint(node.stage, progress, snapshot)
+            raise
 
-        duration_ms = int((time.perf_counter() - started_perf) * 1000)
-        finished = timezone.now()
-
-        # 从 NodeContext 读取 LLM 调用统计
-        llm_stats = ctx.last_llm_stats
-        trace_item = AgentTraceItem(
-            agent=node.name,
-            stage=node.stage,
-            started_at=started,
-            finished_at=finished,
-            duration_ms=duration_ms,
-            summary=f'{node.name} 完成',
-        )
-        if llm_stats is not None:
-            trace_item.model = llm_stats.model
-            trace_item.tokens_in = llm_stats.tokens_in
-            trace_item.tokens_out = llm_stats.tokens_out
-
-        ctx.state.traces.append(trace_item)
-        ctx.last_llm_stats = None  # 重置, 避免下一个节点误读
+        await self._record_trace(ctx, node, started, started_perf, summary=f'{node.name} 完成')
 
         if node.section is not None:
             section_obj = getattr(ctx.state, node.section.value, None)
@@ -157,6 +146,45 @@ class Pipeline:
         if self._on_checkpoint is not None:
             snapshot = self._build_snapshot(ctx)
             await self._on_checkpoint(node.stage, progress, snapshot)
+
+    @staticmethod
+    async def _record_trace(
+        ctx: NodeContext,
+        node: Node,
+        started: Any,
+        started_perf: float,
+        *,
+        summary: str,
+    ) -> None:
+        """
+        记录节点执行轨迹
+
+        :param ctx: 节点上下文
+        :param node: 节点
+        :param started: 开始时间
+        :param started_perf: perf 计时开始值
+        :param summary: 执行摘要
+        :return:
+        """
+        duration_ms = int((time.perf_counter() - started_perf) * 1000)
+        finished = timezone.now()
+
+        llm_stats = ctx.last_llm_stats
+        trace_item = AgentTraceItem(
+            agent=node.name,
+            stage=node.stage,
+            started_at=started,
+            finished_at=finished,
+            duration_ms=duration_ms,
+            summary=summary,
+        )
+        if llm_stats is not None:
+            trace_item.model = llm_stats.model
+            trace_item.tokens_in = llm_stats.tokens_in
+            trace_item.tokens_out = llm_stats.tokens_out
+
+        ctx.state.traces.append(trace_item)
+        ctx.last_llm_stats = None
 
     async def _publish(
         self,
@@ -205,4 +233,5 @@ class Pipeline:
             if section_obj is not None and hasattr(section_obj, 'model_dump'):
                 snapshot[section_name.value] = section_obj.model_dump(mode='json')
         snapshot['traces'] = [t.model_dump(mode='json') for t in ctx.state.traces]
+        snapshot['usage_summary'] = build_usage_summary(ctx.state.traces)
         return snapshot

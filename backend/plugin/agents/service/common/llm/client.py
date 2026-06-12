@@ -110,7 +110,7 @@ class LLMClient:
         output_type: type[T],
         temperature: float = 0.2,
         max_tokens: int = 4000,
-        timeout: float = 120,
+        timeout: float = 300,
         output_retries: int = 2,
     ) -> tuple[T, LLMCallStats]:
         """

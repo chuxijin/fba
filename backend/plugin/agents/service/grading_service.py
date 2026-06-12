@@ -26,7 +26,7 @@ from backend.plugin.agents.schema import (
 )
 from backend.plugin.agents.service.common.llm import LLMClient
 from backend.plugin.agents.service.common.ocr import OCRClient
-from backend.plugin.agents.service.common.orchestrator import NodeContext
+from backend.plugin.agents.service.common.orchestrator import NodeContext, build_usage_summary
 from backend.plugin.agents.service.common.prompts import PromptLoader
 from backend.plugin.agents.service.common.quota import quota_provider
 from backend.plugin.agents.service.common.streaming import event_bus
@@ -278,11 +278,15 @@ class GradingService:
             task = await agent_task_dao.get(db=db, pk=task_id)
             if task is None:
                 return
+            traces = None
+            if task.state_snapshot:
+                traces = task.state_snapshot.get('traces')
             await agent_task_dao.mark_failed(
                 db=db,
                 task=task,
                 error_code=error_code,
                 error_message=error_message,
+                traces=traces,
             )
             await db.commit()
 
@@ -338,6 +342,7 @@ class GradingService:
             rewritten_text=state.rewritten_text,
             qc=state.qc,
             traces=state.traces,
+            extras={'usage_summary': build_usage_summary(state.traces)},
         )
 
     @staticmethod
