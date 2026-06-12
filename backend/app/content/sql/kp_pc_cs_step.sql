@@ -1,6 +1,0 @@
-WITH category_node AS (
-    SELECT id FROM sys_category WHERE app_code = 'youanshang' AND type = 'knowledge_point' AND code = 'kp_pc_cs_step'
-)
-INSERT INTO sys_content (app_code, title, slug, content_json, content_html, summary, category_id, tags, is_pinned, is_public, is_published, publish_time, view_count, sort_order, extra, created_by, created_time)
-SELECT 'gongkao', '分步完成', 'kp-pc-cs-step', CAST($${"type": "doc", "content": [{"type": "heading", "attrs": {"level": 1}, "content": [{"type": "text", "text": "分步完成"}]}, {"type": "highlightBlock", "attrs": {"backgroundColor": "#fffbeb", "borderColor": "#f59e0b", "icon": "💡"}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "核心定义：", "marks": [{"type": "bold"}]}, {"type": "text", "text": "把一个大任务拆解成流水线上的连续小任务，用乘法连接。"}]}]}]}$$ AS jsonb), NULL, '分步完成的核心考点与实战推导。', category_node.id, CAST('["数量关系", "排列组合", "分步完成"]' AS jsonb), FALSE, TRUE, TRUE, NOW(), 0, 0, CAST('{"content_type": "knowledge_point", "category_code": "kp_pc_cs_step", "source": "fba_content_engine"}' AS jsonb), 1, NOW()
-FROM category_node ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, content_json = EXCLUDED.content_json, summary = EXCLUDED.summary, category_id = EXCLUDED.category_id, tags = EXCLUDED.tags, updated_time = NOW();
