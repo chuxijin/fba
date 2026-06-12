@@ -97,3 +97,4 @@ backend/scripts/quality.sh
 .superpowers/
 superpowers/
 .codegraph/
+backend/output/
