@@ -127,6 +127,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/payment/pay/notify',  # 微信支付回调
         f'{FASTAPI_API_V1_PATH}/payment/pay/refund-notify',  # 微信退款回调
         f'{FASTAPI_API_V1_PATH}/invite/codes/share-config',  # 新增：分享有礼卡片配置免鉴权
+        f'{FASTAPI_API_V1_PATH}/notify/send',  # 多渠道通知发送接口（免签放行，便于对接外部 Webhook 比如短信转发）
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         re.compile(rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$'),
@@ -548,6 +549,16 @@ class Settings(BaseSettings):
     NOTIFY_WECOM_ENABLED: bool
     NOTIFY_WECOM_API_URL: str
     NOTIFY_WECOM_WEBHOOK_KEY: str = ''  # .env
+
+    # 企业微信自建应用推送
+    NOTIFY_WECOM_APP_ENABLED: bool
+    NOTIFY_WECOM_APP_CORPID: str = ''  # .env
+    NOTIFY_WECOM_APP_CORPSECRET: str = ''  # .env
+    NOTIFY_WECOM_APP_AGENTID: int = 0  # .env
+    NOTIFY_WECOM_APP_TOUSER: str = '@all'  # .env
+    NOTIFY_WECOM_APP_MSGTYPE: str = 'markdown'
+    NOTIFY_WECOM_APP_TOKEN: str = ''  # .env
+    NOTIFY_WECOM_APP_ENCODING_AES_KEY: str = ''  # .env
 
     ##################################################
     # [ Plugin ] baidupan 百度网盘开放平台

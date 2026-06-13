@@ -96,6 +96,7 @@ class DateTimeMixin(MappedAsDataclass):
     updated_time: Mapped[datetime | None] = mapped_column(
         TimeZone,
         init=False,
+        default_factory=timezone.now,
         onupdate=timezone.now,
         sort_order=999,
         comment='更新时间',
