@@ -11,7 +11,7 @@ router = ['v1']
 
 [settings]
 # 渠道优先级顺序（从高到低尝试，首个成功即停止）
-NOTIFY_CHANNEL_PRIORITY = ["serverchan", "smtp", "dingtalk", "telegram", "wecom"]
+NOTIFY_CHANNEL_PRIORITY = ["serverchan", "smtp", "dingtalk", "telegram", "wecom", "wecom_app"]
 NOTIFY_TIMEOUT = 10
 NOTIFY_MAX_TITLE_LENGTH = 128
 
@@ -35,3 +35,13 @@ NOTIFY_TELEGRAM_API_URL = "https://api.telegram.org"
 # 企业微信机器人
 NOTIFY_WECOM_ENABLED = false
 NOTIFY_WECOM_API_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send"
+
+# 企业微信自建应用推送 (wecom_app)
+NOTIFY_WECOM_APP_ENABLED = false
+NOTIFY_WECOM_APP_CORPID = ""
+NOTIFY_WECOM_APP_CORPSECRET = ""
+NOTIFY_WECOM_APP_AGENTID = 0
+NOTIFY_WECOM_APP_TOUSER = "@all"
+NOTIFY_WECOM_APP_MSGTYPE = "markdown"
+NOTIFY_WECOM_APP_TOKEN = ""
+NOTIFY_WECOM_APP_ENCODING_AES_KEY = ""
