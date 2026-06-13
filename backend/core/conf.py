@@ -128,6 +128,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/payment/pay/refund-notify',  # 微信退款回调
         f'{FASTAPI_API_V1_PATH}/invite/codes/share-config',  # 新增：分享有礼卡片配置免鉴权
         f'{FASTAPI_API_V1_PATH}/notify/send',  # 多渠道通知发送接口（免签放行，便于对接外部 Webhook 比如短信转发）
+        f'{FASTAPI_API_V1_PATH}/notify/wecom/callback',  # 企业微信自建应用接收消息回调免鉴权
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         re.compile(rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$'),
