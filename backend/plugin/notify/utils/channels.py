@@ -412,7 +412,7 @@ async def update_wecom_app_template_card(
         'agentid': settings.NOTIFY_WECOM_APP_AGENTID,
         'response_code': response_code,
         'button': {
-            'replace_text': replace_text
+            'replace_name': replace_text
         }
     }
 
