@@ -44,6 +44,7 @@ class CreateCustomQuestionParam(SchemaBase):
     explanation: str | None = Field(None, description='解析')
     source: str | None = Field(None, max_length=255, description='来源')
     reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
+    knowledge_points: list[dict] | None = Field(None, description='知识点数组 [{id: int, name: str}]')
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, ge=0, description='做题用时（秒）')
 
@@ -79,7 +80,7 @@ class GetCustomQuestionDetail(SchemaBase):
     answer: str | None = Field(None, description='正确答案')
     explanation: str | None = Field(None, description='解析')
     source: str | None = Field(None, description='来源')
-    reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
+    reasons: dict | list | None = Field(None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]')
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, description='做题用时（秒）')
     created_time: datetime = Field(description='创建时间')
@@ -96,7 +97,7 @@ class GetCustomQuestionListItem(SchemaBase):
     images: list[str] | None = Field(None, description='截图 URL 数组')
     category_id: int | None = Field(None, description='关联题库分类 ID')
     source: str | None = Field(None, description='来源')
-    reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
+    reasons: dict | list | None = Field(None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]')
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, description='做题用时（秒）')
     created_time: datetime = Field(description='创建时间')
@@ -120,7 +121,8 @@ class CreateReviewParam(SchemaBase):
     wrong_book_id: int | None = Field(None, gt=0, description='关联自动收录错题 ID')
     custom_question_id: int | None = Field(None, gt=0, description='关联自定义错题 ID')
     duration_seconds: int = Field(ge=0, description='复盘用时（秒）')
-    reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
+    reasons: dict | list | None = Field(None, description='错因数据: {tags: [错因标签ID], knowledge_points: [知识点ID]} 或旧格式 [ID数组]')
+    knowledge_points: list[dict] | None = Field(None, description='知识点数组 [{id: int, name: str}]')
     summary: str | None = Field(None, description='一句话复盘')
     is_mastered: bool | None = Field(None, description='是否标记为已掌握')
 
@@ -137,7 +139,7 @@ class GetReviewDetail(SchemaBase):
     wrong_book_id: int | None = Field(None, description='关联自动收录错题 ID')
     custom_question_id: int | None = Field(None, description='关联自定义错题 ID')
     duration_seconds: int = Field(description='复盘用时（秒）')
-    reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
+    reasons: dict | list | None = Field(None, description='错因数据')
     summary: str | None = Field(None, description='一句话复盘')
     reviewed_time: datetime = Field(description='复盘时间')
     created_time: datetime = Field(description='创建时间')
@@ -153,7 +155,7 @@ class GetReviewListItem(SchemaBase):
     wrong_book_id: int | None = Field(None, description='关联自动收录错题 ID')
     custom_question_id: int | None = Field(None, description='关联自定义错题 ID')
     duration_seconds: int = Field(description='复盘用时（秒）')
-    reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
+    reasons: dict | list | None = Field(None, description='错因数据')
     summary: str | None = Field(None, description='一句话复盘')
     reviewed_time: datetime = Field(description='复盘时间')
 
@@ -179,11 +181,11 @@ class ReasonDistributionItem(SchemaBase):
     percentage: float = Field(description='占比百分比')
 
 
-class WrongDistributionItem(SchemaBase):
-    """错题分布"""
+class KnowledgePointDistributionItem(SchemaBase):
+    """知识点分布"""
 
-    bank_id: int = Field(description='题库 ID')
-    bank_name: str = Field(description='题库名称')
+    kp_id: int = Field(description='知识点 ID')
+    kp_name: str = Field(description='知识点名称')
     wrong_count: int = Field(description='错题数量')
     percentage: float = Field(description='占比百分比')
 
@@ -201,6 +203,19 @@ class TodayPendingItem(SchemaBase):
     last_wrong_time: datetime | None = Field(None, description='最后错误时间')
 
 
+class ReviewedQuestionItem(SchemaBase):
+    """已复盘错题列表项"""
+
+    wrong_book_id: int = Field(description='错题本记录 ID')
+    question_id: int = Field(description='题目 ID')
+    custom_question_id: int | None = Field(None, description='自定义错题 ID')
+    stem: str | None = Field(None, description='题干摘要')
+    review_id: int = Field(description='复盘记录 ID')
+    review_time: datetime = Field(description='复盘时间')
+    reasons: dict | list | None = Field(None, description='复盘原因数据')
+    summary: str | None = Field(None, description='复盘总结')
+
+
 class GetReviewDashboard(SchemaBase):
     """复盘看板数据"""
 
@@ -209,5 +224,5 @@ class GetReviewDashboard(SchemaBase):
     total_review_count: int = Field(description='总复盘记录数')
     today_pending_count: int = Field(description='今日待复盘数')
     reason_distribution: list[ReasonDistributionItem] = Field(default_factory=list, description='错因分布')
-    wrong_distribution: list[WrongDistributionItem] = Field(default_factory=list, description='错题分布')
+    knowledge_point_distribution: list[KnowledgePointDistributionItem] = Field(default_factory=list, description='知识点分布')
 

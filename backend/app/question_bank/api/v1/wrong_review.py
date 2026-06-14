@@ -19,6 +19,7 @@ from backend.app.question_bank.schema.wrong_review import (
     UpdateCustomQuestionParam,
     GetReviewDashboard,
     TodayPendingItem,
+    ReviewedQuestionItem,
 )
 from backend.app.question_bank.service.wrong_review_service import wrong_review_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
@@ -67,6 +68,27 @@ async def get_today_pending(
     data = await wrong_review_service.get_today_pending_list(
         db=db,
         user_id=request.user.id,
+    )
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/reviewed',
+    summary='获取已复盘错题列表',
+    name='qbank_wrong_review_reviewed',
+    dependencies=[DependsJwtAuth],
+)
+async def get_reviewed_questions(
+    request: Request,
+    db: CurrentSession,
+    tag_id: int | None = None,
+    kp_id: int | None = None,
+) -> ResponseSchemaModel[list[ReviewedQuestionItem]]:
+    data = await wrong_review_service.get_reviewed_questions(
+        db=db,
+        user_id=request.user.id,
+        tag_id=tag_id,
+        kp_id=kp_id,
     )
     return response_base.success(data=data)
 
@@ -268,6 +290,23 @@ async def create_review(
         db=db,
         user_id=request.user.id,
         **obj.model_dump(exclude_unset=True),
+    )
+    return response_base.success(data=GetReviewDetail.model_validate(review))
+
+
+@router.get(
+    '/reviews/{pk}',
+    summary='获取复盘记录详情',
+    name='qbank_wrong_review_get',
+    dependencies=[DependsJwtAuth],
+)
+async def get_review(
+    request: Request,
+    db: CurrentSession,
+    pk: Annotated[int, Path(description='复盘 ID')],
+) -> ResponseSchemaModel[GetReviewDetail]:
+    review = await wrong_review_service.get_review(
+        db=db, review_id=pk, user_id=request.user.id,
     )
     return response_base.success(data=GetReviewDetail.model_validate(review))
 

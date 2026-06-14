@@ -264,12 +264,45 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
         result = await db.execute(stmt)
         rows = result.scalars().all()
         counter: dict[int, int] = {}
-        for reasons_list in rows:
-            if not isinstance(reasons_list, list):
-                continue
-            for tag_id in reasons_list:
-                if isinstance(tag_id, int):
-                    counter[tag_id] = counter.get(tag_id, 0) + 1
+        for reasons_data in rows:
+            # 新格式：字典 {tags: [...], knowledge_points: [...]}
+            if isinstance(reasons_data, dict):
+                tag_ids = reasons_data.get('tags', [])
+                if isinstance(tag_ids, list):
+                    for tag_id in tag_ids:
+                        if isinstance(tag_id, int):
+                            counter[tag_id] = counter.get(tag_id, 0) + 1
+            # 旧格式：数组 [1, 2, 3]
+            elif isinstance(reasons_data, list):
+                for tag_id in reasons_data:
+                    if isinstance(tag_id, int):
+                        counter[tag_id] = counter.get(tag_id, 0) + 1
+        return sorted(counter.items(), key=lambda x: x[1], reverse=True)
+
+    async def get_knowledge_point_counts(self, db: AsyncSession, user_id: int) -> list[tuple[int, int]]:
+        """
+        统计用户复盘记录中各知识点的出现次数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(WrongQuestionReview.reasons)
+            .where(WrongQuestionReview.user_id == user_id)
+            .where(WrongQuestionReview.reasons.isnot(None))
+        )
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
+        counter: dict[int, int] = {}
+        for reasons_data in rows:
+            # 只处理新格式
+            if isinstance(reasons_data, dict):
+                kp_ids = reasons_data.get('knowledge_points', [])
+                if isinstance(kp_ids, list):
+                    for kp_id in kp_ids:
+                        if isinstance(kp_id, int):
+                            counter[kp_id] = counter.get(kp_id, 0) + 1
         return sorted(counter.items(), key=lambda x: x[1], reverse=True)
 
 

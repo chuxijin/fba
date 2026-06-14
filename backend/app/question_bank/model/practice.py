@@ -240,6 +240,7 @@ class WrongQuestionBook(Base, UserMixin):
     mastered_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='掌握时间')
     is_pinned: Mapped[bool] = mapped_column(default=False, comment='是否置顶')
     pinned_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='置顶时间')
+    last_wrong_answer: Mapped[list | None] = mapped_column(CompatibleJSONB, default=None, comment='最后一次答错的选项，JSON数组格式')
 
     # ============ 关系 ============
     account: Mapped[UserAccount] = relationship(init=False, back_populates='wrong_questions', lazy='noload')

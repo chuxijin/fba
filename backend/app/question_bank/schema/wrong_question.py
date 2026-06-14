@@ -16,7 +16,9 @@ class WrongQuestionQueryParam(SchemaBase):
     is_pinned: bool | None = Field(None, description='是否置顶')
     bank_id: int | None = Field(None, gt=0, description='题库 ID（通过挂载筛选）')
     chapter_id: int | None = Field(None, gt=0, description='章节 ID（通过挂载筛选）')
+    cat_id: int | None = Field(None, gt=0, description='分类 ID（通过题库筛选）')
     keyword: str | None = Field(None, max_length=200, description='关键字搜索（搜索题干）')
+    exclude_reviewed: bool | None = Field(None, description='排除已复盘的错题')
 
 
 # ===== 基础 =====
@@ -48,6 +50,7 @@ class GetWrongQuestionDetail(WrongQuestionSchemaBase):
     mastered_time: datetime | None = Field(None, description='掌握时间')
     is_pinned: bool = Field(description='是否置顶')
     pinned_time: datetime | None = Field(None, description='置顶时间')
+    last_wrong_answer: list | None = Field(None, description='最后一次答错的选项')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
     # 展示扩展字段（由服务层填充）
@@ -75,6 +78,7 @@ class GetWrongQuestionListItem(SchemaBase):
     last_practice_time: datetime | None = Field(None, description='最后一次练习时间')
     is_mastered: bool = Field(description='是否已掌握')
     is_pinned: bool = Field(description='是否置顶')
+    last_wrong_answer: list | None = Field(None, description='最后一次答错的选项')
     # 展示扩展字段（由服务层填充）
     question_stem: str | None = Field(None, description='题目题干')
     question_type: str | None = Field(None, description='题型')

@@ -11,6 +11,30 @@ from backend.app.question_bank.crud.crud_wrong_question import wrong_question_da
 from backend.common.exception import errors
 
 
+def parse_reasons(reasons: dict | list | None) -> dict:
+    """
+    解析 reasons 字段，兼容新旧格式
+
+    :param reasons: 原始 reasons 数据
+    :return: 统一格式 {'tags': [...], 'knowledge_points': [...]}
+    """
+    if reasons is None:
+        return {'tags': [], 'knowledge_points': []}
+
+    # 新格式：字典
+    if isinstance(reasons, dict):
+        return {
+            'tags': reasons.get('tags', []),
+            'knowledge_points': reasons.get('knowledge_points', []),
+        }
+
+    # 旧格式：数组（视为 tags）
+    if isinstance(reasons, list):
+        return {'tags': reasons, 'knowledge_points': []}
+
+    return {'tags': [], 'knowledge_points': []}
+
+
 class WrongReviewService:
     """错题复盘服务类"""
 
@@ -101,6 +125,18 @@ class WrongReviewService:
         :param user_id: 用户 ID
         :return:
         """
+        # 提取 knowledge_points，合并到 reasons 中
+        knowledge_points = kwargs.pop('knowledge_points', None)
+        if knowledge_points:
+            reasons = kwargs.get('reasons')
+            if isinstance(reasons, list):
+                # 旧格式数组转为新格式字典
+                kwargs['reasons'] = {'tags': reasons, 'knowledge_points': knowledge_points}
+            elif isinstance(reasons, dict):
+                reasons['knowledge_points'] = knowledge_points
+            else:
+                kwargs['reasons'] = {'tags': [], 'knowledge_points': knowledge_points}
+
         return await custom_question_dao.create(db, user_id=user_id, **kwargs)
 
     @staticmethod
@@ -154,6 +190,17 @@ class WrongReviewService:
         wrong_book_id = kwargs.get('wrong_book_id')
         custom_question_id = kwargs.get('custom_question_id')
         is_mastered = kwargs.pop('is_mastered', None)
+        knowledge_points = kwargs.pop('knowledge_points', None) or []
+
+        # 将 reasons 统一转换为新格式字典
+        reasons = kwargs.get('reasons')
+        if isinstance(reasons, list):
+            # 旧格式数组转为新格式字典
+            kwargs['reasons'] = {'tags': reasons, 'knowledge_points': knowledge_points}
+        elif isinstance(reasons, dict):
+            reasons['knowledge_points'] = knowledge_points
+        else:
+            kwargs['reasons'] = {'tags': [], 'knowledge_points': knowledge_points}
 
         if review_type == 'auto':
             if not wrong_book_id:
@@ -209,6 +256,23 @@ class WrongReviewService:
             raise errors.ForbiddenError(msg='无权删除该复盘记录')
         return await review_dao.delete(db, review_id)
 
+    @staticmethod
+    async def get_review(*, db: AsyncSession, review_id: int, user_id: int):
+        """
+        获取复盘记录详情
+
+        :param db: 数据库会话
+        :param review_id: 复盘 ID
+        :param user_id: 用户 ID
+        :return:
+        """
+        review = await review_dao.get(db, review_id)
+        if not review:
+            raise errors.NotFoundError(msg='复盘记录不存在')
+        if review.user_id != user_id:
+            raise errors.ForbiddenError(msg='无权访问该复盘记录')
+        return review
+
     # ───────────────── 看板统计 ─────────────────
 
     @staticmethod
@@ -261,8 +325,8 @@ class WrongReviewService:
                 'percentage': round(count / total_reason_refs * 100, 1) if total_reason_refs else 0.0,
             })
 
-        # 错题按题库分布
-        wrong_distribution = await _get_wrong_distribution(db, user_id, cat_id, kp_cat_id)
+        # 错题按知识点分布（从复盘记录的 reasons 中统计）
+        knowledge_point_distribution = await _get_knowledge_point_distribution(db, user_id)
 
         return {
             'total_wrong_count': total_wrong,
@@ -270,7 +334,7 @@ class WrongReviewService:
             'total_review_count': total_review,
             'today_pending_count': today_pending,
             'reason_distribution': reason_distribution,
-            'wrong_distribution': wrong_distribution,
+            'knowledge_point_distribution': knowledge_point_distribution,
         }
 
     @staticmethod
@@ -287,6 +351,25 @@ class WrongReviewService:
         :return:
         """
         return await _get_today_pending_list(db, user_id)
+
+    @staticmethod
+    async def get_reviewed_questions(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        tag_id: int | None = None,
+        kp_id: int | None = None,
+    ) -> list[dict]:
+        """
+        获取已复盘的错题列表（按错因标签或知识点筛选）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param tag_id: 错因标签 ID
+        :param kp_id: 知识点 ID
+        :return:
+        """
+        return await _get_reviewed_questions(db, user_id, tag_id=tag_id, kp_id=kp_id)
 
 
 async def _count_today_pending(db: AsyncSession, user_id: int) -> int:
@@ -384,11 +467,77 @@ async def _get_today_pending_list(db: AsyncSession, user_id: int) -> list[dict]:
     return items
 
 
-async def _get_wrong_distribution(
+async def _get_knowledge_point_distribution(
+    db: AsyncSession,
+    user_id: int,
+) -> list[dict]:
+    """
+    获取用户复盘记录中标注的知识点分布
+
+    :param db: 数据库会话
+    :param user_id: 用户 ID
+    :return:
+    """
+    from collections import Counter
+
+    from sqlalchemy import select
+
+    from backend.app.question_bank.model.wrong_review import WrongQuestionReview
+
+    # 获取所有复盘记录的 reasons（包含知识点）
+    stmt = (
+        select(WrongQuestionReview.reasons)
+        .where(WrongQuestionReview.user_id == user_id)
+        .where(WrongQuestionReview.reasons.isnot(None))
+    )
+
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    # 统计知识点分布
+    kp_counter: Counter[int] = Counter()
+    kp_names: dict[int, str] = {}
+
+    for reasons in rows:
+        if not isinstance(reasons, dict):
+            continue
+
+        # reasons 格式: {'tags': [...], 'knowledge_points': [...]}
+        knowledge_points = reasons.get('knowledge_points', [])
+        if not isinstance(knowledge_points, list):
+            continue
+
+        for kp in knowledge_points:
+            if isinstance(kp, dict):
+                kp_id = kp.get('id')
+                kp_name = kp.get('name')
+                if kp_id and kp_name:
+                    kp_counter[kp_id] += 1
+                    kp_names[kp_id] = kp_name
+            elif isinstance(kp, int):
+                # 只有 ID
+                kp_counter[kp] += 1
+                kp_names[kp] = f'知识点{kp}'
+
+    # 取前 10 个
+    top_kps = kp_counter.most_common(10)
+    total = sum(count for _, count in top_kps)
+
+    return [
+        {
+            'kp_id': kp_id,
+            'kp_name': kp_names.get(kp_id, '未知知识点'),
+            'wrong_count': count,
+            'percentage': round(count / total * 100, 1) if total else 0.0,
+        }
+        for kp_id, count in top_kps
+    ]
+
+
+async def _get_bank_distribution(
     db: AsyncSession,
     user_id: int,
     cat_id: int | None = None,
-    kp_cat_id: int | None = None,
 ) -> list[dict]:
     """
     获取用户错题按题库的分布统计
@@ -396,43 +545,166 @@ async def _get_wrong_distribution(
     :param db: 数据库会话
     :param user_id: 用户 ID
     :param cat_id: 分类 ID
-    :param kp_cat_id: 知识点分类 ID
     :return:
     """
-    from sqlalchemy import func, select
+    from collections import Counter
+
+    from sqlalchemy import select
 
     from backend.app.question_bank.model.bank import QuestionBank
     from backend.app.question_bank.model.practice import WrongQuestionBook
     from backend.app.question_bank.model.question import QuestionPlacement
 
+    # 获取所有未掌握的错题及其题库信息
     stmt = (
-        select(
-            QuestionBank.id.label('bank_id'),
-            QuestionBank.name.label('bank_name'),
-            func.count(WrongQuestionBook.id).label('wrong_count'),
-        )
+        select(QuestionPlacement.bank_id, QuestionBank.name)
         .select_from(WrongQuestionBook)
         .join(QuestionPlacement, WrongQuestionBook.placement_id == QuestionPlacement.id)
         .join(QuestionBank, QuestionPlacement.bank_id == QuestionBank.id)
         .where(WrongQuestionBook.user_id == user_id)
         .where(WrongQuestionBook.is_mastered.is_(False))
-        .group_by(QuestionBank.id, QuestionBank.name)
-        .order_by(func.count(WrongQuestionBook.id).desc())
+        .where(WrongQuestionBook.placement_id.isnot(None))
     )
-    if cat_id is not None:
+
+    if cat_id:
         stmt = stmt.where(QuestionBank.cat_id == cat_id)
+
     result = await db.execute(stmt)
     rows = result.all()
-    total = sum(r.wrong_count for r in rows)
+
+    # 统计题库分布
+    bank_counter: Counter[int] = Counter()
+    bank_names: dict[int, str] = {}
+
+    for bank_id, bank_name in rows:
+        bank_counter[bank_id] += 1
+        bank_names[bank_id] = bank_name
+
+    # 取前 10 个
+    top_banks = bank_counter.most_common(10)
+    total = sum(count for _, count in top_banks)
+
     return [
         {
-            'bank_id': r.bank_id,
-            'bank_name': r.bank_name,
-            'wrong_count': r.wrong_count,
-            'percentage': round(r.wrong_count / total * 100, 1) if total else 0.0,
+            'bank_id': bank_id,
+            'bank_name': bank_names.get(bank_id, '未知题库'),
+            'wrong_count': count,
+            'percentage': round(count / total * 100, 1) if total else 0.0,
         }
-        for r in rows
+        for bank_id, count in top_banks
     ]
+
+
+async def _get_reviewed_questions(
+    db: AsyncSession,
+    user_id: int,
+    tag_id: int | None = None,
+    kp_id: int | None = None,
+) -> list[dict]:
+    """
+    获取已复盘的错题列表（按错因标签或知识点筛选）
+
+    :param db: 数据库会话
+    :param user_id: 用户 ID
+    :param tag_id: 错因标签 ID
+    :param kp_id: 知识点 ID
+    :return:
+    """
+    from sqlalchemy import select
+
+    from backend.app.question_bank.model.practice import WrongQuestionBook
+    from backend.app.question_bank.model.question import Question
+    from backend.app.question_bank.model.wrong_review import WrongQuestionReview
+
+    # 查询复盘记录
+    stmt = (
+        select(WrongQuestionReview)
+        .where(WrongQuestionReview.user_id == user_id)
+        .where(WrongQuestionReview.reasons.isnot(None))
+        .order_by(WrongQuestionReview.reviewed_time.desc())
+    )
+
+    result = await db.execute(stmt)
+    reviews = result.scalars().all()
+
+    # 筛选符合条件的复盘记录
+    matched_reviews = []
+    for review in reviews:
+        if not isinstance(review.reasons, dict):
+            continue
+
+        reasons_data = review.reasons
+        tags = reasons_data.get('tags', [])
+        knowledge_points = reasons_data.get('knowledge_points', [])
+
+        # 按错因标签筛选
+        if tag_id is not None:
+            if tag_id not in tags:
+                continue
+
+        # 按知识点筛选
+        if kp_id is not None:
+            kp_ids = []
+            for kp in knowledge_points:
+                if isinstance(kp, dict):
+                    kp_ids.append(kp.get('id'))
+                elif isinstance(kp, int):
+                    kp_ids.append(kp)
+            if kp_id not in kp_ids:
+                continue
+
+        matched_reviews.append(review)
+
+    # 获取关联的错题信息
+    items = []
+    for review in matched_reviews[:20]:  # 限制返回前20条
+        wrong_book_id = review.wrong_book_id
+        question_id = None
+        stem = None
+
+        if wrong_book_id:
+            # 自动收录的错题
+            book = await wrong_question_dao.get(db, wrong_book_id)
+            if book:
+                question_id = book.question_id
+                # 获取题干
+                if question_id:
+                    question = await db.get(Question, question_id)
+                    if question and question.stem:
+                        stem = question.stem[:100]
+        elif review.custom_question_id:
+            # 自定义错题
+            custom = await custom_question_dao.get(db, review.custom_question_id)
+            if custom:
+                question_id = custom.question_id
+                stem = custom.stem[:100] if custom.stem else None
+
+        # 对于自定义错题，允许 question_id 为 None
+        if review.custom_question_id and not question_id:
+            # 使用 custom_question_id 作为标识
+            items.append({
+                'wrong_book_id': wrong_book_id or 0,
+                'question_id': 0,  # 使用 0 表示自定义错题无关联题目
+                'custom_question_id': review.custom_question_id,
+                'stem': stem or '图片题（无题干）',
+                'review_id': review.id,
+                'review_time': review.reviewed_time,
+                'reasons': review.reasons,
+                'summary': review.summary,
+            })
+        elif question_id:
+            items.append({
+                'wrong_book_id': wrong_book_id or 0,
+                'question_id': question_id,
+                'custom_question_id': review.custom_question_id,
+                'stem': stem,
+                'review_id': review.id,
+                'review_time': review.reviewed_time,
+                'reasons': review.reasons,
+                'summary': review.summary,
+            })
+
+    return items
 
 
 wrong_review_service = WrongReviewService()

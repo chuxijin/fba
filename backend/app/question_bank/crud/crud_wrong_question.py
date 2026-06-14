@@ -40,11 +40,10 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                     noload(Question.materials),
                     noload(Question.placements),
                 ),
-                # placement → bank（阻止 parent selectin）→ category / chapter
+                # placement → bank（阻止 parent selectin）→ chapter
                 selectinload(WrongQuestionBook.placement)
                     .selectinload(QuestionPlacement.bank)
                     .options(
-                        selectinload(QuestionBank.category),
                         noload(QuestionBank.parent),
                     ),
                 selectinload(WrongQuestionBook.placement).selectinload(QuestionPlacement.chapter),
@@ -498,7 +497,9 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         is_pinned: bool | None = None,
         bank_id: int | None = None,
         chapter_id: int | None = None,
+        cat_id: int | None = None,
         keyword: str | None = None,
+        exclude_reviewed: bool | None = None,
     ) -> Select:
         """
         获取错题本列表查询表达式
@@ -508,7 +509,9 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         :param is_pinned: 是否置顶
         :param bank_id: 题库 ID（通过挂载筛选）
         :param chapter_id: 章节 ID（通过挂载筛选）
+        :param cat_id: 分类 ID（通过题库筛选）
         :param keyword: 关键字搜索（搜索题干）
+        :param exclude_reviewed: 排除已复盘的错题
         :return:
         """
         stmt = (
@@ -521,11 +524,10 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                     noload(Question.materials),
                     noload(Question.placements),
                 ),
-                # placement → bank（阻止 parent selectin）→ category / chapter
+                # placement → bank（阻止 parent selectin）→ chapter
                 selectinload(WrongQuestionBook.placement)
                     .selectinload(QuestionPlacement.bank)
                     .options(
-                        selectinload(QuestionBank.category),
                         noload(QuestionBank.parent),
                     ),
                 selectinload(WrongQuestionBook.placement).selectinload(QuestionPlacement.chapter),
@@ -533,7 +535,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         )
 
 
-        if bank_id is not None or chapter_id is not None:
+        if bank_id is not None or chapter_id is not None or cat_id is not None:
             stmt = stmt.join(
                 QuestionPlacement,
                 QuestionPlacement.id == WrongQuestionBook.placement_id,
@@ -542,6 +544,12 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 stmt = stmt.where(QuestionPlacement.bank_id == bank_id)
             if chapter_id is not None:
                 stmt = stmt.where(QuestionPlacement.chapter_id == chapter_id)
+            if cat_id is not None:
+                stmt = stmt.join(
+                    QuestionBank,
+                    QuestionBank.id == QuestionPlacement.bank_id,
+                )
+                stmt = stmt.where(QuestionBank.cat_id == cat_id)
 
         if keyword is not None:
             stmt = stmt.join(
@@ -554,6 +562,18 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             stmt = stmt.where(WrongQuestionBook.is_mastered == is_mastered)
         if is_pinned is not None:
             stmt = stmt.where(WrongQuestionBook.is_pinned == is_pinned)
+
+        # 排除已复盘的错题
+        if exclude_reviewed is True:
+            from backend.app.question_bank.model.wrong_review import WrongQuestionReview
+            reviewed_subq = (
+                select(WrongQuestionReview.wrong_book_id)
+                .where(WrongQuestionReview.user_id == user_id)
+                .where(WrongQuestionReview.wrong_book_id.isnot(None))
+                .distinct()
+                .scalar_subquery()
+            )
+            stmt = stmt.where(WrongQuestionBook.id.notin_(reviewed_subq))
 
         stmt = stmt.order_by(
             WrongQuestionBook.is_pinned.desc(),

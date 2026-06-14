@@ -156,7 +156,9 @@ async def get_wrong_questions(
         is_pinned=query.is_pinned,
         bank_id=query.bank_id,
         chapter_id=query.chapter_id,
+        cat_id=query.cat_id,
         keyword=query.keyword,
+        exclude_reviewed=query.exclude_reviewed,
     )
     page_data = await paging_data(db, stmt, GetWrongQuestionListItem)
     return response_base.success(data=page_data)
