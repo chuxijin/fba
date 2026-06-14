@@ -43,7 +43,7 @@ class CreateCustomQuestionParam(SchemaBase):
     answer: str | None = Field(None, description='正确答案')
     explanation: str | None = Field(None, description='解析')
     source: str | None = Field(None, max_length=255, description='来源')
-    reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
+    reasons: dict | list | None = Field(None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]')
     knowledge_points: list[dict] | None = Field(None, description='知识点数组 [{id: int, name: str}]')
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, ge=0, description='做题用时（秒）')
@@ -60,7 +60,7 @@ class UpdateCustomQuestionParam(SchemaBase):
     answer: str | None = Field(None, description='正确答案')
     explanation: str | None = Field(None, description='解析')
     source: str | None = Field(None, max_length=255, description='来源')
-    reasons: list[int] | None = Field(None, description='错因标签 ID 数组')
+    reasons: dict | list | None = Field(None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]')
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, ge=0, description='做题用时（秒）')
 
