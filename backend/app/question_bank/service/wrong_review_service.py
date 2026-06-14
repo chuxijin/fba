@@ -222,6 +222,12 @@ class WrongReviewService:
                 raise errors.NotFoundError(msg='自定义错题不存在')
             if question.user_id != user_id:
                 raise errors.ForbiddenError(msg='无权复盘该错题')
+            
+            # 同步更新 custom 表的 reasons 和 summary
+            await custom_question_dao.update(db, custom_question_id, {
+                'reasons': kwargs.get('reasons'),
+                'summary': kwargs.get('summary'),
+            })
         else:
             raise errors.BadRequestError(msg='review_type 必须为 auto 或 custom')
 
