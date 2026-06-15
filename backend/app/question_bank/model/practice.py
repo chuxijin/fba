@@ -207,7 +207,7 @@ class WrongQuestionBook(Base, UserMixin):
             unique=True,
             postgresql_where=sa.text('placement_id IS NOT NULL'),
         ),
-        sa.Index('idx_wrong_book_user_mastered_pinned_updated', 'user_id', 'is_mastered', 'is_pinned', 'updated_time'),
+        sa.Index('idx_wrong_book_user_pinned_updated', 'user_id', 'is_pinned', 'updated_time'),
         sa.Index('idx_wrong_book_question', 'question_id'),
         sa.Index('idx_wrong_book_placement', 'placement_id'),
         sa.CheckConstraint('wrong_count >= 0 AND correct_streak >= 0', name='ck_wrong_book_counts'),
@@ -236,8 +236,6 @@ class WrongQuestionBook(Base, UserMixin):
     first_wrong_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='首次错误时间')
     last_wrong_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最后一次错误时间')
     last_practice_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最后一次练习时间')
-    is_mastered: Mapped[bool] = mapped_column(default=False, comment='是否已掌握')
-    mastered_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='掌握时间')
     is_pinned: Mapped[bool] = mapped_column(default=False, comment='是否置顶')
     pinned_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='置顶时间')
     last_wrong_answer: Mapped[list | None] = mapped_column(CompatibleJSONB, default=None, comment='最后一次答错的选项，JSON数组格式')

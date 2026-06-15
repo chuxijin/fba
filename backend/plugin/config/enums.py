@@ -9,7 +9,6 @@ class ConfigType(StrEnum):
     email = 'EMAIL'
     user_security = 'USER_SECURITY'
     login = 'LOGIN'
-    task = 'Task'
     storage = 'STORAGE'
     shop = 'SHOP'
     crawler = 'CRAWLER'

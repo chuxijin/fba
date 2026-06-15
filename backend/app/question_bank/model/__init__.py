@@ -22,6 +22,7 @@ from .statistics import UserCheckIn, UserDailyRank, UserPracticeStats
 from .user import UserAccount
 from .user_message import UserMessage, UserMessageRead
 from .wrong_review import WrongQuestionCustom, WrongQuestionReview, WrongReasonTag
+from .mastery import WrongMasteryStatus
 
 __all__ = [
     'PracticeAIEvaluation',
@@ -49,4 +50,5 @@ __all__ = [
     'WrongReasonTag',
     'WrongQuestionCustom',
     'WrongQuestionReview',
+    'WrongMasteryStatus',
 ]

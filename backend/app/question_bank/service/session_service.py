@@ -1599,8 +1599,6 @@ class SessionService:
                                 'set_correct_streak': 0,
                                 'set_last_wrong_time': submit_time,
                                 'set_last_practice_time': existing_wrong.last_practice_time,
-                                'set_is_mastered': False,
-                                'set_mastered_time': None,
                             })
                     else:
                         wrong_create_rows.append({
@@ -1612,25 +1610,17 @@ class SessionService:
                             'first_wrong_time': submit_time,
                             'last_wrong_time': submit_time,
                             'last_practice_time': None,
-                            'is_mastered': False,
-                            'mastered_time': None,
                             'created_by': user_id,
                         })
                 else:
                     for existing_wrong in existing_wrong_list:
                         new_streak = existing_wrong.correct_streak + 1
-                        is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
-                        mastered_time = existing_wrong.mastered_time
-                        if is_mastered and mastered_time is None:
-                            mastered_time = submit_time
                         wrong_update_rows.append({
                             'filter_wrong_id': existing_wrong.id,
                             'set_wrong_count': existing_wrong.wrong_count,
                             'set_correct_streak': new_streak,
                             'set_last_wrong_time': existing_wrong.last_wrong_time,
                             'set_last_practice_time': submit_time,
-                            'set_is_mastered': is_mastered,
-                            'set_mastered_time': mastered_time,
                         })
 
         # 4. 批量落库
@@ -1649,6 +1639,27 @@ class SessionService:
 
         if wrong_update_rows:
             await wrong_question_dao.batch_update(db=db, rows=wrong_update_rows)
+
+        # 4b. 更新掌握状态
+        from backend.app.question_bank.service.mastery_service import mastery_service
+        for record in records:
+            question = question_map.get(record.question_id)
+            if not question:
+                continue
+            sq = sq_map.get(record.question_id)
+            is_correct = record.is_correct
+            if is_correct is not None:
+                if is_correct:
+                    await mastery_service.on_correct(
+                        db=db, user_id=user_id,
+                        question_id=record.question_id,
+                        mastery_threshold=mastery_threshold,
+                    )
+                else:
+                    await mastery_service.on_wrong(
+                        db=db, user_id=user_id,
+                        question_id=record.question_id,
+                    )
 
         completed_count = len(records)
         wrong_count = completed_count - correct_count

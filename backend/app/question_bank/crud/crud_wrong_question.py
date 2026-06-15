@@ -135,18 +135,17 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         return list(result.scalars().all())
 
     async def get_by_user(
-        self, db: AsyncSession, user_id: int, is_mastered: bool | None = None, is_pinned: bool | None = None
+        self, db: AsyncSession, user_id: int, is_pinned: bool | None = None
     ) -> list[WrongQuestionBook]:
         """
         获取用户的错题本列表（复用 get_select 保持排序一致）
 
         :param db: 数据库会话
         :param user_id: 用户 ID
-        :param is_mastered: 是否已掌握
         :param is_pinned: 是否置顶
         :return:
         """
-        stmt = await self.get_select(user_id=user_id, is_mastered=is_mastered, is_pinned=is_pinned)
+        stmt = await self.get_select(user_id=user_id, is_pinned=is_pinned)
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
@@ -203,8 +202,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 'wrong_count': wrong.wrong_count + 1,
                 'correct_streak': 0,
                 'last_wrong_time': wrong_time,
-                'is_mastered': False,
-                'mastered_time': None,
             },
         )
 
@@ -212,12 +209,12 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         self, db: AsyncSession, wrong_id: int, practice_time: datetime, mastery_threshold: int = 3
     ) -> int:
         """
-        增加连续做对次数（答对时调用，达到阈值标记为已掌握）
+        增加连续做对次数（答对时调用）
 
         :param db: 数据库会话
         :param wrong_id: 错题记录 ID
         :param practice_time: 练习时间
-        :param mastery_threshold: 连续答对多少次标记为已掌握
+        :param mastery_threshold: 连续答对多少次标记为已掌握（已废弃，由 mastery_service 处理）
         :return:
         """
         wrong = await self.select_model(db, wrong_id)
@@ -226,10 +223,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
 
         new_streak = wrong.correct_streak + 1
         update_data: dict = {'correct_streak': new_streak, 'last_practice_time': practice_time}
-
-        if new_streak >= mastery_threshold:
-            update_data['is_mastered'] = True
-            update_data['mastered_time'] = practice_time
 
         return await self.update_model(db, wrong_id, update_data)
 
@@ -351,28 +344,11 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 correct_streak=bindparam('set_correct_streak'),
                 last_wrong_time=bindparam('set_last_wrong_time'),
                 last_practice_time=bindparam('set_last_practice_time'),
-                is_mastered=bindparam('set_is_mastered'),
-                mastered_time=bindparam('set_mastered_time'),
             )
             .execution_options(synchronize_session=False)
         )
         await db.execute(stmt, rows)
         await db.flush()
-
-    async def clear_mastered(self, db: AsyncSession, user_id: int) -> int:
-        """
-        清空用户已掌握的错题
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :return:
-        """
-        stmt = delete(WrongQuestionBook).where(
-            WrongQuestionBook.user_id == user_id,
-            WrongQuestionBook.is_mastered == True,  # noqa: E712
-        )
-        result = await db.execute(stmt)
-        return result.rowcount
 
     # ============ 聚合统计 ============
 
@@ -384,10 +360,11 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         :param user_id: 用户 ID
         :return:
         """
+        from backend.app.question_bank.crud.crud_mastery import mastery_dao
+
+        # 获取错题本统计
         stmt = select(
             func.count().label('total'),
-            func.sum(case((WrongQuestionBook.is_mastered == True, 1), else_=0)).label('mastered'),  # noqa: E712
-            func.sum(case((WrongQuestionBook.is_mastered == False, 1), else_=0)).label('unmastered'),  # noqa: E712
             func.sum(case((WrongQuestionBook.is_pinned == True, 1), else_=0)).label('pinned'),  # noqa: E712
             func.avg(WrongQuestionBook.wrong_count).label('avg_wrong_count'),
             func.avg(WrongQuestionBook.correct_streak).label('avg_correct_streak'),
@@ -396,10 +373,13 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         result = await db.execute(stmt)
         row = result.first()
 
+        # 获取掌握状态统计
+        mastery_stats = await mastery_dao.get_stats(db=db, user_id=user_id)
+
         return {
             'total': row.total or 0,
-            'mastered': int(row.mastered or 0),
-            'unmastered': int(row.unmastered or 0),
+            'mastered': mastery_stats['mastered'],
+            'unmastered': row.total - mastery_stats['mastered'] if row.total else 0,
             'pinned': int(row.pinned or 0),
             'avg_wrong_count': round(float(row.avg_wrong_count or 0), 2),
             'avg_correct_streak': round(float(row.avg_correct_streak or 0), 2),
@@ -429,11 +409,11 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 'avg_correct_streak': 0.0,
             }
 
+        from backend.app.question_bank.crud.crud_mastery import mastery_dao
+
         stmt = (
             select(
                 func.count().label('total'),
-                func.sum(case((WrongQuestionBook.is_mastered == True, 1), else_=0)).label('mastered'),  # noqa: E712
-                func.sum(case((WrongQuestionBook.is_mastered == False, 1), else_=0)).label('unmastered'),  # noqa: E712
                 func.sum(case((WrongQuestionBook.is_pinned == True, 1), else_=0)).label('pinned'),  # noqa: E712
                 func.avg(WrongQuestionBook.wrong_count).label('avg_wrong_count'),
                 func.avg(WrongQuestionBook.correct_streak).label('avg_correct_streak'),
@@ -448,10 +428,13 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         result = await db.execute(stmt)
         row = result.first()
 
+        # 获取掌握状态统计
+        mastery_stats = await mastery_dao.get_stats(db=db, user_id=user_id)
+
         return {
             'total': row.total or 0,
-            'mastered': int(row.mastered or 0),
-            'unmastered': int(row.unmastered or 0),
+            'mastered': mastery_stats['mastered'],
+            'unmastered': (row.total or 0) - mastery_stats['mastered'],
             'pinned': int(row.pinned or 0),
             'avg_wrong_count': round(float(row.avg_wrong_count or 0), 2),
             'avg_correct_streak': round(float(row.avg_correct_streak or 0), 2),
@@ -459,7 +442,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
 
     async def get_progress_statistics(self, db: AsyncSession, user_id: int) -> dict[str, int]:
         """
-        获取用户错题进度统计（今日/近 7 天新增与已掌握数）
+        获取用户错题进度统计（今日/近 7 天新增）
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -473,8 +456,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             func.count().label('total'),
             func.sum(case((WrongQuestionBook.last_wrong_time >= today_start, 1), else_=0)).label('today_new'),
             func.sum(case((WrongQuestionBook.last_wrong_time >= week_ago, 1), else_=0)).label('week_new'),
-            func.sum(case((WrongQuestionBook.mastered_time >= today_start, 1), else_=0)).label('today_mastered'),
-            func.sum(case((WrongQuestionBook.mastered_time >= week_ago, 1), else_=0)).label('week_mastered'),
         ).where(WrongQuestionBook.user_id == user_id)
 
         result = await db.execute(stmt)
@@ -484,8 +465,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             'total': row.total or 0,
             'today_new': int(row.today_new or 0),
             'week_new': int(row.week_new or 0),
-            'today_mastered': int(row.today_mastered or 0),
-            'week_mastered': int(row.week_mastered or 0),
         }
 
     # ============ 列表查询 ============
@@ -493,7 +472,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
     async def get_select(
         self,
         user_id: int,
-        is_mastered: bool | None = None,
         is_pinned: bool | None = None,
         bank_id: int | None = None,
         chapter_id: int | None = None,
@@ -505,7 +483,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         获取错题本列表查询表达式
 
         :param user_id: 用户 ID
-        :param is_mastered: 是否已掌握
         :param is_pinned: 是否置顶
         :param bank_id: 题库 ID（通过挂载筛选）
         :param chapter_id: 章节 ID（通过挂载筛选）
@@ -558,8 +535,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             )
             stmt = stmt.where(Question.stem.like(f'%{keyword}%'))
 
-        if is_mastered is not None:
-            stmt = stmt.where(WrongQuestionBook.is_mastered == is_mastered)
         if is_pinned is not None:
             stmt = stmt.where(WrongQuestionBook.is_pinned == is_pinned)
 
@@ -602,7 +577,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             .join(QuestionBank, QuestionBank.id == QuestionPlacement.bank_id)
             .where(
                 WrongQuestionBook.user_id == user_id,
-                WrongQuestionBook.is_mastered == False,  # noqa: E712
             )
             .group_by(QuestionPlacement.bank_id, QuestionBank.name)
             .order_by(func.count().desc())
@@ -642,7 +616,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             .join(kp_element, literal_column('true'))
             .where(
                 WrongQuestionBook.user_id == user_id,
-                WrongQuestionBook.is_mastered == False,  # noqa: E712
                 Question.knowledge_point.isnot(None),
             )
             .group_by(kp_name)
@@ -664,7 +637,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         recent_days: int | None = None,
     ) -> list[int]:
         """
-        按分组条件获取未掌握错题的题目 ID 列表
+        按分组条件获取错题的题目 ID 列表
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -679,7 +652,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             select(WrongQuestionBook.question_id)
             .where(
                 WrongQuestionBook.user_id == user_id,
-                WrongQuestionBook.is_mastered == False,  # noqa: E712
             )
             .order_by(WrongQuestionBook.last_wrong_time.desc())
         )
@@ -728,7 +700,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         bank_id: int | None = None,
     ) -> list[dict]:
         """
-        按 bank_id + chapter_id 分组统计未掌握错题数
+        按 bank_id + chapter_id 分组统计错题数
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -745,7 +717,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             .join(QuestionPlacement, QuestionPlacement.id == WrongQuestionBook.placement_id)
             .where(
                 WrongQuestionBook.user_id == user_id,
-                WrongQuestionBook.is_mastered == False,  # noqa: E712
             )
         )
         if bank_id is not None:

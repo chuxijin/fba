@@ -124,7 +124,7 @@ class CreateReviewParam(SchemaBase):
     reasons: dict | list | None = Field(None, description='错因数据: {tags: [错因标签ID], knowledge_points: [知识点ID]} 或旧格式 [ID数组]')
     knowledge_points: list[dict] | None = Field(None, description='知识点数组 [{id: int, name: str}]')
     summary: str | None = Field(None, description='一句话复盘')
-    is_mastered: bool | None = Field(None, description='是否标记为已掌握')
+    is_mastered: bool = Field(False, description='是否手动标记为已掌握')
 
 
 

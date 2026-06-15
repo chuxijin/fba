@@ -152,7 +152,6 @@ async def get_wrong_questions(
 
     stmt = await wrong_question_dao.get_select(
         user_id=request.user.id,
-        is_mastered=query.is_mastered,
         is_pinned=query.is_pinned,
         bank_id=query.bank_id,
         chapter_id=query.chapter_id,
@@ -194,18 +193,6 @@ async def delete_wrong_questions(
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg=f'成功删除 {count} 条错题记录'))
     return response_base.fail(res=CustomResponse(code=400, msg='删除失败'))
-
-
-@router.post('/clear-mastered', summary='清空已掌握的错题', name='qbank_wrong_question_clear_mastered', dependencies=[DependsJwtAuth])
-async def clear_mastered(
-    request: Request,
-    db: CurrentSessionTransaction,
-) -> ResponseModel:
-    """清空用户已掌握的错题"""
-    count = await wrong_question_service.clear_mastered(db=db, user_id=request.user.id)
-    if count > 0:
-        return response_base.success(res=CustomResponse(code=200, msg=f'成功清空 {count} 条已掌握错题'))
-    return response_base.success(res=CustomResponse(code=200, msg='没有已掌握的错题'))
 
 
 @router.post(

@@ -108,7 +108,8 @@ async def get_rank_list(
         str,
         Query(description='排行榜类型（practice_count: 刷题数量, accuracy_rate: 正确率, streak_days: 坚持天数）'),
     ] = 'practice_count',
-    limit: Annotated[int, Query(ge=1, le=500, description='返回数量（默认 100，最大 500）')] = 100,
+    limit: Annotated[int, Query(ge=1, le=500, description='返回数量（默认 20，最大 500）')] = 20,
+    offset: Annotated[int, Query(ge=0, description='偏移量（默认 0）')] = 0,
 ) -> ResponseSchemaModel[RankListData]:
     """
     👤 客户端首页 - 获取排行榜列表
@@ -123,5 +124,6 @@ async def get_rank_list(
         rank_type=rank_type,
         current_user_id=request.user.id,
         limit=limit,
+        offset=offset,
     )
     return response_base.success(data=rank_data)

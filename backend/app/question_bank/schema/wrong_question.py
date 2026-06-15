@@ -12,7 +12,6 @@ from backend.common.schema import SchemaBase
 class WrongQuestionQueryParam(SchemaBase):
     """错题本查询参数"""
 
-    is_mastered: bool | None = Field(None, description='是否已掌握')
     is_pinned: bool | None = Field(None, description='是否置顶')
     bank_id: int | None = Field(None, gt=0, description='题库 ID（通过挂载筛选）')
     chapter_id: int | None = Field(None, gt=0, description='章节 ID（通过挂载筛选）')
@@ -46,8 +45,6 @@ class GetWrongQuestionDetail(WrongQuestionSchemaBase):
     first_wrong_time: datetime | None = Field(None, description='首次错误时间')
     last_wrong_time: datetime | None = Field(None, description='最后一次错误时间')
     last_practice_time: datetime | None = Field(None, description='最后一次练习时间')
-    is_mastered: bool = Field(description='是否已掌握')
-    mastered_time: datetime | None = Field(None, description='掌握时间')
     is_pinned: bool = Field(description='是否置顶')
     pinned_time: datetime | None = Field(None, description='置顶时间')
     last_wrong_answer: list | None = Field(None, description='最后一次答错的选项')
@@ -76,7 +73,6 @@ class GetWrongQuestionListItem(SchemaBase):
     correct_streak: int = Field(ge=0, description='连续做对次数')
     last_wrong_time: datetime | None = Field(None, description='最后一次错误时间')
     last_practice_time: datetime | None = Field(None, description='最后一次练习时间')
-    is_mastered: bool = Field(description='是否已掌握')
     is_pinned: bool = Field(description='是否置顶')
     last_wrong_answer: list | None = Field(None, description='最后一次答错的选项')
     # 展示扩展字段（由服务层填充）

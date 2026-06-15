@@ -101,19 +101,6 @@ async def load_email_config(db: AsyncSession) -> None:
     await _load_config(db, 'email', mapping, 'EMAIL_CONFIG_STATUS')
 
 
-async def load_task_config(db: AsyncSession) -> None:
-    """
-    获取任务配置
-
-    :param db: 数据库会话
-    :return:
-    """
-    mapping = {
-        'TASK_NOTIFY_EMAIL': str,
-    }
-    await _load_config(db, 'task', mapping, 'TASK_CONFIG_STATUS')
-
-
 async def load_storage_config(db: AsyncSession) -> None:
     """
     获取云存储配置

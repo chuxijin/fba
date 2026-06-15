@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank.cache.kp_cache import reason_tag_cache
 from backend.app.question_bank.crud.crud_wrong_review import (
     custom_question_dao,
     reason_tag_dao,
@@ -49,7 +50,24 @@ class WrongReviewService:
         :param user_id: 用户 ID
         :return:
         """
-        return await reason_tag_dao.list_user_tags(db, user_id)
+
+        async def factory() -> list:
+            tags = await reason_tag_dao.list_user_tags(db, user_id)
+            # 转为字典列表以便序列化缓存
+            return [
+                {
+                    'id': t.id,
+                    'name': t.name,
+                    'user_id': t.user_id,
+                    'color': t.color,
+                    'is_system': t.is_system,
+                    'display_order': t.display_order,
+                }
+                for t in tags
+            ]
+
+        result = await reason_tag_cache.get_or_set(user_id, factory=factory)
+        return result or []
 
     @staticmethod
     async def create_tag(*, db: AsyncSession, user_id: int, name: str, color: str | None = None):
@@ -65,7 +83,10 @@ class WrongReviewService:
         existing = await reason_tag_dao.get_by_user_and_name(db, user_id, name)
         if existing:
             raise errors.BadRequestError(msg=f'标签"{name}"已存在')
-        return await reason_tag_dao.create(db, user_id=user_id, name=name, color=color)
+        tag = await reason_tag_dao.create(db, user_id=user_id, name=name, color=color)
+        # 失效该用户的标签缓存
+        await reason_tag_cache.invalidate(user_id)
+        return tag
 
     @staticmethod
     async def delete_tag(*, db: AsyncSession, tag_id: int, user_id: int) -> int:
@@ -84,7 +105,10 @@ class WrongReviewService:
             raise errors.ForbiddenError(msg='系统预设标签不可删除')
         if tag.user_id != user_id:
             raise errors.ForbiddenError(msg='无权删除该标签')
-        return await reason_tag_dao.delete(db, tag_id)
+        count = await reason_tag_dao.delete(db, tag_id)
+        # 失效该用户的标签缓存
+        await reason_tag_cache.invalidate(user_id)
+        return count
 
     # ───────────────── 自定义错题 ─────────────────
 
@@ -189,8 +213,8 @@ class WrongReviewService:
         review_type = kwargs.get('review_type')
         wrong_book_id = kwargs.get('wrong_book_id')
         custom_question_id = kwargs.get('custom_question_id')
-        is_mastered = kwargs.pop('is_mastered', None)
         knowledge_points = kwargs.pop('knowledge_points', None) or []
+        is_mastered = kwargs.pop('is_mastered', False)
 
         # 将 reasons 统一转换为新格式字典
         reasons = kwargs.get('reasons')
@@ -210,9 +234,6 @@ class WrongReviewService:
                 raise errors.NotFoundError(msg='错题记录不存在')
             if book.user_id != user_id:
                 raise errors.ForbiddenError(msg='无权复盘该错题')
-            
-            if is_mastered is True:
-                await wrong_question_dao.update(db, wrong_book_id, {'is_mastered': True})
                 
         elif review_type == 'custom':
             if not custom_question_id:
@@ -231,7 +252,37 @@ class WrongReviewService:
         else:
             raise errors.BadRequestError(msg='review_type 必须为 auto 或 custom')
 
-        return await review_dao.create(db, user_id=user_id, **kwargs)
+        # 创建复盘记录
+        review = await review_dao.create(db, user_id=user_id, **kwargs)
+
+        # 更新掌握状态
+        from backend.app.question_bank.service.mastery_service import mastery_service
+        if is_mastered:
+            # 手动标记为已掌握
+            if review_type == 'auto' and wrong_book_id:
+                await mastery_service.mark_as_mastered(
+                    db=db, user_id=user_id,
+                    question_id=book.question_id,
+                )
+            elif review_type == 'custom' and custom_question_id:
+                await mastery_service.mark_as_mastered(
+                    db=db, user_id=user_id,
+                    custom_question_id=custom_question_id,
+                )
+        else:
+            # 普通复盘，只更新复盘次数
+            if review_type == 'auto' and wrong_book_id:
+                await mastery_service.on_review(
+                    db=db, user_id=user_id,
+                    question_id=book.question_id,
+                )
+            elif review_type == 'custom' and custom_question_id:
+                await mastery_service.on_review(
+                    db=db, user_id=user_id,
+                    custom_question_id=custom_question_id,
+                )
+
+        return review
 
 
     @staticmethod
@@ -409,7 +460,6 @@ async def _count_today_pending(db: AsyncSession, user_id: int) -> int:
         select(func.count())
         .select_from(WrongQuestionBook)
         .where(WrongQuestionBook.user_id == user_id)
-        .where(WrongQuestionBook.is_mastered.is_(False))
         .where(WrongQuestionBook.last_wrong_time >= today_start)
         .where(WrongQuestionBook.id.notin_(reviewed_subq))
     )
@@ -449,7 +499,6 @@ async def _get_today_pending_list(db: AsyncSession, user_id: int) -> list[dict]:
         select(WrongQuestionBook)
         .options(joinedload(WrongQuestionBook.question).load_only(Question.stem))
         .where(WrongQuestionBook.user_id == user_id)
-        .where(WrongQuestionBook.is_mastered.is_(False))
         .where(WrongQuestionBook.last_wrong_time >= today_start)
         .where(WrongQuestionBook.id.notin_(reviewed_subq))
         .order_by(WrongQuestionBook.last_wrong_time.desc())
@@ -561,14 +610,13 @@ async def _get_bank_distribution(
     from backend.app.question_bank.model.practice import WrongQuestionBook
     from backend.app.question_bank.model.question import QuestionPlacement
 
-    # 获取所有未掌握的错题及其题库信息
+    # 获取所有错题及其题库信息
     stmt = (
         select(QuestionPlacement.bank_id, QuestionBank.name)
         .select_from(WrongQuestionBook)
         .join(QuestionPlacement, WrongQuestionBook.placement_id == QuestionPlacement.id)
         .join(QuestionBank, QuestionPlacement.bank_id == QuestionBank.id)
         .where(WrongQuestionBook.user_id == user_id)
-        .where(WrongQuestionBook.is_mastered.is_(False))
         .where(WrongQuestionBook.placement_id.isnot(None))
     )
 

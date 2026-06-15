@@ -22,6 +22,7 @@ from backend.app.question_bank.api.v1.user_message import router as user_message
 from backend.app.question_bank.api.v1.user_settings import router as user_settings_router
 from backend.app.question_bank.api.v1.wrong_question import router as wrong_question_router
 from backend.app.question_bank.api.v1.wrong_review import router as wrong_review_router
+from backend.app.question_bank.api.v1.mastery import router as mastery_router
 
 router = APIRouter(prefix='/qbank')
 
@@ -45,3 +46,4 @@ router.include_router(knowledge_point_router, prefix='/knowledge-points', tags=[
 router.include_router(upload_router, prefix='/upload', tags=['文件上传'])
 router.include_router(parse_router, prefix='/parse', tags=['文档提取'])
 router.include_router(wrong_review_router, prefix='/wrong-review', tags=['错题复盘'])
+router.include_router(mastery_router, prefix='/mastery', tags=['掌握状态'])

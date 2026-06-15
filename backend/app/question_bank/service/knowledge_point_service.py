@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_category import category_dao
 from backend.app.admin.model.category import Category
+from backend.app.question_bank.cache.kp_cache import kp_detail_cache
 from backend.app.question_bank.model.practice import SessionQuestion
 from backend.app.question_bank.model.question import Question
 from backend.app.question_bank.schema.knowledge_point import (
@@ -241,20 +242,25 @@ class KnowledgePointService:
         :param category_id: 分类 ID
         :return:
         """
-        info, leaf_codes, _leaf_names = await KnowledgePointService._collect_leaf_names(db, category_id)
-        count_map = await KnowledgePointService._batch_count_by_kp_codes(db, leaf_codes)
 
-        kp_tree = KnowledgePointService._build_kp_tree(
-            info['children'], count_map, category_id,
-        )
-        total = sum(n.question_count for n in kp_tree)
+        async def factory() -> GetKpDetailResponse | None:
+            info, leaf_codes, _leaf_names = await KnowledgePointService._collect_leaf_names(db, category_id)
+            count_map = await KnowledgePointService._batch_count_by_kp_codes(db, leaf_codes)
 
-        return GetKpDetailResponse(
-            id=info['id'],
-            name=info['name'],
-            total_question_count=total,
-            children=kp_tree,
-        )
+            kp_tree = KnowledgePointService._build_kp_tree(
+                info['children'], count_map, category_id,
+            )
+            total = sum(n.question_count for n in kp_tree)
+
+            return GetKpDetailResponse(
+                id=info['id'],
+                name=info['name'],
+                total_question_count=total,
+                children=kp_tree,
+            )
+
+        result = await kp_detail_cache.get_or_set(category_id, factory=factory)
+        return result  # type: ignore
 
     @staticmethod
     async def get_progress(

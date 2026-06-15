@@ -387,7 +387,7 @@ class WrongQuestionService:
 
         wrong_records = [item for item in wrong_records if item]
         if not wrong_records:
-            return {'is_mastered': False, 'correct_streak': 0, 'message': '未找到对应错题记录'}
+            return {'correct_streak': 0, 'message': '未找到对应错题记录'}
 
         practice_time = timezone.now()
         for wrong in wrong_records:
@@ -401,7 +401,6 @@ class WrongQuestionService:
 
         await WrongQuestionService._clear_statistics_cache(user_id)
         return {
-            'is_mastered': all(item.is_mastered for item in wrong_records),
             'correct_streak': max(item.correct_streak for item in wrong_records),
             'affected_count': len(wrong_records),
         }
