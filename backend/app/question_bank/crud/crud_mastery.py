@@ -87,6 +87,7 @@ class CRUDMastery(CRUDPlus[WrongMasteryStatus]):
             user_id=user_id,
             question_id=question_id,
             custom_question_id=custom_question_id,
+            created_by=user_id,
             status='learning',
             correct_streak=0,
             review_count=0,
@@ -103,7 +104,7 @@ class CRUDMastery(CRUDPlus[WrongMasteryStatus]):
         :param correct_streak: 连续答对次数
         :return: 下次复习时间
         """
-        interval = BASE_INTERVAL_DAYS * (2 ** correct_streak)
+        interval = BASE_INTERVAL_DAYS * (2**correct_streak)
         return timezone.now() + timedelta(days=interval)
 
     async def on_correct(
@@ -231,7 +232,8 @@ class CRUDMastery(CRUDPlus[WrongMasteryStatus]):
         """
         now = timezone.now()
         stmt = (
-            sa.update(self.model)
+            sa
+            .update(self.model)
             .where(
                 self.model.user_id == user_id,
                 self.model.status == 'mastered',
