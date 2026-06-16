@@ -33,8 +33,15 @@ async def get_sys_content_list(
     app_code: Annotated[str | None, Query(description='应用标识')] = None,
     category_id: Annotated[int | None, Query(description='分类 ID')] = None,
     is_published: Annotated[bool | None, Query(description='是否发布')] = None,
+    keyword: Annotated[str | None, Query(description='标题关键词模糊搜索')] = None,
 ):
-    page_data = await content_service.get_list_paged(db=db, app_code=app_code, category_id=category_id, is_published=is_published)
+    page_data = await content_service.get_list_paged(
+        db=db,
+        app_code=app_code,
+        category_id=category_id,
+        is_published=is_published,
+        keyword=keyword,
+    )
     return response_base.success(data=page_data)
 
 

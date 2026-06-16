@@ -67,7 +67,14 @@ class ContentService:
         return await content_dao.delete_model(db, pk)
 
     @staticmethod
-    async def get_list_paged(*, db: AsyncSession, app_code: str = None, category_id: int = None, is_published: bool = None):
+    async def get_list_paged(
+        *,
+        db: AsyncSession,
+        app_code: str = None,
+        category_id: int = None,
+        is_published: bool = None,
+        keyword: str | None = None,
+    ):
         """支持分页的列表查询"""
         stmt = select(Content)
         if app_code:
@@ -82,7 +89,10 @@ class ContentService:
                 stmt = stmt.where(Content.category_id == category_id)
         if is_published is not None:
             stmt = stmt.where(Content.is_published == is_published)
-        
+        if keyword:
+            keyword_like = f'%{keyword.strip()}%'
+            stmt = stmt.where(Content.title.ilike(keyword_like))
+
         stmt = stmt.order_by(Content.is_pinned.desc(), Content.sort_order.desc(), Content.created_time.desc())
         
         # 使用项目标准的分页处理函数
