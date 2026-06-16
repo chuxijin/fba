@@ -19,7 +19,7 @@ class Log(Base, UserMixin):
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
-    type: Mapped[int] = mapped_column(sa.SmallInteger, comment='类型(1短链 2群活码 3客服码)')
+    type: Mapped[int] = mapped_column(sa.SmallInteger, comment='类型(1短链 2群活码 3客服码 4静态页面)')
     target_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='目标ID')
     ip: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='访问IP')
     device: Mapped[str | None] = mapped_column(sa.String(32), default=None, comment='设备(Android/iOS/Windows/Mac/iPad)')

@@ -10,7 +10,7 @@ from backend.common.schema import SchemaBase
 class LogSchemaBase(SchemaBase):
     """访问日志基础模型"""
 
-    type: int = Field(ge=1, le=3, description='类型(1短链 2群活码 3客服码)')
+    type: int = Field(ge=1, le=4, description='类型(1短链 2群活码 3客服码 4静态页面)')
     target_id: int = Field(description='目标ID')
     ip: str | None = Field(None, max_length=64, description='访问IP')
     device: str | None = Field(None, max_length=32, description='设备')

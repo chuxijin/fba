@@ -25,6 +25,12 @@ from backend.plugin.links.schema.log import (
     GetLogDetail,
     LogStatistics,
 )
+from backend.plugin.links.schema.page import (
+    CreatePageParam,
+    GetPageDetail,
+    GetPageList,
+    UpdatePageParam,
+)
 from backend.plugin.links.schema.qun import (
     CreateQunItemParam,
     CreateQunParam,
@@ -65,4 +71,9 @@ __all__ = [
     'CreateLogParam',
     'GetLogDetail',
     'LogStatistics',
+    # Page
+    'CreatePageParam',
+    'UpdatePageParam',
+    'GetPageDetail',
+    'GetPageList',
 ]
