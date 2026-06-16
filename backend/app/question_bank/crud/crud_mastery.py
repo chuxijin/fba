@@ -19,6 +19,18 @@ BASE_INTERVAL_DAYS = 1
 class CRUDMastery(CRUDPlus[WrongMasteryStatus]):
     """错题掌握状态 CRUD"""
 
+    async def create(self, db: AsyncSession, **kwargs) -> WrongMasteryStatus:
+        """
+        创建掌握状态记录
+
+        :param db: 数据库会话
+        :return:
+        """
+        mastery = WrongMasteryStatus(**kwargs)
+        db.add(mastery)
+        await db.flush()
+        return mastery
+
     async def get_by_question(
         self,
         db: AsyncSession,
