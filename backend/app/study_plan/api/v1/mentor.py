@@ -29,6 +29,7 @@ from backend.app.study_plan.schema.recommendation import (
 )
 from backend.app.study_plan.schema.template import InstantiateStudyPlanTemplateParam
 from backend.app.study_plan.service.ability_profile import list_user_category_profiles
+from backend.app.study_plan.service.ability_url_resolver import enrich_ability_item_extra
 from backend.app.study_plan.service.item_detail_service import build_item_detail, build_item_details
 from backend.app.study_plan.service.mentor_service import (
     ensure_mentor_can_access_student,
@@ -351,7 +352,7 @@ async def study_plan_mentor_add_item(
         ref_id=param.ref_id,
         expected_minutes=param.expected_minutes,
         status='pending',
-        extra=param.extra,
+        extra=await enrich_ability_item_extra(db, param.extra),
         created_by=request.user.id,
     )
     db.add(item)
@@ -393,6 +394,8 @@ async def study_plan_mentor_update_item(
         )
         _ensure_item_date_within_plan(plan, fields['plan_date'])
 
+    if 'extra' in fields and fields['extra']:
+        fields['extra'] = await enrich_ability_item_extra(db, fields['extra'])
     await study_plan_item_dao.update_model(db, item_id, fields)
     refreshed = await study_plan_item_dao.get(db, item_id)
     return response_base.success(data=await build_item_detail(db, refreshed))

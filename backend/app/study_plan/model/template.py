@@ -60,7 +60,7 @@ class StudyPlanTemplateItem(Base):
             'template_id', 'day_index', 'order_index',
         ),
         sa.CheckConstraint(
-            "module_type IN ('review','practice','wrong_review','ability')",
+            "module_type IN ('review','practice','wrong_review','ability','resource')",
             name='ck_study_plan_template_item_module_type',
         ),
         sa.CheckConstraint(

@@ -16,6 +16,7 @@ from backend.app.study_plan.model.item import StudyPlanItem
 from backend.app.study_plan.model.plan import StudyPlan
 from backend.app.study_plan.model.template import StudyPlanTemplateItem
 from backend.app.study_plan.schema.template import InstantiateStudyPlanTemplateParam
+from backend.app.study_plan.service.ability_url_resolver import enrich_ability_item_extra
 from backend.common.exception import errors
 
 
@@ -90,16 +91,26 @@ async def instantiate_template(
     db.add(plan)
     await db.flush()
 
-    items = [
-        _build_item_from_template(
-            ti,
+    items = []
+    for ti in template_items:
+        enriched_extra = await enrich_ability_item_extra(
+            db,
+            copy.deepcopy(ti.extra) if ti.extra is not None else None,
+        )
+        items.append(StudyPlanItem(
             plan_id=plan.id,
             user_id=param.user_id,
             plan_date=param.start_date + timedelta(days=ti.day_index - 1),
+            order_index=ti.order_index,
+            module_type=ti.module_type,
+            title=ti.title,
+            ref_type=ti.ref_type,
+            ref_id=ti.ref_id,
+            expected_minutes=ti.expected_minutes,
+            status='pending',
+            extra=enriched_extra,
             created_by=creator_id,
-        )
-        for ti in template_items
-    ]
+        ))
     db.add_all(items)
     await db.flush()
 

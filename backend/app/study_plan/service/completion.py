@@ -148,11 +148,25 @@ def _check_ability(item: StudyPlanItem, payload: dict[str, Any]) -> CompletionCh
     return CompletionCheckResult.pass_()
 
 
+def _check_resource(item: StudyPlanItem, payload: dict[str, Any]) -> CompletionCheckResult:
+    """
+    资源模块完成判定：必须显式确认已读
+
+    :param item: 计划项
+    :param payload: 完成提交参数
+    :return:
+    """
+    if payload.get('read_acknowledged') is True:
+        return CompletionCheckResult.pass_()
+    return CompletionCheckResult.fail('请确认已查阅资源后再提交')
+
+
 _CHECKERS = {
     'review': _check_review,
     'practice': _check_practice,
     'wrong_review': _check_wrong_review,
     'ability': _check_ability,
+    'resource': _check_resource,
 }
 
 

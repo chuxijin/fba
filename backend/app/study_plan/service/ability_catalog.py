@@ -34,6 +34,12 @@ _ABILITY_CATALOG = [
         'benchmark_seconds': 22,
         'supports_study_plan': True,
         'supports_result': True,
+        'url_base': '/pkg/ability/basic-calculation/session/index',
+        'param_schema': {
+            'typeIndex': {'type': 'int', 'default': 0, 'min': 0, 'max': 17, 'label': '计算类型'},
+            'count': {'type': 'int', 'default': 20, 'min': 1, 'max': 100, 'label': '题数', 'bind_to': 'question_count'},
+            'order': {'type': 'enum', 'default': 'asc', 'options': ['asc', 'shuffle'], 'label': '顺序'},
+        },
     },
     {
         'key': 'data_analysis_fill_blank',
@@ -48,6 +54,12 @@ _ABILITY_CATALOG = [
         'benchmark_seconds': 45,
         'supports_study_plan': True,
         'supports_result': True,
+        'url_base': '/pkg/ability/data-analysis/fill-blank/session/index',
+        'param_schema': {
+            'key': {'type': 'string', 'default': 'base_value', 'label': '公式类型'},
+            'count': {'type': 'int', 'default': 10, 'min': 1, 'max': 100, 'label': '题数', 'bind_to': 'question_count'},
+            'order': {'type': 'enum', 'default': 'asc', 'options': ['asc', 'shuffle'], 'label': '顺序'},
+        },
     },
     {
         'key': 'data_analysis_practice',
@@ -62,6 +74,13 @@ _ABILITY_CATALOG = [
         'benchmark_seconds': 50,
         'supports_study_plan': True,
         'supports_result': True,
+        'url_base': '/pkg/ability/data-analysis/practice/session/index',
+        'param_schema': {
+            'type': {'type': 'string', 'default': 'random', 'label': '题型'},
+            'difficulty': {'type': 'enum', 'default': 'normal', 'options': ['easy', 'normal', 'hard'], 'label': '难度'},
+            'display': {'type': 'enum', 'default': 'text_chart', 'options': ['text_chart', 'formula'], 'label': '展示'},
+            'count': {'type': 'int', 'default': 10, 'min': 1, 'max': 100, 'label': '题数', 'bind_to': 'question_count'},
+        },
     },
     {
         'key': 'spatial_cube_box',
@@ -76,6 +95,12 @@ _ABILITY_CATALOG = [
         'benchmark_seconds': 35,
         'supports_study_plan': True,
         'supports_result': True,
+        'url_base': '/pkg/ability/spatial/cube-box/session/index',
+        'param_schema': {
+            'mode': {'type': 'enum', 'default': 'opposite', 'options': ['opposite', 'net'], 'label': '模式'},
+            'kind': {'type': 'enum', 'default': 'test', 'options': ['training', 'test'], 'label': '类型'},
+            'count': {'type': 'int', 'default': 10, 'min': 1, 'max': 50, 'label': '题数', 'bind_to': 'question_count'},
+        },
     },
 ]
 
@@ -185,6 +210,8 @@ async def create_ability_catalog(
         supports_result=param.supports_result,
         is_active=param.is_active,
         extra=param.extra,
+        url_base=param.url_base,
+        param_schema=param.param_schema,
         created_by=created_by,
     )
     db.add(catalog)
@@ -391,6 +418,8 @@ def _build_catalog_item(catalog: StudyAbilityCatalog) -> GetStudyPlanAbilityCata
         is_active=catalog.is_active,
         is_persisted=True,
         extra=catalog.extra,
+        url_base=catalog.url_base,
+        param_schema=catalog.param_schema,
     )
 
 

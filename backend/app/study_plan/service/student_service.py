@@ -339,6 +339,7 @@ async def start_item(
         raise errors.RequestError(msg='该模块已完成')
 
     payload: dict[str, Any] | None = None
+    skip_status_update = False
 
     if item.module_type == 'wrong_review':
         question_ids = await select_wrong_review_questions(db, user_id, limit=10)
@@ -349,8 +350,17 @@ async def start_item(
     elif item.module_type == 'practice':
         session_key = await _ensure_practice_session(db, item)
         payload = {'session_key': session_key}
+    elif item.module_type == 'resource':
+        extra = item.extra or {}
+        cloud_links = extra.get('cloud_links') if isinstance(extra.get('cloud_links'), list) else []
+        payload = {
+            'cloud_links': cloud_links,
+            'empty_hint': '该资源模块尚未配置链接' if not cloud_links else None,
+        }
+        if not cloud_links:
+            skip_status_update = True
 
-    if item.status == 'pending':
+    if item.status == 'pending' and not skip_status_update:
         await study_plan_item_dao.update_status(db, item_id, 'in_progress')
         item.status = 'in_progress'
 

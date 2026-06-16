@@ -32,7 +32,7 @@ class StudyPlanItem(Base, UserMixin):
             postgresql_where=sa.text('ref_id IS NOT NULL'),
         ),
         sa.CheckConstraint(
-            "module_type IN ('review','practice','wrong_review','ability')",
+            "module_type IN ('review','practice','wrong_review','ability','resource')",
             name='ck_study_plan_item_module_type',
         ),
         sa.CheckConstraint(

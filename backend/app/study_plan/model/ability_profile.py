@@ -54,6 +54,12 @@ class StudyAbilityCatalog(Base, UserMixin):
     supports_result: Mapped[bool] = mapped_column(default=True, comment='是否支持自动结算')
     is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
     extra: Mapped[dict[str, Any] | None] = mapped_column(CompatibleJSONB, default=None, comment='扩展配置')
+    url_base: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='URL 基座（不含 query），与 param_schema 配合派生最终 URL')
+    param_schema: Mapped[dict[str, Any] | None] = mapped_column(
+        CompatibleJSONB,
+        default=None,
+        comment='URL 参数 schema，结构: {param_name: {type, label, default, options?, min?, max?, bind_to?}}',
+    )
 
 
 class StudyAbilityCategoryBinding(Base, UserMixin):

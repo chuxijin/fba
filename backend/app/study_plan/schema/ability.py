@@ -27,6 +27,8 @@ class GetStudyPlanAbilityCatalogItem(SchemaBase):
     is_active: bool = Field(default=True, description='是否启用')
     is_persisted: bool = Field(default=False, description='是否已落库')
     extra: dict[str, Any] | None = Field(default=None, description='扩展配置')
+    url_base: str | None = Field(default=None, description='URL 基座')
+    param_schema: dict[str, Any] | None = Field(default=None, description='URL 参数 schema')
 
 
 class CreateStudyAbilityCatalogParam(SchemaBase):
@@ -46,6 +48,8 @@ class CreateStudyAbilityCatalogParam(SchemaBase):
     supports_result: bool = Field(default=True, description='是否支持自动结算')
     is_active: bool = Field(default=True, description='是否启用')
     extra: dict[str, Any] | None = Field(default=None, description='扩展配置')
+    url_base: str | None = Field(default=None, max_length=512, description='URL 基座')
+    param_schema: dict[str, Any] | None = Field(default=None, description='URL 参数 schema')
 
 
 class UpdateStudyAbilityCatalogParam(SchemaBase):
@@ -64,6 +68,8 @@ class UpdateStudyAbilityCatalogParam(SchemaBase):
     supports_result: bool | None = Field(default=None, description='是否支持自动结算')
     is_active: bool | None = Field(default=None, description='是否启用')
     extra: dict[str, Any] | None = Field(default=None, description='扩展配置')
+    url_base: str | None = Field(default=None, max_length=512, description='URL 基座')
+    param_schema: dict[str, Any] | None = Field(default=None, description='URL 参数 schema')
 
 
 StudyAbilityBindingRole = Literal['knowledge_point', 'solution_method', 'ability']

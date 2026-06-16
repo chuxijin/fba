@@ -53,6 +53,7 @@ from backend.app.study_plan.service.ability_catalog import (
     update_ability_binding,
     update_ability_catalog,
 )
+from backend.app.study_plan.service.ability_url_resolver import enrich_ability_item_extra
 from backend.app.study_plan.service.item_detail_service import build_item_detail
 from backend.app.study_plan.service.practice_source import preview_practice_source
 from backend.common.exception import errors
@@ -238,6 +239,7 @@ async def study_plan_add_item(
     db: CurrentSessionTransaction,
     param: CreateStudyPlanItemParam,
 ) -> ResponseSchemaModel[GetStudyPlanItemDetail]:
+    enriched_extra = await enrich_ability_item_extra(db, param.extra)
     item = StudyPlanItem(
         plan_id=param.plan_id,
         user_id=0,
@@ -249,7 +251,7 @@ async def study_plan_add_item(
         ref_id=param.ref_id,
         expected_minutes=param.expected_minutes,
         status='pending',
-        extra=param.extra,
+        extra=enriched_extra,
         created_by=request.user.id,
     )
     from backend.app.study_plan.crud import study_plan_dao
@@ -281,6 +283,8 @@ async def study_plan_update_item(
     fields = param.model_dump(exclude_unset=True)
     if not fields:
         return response_base.success(data=await build_item_detail(db, item))
+    if 'extra' in fields and fields['extra']:
+        fields['extra'] = await enrich_ability_item_extra(db, fields['extra'])
     await study_plan_item_dao.update_model(db, item_id, fields)
     refreshed = await study_plan_item_dao.get(db, item_id)
     return response_base.success(data=await build_item_detail(db, refreshed))
@@ -325,8 +329,10 @@ async def study_plan_create_template(
     await db.flush()
 
     if param.items:
-        items = [
-            StudyPlanTemplateItem(
+        items = []
+        for ti in param.items:
+            enriched_extra = await enrich_ability_item_extra(db, ti.extra)
+            items.append(StudyPlanTemplateItem(
                 template_id=tpl.id,
                 day_index=ti.day_index,
                 order_index=ti.order_index,
@@ -335,10 +341,8 @@ async def study_plan_create_template(
                 ref_type=ti.ref_type,
                 ref_id=ti.ref_id,
                 expected_minutes=ti.expected_minutes,
-                extra=ti.extra,
-            )
-            for ti in param.items
-        ]
+                extra=enriched_extra,
+            ))
         db.add_all(items)
         await db.flush()
     return response_base.success(data=GetStudyPlanTemplateDetail.model_validate(tpl))
@@ -389,7 +393,7 @@ async def study_plan_add_template_item(
         ref_type=param.ref_type,
         ref_id=param.ref_id,
         expected_minutes=param.expected_minutes,
-        extra=param.extra,
+        extra=await enrich_ability_item_extra(db, param.extra),
     )
     db.add(item)
     await db.flush()
@@ -415,6 +419,8 @@ async def study_plan_update_template_item(
     if not fields:
         return response_base.success(data=GetStudyPlanTemplateItemDetail.model_validate(item))
 
+    if 'extra' in fields and fields['extra']:
+        fields['extra'] = await enrich_ability_item_extra(db, fields['extra'])
     await study_plan_template_item_dao.update_model(db, item_id, fields)
     refreshed = await study_plan_template_item_dao.get(db, item_id)
     return response_base.success(data=GetStudyPlanTemplateItemDetail.model_validate(refreshed))
