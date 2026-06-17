@@ -20,7 +20,7 @@ class CreateRedeemCodeParam(SchemaBase):
 
 class CharTypeOptions(SchemaBase):
     """字符类型选项"""
-    
+
     uppercase: bool = Field(True, description='大写字母')
     lowercase: bool = Field(True, description='小写字母')
     digits: bool = Field(True, description='数字')
@@ -29,7 +29,7 @@ class CharTypeOptions(SchemaBase):
 
 class CardKeyGenerationRequest(SchemaBase):
     """卡密生成请求参数"""
-    
+
     char_types: CharTypeOptions | None = Field(None, description='字符类型')
     key_length: int = Field(16, description='密钥长度')
     prefix: str | None = Field(None, description='前缀')

@@ -22,10 +22,12 @@ router = APIRouter()
 
 
 @router.post('/manual', summary='手动授权设备', dependencies=[DependsRBAC])
-async def manual_authorize_device(request: Request, obj: AuthorizeDeviceParam) -> ResponseSchemaModel[GetAuthorizationDetail]:
+async def manual_authorize_device(
+    request: Request, obj: AuthorizeDeviceParam
+) -> ResponseSchemaModel[GetAuthorizationDetail]:
     """
     手动授权设备
-    
+
     :param request: FastAPI 请求对象
     :param obj: 授权参数
     :return:
@@ -38,7 +40,7 @@ async def manual_authorize_device(request: Request, obj: AuthorizeDeviceParam) -
 async def redeem_code_authorize(obj: RedeemCodeAuthParam) -> ResponseSchemaModel[GetAuthorizationDetail]:
     """
     兑换码授权
-    
+
     :param obj: 兑换码授权参数
     :return:
     """
@@ -50,7 +52,7 @@ async def redeem_code_authorize(obj: RedeemCodeAuthParam) -> ResponseSchemaModel
 async def check_authorization(obj: CheckAuthorizationParam) -> ResponseModel:
     """
     检查设备授权状态
-    
+
     :param obj: 检查授权参数
     :return:
     """
@@ -85,12 +87,11 @@ async def get_pagination_authorizations(
 
 @router.get('/application/{application_id}/trend', summary='获取应用注册趋势', dependencies=[DependsJwtAuth])
 async def get_application_registration_trend(
-    application_id: Annotated[int, Path(description='应用ID')],
-    days: Annotated[int, Query(description='统计天数')] = 30
+    application_id: Annotated[int, Path(description='应用ID')], days: Annotated[int, Query(description='统计天数')] = 30
 ) -> ResponseModel:
     """
     获取应用注册趋势数据
-    
+
     :param application_id: 应用ID
     :param days: 统计天数，默认30天
     :return:
@@ -100,12 +101,10 @@ async def get_application_registration_trend(
 
 
 @router.get('/device/{device_id}/history', summary='获取设备授权历史', dependencies=[DependsJwtAuth])
-async def get_device_authorization_history(
-    device_id: Annotated[int, Path(description='设备ID')]
-) -> ResponseModel:
+async def get_device_authorization_history(device_id: Annotated[int, Path(description='设备ID')]) -> ResponseModel:
     """
     获取设备授权历史
-    
+
     :param device_id: 设备ID
     :return:
     """
@@ -114,10 +113,12 @@ async def get_device_authorization_history(
 
 
 @router.get('/{pk}', summary='获取授权详情', dependencies=[DependsJwtAuth])
-async def get_authorization(pk: Annotated[int, Path(description='授权ID')]) -> ResponseSchemaModel[GetAuthorizationDetail]:
+async def get_authorization(
+    pk: Annotated[int, Path(description='授权ID')],
+) -> ResponseSchemaModel[GetAuthorizationDetail]:
     """
     获取授权详情
-    
+
     :param pk: 授权ID
     :return:
     """
@@ -127,12 +128,11 @@ async def get_authorization(pk: Annotated[int, Path(description='授权ID')]) ->
 
 @router.put('/{pk}/time', summary='修改授权时间', dependencies=[DependsRBAC])
 async def update_authorization_time(
-    pk: Annotated[int, Path(description='授权ID')],
-    obj: UpdateAuthorizationTimeParam
+    pk: Annotated[int, Path(description='授权ID')], obj: UpdateAuthorizationTimeParam
 ) -> ResponseModel:
     """
     修改授权时间
-    
+
     :param pk: 授权ID
     :param obj: 修改参数
     :return:
@@ -147,7 +147,7 @@ async def update_authorization_time(
 async def disable_authorization(pk: Annotated[int, Path(description='授权ID')]) -> ResponseModel:
     """
     使授权失效
-    
+
     :param pk: 授权ID
     :return:
     """
@@ -161,7 +161,7 @@ async def disable_authorization(pk: Annotated[int, Path(description='授权ID')]
 async def delete_authorization(pk: Annotated[int, Path(description='授权ID')]) -> ResponseModel:
     """
     删除授权
-    
+
     :param pk: 授权ID
     :return:
     """

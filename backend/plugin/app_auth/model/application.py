@@ -40,4 +40,6 @@ class AppApplication(Base):
     # 关系
     versions: Mapped[list[AppVersion]] = relationship(init=False, back_populates='application', lazy='noload')
     packages: Mapped[list[AppPackage]] = relationship(init=False, back_populates='application', lazy='noload')
-    authorizations: Mapped[list[AppAuthorization]] = relationship(init=False, back_populates='application', lazy='noload')
+    authorizations: Mapped[list[AppAuthorization]] = relationship(
+        init=False, back_populates='application', lazy='noload'
+    )

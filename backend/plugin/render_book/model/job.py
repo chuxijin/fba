@@ -79,7 +79,7 @@ class RenderBookJobFile(Base):
             name='ck_render_book_job_file_kind',
         ),
         sa.CheckConstraint(
-            "(render_variant IS NULL OR render_variant IN "
+            '(render_variant IS NULL OR render_variant IN '
             "('questions_only','solutions_only','combined_inline','combined_appendix'))",
             name='ck_render_book_job_file_variant',
         ),

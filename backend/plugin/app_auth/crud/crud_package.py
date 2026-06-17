@@ -54,10 +54,11 @@ class CRUDPackage(CRUDPlus[AppPackage]):
         :param application_id: 应用 ID
         :return:
         """
-        stmt = select(self.model).where(
-            self.model.application_id == application_id,
-            self.model.status == 'active'
-        ).order_by(self.model.created_time.desc())
+        stmt = (
+            select(self.model)
+            .where(self.model.application_id == application_id, self.model.status == 'active')
+            .order_by(self.model.created_time.desc())
+        )
         return await self.select_models(db, stmt)
 
     async def get_list(self, db: AsyncSession, application_id: int = None, status: str = None) -> list[AppPackage]:
@@ -72,10 +73,7 @@ class CRUDPackage(CRUDPlus[AppPackage]):
 
     def get_select(self, application_id: int = None, name: str = None, status: str = None):
         """获取套餐查询语句，包含应用信息"""
-        stmt = select(
-            self.model,
-            AppApplication.name.label('application_name')
-        ).join(
+        stmt = select(self.model, AppApplication.name.label('application_name')).join(
             AppApplication, self.model.application_id == AppApplication.id
         )
         if application_id:

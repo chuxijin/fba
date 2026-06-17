@@ -25,10 +25,8 @@ class AppRedeemCode(Base):
     id: Mapped[id_key] = mapped_column(init=False)
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True, comment='兑换码')
     duration_days: Mapped[int] = mapped_column(Integer, comment='有效期天数')
-    application_id: Mapped[int] = mapped_column(
-        ForeignKey('app_application.id', ondelete='CASCADE'), comment='应用ID'
-    )
-    
+    application_id: Mapped[int] = mapped_column(ForeignKey('app_application.id', ondelete='CASCADE'), comment='应用ID')
+
     # 有默认值的字段（必须放在后面）
     batch_no: Mapped[str | None] = mapped_column(String(50), default=None, comment='批次号')
     max_devices: Mapped[int] = mapped_column(Integer, default=1, comment='最大设备数量')
@@ -36,12 +34,8 @@ class AppRedeemCode(Base):
         Boolean().with_variant(INTEGER, 'postgresql'), default=False, comment='是否已使用(0否 1是)'
     )
     used_by: Mapped[str | None] = mapped_column(String(50), default=None, comment='使用者')
-    used_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=None, comment='使用时间'
-    )
-    expire_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=None, comment='过期时间'
-    )
+    used_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, comment='使用时间')
+    expire_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, comment='过期时间')
     remark: Mapped[str | None] = mapped_column(Text, default=None, comment='备注')
     created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), init=False, default_factory=timezone.now, comment='创建时间'

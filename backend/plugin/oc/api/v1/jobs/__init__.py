@@ -1,6 +1,17 @@
 from fastapi import APIRouter
 
-from backend.plugin.oc.api.v1.jobs import application, campus, crawler, intern, resource, quick_register, referral_code, resume, config, feedback
+from backend.plugin.oc.api.v1.jobs import (
+    application,
+    campus,
+    crawler,
+    intern,
+    resource,
+    quick_register,
+    referral_code,
+    resume,
+    config,
+    feedback,
+)
 
 router = APIRouter(prefix='/jobs')
 

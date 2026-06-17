@@ -12,7 +12,9 @@ class FormatterField(DataClassBase, DateTimeMixin):
     __tablename__ = 'oc_formatter_field'
 
     id: Mapped[id_key] = mapped_column(init=False)
-    category: Mapped[str] = mapped_column(sa.String(50), index=True, comment='分类: basic_info, education_background 等')
+    category: Mapped[str] = mapped_column(
+        sa.String(50), index=True, comment='分类: basic_info, education_background 等'
+    )
     field_name: Mapped[str] = mapped_column(sa.String(50), comment='字段名: name, gender 等')
     chinese: Mapped[str] = mapped_column(sa.String(100), comment='中文名称')
     strategy: Mapped[str] = mapped_column(sa.String(30), default='input', comment='策略: input, drop_down_box, time 等')
@@ -22,11 +24,11 @@ class FormatterField(DataClassBase, DateTimeMixin):
     default_value: Mapped[str | None] = mapped_column(sa.String(200), default=None, comment='默认值')
     is_array: Mapped[bool] = mapped_column(sa.Boolean, default=False, comment='是否数组类型')
     is_hidden: Mapped[bool] = mapped_column(sa.Boolean, default=False, comment='是否隐藏')
-    parent_field_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='父字段ID（用于复杂数组的子字段）')
-
-    __table_args__ = (
-        sa.UniqueConstraint('category', 'field_name', 'parent_field_id', name='uq_formatter_field'),
+    parent_field_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger, default=None, comment='父字段ID（用于复杂数组的子字段）'
     )
+
+    __table_args__ = (sa.UniqueConstraint('category', 'field_name', 'parent_field_id', name='uq_formatter_field'),)
 
 
 class FormatterEmbedding(DataClassBase, DateTimeMixin):
@@ -51,6 +53,4 @@ class FormatterMapping(DataClassBase, DateTimeMixin):
     source_value: Mapped[str] = mapped_column(sa.String(100), comment='简历中的值')
     target_values: Mapped[str] = mapped_column(sa.String(500), comment='匹配目标值列表JSON')
 
-    __table_args__ = (
-        sa.UniqueConstraint('field_id', 'source_value', name='uq_formatter_mapping'),
-    )
+    __table_args__ = (sa.UniqueConstraint('field_id', 'source_value', name='uq_formatter_mapping'),)

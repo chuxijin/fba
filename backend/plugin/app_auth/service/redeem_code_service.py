@@ -27,17 +27,17 @@ class RedeemCodeService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             # 检查应用是否存在
             app = await application_dao.get(db, obj.application_id)
             if not app:
                 raise errors.NotFoundError(msg='应用不存在')
-            
+
             # 检查兑换码是否已存在
             existing_code = await redeem_code_dao.get_by_code(db, code)
             if existing_code:
                 raise errors.ForbiddenError(msg='兑换码已存在')
-            
+
             return await redeem_code_dao.create(db, obj, code)
 
     @staticmethod
@@ -53,16 +53,16 @@ class RedeemCodeService:
             app = await application_dao.get(db, obj.application_id)
             if not app:
                 raise errors.NotFoundError(msg='应用不存在')
-            
+
             # 生成兑换码
             generated_codes = card_key_service.generate_card_keys(obj.generation_params)
-            
+
             # 检查生成的兑换码是否有重复
             for code in generated_codes:
                 existing_code = await redeem_code_dao.get_by_code(db, code)
                 if existing_code:
                     raise errors.ForbiddenError(msg=f'兑换码 {code} 已存在，请重新生成')
-            
+
             # 批量创建兑换码
             created_codes = []
             for code in generated_codes:
@@ -71,15 +71,17 @@ class RedeemCodeService:
                     batch_no=obj.batch_no,
                     duration_days=obj.duration_days,
                     max_devices=obj.max_devices,
-                    remark=obj.remark
+                    remark=obj.remark,
                 )
                 created_code = await redeem_code_dao.create(db, code_param, code)
                 created_codes.append(created_code)
-            
+
             return created_codes
 
     @staticmethod
-    async def batch_create_with_generation(*, request: Request, obj: BatchCreateRedeemCodeWithGeneration) -> list[AppRedeemCode]:
+    async def batch_create_with_generation(
+        *, request: Request, obj: BatchCreateRedeemCodeWithGeneration
+    ) -> list[AppRedeemCode]:
         """
         批量生成并创建兑换码
 
@@ -89,21 +91,21 @@ class RedeemCodeService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             # 检查应用是否存在
             app = await application_dao.get(db, obj.application_id)
             if not app:
                 raise errors.NotFoundError(msg='应用不存在')
-            
+
             # 生成兑换码
             generated_codes = card_key_service.generate_card_keys(obj.generation_params)
-            
+
             # 检查生成的兑换码是否有重复
             for code in generated_codes:
                 existing_code = await redeem_code_dao.get_by_code(db, code)
                 if existing_code:
                     raise errors.ForbiddenError(msg=f'兑换码 {code} 已存在，请重新生成')
-            
+
             # 批量创建兑换码
             created_codes = []
             for code in generated_codes:
@@ -112,11 +114,11 @@ class RedeemCodeService:
                     batch_no=obj.batch_no,
                     duration_days=obj.duration_days,
                     max_devices=obj.max_devices,
-                    remark=obj.remark
+                    remark=obj.remark,
                 )
                 created_code = await redeem_code_dao.create(db, code_param, code)
                 created_codes.append(created_code)
-            
+
             return created_codes
 
     @staticmethod
@@ -130,14 +132,14 @@ class RedeemCodeService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             code = await redeem_code_dao.get(db, code_id)
             if not code:
                 raise errors.NotFoundError(msg='兑换码不存在')
-            
+
             if code.is_used:
                 raise errors.ForbiddenError(msg='已使用的兑换码不能删除')
-            
+
             return await redeem_code_dao.delete(db, code_id)
 
     @staticmethod
@@ -155,13 +157,10 @@ class RedeemCodeService:
             return code
 
     @staticmethod
-    async def get_list(application_id: int = None, batch_no: str = None, 
-                      is_used: bool = None) -> list[AppRedeemCode]:
+    async def get_list(application_id: int = None, batch_no: str = None, is_used: bool = None) -> list[AppRedeemCode]:
         """获取兑换码列表"""
         async with async_db_session() as db:
-            return await redeem_code_dao.get_list(
-                db, application_id=application_id, batch_no=batch_no, is_used=is_used
-            )
+            return await redeem_code_dao.get_list(db, application_id=application_id, batch_no=batch_no, is_used=is_used)
 
     @staticmethod
     def get_select(application_id: int = None, batch_no: str = None, is_used: bool = None):
@@ -173,9 +172,7 @@ class RedeemCodeService:
         :param is_used: 是否已使用
         :return:
         """
-        return redeem_code_dao.get_select(
-            application_id=application_id, batch_no=batch_no, is_used=is_used
-        )
+        return redeem_code_dao.get_select(application_id=application_id, batch_no=batch_no, is_used=is_used)
 
 
 redeem_code_service = RedeemCodeService()

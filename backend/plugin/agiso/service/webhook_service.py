@@ -314,9 +314,7 @@ class WebhookService:
                 )
                 result_msg = f'{result_msg}; 批次已超额, 已发告警'
 
-            await push_log_service.update_log_status(
-                push_log_id, process_status=1, process_result=result_msg, db=db
-            )
+            await push_log_service.update_log_status(push_log_id, process_status=1, process_result=result_msg, db=db)
             return {'success': 'true', 'message': f'激活码已创建: {order_no}'}
 
         except Exception as e:
@@ -384,9 +382,7 @@ class WebhookService:
                             user_id = int(usage.user_id)
                         except (TypeError, ValueError):
                             outcome = 'revoke_failed'
-                            outcome_msg = (
-                                f'退款订单激活码绑定 user_id 异常: {order_no}, user_id={usage.user_id}'
-                            )
+                            outcome_msg = f'退款订单激活码绑定 user_id 异常: {order_no}, user_id={usage.user_id}'
                             need_alert = True
                         else:
                             revoked = await subscription_service.revoke_by_source(
@@ -398,16 +394,12 @@ class WebhookService:
                             )
                             if not revoked:
                                 outcome = 'revoke_failed'
-                                outcome_msg = (
-                                    f'未定位到原发放订阅，无法撤销会员: {order_no}, user_id={user_id}'
-                                )
+                                outcome_msg = f'未定位到原发放订阅，无法撤销会员: {order_no}, user_id={user_id}'
                                 need_alert = True
                                 alert_payload = {'user_id': str(user_id)}
                             else:
                                 outcome = 'revoked'
-                                outcome_msg = (
-                                    f'退款已撤销订阅: {order_no}, user_id={user_id}, count={revoked}'
-                                )
+                                outcome_msg = f'退款已撤销订阅: {order_no}, user_id={user_id}, count={revoked}'
 
             if outcome == 'no_code':
                 log.info(outcome_msg)

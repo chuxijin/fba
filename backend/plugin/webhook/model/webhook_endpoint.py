@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import JSON, BigInteger, Boolean, Integer, String
+from sqlalchemy import JSON, Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, TimeZone
@@ -25,9 +25,5 @@ class WebhookEndpoint(Base):
     failure_count: Mapped[int] = mapped_column(Integer, default=0, comment='连续失败次数')
     max_retries: Mapped[int] = mapped_column(Integer, default=5, comment='最大重试次数')
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=30, comment='超时秒数')
-    last_success_at: Mapped[datetime | None] = mapped_column(
-        TimeZone, default=None, comment='最后成功时间'
-    )
-    last_failure_at: Mapped[datetime | None] = mapped_column(
-        TimeZone, default=None, comment='最后失败时间'
-    )
+    last_success_at: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最后成功时间')
+    last_failure_at: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最后失败时间')

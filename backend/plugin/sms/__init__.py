@@ -4,4 +4,4 @@
 # @Author   : 冉勇
 # @File     : __init__.py
 # @Software : PyCharm
-# @Desc     : 腾讯云短信服务插件初始化 
+# @Desc     : 腾讯云短信服务插件初始化

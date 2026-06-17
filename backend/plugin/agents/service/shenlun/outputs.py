@@ -4,6 +4,7 @@
 
 LLM 校验失败时 pydantic_ai 自动反馈错误重试 (output_retries), 节点拿到的就是强类型对象.
 """
+
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -69,11 +70,20 @@ class IssuePayload(BaseModel):
     severity: Literal['critical', 'major', 'minor']
     description: str = Field(min_length=5)
     location: str | None = None
-    related_section: Literal[
-        'score_card', 'key_points', 'issues', 'suggestions',
-        'rewritten_text', 'explanations', 'option_analysis',
-        'dialogue_trace', 'qc',
-    ] | None = None
+    related_section: (
+        Literal[
+            'score_card',
+            'key_points',
+            'issues',
+            'suggestions',
+            'rewritten_text',
+            'explanations',
+            'option_analysis',
+            'dialogue_trace',
+            'qc',
+        ]
+        | None
+    ) = None
 
 
 class SuggestionPayload(BaseModel):

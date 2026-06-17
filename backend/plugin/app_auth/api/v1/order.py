@@ -23,7 +23,7 @@ router = APIRouter()
 async def create_order(obj: CreateOrderParam) -> ResponseSchemaModel[GetOrderDetail]:
     """
     创建新订单
-    
+
     :param obj: 订单创建参数
     :return:
     """
@@ -35,7 +35,7 @@ async def create_order(obj: CreateOrderParam) -> ResponseSchemaModel[GetOrderDet
 async def delete_order(pk: Annotated[int, Path(description='订单ID')]) -> ResponseModel:
     """
     删除订单
-    
+
     :param pk: 订单ID
     :return:
     """
@@ -46,12 +46,10 @@ async def delete_order(pk: Annotated[int, Path(description='订单ID')]) -> Resp
 
 
 @router.put('/{pk}', summary='更新订单', dependencies=[DependsRBAC])
-async def update_order(
-    pk: Annotated[int, Path(description='订单ID')], obj: UpdateOrderParam
-) -> ResponseModel:
+async def update_order(pk: Annotated[int, Path(description='订单ID')], obj: UpdateOrderParam) -> ResponseModel:
     """
     更新订单信息
-    
+
     :param pk: 订单ID
     :param obj: 订单更新参数
     :return:
@@ -72,7 +70,7 @@ async def get_pagination_orders(
 ) -> ResponseModel:
     """
     分页获取订单列表
-    
+
     :param db: 数据库会话
     :param order_no: 订单号
     :param package_id: 套餐ID
@@ -89,9 +87,9 @@ async def get_pagination_orders(
 async def get_order(pk: Annotated[int, Path(description='订单ID')]) -> ResponseSchemaModel[GetOrderDetail]:
     """
     获取订单详情
-    
+
     :param pk: 订单ID
     :return:
     """
     data = await order_service.get(pk=pk)
-    return response_base.success(data=data) 
+    return response_base.success(data=data)

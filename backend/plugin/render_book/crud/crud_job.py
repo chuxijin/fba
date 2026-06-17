@@ -96,9 +96,7 @@ class CRUDRenderBookJob(CRUDPlus[RenderBookJob]):
             if kp_cat_id is not None:
                 conditions.append(cast(self.model.metadata_json['kp_cat_id'].as_string(), sa.BigInteger) == kp_cat_id)
             if bank_ids:
-                conditions.append(
-                    cast(self.model.metadata_json['bank_id'].as_string(), sa.BigInteger).in_(bank_ids)
-                )
+                conditions.append(cast(self.model.metadata_json['bank_id'].as_string(), sa.BigInteger).in_(bank_ids))
             if conditions:
                 stmt = stmt.where(or_(*conditions))
 

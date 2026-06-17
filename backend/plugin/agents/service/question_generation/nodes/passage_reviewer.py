@@ -26,11 +26,7 @@ async def review_passages(ctx: NodeContext) -> None:
         review_output = await _invoke_passage_review(ctx, passages, round_index)
         review_items = [item.model_dump(mode='json') for item in review_output.items]
         review_records.extend(review_items)
-        decision_map = {
-            str(item.get('passage_id')): item
-            for item in review_items
-            if item.get('passage_id')
-        }
+        decision_map = {str(item.get('passage_id')): item for item in review_items if item.get('passage_id')}
 
         passed_passages = _collect_passages_by_decision(passages, decision_map, 'pass')
         discard_items = _collect_passages_by_decision(passages, decision_map, 'discard')
@@ -172,11 +168,7 @@ def _apply_passage_revisions(
     :param revision_output: 修复输出
     :return:
     """
-    passage_map = {
-        str(item.get('passage_id')): item
-        for item in passages
-        if item.get('passage_id')
-    }
+    passage_map = {str(item.get('passage_id')): item for item in passages if item.get('passage_id')}
     revised_passages: list[dict[str, Any]] = []
     for revision in revision_output.get('items') or []:
         passage_id = str(revision.get('passage_id') or '')

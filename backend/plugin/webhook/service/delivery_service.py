@@ -7,7 +7,6 @@ import httpx
 from backend.common.log import log
 from backend.database.db import async_db_session
 from backend.plugin.webhook.constant import (
-    DELIVERY_ID_PREFIX,
     RESPONSE_BODY_MAX_LENGTH,
     RETRY_INTERVALS,
     DeliveryStatus,
@@ -205,10 +204,7 @@ class DeliveryService:
             )
             await db.execute(ep_stmt)
 
-        log.warning(
-            f'投递永久失败: {delivery.uid} endpoint={endpoint.name} '
-            f'failure_count={new_failure}'
-        )
+        log.warning(f'投递永久失败: {delivery.uid} endpoint={endpoint.name} failure_count={new_failure}')
 
         # 连续失败超过阈值, 自动禁用 Endpoint
         if new_failure >= 10:
@@ -220,17 +216,10 @@ class DeliveryService:
         async with async_db_session.begin() as db:
             from sqlalchemy import update
 
-            stmt = (
-                update(WebhookEndpoint)
-                .where(WebhookEndpoint.id == endpoint.id)
-                .values(is_active=False)
-            )
+            stmt = update(WebhookEndpoint).where(WebhookEndpoint.id == endpoint.id).values(is_active=False)
             await db.execute(stmt)
 
-        log.error(
-            f'Endpoint 已自动禁用 (连续失败 {endpoint.failure_count} 次): '
-            f'{endpoint.name} ({endpoint.url})'
-        )
+        log.error(f'Endpoint 已自动禁用 (连续失败 {endpoint.failure_count} 次): {endpoint.name} ({endpoint.url})')
 
 
 delivery_service: DeliveryService = DeliveryService()

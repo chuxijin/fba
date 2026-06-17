@@ -188,12 +188,16 @@ class GiveMeOCCrawler:
                 job_data['company_name'] = re.sub(r'<[^>]+>', '', company_match.group(1)).strip()
 
             # 提取公司类型
-            type_match = re.search(rf'<span class="{prefix}-badge {prefix}-type-([^"]*)"[^>]*>([^<]*)</span>', tr_content)
+            type_match = re.search(
+                rf'<span class="{prefix}-badge {prefix}-type-([^"]*)"[^>]*>([^<]*)</span>', tr_content
+            )
             if type_match:
                 job_data['company_type'] = type_match.group(2).strip()
 
             # 提取公司规模
-            company_size_match = re.search(rf'<td class="{prefix}-col-company-size"[^>]*>(.*?)</td>', tr_content, re.DOTALL)
+            company_size_match = re.search(
+                rf'<td class="{prefix}-col-company-size"[^>]*>(.*?)</td>', tr_content, re.DOTALL
+            )
             if company_size_match:
                 company_size_text = re.sub(r'<[^>]+>', '', company_size_match.group(1)).strip()
                 if company_size_text and company_size_text != '-':
@@ -205,7 +209,9 @@ class GiveMeOCCrawler:
                 job_data['industry'] = re.sub(r'<[^>]+>', '', company_matches[1]).strip()
 
             # 提取招聘类型
-            recruitment_match = re.search(rf'<span class="{prefix}-badge {prefix}-recruitment-([^"]*)"[^>]*>([^<]*)</span>', tr_content)
+            recruitment_match = re.search(
+                rf'<span class="{prefix}-badge {prefix}-recruitment-([^"]*)"[^>]*>([^<]*)</span>', tr_content
+            )
             if recruitment_match:
                 job_data['recruitment_type'] = recruitment_match.group(2).strip()
 
@@ -215,7 +221,9 @@ class GiveMeOCCrawler:
                 job_data['location'] = re.sub(r'<[^>]+>', '', location_match.group(1)).strip()
 
             # 提取招聘对象
-            target_match = re.search(rf'<span class="{prefix}-badge {prefix}-target-([^"]*)"[^>]*>([^<]*)</span>', tr_content)
+            target_match = re.search(
+                rf'<span class="{prefix}-badge {prefix}-target-([^"]*)"[^>]*>([^<]*)</span>', tr_content
+            )
             if target_match:
                 job_data['recruit_target'] = target_match.group(2).strip()
 
@@ -225,7 +233,9 @@ class GiveMeOCCrawler:
                 job_data['positions'] = re.sub(r'<[^>]+>', '', position_match.group(1)).strip()
 
             # 提取更新时间
-            update_time_match = re.search(rf'<td class="{prefix}-col-update-time"[^>]*>(.*?)</td>', tr_content, re.DOTALL)
+            update_time_match = re.search(
+                rf'<td class="{prefix}-col-update-time"[^>]*>(.*?)</td>', tr_content, re.DOTALL
+            )
             if update_time_match:
                 update_time_text = re.sub(r'<[^>]+>', '', update_time_match.group(1)).strip()
                 if update_time_text:
@@ -248,14 +258,18 @@ class GiveMeOCCrawler:
                             continue
 
             # 提取投递链接
-            link_match = re.search(rf'<td class="{prefix}-col-links"[^>]*>.*?<a href="([^"]*)"[^>]*>投递</a>', tr_content, re.DOTALL)
+            link_match = re.search(
+                rf'<td class="{prefix}-col-links"[^>]*>.*?<a href="([^"]*)"[^>]*>投递</a>', tr_content, re.DOTALL
+            )
             if link_match:
                 link = link_match.group(1).strip()
                 if link and link != '#':
                     job_data['apply_link'] = link
 
             # 提取招聘公告链接
-            notice_match = re.search(rf'<td class="{prefix}-col-notice"[^>]*>.*?<a href="([^"]*)"[^>]*>公告</a>', tr_content, re.DOTALL)
+            notice_match = re.search(
+                rf'<td class="{prefix}-col-notice"[^>]*>.*?<a href="([^"]*)"[^>]*>公告</a>', tr_content, re.DOTALL
+            )
             if notice_match:
                 link = notice_match.group(1).strip()
                 if link and link != '#':
@@ -319,7 +333,7 @@ class GiveMeOCCrawler:
 
         # 如果没有传入 nonce，自动获取
         if not nonce:
-            log.info(f'未传入 nonce，正在自动从网页获取...')
+            log.info('未传入 nonce，正在自动从网页获取...')
             nonce = await self.fetch_nonce(job_type, cookie)
             if not nonce:
                 return {
@@ -358,7 +372,7 @@ class GiveMeOCCrawler:
                 for job_data in jobs:
                     # 确保有 source_id
                     if not job_data.get('source_id'):
-                        log.warning(f"跳过没有 source_id 的数据: {job_data['company_name']}")
+                        log.warning(f'跳过没有 source_id 的数据: {job_data["company_name"]}')
                         continue
 
                     # 用 savepoint 隔离每条记录，单条失败不影响其他
@@ -439,8 +453,8 @@ class GiveMeOCCrawler:
                                     total_saved += 1
 
                     except Exception as e:
-                        log.warning(f"保存失败: {job_data['company_name']} - {str(e)}")
-                        errors.append(f"保存失败: {job_data['company_name']} - {str(e)}")
+                        log.warning(f'保存失败: {job_data["company_name"]} - {str(e)}')
+                        errors.append(f'保存失败: {job_data["company_name"]} - {str(e)}')
                         continue
 
                 # 请求间隔（倒序爬取，只要不是最后一页就需要延迟）

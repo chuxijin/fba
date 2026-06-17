@@ -25,9 +25,11 @@ async def get_shop_config(db: CurrentSession) -> ResponseSchemaModel:
         if not int(config_dict.get('SHOP_CONFIG_STATUS', 0)):
             return response_base.success(data={})
 
-        return response_base.success(data={
-            'shop_url': config_dict.get('SHOP_URL', ''),
-            'shop_qr_code': config_dict.get('SHOP_QR_CODE', ''),
-        })
+        return response_base.success(
+            data={
+                'shop_url': config_dict.get('SHOP_URL', ''),
+                'shop_qr_code': config_dict.get('SHOP_QR_CODE', ''),
+            }
+        )
     except Exception:
         return response_base.success(data={})

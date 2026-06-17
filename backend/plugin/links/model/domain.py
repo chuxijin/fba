@@ -19,7 +19,5 @@ class Domain(Base, UserMixin):
 
     id: Mapped[id_key] = mapped_column(init=False)
     domain: Mapped[str] = mapped_column(sa.String(128), index=True, comment='域名')
-    domain_type: Mapped[int] = mapped_column(
-        sa.SmallInteger, comment='域名类型(1入口域名 2中转域名 3落地域名)'
-    )
+    domain_type: Mapped[int] = mapped_column(sa.SmallInteger, comment='域名类型(1入口域名 2中转域名 3落地域名)')
     remark: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='备注')

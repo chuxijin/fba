@@ -22,5 +22,7 @@ class UserSocial(Base):
     user_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='用户关联ID')
     sid: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='第三方用户 ID (普通OAuth2标识)')
     openid: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='平台 OpenID (适用于微信/QQ)')
-    unionid: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='跨端 UnionID (微信全生态互通标识)')
+    unionid: Mapped[str | None] = mapped_column(
+        sa.String(256), default=None, comment='跨端 UnionID (微信全生态互通标识)'
+    )
     extra: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='平台扩展数据(存session_key等)')

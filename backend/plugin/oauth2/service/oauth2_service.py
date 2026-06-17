@@ -14,6 +14,7 @@ from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.schema.token import GetLoginToken
 from backend.app.admin.schema.user import AddOAuth2UserParam
 from backend.app.admin.service.login_log_service import login_log_service
+from backend.app.admin.service.user_service import user_service
 from backend.common.context import ctx
 from backend.common.enums import LoginLogStatusType
 from backend.common.exception import errors
@@ -221,11 +222,12 @@ class OAuth2Service:
         """
         if not sid and not openid:
             raise errors.RequestError(msg='第三方身份唯一凭证(sid或openid)不能为空')
-            
+
         search_id = sid or openid
-        user_social = await user_social_dao.get_by_sid(db, search_id, source.value) or \
-                      (await user_social_dao.get_by_openid(db, openid, source.value) if openid else None)
-        
+        user_social = await user_social_dao.get_by_sid(db, search_id, source.value) or (
+            await user_social_dao.get_by_openid(db, openid, source.value) if openid else None
+        )
+
         original_avatar_url = OAuth2Service._normalize_avatar_url(avatar)
 
         if user_social:
@@ -255,9 +257,17 @@ class OAuth2Service:
                     email=email,
                     avatar=original_avatar_url,
                 )
-                await user_dao.add_by_oauth2(db, new_sys_user)
-                await db.flush()
-                sys_user = await user_dao.get_by_username(db, username)
+
+                async def _create_oauth2_user(_db: AsyncSession, _data: dict) -> User:
+                    await user_dao.add_by_oauth2(_db, AddOAuth2UserParam(**_data))
+                    await _db.flush()
+                    return await user_dao.get_by_username(_db, _data['username'])
+
+                sys_user = await user_service.register(
+                    db=db,
+                    user_data=new_sys_user.model_dump(),
+                    creator=_create_oauth2_user,
+                )
 
             # 绑定社交账号
             new_user_social = CreateUserSocialParam(
@@ -426,7 +436,6 @@ class OAuth2Service:
             avatar=avatar,
         )
 
-
     @staticmethod
     async def wechat_miniapp_login(
         *,
@@ -466,7 +475,7 @@ class OAuth2Service:
             wx_data = wx_resp.json()
 
             if 'errcode' in wx_data and wx_data['errcode'] != 0:
-                raise errors.AuthorizationError(msg=f"微信登录失败: {wx_data.get('errmsg', '未知错误')}")
+                raise errors.AuthorizationError(msg=f'微信登录失败: {wx_data.get("errmsg", "未知错误")}')
 
         openid = wx_data.get('openid')
         unionid = wx_data.get('unionid')
@@ -490,7 +499,7 @@ class OAuth2Service:
             unionid=unionid,
             username=user_info['username'],
             nickname=user_info['nickname'],
-            avatar=user_info['avatar_url']
+            avatar=user_info['avatar_url'],
         )
 
 

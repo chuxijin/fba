@@ -28,9 +28,7 @@ async def review(ctx: NodeContext) -> None:
     if key_points:
         missing_pts = [rp for rp in key_points.reference_points if not rp.matched_user_text]
         missing_count = len(missing_pts)
-        missing_high_count = sum(
-            1 for rp in missing_pts if rp.consensus_level == ConsensusLevel.high
-        )
+        missing_high_count = sum(1 for rp in missing_pts if rp.consensus_level == ConsensusLevel.high)
         missing_summary = '; '.join(rp.text for rp in missing_pts)[:500]
 
     rewritten = ctx.state.rewritten_text

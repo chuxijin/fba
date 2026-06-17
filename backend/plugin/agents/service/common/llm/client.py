@@ -81,11 +81,8 @@ class LLMClient:
             except _NETWORK_ERRORS as exc:
                 last_error = exc
                 if attempt < max_retries - 1:
-                    delay = _RETRY_BASE_DELAY * (2 ** attempt)
-                    log.warning(
-                        f'LLM 网络异常 (attempt {attempt + 1}/{max_retries}), '
-                        f'{delay}s 后重试: {exc!s}'
-                    )
+                    delay = _RETRY_BASE_DELAY * (2**attempt)
+                    log.warning(f'LLM 网络异常 (attempt {attempt + 1}/{max_retries}), {delay}s 后重试: {exc!s}')
                     await asyncio.sleep(delay)
         raise last_error  # type: ignore[misc]
 
@@ -134,9 +131,7 @@ class LLMClient:
             provider = await ai_provider_dao.get(own_db, self.provider_id)
             if not provider or not provider.status:
                 raise errors.NotFoundError(msg='AI 供应商不存在或已停用')
-            model_record = await ai_model_dao.get_by_model_and_provider(
-                own_db, model_id, self.provider_id
-            )
+            model_record = await ai_model_dao.get_by_model_and_provider(own_db, model_id, self.provider_id)
             if not model_record or not model_record.status:
                 raise errors.NotFoundError(msg=f'AI 模型 {model_id} 不存在或已停用')
 
@@ -163,13 +158,9 @@ class LLMClient:
         try:
             result = await self._call_with_retry(agent.run, user_prompt)
         except _NETWORK_ERRORS as e:
-            raise errors.GatewayError(
-                msg=f'LLM 网络异常 ({output_type.__name__}), 请稍后重试: {e!s}'
-            ) from e
+            raise errors.GatewayError(msg=f'LLM 网络异常 ({output_type.__name__}), 请稍后重试: {e!s}') from e
         except Exception as e:
-            raise errors.ServerError(
-                msg=f'LLM 调用失败 ({output_type.__name__}): {e!s}'
-            ) from e
+            raise errors.ServerError(msg=f'LLM 调用失败 ({output_type.__name__}): {e!s}') from e
         duration_ms = int((time.perf_counter() - started) * 1000)
 
         tokens_in, tokens_out = self._extract_usage(result)
@@ -305,16 +296,8 @@ class LLMClient:
         """
         try:
             usage = result.usage()
-            tokens_in = (
-                getattr(usage, 'input_tokens', None)
-                or getattr(usage, 'request_tokens', None)
-                or 0
-            )
-            tokens_out = (
-                getattr(usage, 'output_tokens', None)
-                or getattr(usage, 'response_tokens', None)
-                or 0
-            )
+            tokens_in = getattr(usage, 'input_tokens', None) or getattr(usage, 'request_tokens', None) or 0
+            tokens_out = getattr(usage, 'output_tokens', None) or getattr(usage, 'response_tokens', None) or 0
             return int(tokens_in), int(tokens_out)
         except Exception:
             return 0, 0

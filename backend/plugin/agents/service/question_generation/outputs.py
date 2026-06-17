@@ -177,4 +177,3 @@ class QuestionReviewOutput(SchemaBase):
     """成题质检结果"""
 
     items: list[QuestionReviewItem] = Field(default_factory=list, description='质检项')
-

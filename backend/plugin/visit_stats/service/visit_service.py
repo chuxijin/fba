@@ -78,9 +78,7 @@ class VisitService:
 
         # 统计指定日期的 PV/UV
         pv_stmt = select(func.count(VisitLog.id)).where(VisitLog.visit_date == target_date)
-        uv_stmt = select(func.count(func.distinct(VisitLog.ip_address))).where(
-            VisitLog.visit_date == target_date
-        )
+        uv_stmt = select(func.count(func.distinct(VisitLog.ip_address))).where(VisitLog.visit_date == target_date)
 
         pv_result = await db.execute(pv_stmt)
         uv_result = await db.execute(uv_stmt)

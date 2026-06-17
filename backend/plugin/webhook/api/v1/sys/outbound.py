@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -29,7 +29,9 @@ async def publish_event(obj: CloudEventCreate) -> ResponseSchemaModel[dict[str, 
         subject=obj.subject,
         source=obj.source,
     )
-    return response_base.success(data={
-        'deliveries_created': count,
-        'message': f'已创建 {count} 条投递记录',
-    })
+    return response_base.success(
+        data={
+            'deliveries_created': count,
+            'message': f'已创建 {count} 条投递记录',
+        }
+    )

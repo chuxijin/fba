@@ -153,11 +153,7 @@ class CRUDKfItem(CRUDPlus[KfItem]):
         :param kf_id: 客服码ID
         :return:
         """
-        stmt = (
-            select(self.model)
-            .where(self.model.kf_id == kf_id)
-            .order_by(self.model.created_time.desc())
-        )
+        stmt = select(self.model).where(self.model.kf_id == kf_id).order_by(self.model.created_time.desc())
         result = await db.execute(stmt)
         return list(result.scalars().all())
 

@@ -35,11 +35,7 @@ class LlamaParseOCRProvider:
     @staticmethod
     def _headers() -> dict[str, str]:
         """构建 LlamaParse 请求头"""
-        api_key = str(
-            settings.OCR_LLAMA_CLOUD_API_KEY
-            or settings.LLAMA_CLOUD_API_KEY
-            or ''
-        ).strip()
+        api_key = str(settings.OCR_LLAMA_CLOUD_API_KEY or settings.LLAMA_CLOUD_API_KEY or '').strip()
         if not api_key:
             raise errors.RequestError(msg='OCR_LLAMA_CLOUD_API_KEY 未配置，无法调用 LlamaParse')
 
@@ -177,8 +173,7 @@ class LlamaParseOCRProvider:
                 response = await client.request(method, url, **kwargs)
                 if response.status_code >= 500 and attempt < max_retry_count:
                     log.warning(
-                        f'LlamaParse 接口 {method} {url} 返回 {response.status_code}，'
-                        f'准备第 {attempt + 1} 次重试'
+                        f'LlamaParse 接口 {method} {url} 返回 {response.status_code}，准备第 {attempt + 1} 次重试'
                     )
                     await asyncio.sleep(self._retry_delay_seconds() * attempt)
                     continue
@@ -191,8 +186,7 @@ class LlamaParseOCRProvider:
                 if attempt >= max_retry_count:
                     break
                 log.warning(
-                    f'LlamaParse 接口 {method} {url} 网络异常 {exc.__class__.__name__}，'
-                    f'准备第 {attempt + 1} 次重试'
+                    f'LlamaParse 接口 {method} {url} 网络异常 {exc.__class__.__name__}，准备第 {attempt + 1} 次重试'
                 )
                 await asyncio.sleep(self._retry_delay_seconds() * attempt)
 

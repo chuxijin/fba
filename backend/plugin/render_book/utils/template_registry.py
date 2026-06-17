@@ -52,7 +52,9 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
         RenderFieldSpec(key='region', label='地区关键字', field_type='string', description='按试卷名称/编码/描述匹配'),
         RenderFieldSpec(key='year_start', label='起始年份', field_type='integer', description='按题目创建年过滤'),
         RenderFieldSpec(key='year_end', label='结束年份', field_type='integer', description='按题目创建年过滤'),
-        RenderFieldSpec(key='question_ids', label='题目 ID 列表', field_type='string', description='逗号分隔，如 101,102,103'),
+        RenderFieldSpec(
+            key='question_ids', label='题目 ID 列表', field_type='string', description='逗号分隔，如 101,102,103'
+        ),
         RenderFieldSpec(
             key='question_types',
             label='题型',
@@ -77,8 +79,12 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
         ),
         RenderFieldSpec(key='knowledge_points', label='考点', field_type='multi_select', description='按考点名称过滤'),
         RenderFieldSpec(key='stem_keyword', label='题干关键字', field_type='string', description='按题干文本模糊搜索'),
-        RenderFieldSpec(key='option_keyword', label='选项关键字', field_type='string', description='按选项文本模糊搜索'),
-        RenderFieldSpec(key='analysis_keyword', label='解析关键字', field_type='string', description='按解析文本模糊搜索'),
+        RenderFieldSpec(
+            key='option_keyword', label='选项关键字', field_type='string', description='按选项文本模糊搜索'
+        ),
+        RenderFieldSpec(
+            key='analysis_keyword', label='解析关键字', field_type='string', description='按解析文本模糊搜索'
+        ),
         RenderFieldSpec(key='question_count', label='题量', field_type='integer', required=False, default=100),
     ]
 
@@ -91,13 +97,23 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
             subject='真题',
             estimated_latency='slow',
             filter_fields=[
-                RenderFieldSpec(key='bank_id', label='试卷题库 ID', field_type='integer', description='优先指定某一套卷题库'),
-                RenderFieldSpec(key='chapter_id', label='章节 ID', field_type='integer', description='按指定章节裁剪套卷'),
+                RenderFieldSpec(
+                    key='bank_id', label='试卷题库 ID', field_type='integer', description='优先指定某一套卷题库'
+                ),
+                RenderFieldSpec(
+                    key='chapter_id', label='章节 ID', field_type='integer', description='按指定章节裁剪套卷'
+                ),
                 RenderFieldSpec(key='cat_id', label='分类 ID', field_type='integer', description='按试卷分类筛题'),
-                RenderFieldSpec(key='region', label='地区关键字', field_type='string', description='按试卷名称/编码/描述匹配'),
-                RenderFieldSpec(key='year_start', label='起始年份', field_type='integer', description='按题目创建年过滤'),
+                RenderFieldSpec(
+                    key='region', label='地区关键字', field_type='string', description='按试卷名称/编码/描述匹配'
+                ),
+                RenderFieldSpec(
+                    key='year_start', label='起始年份', field_type='integer', description='按题目创建年过滤'
+                ),
                 RenderFieldSpec(key='year_end', label='结束年份', field_type='integer', description='按题目创建年过滤'),
-                RenderFieldSpec(key='question_ids', label='题目 ID 列表', field_type='string', description='直接锁定套卷题目'),
+                RenderFieldSpec(
+                    key='question_ids', label='题目 ID 列表', field_type='string', description='直接锁定套卷题目'
+                ),
                 RenderFieldSpec(
                     key='question_types',
                     label='题型',
@@ -120,10 +136,18 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
                         RenderFieldChoice(value='hard', label='困难'),
                     ],
                 ),
-                RenderFieldSpec(key='knowledge_points', label='考点', field_type='multi_select', description='按考点名称过滤'),
-                RenderFieldSpec(key='stem_keyword', label='题干关键字', field_type='string', description='按题干文本模糊搜索'),
-                RenderFieldSpec(key='option_keyword', label='选项关键字', field_type='string', description='按选项文本模糊搜索'),
-                RenderFieldSpec(key='analysis_keyword', label='解析关键字', field_type='string', description='按解析文本模糊搜索'),
+                RenderFieldSpec(
+                    key='knowledge_points', label='考点', field_type='multi_select', description='按考点名称过滤'
+                ),
+                RenderFieldSpec(
+                    key='stem_keyword', label='题干关键字', field_type='string', description='按题干文本模糊搜索'
+                ),
+                RenderFieldSpec(
+                    key='option_keyword', label='选项关键字', field_type='string', description='按选项文本模糊搜索'
+                ),
+                RenderFieldSpec(
+                    key='analysis_keyword', label='解析关键字', field_type='string', description='按解析文本模糊搜索'
+                ),
                 RenderFieldSpec(key='question_count', label='题量', field_type='integer', default=120),
             ],
             option_fields=base_option_fields,
@@ -151,12 +175,20 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
             estimated_latency='medium',
             filter_fields=[
                 RenderFieldSpec(key='bank_id', label='题库 ID', field_type='integer', description='只取某题库内的错题'),
-                RenderFieldSpec(key='chapter_id', label='章节 ID', field_type='integer', description='只取某章节内的错题'),
+                RenderFieldSpec(
+                    key='chapter_id', label='章节 ID', field_type='integer', description='只取某章节内的错题'
+                ),
                 RenderFieldSpec(key='cat_id', label='分类 ID', field_type='integer', description='按试卷/合集分类筛题'),
-                RenderFieldSpec(key='region', label='地区关键字', field_type='string', description='按试卷名称/编码/描述匹配'),
-                RenderFieldSpec(key='year_start', label='起始年份', field_type='integer', description='按题目创建年过滤'),
+                RenderFieldSpec(
+                    key='region', label='地区关键字', field_type='string', description='按试卷名称/编码/描述匹配'
+                ),
+                RenderFieldSpec(
+                    key='year_start', label='起始年份', field_type='integer', description='按题目创建年过滤'
+                ),
                 RenderFieldSpec(key='year_end', label='结束年份', field_type='integer', description='按题目创建年过滤'),
-                RenderFieldSpec(key='knowledge_points', label='考点', field_type='multi_select', description='按考点名称筛选'),
+                RenderFieldSpec(
+                    key='knowledge_points', label='考点', field_type='multi_select', description='按考点名称筛选'
+                ),
                 RenderFieldSpec(
                     key='question_types',
                     label='题型',
@@ -179,11 +211,22 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
                         RenderFieldChoice(value='hard', label='困难'),
                     ],
                 ),
-                RenderFieldSpec(key='stem_keyword', label='题干关键字', field_type='string', description='按题干文本模糊搜索'),
-                RenderFieldSpec(key='option_keyword', label='选项关键字', field_type='string', description='按选项文本模糊搜索'),
-                RenderFieldSpec(key='analysis_keyword', label='解析关键字', field_type='string', description='按解析文本模糊搜索'),
+                RenderFieldSpec(
+                    key='stem_keyword', label='题干关键字', field_type='string', description='按题干文本模糊搜索'
+                ),
+                RenderFieldSpec(
+                    key='option_keyword', label='选项关键字', field_type='string', description='按选项文本模糊搜索'
+                ),
+                RenderFieldSpec(
+                    key='analysis_keyword', label='解析关键字', field_type='string', description='按解析文本模糊搜索'
+                ),
                 RenderFieldSpec(key='question_count', label='题量', field_type='integer', default=50),
-                RenderFieldSpec(key='wrong_only_recent_days', label='最近天数', field_type='integer', description='限制最近多少天的错题'),
+                RenderFieldSpec(
+                    key='wrong_only_recent_days',
+                    label='最近天数',
+                    field_type='integer',
+                    description='限制最近多少天的错题',
+                ),
             ],
             option_fields=base_option_fields,
             default_options=RenderOptions(include_answer=True, theme='orange'),
@@ -198,7 +241,9 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
             estimated_latency='fast',
             filter_fields=[
                 RenderFieldSpec(key='question_count', label='题量', field_type='integer', default=20),
-                RenderFieldSpec(key='type_title', label='训练类型', field_type='string', description='由小程序写入 metadata'),
+                RenderFieldSpec(
+                    key='type_title', label='训练类型', field_type='string', description='由小程序写入 metadata'
+                ),
             ],
             option_fields=base_option_fields,
             default_options=RenderOptions(theme='amber', show_source=False),
@@ -212,7 +257,9 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
             subject='汉语',
             estimated_latency='medium',
             filter_fields=[
-                RenderFieldSpec(key='hanyu_ids', label='词汇 ID 列表', field_type='string', description='逗号分隔，如 101,102,103'),
+                RenderFieldSpec(
+                    key='hanyu_ids', label='词汇 ID 列表', field_type='string', description='逗号分隔，如 101,102,103'
+                ),
                 RenderFieldSpec(
                     key='hanyu_type',
                     label='词汇类型',

@@ -15,6 +15,7 @@ from backend.utils.timezone import timezone
 if TYPE_CHECKING:
     from backend.plugin.app_auth.model import AppDevice, AppPackage
 
+
 class AppOrder(Base):
     """订单表"""
 
@@ -24,10 +25,8 @@ class AppOrder(Base):
     id: Mapped[id_key] = mapped_column(init=False)
     order_no: Mapped[str] = mapped_column(String(50), unique=True, index=True, comment='订单号')
     total_amount: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), comment='订单总金额')
-    package_id: Mapped[int] = mapped_column(
-        ForeignKey('app_package.id', ondelete='CASCADE'), comment='套餐ID'
-    )
-    
+    package_id: Mapped[int] = mapped_column(ForeignKey('app_package.id', ondelete='CASCADE'), comment='套餐ID')
+
     # 有默认值的字段（必须放在后面）
     user_id: Mapped[int | None] = mapped_column(Integer, default=None, comment='用户ID')
     username: Mapped[str | None] = mapped_column(String(50), default=None, comment='用户名')
@@ -43,12 +42,8 @@ class AppOrder(Base):
     created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), init=False, default_factory=timezone.now, comment='创建时间'
     )
-    paid_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=None, comment='支付时间'
-    )
-    completed_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=None, comment='完成时间'
-    )
+    paid_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, comment='支付时间')
+    completed_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, comment='完成时间')
 
     # 关系
     package: Mapped[AppPackage] = relationship(init=False, back_populates='orders', lazy='noload')

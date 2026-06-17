@@ -69,5 +69,9 @@ __all__ = [
     'RenderTemplateDetail',
     'RenderTemplateSummary',
     'RenderValidationIssue',
-    'SolutionMode', 'RenderTemplatePresetCreate', 'RenderTemplatePresetPayload', 'RenderTemplatePresetRead', 'RenderTemplatePresetUpdate',
+    'SolutionMode',
+    'RenderTemplatePresetCreate',
+    'RenderTemplatePresetPayload',
+    'RenderTemplatePresetRead',
+    'RenderTemplatePresetUpdate',
 ]

@@ -266,6 +266,7 @@ user_answer_text: |
 ```python
 from backend.plugin.agents.service.common.orchestrator import NodeContractError
 
+
 async def my_node(ctx: NodeContext) -> None:
     if ctx.state.score_card is None:
         raise NodeContractError('my_node 要求 score_card 已就绪')
@@ -376,13 +377,19 @@ from backend.plugin.agents.service.common.prompts import PromptLoader
 from backend.plugin.agents.service.common.streaming import EventBus
 from backend.plugin.agents.service.shenlun.nodes.scorer import score
 
+
 async def main():
     state = GradingState(...)  # 手动构造你要测的状态
-    ctx = NodeContext(state=state, db=None, event_bus=EventBus(),
-                      llm=LLMClient(provider_id=5, primary_model_id='mimo-v2.5-pro'),
-                      prompts=PromptLoader(Path('backend/plugin/agents/service/shenlun/prompts')))
+    ctx = NodeContext(
+        state=state,
+        db=None,
+        event_bus=EventBus(),
+        llm=LLMClient(provider_id=5, primary_model_id='mimo-v2.5-pro'),
+        prompts=PromptLoader(Path('backend/plugin/agents/service/shenlun/prompts')),
+    )
     await score(ctx)
     print(state.score_card)
+
 
 asyncio.run(main())
 ```
@@ -559,6 +566,7 @@ class MyNewNodeOutput(BaseModel):
 
 ```python
 from pydantic import model_validator
+
 
 class MyNewSection(SchemaBase):
     score: float

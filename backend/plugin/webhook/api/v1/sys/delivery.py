@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Path, Query
 
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base

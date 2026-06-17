@@ -45,7 +45,7 @@ class CRUDOrder(CRUDPlus[AppOrder]):
         :return:
         """
         # 生成订单号
-        order_no = f"ORD{uuid.uuid4().hex[:16].upper()}"
+        order_no = f'ORD{uuid.uuid4().hex[:16].upper()}'
 
         return await self.create_model(
             db,
@@ -70,8 +70,9 @@ class CRUDOrder(CRUDPlus[AppOrder]):
         """删除订单"""
         return await self.delete_model(db, order_id)
 
-    async def get_list(self, db: AsyncSession, order_no: str = None, package_id: int = None, 
-                      device_id: int = None, status: int = None) -> list[AppOrder]:
+    async def get_list(
+        self, db: AsyncSession, order_no: str = None, package_id: int = None, device_id: int = None, status: int = None
+    ) -> list[AppOrder]:
         """获取订单列表"""
         stmt = select(self.model)
         if order_no:
@@ -85,8 +86,7 @@ class CRUDOrder(CRUDPlus[AppOrder]):
         stmt = stmt.order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 
-    def get_select(self, order_no: str = None, package_id: int = None, 
-                  device_id: int = None, status: int = None):
+    def get_select(self, order_no: str = None, package_id: int = None, device_id: int = None, status: int = None):
         """获取订单查询语句"""
         stmt = select(self.model)
         if order_no:

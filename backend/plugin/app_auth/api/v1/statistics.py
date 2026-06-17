@@ -15,8 +15,8 @@ statistics_service = StatisticsService()
 async def get_app_auth_statistics() -> ResponseModel:
     """
     获取应用授权统计概览
-    
+
     :return: 统计数据
     """
     data = await statistics_service.get_app_auth_statistics()
-    return response_base.success(data=data) 
+    return response_base.success(data=data)

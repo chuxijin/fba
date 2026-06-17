@@ -65,7 +65,9 @@ async def list_event_types(
 
 
 @router.get('/{pk}', summary='获取事件类型详情', dependencies=[DependsJwtAuth])
-async def get_event_type(pk: Annotated[int, Path(description='事件类型 ID')]) -> ResponseSchemaModel[GetEventTypeDetail]:
+async def get_event_type(
+    pk: Annotated[int, Path(description='事件类型 ID')],
+) -> ResponseSchemaModel[GetEventTypeDetail]:
     """获取事件类型详情"""
     from backend.database.db import async_db_session
 

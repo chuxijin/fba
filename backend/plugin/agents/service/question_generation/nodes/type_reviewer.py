@@ -56,10 +56,7 @@ def _apply_type_reviews(
     :param review_items: 质检项
     :return:
     """
-    review_map = {
-        (str(item.get('passage_id')), str(item.get('question_type'))): item
-        for item in review_items
-    }
+    review_map = {(str(item.get('passage_id')), str(item.get('question_type'))): item for item in review_items}
     passed: list[dict[str, Any]] = []
     discarded: list[dict[str, Any]] = []
     for opportunity in opportunities:

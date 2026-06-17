@@ -154,11 +154,7 @@ class CRUDQunItem(CRUDPlus[QunItem]):
         :param qun_id: 群活码ID
         :return:
         """
-        stmt = (
-            select(self.model)
-            .where(self.model.qun_id == qun_id)
-            .order_by(self.model.created_time.desc())
-        )
+        stmt = select(self.model).where(self.model.qun_id == qun_id).order_by(self.model.created_time.desc())
         result = await db.execute(stmt)
         return list(result.scalars().all())
 

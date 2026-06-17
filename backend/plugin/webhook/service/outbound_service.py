@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from backend.common.log import log
 from backend.database.db import async_db_session
 from backend.plugin.webhook.constant import DELIVERY_ID_PREFIX, DeliveryStatus
-from backend.plugin.webhook.crud.crud_delivery import crud_delivery
 from backend.plugin.webhook.crud.crud_endpoint import crud_endpoint
 from backend.plugin.webhook.model.webhook_delivery import WebhookDelivery
 from backend.plugin.webhook.schema.cloud_event import CloudEvent

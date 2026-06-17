@@ -69,9 +69,7 @@ class Pipeline:
                 if isinstance(step, Node):
                     await self._run_node(ctx, step, progress_after)
                 else:
-                    await asyncio.gather(
-                        *[self._run_node(ctx, node, progress_after) for node in step.nodes]
-                    )
+                    await asyncio.gather(*[self._run_node(ctx, node, progress_after) for node in step.nodes])
             await self._publish(
                 ctx,
                 EventType.completed,

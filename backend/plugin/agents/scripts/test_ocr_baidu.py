@@ -5,6 +5,7 @@
 用法:
   .venv/Scripts/python -m backend.plugin.agents.scripts.test_ocr_baidu --image backend/plugin/agents/tests/33734e2b853489ad707a5a31f6b03db5.png
 """
+
 import argparse
 import asyncio
 import sys

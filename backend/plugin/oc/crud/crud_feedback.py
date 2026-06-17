@@ -19,13 +19,7 @@ class CRUDFeedback(CRUDPlus[Feedback]):
         user_agent: str | None = None,
     ) -> None:
         """创建反馈"""
-        await self.create_model(
-            db,
-            obj,
-            created_by=created_by,
-            ip=ip,
-            user_agent=user_agent
-        )
+        await self.create_model(db, obj, created_by=created_by, ip=ip, user_agent=user_agent)
 
 
 feedback_dao = CRUDFeedback(Feedback)

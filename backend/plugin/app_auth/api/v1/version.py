@@ -23,7 +23,7 @@ router = APIRouter()
 async def create_version(obj: CreateVersionParam) -> ResponseSchemaModel[GetVersionDetail]:
     """
     创建新版本
-    
+
     :param obj: 版本创建参数
     :return:
     """
@@ -35,7 +35,7 @@ async def create_version(obj: CreateVersionParam) -> ResponseSchemaModel[GetVers
 async def delete_version(pk: Annotated[int, Path(description='版本ID')]) -> ResponseModel:
     """
     删除版本
-    
+
     :param pk: 版本ID
     :return:
     """
@@ -46,12 +46,10 @@ async def delete_version(pk: Annotated[int, Path(description='版本ID')]) -> Re
 
 
 @router.put('/{pk}', summary='更新版本', dependencies=[DependsRBAC])
-async def update_version(
-    pk: Annotated[int, Path(description='版本ID')], obj: UpdateVersionParam
-) -> ResponseModel:
+async def update_version(pk: Annotated[int, Path(description='版本ID')], obj: UpdateVersionParam) -> ResponseModel:
     """
     更新版本信息
-    
+
     :param pk: 版本ID
     :param obj: 版本更新参数
     :return:
@@ -71,7 +69,7 @@ async def get_pagination_versions(
 ) -> ResponseModel:
     """
     分页获取版本列表
-    
+
     :param db: 数据库会话
     :param application_id: 应用ID
     :param version_name: 版本名称
@@ -87,7 +85,7 @@ async def get_pagination_versions(
 async def get_version(pk: Annotated[int, Path(description='版本ID')]) -> ResponseSchemaModel[GetVersionDetail]:
     """
     获取版本详情
-    
+
     :param pk: 版本ID
     :return:
     """
@@ -97,8 +95,8 @@ async def get_version(pk: Annotated[int, Path(description='版本ID')]) -> Respo
 
 @router.get('/by-application/{application_id}/options', summary='根据应用获取版本选项', dependencies=[DependsJwtAuth])
 async def get_version_options_by_application(
-    application_id: Annotated[int, Path(description='应用ID')]
+    application_id: Annotated[int, Path(description='应用ID')],
 ) -> ResponseSchemaModel[list[dict]]:
     """根据应用获取版本选项，用于下拉选择"""
     data = await version_service.get_options_by_application(application_id=application_id)
-    return response_base.success(data=data) 
+    return response_base.success(data=data)

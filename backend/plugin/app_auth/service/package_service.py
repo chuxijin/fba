@@ -103,10 +103,7 @@ class PackageService:
         from backend.plugin.app_auth.model import AppApplication
         from backend.utils.timezone import timezone
 
-        stmt = select(
-            package_dao.model,
-            AppApplication.name.label('application_name')
-        ).join(
+        stmt = select(package_dao.model, AppApplication.name.label('application_name')).join(
             AppApplication, package_dao.model.application_id == AppApplication.id
         )
 
@@ -128,8 +125,9 @@ class PackageService:
             current_price = package.original_price
             if package.discount_rate:
                 current_time = timezone.now()
-                if (not package.discount_start_time or current_time >= package.discount_start_time) and \
-                   (not package.discount_end_time or current_time <= package.discount_end_time):
+                if (not package.discount_start_time or current_time >= package.discount_start_time) and (
+                    not package.discount_end_time or current_time <= package.discount_end_time
+                ):
                     current_price = package.original_price * package.discount_rate
 
             package_dict = {
@@ -162,8 +160,8 @@ class PackageService:
             packages = await package_dao.get_list(db, application_id=application_id, status='active')
             return [
                 {
-                    'label': f"{package.name} - {PackageService.calculate_current_price(package)}元/{package.duration_days}天",
-                    'value': package.id
+                    'label': f'{package.name} - {PackageService.calculate_current_price(package)}元/{package.duration_days}天',
+                    'value': package.id,
                 }
                 for package in packages
             ]

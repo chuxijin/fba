@@ -14,7 +14,7 @@ class CardKeyService:
     @staticmethod
     def _build_charset(options: CharTypeOptions) -> str:
         """根据选项构建字符集"""
-        charset = ""
+        charset = ''
         if options.uppercase:
             charset += string.ascii_uppercase
         if options.lowercase:
@@ -23,10 +23,10 @@ class CardKeyService:
             charset += string.digits
         if options.special:
             # 默认使用常见的特殊字符，避免混淆字符如 ' " `
-            charset += "!@#$%^&*()_+-=[]{}|;:,.<>?"
+            charset += '!@#$%^&*()_+-=[]{}|;:,.<>?'
         if not charset:
             # 理论上 schema 验证会阻止这种情况，但作为保险
-            raise ValueError("必须至少选择一种字符类型")
+            raise ValueError('必须至少选择一种字符类型')
         return charset
 
     @staticmethod
@@ -46,8 +46,8 @@ class CardKeyService:
         # 计算分组
         grouped = []
         for i in range(0, len(key), group_length):
-            grouped.append(key[i:i + group_length])
-        
+            grouped.append(key[i : i + group_length])
+
         return separator.join(grouped)
 
     @staticmethod
@@ -77,14 +77,14 @@ class CardKeyService:
             formatted_core = CardKeyService._format_key(core_key, params.group_length, params.separator)
 
             # 3. 添加前后缀
-            final_key = f"{params.prefix or ''}{formatted_core}{params.suffix or ''}"
+            final_key = f'{params.prefix or ""}{formatted_core}{params.suffix or ""}'
 
             generated_keys.add(final_key)
             attempts += 1
 
         if len(generated_keys) < params.count:
             # 如果尝试了很多次仍然不够数量
-            raise RuntimeError(f"无法生成足够数量的唯一卡密，请检查参数 (长度、字符集、数量)")
+            raise RuntimeError('无法生成足够数量的唯一卡密，请检查参数 (长度、字符集、数量)')
 
         return list(generated_keys)
 

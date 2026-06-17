@@ -54,9 +54,7 @@ async def rewrite(ctx: NodeContext) -> None:
     # 超字数二次压缩
     upper_limit = _extract_upper_limit(ctx.state.question)
     if upper_limit and len(revised_text) > upper_limit:
-        revised_text = await _compress_to_limit(
-            ctx, revised_text, upper_limit, original
-        )
+        revised_text = await _compress_to_limit(ctx, revised_text, upper_limit, original)
 
     # 构建 changes 列表
     changes = [

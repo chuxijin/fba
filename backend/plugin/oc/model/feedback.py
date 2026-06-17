@@ -14,4 +14,6 @@ class OCFeedback(DataClassBase, DateTimeMixin, UserMixin):
     content: Mapped[str] = mapped_column(Text, comment='内容')
     ip: Mapped[str | None] = mapped_column(String(50), default=None, comment='IP地址')
     user_agent: Mapped[str | None] = mapped_column(String(500), default=None, comment='浏览器信息')
-    status: Mapped[str] = mapped_column(String(20), default='pending', comment='状态: pending/processing/resolved/closed')
+    status: Mapped[str] = mapped_column(
+        String(20), default='pending', comment='状态: pending/processing/resolved/closed'
+    )

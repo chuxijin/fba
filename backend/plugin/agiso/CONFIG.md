@@ -80,9 +80,9 @@ curl -X POST "http://your-domain.com/api/v1/agiso/webhooks/delivery?timestamp=12
 ```python
 import hashlib
 
-app_secret = "your_app_secret"
+app_secret = 'your_app_secret'
 json_str = '{"Tid":2067719225654838,...}'
-timestamp = "1234567890"
+timestamp = '1234567890'
 
 sign_str = f'{app_secret}json{json_str}timestamp{timestamp}{app_secret}'
 sign = hashlib.md5(sign_str.encode('utf-8')).hexdigest()

@@ -22,14 +22,9 @@ async def wechat_miniapp_login(
     nickname: Annotated[str | None, Body(description='用户授权的昵称')] = None,
     avatar: Annotated[str | None, Body(description='用户授权的头像')] = None,
 ) -> ResponseSchemaModel:
-    
+
     data = await oauth2_service.wechat_miniapp_login(
-        db=db,
-        response=response,
-        background_tasks=background_tasks,
-        code=code,
-        nickname=nickname,
-        avatar=avatar
+        db=db, response=response, background_tasks=background_tasks, code=code, nickname=nickname, avatar=avatar
     )
-    
+
     return response_base.success(data=data)

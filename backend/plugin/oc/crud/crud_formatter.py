@@ -1,6 +1,5 @@
 """Formatter CRUD"""
 
-import json
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,9 +19,7 @@ class CRUDFormatterField:
     @staticmethod
     async def get_by_category(db: AsyncSession, category: str) -> list[FormatterField]:
         """根据分类获取字段配置"""
-        stmt = select(FormatterField).where(
-            FormatterField.category == category
-        ).order_by(FormatterField.field_order)
+        stmt = select(FormatterField).where(FormatterField.category == category).order_by(FormatterField.field_order)
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
@@ -35,16 +32,13 @@ class CRUDFormatterField:
 
     @staticmethod
     async def get_by_category_and_field(
-        db: AsyncSession,
-        category: str,
-        field_name: str,
-        parent_field_id: int | None = None
+        db: AsyncSession, category: str, field_name: str, parent_field_id: int | None = None
     ) -> FormatterField | None:
         """根据分类和字段名获取"""
         stmt = select(FormatterField).where(
             FormatterField.category == category,
             FormatterField.field_name == field_name,
-            FormatterField.parent_field_id == parent_field_id
+            FormatterField.parent_field_id == parent_field_id,
         )
         result = await db.execute(stmt)
         return result.scalars().first()

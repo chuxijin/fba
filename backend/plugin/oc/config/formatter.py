@@ -5,6 +5,7 @@ from typing import TypedDict
 
 class FieldConfig(TypedDict, total=False):
     """字段配置"""
+
     strategy: str  # input | drop_down_box | time | textarea
     chinese: str
     order: int
@@ -14,6 +15,7 @@ class FieldConfig(TypedDict, total=False):
 
 class CategoryConfig(TypedDict):
     """分类配置"""
+
     chinese: str
     order: int
     fields: dict[str, FieldConfig]
@@ -517,12 +519,7 @@ def get_field_mapping(category: str, field: str) -> dict[str, list[str]] | None:
     return fields[field].get('mapping')
 
 
-def find_best_match(
-    value: str,
-    options: list[str],
-    category: str | None,
-    field: str | None
-) -> str | None:
+def find_best_match(value: str, options: list[str], category: str | None, field: str | None) -> str | None:
     """
     在下拉选项中查找最佳匹配值
 

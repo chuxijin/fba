@@ -99,7 +99,7 @@ class AuthorizationService:
                 valid_to=valid_to,
                 source_ref='manual_grant',
                 template_code=obj.template_code,
-                remark=obj.remark or f'手动授权 {obj.duration_days} 天'
+                remark=obj.remark or f'手动授权 {obj.duration_days} 天',
             )
 
             return await authorization_dao.create(db, auth_data)
@@ -126,9 +126,7 @@ class AuthorizationService:
 
             device = await device_service.register_or_update(obj.device_id)
 
-            existing_auth = await authorization_dao.get_by_app_and_device(
-                db, redeem_code.application_id, device.id
-            )
+            existing_auth = await authorization_dao.get_by_app_and_device(db, redeem_code.application_id, device.id)
             if existing_auth:
                 raise errors.ForbiddenError(msg='该设备已有有效授权')
 
@@ -141,7 +139,7 @@ class AuthorizationService:
                 valid_to=valid_to,
                 source_ref=f'redeem_code:{obj.code}',
                 template_code=None,
-                remark=f'通过兑换码 {obj.code} 获得 {redeem_code.duration_days} 天授权'
+                remark=f'通过兑换码 {obj.code} 获得 {redeem_code.duration_days} 天授权',
             )
 
             authorization = await authorization_dao.create(db, auth_data)
@@ -172,9 +170,7 @@ class AuthorizationService:
 
             device = await device_service.register_or_update(obj.device_id)
 
-            existing_auth = await authorization_dao.get_by_app_and_device(
-                db, redeem_code.application_id, device.id
-            )
+            existing_auth = await authorization_dao.get_by_app_and_device(db, redeem_code.application_id, device.id)
             if existing_auth:
                 raise errors.ForbiddenError(msg='该设备已有有效授权')
 
@@ -187,7 +183,7 @@ class AuthorizationService:
                 valid_to=valid_to,
                 source_ref=f'redeem_code:{obj.code}',
                 template_code=None,
-                remark=f'通过兑换码 {obj.code} 获得 {redeem_code.duration_days} 天授权'
+                remark=f'通过兑换码 {obj.code} 获得 {redeem_code.duration_days} 天授权',
             )
 
             authorization = await authorization_dao.create(db, auth_data)
@@ -208,11 +204,7 @@ class AuthorizationService:
             app = await application_dao.get_by_app_key(db, obj.app_key)
             if not app:
                 return AuthorizationCheckResult(
-                    is_authorized=False,
-                    status=None,
-                    remaining_days=None,
-                    valid_to=None,
-                    message='应用不存在'
+                    is_authorized=False, status=None, remaining_days=None, valid_to=None, message='应用不存在'
                 )
 
             if app.is_free:
@@ -222,23 +214,17 @@ class AuthorizationService:
                     status='active',
                     remaining_days=None,
                     valid_to=None,
-                    message='免费应用，授权通过'
+                    message='免费应用，授权通过',
                 )
 
             device = await device_service.register_or_update(obj.device_id)
 
             current_time = tz.now()
-            authorization = await authorization_dao.check_authorization(
-                db, app.id, device.id, current_time
-            )
+            authorization = await authorization_dao.check_authorization(db, app.id, device.id, current_time)
 
             if not authorization:
                 return AuthorizationCheckResult(
-                    is_authorized=False,
-                    status=None,
-                    remaining_days=None,
-                    valid_to=None,
-                    message='未找到有效授权'
+                    is_authorized=False, status=None, remaining_days=None, valid_to=None, message='未找到有效授权'
                 )
 
             remaining_days = None
@@ -252,7 +238,7 @@ class AuthorizationService:
                 status=authorization.status,
                 remaining_days=remaining_days,
                 valid_to=authorization.valid_to,
-                message='授权有效'
+                message='授权有效',
             )
 
     @staticmethod
@@ -272,17 +258,18 @@ class AuthorizationService:
             end_date = tz.now().date()
             start_date = end_date - timedelta(days=days - 1)
 
-            stmt = select(
-                func.date(AppAuthorization.created_time).label('date'),
-                func.count(AppAuthorization.id).label('count')
-            ).where(
-                AppAuthorization.application_id == application_id,
-                func.date(AppAuthorization.created_time) >= start_date,
-                func.date(AppAuthorization.created_time) <= end_date
-            ).group_by(
-                func.date(AppAuthorization.created_time)
-            ).order_by(
-                func.date(AppAuthorization.created_time)
+            stmt = (
+                select(
+                    func.date(AppAuthorization.created_time).label('date'),
+                    func.count(AppAuthorization.id).label('count'),
+                )
+                .where(
+                    AppAuthorization.application_id == application_id,
+                    func.date(AppAuthorization.created_time) >= start_date,
+                    func.date(AppAuthorization.created_time) <= end_date,
+                )
+                .group_by(func.date(AppAuthorization.created_time))
+                .order_by(func.date(AppAuthorization.created_time))
             )
 
             result = await db.execute(stmt)
@@ -292,10 +279,7 @@ class AuthorizationService:
             current_date = start_date
             while current_date <= end_date:
                 date_str = str(current_date)
-                trend_data.append({
-                    'date': date_str,
-                    'count': daily_data.get(date_str, 0)
-                })
+                trend_data.append({'date': date_str, 'count': daily_data.get(date_str, 0)})
                 current_date += timedelta(days=1)
 
             total_stmt = select(func.count(AppAuthorization.id)).where(
@@ -305,8 +289,7 @@ class AuthorizationService:
             total_registrations = total_result.scalar()
 
             active_stmt = select(func.count(AppAuthorization.id)).where(
-                AppAuthorization.application_id == application_id,
-                AppAuthorization.status == 'active'
+                AppAuthorization.application_id == application_id, AppAuthorization.status == 'active'
             )
             active_result = await db.execute(active_stmt)
             active_devices = active_result.scalar()
@@ -316,7 +299,7 @@ class AuthorizationService:
                 'total_registrations': total_registrations,
                 'active_devices': active_devices,
                 'trend_data': trend_data,
-                'period': f'{start_date} 至 {end_date}'
+                'period': f'{start_date} 至 {end_date}',
             }
 
     @staticmethod
@@ -332,16 +315,15 @@ class AuthorizationService:
             if not device:
                 raise errors.NotFoundError(msg='设备不存在')
 
-            stmt = select(
-                AppAuthorization,
-                AppApplication.name.label('application_name'),
-                AppApplication.app_key.label('app_key')
-            ).join(
-                AppApplication, AppAuthorization.application_id == AppApplication.id
-            ).where(
-                AppAuthorization.device_id == device_id
-            ).order_by(
-                AppAuthorization.created_time.desc()
+            stmt = (
+                select(
+                    AppAuthorization,
+                    AppApplication.name.label('application_name'),
+                    AppApplication.app_key.label('app_key'),
+                )
+                .join(AppApplication, AppAuthorization.application_id == AppApplication.id)
+                .where(AppAuthorization.device_id == device_id)
+                .order_by(AppAuthorization.created_time.desc())
             )
 
             result = await db.execute(stmt)
@@ -387,7 +369,7 @@ class AuthorizationService:
                     'source_ref': auth.source_ref,
                     'template_code': auth.template_code,
                     'remark': auth.remark,
-                    'created_time': auth.created_time.strftime('%Y-%m-%d %H:%M:%S')
+                    'created_time': auth.created_time.strftime('%Y-%m-%d %H:%M:%S'),
                 })
 
             return {
@@ -400,10 +382,10 @@ class AuthorizationService:
                     'ip_address': device.ip_address,
                     'status': device.status,
                     'first_seen': device.first_seen.strftime('%Y-%m-%d %H:%M:%S'),
-                    'last_seen': device.last_seen.strftime('%Y-%m-%d %H:%M:%S') if device.last_seen else None
+                    'last_seen': device.last_seen.strftime('%Y-%m-%d %H:%M:%S') if device.last_seen else None,
                 },
                 'authorizations': authorizations,
-                'total_count': len(authorizations)
+                'total_count': len(authorizations),
             }
 
     @staticmethod
@@ -458,8 +440,7 @@ class AuthorizationService:
             return auth
 
     @staticmethod
-    async def get_list(application_id: int = None, device_id: int = None,
-                      status: str = None) -> list[AppAuthorization]:
+    async def get_list(application_id: int = None, device_id: int = None, status: str = None) -> list[AppAuthorization]:
         """获取授权列表"""
         async with async_db_session() as db:
             return await authorization_dao.get_list(
@@ -467,8 +448,7 @@ class AuthorizationService:
             )
 
     @staticmethod
-    def get_select(application_id: int = None, device_id: int = None,
-                  source: str = None, status: str = None):
+    def get_select(application_id: int = None, device_id: int = None, source: str = None, status: str = None):
         """
         获取授权查询语句用于分页
 
@@ -479,8 +459,7 @@ class AuthorizationService:
         :return:
         """
         return authorization_dao.get_select(
-            application_id=application_id, device_id=device_id,
-            source=source, status=status
+            application_id=application_id, device_id=device_id, source=source, status=status
         )
 
     @staticmethod
@@ -497,10 +476,7 @@ class AuthorizationService:
             if not auth:
                 raise errors.NotFoundError(msg='授权不存在')
 
-            update_data = UpdateAuthorizationParam(
-                valid_to=obj.valid_to,
-                remark=obj.remark
-            )
+            update_data = UpdateAuthorizationParam(valid_to=obj.valid_to, remark=obj.remark)
 
             return await authorization_dao.update(db, pk, update_data)
 
@@ -517,10 +493,7 @@ class AuthorizationService:
             if not auth:
                 raise errors.NotFoundError(msg='授权不存在')
 
-            update_data = UpdateAuthorizationParam(
-                status='paused',
-                remark='手动失效'
-            )
+            update_data = UpdateAuthorizationParam(status='paused', remark='手动失效')
 
             return await authorization_dao.update(db, pk, update_data)
 

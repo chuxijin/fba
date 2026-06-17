@@ -27,4 +27,3 @@ async def load_profile(ctx: NodeContext) -> None:
     if not isinstance(data, dict):
         raise errors.ServerError(msg='命题规则画像根节点必须是对象')
     state.profile = data
-

@@ -86,15 +86,17 @@ class SmsBaoSmsProvider(SmsProvider):
                     is_success = status_code == '0'
                     message = SMSBAO_STATUS_MAP.get(status_code, f'未知错误: {status_code}')
 
-                    send_status_set.append(SendStatusItem(
-                        serial_no=uuid.uuid4().hex[:16],
-                        phone_number=phone,
-                        fee=1 if is_success else 0,
-                        session_context=session_context,
-                        code='Ok' if is_success else f'smsbao:{status_code}',
-                        message=message,
-                        iso_code='CN',
-                    ))
+                    send_status_set.append(
+                        SendStatusItem(
+                            serial_no=uuid.uuid4().hex[:16],
+                            phone_number=phone,
+                            fee=1 if is_success else 0,
+                            session_context=session_context,
+                            code='Ok' if is_success else f'smsbao:{status_code}',
+                            message=message,
+                            iso_code='CN',
+                        )
+                    )
 
                     if is_success:
                         log.info(f'短信宝发送成功: {phone}')
@@ -103,15 +105,17 @@ class SmsBaoSmsProvider(SmsProvider):
 
                 except Exception as e:
                     log.error(f'短信宝发送异常: {phone}, 错误: {e}')
-                    send_status_set.append(SendStatusItem(
-                        serial_no=uuid.uuid4().hex[:16],
-                        phone_number=phone,
-                        fee=0,
-                        session_context=session_context,
-                        code='smsbao:exception',
-                        message=str(e),
-                        iso_code='CN',
-                    ))
+                    send_status_set.append(
+                        SendStatusItem(
+                            serial_no=uuid.uuid4().hex[:16],
+                            phone_number=phone,
+                            fee=0,
+                            session_context=session_context,
+                            code='smsbao:exception',
+                            message=str(e),
+                            iso_code='CN',
+                        )
+                    )
 
         # 检查是否全部失败
         all_failed = all(s.code != 'Ok' for s in send_status_set)

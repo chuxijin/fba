@@ -9,7 +9,11 @@ from backend.common.response.response_schema import ResponseModel, ResponseSchem
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
 from backend.plugin.oc.service.referral_code_service import referral_code_service
-from backend.plugin.oc.schema.referral_code import CreateReferralCodeParam, UpdateReferralCodeParam, GetReferralCodeDetail
+from backend.plugin.oc.schema.referral_code import (
+    CreateReferralCodeParam,
+    UpdateReferralCodeParam,
+    GetReferralCodeDetail,
+)
 
 
 router = APIRouter()

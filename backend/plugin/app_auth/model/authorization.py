@@ -22,22 +22,12 @@ class AppAuthorization(Base):
 
     id: Mapped[id_key] = mapped_column(init=False)
     source: Mapped[str] = mapped_column(String(32), comment='授权来源(manual/purchase/redeem_code)')
-    valid_from: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), comment='授权开始时间'
-    )
-    application_id: Mapped[int] = mapped_column(
-        ForeignKey('app_application.id', ondelete='CASCADE'), comment='应用ID'
-    )
-    device_id: Mapped[int] = mapped_column(
-        ForeignKey('app_device.id', ondelete='CASCADE'), comment='设备ID'
-    )
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment='授权开始时间')
+    application_id: Mapped[int] = mapped_column(ForeignKey('app_application.id', ondelete='CASCADE'), comment='应用ID')
+    device_id: Mapped[int] = mapped_column(ForeignKey('app_device.id', ondelete='CASCADE'), comment='设备ID')
 
-    status: Mapped[str] = mapped_column(
-        String(32), default='active', comment='授权状态(active/expired/paused)'
-    )
-    valid_to: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=None, comment='授权结束时间'
-    )
+    status: Mapped[str] = mapped_column(String(32), default='active', comment='授权状态(active/expired/paused)')
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, comment='授权结束时间')
     remaining_days: Mapped[int | None] = mapped_column(Integer, default=None, comment='剩余天数')
     source_ref: Mapped[str | None] = mapped_column(String(100), default=None, comment='来源引用(订单号/兑换码等)')
     template_code: Mapped[str | None] = mapped_column(

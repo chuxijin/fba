@@ -31,10 +31,7 @@ async def review_generation(ctx: NodeContext) -> None:
         review_output = await _invoke_question_review(ctx, pending_candidates, round_index)
         review_items = [item.model_dump(mode='json') for item in review_output.items]
         question_reviews.extend(review_items)
-        review_map = {
-            int(item.get('candidate_index') or 0): item
-            for item in review_items
-        }
+        review_map = {int(item.get('candidate_index') or 0): item for item in review_items}
 
         revise_candidates: list[dict[str, Any]] = []
         for index, candidate in enumerate(pending_candidates):

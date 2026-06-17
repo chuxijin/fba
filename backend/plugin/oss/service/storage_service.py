@@ -315,7 +315,7 @@ class StorageService:
         )
         log.info(
             f'[OSS] upload begin provider={cfg.provider} object_key={object_key} '
-            f'configured_signed={cfg.use_signed_url} effective_signed={context.use_signed_url} ' 
+            f'configured_signed={cfg.use_signed_url} effective_signed={context.use_signed_url} '
             f'expire_seconds={context.signed_url_expire_seconds}'
         )
         url = await provider.upload(context)
@@ -364,7 +364,7 @@ class StorageService:
         )
         log.info(
             f'[OSS] upload begin provider={cfg.provider} object_key={object_key} '
-            f'configured_signed={cfg.use_signed_url} effective_signed={context.use_signed_url} ' 
+            f'configured_signed={cfg.use_signed_url} effective_signed={context.use_signed_url} '
             f'expire_seconds={context.signed_url_expire_seconds}'
         )
         url = await provider.upload(context)

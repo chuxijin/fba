@@ -23,4 +23,4 @@ v1.include_router(order.router, prefix='/app-auth/orders', tags=['订单管理']
 v1.include_router(redeem_code.router, prefix='/app-auth/redeem-codes', tags=['兑换码管理'])
 v1.include_router(version.router, prefix='/app-auth/versions', tags=['版本管理'])
 v1.include_router(authorization.router, prefix='/app-auth/authorizations', tags=['授权管理'])
-v1.include_router(statistics.router, prefix='/app-auth/statistics', tags=['统计数据']) 
+v1.include_router(statistics.router, prefix='/app-auth/statistics', tags=['统计数据'])

@@ -23,7 +23,7 @@ router = APIRouter()
 async def batch_create_redeem_codes(obj: BatchCreateRedeemCodeParam) -> ResponseSchemaModel[list[GetRedeemCodeDetail]]:
     """
     批量生成兑换码
-    
+
     :param obj: 批量生成参数
     :return:
     """
@@ -35,7 +35,7 @@ async def batch_create_redeem_codes(obj: BatchCreateRedeemCodeParam) -> Response
 async def use_redeem_code(obj: UseRedeemCodeParam) -> ResponseModel:
     """
     使用兑换码
-    
+
     :param obj: 使用兑换码参数
     :return:
     """
@@ -52,7 +52,7 @@ async def get_pagination_redeem_codes(
 ) -> ResponseModel:
     """
     分页获取兑换码列表
-    
+
     :param db: 数据库会话
     :param application_id: 应用ID
     :param batch_no: 批次号
@@ -68,7 +68,7 @@ async def get_pagination_redeem_codes(
 async def get_redeem_code(pk: Annotated[int, Path(description='兑换码ID')]) -> ResponseSchemaModel[GetRedeemCodeDetail]:
     """
     获取兑换码详情
-    
+
     :param pk: 兑换码ID
     :return:
     """
@@ -80,7 +80,7 @@ async def get_redeem_code(pk: Annotated[int, Path(description='兑换码ID')]) -
 async def delete_redeem_code(pk: Annotated[int, Path(description='兑换码ID')]) -> ResponseModel:
     """
     删除兑换码
-    
+
     :param pk: 兑换码ID
     :return:
     """

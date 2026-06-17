@@ -53,9 +53,7 @@ async def get_campus_recruit_list(
 
 
 @router.post('', summary='创建校招岗位', dependencies=[DependsJwtAuth])
-async def create_campus_recruit(
-    db: CurrentSessionTransaction, obj: CreateCampusRecruitParam
-) -> ResponseModel:
+async def create_campus_recruit(db: CurrentSessionTransaction, obj: CreateCampusRecruitParam) -> ResponseModel:
     """创建校招岗位"""
     await campus_recruit_service.create(db=db, obj=obj)
     return response_base.success()

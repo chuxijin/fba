@@ -25,10 +25,8 @@ class AppVersion(Base):
     id: Mapped[id_key] = mapped_column(init=False)
     version_name: Mapped[str] = mapped_column(String(50), comment='版本名称')
     version_code: Mapped[str] = mapped_column(String(20), comment='版本号')
-    application_id: Mapped[int] = mapped_column(
-        ForeignKey('app_application.id', ondelete='CASCADE'), comment='应用ID'
-    )
-    
+    application_id: Mapped[int] = mapped_column(ForeignKey('app_application.id', ondelete='CASCADE'), comment='应用ID')
+
     # 有默认值的字段（必须放在后面）
     description: Mapped[str | None] = mapped_column(Text, default=None, comment='版本描述')
     download_url: Mapped[str | None] = mapped_column(String(500), default=None, comment='下载地址')

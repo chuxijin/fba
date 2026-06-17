@@ -18,13 +18,7 @@ class FeedbackService:
         user_agent: str | None = None,
     ) -> None:
         """创建反馈"""
-        await feedback_dao.create(
-            db=db,
-            obj=obj,
-            created_by=user_id,
-            ip=ip,
-            user_agent=user_agent
-        )
+        await feedback_dao.create(db=db, obj=obj, created_by=user_id, ip=ip, user_agent=user_agent)
         await db.commit()
 
 

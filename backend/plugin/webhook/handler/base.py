@@ -34,11 +34,13 @@ class HandlerRegistry:
         :param event_type: 事件类型 (支持精确匹配和通配符)
         :return:
         """
+
         def decorator(handler_cls: type[EventHandler]) -> type[EventHandler]:
             instance = handler_cls()
             self._handlers.setdefault(event_type, []).append(instance)
             log.info(f'事件处理器已注册: {event_type} → {handler_cls.__name__}')
             return handler_cls
+
         return decorator
 
     def register_func(self, event_type: str):
@@ -48,11 +50,13 @@ class HandlerRegistry:
         :param event_type: 事件类型
         :return:
         """
+
         def decorator(func):
             wrapper = _FunctionHandler(func)
             self._handlers.setdefault(event_type, []).append(wrapper)
             log.info(f'事件处理器已注册: {event_type} → {func.__qualname__}')
             return func
+
         return decorator
 
     async def dispatch(self, event_type: str, data: dict[str, Any] | None, subject: str | None) -> list[str]:
@@ -78,10 +82,7 @@ class HandlerRegistry:
                         await handler.handle(event_type, data, subject)
                         executed.append(type(handler).__qualname__)
                     except Exception as e:
-                        log.error(
-                            f'事件处理器执行失败: {type(handler).__qualname__} '
-                            f'event={event_type} error={e}'
-                        )
+                        log.error(f'事件处理器执行失败: {type(handler).__qualname__} event={event_type} error={e}')
 
         return executed
 

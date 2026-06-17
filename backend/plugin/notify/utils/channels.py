@@ -108,7 +108,10 @@ async def send_smtp(*, title: str, content: str, options: dict[str, str] | None 
         log.error(f'SMTP 通知异常: {e}')
         return False, str(e)
 
-async def send_serverchan(*, title: str, content: str, options: dict[str, str] | None = None) -> tuple[bool, str | None]:
+
+async def send_serverchan(
+    *, title: str, content: str, options: dict[str, str] | None = None
+) -> tuple[bool, str | None]:
     """
     通过 Server 酱³ SDK 发送通知
 
@@ -268,7 +271,7 @@ async def send_wecom_app(*, title: str, content: str, options: dict[str, str] | 
 
     # 发送应用消息
     send_url = f'https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}'
-    
+
     opts = options or {}
     msgtype = opts.get('msgtype') or settings.NOTIFY_WECOM_APP_MSGTYPE or 'markdown'
     touser = settings.NOTIFY_WECOM_APP_TOUSER or '@all'
@@ -302,6 +305,7 @@ async def send_wecom_app(*, title: str, content: str, options: dict[str, str] | 
         template_card_data = opts.get('template_card')
         if isinstance(template_card_data, str):
             import json
+
             try:
                 template_card_data = json.loads(template_card_data)
             except Exception as e:
@@ -356,11 +360,7 @@ async def send_wecom_app(*, title: str, content: str, options: dict[str, str] | 
 
 
 async def update_wecom_app_template_card(
-    *,
-    response_code: str,
-    replace_text: str,
-    userids: list[str] | None = None,
-    atall: int = 0
+    *, response_code: str, replace_text: str, userids: list[str] | None = None, atall: int = 0
 ) -> tuple[bool, str | None]:
     """
     更新企业微信自建应用交互卡片状态
@@ -411,9 +411,7 @@ async def update_wecom_app_template_card(
     payload = {
         'agentid': settings.NOTIFY_WECOM_APP_AGENTID,
         'response_code': response_code,
-        'button': {
-            'replace_name': replace_text
-        }
+        'button': {'replace_name': replace_text},
     }
 
     if userids:
@@ -466,4 +464,3 @@ CHANNEL_ENABLED_MAP: dict[str, str] = {
     'wecom': 'NOTIFY_WECOM_ENABLED',
     'wecom_app': 'NOTIFY_WECOM_APP_ENABLED',
 }
-

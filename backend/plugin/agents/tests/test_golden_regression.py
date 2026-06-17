@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 import yaml
 
-from backend.plugin.agents.schema import GradeLevel, GradingState
+from backend.plugin.agents.schema import GradingState
 from backend.plugin.agents.schema.grading import DEFAULT_AGENT_MODEL_ID, DEFAULT_AGENT_PROVIDER_ID
 from backend.plugin.agents.service.common.llm import LLMClient
 from backend.plugin.agents.service.common.orchestrator import NodeContext
@@ -29,13 +29,13 @@ def load_sample_recursive(file_path: Path) -> dict[str, Any]:
     """
     content = yaml.safe_load(file_path.read_text(encoding='utf-8'))
     if not isinstance(content, dict):
-        raise ValueError(f"样卷内容必须是字典: {file_path}")
+        raise ValueError(f'样卷内容必须是字典: {file_path}')
 
     if 'extends' in content:
         parent_rel_path = content.pop('extends')
         parent_path = (file_path.parent / parent_rel_path).resolve()
         if not parent_path.exists():
-            raise FileNotFoundError(f"extends 引用的父样卷不存在: {parent_path}")
+            raise FileNotFoundError(f'extends 引用的父样卷不存在: {parent_path}')
         parent_content = load_sample_recursive(parent_path)
         # 用子样卷内容覆盖父样卷内容
         parent_content.update(content)
@@ -103,6 +103,7 @@ async def run_one_golden(sample_path: Path, mode: str) -> tuple[GradingState, di
 
     if mode == 'real':
         from backend.database.db import async_db_session
+
         async with async_db_session() as db:
             ctx = NodeContext(
                 state=state,
@@ -142,7 +143,7 @@ def _get_level_str(level: Any) -> str:
     :return: :return: 不添加返回说明
     """
     if not level:
-        return ""
+        return ''
     if hasattr(level, 'value'):
         return str(level.value).upper()
     return str(level).upper()
@@ -173,7 +174,7 @@ def test_golden_regression(sample_path: Path) -> None:
         return
 
     # Real 模式: 校验分数和级别是否符合期望
-    assert state.score_card is not None, f"样卷 {sample_path.name} 未生成评分卡"
+    assert state.score_card is not None, f'样卷 {sample_path.name} 未生成评分卡'
 
     expected_level = golden.get('expected_level')
     expected_score_range = golden.get('expected_score_range')
@@ -183,13 +184,13 @@ def test_golden_regression(sample_path: Path) -> None:
 
     if expected_level:
         assert actual_level == expected_level.upper(), (
-            f"档位不匹配! 样卷: {sample_path.name}, 期望档位: {expected_level}, 实际档位: {actual_level}"
+            f'档位不匹配! 样卷: {sample_path.name}, 期望档位: {expected_level}, 实际档位: {actual_level}'
         )
 
     if expected_score_range:
         min_score, max_score = expected_score_range
         assert min_score <= actual_score <= max_score, (
-            f"分数不在期望范围内! 样卷: {sample_path.name}, 期望范围: {expected_score_range}, 实际得分: {actual_score}"
+            f'分数不在期望范围内! 样卷: {sample_path.name}, 期望范围: {expected_score_range}, 实际得分: {actual_score}'
         )
 
 
@@ -197,32 +198,34 @@ def test_golden_regression(sample_path: Path) -> None:
 # CLI 独立运行部分
 # =====================================================================
 
+
 def run_cli() -> None:
     """运行回归测试并在终端打印报告"""
     parser = argparse.ArgumentParser(description='黄金样卷回归测试 CLI')
-    parser.add_argument('--mode', choices=['mock', 'real'], default='mock',
-                        help='mock 使用 FakeLLMClient, real 调真实大模型')
+    parser.add_argument(
+        '--mode', choices=['mock', 'real'], default='mock', help='mock 使用 FakeLLMClient, real 调真实大模型'
+    )
     args = parser.parse_args()
 
     samples = get_golden_samples()
     if not samples:
-        print("未找到任何黄金样卷，请检查 tests/golden/ 目录。")
+        print('未找到任何黄金样卷，请检查 tests/golden/ 目录。')
         sys.exit(1)
 
-    print(f"=== 开始回归测试 (模式: {args.mode}) ===")
-    print(f"共发现 {len(samples)} 个黄金样本。")
+    print(f'=== 开始回归测试 (模式: {args.mode}) ===')
+    print(f'共发现 {len(samples)} 个黄金样本。')
 
     passed_count = 0
     failures: list[str] = []
     total_ae = 0.0  # 绝对误差之和，用以计算 MAE
 
     for i, path in enumerate(samples, start=1):
-        print(f"\n[{i}/{len(samples)}] 正在跑: {path.name} ...")
+        print(f'\n[{i}/{len(samples)}] 正在跑: {path.name} ...')
         try:
             state, golden = asyncio.run(run_one_golden(path, mode=args.mode))
             sc = state.score_card
             if not sc:
-                raise ValueError("未生成评分卡结果")
+                raise ValueError('未生成评分卡结果')
 
             # 读取期望值
             exp_level = golden.get('expected_level')
@@ -236,9 +239,9 @@ def run_cli() -> None:
                 exp_mid = sum(exp_range) / 2.0
                 ae = abs(actual_score - exp_mid)
                 total_ae += ae
-                range_str = f"[{exp_range[0]} - {exp_range[1]}]"
+                range_str = f'[{exp_range[0]} - {exp_range[1]}]'
             else:
-                range_str = "无"
+                range_str = '无'
 
             # 校验
             level_ok = (actual_level == exp_level.upper()) if exp_level else True
@@ -246,41 +249,43 @@ def run_cli() -> None:
 
             if args.mode == 'mock':
                 # mock 模式只校验运行是否通过
-                print(f"  [运行通过] 得分: {actual_score}/{sc.score_total} 档位: {actual_level}")
+                print(f'  [运行通过] 得分: {actual_score}/{sc.score_total} 档位: {actual_level}')
                 passed_count += 1
             else:
                 # real 模式校验准确性
                 if level_ok and score_ok:
-                    print(f"  [PASS] 期望档位: {exp_level}, 实际档位: {actual_level} | "
-                          f"期望范围: {range_str}, 实际得分: {actual_score}")
+                    print(
+                        f'  [PASS] 期望档位: {exp_level}, 实际档位: {actual_level} | '
+                        f'期望范围: {range_str}, 实际得分: {actual_score}'
+                    )
                     passed_count += 1
                 else:
                     err_msg = (
-                        f"  [FAIL] 期望档位: {exp_level}, 实际档位: {actual_level} | "
-                        f"期望范围: {range_str}, 实际得分: {actual_score}"
+                        f'  [FAIL] 期望档位: {exp_level}, 实际档位: {actual_level} | '
+                        f'期望范围: {range_str}, 实际得分: {actual_score}'
                     )
                     print(err_msg)
-                    failures.append(f"{path.name}: {err_msg}")
+                    failures.append(f'{path.name}: {err_msg}')
 
         except Exception as e:
-            err_str = f"运行出错: {e}"
-            print(f"  [ERROR] {err_str}")
-            failures.append(f"{path.name}: {err_str}")
+            err_str = f'运行出错: {e}'
+            print(f'  [ERROR] {err_str}')
+            failures.append(f'{path.name}: {err_str}')
 
-    print("\n" + "=" * 50)
-    print("=== 回归测试报告 ===")
-    print(f"模式: {args.mode}")
-    print(f"成功率: {passed_count}/{len(samples)}")
+    print('\n' + '=' * 50)
+    print('=== 回归测试报告 ===')
+    print(f'模式: {args.mode}')
+    print(f'成功率: {passed_count}/{len(samples)}')
     if args.mode == 'real' and passed_count > 0:
-        print(f"平均绝对误差 (MAE): {total_ae / len(samples):.2f}")
+        print(f'平均绝对误差 (MAE): {total_ae / len(samples):.2f}')
 
     if failures:
-        print("\n失败详情:")
+        print('\n失败详情:')
         for f in failures:
-            print(f"  - {f}")
+            print(f'  - {f}')
         sys.exit(1)
     else:
-        print("\n所有测试均已成功通过！")
+        print('\n所有测试均已成功通过！')
         sys.exit(0)
 
 

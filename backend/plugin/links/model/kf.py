@@ -58,9 +58,7 @@ class KfItem(Base, UserMixin):
     clicks: Mapped[int] = mapped_column(default=0, comment='访问量')
     longpress: Mapped[int] = mapped_column(default=0, comment='长按次数')
     leader: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='客服名称')
-    status: Mapped[int] = mapped_column(
-        sa.SmallInteger, default=1, index=True, comment='状态(0停用 1启用 2已满)'
-    )
+    status: Mapped[int] = mapped_column(sa.SmallInteger, default=1, index=True, comment='状态(0停用 1启用 2已满)')
 
     # 关系
     kf: Mapped[Kf] = relationship(init=False, back_populates='items')

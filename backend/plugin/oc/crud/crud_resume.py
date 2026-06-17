@@ -20,11 +20,7 @@ class CRUDResume:
     @staticmethod
     async def create(db: AsyncSession, user_id: int, obj: SaveResumeParam) -> UserResume:
         """创建简历"""
-        resume = UserResume(
-            user_id=user_id,
-            encrypted_data=obj.encrypted_data,
-            data_hash=obj.data_hash
-        )
+        resume = UserResume(user_id=user_id, encrypted_data=obj.encrypted_data, data_hash=obj.data_hash)
         db.add(resume)
         await db.flush()
         return resume

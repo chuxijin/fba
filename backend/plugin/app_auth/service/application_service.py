@@ -24,17 +24,17 @@ class ApplicationService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             # 检查应用名称是否已存在
             existing_name = await application_dao.get_by_name(db, obj.name)
             if existing_name:
                 raise errors.ForbiddenError(msg='应用名称已存在')
-            
+
             # 检查应用标识是否已存在
             existing_key = await application_dao.get_by_app_key(db, obj.app_key)
             if existing_key:
                 raise errors.ForbiddenError(msg='应用标识已存在')
-            
+
             return await application_dao.create(db, obj)
 
     @staticmethod
@@ -49,18 +49,18 @@ class ApplicationService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             # 检查应用是否存在
             app = await application_dao.get(db, app_id)
             if not app:
                 raise errors.NotFoundError(msg='应用不存在')
-            
+
             # 如果更新名称，检查是否重复
             if obj.name and obj.name != app.name:
                 existing_name = await application_dao.get_by_name(db, obj.name)
                 if existing_name:
                     raise errors.ForbiddenError(msg='应用名称已存在')
-            
+
             return await application_dao.update(db, app_id, obj)
 
     @staticmethod
@@ -74,11 +74,11 @@ class ApplicationService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             app = await application_dao.get(db, app_id)
             if not app:
                 raise errors.NotFoundError(msg='应用不存在')
-            
+
             return await application_dao.delete(db, app_id)
 
     @staticmethod
@@ -111,13 +111,7 @@ class ApplicationService:
         """获取应用选择选项"""
         async with async_db_session() as db:
             apps = await application_dao.get_list(db, status=1)  # 只获取启用的应用
-            return [
-                {
-                    'id': app.id,
-                    'name': app.name
-                }
-                for app in apps
-            ]
+            return [{'id': app.id, 'name': app.name} for app in apps]
 
 
 application_service = ApplicationService()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
 

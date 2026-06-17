@@ -99,10 +99,7 @@ async def score(ctx: NodeContext) -> None:
     # 兜底: 硬性上限, LLM 可能给出超过满分的分项
     if calculated_total > rubric_total_max:
         scale = rubric_total_max / calculated_total
-        rubric_scores = [
-            item.model_copy(update={'score': round(item.score * scale, 1)})
-            for item in rubric_scores
-        ]
+        rubric_scores = [item.model_copy(update={'score': round(item.score * scale, 1)}) for item in rubric_scores]
         calculated_total = rubric_total_max
 
     calculated_level = _level_from_ratio(calculated_total, rubric_total_max)

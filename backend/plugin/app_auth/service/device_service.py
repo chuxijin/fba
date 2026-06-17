@@ -24,18 +24,18 @@ class DeviceService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             # 检查设备标识是否已存在
             existing_device = await device_dao.get_by_device_id(db, obj.device_id)
             if existing_device:
                 raise errors.ForbiddenError(msg='设备标识已存在')
-            
+
             return await device_dao.create(db, obj)
 
     @staticmethod
-    async def register_or_update(device_id: str, device_name: str = None, 
-                                device_type: str = None, os_info: str = None, 
-                                ip_address: str = None) -> AppDevice:
+    async def register_or_update(
+        device_id: str, device_name: str = None, device_type: str = None, os_info: str = None, ip_address: str = None
+    ) -> AppDevice:
         """
         注册或更新设备信息
 
@@ -49,7 +49,7 @@ class DeviceService:
         async with async_db_session.begin() as db:
             # 检查设备是否已存在
             existing_device = await device_dao.get_by_device_id(db, device_id)
-            
+
             if existing_device:
                 # 更新设备信息和最后活跃时间
                 update_data = {}
@@ -61,10 +61,10 @@ class DeviceService:
                     update_data['os_info'] = os_info
                 if ip_address:
                     update_data['ip_address'] = ip_address
-                
+
                 if update_data:
                     await device_dao.update(db, existing_device.id, update_data)
-                
+
                 # 更新最后活跃时间
                 await device_dao.update_last_seen(db, device_id)
                 return await device_dao.get_by_device_id(db, device_id)
@@ -75,7 +75,7 @@ class DeviceService:
                     device_name=device_name,
                     device_type=device_type,
                     os_info=os_info,
-                    ip_address=ip_address
+                    ip_address=ip_address,
                 )
                 return await device_dao.create(db, device_data)
 
@@ -91,11 +91,11 @@ class DeviceService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             device = await device_dao.get(db, device_id)
             if not device:
                 raise errors.NotFoundError(msg='设备不存在')
-            
+
             return await device_dao.update(db, device_id, obj)
 
     @staticmethod
@@ -109,11 +109,11 @@ class DeviceService:
         """
         async with async_db_session.begin() as db:
             superuser_verify(request)
-            
+
             device = await device_dao.get(db, device_id)
             if not device:
                 raise errors.NotFoundError(msg='设备不存在')
-            
+
             return await device_dao.delete(db, device_id)
 
     @staticmethod
@@ -148,8 +148,8 @@ class DeviceService:
             devices = await device_dao.get_list(db, status=1)  # 只获取启用的设备
             return [
                 {
-                    'label': f"{device.device_name or device.device_id} ({device.device_type or '未知类型'})",
-                    'value': device.id
+                    'label': f'{device.device_name or device.device_id} ({device.device_type or "未知类型"})',
+                    'value': device.id,
                 }
                 for device in devices
             ]

@@ -90,11 +90,15 @@ class RenderService:
         year_end = payload.filters.get('year_end')
         if isinstance(year_start, int) and (year_start < 1900 or year_start > 2100):
             issues.append(
-                RenderValidationIssue(field='filters.year_start', level='warning', message='起始年份建议在 1900-2100 之间。')
+                RenderValidationIssue(
+                    field='filters.year_start', level='warning', message='起始年份建议在 1900-2100 之间。'
+                )
             )
         if isinstance(year_end, int) and (year_end < 1900 or year_end > 2100):
             issues.append(
-                RenderValidationIssue(field='filters.year_end', level='warning', message='结束年份建议在 1900-2100 之间。')
+                RenderValidationIssue(
+                    field='filters.year_end', level='warning', message='结束年份建议在 1900-2100 之间。'
+                )
             )
 
         if (
@@ -130,8 +134,10 @@ class RenderService:
                 )
             )
 
-        if payload.template_key == 'exam_paper' and not payload.filters.get('bank_id') and not payload.filters.get(
-            'question_ids'
+        if (
+            payload.template_key == 'exam_paper'
+            and not payload.filters.get('bank_id')
+            and not payload.filters.get('question_ids')
         ):
             issues.append(
                 RenderValidationIssue(
@@ -150,20 +156,18 @@ class RenderService:
                 )
             )
 
-        has_advanced_filters = any(
-            [
-                payload.filters.get('cat_id'),
-                payload.filters.get('region'),
-                payload.filters.get('year_start'),
-                payload.filters.get('year_end'),
-                payload.filters.get('knowledge_points'),
-                payload.filters.get('question_types'),
-                payload.filters.get('difficulties'),
-                payload.filters.get('stem_keyword'),
-                payload.filters.get('option_keyword'),
-                payload.filters.get('analysis_keyword'),
-            ]
-        )
+        has_advanced_filters = any([
+            payload.filters.get('cat_id'),
+            payload.filters.get('region'),
+            payload.filters.get('year_start'),
+            payload.filters.get('year_end'),
+            payload.filters.get('knowledge_points'),
+            payload.filters.get('question_types'),
+            payload.filters.get('difficulties'),
+            payload.filters.get('stem_keyword'),
+            payload.filters.get('option_keyword'),
+            payload.filters.get('analysis_keyword'),
+        ])
         if (
             payload.template_key not in {'wrong_question', 'hanyu', 'basic_calculation'}
             and not payload.filters.get('bank_id')
@@ -723,7 +727,7 @@ class RenderService:
                 )
                 if file_record.status != 'available':
                     raise errors.ServerError(msg=file_record.error_message or f'{variant} 产物登记失败')
-                    
+
                 preview_paths = executor_result.get('preview_download_paths', [])
                 if preview_paths and variant in ('questions_only', 'combined_inline', 'combined_appendix'):
                     preview_urls = []
@@ -734,7 +738,7 @@ class RenderService:
                             downloaded_preview = await self._download_executor_artifact(
                                 job_id=job.job_id,
                                 render_variant=variant,
-                                artifact_kind=f'preview_{idx+1}',
+                                artifact_kind=f'preview_{idx + 1}',
                                 artifact_path=artifact_path,
                                 required=False,
                             )
@@ -753,8 +757,8 @@ class RenderService:
                                 else:
                                     preview_urls.append(str(downloaded_preview))
                         except Exception as e:
-                            log.warning(f"Failed to process preview image: {e}")
-                    
+                            log.warning(f'Failed to process preview image: {e}')
+
                     if preview_urls:
                         # Append preview URLs to job metadata
                         meta = dict(job.metadata_json or {})
@@ -807,7 +811,7 @@ class RenderService:
                 'output_path': record.output_path,
                 'error_message': record.error_message,
             },
-            )
+        )
 
     async def _upload_local_file_to_oss(
         self,
@@ -886,7 +890,9 @@ class RenderService:
             response.raise_for_status()
             content = response.content
 
-        artifact_file = self._artifact_local_path(job_id=job_id, render_variant=render_variant, artifact_kind=artifact_kind)
+        artifact_file = self._artifact_local_path(
+            job_id=job_id, render_variant=render_variant, artifact_kind=artifact_kind
+        )
         artifact_file.parent.mkdir(parents=True, exist_ok=True)
         artifact_file.write_bytes(content)
         return artifact_file
@@ -1082,7 +1088,9 @@ class RenderService:
             issues.append(RenderValidationIssue(field=f'filters.{key}', level='error', message=f'{key} 必须是正整数。'))
 
     @staticmethod
-    def _validate_list_of_type(filters: dict, key: str, expected_type: type, issues: list[RenderValidationIssue]) -> None:
+    def _validate_list_of_type(
+        filters: dict, key: str, expected_type: type, issues: list[RenderValidationIssue]
+    ) -> None:
         value = filters.get(key)
         if value is None:
             return

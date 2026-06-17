@@ -3,18 +3,17 @@
 import random
 
 import bcrypt
-from sqlalchemy import select, insert
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.admin.model import User, user_role
-from backend.app.admin.schema.user import AddUserRoleParam
+from backend.app.admin.service.user_service import user_service
 from backend.app.admin.utils.password_security import get_hash_password
 from backend.common.exception import errors
 from backend.plugin.oc.schema.quick_register import QuickRegisterParam, QuickRegisterResponse
 
 
 # OC 默认部门和角色 ID（已在数据库中创建）
-OC_DEPT_ID = 5   # OC 部门
+OC_DEPT_ID = 5  # OC 部门
 OC_ROLE_ID = 14  # OC普通用户
 
 
@@ -24,6 +23,8 @@ class QuickRegisterService:
     @staticmethod
     async def check_user_exists(db: AsyncSession, phone: str) -> bool:
         """检查用户是否已存在（通过用户名/手机号）"""
+        from backend.app.admin.model import User
+
         stmt = select(User).where((User.username == phone) | (User.phone == phone))
         result = await db.execute(stmt)
         return result.scalars().first() is not None
@@ -49,27 +50,22 @@ class QuickRegisterService:
         salt = bcrypt.gensalt()
         hashed_password = get_hash_password(password, salt)
 
-        # 创建用户
-        new_user = User(
-            username=username,
-            password=hashed_password,
-            salt=salt,
-            nickname=nickname,
-            phone=obj.phone,
-            dept_id=OC_DEPT_ID,
-            status=1,  # 正常状态
-            is_superuser=False,
-            is_staff=False,
-            is_multi_login=False,
+        await user_service.register(
+            db=db,
+            user_data={
+                'username': username,
+                'password': hashed_password,
+                'salt': salt,
+                'nickname': nickname,
+                'phone': obj.phone,
+                'dept_id': OC_DEPT_ID,
+                'status': 1,
+                'is_superuser': False,
+                'is_staff': False,
+                'is_multi_login': False,
+            },
+            role_ids=[OC_ROLE_ID],
         )
-        db.add(new_user)
-        await db.flush()
-
-        # 关联角色
-        user_role_stmt = insert(user_role).values(
-            AddUserRoleParam(user_id=new_user.id, role_id=OC_ROLE_ID).model_dump()
-        )
-        await db.execute(user_role_stmt)
 
         # 提交事务
         await db.commit()
@@ -77,7 +73,7 @@ class QuickRegisterService:
         return QuickRegisterResponse(
             username=username,
             password=password,  # 返回明文密码供测试
-            message='注册成功'
+            message='注册成功',
         )
 
 

@@ -189,7 +189,8 @@ async def validate_render_job(payload: RenderJobCreate) -> ResponseSchemaModel[R
 
 @router.post('/jobs/payload-preview', summary='预览题本标准化渲染数据')
 async def preview_render_payload(
-    payload: RenderJobCreate, db: CurrentSession,
+    payload: RenderJobCreate,
+    db: CurrentSession,
 ) -> ResponseSchemaModel[RenderDocumentPayload]:
     try:
         document = await render_service.preview_payload(db=db, payload=payload)
@@ -200,7 +201,8 @@ async def preview_render_payload(
 
 @router.post('/templates/preview', summary='生成模板预览 PDF')
 async def preview_render_template_pdf(
-    payload: RenderTemplatePreviewRequest, db: CurrentSession,
+    payload: RenderTemplatePreviewRequest,
+    db: CurrentSession,
 ) -> ResponseSchemaModel[RenderTemplatePreviewResponse]:
     try:
         preview = await render_service.preview_template_pdf(db=db, payload=payload)
@@ -224,10 +226,11 @@ async def _fetch_bing_image_url() -> str | None:
                 data = resp.json()
                 if 'images' in data and len(data['images']) > 0:
                     # 获取高质量基础图片并加上基础域名
-                    return f"https://www.bing.com{data['images'][0]['url']}"
+                    return f'https://www.bing.com{data["images"][0]["url"]}'
     except Exception:
         pass
     return None
+
 
 async def _fetch_hitokoto() -> str | None:
     try:
@@ -238,6 +241,7 @@ async def _fetch_hitokoto() -> str | None:
     except Exception:
         pass
     return None
+
 
 @router.post('/jobs', summary='创建题本渲染任务')
 async def create_render_job(
@@ -252,7 +256,9 @@ async def create_render_job(
                 # 题本任务应绑定到当前用户，方便「我的题本」分页查询与权限隔离。
                 payload.metadata['user_id'] = user.id
             if 'practice_cover_username' not in payload.metadata:
-                payload.metadata['practice_cover_username'] = getattr(user, 'nickname', None) or getattr(user, 'username', '编者')
+                payload.metadata['practice_cover_username'] = getattr(user, 'nickname', None) or getattr(
+                    user, 'username', '编者'
+                )
             if 'practice_cover_avatar' not in payload.metadata:
                 avatar = getattr(user, 'avatar', '')
                 payload.metadata['practice_cover_avatar'] = str(avatar) if avatar else ''
@@ -263,12 +269,12 @@ async def create_render_job(
                 tasks.append(_fetch_bing_image_url())
             else:
                 tasks.append(asyncio.sleep(0))
-                
+
             if not payload.metadata.get('practice_cover_motto'):
                 tasks.append(_fetch_hitokoto())
             else:
                 tasks.append(asyncio.sleep(0))
-                
+
             results = await asyncio.gather(*tasks)
             if results and len(results) == 2:
                 bing_url, motto = results[0], results[1]

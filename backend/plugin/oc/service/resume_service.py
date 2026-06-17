@@ -27,7 +27,7 @@ class ResumeService:
             'encrypted_data': resume.encrypted_data,
             'data_hash': resume.data_hash,
             'created_time': resume.created_time,
-            'updated_time': resume.updated_time
+            'updated_time': resume.updated_time,
         }
 
     @staticmethod
@@ -51,11 +51,7 @@ class ResumeService:
     async def identify_fields(fields: list[FieldInfo]) -> list[FieldMapping]:
         """使用 AI 识别表单字段类型"""
         # 构建 prompt
-        fields_json = json.dumps(
-            [f.model_dump() for f in fields],
-            ensure_ascii=False,
-            indent=2
-        )
+        fields_json = json.dumps([f.model_dump() for f in fields], ensure_ascii=False, indent=2)
 
         prompt = f"""你是一个表单字段识别专家。分析以下表单字段信息，判断每个字段应该填写简历中的哪个数据。
 
@@ -89,19 +85,16 @@ class ResumeService:
 
         try:
             # 调用 OpenAI API
-            client = AsyncOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_BASE_URL
-            )
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
 
             response = await client.chat.completions.create(
                 model=settings.OPENAI_MODEL or 'gpt-4o-mini',
                 messages=[
                     {'role': 'system', 'content': '你是一个专业的表单字段分析助手，只返回 JSON 格式的结果。'},
-                    {'role': 'user', 'content': prompt}
+                    {'role': 'user', 'content': prompt},
                 ],
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=2000,
             )
 
             result_text = response.choices[0].message.content.strip()
@@ -137,12 +130,7 @@ class ResumeService:
         category, field, label = formatter_service.parse_resume_key(obj.resume_key)
 
         # 1. 尝试本地匹配
-        matched = formatter_service.find_best_match(
-            obj.resume_value,
-            obj.candidates_value,
-            category,
-            field
-        )
+        matched = formatter_service.find_best_match(obj.resume_value, obj.candidates_value, category, field)
 
         if matched:
             print(f'[SelectorFill] 本地匹配成功: {obj.resume_value} -> {matched}')
@@ -152,10 +140,7 @@ class ResumeService:
         print(f'[SelectorFill] 本地未匹配，调用 AI: {obj.resume_value} in {obj.candidates_value}')
 
         try:
-            client = AsyncOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_BASE_URL
-            )
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
 
             # 构建 prompt，包含完整简历数据（如果有）
             resume_context = ''
@@ -181,10 +166,10 @@ class ResumeService:
                 model=settings.OPENAI_MODEL or 'gpt-4o-mini',
                 messages=[
                     {'role': 'system', 'content': '你是一个表单填充助手，只返回选项值或 null。'},
-                    {'role': 'user', 'content': prompt}
+                    {'role': 'user', 'content': prompt},
                 ],
                 temperature=0.1,
-                max_tokens=100
+                max_tokens=100,
             )
 
             result = response.choices[0].message.content.strip()
@@ -315,20 +300,17 @@ class ResumeService:
 5. 区分工作经历和实习经历，在校期间的工作经历归类为实习"""
 
         try:
-            client = AsyncOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_BASE_URL
-            )
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
 
             response = await client.chat.completions.create(
                 model=settings.OPENAI_MODEL or 'gpt-4o-mini',
                 messages=[
                     {'role': 'system', 'content': system_prompt},
-                    {'role': 'user', 'content': f'请解析以下简历内容：\n\n{text}'}
+                    {'role': 'user', 'content': f'请解析以下简历内容：\n\n{text}'},
                 ],
                 temperature=0.3,
                 max_tokens=4000,
-                response_format={'type': 'json_object'}
+                response_format={'type': 'json_object'},
             )
 
             result_text = response.choices[0].message.content.strip()

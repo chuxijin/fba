@@ -170,14 +170,11 @@ curl -X POST "http://your-domain/webhooks/v1/sys/receive/validated?secret_key=yo
 import hashlib
 import hmac
 
+
 def generate_signature(payload: str, secret: str) -> str:
     """生成GitHub风格的签名"""
-    signature = hmac.new(
-        secret.encode('utf-8'),
-        payload.encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
-    return f"sha256={signature}"
+    signature = hmac.new(secret.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).hexdigest()
+    return f'sha256={signature}'
 ```
 
 ### 查询事件列表

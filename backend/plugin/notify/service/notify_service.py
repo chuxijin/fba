@@ -35,9 +35,9 @@ class NotifyService:
         # 确定渠道顺序，过滤已启用的
         channel_order = channels or settings.NOTIFY_CHANNEL_PRIORITY
         enabled_channels = [
-            ch for ch in channel_order
-            if ch in CHANNEL_HANDLERS
-            and getattr(settings, CHANNEL_ENABLED_MAP.get(ch, ''), False)
+            ch
+            for ch in channel_order
+            if ch in CHANNEL_HANDLERS and getattr(settings, CHANNEL_ENABLED_MAP.get(ch, ''), False)
         ]
 
         if not enabled_channels:
@@ -69,7 +69,7 @@ class NotifyService:
         last_error = attempts[-1]['error'] if attempts and not success_channel else None
 
         log_obj = CreateNotifyLog(
-            title=title[:settings.NOTIFY_MAX_TITLE_LENGTH],
+            title=title[: settings.NOTIFY_MAX_TITLE_LENGTH],
             content=content,
             channel=success_channel,
             status=final_status,

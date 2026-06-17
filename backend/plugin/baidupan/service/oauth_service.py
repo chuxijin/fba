@@ -224,16 +224,16 @@ class BaiduPanOAuthService:
                 </div>
             </div>
             """
-            status_icon = "✅"
-            status_class = "success"
+            status_icon = '✅'
+            status_class = 'success'
         else:
             token_info = f"""
             <div class="error-card">
                 <p>{error or '未知错误'}</p>
             </div>
             """
-            status_icon = "❌"
-            status_class = "error"
+            status_icon = '❌'
+            status_class = 'error'
 
         return f"""
         <!DOCTYPE html>

@@ -5,7 +5,9 @@ from typing import Any
 from backend.plugin.agents.schema import QuestionGenerationState
 
 
-def normalize_candidate_passages(state: QuestionGenerationState, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def normalize_candidate_passages(
+    state: QuestionGenerationState, candidates: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     """
     归一化候选题片段与完整题面
 
@@ -18,16 +20,8 @@ def normalize_candidate_passages(state: QuestionGenerationState, candidates: lis
         selected_passages = list(state.passage_plan.get('passages') or [])
         state.selected_passages = selected_passages
 
-    passage_map = {
-        str(item.get('passage_id')): item
-        for item in selected_passages
-        if item.get('passage_id')
-    }
-    blueprint_map = {
-        str(item.get('passage_id')): item
-        for item in state.blueprints
-        if item.get('passage_id')
-    }
+    passage_map = {str(item.get('passage_id')): item for item in selected_passages if item.get('passage_id')}
+    blueprint_map = {str(item.get('passage_id')): item for item in state.blueprints if item.get('passage_id')}
 
     for index, candidate in enumerate(candidates):
         passage_id = _resolve_passage_id(candidate, state.blueprints, index)

@@ -69,9 +69,7 @@ class CampusRecruitService:
 
         # 计算今日更新数量
         today = date.today()
-        today_count_query = select(func.count(CampusRecruit.id)).where(
-            CampusRecruit.update_time == today
-        )
+        today_count_query = select(func.count(CampusRecruit.id)).where(CampusRecruit.update_time == today)
         today_count_result = await db.execute(today_count_query)
         today_count = today_count_result.scalar() or 0
 
@@ -81,10 +79,7 @@ class CampusRecruitService:
         total_count = total_count_result.scalar() or 0
 
         # 添加统计数据
-        page_data['stats'] = {
-            'today_count': today_count,
-            'total_count': total_count
-        }
+        page_data['stats'] = {'today_count': today_count, 'total_count': total_count}
 
         return page_data
 

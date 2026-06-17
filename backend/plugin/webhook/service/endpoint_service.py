@@ -10,7 +10,6 @@ from backend.plugin.webhook.model.webhook_endpoint import WebhookEndpoint
 from backend.plugin.webhook.schema.endpoint import (
     CreateEndpointParam,
     EndpointListParam,
-    GetEndpointDetail,
     RotateSecretResult,
     TestEndpointResult,
     UpdateEndpointParam,

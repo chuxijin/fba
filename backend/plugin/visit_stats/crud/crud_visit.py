@@ -42,18 +42,14 @@ class CRUDVisitLog(CRUDPlus[VisitLog]):
     async def count_today_uv(self, db: AsyncSession) -> int:
         """统计今日 UV（独立IP数）"""
         today = timezone.now().date()
-        stmt = select(func.count(func.distinct(VisitLog.ip_address))).where(
-            VisitLog.visit_date == today
-        )
+        stmt = select(func.count(func.distinct(VisitLog.ip_address))).where(VisitLog.visit_date == today)
         result = await db.execute(stmt)
         return result.scalar() or 0
 
     async def count_recent_active(self, db: AsyncSession, minutes: int = 5) -> int:
         """统计最近活跃访客数（最近N分钟内有访问的独立IP）"""
         threshold = timezone.now() - timedelta(minutes=minutes)
-        stmt = select(func.count(func.distinct(VisitLog.ip_address))).where(
-            VisitLog.created_time >= threshold
-        )
+        stmt = select(func.count(func.distinct(VisitLog.ip_address))).where(VisitLog.created_time >= threshold)
         result = await db.execute(stmt)
         return result.scalar() or 0
 

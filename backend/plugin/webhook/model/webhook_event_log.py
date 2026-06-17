@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import BigInteger, Boolean, Integer, JSON, String
+from sqlalchemy import Boolean, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, TimeZone, UniversalText
@@ -23,7 +23,5 @@ class WebhookEventLog(Base):
     signature_valid: Mapped[bool] = mapped_column(Boolean, default=False, comment='签名验证结果')
     status: Mapped[int] = mapped_column(Integer, default=0, comment='状态 (0:received 1:processed 2:failed)')
     error_message: Mapped[str | None] = mapped_column(String(1000), default=None, comment='错误信息')
-    processed_at: Mapped[datetime | None] = mapped_column(
-        TimeZone, default=None, comment='处理时间'
-    )
+    processed_at: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='处理时间')
     source_ip: Mapped[str | None] = mapped_column(String(45), default=None, comment='请求来源 IP')

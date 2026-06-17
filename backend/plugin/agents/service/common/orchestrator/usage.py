@@ -27,11 +27,7 @@ def build_usage_summary(traces: list[AgentTraceItem] | list[dict[str, Any]]) -> 
         }
 
     duration_ms = sum(int(trace.get('duration_ms') or 0) for trace in normalized_traces)
-    llm_duration_ms = sum(
-        int(trace.get('duration_ms') or 0)
-        for trace in normalized_traces
-        if trace.get('model')
-    )
+    llm_duration_ms = sum(int(trace.get('duration_ms') or 0) for trace in normalized_traces if trace.get('model'))
     tokens_in = sum(int(trace.get('tokens_in') or 0) for trace in normalized_traces)
     tokens_out = sum(int(trace.get('tokens_out') or 0) for trace in normalized_traces)
     started_times = [

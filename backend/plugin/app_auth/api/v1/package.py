@@ -23,7 +23,7 @@ router = APIRouter()
 async def create_package(request: Request, obj: CreatePackageParam) -> ResponseSchemaModel[GetPackageDetail]:
     """
     创建新套餐
-    
+
     :param request: FastAPI 请求对象
     :param obj: 套餐创建参数
     :return:
@@ -36,7 +36,7 @@ async def create_package(request: Request, obj: CreatePackageParam) -> ResponseS
 async def delete_package(request: Request, pk: Annotated[int, Path(description='套餐ID')]) -> ResponseModel:
     """
     删除套餐
-    
+
     :param request: FastAPI 请求对象
     :param pk: 套餐ID
     :return:
@@ -53,7 +53,7 @@ async def update_package(
 ) -> ResponseModel:
     """
     更新套餐信息
-    
+
     :param request: FastAPI 请求对象
     :param pk: 套餐ID
     :param obj: 套餐更新参数
@@ -81,9 +81,7 @@ async def get_pagination_packages(
     :param status: 套餐状态
     :return:
     """
-    packages = await package_service.get_pagination_list(
-        db, application_id=application_id, name=name, status=status
-    )
+    packages = await package_service.get_pagination_list(db, application_id=application_id, name=name, status=status)
 
     page_data = {
         'items': packages,
@@ -95,7 +93,7 @@ async def get_pagination_packages(
             'first': '',
             'last': '',
             'self': '',
-        }
+        },
     }
     return response_base.success(data=page_data)
 
@@ -104,7 +102,7 @@ async def get_pagination_packages(
 async def get_package(pk: Annotated[int, Path(description='套餐ID')]) -> ResponseSchemaModel[GetPackageDetail]:
     """
     获取套餐详情
-    
+
     :param pk: 套餐ID
     :return:
     """
@@ -114,7 +112,7 @@ async def get_package(pk: Annotated[int, Path(description='套餐ID')]) -> Respo
 
 @router.get('/by-application/{application_id}/options', summary='根据应用获取套餐选项', dependencies=[DependsJwtAuth])
 async def get_package_options_by_application(
-    application_id: Annotated[int, Path(description='应用ID')]
+    application_id: Annotated[int, Path(description='应用ID')],
 ) -> ResponseSchemaModel[list[dict]]:
     """根据应用获取套餐选项，用于下拉选择"""
     data = await package_service.get_options_by_application(application_id=application_id)

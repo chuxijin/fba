@@ -22,10 +22,11 @@ class AIChatSchemaBase(SchemaBase):
 
 class AIChatMessage(SchemaBase):
     role: str
-    content: str | list[dict] | None = None # 简单起见用 list[dict] 兼容 OpenAI 格式
+    content: str | list[dict] | None = None  # 简单起见用 list[dict] 兼容 OpenAI 格式
     tool_calls: list[dict] | None = None
     tool_call_id: str | None = None
     name: str | None = None
+
 
 class AIChat(AIChatSchemaBase):
     """聊天参数"""

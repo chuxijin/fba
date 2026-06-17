@@ -30,21 +30,14 @@ async def match_points(ctx: NodeContext) -> None:
     )
     ctx.last_llm_stats = stats
 
-    matched_dict: dict[str, str] = {
-        item.reference_point_text: item.matched_user_text for item in output.matched
-    }
+    matched_dict: dict[str, str] = {item.reference_point_text: item.matched_user_text for item in output.matched}
 
     section.reference_points = [
-        rp.model_copy(update={'matched_user_text': matched_dict.get(rp.text)})
-        for rp in section.reference_points
+        rp.model_copy(update={'matched_user_text': matched_dict.get(rp.text)}) for rp in section.reference_points
     ]
 
     missing_keys = {item.reference_point_text for item in output.missing}
-    section.missing_points = [
-        rp for rp in section.reference_points if rp.text in missing_keys
-    ]
+    section.missing_points = [rp for rp in section.reference_points if rp.text in missing_keys]
 
     if not section.missing_points:
-        section.missing_points = [
-            rp for rp in section.reference_points if rp.matched_user_text is None
-        ]
+        section.missing_points = [rp for rp in section.reference_points if rp.matched_user_text is None]

@@ -233,8 +233,7 @@ class InboundService:
         safe_headers = None
         if headers:
             safe_headers = {
-                k: ('***' if k in ('authorization', 'x-api-key', 'cookie') else v)
-                for k, v in headers.items()
+                k: ('***' if k in ('authorization', 'x-api-key', 'cookie') else v) for k, v in headers.items()
             }
 
         uid = signature.generate_id('log_')

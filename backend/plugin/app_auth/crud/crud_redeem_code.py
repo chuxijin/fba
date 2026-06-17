@@ -42,9 +42,10 @@ class CRUDRedeemCode(CRUDPlus[AppRedeemCode]):
         """
         # 创建包含兑换码的新模型
         from backend.plugin.app_auth.model import AppRedeemCode
+
         code_data = obj_in.model_dump()
         code_data['code'] = code
-        
+
         # 直接创建模型实例
         redeem_code = AppRedeemCode(**code_data)
         db.add(redeem_code)
@@ -62,18 +63,16 @@ class CRUDRedeemCode(CRUDPlus[AppRedeemCode]):
         :return:
         """
         from backend.utils.timezone import timezone
-        return await self.update_model(db, code_id, {
-            'is_used': True,
-            'used_by': used_by,
-            'used_time': timezone.now()
-        })
+
+        return await self.update_model(db, code_id, {'is_used': True, 'used_by': used_by, 'used_time': timezone.now()})
 
     async def delete(self, db: AsyncSession, code_id: int) -> int:
         """删除兑换码"""
         return await self.delete_model(db, code_id)
 
-    async def get_by_application(self, db: AsyncSession, application_id: int, 
-                                batch_no: str = None, is_used: bool = None) -> list[AppRedeemCode]:
+    async def get_by_application(
+        self, db: AsyncSession, application_id: int, batch_no: str = None, is_used: bool = None
+    ) -> list[AppRedeemCode]:
         """
         获取应用的兑换码列表
 
@@ -91,8 +90,9 @@ class CRUDRedeemCode(CRUDPlus[AppRedeemCode]):
         stmt = stmt.order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 
-    async def get_list(self, db: AsyncSession, application_id: int = None, 
-                      batch_no: str = None, is_used: bool = None) -> list[AppRedeemCode]:
+    async def get_list(
+        self, db: AsyncSession, application_id: int = None, batch_no: str = None, is_used: bool = None
+    ) -> list[AppRedeemCode]:
         """获取兑换码列表"""
         stmt = select(self.model)
         if application_id:
@@ -104,8 +104,7 @@ class CRUDRedeemCode(CRUDPlus[AppRedeemCode]):
         stmt = stmt.order_by(self.model.created_time.desc())
         return await self.select_models(db, stmt)
 
-    def get_select(self, application_id: int = None, batch_no: str = None, 
-                  is_used: bool = None):
+    def get_select(self, application_id: int = None, batch_no: str = None, is_used: bool = None):
         """
         获取兑换码查询语句
 

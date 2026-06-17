@@ -78,9 +78,23 @@ _FAKE_RESPONSES: dict[str, dict[str, Any]] = {
         'level_label': '二类卷',
         'summary': 'mock 总评: 立意基本符合题旨, 结构层次清晰, 但论证深度有待加强。',
         'rubric_scores': [
-            {'name': '立意', 'score': 9, 'max_score': 12, 'level': 'B', 'level_label': '良', 'comment': 'mock 立意明确'},
+            {
+                'name': '立意',
+                'score': 9,
+                'max_score': 12,
+                'level': 'B',
+                'level_label': '良',
+                'comment': 'mock 立意明确',
+            },
             {'name': '结构', 'score': 6, 'max_score': 8, 'level': 'B', 'level_label': '良', 'comment': 'mock 层次清晰'},
-            {'name': '论证', 'score': 6, 'max_score': 10, 'level': 'C', 'level_label': '中', 'comment': 'mock 论据偏少'},
+            {
+                'name': '论证',
+                'score': 6,
+                'max_score': 10,
+                'level': 'C',
+                'level_label': '中',
+                'comment': 'mock 论据偏少',
+            },
             {'name': '文采', 'score': 4, 'max_score': 6, 'level': 'B', 'level_label': '良', 'comment': 'mock 语言通顺'},
             {'name': '规范', 'score': 3, 'max_score': 4, 'level': 'B', 'level_label': '良', 'comment': 'mock 格式规范'},
         ],
@@ -184,15 +198,13 @@ class FakeLLMClient:
         """模拟 LLM JSON 调用 (兼容旧路径)"""
         node = self._detect_node(system_prompt)
         response = _FAKE_RESPONSES.get(node, {})
-        self.calls.append(
-            {
-                'node': node,
-                'role': role.value,
-                'temperature': temperature,
-                'max_tokens': max_tokens,
-                'mode': 'json',
-            }
-        )
+        self.calls.append({
+            'node': node,
+            'role': role.value,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'mode': 'json',
+        })
         stats = LLMCallStats(
             model=self.resolve_model(role),
             tokens_in=len(system_prompt) // 3 + len(user_prompt) // 3,
@@ -217,22 +229,18 @@ class FakeLLMClient:
         """模拟 LLM 结构化调用, 把 mock dict 转 Pydantic Output 强类型"""
         node = self._detect_node(system_prompt)
         raw = _FAKE_RESPONSES.get(node, {})
-        self.calls.append(
-            {
-                'node': node,
-                'role': role.value,
-                'temperature': temperature,
-                'max_tokens': max_tokens,
-                'mode': 'structured',
-                'output_type': output_type.__name__,
-            }
-        )
+        self.calls.append({
+            'node': node,
+            'role': role.value,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'mode': 'structured',
+            'output_type': output_type.__name__,
+        })
         try:
             output = output_type.model_validate(raw)
         except Exception as e:
-            raise ValueError(
-                f'FakeLLMClient: mock 数据无法 validate 为 {output_type.__name__}: {e}'
-            ) from e
+            raise ValueError(f'FakeLLMClient: mock 数据无法 validate 为 {output_type.__name__}: {e}') from e
         stats = LLMCallStats(
             model=self.resolve_model(role),
             tokens_in=len(system_prompt) // 3 + len(user_prompt) // 3,

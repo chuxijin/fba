@@ -54,10 +54,7 @@ class CRUDDwzLog(CRUDPlus[DwzLog]):
         :return:
         """
         stmt = (
-            select(self.model)
-            .where(self.model.dwz_id == dwz_id)
-            .order_by(self.model.created_time.desc())
-            .limit(limit)
+            select(self.model).where(self.model.dwz_id == dwz_id).order_by(self.model.created_time.desc()).limit(limit)
         )
         result = await db.execute(stmt)
         return result.scalars().all()

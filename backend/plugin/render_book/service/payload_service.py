@@ -416,14 +416,12 @@ class RenderPayloadService:
             answer = item.get('answer')
             answer_text = '' if answer is None else str(answer).strip()
             section_title = str(item.get('section_title') or item.get('type_title') or '基础计算').strip()
-            questions.append(
-                {
-                    'number': index,
-                    'expression': expression,
-                    'answer_text': answer_text,
-                    'section_title': section_title or '基础计算',
-                }
-            )
+            questions.append({
+                'number': index,
+                'expression': expression,
+                'answer_text': answer_text,
+                'section_title': section_title or '基础计算',
+            })
 
         return questions[:200]
 
@@ -557,7 +555,9 @@ class RenderPayloadService:
         return list(material_map.values())
 
     @staticmethod
-    def _pick_section_title(*, template_key: str, question: Question, bank_id: int | None, chapter_id: int | None) -> str:
+    def _pick_section_title(
+        *, template_key: str, question: Question, bank_id: int | None, chapter_id: int | None
+    ) -> str:
         placement = question_service._pick_placement(question=question, bank_id=bank_id, chapter_id=chapter_id)
         if template_key in {'exam_paper', 'wrong_question', 'practice'} and placement and placement.chapter:
             return placement.chapter.name
@@ -674,6 +674,7 @@ class RenderPayloadService:
             user_id = payload.metadata.get('user_id')
             if user_id is not None:
                 from backend.app.gongkao.model.hanyu_notebook import GkHanyuNotebook
+
                 stmt = stmt.join(GkHanyuNotebook, GkHanyuNotebook.hanyu_id == GkHanyu.id)
                 stmt = stmt.where(GkHanyuNotebook.user_id == user_id)
                 stmt = stmt.order_by(GkHanyuNotebook.id.desc())
@@ -707,7 +708,7 @@ class RenderPayloadService:
                     for syn in h.synonyms:
                         if isinstance(syn, str) and syn.strip():
                             synonym_names.add(syn.strip())
-            
+
             if synonym_names:
                 existing_names = {h.name for h in hanyu_list}
                 query_syns = list(synonym_names - existing_names)
@@ -716,25 +717,27 @@ class RenderPayloadService:
                     syn_stmt = syn_stmt.order_by(GkHanyu.frequency.desc(), GkHanyu.id.asc())
                     syn_res = await db.execute(syn_stmt)
                     syn_records = list(syn_res.scalars().all())
-                    
+
                     # 自动创建尚未录入的近义词
                     found_names = {r.name for r in syn_records}
                     missing_names = set(query_syns) - found_names
                     if missing_names:
                         from backend.app.gongkao.schema.hanyu import CreateHanyuParam
                         from backend.app.gongkao.service.hanyu_service import hanyu_service
+
                         for name in missing_names:
                             create_obj = CreateHanyuParam(name=name, type='成语')
                             new_h = await hanyu_service.create(db, create_obj, created_by=1)
                             syn_records.append(new_h)
-                    
+
                     # 对所有收集到的近义词记录批量补充和静默填充完整信息
                     from backend.app.gongkao.service.hanyu_service import HanyuService
+
                     completed_syns = []
                     for r in syn_records:
                         filled = await HanyuService.ensure_data_complete(db, r)
                         completed_syns.append(filled)
-                        
+
                     hanyu_list = list(hanyu_list) + completed_syns
 
         if not hanyu_list:
@@ -753,7 +756,7 @@ class RenderPayloadService:
             if h.chu_chu and isinstance(h.chu_chu, list) and len(h.chu_chu) > 0:
                 cc_source = h.chu_chu[0].get('source') or ''
                 if cc_source:
-                    chu_chu_val = {"text": cc_source}
+                    chu_chu_val = {'text': cc_source}
 
             detail_means_val = []
             if h.detail_means and isinstance(h.detail_means, list):
@@ -887,9 +890,14 @@ class RenderPayloadService:
         for index, question in enumerate(questions, start=1):
             analysis: QuestionAnalysis | None = question_service._pick_default_analysis(question.analyses)
             first_material = question.materials[0] if question.materials else None
-            source_text, resolved_bank_id, resolved_bank_name, resolved_chapter_id, resolved_chapter_name, placement_id = (
-                cls._build_source_text(question=question, bank_id=bank_id, chapter_id=chapter_id)
-            )
+            (
+                source_text,
+                resolved_bank_id,
+                resolved_bank_name,
+                resolved_chapter_id,
+                resolved_chapter_name,
+                placement_id,
+            ) = cls._build_source_text(question=question, bank_id=bank_id, chapter_id=chapter_id)
             item = RenderQuestionPayload(
                 number=index,
                 question_id=question.id,

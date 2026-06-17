@@ -54,10 +54,11 @@ class CRUDVersion(CRUDPlus[AppVersion]):
         :param application_id: 应用 ID
         :return:
         """
-        stmt = select(self.model).where(
-            self.model.application_id == application_id,
-            self.model.is_active.is_(True)
-        ).order_by(self.model.created_time.desc())
+        stmt = (
+            select(self.model)
+            .where(self.model.application_id == application_id, self.model.is_active.is_(True))
+            .order_by(self.model.created_time.desc())
+        )
         return await self.select_models(db, stmt)
 
     async def get_latest_version(self, db: AsyncSession, application_id: int) -> AppVersion | None:
@@ -69,9 +70,7 @@ class CRUDVersion(CRUDPlus[AppVersion]):
         :return:
         """
         stmt = select(self.model).where(
-            self.model.application_id == application_id,
-            self.model.is_latest.is_(True),
-            self.model.is_active.is_(True)
+            self.model.application_id == application_id, self.model.is_latest.is_(True), self.model.is_active.is_(True)
         )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
@@ -90,7 +89,9 @@ class CRUDVersion(CRUDPlus[AppVersion]):
         # 再将指定版本设为最新
         await self.update_model(db, version_id, {'is_latest': True})
 
-    async def get_list(self, db: AsyncSession, application_id: int = None, version_name: str = None, is_active: bool = None) -> list[AppVersion]:
+    async def get_list(
+        self, db: AsyncSession, application_id: int = None, version_name: str = None, is_active: bool = None
+    ) -> list[AppVersion]:
         """获取版本列表"""
         stmt = select(self.model)
         if application_id:

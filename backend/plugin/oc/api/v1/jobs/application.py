@@ -43,9 +43,7 @@ async def get_user_application_list(
 
 
 @router.post('', summary='创建用户投递记录', dependencies=[DependsJwtAuth])
-async def create_user_application(
-    db: CurrentSessionTransaction, obj: CreateUserApplicationParam
-) -> ResponseModel:
+async def create_user_application(db: CurrentSessionTransaction, obj: CreateUserApplicationParam) -> ResponseModel:
     """创建用户投递记录"""
     await user_application_service.create(db=db, obj=obj)
     return response_base.success()

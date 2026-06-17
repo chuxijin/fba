@@ -172,18 +172,14 @@ class ScoreCardSection(SchemaBase):
             return self
         actual = round(sum(item.score for item in self.rubric_scores), 1)
         if abs(actual - self.score) > 0.5:
-            raise ValueError(
-                f'ScoreCardSection 内部矛盾: rubric_scores 之和 ({actual}) != score ({self.score})'
-            )
+            raise ValueError(f'ScoreCardSection 内部矛盾: rubric_scores 之和 ({actual}) != score ({self.score})')
         return self
 
     @model_validator(mode='after')
     def _check_score_within_total(self) -> 'ScoreCardSection':
         """交叉校验: 0 <= score <= score_total"""
         if self.score < 0 or self.score > self.score_total:
-            raise ValueError(
-                f'ScoreCardSection 内部矛盾: score ({self.score}) 越界 [0, {self.score_total}]'
-            )
+            raise ValueError(f'ScoreCardSection 内部矛盾: score ({self.score}) 越界 [0, {self.score_total}]')
         return self
 
 
@@ -256,9 +252,7 @@ class QCSection(SchemaBase):
     def _check_passed_confidence_consistency(self) -> 'QCSection':
         """交叉校验: passed=True 但 confidence<0.3 是矛盾"""
         if self.passed and self.confidence < 0.3:
-            raise ValueError(
-                f'QCSection 内部矛盾: passed=True 但 confidence ({self.confidence}) < 0.3'
-            )
+            raise ValueError(f'QCSection 内部矛盾: passed=True 但 confidence ({self.confidence}) < 0.3')
         return self
 
 

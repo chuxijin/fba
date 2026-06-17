@@ -7,8 +7,6 @@ import time
 import uuid
 
 from backend.plugin.webhook.constant import (
-    DELIVERY_ID_PREFIX,
-    ENDPOINT_ID_PREFIX,
     EVENT_ID_PREFIX,
     SECRET_PREFIX,
     TIMESTAMP_TOLERANCE,
@@ -107,5 +105,5 @@ def _decode_secret(secret: str) -> bytes:
     """
     raw = secret
     if raw.startswith(SECRET_PREFIX):
-        raw = raw[len(SECRET_PREFIX):]
+        raw = raw[len(SECRET_PREFIX) :]
     return base64.b64decode(raw)

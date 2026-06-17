@@ -23,7 +23,7 @@ router = APIRouter()
 async def create_device(request: Request, obj: CreateDeviceParam) -> ResponseSchemaModel[GetDeviceDetail]:
     """
     创建新设备
-    
+
     :param request: FastAPI 请求对象
     :param obj: 设备创建参数
     :return:
@@ -36,7 +36,7 @@ async def create_device(request: Request, obj: CreateDeviceParam) -> ResponseSch
 async def delete_device(request: Request, pk: Annotated[int, Path(description='设备ID')]) -> ResponseModel:
     """
     删除设备
-    
+
     :param request: FastAPI 请求对象
     :param pk: 设备ID
     :return:
@@ -53,7 +53,7 @@ async def update_device(
 ) -> ResponseModel:
     """
     更新设备信息
-    
+
     :param request: FastAPI 请求对象
     :param pk: 设备ID
     :param obj: 设备更新参数
@@ -74,7 +74,7 @@ async def get_pagination_devices(
 ) -> ResponseModel:
     """
     分页获取设备列表
-    
+
     :param db: 数据库会话
     :param device_id: 设备标识
     :param device_name: 设备名称
@@ -90,7 +90,7 @@ async def get_pagination_devices(
 async def get_device(pk: Annotated[int, Path(description='设备ID')]) -> ResponseSchemaModel[GetDeviceDetail]:
     """
     获取设备详情
-    
+
     :param pk: 设备ID
     :return:
     """

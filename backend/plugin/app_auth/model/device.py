@@ -23,7 +23,7 @@ class AppDevice(Base):
     # 主键和必填字段（没有默认值的字段必须放在前面）
     id: Mapped[id_key] = mapped_column(init=False)
     device_id: Mapped[str] = mapped_column(String(100), unique=True, index=True, comment='设备唯一标识')
-    
+
     # 有默认值的字段（必须放在后面）
     device_name: Mapped[str | None] = mapped_column(String(100), default=None, comment='设备名称')
     device_type: Mapped[str | None] = mapped_column(String(50), default=None, comment='设备类型')

@@ -53,9 +53,7 @@ async def get_intern_recruit_list(
 
 
 @router.post('', summary='创建实习岗位', dependencies=[DependsJwtAuth])
-async def create_intern_recruit(
-    db: CurrentSessionTransaction, obj: CreateInternRecruitParam
-) -> ResponseModel:
+async def create_intern_recruit(db: CurrentSessionTransaction, obj: CreateInternRecruitParam) -> ResponseModel:
     """创建实习岗位"""
     await intern_recruit_service.create(db=db, obj=obj)
     return response_base.success()

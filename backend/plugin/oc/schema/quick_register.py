@@ -6,6 +6,7 @@ from pydantic import BaseModel, field_validator
 
 class QuickRegisterParam(BaseModel):
     """快速注册参数"""
+
     phone: str
 
     @field_validator('phone')
@@ -23,6 +24,7 @@ class QuickRegisterParam(BaseModel):
 
 class QuickRegisterResponse(BaseModel):
     """快速注册返回"""
+
     username: str
     password: str
     message: str = '注册成功'

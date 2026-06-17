@@ -60,9 +60,7 @@ class UserApplicationService:
         :return:
         """
         # 检查是否已存在该用户对该岗位的投递记录
-        existing = await user_application_dao.get_by_user_and_job(
-            db, obj.user_id, obj.job_id, obj.job_type
-        )
+        existing = await user_application_dao.get_by_user_and_job(db, obj.user_id, obj.job_id, obj.job_type)
         if existing:
             raise errors.ConflictError(msg='已存在该岗位的投递记录')
         await user_application_dao.create(db, obj)

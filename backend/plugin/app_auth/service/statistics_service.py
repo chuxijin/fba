@@ -31,7 +31,7 @@ class StatisticsService:
             current_time = timezone.now()
             authorizations_stmt = select(func.count(AppAuthorization.id)).where(
                 AppAuthorization.status == 'active',
-                (AppAuthorization.valid_to.is_(None)) | (AppAuthorization.valid_to > current_time)
+                (AppAuthorization.valid_to.is_(None)) | (AppAuthorization.valid_to > current_time),
             )
             authorizations_result = await db.execute(authorizations_stmt)
             authorizations_count = authorizations_result.scalar() or 0
@@ -47,8 +47,7 @@ class StatisticsService:
             active_authorizations_count = active_authorizations_result.scalar() or 0
 
             expired_authorizations_stmt = select(func.count(AppAuthorization.id)).where(
-                AppAuthorization.valid_to.is_not(None),
-                AppAuthorization.valid_to <= current_time
+                AppAuthorization.valid_to.is_not(None), AppAuthorization.valid_to <= current_time
             )
             expired_authorizations_result = await db.execute(expired_authorizations_stmt)
             expired_authorizations_count = expired_authorizations_result.scalar() or 0
@@ -69,5 +68,5 @@ class StatisticsService:
                 active_authorizations=active_authorizations_count,
                 expired_authorizations=expired_authorizations_count,
                 total_orders=orders_count,
-                total_packages=packages_count
+                total_packages=packages_count,
             )

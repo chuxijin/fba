@@ -46,7 +46,7 @@ class FormatterCache:
         self,
         config: dict[str, Any],
         label_index: dict[str, tuple[str, str, int | None]],
-        mapping_index: dict[int, dict[str, list[str]]]
+        mapping_index: dict[int, dict[str, list[str]]],
     ):
         self._config = config
         self._label_index = label_index
@@ -99,7 +99,7 @@ class FormatterService:
             if f.category not in config:
                 config[f.category] = {
                     'chinese': f.category,  # 会被实际的中文名覆盖
-                    'fields': {}
+                    'fields': {},
                 }
 
             # 构建字段配置
@@ -188,12 +188,7 @@ class FormatterService:
         return None
 
     @staticmethod
-    def find_best_match(
-        value: str,
-        options: list[str],
-        category: str | None,
-        field: str | None
-    ) -> str | None:
+    def find_best_match(value: str, options: list[str], category: str | None, field: str | None) -> str | None:
         """在下拉选项中查找最佳匹配值
 
         Args:

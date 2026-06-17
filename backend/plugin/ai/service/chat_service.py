@@ -212,7 +212,7 @@ class ChatService:
                 msg_dict = m.model_dump(exclude_none=True)  # type: ignore
                 openai_messages.append(msg_dict)
         else:
-            openai_messages.append({"role": "user", "content": chat.user_prompt})
+            openai_messages.append({'role': 'user', 'content': chat.user_prompt})
 
         # 构造参数
         kwargs = {
@@ -244,8 +244,8 @@ class ChatService:
             kwargs['stream'] = True
             try:
                 response_stream = await client.chat.completions.create(**kwargs)
-                full_content = ""
-                role = "assistant"
+                full_content = ''
+                role = 'assistant'
 
                 async for chunk in response_stream:
                     if not chunk.choices:
@@ -256,7 +256,7 @@ class ChatService:
                     if delta.role:
                         role = delta.role
 
-                return {"role": role, "content": full_content}
+                return {'role': role, 'content': full_content}
             except Exception as e:
                 raise errors.ServerError(msg=f'AI 请求失败(内部拼接流式返回): {e!s}')
         else:

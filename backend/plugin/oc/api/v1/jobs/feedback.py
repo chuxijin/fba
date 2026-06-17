@@ -24,6 +24,6 @@ async def create_oc_feedback(
         obj=obj,
         user_id=request.user.id,
         ip=get_request_ip(request),
-        user_agent=request.headers.get('User-Agent', '')[:500]
+        user_agent=request.headers.get('User-Agent', '')[:500],
     )
     return response_base.success()

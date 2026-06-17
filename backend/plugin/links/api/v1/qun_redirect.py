@@ -52,7 +52,12 @@ async def render_qun_page(db: CurrentSessionTransaction, request: Request, code:
     except errors.NotFoundError:
         return templates.TemplateResponse(
             'error.html',
-            {'request': request, 'title': '页面不存在', 'message': '群活码不存在或已失效', 'dark_theme': is_dark_theme()},
+            {
+                'request': request,
+                'title': '页面不存在',
+                'message': '群活码不存在或已失效',
+                'dark_theme': is_dark_theme(),
+            },
             status_code=404,
         )
     except errors.RequestError as e:

@@ -20,10 +20,12 @@ router = APIRouter()
 
 
 @router.post('', summary='创建应用', dependencies=[DependsRBAC])
-async def create_application(request: Request, obj: CreateApplicationParam) -> ResponseSchemaModel[GetApplicationDetail]:
+async def create_application(
+    request: Request, obj: CreateApplicationParam
+) -> ResponseSchemaModel[GetApplicationDetail]:
     """
     创建新应用
-    
+
     :param request: FastAPI 请求对象
     :param obj: 应用创建参数
     :return:
@@ -36,7 +38,7 @@ async def create_application(request: Request, obj: CreateApplicationParam) -> R
 async def delete_application(request: Request, pk: Annotated[int, Path(description='应用ID')]) -> ResponseModel:
     """
     删除应用
-    
+
     :param request: FastAPI 请求对象
     :param pk: 应用ID
     :return:
@@ -53,7 +55,7 @@ async def update_application(
 ) -> ResponseModel:
     """
     更新应用信息
-    
+
     :param request: FastAPI 请求对象
     :param pk: 应用ID
     :param obj: 应用更新参数
@@ -74,7 +76,7 @@ async def get_pagination_applications(
 ) -> ResponseModel:
     """
     分页获取应用列表
-    
+
     :param db: 数据库会话
     :param name: 应用名称
     :param app_key: 应用标识
@@ -90,7 +92,7 @@ async def get_pagination_applications(
 async def get_application(pk: Annotated[int, Path(description='应用ID')]) -> ResponseSchemaModel[GetApplicationDetail]:
     """
     获取应用详情
-    
+
     :param pk: 应用ID
     :return:
     """

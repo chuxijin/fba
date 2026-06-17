@@ -34,12 +34,7 @@ async def send_notification(obj: CreateNotifyParam) -> ResponseModel:
 
 
 @router.get('/wecom/callback', summary='企业微信应用回调验证')
-async def wecom_callback_verify(
-    msg_signature: str,
-    timestamp: str,
-    nonce: str,
-    echostr: str
-) -> PlainTextResponse:
+async def wecom_callback_verify(msg_signature: str, timestamp: str, nonce: str, echostr: str) -> PlainTextResponse:
     """
     企业微信自建应用回调验证接口 (GET)
 
@@ -50,34 +45,29 @@ async def wecom_callback_verify(
     :return:
     """
     if not settings.NOTIFY_WECOM_APP_TOKEN or not settings.NOTIFY_WECOM_APP_ENCODING_AES_KEY:
-        log.error("企业微信回调配置缺失")
-        return PlainTextResponse("配置错误", status_code=500)
+        log.error('企业微信回调配置缺失')
+        return PlainTextResponse('配置错误', status_code=500)
 
     crypt = WecomMsgCrypt(
         token=settings.NOTIFY_WECOM_APP_TOKEN,
         encoding_aes_key=settings.NOTIFY_WECOM_APP_ENCODING_AES_KEY,
-        receive_id=settings.NOTIFY_WECOM_APP_CORPID
+        receive_id=settings.NOTIFY_WECOM_APP_CORPID,
     )
 
     if not crypt.verify_signature(msg_signature, timestamp, nonce, echostr):
-        log.warning("企业微信签名验证失败")
-        return PlainTextResponse("签名校验失败", status_code=400)
+        log.warning('企业微信签名验证失败')
+        return PlainTextResponse('签名校验失败', status_code=400)
 
     try:
         decrypted_echostr = crypt.decrypt(echostr)
         return PlainTextResponse(content=decrypted_echostr)
     except Exception as e:
-        log.error(f"企业微信验证 echostr 解密失败: {e}")
-        return PlainTextResponse("解密失败", status_code=400)
+        log.error(f'企业微信验证 echostr 解密失败: {e}')
+        return PlainTextResponse('解密失败', status_code=400)
 
 
 @router.post('/wecom/callback', summary='企业微信接收消息与事件')
-async def wecom_callback_event(
-    request: Request,
-    msg_signature: str,
-    timestamp: str,
-    nonce: str
-) -> PlainTextResponse:
+async def wecom_callback_event(request: Request, msg_signature: str, timestamp: str, nonce: str) -> PlainTextResponse:
     """
     接收企业微信自建应用的消息与事件回调 (POST)
 
@@ -88,38 +78,38 @@ async def wecom_callback_event(
     :return:
     """
     if not settings.NOTIFY_WECOM_APP_TOKEN or not settings.NOTIFY_WECOM_APP_ENCODING_AES_KEY:
-        log.error("企业微信回调配置缺失")
-        return PlainTextResponse("配置错误", status_code=500)
+        log.error('企业微信回调配置缺失')
+        return PlainTextResponse('配置错误', status_code=500)
 
     body = await request.body()
     if not body:
-        return PlainTextResponse("empty body", status_code=400)
+        return PlainTextResponse('empty body', status_code=400)
 
     try:
         root = ET.fromstring(body)
         encrypt_node = root.find('Encrypt')
         if encrypt_node is None or not encrypt_node.text:
-            return PlainTextResponse("encrypt node not found", status_code=400)
+            return PlainTextResponse('encrypt node not found', status_code=400)
         encrypt = encrypt_node.text
     except Exception as e:
-        log.error(f"解析微信 XML 发生异常: {e}")
-        return PlainTextResponse("bad xml", status_code=400)
+        log.error(f'解析微信 XML 发生异常: {e}')
+        return PlainTextResponse('bad xml', status_code=400)
 
     crypt = WecomMsgCrypt(
         token=settings.NOTIFY_WECOM_APP_TOKEN,
         encoding_aes_key=settings.NOTIFY_WECOM_APP_ENCODING_AES_KEY,
-        receive_id=settings.NOTIFY_WECOM_APP_CORPID
+        receive_id=settings.NOTIFY_WECOM_APP_CORPID,
     )
 
     if not crypt.verify_signature(msg_signature, timestamp, nonce, encrypt):
-        log.warning("企业微信签名验证失败")
-        return PlainTextResponse("签名校验失败", status_code=400)
+        log.warning('企业微信签名验证失败')
+        return PlainTextResponse('签名校验失败', status_code=400)
 
     try:
         xml_content = crypt.decrypt(encrypt)
-        log.info(f"解密后的企业微信消息明文: {xml_content}")
+        log.info(f'解密后的企业微信消息明文: {xml_content}')
 
-        event_root = ET.fromstring(xml_content.encode("utf-8"))
+        event_root = ET.fromstring(xml_content.encode('utf-8'))
         msg_type = event_root.findtext('MsgType')
         event = event_root.findtext('Event')
 
@@ -128,25 +118,23 @@ async def wecom_callback_event(
             response_code = event_root.findtext('ResponseCode')
             from_username = event_root.findtext('FromUserName')
 
-            log.info(f"用户 {from_username} 点击了微信卡片按钮: {event_key}, response_code: {response_code}")
+            log.info(f'用户 {from_username} 点击了微信卡片按钮: {event_key}, response_code: {response_code}')
 
-            replace_text = "操作已受理"
-            if event_key in ("accept", "button_key_1"):
-                replace_text = "已接受处理"
-            elif event_key in ("reject", "button_key_2"):
-                replace_text = "已拒绝处理"
+            replace_text = '操作已受理'
+            if event_key in ('accept', 'button_key_1'):
+                replace_text = '已接受处理'
+            elif event_key in ('reject', 'button_key_2'):
+                replace_text = '已拒绝处理'
 
             import asyncio
+
             asyncio.create_task(
                 update_wecom_app_template_card(
-                    response_code=response_code,
-                    replace_text=replace_text,
-                    userids=[from_username]
+                    response_code=response_code, replace_text=replace_text, userids=[from_username]
                 )
             )
 
-        return PlainTextResponse("success")
+        return PlainTextResponse('success')
     except Exception as e:
-        log.error(f"处理微信事件发生异常: {e}")
-        return PlainTextResponse("success")
-
+        log.error(f'处理微信事件发生异常: {e}')
+        return PlainTextResponse('success')

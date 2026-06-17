@@ -83,6 +83,7 @@ class CRUDDevice(CRUDPlus[AppDevice]):
         device = await self.get_by_device_id(db, device_id)
         if device:
             from backend.utils.timezone import timezone
+
             return await self.update_model(db, device.id, {'last_seen': timezone.now()})
         return 0
 

@@ -174,9 +174,7 @@ class CRUDLog(CRUDPlus[Log]):
         :return:
         """
         stmt = (
-            select(func.sum(self.model.pv))
-            .where(self.model.type == log_type)
-            .where(self.model.target_id == target_id)
+            select(func.sum(self.model.pv)).where(self.model.type == log_type).where(self.model.target_id == target_id)
         )
         result = await db.execute(stmt)
         return result.scalar() or 0

@@ -30,9 +30,17 @@ async def test_pipeline_runs_all_12_nodes(
 
     called_nodes = [c['node'] for c in fake_llm.calls]
     expected = {
-        'classifier', 'material_parser', 'reference_analyzer', 'answer_analyzer',
-        'point_matcher', 'structure_analyzer', 'scorer', 'diagnoser',
-        'suggester', 'rewriter', 'reviewer',
+        'classifier',
+        'material_parser',
+        'reference_analyzer',
+        'answer_analyzer',
+        'point_matcher',
+        'structure_analyzer',
+        'scorer',
+        'diagnoser',
+        'suggester',
+        'rewriter',
+        'reviewer',
     }
     assert set(called_nodes) == expected, f'缺失或多余节点调用: {set(called_nodes) ^ expected}'
 
@@ -68,9 +76,7 @@ async def test_pipeline_produces_complete_agent_report(node_context: NodeContext
     assert len(state.key_points.reference_points) == 4
     assert len(state.key_points.answer_points) == 2
 
-    high_count = sum(
-        1 for p in state.key_points.reference_points if p.consensus_level == ConsensusLevel.high
-    )
+    high_count = sum(1 for p in state.key_points.reference_points if p.consensus_level == ConsensusLevel.high)
     assert high_count == 2, f'期望 2 条 high consensus, 实际 {high_count}'
 
     assert len(state.key_points.missing_points) == 2
@@ -92,9 +98,7 @@ async def test_pipeline_sse_emits_section_ready_events(
     """SSE 应推送 6 个 section_ready + completed 事件"""
     await build_pipeline().run(node_context)
 
-    section_ready_events = [
-        e for e in collected_events if e['event_type'] == EventType.section_ready.value
-    ]
+    section_ready_events = [e for e in collected_events if e['event_type'] == EventType.section_ready.value]
     section_names = [e['section_name'] for e in section_ready_events]
 
     expected_sections = {
@@ -105,9 +109,7 @@ async def test_pipeline_sse_emits_section_ready_events(
         SectionName.rewritten_text.value,
         SectionName.qc.value,
     }
-    assert set(section_names) == expected_sections, (
-        f'缺失或多余 section 推送: {set(section_names) ^ expected_sections}'
-    )
+    assert set(section_names) == expected_sections, f'缺失或多余 section 推送: {set(section_names) ^ expected_sections}'
 
     last_event = collected_events[-1]
     assert last_event['event_type'] == EventType.completed.value

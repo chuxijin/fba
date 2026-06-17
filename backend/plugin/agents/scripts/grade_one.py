@@ -9,6 +9,7 @@
 --mode mock: 用 FakeLLMClient 跑流程, 验证数据流通畅 (不调真实 LLM)
 --mode real: 调真实 LLM (需要 ai_provider 与 ai_model 在数据库内 status=1)
 """
+
 import argparse
 import asyncio
 import sys
@@ -92,8 +93,10 @@ def _print_report(state: GradingState) -> None:
     sep = '=' * 70
     print(sep)
     print(f'题型识别: {state.question_type}')
-    print(f'评分细则: {state.rubric.get("total") if state.rubric else "?"} 分制, '
-          f'{len(state.rubric.get("dimensions", [])) if state.rubric else 0} 维度')
+    print(
+        f'评分细则: {state.rubric.get("total") if state.rubric else "?"} 分制, '
+        f'{len(state.rubric.get("dimensions", [])) if state.rubric else 0} 维度'
+    )
 
     if state.score_card:
         sc = state.score_card
@@ -103,7 +106,7 @@ def _print_report(state: GradingState) -> None:
             print(f'  {s.name:6} {s.score:4}/{s.max_score:<3} [{s.level}/{s.level_label}]: {s.comment}')
         print(f'\n【总评】 {sc.summary}')
         if sc.system_notes:
-            print(f'\n【系统提示】 (评分被代码层硬规则约束)')
+            print('\n【系统提示】 (评分被代码层硬规则约束)')
             for note in sc.system_notes:
                 print(f'  - {note}')
 
@@ -112,9 +115,11 @@ def _print_report(state: GradingState) -> None:
         high = sum(1 for p in kp.reference_points if p.consensus_level == 'high')
         med = sum(1 for p in kp.reference_points if p.consensus_level == 'medium')
         print(sep)
-        print(f'【要点对比】 材料 {len(kp.material_points)} 条 / '
-              f'参考 {len(kp.reference_points)} 条 (high {high} + med {med}) / '
-              f'考生 {len(kp.answer_points)} 条 / 缺失 {len(kp.missing_points)} 条')
+        print(
+            f'【要点对比】 材料 {len(kp.material_points)} 条 / '
+            f'参考 {len(kp.reference_points)} 条 (high {high} + med {med}) / '
+            f'考生 {len(kp.answer_points)} 条 / 缺失 {len(kp.missing_points)} 条'
+        )
         if kp.missing_points:
             print('  缺失要点:')
             for mp in kp.missing_points:
@@ -146,7 +151,7 @@ def _print_report(state: GradingState) -> None:
                 print(f'       改写: {c.revised}')
                 print(f'       原因: {c.reason}')
         diff_text = rt.inline_diff if rt.inline_diff else rt.revised
-        print(f'\n  行内对比 (~~删除线~~=删除, **加粗**=新增):')
+        print('\n  行内对比 (~~删除线~~=删除, **加粗**=新增):')
         print(f'  {diff_text}')
 
     if state.qc:
@@ -169,8 +174,9 @@ def main() -> None:
     """命令行入口"""
     parser = argparse.ArgumentParser(description='Agent 批改 CLI')
     parser.add_argument('--sample', required=True, help='样卷 yaml 路径')
-    parser.add_argument('--mode', choices=['mock', 'real'], default='mock',
-                        help='mock 用 FakeLLM 验证数据流, real 调真实 LLM')
+    parser.add_argument(
+        '--mode', choices=['mock', 'real'], default='mock', help='mock 用 FakeLLM 验证数据流, real 调真实 LLM'
+    )
     args = parser.parse_args()
 
     sample_path = Path(args.sample)
