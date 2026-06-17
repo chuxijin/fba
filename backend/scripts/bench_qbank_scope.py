@@ -18,6 +18,7 @@ qbank 学习领域接口性能对比脚本
 
 输出: min / avg / p50 / p95 / max (ms)，并按学习领域 code 分组对比
 """
+
 import argparse
 import asyncio
 import statistics
@@ -163,12 +164,14 @@ def main() -> None:
     token = args.token.replace('Bearer ', '') if args.token else None
 
     if args.concurrent > 0:
-        asyncio.run(run_concurrent(
-            base_url=args.base,
-            code=codes[0],
-            concurrent=args.concurrent,
-            token=token,
-        ))
+        asyncio.run(
+            run_concurrent(
+                base_url=args.base,
+                code=codes[0],
+                concurrent=args.concurrent,
+                token=token,
+            )
+        )
         return
 
     run(

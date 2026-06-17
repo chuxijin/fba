@@ -9,6 +9,7 @@
 
 数据来源: https://github.com/kajweb/dict
 """
+
 import asyncio
 import json
 import os
@@ -187,9 +188,7 @@ async def import_book(db: AsyncSession, zip_filename: str) -> dict:
         return {'status': 'skipped', 'reason': 'file not found'}
 
     # 检查词书是否已存在
-    existing_book = await db.scalar(
-        select(VocabBook).where(VocabBook.name == book_name).limit(1)
-    )
+    existing_book = await db.scalar(select(VocabBook).where(VocabBook.name == book_name).limit(1))
     if existing_book:
         print(f'  [SKIP] "{book_name}" already exists (id={existing_book.id})')
         return {'status': 'skipped', 'reason': 'book exists'}
@@ -233,10 +232,8 @@ async def import_book(db: AsyncSession, zip_filename: str) -> dict:
 
     # 分批查询已存在的单词（避免 IN 子句过长）
     for i in range(0, len(word_texts), 500):
-        batch_texts = word_texts[i:i + 500]
-        result = await db.execute(
-            select(VocabWord.id, VocabWord.word).where(VocabWord.word.in_(batch_texts))
-        )
+        batch_texts = word_texts[i : i + 500]
+        result = await db.execute(select(VocabWord.id, VocabWord.word).where(VocabWord.word.in_(batch_texts)))
         for row in result:
             existing_word_map[row.word] = row.id
 
@@ -246,7 +243,7 @@ async def import_book(db: AsyncSession, zip_filename: str) -> dict:
     total_examples = 0
 
     for batch_start in range(0, len(parsed_entries), BATCH_SIZE):
-        batch = parsed_entries[batch_start:batch_start + BATCH_SIZE]
+        batch = parsed_entries[batch_start : batch_start + BATCH_SIZE]
 
         for idx_in_batch, parsed in enumerate(batch):
             global_idx = batch_start + idx_in_batch
@@ -272,34 +269,40 @@ async def import_book(db: AsyncSession, zip_filename: str) -> dict:
 
                 # 写入释义
                 for defn in parsed['definitions']:
-                    db.add(VocabDefinition(
-                        word_id=word_id,
-                        meaning=defn['meaning'],
-                        part_of_speech=defn['part_of_speech'],
-                        meaning_en=defn['meaning_en'],
-                        sort_order=defn['sort_order'],
-                    ))
+                    db.add(
+                        VocabDefinition(
+                            word_id=word_id,
+                            meaning=defn['meaning'],
+                            part_of_speech=defn['part_of_speech'],
+                            meaning_en=defn['meaning_en'],
+                            sort_order=defn['sort_order'],
+                        )
+                    )
                     total_definitions += 1
 
                 # 写入例句
                 for ex in parsed['examples']:
-                    db.add(VocabExample(
-                        word_id=word_id,
-                        sentence_en=ex['sentence_en'],
-                        sentence_zh=ex['sentence_zh'],
-                        source=ex['source'],
-                        sort_order=ex['sort_order'],
-                    ))
+                    db.add(
+                        VocabExample(
+                            word_id=word_id,
+                            sentence_en=ex['sentence_en'],
+                            sentence_zh=ex['sentence_zh'],
+                            source=ex['source'],
+                            sort_order=ex['sort_order'],
+                        )
+                    )
                     total_examples += 1
             else:
                 reuse_word_count += 1
 
             # 词书-单词关联
-            db.add(VocabBookWord(
-                book_id=book_id,
-                word_id=word_id,
-                sort_order=parsed.get('word_rank', global_idx),
-            ))
+            db.add(
+                VocabBookWord(
+                    book_id=book_id,
+                    word_id=word_id,
+                    sort_order=parsed.get('word_rank', global_idx),
+                )
+            )
 
         await db.flush()
         progress = min(batch_start + BATCH_SIZE, len(parsed_entries))
@@ -348,11 +351,13 @@ async def main():
     print('Summary:')
     for r in results:
         if r['status'] == 'ok':
-            print(f"  OK: {r['book_name']}: {r['total_entries']} words "
-                  f"(new={r['new_words']}, reused={r['reused_words']}, "
-                  f"defs={r['definitions']}, examples={r['examples']})")
+            print(
+                f'  OK: {r["book_name"]}: {r["total_entries"]} words '
+                f'(new={r["new_words"]}, reused={r["reused_words"]}, '
+                f'defs={r["definitions"]}, examples={r["examples"]})'
+            )
         else:
-            print(f"  SKIP: {r.get('reason', 'unknown')}")
+            print(f'  SKIP: {r.get("reason", "unknown")}')
     print('=' * 60)
 
 

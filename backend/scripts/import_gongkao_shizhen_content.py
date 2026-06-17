@@ -69,7 +69,7 @@ async def fetch_news_page(client: httpx.AsyncClient, page_num: int, page_size: i
     response.raise_for_status()
     payload = response.json()
     if payload.get('code') != 0:
-        raise RuntimeError(f"saduck api error: {payload.get('message', 'unknown error')}")
+        raise RuntimeError(f'saduck api error: {payload.get("message", "unknown error")}')
 
     result = payload.get('result') or {}
     records = result.get('records') or []
@@ -299,8 +299,8 @@ async def main() -> int:
     print('[ORDER] import order by remote id asc:')
     for record in records:
         print(
-            f"  - remote_id={int(record.get('id') or 0)} "
-            f"date={record.get('addTime')} title={str(record.get('title') or '').strip()}"
+            f'  - remote_id={int(record.get("id") or 0)} '
+            f'date={record.get("addTime")} title={str(record.get("title") or "").strip()}'
         )
 
     if args.dry_run:

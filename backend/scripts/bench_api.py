@@ -12,6 +12,7 @@ API 接口响应时间批量检测脚本
 提示:
     JWT token 可从浏览器 DevTools → Network → 任意请求的 Authorization header 中复制
 """
+
 import argparse
 import time
 
@@ -25,11 +26,9 @@ ENDPOINTS: list[tuple[str, str, str, dict | None]] = [
     # ---- 首页 ----
     ('GET', '/api/v1/qbank/home/dashboard', '首页 Dashboard', None),
     ('GET', '/api/v1/qbank/home/rank?rank_type=practice_count', '排行榜', None),
-
     # ---- 题库 ----
     ('GET', '/api/v1/qbank/banks/recommend', '推荐题库', None),
     ('GET', '/api/v1/qbank/banks?page=1&size=10', '题库列表', None),
-
     # ---- 个人数据 ----
     ('GET', '/api/v1/qbank/questions/favorites?page=1&size=10', '收藏列表', None),
     ('GET', '/api/v1/qbank/questions/notes?page=1&size=10', '笔记列表', None),
@@ -37,12 +36,10 @@ ENDPOINTS: list[tuple[str, str, str, dict | None]] = [
     ('GET', '/api/v1/qbank/wrong-questions/statistics', '错题统计', None),
     ('GET', '/api/v1/qbank/favorites/statistics', '收藏统计', None),
     ('GET', '/api/v1/qbank/notes/statistics', '笔记统计', None),
-
     # ---- 会话 ----
     ('GET', '/api/v1/qbank/sessions?page=1&size=10&status=in_progress', '进行中会话', None),
     ('GET', '/api/v1/qbank/sessions?page=1&size=10&status=completed', '已完成会话', None),
     ('GET', '/api/v1/qbank/sessions/records?page=1&size=10', '答题记录列表', None),
-
     # ---- 用户 ----
     ('GET', '/api/v1/qbank/auth/me', '用户信息', None),
     ('GET', '/api/v1/qbank/settings/study-preference', '学习偏好', None),
@@ -136,7 +133,9 @@ def run_benchmark(
         print(f'{marker}{ms:>7.1f}ms  {status_display:>6}  {r["method"]:>6}  {r["desc"]:<16}  {r["path"]}')
 
     print('-' * 72)
-    print(f'  Total: {total_ms:.0f}ms  |  Avg: {total_ms / len(results):.0f}ms  |  Slow (>{slow_threshold}ms): {slow_count}/{len(results)}')
+    print(
+        f'  Total: {total_ms:.0f}ms  |  Avg: {total_ms / len(results):.0f}ms  |  Slow (>{slow_threshold}ms): {slow_count}/{len(results)}'
+    )
     print()
 
 

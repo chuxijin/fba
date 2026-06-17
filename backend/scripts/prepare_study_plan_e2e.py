@@ -321,7 +321,9 @@ async def ensure_mentor_relation(db: AsyncSession, mentor_id: int, student_id: i
     return int(row['id'])
 
 
-async def ensure_plan(db: AsyncSession, student_id: int, mentor_id: int, title: str | None, start: str | None) -> dict[str, Any]:
+async def ensure_plan(
+    db: AsyncSession, student_id: int, mentor_id: int, title: str | None, start: str | None
+) -> dict[str, Any]:
     """
     确保联调计划存在
 
@@ -443,12 +445,12 @@ async def main() -> int:
 
     print('[OK] study plan e2e data prepared')
     print(
-        f"- mentor id={mentor_id} username={mentor['username']} "
-        f"nickname={mentor['nickname']} roles=学习规划管理员,学习规划导师"
+        f'- mentor id={mentor_id} username={mentor["username"]} '
+        f'nickname={mentor["nickname"]} roles=学习规划管理员,学习规划导师'
     )
     print(
-        f"- student id={student_id} username={student['username']} "
-        f"nickname={student['nickname']} whitelist={whitelist_tip}"
+        f'- student id={student_id} username={student["username"]} '
+        f'nickname={student["nickname"]} whitelist={whitelist_tip}'
     )
     print(f'- relation id={relation_id} status=active')
 
@@ -459,14 +461,11 @@ async def main() -> int:
         return 0
 
     created_label = 'created' if plan_result['created'] else 'reused'
+    print(f'- template id={template["id"]} name={template["name"]} items={template["item_count"]}')
     print(
-        f"- template id={template['id']} name={template['name']} "
-        f"items={template['item_count']}"
-    )
-    print(
-        f"- plan {created_label} id={plan['id']} title={plan['title']} "
-        f"range={plan['start_date']}~{plan['end_date']} "
-        f"items={plan_result['item_count']}"
+        f'- plan {created_label} id={plan["id"]} title={plan["title"]} '
+        f'range={plan["start_date"]}~{plan["end_date"]} '
+        f'items={plan_result["item_count"]}'
     )
 
     if cache_error is not None:

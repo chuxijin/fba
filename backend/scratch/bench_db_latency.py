@@ -13,6 +13,7 @@
 后端服务在跑时用 --no-sync 避免 uv 重装依赖（防止 fba.exe 被占用报错）：
     uv run --no-sync python backend/scratch/bench_db_latency.py
 """
+
 import asyncio
 import statistics
 import sys
@@ -116,9 +117,7 @@ async def bench_l5_full_chain() -> list[float]:
     for _ in range(ROUNDS):
         async with async_db_session() as session:
             t = time.perf_counter()
-            await BankProgressService.get_chapter_progress(
-                db=session, bank_id=BANK_ID, user_id=USER_ID
-            )
+            await BankProgressService.get_chapter_progress(db=session, bank_id=BANK_ID, user_id=USER_ID)
             samples.append((time.perf_counter() - t) * 1000)
     return samples
 

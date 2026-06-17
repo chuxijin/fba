@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """测试汉语词汇频次统计任务"""
+
 import asyncio
 import sys
 
@@ -28,13 +29,13 @@ async def main():
     print('=' * 60)
     print('执行结果')
     print('=' * 60)
-    print(f"✅ 执行状态: {'成功' if result['success'] else '失败'}")
-    print(f"📊 成语总数: {result['total_count']}")
-    print(f"🔄 更新记录: {result['updated_count']}")
-    print(f"❌ 错误数量: {result['error_count']}")
-    print(f"⏱️  执行耗时: {result['elapsed_seconds']} 秒")
+    print(f'✅ 执行状态: {"成功" if result["success"] else "失败"}')
+    print(f'📊 成语总数: {result["total_count"]}')
+    print(f'🔄 更新记录: {result["updated_count"]}')
+    print(f'❌ 错误数量: {result["error_count"]}')
+    print(f'⏱️  执行耗时: {result["elapsed_seconds"]} 秒')
     print()
-    print(f"💬 消息: {result['message']}")
+    print(f'💬 消息: {result["message"]}')
     print('=' * 60)
 
 

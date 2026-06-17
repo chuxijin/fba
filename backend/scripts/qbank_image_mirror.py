@@ -252,15 +252,15 @@ class QbankImageMirror:
         for key in ['QINIU_KODO_DOMAIN', 'OSS_ENDPOINT', 'OSS_DOMAIN']:
             self._append_domain(self.own_domains, str(getattr(settings, key, '')).strip())
         print(
-            "[MIRROR_CFG]"
-            f" provider={self.runtime_cfg.provider}"
-            f" key_prefix={self.runtime_cfg.key_prefix or '<empty>'}"
-            f" use_signed={self.runtime_cfg.use_signed_url}"
-            f" signed_expire={self.runtime_cfg.signed_url_expire_seconds}"
-            f" object_expire_days={self.runtime_cfg.object_expire_days}"
-            f" qiniu_domain={str(getattr(settings, 'QINIU_KODO_DOMAIN', '')).strip() or '<empty>'}"
-            f" safe_interval={self.safe_interval_seconds:.2f}s"
-            f" jitter={self.safe_interval_jitter_seconds:.2f}s"
+            '[MIRROR_CFG]'
+            f' provider={self.runtime_cfg.provider}'
+            f' key_prefix={self.runtime_cfg.key_prefix or "<empty>"}'
+            f' use_signed={self.runtime_cfg.use_signed_url}'
+            f' signed_expire={self.runtime_cfg.signed_url_expire_seconds}'
+            f' object_expire_days={self.runtime_cfg.object_expire_days}'
+            f' qiniu_domain={str(getattr(settings, "QINIU_KODO_DOMAIN", "")).strip() or "<empty>"}'
+            f' safe_interval={self.safe_interval_seconds:.2f}s'
+            f' jitter={self.safe_interval_jitter_seconds:.2f}s'
         )
 
     @staticmethod

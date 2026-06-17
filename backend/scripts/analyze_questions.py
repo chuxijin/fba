@@ -8,8 +8,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-INPUT_FILE = Path(__file__).parent.parent / "output" / "gk_yuyan_2019_2026.md"
-OUTPUT_FILE = Path(__file__).parent.parent / "output" / "真题逐题拆解.md"
+INPUT_FILE = Path(__file__).parent.parent / 'output' / 'gk_yuyan_2019_2026.md'
+OUTPUT_FILE = Path(__file__).parent.parent / 'output' / '真题逐题拆解.md'
 
 
 def parse_questions(text: str) -> list[dict]:
@@ -33,10 +33,7 @@ def parse_questions(text: str) -> list[dict]:
             current_paper = paper_match.group(1).strip()
 
         # 检测题目
-        q_match = re.search(
-            r'\*\*(\d+)\.\*\*\s*(.*?)(?=\n\n- [A-D]\.|$)',
-            block, re.DOTALL
-        )
+        q_match = re.search(r'\*\*(\d+)\.\*\*\s*(.*?)(?=\n\n- [A-D]\.|$)', block, re.DOTALL)
         if not q_match:
             continue
 
@@ -44,8 +41,7 @@ def parse_questions(text: str) -> list[dict]:
         q_body = q_match.group(2).strip()
 
         # 提取选项
-        options = re.findall(r'- ([A-D])\.\s*(.+?)(?=\n\n- [A-D]\.|\n\n\*\*答案|$)',
-                           block, re.DOTALL)
+        options = re.findall(r'- ([A-D])\.\s*(.+?)(?=\n\n- [A-D]\.|\n\n\*\*答案|$)', block, re.DOTALL)
 
         # 提取答案
         answer_match = re.search(r'\*\*答案：([A-D])\*\*', block)
@@ -56,7 +52,7 @@ def parse_questions(text: str) -> list[dict]:
 
         # 分离题干和提问
         stem = q_body
-        question = ""
+        question = ''
 
         # 提取提问句
         q_patterns = [
@@ -112,7 +108,7 @@ def parse_questions(text: str) -> list[dict]:
             m = re.search(pattern, stem)
             if m:
                 question = m.group(1).strip()
-                stem = stem[:m.start()].strip()
+                stem = stem[: m.start()].strip()
                 break
 
         # 计算纯文本字数（去除HTML标签）
@@ -167,7 +163,13 @@ def classify_question_type(question: str, body: str, options: list) -> str:
         return '细节理解-反向'
     if '意在说明' in question or '意在强调' in question or '想说的是' in question:
         return '意图判断'
-    if '主要介绍' in question or '主要说明' in question or '主要解释' in question or '主要谈论' in question or '主要讲' in question:
+    if (
+        '主要介绍' in question
+        or '主要说明' in question
+        or '主要解释' in question
+        or '主要谈论' in question
+        or '主要讲' in question
+    ):
         return '主旨概括'
     if '概括为' in question:
         return '主旨概括'
@@ -236,11 +238,11 @@ def analyze_options(options: list, answer: str, stem: str) -> list[dict]:
 
     for code, text in options:
         text = text.strip()
-        is_correct = (code == answer)
+        is_correct = code == answer
 
         if is_correct:
-            reason = "正确选项"
-            pattern = "核心论点改写"
+            reason = '正确选项'
+            pattern = '核心论点改写'
         else:
             # 分析错误原因
             pattern, reason = analyze_distractor(text, stem, answer)
@@ -272,7 +274,9 @@ def analyze_distractor(option_text: str, stem: str, correct_code: str) -> tuple[
         return '偷换范围', '使用绝对化词语，扩大了原文范围'
 
     # 检查是否偷换时态
-    if re.search(r'已经|已完成|已实现|已成为', option_clean) and not re.search(r'已经|已完成|已实现|已成为', stem_clean):
+    if re.search(r'已经|已完成|已实现|已成为', option_clean) and not re.search(
+        r'已经|已完成|已实现|已成为', stem_clean
+    ):
         return '偷换时态', '将未发生的事说成已发生'
 
     # 检查是否细节干扰（选项是原文的细节而非核心）
@@ -286,43 +290,43 @@ def format_question(q: dict, idx: int) -> str:
     """格式化单道题目的拆解分析。"""
     lines = []
 
-    lines.append(f"## Q{idx} (年份:{q['year']} 第{q['num']}题)")
-    lines.append("")
-    lines.append(f"**字数：** {q['char_count']}字")
-    lines.append(f"**题型：** {q['type']}")
-    lines.append(f"**结构：** {q['structure']}")
-    lines.append("")
+    lines.append(f'## Q{idx} (年份:{q["year"]} 第{q["num"]}题)')
+    lines.append('')
+    lines.append(f'**字数：** {q["char_count"]}字')
+    lines.append(f'**题型：** {q["type"]}')
+    lines.append(f'**结构：** {q["structure"]}')
+    lines.append('')
 
     # 素材（截取前200字）
     stem_preview = q['stem'][:200]
     if len(q['stem']) > 200:
         stem_preview += '...'
-    lines.append(f"**素材：** {stem_preview}")
-    lines.append("")
+    lines.append(f'**素材：** {stem_preview}')
+    lines.append('')
 
     # 提问
     if q['question']:
-        lines.append(f"**提问：** {q['question']}")
-        lines.append("")
+        lines.append(f'**提问：** {q["question"]}')
+        lines.append('')
 
     # 正确选项
-    lines.append(f"**正确选项：** {q['answer']}")
-    lines.append("")
+    lines.append(f'**正确选项：** {q["answer"]}')
+    lines.append('')
 
     # 选项分析
-    lines.append("**选项分析：**")
-    lines.append("")
+    lines.append('**选项分析：**')
+    lines.append('')
     for opt in q['option_analysis']:
-        marker = "✅" if opt['is_correct'] else "❌"
-        lines.append(f"- {opt['code']}. {opt['text'][:60]}{'...' if len(opt['text']) > 60 else ''}")
+        marker = '✅' if opt['is_correct'] else '❌'
+        lines.append(f'- {opt["code"]}. {opt["text"][:60]}{"..." if len(opt["text"]) > 60 else ""}')
         if not opt['is_correct']:
-            lines.append(f"  {marker} 套路：{opt['pattern']} | {opt['reason']}")
+            lines.append(f'  {marker} 套路：{opt["pattern"]} | {opt["reason"]}')
         else:
-            lines.append(f"  {marker} {opt['reason']}")
+            lines.append(f'  {marker} {opt["reason"]}')
 
-    lines.append("")
-    lines.append("---")
-    lines.append("")
+    lines.append('')
+    lines.append('---')
+    lines.append('')
 
     return '\n'.join(lines)
 
@@ -331,58 +335,58 @@ def build_output(questions: list[dict]) -> str:
     """生成完整的拆解文档。"""
     lines = []
 
-    lines.append("# 国考言语理解真题逐题拆解")
-    lines.append("")
-    lines.append(f"> 总题数：{len(questions)} 道")
-    lines.append(f"> 自动生成，基于 2019-2026 年真题")
-    lines.append("")
-    lines.append("---")
-    lines.append("")
+    lines.append('# 国考言语理解真题逐题拆解')
+    lines.append('')
+    lines.append(f'> 总题数：{len(questions)} 道')
+    lines.append(f'> 自动生成，基于 2019-2026 年真题')
+    lines.append('')
+    lines.append('---')
+    lines.append('')
 
     # 统计概览
-    lines.append("## 统计概览")
-    lines.append("")
-    lines.append("### 题型分布")
-    lines.append("")
+    lines.append('## 统计概览')
+    lines.append('')
+    lines.append('### 题型分布')
+    lines.append('')
     type_counts = {}
     for q in questions:
         t = q['type']
         type_counts[t] = type_counts.get(t, 0) + 1
-    lines.append("| 题型 | 题量 | 占比 |")
-    lines.append("|------|------|------|")
+    lines.append('| 题型 | 题量 | 占比 |')
+    lines.append('|------|------|------|')
     for t, c in sorted(type_counts.items(), key=lambda x: -x[1]):
         pct = round(c / len(questions) * 100, 1)
-        lines.append(f"| {t} | {c} | {pct}% |")
-    lines.append("")
+        lines.append(f'| {t} | {c} | {pct}% |')
+    lines.append('')
 
-    lines.append("### 结构分布")
-    lines.append("")
+    lines.append('### 结构分布')
+    lines.append('')
     struct_counts = {}
     for q in questions:
         s = q['structure']
         struct_counts[s] = struct_counts.get(s, 0) + 1
-    lines.append("| 结构 | 题量 | 占比 |")
-    lines.append("|------|------|------|")
+    lines.append('| 结构 | 题量 | 占比 |')
+    lines.append('|------|------|------|')
     for s, c in sorted(struct_counts.items(), key=lambda x: -x[1])[:15]:
         pct = round(c / len(questions) * 100, 1)
-        lines.append(f"| {s} | {c} | {pct}% |")
-    lines.append("")
+        lines.append(f'| {s} | {c} | {pct}% |')
+    lines.append('')
 
-    lines.append("### 字数分布")
-    lines.append("")
+    lines.append('### 字数分布')
+    lines.append('')
     chars = [q['char_count'] for q in questions if q['char_count'] > 50]
     if chars:
-        lines.append(f"- 最小：{min(chars)}字")
-        lines.append(f"- 最大：{max(chars)}字")
-        lines.append(f"- 中位数：{sorted(chars)[len(chars)//2]}字")
-        lines.append(f"- 平均：{sum(chars)//len(chars)}字")
-    lines.append("")
-    lines.append("---")
-    lines.append("")
+        lines.append(f'- 最小：{min(chars)}字')
+        lines.append(f'- 最大：{max(chars)}字')
+        lines.append(f'- 中位数：{sorted(chars)[len(chars) // 2]}字')
+        lines.append(f'- 平均：{sum(chars) // len(chars)}字')
+    lines.append('')
+    lines.append('---')
+    lines.append('')
 
     # 逐题拆解
-    lines.append("## 逐题拆解")
-    lines.append("")
+    lines.append('## 逐题拆解')
+    lines.append('')
 
     for idx, q in enumerate(questions, 1):
         lines.append(format_question(q, idx))
@@ -391,18 +395,18 @@ def build_output(questions: list[dict]) -> str:
 
 
 def main() -> None:
-    print(f"读取: {INPUT_FILE}")
+    print(f'读取: {INPUT_FILE}')
     text = INPUT_FILE.read_text(encoding='utf-8')
 
-    print("解析题目...")
+    print('解析题目...')
     questions = parse_questions(text)
-    print(f"解析到 {len(questions)} 道题目")
+    print(f'解析到 {len(questions)} 道题目')
 
-    print("生成拆解文档...")
+    print('生成拆解文档...')
     output = build_output(questions)
 
     OUTPUT_FILE.write_text(output, encoding='utf-8')
-    print(f"已输出到: {OUTPUT_FILE}")
+    print(f'已输出到: {OUTPUT_FILE}')
 
 
 if __name__ == '__main__':

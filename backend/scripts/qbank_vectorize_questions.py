@@ -12,6 +12,7 @@
     python -m scripts.qbank_vectorize_questions --limit 1000   # 只跑 1000 题
     python -m scripts.qbank_vectorize_questions --dry-run      # 预览，不写入
 """
+
 import argparse
 import asyncio
 import logging
@@ -56,6 +57,7 @@ MULTI_SPACE_RE = re.compile(r'\s+')
 
 # ============ 工具函数 ============
 
+
 def strip_html(html: str) -> str:
     """
     清洗 HTML 标签，提取纯文本
@@ -88,6 +90,7 @@ def build_embed_text(stem: str, options: list[str] | None) -> str:
 
 # ============ 核心逻辑 ============
 
+
 async def fetch_pending_batch(db, limit: int) -> list[dict]:
     """
     获取一批未向量化的题目（含选项）
@@ -96,7 +99,8 @@ async def fetch_pending_batch(db, limit: int) -> list[dict]:
     :param limit: 最多取多少题
     :return:
     """
-    result = await db.execute(text("""
+    result = await db.execute(
+        text("""
         SELECT
             q.id,
             q.stem,
@@ -115,12 +119,11 @@ async def fetch_pending_batch(db, limit: int) -> list[dict]:
         GROUP BY q.id, q.stem
         ORDER BY q.id
         LIMIT :limit
-    """), {'limit': limit})
+    """),
+        {'limit': limit},
+    )
 
-    return [
-        {'id': row[0], 'stem': row[1], 'options': row[2]}
-        for row in result.all()
-    ]
+    return [{'id': row[0], 'stem': row[1], 'options': row[2]} for row in result.all()]
 
 
 async def update_vectors(db, id_vector_pairs: list[tuple[int, list[float]]]) -> int:
@@ -208,13 +211,15 @@ async def process_batch(db, questions: list[dict], dry_run: bool = False) -> dic
 
 async def get_progress(db) -> dict:
     """查询向量化进度"""
-    result = await db.execute(text("""
+    result = await db.execute(
+        text("""
         SELECT
             COUNT(*) AS total,
             COUNT(content_vector) AS done,
             COUNT(*) - COUNT(content_vector) AS pending
         FROM study_question
-    """))
+    """)
+    )
     row = result.one()
     return {'total': row[0], 'done': row[1], 'pending': row[2]}
 
@@ -232,11 +237,7 @@ async def main(limit: int | None = None, dry_run: bool = False) -> None:
     async with async_db_session() as db:
         # 初始进度
         progress = await get_progress(db)
-        log.info(
-            f'题目总量: {progress["total"]}, '
-            f'已完成: {progress["done"]}, '
-            f'待处理: {progress["pending"]}'
-        )
+        log.info(f'题目总量: {progress["total"]}, 已完成: {progress["done"]}, 待处理: {progress["pending"]}')
 
         if progress['pending'] == 0:
             log.info('所有题目已完成向量化，无需处理')
@@ -258,9 +259,7 @@ async def main(limit: int | None = None, dry_run: bool = False) -> None:
 
             batch_no += 1
             log.info(
-                f'--- 批次 {batch_no} ---  '
-                f'本批 {len(questions)} 题  '
-                f'(id {questions[0]["id"]} ~ {questions[-1]["id"]})'
+                f'--- 批次 {batch_no} ---  本批 {len(questions)} 题  (id {questions[0]["id"]} ~ {questions[-1]["id"]})'
             )
 
             stats = await process_batch(db, questions, dry_run=dry_run)

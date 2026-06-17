@@ -168,8 +168,8 @@ async def main() -> int:
     print(f'[OK] question generation menu rows={len(rows)}')
     for row in rows:
         print(
-            f"- id={row['id']} title={row['title']} name={row['name']} "
-            f"type={row['type']} parent_id={row['parent_id']} perms={row['perms']}"
+            f'- id={row["id"]} title={row["title"]} name={row["name"]} '
+            f'type={row["type"]} parent_id={row["parent_id"]} perms={row["perms"]}'
         )
     return 0
 

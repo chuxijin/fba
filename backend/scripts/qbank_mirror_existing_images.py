@@ -73,9 +73,9 @@ def ask(prompt: str, default: str | None = None) -> str:
     :return:
     """
     if default is None:
-        return input(f"{prompt}: ").strip()
+        return input(f'{prompt}: ').strip()
 
-    value = input(f"{prompt} [{default}]: ").strip()
+    value = input(f'{prompt} [{default}]: ').strip()
     if value:
         return value
     return default
@@ -94,7 +94,7 @@ def ask_int(prompt: str, default: int) -> int:
         try:
             return int(raw)
         except ValueError:
-            print("请输入整数")
+            print('请输入整数')
 
 
 def ask_yes_no(prompt: str, default_yes: bool = True) -> bool:
@@ -105,16 +105,16 @@ def ask_yes_no(prompt: str, default_yes: bool = True) -> bool:
     :param default_yes: default bool
     :return:
     """
-    default = "Y/n" if default_yes else "y/N"
+    default = 'Y/n' if default_yes else 'y/N'
     while True:
-        raw = input(f"{prompt} [{default}]: ").strip().lower()
+        raw = input(f'{prompt} [{default}]: ').strip().lower()
         if not raw:
             return default_yes
-        if raw in {"y", "yes"}:
+        if raw in {'y', 'yes'}:
             return True
-        if raw in {"n", "no"}:
+        if raw in {'n', 'no'}:
             return False
-        print("请输入 y 或 n")
+        print('请输入 y 或 n')
 
 
 def parse_index_input(raw: str, max_index: int) -> list[int]:
@@ -126,14 +126,14 @@ def parse_index_input(raw: str, max_index: int) -> list[int]:
     :return:
     """
     text_value = raw.strip().lower()
-    if text_value in {"all", "a", "*"}:
+    if text_value in {'all', 'a', '*'}:
         return list(range(1, max_index + 1))
 
     selected: set[int] = set()
-    parts = [item.strip() for item in raw.split(",") if item.strip()]
+    parts = [item.strip() for item in raw.split(',') if item.strip()]
     for part in parts:
-        if "-" in part:
-            left, right = part.split("-", 1)
+        if '-' in part:
+            left, right = part.split('-', 1)
             start = int(left.strip())
             end = int(right.strip())
             if start > end:
@@ -163,15 +163,15 @@ def split_chunks(values: list[int], chunk_size: int) -> list[list[int]]:
 
 async def choose_bank_targets() -> list[BankTarget]:
     """Choose bank targets from database."""
-    keyword = ask("输入题库 code 关键字（支持模糊）", "PAPER_")
-    code_like = f"%{keyword}%"
+    keyword = ask('输入题库 code 关键字（支持模糊）', 'PAPER_')
+    code_like = f'%{keyword}%'
     async with async_db_session() as db:
         stmt = (
             select(
                 QuestionBank.id,
                 QuestionBank.code,
                 QuestionBank.name,
-                func.count(QuestionPlacement.id).label("question_count"),
+                func.count(QuestionPlacement.id).label('question_count'),
             )
             .join(QuestionPlacement, QuestionPlacement.bank_id == QuestionBank.id, isouter=True)
             .where(QuestionBank.code.like(code_like))
@@ -186,40 +186,37 @@ async def choose_bank_targets() -> list[BankTarget]:
             BankTarget(
                 bank_id=int(row.id),
                 bank_code=str(row.code),
-                bank_name=str(row.name or ""),
+                bank_name=str(row.name or ''),
                 question_count=int(row.question_count or 0),
             )
         )
 
     if not banks:
-        print("未找到匹配题库")
+        print('未找到匹配题库')
         return []
 
-    print(f"\n匹配题库 {len(banks)} 个（最多显示前 120 个）:")
+    print(f'\n匹配题库 {len(banks)} 个（最多显示前 120 个）:')
     show_count = min(120, len(banks))
     for index in range(show_count):
         bank = banks[index]
-        print(
-            f"{index + 1:>3}. code={bank.bank_code} "
-            f"questions={bank.question_count} name={bank.bank_name}"
-        )
+        print(f'{index + 1:>3}. code={bank.bank_code} questions={bank.question_count} name={bank.bank_name}')
     if len(banks) > show_count:
-        print(f"... 其余 {len(banks) - show_count} 个未显示，可先缩小关键字后再选")
+        print(f'... 其余 {len(banks) - show_count} 个未显示，可先缩小关键字后再选')
 
     while True:
-        raw = ask("输入序号（支持 1,3,8-10；all=全部）", "1")
+        raw = ask('输入序号（支持 1,3,8-10；all=全部）', '1')
         try:
             indices = parse_index_input(raw, len(banks))
         except Exception:
-            print("序号格式错误，请重试")
+            print('序号格式错误，请重试')
             continue
         if not indices:
-            print("请至少选择一个题库")
+            print('请至少选择一个题库')
             continue
         selected = [banks[index - 1] for index in indices]
-        print("已选择:")
+        print('已选择:')
         for bank in selected:
-            print(f"  - {bank.bank_code} ({bank.bank_name})")
+            print(f'  - {bank.bank_code} ({bank.bank_name})')
         return selected
 
 
@@ -245,7 +242,7 @@ async def mirror_html_text(
     """
     if not isinstance(html, str):
         return html, False
-    if "<img" not in html.lower():
+    if '<img' not in html.lower():
         return html, False
 
     mirrored = await mirror.mirror_html(
@@ -276,10 +273,10 @@ async def process_bank(
     """
     stats = MirrorRunStats()
     try:
-        await db.execute(select(func.set_config("lock_timeout", "8s", True)))
-        await db.execute(select(func.set_config("statement_timeout", "120s", True)))
+        await db.execute(select(func.set_config('lock_timeout', '8s', True)))
+        await db.execute(select(func.set_config('statement_timeout', '120s', True)))
     except Exception as exc:
-        print(f"[BANK][WARN] set timeout failed code={target.bank_code} error={exc!s}")
+        print(f'[BANK][WARN] set timeout failed code={target.bank_code} error={exc!s}')
 
     qid_stmt = (
         select(QuestionPlacement.question_id)
@@ -294,22 +291,19 @@ async def process_bank(
         qids = qids[: args.max_questions]
 
     stats.question_total = len(qids)
-    print(
-        f"[BANK] code={target.bank_code} name={target.bank_name} "
-        f"questions={len(qids)} dry_run={args.dry_run}"
-    )
+    print(f'[BANK] code={target.bank_code} name={target.bank_name} questions={len(qids)} dry_run={args.dry_run}')
 
     chunk_size = max(1, args.batch_size)
     chunks = split_chunks(qids, chunk_size)
     for chunk_index, qid_chunk in enumerate(chunks, start=1):
-        question_rows = (
-            await db.execute(select(Question).where(Question.id.in_(qid_chunk)))
-        ).scalars().all()
+        question_rows = (await db.execute(select(Question).where(Question.id.in_(qid_chunk)))).scalars().all()
         question_map = {row.id: row for row in question_rows}
 
         analysis_rows = (
-            await db.execute(select(QuestionAnalysis).where(QuestionAnalysis.question_id.in_(qid_chunk)))
-        ).scalars().all()
+            (await db.execute(select(QuestionAnalysis).where(QuestionAnalysis.question_id.in_(qid_chunk))))
+            .scalars()
+            .all()
+        )
         analysis_map: dict[int, list[QuestionAnalysis]] = {}
         for row in analysis_rows:
             analysis_map.setdefault(int(row.question_id), []).append(row)
@@ -323,7 +317,7 @@ async def process_bank(
                     mirror=mirror,
                     html=question.stem,
                     bank_code=target.bank_code,
-                    field_name="stem",
+                    field_name='stem',
                     question_id=qid,
                 )
                 if changed:
@@ -335,7 +329,7 @@ async def process_bank(
                     mirror=mirror,
                     html=analysis.content,
                     bank_code=target.bank_code,
-                    field_name=f"analysis_{analysis.type}_{analysis.version_no}",
+                    field_name=f'analysis_{analysis.type}_{analysis.version_no}',
                     question_id=qid,
                 )
                 if not changed:
@@ -355,19 +349,17 @@ async def process_bank(
                     mirror=mirror,
                     html=source_content,
                     bank_code=target.bank_code,
-                    field_name=f"option_{option['option_code']}",
+                    field_name=f'option_{option["option_code"]}',
                     question_id=qid,
                 )
                 if changed:
                     option_changed = True
-                option_items.append(
-                    {
-                        'option_code': option['option_code'],
-                        'content': mirrored_content,
-                        'sort_order': option['sort_order'],
-                        'is_active': option['is_active'],
-                    }
-                )
+                option_items.append({
+                    'option_code': option['option_code'],
+                    'content': mirrored_content,
+                    'sort_order': option['sort_order'],
+                    'is_active': option['is_active'],
+                })
 
             if option_changed and option_items:
                 question.options = QuestionService.normalize_options(option_items)
@@ -375,28 +367,32 @@ async def process_bank(
 
         await db.flush()
         print(
-            "[BANK_PROGRESS]"
-            f" code={target.bank_code}"
-            f" chunk={chunk_index}/{len(chunks)}"
-            f" q_updated={stats.question_updated}"
-            f" a_updated={stats.analysis_updated}"
-            f" option_q_updated={stats.option_question_updated}"
-            f" uploaded={mirror.stats.uploaded_images}"
-            f" cache_hit={mirror.stats.cache_hit}"
-            f" failed={mirror.stats.failed_images}"
-            f" public={mirror.stats.public_urls}"
-            f" signed={mirror.stats.signed_urls}"
-            f" unknown={mirror.stats.unknown_urls}"
+            '[BANK_PROGRESS]'
+            f' code={target.bank_code}'
+            f' chunk={chunk_index}/{len(chunks)}'
+            f' q_updated={stats.question_updated}'
+            f' a_updated={stats.analysis_updated}'
+            f' option_q_updated={stats.option_question_updated}'
+            f' uploaded={mirror.stats.uploaded_images}'
+            f' cache_hit={mirror.stats.cache_hit}'
+            f' failed={mirror.stats.failed_images}'
+            f' public={mirror.stats.public_urls}'
+            f' signed={mirror.stats.signed_urls}'
+            f' unknown={mirror.stats.unknown_urls}'
         )
 
     material_rows = (
-        await db.execute(
-            select(QuestionMaterial).where(
-                QuestionMaterial.bank_id == target.bank_id,
-                QuestionMaterial.is_active.is_(True),
+        (
+            await db.execute(
+                select(QuestionMaterial).where(
+                    QuestionMaterial.bank_id == target.bank_id,
+                    QuestionMaterial.is_active.is_(True),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     stats.material_total = len(material_rows)
 
     for index, material in enumerate(material_rows, start=1):
@@ -404,27 +400,27 @@ async def process_bank(
             mirror=mirror,
             html=material.content,
             bank_code=target.bank_code,
-            field_name="material_content",
-            scope_segment=f"material_{material.id}",
+            field_name='material_content',
+            scope_segment=f'material_{material.id}',
         )
         if changed:
             material.content = content
             stats.material_updated += 1
         if index % 20 == 0 or index == len(material_rows):
             print(
-                "[BANK_MATERIAL]"
-                f" code={target.bank_code}"
-                f" done={index}/{len(material_rows)}"
-                f" updated={stats.material_updated}"
+                '[BANK_MATERIAL]'
+                f' code={target.bank_code}'
+                f' done={index}/{len(material_rows)}'
+                f' updated={stats.material_updated}'
             )
 
     await db.flush()
     if args.dry_run:
         await db.rollback()
-        print(f"[BANK] rollback code={target.bank_code}")
+        print(f'[BANK] rollback code={target.bank_code}')
     else:
         await db.commit()
-        print(f"[BANK] commit code={target.bank_code}")
+        print(f'[BANK] commit code={target.bank_code}')
     return stats
 
 
@@ -434,20 +430,20 @@ async def run() -> int:
     if not targets:
         return 0
 
-    dry_run = ask_yes_no("是否 DryRun（仅演练不提交）", True)
-    max_questions = ask_int("每个题库最多处理题目数（0=不限）", 0)
-    batch_size = ask_int("题目处理批次大小（建议 20-100）", 50)
-    timeout_raw = ask("图片下载超时秒数", "20")
+    dry_run = ask_yes_no('是否 DryRun（仅演练不提交）', True)
+    max_questions = ask_int('每个题库最多处理题目数（0=不限）', 0)
+    batch_size = ask_int('题目处理批次大小（建议 20-100）', 50)
+    timeout_raw = ask('图片下载超时秒数', '20')
     try:
         timeout_seconds = float(timeout_raw)
     except ValueError:
         timeout_seconds = 20.0
-    safe_interval_raw = ask("图片请求安全间隔秒数（建议 2-5）", "2.5")
+    safe_interval_raw = ask('图片请求安全间隔秒数（建议 2-5）', '2.5')
     try:
         safe_interval_seconds = float(safe_interval_raw)
     except ValueError:
         safe_interval_seconds = 2.5
-    sample_limit = ask_int("输出前后 URL 对照样本条数（0=不输出）", 5)
+    sample_limit = ask_int('输出前后 URL 对照样本条数（0=不输出）', 5)
 
     run_args = SimpleNamespace(
         dry_run=dry_run,
@@ -456,7 +452,7 @@ async def run() -> int:
     )
 
     mirror = QbankImageMirror(
-        cache_file=PROJECT_ROOT / "backend" / "scripts" / "cache" / "qbank_image_cache.json",
+        cache_file=PROJECT_ROOT / 'backend' / 'scripts' / 'cache' / 'qbank_image_cache.json',
         request_timeout=max(5.0, timeout_seconds),
         sample_limit=max(0, sample_limit),
         safe_interval_seconds=max(0.0, safe_interval_seconds),
@@ -468,45 +464,45 @@ async def run() -> int:
 
     total_stats = MirrorRunStats()
     for index, target in enumerate(targets, start=1):
-        print(f"\n[RUN] {index}/{len(targets)} code={target.bank_code}")
+        print(f'\n[RUN] {index}/{len(targets)} code={target.bank_code}')
         async with async_db_session() as db:
             bank_stats = await process_bank(db=db, mirror=mirror, target=target, args=run_args)
         total_stats.add(bank_stats)
 
     mirror.save_cache()
     print(
-        "[DONE]"
-        f" question={total_stats.question_updated}/{total_stats.question_total}"
-        f" analysis={total_stats.analysis_updated}/{total_stats.analysis_total}"
-        f" option_question={total_stats.option_question_updated}/{total_stats.option_question_total}"
-        f" material={total_stats.material_updated}/{total_stats.material_total}"
-        f" uploaded={mirror.stats.uploaded_images}"
-        f" cache_hit={mirror.stats.cache_hit}"
-        f" failed={mirror.stats.failed_images}"
-        f" public={mirror.stats.public_urls}"
-        f" signed={mirror.stats.signed_urls}"
-        f" unknown={mirror.stats.unknown_urls}"
-        f" dry_run={dry_run}"
+        '[DONE]'
+        f' question={total_stats.question_updated}/{total_stats.question_total}'
+        f' analysis={total_stats.analysis_updated}/{total_stats.analysis_total}'
+        f' option_question={total_stats.option_question_updated}/{total_stats.option_question_total}'
+        f' material={total_stats.material_updated}/{total_stats.material_total}'
+        f' uploaded={mirror.stats.uploaded_images}'
+        f' cache_hit={mirror.stats.cache_hit}'
+        f' failed={mirror.stats.failed_images}'
+        f' public={mirror.stats.public_urls}'
+        f' signed={mirror.stats.signed_urls}'
+        f' unknown={mirror.stats.unknown_urls}'
+        f' dry_run={dry_run}'
     )
     if mirror.rewrite_samples:
-        print(f"[MIRROR_SAMPLE] count={len(mirror.rewrite_samples)}")
+        print(f'[MIRROR_SAMPLE] count={len(mirror.rewrite_samples)}')
         for index, sample in enumerate(mirror.rewrite_samples, start=1):
             print(
-                "[MIRROR_SAMPLE]"
-                f" #{index}"
-                f" field={sample.field_name}"
-                f" scope={sample.scope_segment}"
-                f" cache={'Y' if sample.from_cache else 'N'}"
+                '[MIRROR_SAMPLE]'
+                f' #{index}'
+                f' field={sample.field_name}'
+                f' scope={sample.scope_segment}'
+                f' cache={"Y" if sample.from_cache else "N"}'
             )
-            print(f"[MIRROR_SAMPLE]   before={sample.source_url}")
-            print(f"[MIRROR_SAMPLE]   after ={sample.mirrored_url}")
+            print(f'[MIRROR_SAMPLE]   before={sample.source_url}')
+            print(f'[MIRROR_SAMPLE]   after ={sample.mirrored_url}')
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
     raise SystemExit(asyncio.run(run()))

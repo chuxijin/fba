@@ -63,6 +63,7 @@ class ImportPaperData:
     qsort: list[int]
     modules: list[str | None]
 
+
 @dataclass
 class LocalEmptyPaperBank:
     bank_id: int
@@ -83,12 +84,16 @@ class LocalMissingMaterialPaperBank:
     distinct_question_count: int
     material_count: int
 
-# 这里直接改 Cookie 即可；也支持环境变量 HUATU_COOKIE 覆盖
-HUATU_COOKIE = os.getenv("HUATU_COOKIE", """ht_businessUnitId=1; _c_WBKFRo=73LABjrVnFRyotN37t46HWSL2xqHPtneKoespgJB; sensorsdata2015jssdkchannel=%7B%22prop%22%3A%7B%22_sa_channel_landing_url%22%3A%22%22%7D%7D; ahhtip={"prov":"æµ™æ±Ÿ","city":"æ­å·ž","county":"","time":1773227041152}; ahexamtype=ahgwy; Hm_lvt_c5b3a7bc9cfb4e1133c856fee205fabd=1772622241,1772709667; Hm_lpvt_c5b3a7bc9cfb4e1133c856fee205fabd=1772709667; HMACCOUNT=A4C02431E5478C15; PHPSESSID=55b4roi9f9cp0r9sehuhmfj336; Hm_lvt_acd6257d64dd07c2b9bfcb44821207b3=1772761564; UserID=0; UserName=app_ztk1358512080; UserReName=157%2A%2A%2A%2A8743; UserFace=https%3A%2F%2Ftiku.huatu.com%2Fcdn%2Fimages%2Fvhuatu%2Favatars%2Fdefault2.png; synlogin=0; userMobile=15757698743; accountStatus=0; userCode=000ht14718112ae6; ht_token=7edc0947899f4c5e936929cdd11c442f; ht_id=246478648; ht_uname=app_ztk1358512080; ht_qcount=10; ucId=15757698743; jtoken=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOiIxNzcyNzYxNzA0IiwianRpIjoiTVRjM01qYzJNVGN3TkE9PSIsImV4cCI6IjE3NzUzNTM3MDQiLCJ1bmFtZSI6ImFwcF96dGsxMzU4NTEyMDgwIiwibmljayI6IjE1NyoqKio4NzQzIn0.pfIvY6M5LFHlN8dFwq6tFbgbXTrjjCBjMJZQMwVABKE; ht_catgory=1; ht_sub=1; isUserMemberapp_ztk1358512080=2; sensorsdata2015jssdkcross=%7B%22distinct_id%22%3A%2215757698743%22%2C%22first_id%22%3A%2219cb884dcfb15a9-0ceb7ded9951ae8-4c657b58-2073600-19cb884dcfc218f%22%2C%22props%22%3A%7B%22%24latest_traffic_source_type%22%3A%22%E7%9B%B4%E6%8E%A5%E6%B5%81%E9%87%8F%22%2C%22%24latest_search_keyword%22%3A%22%E6%9C%AA%E5%8F%96%E5%88%B0%E5%80%BC_%E7%9B%B4%E6%8E%A5%E6%89%93%E5%BC%80%22%2C%22%24latest_referrer%22%3A%22%22%2C%22%24latest_landing_page%22%3A%22https%3A%2F%2Fv.huatu.com%2Fmock%2Fpractice%2F%3Fanswerid%3D177276171665337202%22%7D%2C%22identities%22%3A%22eyIkaWRlbnRpdHlfY29va2llX2lkIjoiMTljYjg4NGRjZmIxNWE5LTBjZWI3ZGVkOTk1MWFlOC00YzY1N2I1OC0yMDczNjAwLTE5Y2I4ODRkY2ZjMjE4ZiIsIiRpZGVudGl0eV9sb2dpbl9pZCI6IjE1NzU3Njk4NzQzIn0%3D%22%2C%22history_login_id%22%3A%7B%22name%22%3A%22%24identity_login_id%22%2C%22value%22%3A%2215757698743%22%7D%2C%22%24device_id%22%3A%2219cb884dcfb15a9-0ceb7ded9951ae8-4c657b58-2073600-19cb884dcfc218f%22%7D; ht_auth=d1G2h9pbbbm9sd6fe9yaJep6Z9C2If60Ibj2I604Nej4Qb38OaD1Y504O8C2I2s1Im1vYmlsZSI6IjE1NzU3Njk4NzQzIiwiZW1haWwiOiJhcHBfenRrMTM1ODUxMjA4MCU0MHp0ay5jb20iLCJuYW1lIjoiYXBwX3p0azEzNTg1MTIwODAiLCJuaWNrIjoiMTU3JTJBJTJBJTJBJTJBODc0MyIsInNpZ25hdHVyZSI6IiIsImFyZWEiOiItOSIsInN1YmplY3QiOjAsInN0YXR1cyI6IjIiLCJhdmF0YXIiOiJodHRwcyUzQSUyRiUyRnRpa3UuaHVhdHUuY29tJTJGY2RuJTJGaW1hZ2VzJTJGdmh1YXR1JTJGYXZhdGFycyUyRmRlZmF1bHQyLnBuZyIsInJlZ0Zyb20iOiIxIiwiZGV2aWNlVG9rZW4iOm51bGwsImNyZWF0ZVRpbWUiOiIxNjQxOTEyODYyMDAwIiwidWNlbnRlcklkIjoiMzEyOTg4NzgiLCJwaG9uZUdlbyI6IiVFNiVCNSU5OSVFNiVCMSU5RiVFNyU5QyU4MSVFNSU4RiVCMCVFNSVCNyU5RSVFNSVCOCU4MiIsInBsYW5UaW1lIjoiIiwicHJvZmVzc2lvbiI6IiIsImFwcGx5RGVsZXRlVGltZSI6MCwibmV3VWNJZCI6IjE0NzE4MTEyIiwidXNlckNvZGUiOiIwMDBodDE0NzE4MTEyYWU2Iiwid3hOaWNrIjoiIiwibGFzdExvZ2luVGltZSI6MCwidW5hbWUiOiJhcHBfenRrMTM1ODUxMjA4MCIsInRva2VuIjoiN2VkYzA5NDc4OTlmNGM1ZTkzNjkyOWNkZDExYzQ0MmYiLCJxY291bnQiOiIxMCIsImNhdGdvcnkiOiIxIn0O0O0O; Hm_lvt_f735d6529dbfd84e0e9d68fea4bb90a4=1772848015; Hm_lpvt_f735d6529dbfd84e0e9d68fea4bb90a4=1772848015; u3_fujian=%5B%7B%22title%22%3A%22%E5%8D%8E%E5%9B%BE%E5%9C%A8%E7%BA%BF-%E5%85%AC%E8%81%8C%E6%95%99%E8%82%B2%E7%BD%91%E7%BB%9C%E5%AD%A6%E4%B9%A0%E5%B9%B3%E5%8F%B0%22%2C%22url%22%3A%22https%3A%2F%2Fv.huatu.com%2F%22%7D%5D; acw_tc=7b39f6bc17728519697513674e1b17ce09cf7a6c6afbcddc512ddf7fde6965; Hm_lpvt_acd6257d64dd07c2b9bfcb44821207b3=1772852222""")
 
-LIST_URL = "https://v.huatu.com/tiku/common/getlist"
-AREA_URL = "https://v.huatu.com/tiku/common/getarea"
-QUESTION_URL = "https://ns.huatu.com/q/v4/questions"
+# 这里直接改 Cookie 即可；也支持环境变量 HUATU_COOKIE 覆盖
+HUATU_COOKIE = os.getenv(
+    'HUATU_COOKIE',
+    """ht_businessUnitId=1; _c_WBKFRo=73LABjrVnFRyotN37t46HWSL2xqHPtneKoespgJB; sensorsdata2015jssdkchannel=%7B%22prop%22%3A%7B%22_sa_channel_landing_url%22%3A%22%22%7D%7D; ahhtip={"prov":"æµ™æ±Ÿ","city":"æ­å·ž","county":"","time":1773227041152}; ahexamtype=ahgwy; Hm_lvt_c5b3a7bc9cfb4e1133c856fee205fabd=1772622241,1772709667; Hm_lpvt_c5b3a7bc9cfb4e1133c856fee205fabd=1772709667; HMACCOUNT=A4C02431E5478C15; PHPSESSID=55b4roi9f9cp0r9sehuhmfj336; Hm_lvt_acd6257d64dd07c2b9bfcb44821207b3=1772761564; UserID=0; UserName=app_ztk1358512080; UserReName=157%2A%2A%2A%2A8743; UserFace=https%3A%2F%2Ftiku.huatu.com%2Fcdn%2Fimages%2Fvhuatu%2Favatars%2Fdefault2.png; synlogin=0; userMobile=15757698743; accountStatus=0; userCode=000ht14718112ae6; ht_token=7edc0947899f4c5e936929cdd11c442f; ht_id=246478648; ht_uname=app_ztk1358512080; ht_qcount=10; ucId=15757698743; jtoken=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOiIxNzcyNzYxNzA0IiwianRpIjoiTVRjM01qYzJNVGN3TkE9PSIsImV4cCI6IjE3NzUzNTM3MDQiLCJ1bmFtZSI6ImFwcF96dGsxMzU4NTEyMDgwIiwibmljayI6IjE1NyoqKio4NzQzIn0.pfIvY6M5LFHlN8dFwq6tFbgbXTrjjCBjMJZQMwVABKE; ht_catgory=1; ht_sub=1; isUserMemberapp_ztk1358512080=2; sensorsdata2015jssdkcross=%7B%22distinct_id%22%3A%2215757698743%22%2C%22first_id%22%3A%2219cb884dcfb15a9-0ceb7ded9951ae8-4c657b58-2073600-19cb884dcfc218f%22%2C%22props%22%3A%7B%22%24latest_traffic_source_type%22%3A%22%E7%9B%B4%E6%8E%A5%E6%B5%81%E9%87%8F%22%2C%22%24latest_search_keyword%22%3A%22%E6%9C%AA%E5%8F%96%E5%88%B0%E5%80%BC_%E7%9B%B4%E6%8E%A5%E6%89%93%E5%BC%80%22%2C%22%24latest_referrer%22%3A%22%22%2C%22%24latest_landing_page%22%3A%22https%3A%2F%2Fv.huatu.com%2Fmock%2Fpractice%2F%3Fanswerid%3D177276171665337202%22%7D%2C%22identities%22%3A%22eyIkaWRlbnRpdHlfY29va2llX2lkIjoiMTljYjg4NGRjZmIxNWE5LTBjZWI3ZGVkOTk1MWFlOC00YzY1N2I1OC0yMDczNjAwLTE5Y2I4ODRkY2ZjMjE4ZiIsIiRpZGVudGl0eV9sb2dpbl9pZCI6IjE1NzU3Njk4NzQzIn0%3D%22%2C%22history_login_id%22%3A%7B%22name%22%3A%22%24identity_login_id%22%2C%22value%22%3A%2215757698743%22%7D%2C%22%24device_id%22%3A%2219cb884dcfb15a9-0ceb7ded9951ae8-4c657b58-2073600-19cb884dcfc218f%22%7D; ht_auth=d1G2h9pbbbm9sd6fe9yaJep6Z9C2If60Ibj2I604Nej4Qb38OaD1Y504O8C2I2s1Im1vYmlsZSI6IjE1NzU3Njk4NzQzIiwiZW1haWwiOiJhcHBfenRrMTM1ODUxMjA4MCU0MHp0ay5jb20iLCJuYW1lIjoiYXBwX3p0azEzNTg1MTIwODAiLCJuaWNrIjoiMTU3JTJBJTJBJTJBJTJBODc0MyIsInNpZ25hdHVyZSI6IiIsImFyZWEiOiItOSIsInN1YmplY3QiOjAsInN0YXR1cyI6IjIiLCJhdmF0YXIiOiJodHRwcyUzQSUyRiUyRnRpa3UuaHVhdHUuY29tJTJGY2RuJTJGaW1hZ2VzJTJGdmh1YXR1JTJGYXZhdGFycyUyRmRlZmF1bHQyLnBuZyIsInJlZ0Zyb20iOiIxIiwiZGV2aWNlVG9rZW4iOm51bGwsImNyZWF0ZVRpbWUiOiIxNjQxOTEyODYyMDAwIiwidWNlbnRlcklkIjoiMzEyOTg4NzgiLCJwaG9uZUdlbyI6IiVFNiVCNSU5OSVFNiVCMSU5RiVFNyU5QyU4MSVFNSU4RiVCMCVFNSVCNyU5RSVFNSVCOCU4MiIsInBsYW5UaW1lIjoiIiwicHJvZmVzc2lvbiI6IiIsImFwcGx5RGVsZXRlVGltZSI6MCwibmV3VWNJZCI6IjE0NzE4MTEyIiwidXNlckNvZGUiOiIwMDBodDE0NzE4MTEyYWU2Iiwid3hOaWNrIjoiIiwibGFzdExvZ2luVGltZSI6MCwidW5hbWUiOiJhcHBfenRrMTM1ODUxMjA4MCIsInRva2VuIjoiN2VkYzA5NDc4OTlmNGM1ZTkzNjkyOWNkZDExYzQ0MmYiLCJxY291bnQiOiIxMCIsImNhdGdvcnkiOiIxIn0O0O0O; Hm_lvt_f735d6529dbfd84e0e9d68fea4bb90a4=1772848015; Hm_lpvt_f735d6529dbfd84e0e9d68fea4bb90a4=1772848015; u3_fujian=%5B%7B%22title%22%3A%22%E5%8D%8E%E5%9B%BE%E5%9C%A8%E7%BA%BF-%E5%85%AC%E8%81%8C%E6%95%99%E8%82%B2%E7%BD%91%E7%BB%9C%E5%AD%A6%E4%B9%A0%E5%B9%B3%E5%8F%B0%22%2C%22url%22%3A%22https%3A%2F%2Fv.huatu.com%2F%22%7D%5D; acw_tc=7b39f6bc17728519697513674e1b17ce09cf7a6c6afbcddc512ddf7fde6965; Hm_lpvt_acd6257d64dd07c2b9bfcb44821207b3=1772852222""",
+)
+
+LIST_URL = 'https://v.huatu.com/tiku/common/getlist'
+AREA_URL = 'https://v.huatu.com/tiku/common/getarea'
+QUESTION_URL = 'https://ns.huatu.com/q/v4/questions'
 
 DEFAULT_AREA_IDS = [
     -9,
@@ -129,22 +134,22 @@ DEFAULT_AREA_IDS = [
 ]
 
 CANONICAL_CHAPTERS = [
-    "政治理论",
-    "常识判断",
-    "言语理解与表达",
-    "数量关系",
-    "判断推理",
-    "资料分析",
+    '政治理论',
+    '常识判断',
+    '言语理解与表达',
+    '数量关系',
+    '判断推理',
+    '资料分析',
 ]
 
 CHAPTER_ALIASES = {
-    "政治": "政治理论",
-    "常识": "常识判断",
-    "言语理解": "言语理解与表达",
-    "言语": "言语理解与表达",
-    "数量": "数量关系",
-    "判断": "判断推理",
-    "资料": "资料分析",
+    '政治': '政治理论',
+    '常识': '常识判断',
+    '言语理解': '言语理解与表达',
+    '言语': '言语理解与表达',
+    '数量': '数量关系',
+    '判断': '判断推理',
+    '资料': '资料分析',
 }
 
 
@@ -156,22 +161,22 @@ def sanitize_cookie(cookie: str) -> str:
     :return:
     """
     if not cookie:
-        return ""
+        return ''
 
-    segments = [segment.strip() for segment in cookie.split(";")]
+    segments = [segment.strip() for segment in cookie.split(';')]
     cleaned_segments: list[str] = []
     for segment in segments:
         if not segment:
             continue
-        if "=" not in segment:
+        if '=' not in segment:
             continue
         try:
-            segment.encode("ascii")
+            segment.encode('ascii')
         except UnicodeEncodeError:
             continue
         cleaned_segments.append(segment)
 
-    return "; ".join(cleaned_segments)
+    return '; '.join(cleaned_segments)
 
 
 def extract_cookie_value(cookie: str, key: str) -> str:
@@ -182,12 +187,12 @@ def extract_cookie_value(cookie: str, key: str) -> str:
     :param key: 键名
     :return:
     """
-    prefix = f"{key}="
-    for segment in cookie.split(";"):
+    prefix = f'{key}='
+    for segment in cookie.split(';'):
         item = segment.strip()
         if item.startswith(prefix):
             return item[len(prefix) :]
-    return ""
+    return ''
 
 
 def extract_paper_list(payload: Any) -> list[dict[str, Any]]:
@@ -201,15 +206,15 @@ def extract_paper_list(payload: Any) -> list[dict[str, Any]]:
         return [item for item in payload if isinstance(item, dict)]
 
     if not isinstance(payload, dict):
-        raise ImportErrorBase("response payload is not object/list")
+        raise ImportErrorBase('response payload is not object/list')
 
-    code_value = payload.get("code")
+    code_value = payload.get('code')
     if code_value not in (None, 1):
-        raise ImportErrorBase(f"response code invalid: {code_value}, msg={payload.get('msg')}")
+        raise ImportErrorBase(f'response code invalid: {code_value}, msg={payload.get("msg")}')
 
-    data = payload.get("data")
+    data = payload.get('data')
     if not isinstance(data, list):
-        raise ImportErrorBase("response.data is not list")
+        raise ImportErrorBase('response.data is not list')
     return [item for item in data if isinstance(item, dict)]
 
 
@@ -221,34 +226,34 @@ def build_huatu_headers(cookie: str) -> dict[str, str]:
     :return:
     """
     headers = {
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "Connection": "keep-alive",
-        "Origin": "https://v.huatu.com",
-        "Referer": "https://v.huatu.com/tiku/truelist/1/1",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Connection': 'keep-alive',
+        'Origin': 'https://v.huatu.com',
+        'Referer': 'https://v.huatu.com/tiku/truelist/1/1',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0'
         ),
-        "X-Requested-With": "XMLHttpRequest",
+        'X-Requested-With': 'XMLHttpRequest',
     }
     cookie_header = sanitize_cookie(cookie)
     if not cookie_header:
         return headers
 
-    headers["Cookie"] = cookie_header
-    token = extract_cookie_value(cookie_header, "ht_token")
+    headers['Cookie'] = cookie_header
+    token = extract_cookie_value(cookie_header, 'ht_token')
     if token:
-        headers["token"] = token
-        headers["Access-Token"] = token
-    headers["terminal"] = "pc"
-    headers["cv"] = "1"
+        headers['token'] = token
+        headers['Access-Token'] = token
+    headers['terminal'] = 'pc'
+    headers['cv'] = '1'
     return headers
 
 
@@ -272,9 +277,9 @@ async def fetch_huatu_list(
     if cookie:
         cookie_header = sanitize_cookie(cookie)
         if not cookie_header:
-            raise ImportErrorBase("cookie has no valid ASCII segments after sanitize")
+            raise ImportErrorBase('cookie has no valid ASCII segments after sanitize')
 
-    form_data = {"area": str(area), "papertype": papertype}
+    form_data = {'area': str(area), 'papertype': papertype}
     timeout = httpx.Timeout(timeout=30.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(url=url, data=form_data, headers=headers)
@@ -282,7 +287,7 @@ async def fetch_huatu_list(
         try:
             return response.json()
         except ValueError as exc:
-            raise ImportErrorBase(f"response is not valid JSON: {response.text[:300]}") from exc
+            raise ImportErrorBase(f'response is not valid JSON: {response.text[:300]}') from exc
 
 
 def ask(prompt: str, default: str | None = None) -> str:
@@ -294,9 +299,9 @@ def ask(prompt: str, default: str | None = None) -> str:
     :return:
     """
     if default is None:
-        value = input(f"{prompt}: ").strip()
+        value = input(f'{prompt}: ').strip()
     else:
-        value = input(f"{prompt} [{default}]: ").strip()
+        value = input(f'{prompt} [{default}]: ').strip()
         if not value:
             return default
     return value
@@ -315,7 +320,7 @@ def ask_int(prompt: str, default: int | None = None) -> int:
         try:
             return int(raw)
         except ValueError:
-            print("请输入整数。")
+            print('请输入整数。')
 
 
 def ask_float(prompt: str, default: float | None = None) -> float:
@@ -331,7 +336,7 @@ def ask_float(prompt: str, default: float | None = None) -> float:
         try:
             return float(raw)
         except ValueError:
-            print("请输入数字。")
+            print('请输入数字。')
 
 
 def ask_yes_no(prompt: str, default_yes: bool = True) -> bool:
@@ -342,16 +347,16 @@ def ask_yes_no(prompt: str, default_yes: bool = True) -> bool:
     :param default_yes: 默认是否
     :return:
     """
-    default = "Y/n" if default_yes else "y/N"
+    default = 'Y/n' if default_yes else 'y/N'
     while True:
-        raw = input(f"{prompt} [{default}]: ").strip().lower()
+        raw = input(f'{prompt} [{default}]: ').strip().lower()
         if not raw:
             return default_yes
-        if raw in {"y", "yes"}:
+        if raw in {'y', 'yes'}:
             return True
-        if raw in {"n", "no"}:
+        if raw in {'n', 'no'}:
             return False
-        print("请输入 y 或 n。")
+        print('请输入 y 或 n。')
 
 
 def parse_index_input(raw: str, max_index: int) -> list[int]:
@@ -363,14 +368,14 @@ def parse_index_input(raw: str, max_index: int) -> list[int]:
     :return:
     """
     text_raw = raw.strip().lower()
-    if text_raw in {"all", "a", "*"}:
+    if text_raw in {'all', 'a', '*'}:
         return list(range(1, max_index + 1))
 
     selected: set[int] = set()
-    parts = [x.strip() for x in raw.split(",") if x.strip()]
+    parts = [x.strip() for x in raw.split(',') if x.strip()]
     for part in parts:
-        if "-" in part:
-            left, right = part.split("-", 1)
+        if '-' in part:
+            left, right = part.split('-', 1)
             start = int(left.strip())
             end = int(right.strip())
             if start > end:
@@ -414,23 +419,23 @@ def build_import_args(
         list_url=LIST_URL,
         question_url=QUESTION_URL,
         cookie=HUATU_COOKIE.strip(),
-        areas=",".join(str(x) for x in areas),
+        areas=','.join(str(x) for x in areas),
         name_regex=name_regex,
         paper_category=1,
-        paper_code_prefix="PAPER",
-        chapter_bank_code="BANK_XINGCE",
+        paper_code_prefix='PAPER',
+        chapter_bank_code='BANK_XINGCE',
         question_chunk_size=120,
         max_papers=max_papers,
         max_questions=max_questions,
         paper_id=paper_id,
-        terminal="3",
-        app_type="2",
+        terminal='3',
+        app_type='2',
         request_interval=0.08,
         created_by=1,
         dry_run=dry_run,
         trace_db=False,
         mirror_images=mirror_images,
-        mirror_cache_file=str(PROJECT_ROOT / "backend" / "scripts" / "cache" / "qbank_image_cache.json"),
+        mirror_cache_file=str(PROJECT_ROOT / 'backend' / 'scripts' / 'cache' / 'qbank_image_cache.json'),
         mirror_timeout=20.0,
         mirror_object_expire_days=None,
         mirror_sample_limit=max(0, mirror_sample_limit),
@@ -448,17 +453,17 @@ async def fetch_remote_areas() -> list[AreaNode]:
         response.raise_for_status()
         payload = response.json()
 
-    data = payload.get("data")
+    data = payload.get('data')
     if not isinstance(data, list):
-        raise RuntimeError(f"地区接口返回异常: {payload}")
+        raise RuntimeError(f'地区接口返回异常: {payload}')
 
     out: list[AreaNode] = []
     for item in data:
         if not isinstance(item, dict):
             continue
-        area_id = item.get("id")
-        name = str(item.get("name") or "").strip()
-        parent_id = item.get("parentId")
+        area_id = item.get('id')
+        name = str(item.get('name') or '').strip()
+        parent_id = item.get('parentId')
         if not isinstance(area_id, int):
             continue
         if not isinstance(parent_id, int):
@@ -471,7 +476,7 @@ async def fetch_remote_areas() -> list[AreaNode]:
 
 def fallback_areas() -> list[AreaNode]:
     """使用内置区域列表兜底。"""
-    return [AreaNode(area_id=x, name=f"地区{x}", parent_id=0) for x in DEFAULT_AREA_IDS]
+    return [AreaNode(area_id=x, name=f'地区{x}', parent_id=0) for x in DEFAULT_AREA_IDS]
 
 
 def choose_areas_by_response(areas: list[AreaNode]) -> list[AreaNode]:
@@ -484,23 +489,23 @@ def choose_areas_by_response(areas: list[AreaNode]) -> list[AreaNode]:
     root_areas = [x for x in areas if x.parent_id == 0]
     root_areas = sorted(root_areas, key=lambda x: x.area_id)
 
-    print("\n可选地区：")
+    print('\n可选地区：')
     for idx, area in enumerate(root_areas, start=1):
-        print(f"{idx:>2}. {area.name} (id={area.area_id})")
+        print(f'{idx:>2}. {area.name} (id={area.area_id})')
 
     while True:
-        raw = ask("请输入地区序号（支持 1,3,8-10；all=全部）", "1")
+        raw = ask('请输入地区序号（支持 1,3,8-10；all=全部）', '1')
         try:
             indices = parse_index_input(raw, len(root_areas))
         except Exception:
-            print("地区序号格式不正确，请重试。")
+            print('地区序号格式不正确，请重试。')
             continue
         if not indices:
-            print("至少选择一个地区。")
+            print('至少选择一个地区。')
             continue
         selected = [root_areas[i - 1] for i in indices]
-        selected_text = ", ".join(f"{x.name}(id={x.area_id})" for x in selected)
-        print(f"已选地区：{selected_text}")
+        selected_text = ', '.join(f'{x.name}(id={x.area_id})' for x in selected)
+        print(f'已选地区：{selected_text}')
         return selected
 
 
@@ -517,31 +522,31 @@ async def fetch_remote_papers(area_nodes: list[AreaNode], name_regex: str) -> li
     area_name_map = {x.area_id: x.name for x in area_nodes}
 
     for node in area_nodes:
-        payload = await fetch_huatu_list(url=LIST_URL, cookie=HUATU_COOKIE, area=node.area_id, papertype="")
-        if isinstance(payload, dict) and payload.get("code") == -1:
-            print(f"[扫描] 地区={node.name}(id={node.area_id}) 匹配试卷=0（接口返回暂无数据）")
+        payload = await fetch_huatu_list(url=LIST_URL, cookie=HUATU_COOKIE, area=node.area_id, papertype='')
+        if isinstance(payload, dict) and payload.get('code') == -1:
+            print(f'[扫描] 地区={node.name}(id={node.area_id}) 匹配试卷=0（接口返回暂无数据）')
             continue
         papers = extract_paper_list(payload)
         matched = 0
         for paper in papers:
-            pid = paper.get("id")
+            pid = paper.get('id')
             if not isinstance(pid, int):
                 continue
-            name = str(paper.get("name") or "").strip()
+            name = str(paper.get('name') or '').strip()
             if not name:
                 continue
             if not pattern.search(name):
                 continue
-            if paper.get("catgory") != 1:
+            if paper.get('catgory') != 1:
                 continue
-            questions = paper.get("questions")
-            qcount = len(questions) if isinstance(questions, list) else int(paper.get("qcount") or 0)
+            questions = paper.get('questions')
+            qcount = len(questions) if isinstance(questions, list) else int(paper.get('qcount') or 0)
             if qcount <= 0:
                 continue
 
             year: int | None = None
             try:
-                candidate_year = int(paper.get("year"))
+                candidate_year = int(paper.get('year'))
             except Exception:
                 candidate_year = 0
             if 1900 <= candidate_year <= 2100:
@@ -559,7 +564,7 @@ async def fetch_remote_papers(area_nodes: list[AreaNode], name_regex: str) -> li
             if current is None or incoming.qcount > current.qcount:
                 paper_map[pid] = incoming
             matched += 1
-        print(f"[扫描] 地区={node.name}(id={node.area_id}) 匹配试卷={matched}")
+        print(f'[扫描] 地区={node.name}(id={node.area_id}) 匹配试卷={matched}')
 
     papers = sorted(
         paper_map.values(),
@@ -579,35 +584,32 @@ def choose_papers_by_response(papers: list[RemotePaper]) -> list[RemotePaper]:
     if not papers:
         return []
 
-    print(f"\n匹配到试卷 {len(papers)} 条（展示前 80 条）：")
+    print(f'\n匹配到试卷 {len(papers)} 条（展示前 80 条）：')
     show_count = min(len(papers), 80)
     for idx in range(show_count):
         paper = papers[idx]
-        year_text = str(paper.year) if paper.year is not None else "-"
-        print(
-            f"{idx + 1:>3}. [{paper.area_name}] year={year_text} q={paper.qcount} "
-            f"id={paper.paper_id} {paper.name}"
-        )
+        year_text = str(paper.year) if paper.year is not None else '-'
+        print(f'{idx + 1:>3}. [{paper.area_name}] year={year_text} q={paper.qcount} id={paper.paper_id} {paper.name}')
 
     if len(papers) > show_count:
-        print(f"... 还有 {len(papers) - show_count} 条未显示，可缩小关键词后再选。")
+        print(f'... 还有 {len(papers) - show_count} 条未显示，可缩小关键词后再选。')
 
     while True:
-        default_select = "1" if len(papers) == 1 else ""
-        raw = ask("请输入试卷序号（支持 1,3,8-10；all=全部）", default_select)
+        default_select = '1' if len(papers) == 1 else ''
+        raw = ask('请输入试卷序号（支持 1,3,8-10；all=全部）', default_select)
         if not raw:
-            print("请至少选择一个试卷。")
+            print('请至少选择一个试卷。')
             continue
         try:
             indices = parse_index_input(raw, len(papers))
         except Exception:
-            print("试卷序号格式不正确，请重试。")
+            print('试卷序号格式不正确，请重试。')
             continue
         if not indices:
-            print("请至少选择一个有效序号。")
+            print('请至少选择一个有效序号。')
             continue
         selected = [papers[i - 1] for i in indices]
-        print(f"已选试卷 {len(selected)} 条。")
+        print(f'已选试卷 {len(selected)} 条。')
         return selected
 
 
@@ -715,9 +717,9 @@ def parse_modules(raw: Any, count: int) -> list[str | None]:
     for item in raw:
         if not isinstance(item, dict):
             continue
-        name = str(item.get("name") or "").strip()
+        name = str(item.get('name') or '').strip()
         try:
-            qcount = int(item.get("qcount") or 0)
+            qcount = int(item.get('qcount') or 0)
         except (ValueError, TypeError):
             qcount = 0
         if qcount <= 0:
@@ -738,6 +740,7 @@ def flatten_question_rows(payload: dict[str, Any]) -> dict[int, dict[str, Any]]:
     :param payload: 题目接口响应
     :return:
     """
+
     def has_text(value: Any) -> bool:
         return isinstance(value, str) and bool(value.strip())
 
@@ -748,7 +751,7 @@ def flatten_question_rows(payload: dict[str, Any]) -> dict[int, dict[str, Any]]:
             if isinstance(node, str) and node.strip():
                 return True
             if isinstance(node, dict):
-                for key in ["content", "material", "stem", "text", "body"]:
+                for key in ['content', 'material', 'stem', 'text', 'body']:
                     candidate = node.get(key)
                     if isinstance(candidate, str) and candidate.strip():
                         return True
@@ -776,7 +779,7 @@ def flatten_question_rows(payload: dict[str, Any]) -> dict[int, dict[str, Any]]:
         return merged
 
     rows: dict[int, dict[str, Any]] = {}
-    data = payload.get("data")
+    data = payload.get('data')
     candidates: list[list[Any]] = []
     if isinstance(data, list):
         candidates.append(data)
@@ -789,27 +792,27 @@ def flatten_question_rows(payload: dict[str, Any]) -> dict[int, dict[str, Any]]:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            qid = item.get("id")
+            qid = item.get('id')
             if isinstance(qid, int):
                 rows[qid] = merge_row(rows.get(qid), item)
 
-            children = item.get("childrens")
+            children = item.get('childrens')
             if not isinstance(children, list):
                 continue
             for child in children:
                 if not isinstance(child, dict):
                     continue
-                child_id = child.get("id")
+                child_id = child.get('id')
                 if not isinstance(child_id, int):
                     continue
                 child_payload = dict(child)
-                parent_material = item.get("material")
-                if has_text(parent_material) and not has_text(child_payload.get("material")):
-                    child_payload["material"] = parent_material
+                parent_material = item.get('material')
+                if has_text(parent_material) and not has_text(child_payload.get('material')):
+                    child_payload['material'] = parent_material
 
-                parent_materials = item.get("materials")
-                if has_material_list(parent_materials) and not has_material_list(child_payload.get("materials")):
-                    child_payload["materials"] = parent_materials
+                parent_materials = item.get('materials')
+                if has_material_list(parent_materials) and not has_material_list(child_payload.get('materials')):
+                    child_payload['materials'] = parent_materials
 
                 rows[child_id] = merge_row(rows.get(child_id), child_payload)
     return rows
@@ -824,13 +827,13 @@ def parse_answers(item: dict[str, Any], option_count: int) -> tuple[list[str], l
     :return:
     """
     raw_values: list[str] = []
-    answer_list = item.get("answerList")
+    answer_list = item.get('answerList')
     if isinstance(answer_list, list) and answer_list:
         raw_values = [str(x) for x in answer_list if str(x).strip()]
-    elif item.get("answer") is not None:
-        raw_text = str(item.get("answer")).strip()
-        if "," in raw_text:
-            raw_values = [x.strip() for x in raw_text.split(",") if x.strip()]
+    elif item.get('answer') is not None:
+        raw_text = str(item.get('answer')).strip()
+        if ',' in raw_text:
+            raw_values = [x.strip() for x in raw_text.split(',') if x.strip()]
         elif raw_text:
             raw_values = [raw_text]
 
@@ -839,17 +842,17 @@ def parse_answers(item: dict[str, Any], option_count: int) -> tuple[list[str], l
         if raw.isdigit():
             num = int(raw)
             if 1 <= num <= 26:
-                codes.append(chr(ord("A") + num - 1))
+                codes.append(chr(ord('A') + num - 1))
                 continue
         upper = raw.upper()
-        if len(upper) == 1 and "A" <= upper <= "Z":
+        if len(upper) == 1 and 'A' <= upper <= 'Z':
             codes.append(upper)
             continue
-        if option_count == 2 and raw in ["正确", "对", "TRUE", "T"]:
-            codes.append("A")
+        if option_count == 2 and raw in ['正确', '对', 'TRUE', 'T']:
+            codes.append('A')
             continue
-        if option_count == 2 and raw in ["错误", "错", "FALSE", "F"]:
-            codes.append("B")
+        if option_count == 2 and raw in ['错误', '错', 'FALSE', 'F']:
+            codes.append('B')
     return sorted(set(codes)), raw_values
 
 
@@ -862,22 +865,22 @@ def map_question_type(item: dict[str, Any], option_count: int, answer_code_count
     :param answer_code_count: 答案 code 数
     :return:
     """
-    teach = str(item.get("teachType") or "").strip()
-    if "多选" in teach or "不定项" in teach:
-        return "multiple"
-    if "判断" in teach:
-        return "judgement"
-    if "填空" in teach:
-        return "fill"
-    if "简答" in teach or "论述" in teach:
-        return "shortAnswer"
-    if "单选" in teach:
-        return "single"
+    teach = str(item.get('teachType') or '').strip()
+    if '多选' in teach or '不定项' in teach:
+        return 'multiple'
+    if '判断' in teach:
+        return 'judgement'
+    if '填空' in teach:
+        return 'fill'
+    if '简答' in teach or '论述' in teach:
+        return 'shortAnswer'
+    if '单选' in teach:
+        return 'single'
     if option_count > 0:
         if answer_code_count > 1:
-            return "multiple"
-        return "single"
-    return "shortAnswer"
+            return 'multiple'
+        return 'single'
+    return 'shortAnswer'
 
 
 def build_analysis_items(item: dict[str, Any], answer_data: dict[str, Any]) -> list[UpsertQuestionAnalysisItem]:
@@ -888,20 +891,21 @@ def build_analysis_items(item: dict[str, Any], answer_data: dict[str, Any]) -> l
     :param answer_data: 答案结构
     :return:
     """
+
     def join_text(text_a: Any, text_b: Any) -> str:
-        left = str(text_a or "").strip()
-        right = str(text_b or "").strip()
+        left = str(text_a or '').strip()
+        right = str(text_b or '').strip()
         if left and right:
-            return f"{left}\n\n{right}"
+            return f'{left}\n\n{right}'
         if left:
             return left
         return right
 
     items: list[UpsertQuestionAnalysisItem] = []
-    default_content = join_text(item.get("analysis"), item.get("extend")) or "<p>暂无解析</p>"
+    default_content = join_text(item.get('analysis'), item.get('extend')) or '<p>暂无解析</p>'
     items.append(
         UpsertQuestionAnalysisItem(
-            type="official",
+            type='official',
             version_no=1,
             is_default=True,
             answer_data=answer_data,
@@ -910,25 +914,25 @@ def build_analysis_items(item: dict[str, Any], answer_data: dict[str, Any]) -> l
         )
     )
 
-    scenes = item.get("multiSceneAnalysis")
+    scenes = item.get('multiSceneAnalysis')
     if not isinstance(scenes, list):
         return items
 
     for scene in scenes:
         if not isinstance(scene, dict):
             continue
-        scene_id = scene.get("questionScene")
+        scene_id = scene.get('questionScene')
         if not isinstance(scene_id, int):
             continue
-        content = join_text(scene.get("analysis"), scene.get("extend"))
+        content = join_text(scene.get('analysis'), scene.get('extend'))
         if not content:
             continue
-        version = scene.get("version")
+        version = scene.get('version')
         if not isinstance(version, int) or version <= 0:
             version = 1
         items.append(
             UpsertQuestionAnalysisItem(
-                type=f"scene_{scene_id}",
+                type=f'scene_{scene_id}',
                 version_no=version,
                 is_default=False,
                 answer_data=answer_data,
@@ -946,17 +950,17 @@ def build_option_items(item: dict[str, Any]) -> list[UpsertQuestionOptionItem]:
     :param item: 题目数据
     :return:
     """
-    choices = item.get("choices")
+    choices = item.get('choices')
     if not isinstance(choices, list):
         return []
     out: list[UpsertQuestionOptionItem] = []
     for index, raw in enumerate(choices):
-        content = str(raw or "").strip()
+        content = str(raw or '').strip()
         if not content:
             continue
         out.append(
             UpsertQuestionOptionItem(
-                option_code=chr(ord("A") + index),
+                option_code=chr(ord('A') + index),
                 content=content,
                 sort_order=index,
                 is_active=True,
@@ -972,10 +976,10 @@ def normalize_material_content(content: str) -> str:
     :param content: 原始内容
     :return:
     """
-    raw = str(content or "").strip()
+    raw = str(content or '').strip()
     if not raw:
-        return ""
-    return re.sub(r"\s+", " ", raw)
+        return ''
+    return re.sub(r'\s+', ' ', raw)
 
 
 def build_material_hash(content: str) -> str:
@@ -986,7 +990,7 @@ def build_material_hash(content: str) -> str:
     :return:
     """
     normalized = normalize_material_content(content)
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
 
 def extract_material_contents(item: dict[str, Any]) -> list[str]:
@@ -998,11 +1002,11 @@ def extract_material_contents(item: dict[str, Any]) -> list[str]:
     """
     raw_items: list[str] = []
 
-    raw_material = item.get("material")
+    raw_material = item.get('material')
     if isinstance(raw_material, str) and raw_material.strip():
         raw_items.append(raw_material.strip())
 
-    raw_materials = item.get("materials")
+    raw_materials = item.get('materials')
     if isinstance(raw_materials, list):
         for node in raw_materials:
             if isinstance(node, str):
@@ -1012,7 +1016,7 @@ def extract_material_contents(item: dict[str, Any]) -> list[str]:
                 continue
             if not isinstance(node, dict):
                 continue
-            for key in ["content", "material", "stem", "text", "body"]:
+            for key in ['content', 'material', 'stem', 'text', 'body']:
                 value = node.get(key)
                 if isinstance(value, str) and value.strip():
                     raw_items.append(value.strip())
@@ -1055,10 +1059,10 @@ def build_material_source(item: dict[str, Any], fallback: str) -> str | None:
     :param fallback: 兜底来源
     :return:
     """
-    source = str(item.get("from") or "").strip()
+    source = str(item.get('from') or '').strip()
     if source:
         return source[:255]
-    fallback_text = str(fallback or "").strip()
+    fallback_text = str(fallback or '').strip()
     if fallback_text:
         return fallback_text[:255]
     return None
@@ -1076,12 +1080,12 @@ def pick_chapter_name(item: dict[str, Any], module_name: str | None) -> str | No
     if chapter:
         return chapter
 
-    point_list = item.get("pointList")
+    point_list = item.get('pointList')
     if isinstance(point_list, list):
         for node in point_list:
             if not isinstance(node, dict):
                 continue
-            names = node.get("pointsName")
+            names = node.get('pointsName')
             if not isinstance(names, list):
                 continue
             for name in names:
@@ -1089,7 +1093,7 @@ def pick_chapter_name(item: dict[str, Any], module_name: str | None) -> str | No
                 if chapter:
                     return chapter
 
-    point_names = item.get("pointsName")
+    point_names = item.get('pointsName')
     if isinstance(point_names, list):
         for name in point_names:
             chapter = normalize_chapter_name(str(name))
@@ -1112,7 +1116,7 @@ def build_qid_bank_code_map(
     """
     qid_bank_map: dict[int, str] = {}
     for pid in sorted(paper_map):
-        code = f"{paper_code_prefix.upper()}_{pid}"
+        code = f'{paper_code_prefix.upper()}_{pid}'
         for qid in paper_map[pid].qids:
             if qid not in qid_bank_map:
                 qid_bank_map[qid] = code
@@ -1139,19 +1143,19 @@ def resolve_row_bank_code(
     if direct_code:
         return direct_code
 
-    children = row.get("childrens")
+    children = row.get('childrens')
     if isinstance(children, list):
         for child in children:
             if not isinstance(child, dict):
                 continue
-            child_id = child.get("id")
+            child_id = child.get('id')
             if not isinstance(child_id, int):
                 continue
             child_code = qid_bank_map.get(child_id)
             if child_code:
                 return child_code
 
-    parent_id = row.get("parent")
+    parent_id = row.get('parent')
     if isinstance(parent_id, int) and parent_id > 0:
         parent_code = qid_bank_map.get(parent_id)
         if parent_code:
@@ -1166,12 +1170,12 @@ def sanitize_field_path(value: str) -> str:
     :param value: raw field path
     :return:
     """
-    text_value = str(value or "").strip().lower()
+    text_value = str(value or '').strip().lower()
     if not text_value:
-        return "content"
-    safe = re.sub(r"[^a-z0-9_-]+", "_", text_value).strip("_")
+        return 'content'
+    safe = re.sub(r'[^a-z0-9_-]+', '_', text_value).strip('_')
     if not safe:
-        return "content"
+        return 'content'
     return safe[:80]
 
 
@@ -1194,7 +1198,7 @@ async def mirror_nested_html_value(
     :return:
     """
     if isinstance(value, str):
-        if "<img" not in value.lower():
+        if '<img' not in value.lower():
             return value, False
         mirrored = await mirror.mirror_html(
             html=value,
@@ -1213,7 +1217,7 @@ async def mirror_nested_html_value(
                 value=item,
                 bank_code=bank_code,
                 question_id=question_id,
-                field_path=f"{field_path}_{index}",
+                field_path=f'{field_path}_{index}',
             )
             if not item_changed:
                 continue
@@ -1232,7 +1236,7 @@ async def mirror_nested_html_value(
                 value=item,
                 bank_code=bank_code,
                 question_id=question_id,
-                field_path=f"{field_path}_{sanitize_field_path(str(key))}",
+                field_path=f'{field_path}_{sanitize_field_path(str(key))}',
             )
             if not item_changed:
                 continue
@@ -1262,7 +1266,7 @@ async def mirror_question_rows(
     if not args.mirror_images:
         return
     if args.dry_run:
-        print("[MIRROR] dry_run=true, skip external image mirror to avoid OSS side effects")
+        print('[MIRROR] dry_run=true, skip external image mirror to avoid OSS side effects')
         return
     if not question_rows:
         return
@@ -1276,18 +1280,18 @@ async def mirror_question_rows(
         cache_file=Path(args.mirror_cache_file),
         request_timeout=float(args.mirror_timeout),
         object_expire_days=args.mirror_object_expire_days,
-        sample_limit=int(getattr(args, "mirror_sample_limit", 0)),
-        safe_interval_seconds=float(getattr(args, "mirror_safe_interval", 2.5)),
-        safe_interval_jitter_seconds=float(getattr(args, "mirror_safe_jitter", 0.5)),
+        sample_limit=int(getattr(args, 'mirror_sample_limit', 0)),
+        safe_interval_seconds=float(getattr(args, 'mirror_safe_interval', 2.5)),
+        safe_interval_jitter_seconds=float(getattr(args, 'mirror_safe_jitter', 0.5)),
     )
 
     async with async_db_session() as db:
         await mirror.initialize(db)
 
-    print(f"[MIRROR] start rows={len(question_rows)}")
+    print(f'[MIRROR] start rows={len(question_rows)}')
     changed_rows = 0
     total_rows = len(question_rows)
-    top_level_fields = ("stem", "analysis", "extend", "material", "choices", "materials", "multiSceneAnalysis")
+    top_level_fields = ('stem', 'analysis', 'extend', 'material', 'choices', 'materials', 'multiSceneAnalysis')
 
     for index, qid in enumerate(sorted(question_rows), start=1):
         row = question_rows.get(qid)
@@ -1321,32 +1325,32 @@ async def mirror_question_rows(
 
         if index % 10 == 0 or index == total_rows:
             print(
-                "[MIRROR]"
-                f" done={index}/{total_rows}"
-                f" changed_rows={changed_rows}"
-                f" scanned_images={mirror.stats.scanned_images}"
-                f" replaced={mirror.stats.replaced_images}"
-                f" uploaded={mirror.stats.uploaded_images}"
-                f" cache_hit={mirror.stats.cache_hit}"
-                f" failed={mirror.stats.failed_images}"
-                f" public={mirror.stats.public_urls}"
-                f" signed={mirror.stats.signed_urls}"
-                f" unknown={mirror.stats.unknown_urls}"
+                '[MIRROR]'
+                f' done={index}/{total_rows}'
+                f' changed_rows={changed_rows}'
+                f' scanned_images={mirror.stats.scanned_images}'
+                f' replaced={mirror.stats.replaced_images}'
+                f' uploaded={mirror.stats.uploaded_images}'
+                f' cache_hit={mirror.stats.cache_hit}'
+                f' failed={mirror.stats.failed_images}'
+                f' public={mirror.stats.public_urls}'
+                f' signed={mirror.stats.signed_urls}'
+                f' unknown={mirror.stats.unknown_urls}'
             )
 
     mirror.save_cache()
     if mirror.rewrite_samples:
-        print(f"[MIRROR_SAMPLE] count={len(mirror.rewrite_samples)}")
+        print(f'[MIRROR_SAMPLE] count={len(mirror.rewrite_samples)}')
         for index, sample in enumerate(mirror.rewrite_samples, start=1):
             print(
-                "[MIRROR_SAMPLE]"
-                f" #{index}"
-                f" field={sample.field_name}"
-                f" scope={sample.scope_segment}"
-                f" cache={'Y' if sample.from_cache else 'N'}"
+                '[MIRROR_SAMPLE]'
+                f' #{index}'
+                f' field={sample.field_name}'
+                f' scope={sample.scope_segment}'
+                f' cache={"Y" if sample.from_cache else "N"}'
             )
-            print(f"[MIRROR_SAMPLE]   before={sample.source_url}")
-            print(f"[MIRROR_SAMPLE]   after ={sample.mirrored_url}")
+            print(f'[MIRROR_SAMPLE]   before={sample.source_url}')
+            print(f'[MIRROR_SAMPLE]   after ={sample.mirrored_url}')
 
 
 async def align_question_id_sequence(db) -> None:
@@ -1369,9 +1373,9 @@ async def align_question_id_sequence(db) -> None:
             )
         )
         max_id = await db.scalar(select(func.max(Question.id)))
-        print(f"[DB] question_id_seq_aligned max_id={int(max_id or 0)}")
+        print(f'[DB] question_id_seq_aligned max_id={int(max_id or 0)}')
     except Exception as exc:
-        print(f"[DB][WARN] align question id sequence failed: {exc}")
+        print(f'[DB][WARN] align question id sequence failed: {exc}')
 
 
 async def run_question_import_core(args: SimpleNamespace) -> int:
@@ -1382,62 +1386,62 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
     :return:
     """
     if not args.cookie:
-        raise ImportErrorBase("cookie is empty")
+        raise ImportErrorBase('cookie is empty')
 
-    area_ids = [int(x.strip()) for x in args.areas.split(",") if x.strip()]
+    area_ids = [int(x.strip()) for x in args.areas.split(',') if x.strip()]
     pattern = re.compile(args.name_regex)
     paper_map: dict[int, ImportPaperData] = {}
 
     for area_id in area_ids:
-        payload = await fetch_huatu_list(url=args.list_url, cookie=args.cookie, area=area_id, papertype="")
-        if isinstance(payload, dict) and payload.get("code") == -1:
-            print(f"[PAPER] area={area_id} source=0 matched=0")
+        payload = await fetch_huatu_list(url=args.list_url, cookie=args.cookie, area=area_id, papertype='')
+        if isinstance(payload, dict) and payload.get('code') == -1:
+            print(f'[PAPER] area={area_id} source=0 matched=0')
             continue
         papers = extract_paper_list(payload)
         matched = 0
         for paper in papers:
-            pid = paper.get("id")
-            name = str(paper.get("name") or "").strip()
+            pid = paper.get('id')
+            name = str(paper.get('name') or '').strip()
             if not isinstance(pid, int):
                 continue
             if not name:
                 continue
             if args.paper_id > 0 and pid != args.paper_id:
                 continue
-            if args.paper_category is not None and paper.get("catgory") != args.paper_category:
+            if args.paper_category is not None and paper.get('catgory') != args.paper_category:
                 continue
             if not pattern.search(name):
                 continue
-            qids = parse_qids(paper.get("questions"))
+            qids = parse_qids(paper.get('questions'))
             if not qids:
                 continue
             incoming = ImportPaperData(
                 paper_id=pid,
                 paper_name=name,
                 qids=qids,
-                qsort=parse_qsort(paper.get("questionSort"), len(qids)),
-                modules=parse_modules(paper.get("modules"), len(qids)),
+                qsort=parse_qsort(paper.get('questionSort'), len(qids)),
+                modules=parse_modules(paper.get('modules'), len(qids)),
             )
             existing = paper_map.get(pid)
             if existing is None or len(incoming.qids) > len(existing.qids):
                 paper_map[pid] = incoming
             matched += 1
-        print(f"[PAPER] area={area_id} source={len(papers)} matched={matched}")
+        print(f'[PAPER] area={area_id} source={len(papers)} matched={matched}')
         await asyncio.sleep(max(0.0, args.request_interval))
         if args.paper_id > 0 and args.paper_id in paper_map:
             break
 
     if not paper_map:
-        raise ImportErrorBase("no paper matched")
+        raise ImportErrorBase('no paper matched')
 
     selected_preview = sorted(
         [(pid, paper_map[pid].paper_name) for pid in paper_map],
         key=lambda item: item[0],
     )
     for pid, name in selected_preview[:10]:
-        print(f"[PAPER_SELECTED] id={pid} name={name}")
+        print(f'[PAPER_SELECTED] id={pid} name={name}')
     if len(selected_preview) > 10:
-        print(f"[PAPER_SELECTED] more={len(selected_preview) - 10}")
+        print(f'[PAPER_SELECTED] more={len(selected_preview) - 10}')
 
     if args.max_papers > 0:
         selected_ids = sorted(paper_map.keys())[: args.max_papers]
@@ -1472,36 +1476,36 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
             paper.qsort = next_qsort
             paper.modules = next_modules
 
-    print(f"[CHECK] papers={len(paper_map)} unique_questions={len(all_qids)}")
+    print(f'[CHECK] papers={len(paper_map)} unique_questions={len(all_qids)}')
 
     cookie_header = sanitize_cookie(args.cookie)
-    token = extract_cookie_value(cookie_header, "ht_token")
+    token = extract_cookie_value(cookie_header, 'ht_token')
     headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Connection": "keep-alive",
-        "Origin": "https://v.huatu.com",
-        "Referer": "https://v.huatu.com/",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0"
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Connection': 'keep-alive',
+        'Origin': 'https://v.huatu.com',
+        'Referer': 'https://v.huatu.com/',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0'
         ),
-        "Cookie": cookie_header,
-        "terminal": args.terminal,
+        'Cookie': cookie_header,
+        'terminal': args.terminal,
     }
     if token:
-        headers["token"] = token
+        headers['token'] = token
 
     question_rows: dict[int, dict[str, Any]] = {}
     async with httpx.AsyncClient(timeout=httpx.Timeout(45.0)) as client:
         chunks = split_chunks(all_qids, args.question_chunk_size)
         for index, chunk in enumerate(chunks, start=1):
-            params = {"ids": ",".join(str(x) for x in chunk), "terminal": args.terminal, "appType": args.app_type}
+            params = {'ids': ','.join(str(x) for x in chunk), 'terminal': args.terminal, 'appType': args.app_type}
             last_error: Exception | None = None
             for attempt in range(1, 6):
                 try:
@@ -1513,20 +1517,14 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                 except Exception as exc:
                     last_error = exc
                     wait_seconds = min(2.0 * attempt, 10.0)
-                    print(
-                        "[RETRY]"
-                        f" batch={index}/{len(chunks)}"
-                        f" attempt={attempt}"
-                        f" wait={wait_seconds}s"
-                        f" error={exc}"
-                    )
+                    print(f'[RETRY] batch={index}/{len(chunks)} attempt={attempt} wait={wait_seconds}s error={exc}')
                     await asyncio.sleep(wait_seconds)
             if last_error is not None:
                 raise last_error
-            print(f"[QUESTION_FETCH] batch={index}/{len(chunks)} request={len(chunk)} cumulative={len(question_rows)}")
+            print(f'[QUESTION_FETCH] batch={index}/{len(chunks)} request={len(chunk)} cumulative={len(question_rows)}')
             await asyncio.sleep(max(0.0, args.request_interval))
 
-    print(f"[CHECK] fetched_questions={len(question_rows)} missing={max(0, len(all_qids) - len(question_rows))}")
+    print(f'[CHECK] fetched_questions={len(question_rows)} missing={max(0, len(all_qids) - len(question_rows))}')
 
     await mirror_question_rows(args=args, question_rows=question_rows, paper_map=paper_map)
 
@@ -1534,14 +1532,14 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
     materials_field_count = 0
     material_qid_sample: list[int] = []
     for row in question_rows.values():
-        qid = row.get("id")
-        raw_material = row.get("material")
+        qid = row.get('id')
+        raw_material = row.get('material')
         if isinstance(raw_material, str) and raw_material.strip():
             material_field_count += 1
             if isinstance(qid, int):
                 material_qid_sample.append(qid)
 
-        raw_materials = row.get("materials")
+        raw_materials = row.get('materials')
         if not isinstance(raw_materials, list):
             continue
         has_materials = False
@@ -1551,7 +1549,7 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                 break
             if not isinstance(node, dict):
                 continue
-            for key in ["content", "material", "stem", "text", "body"]:
+            for key in ['content', 'material', 'stem', 'text', 'body']:
                 value = node.get(key)
                 if isinstance(value, str) and value.strip():
                     has_materials = True
@@ -1561,36 +1559,32 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
         if has_materials:
             materials_field_count += 1
 
-    print(
-        "[CHECK]"
-        f" material_field_rows={material_field_count}"
-        f" materials_field_rows={materials_field_count}"
-    )
+    print(f'[CHECK] material_field_rows={material_field_count} materials_field_rows={materials_field_count}')
 
     if material_qid_sample:
         all_qid_set = set(all_qids)
         in_scope = [qid for qid in material_qid_sample if qid in all_qid_set]
         out_scope = [qid for qid in material_qid_sample if qid not in all_qid_set]
         print(
-            "[CHECK]"
-            f" material_qids_sample={material_qid_sample[:15]}"
-            f" in_scope={len(in_scope)}"
-            f" out_scope={len(out_scope)}"
+            '[CHECK]'
+            f' material_qids_sample={material_qid_sample[:15]}'
+            f' in_scope={len(in_scope)}'
+            f' out_scope={len(out_scope)}'
         )
         for qid in material_qid_sample[:5]:
             row = question_rows.get(qid) or {}
-            children = row.get("childrens")
+            children = row.get('childrens')
             child_ids: list[int] = []
             if isinstance(children, list):
                 for node in children:
-                    if isinstance(node, dict) and isinstance(node.get("id"), int):
-                        child_ids.append(node["id"])
+                    if isinstance(node, dict) and isinstance(node.get('id'), int):
+                        child_ids.append(node['id'])
             in_scope_children = [cid for cid in child_ids if cid in all_qid_set]
             print(
-                "[CHECK]"
-                f" material_parent_qid={qid}"
-                f" child_count={len(child_ids)}"
-                f" child_in_scope={len(in_scope_children)}"
+                '[CHECK]'
+                f' material_parent_qid={qid}'
+                f' child_count={len(child_ids)}'
+                f' child_in_scope={len(in_scope_children)}'
             )
 
     parent_ref_count = 0
@@ -1599,7 +1593,7 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
         row = question_rows.get(qid)
         if not isinstance(row, dict):
             continue
-        parent_id = row.get("parent")
+        parent_id = row.get('parent')
         if not isinstance(parent_id, int) or parent_id <= 0:
             continue
         parent_ref_count += 1
@@ -1608,41 +1602,37 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
             continue
         if extract_material_contents(parent_row):
             parent_with_material_count += 1
-    print(
-        "[CHECK]"
-        f" parent_ref_rows={parent_ref_count}"
-        f" parent_with_material_rows={parent_with_material_count}"
-    )
+    print(f'[CHECK] parent_ref_rows={parent_ref_count} parent_with_material_rows={parent_with_material_count}')
 
     async with async_db_session() as db:
-        print("[DB] session_opened")
+        print('[DB] session_opened')
         try:
             await db.execute(sa_text("SET lock_timeout = '8s'"))
             await db.execute(sa_text("SET statement_timeout = '120s'"))
-            print("[DB] timeout_set lock_timeout=8s statement_timeout=120s")
+            print('[DB] timeout_set lock_timeout=8s statement_timeout=120s')
         except Exception as exc:
-            print(f"[DB][WARN] set timeout failed: {exc}")
+            print(f'[DB][WARN] set timeout failed: {exc}')
 
         await align_question_id_sequence(db)
 
-        paper_codes = [f"{args.paper_code_prefix.upper()}_{pid}" for pid in paper_map]
+        paper_codes = [f'{args.paper_code_prefix.upper()}_{pid}' for pid in paper_map]
         bank_rows = (await db.execute(select(QuestionBank).where(QuestionBank.code.in_(paper_codes)))).scalars().all()
         bank_map = {row.code: row for row in bank_rows}
-        missing_paper_ids = [pid for pid in paper_map if f"{args.paper_code_prefix.upper()}_{pid}" not in bank_map]
+        missing_paper_ids = [pid for pid in paper_map if f'{args.paper_code_prefix.upper()}_{pid}' not in bank_map]
         if missing_paper_ids:
-            sample = ",".join(str(x) for x in missing_paper_ids[:20])
-            raise ImportErrorBase(f"paper bank missing: {sample}")
-        print(f"[DB] paper_banks_ok count={len(bank_map)}")
+            sample = ','.join(str(x) for x in missing_paper_ids[:20])
+            raise ImportErrorBase(f'paper bank missing: {sample}')
+        print(f'[DB] paper_banks_ok count={len(bank_map)}')
 
         # 尽量同步试卷年份到题库表，避免 year_start/year_end 被误当成入库时间过滤。
         year_updated = 0
         for paper in paper_map.values():
             if paper.year is None:
                 continue
-            bank = bank_map.get(f"{args.paper_code_prefix.upper()}_{paper.paper_id}")
+            bank = bank_map.get(f'{args.paper_code_prefix.upper()}_{paper.paper_id}')
             if bank is None:
                 continue
-            current_year = getattr(bank, "year", None)
+            current_year = getattr(bank, 'year', None)
             if current_year == paper.year:
                 continue
             bank.year = paper.year
@@ -1650,14 +1640,16 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
             year_updated += 1
         if year_updated:
             await db.flush()
-            print(f"[DB] paper_bank_year_updated count={year_updated}")
+            print(f'[DB] paper_bank_year_updated count={year_updated}')
 
         remote_qid_to_local_id: dict[int, int] = {}
         for paper in paper_map.values():
-            bank = bank_map[f"{args.paper_code_prefix.upper()}_{paper.paper_id}"]
+            bank = bank_map[f'{args.paper_code_prefix.upper()}_{paper.paper_id}']
             placement_rows = (
-                await db.execute(select(QuestionPlacement).where(QuestionPlacement.bank_id == bank.id))
-            ).scalars().all()
+                (await db.execute(select(QuestionPlacement).where(QuestionPlacement.bank_id == bank.id)))
+                .scalars()
+                .all()
+            )
             placement_qid_by_sort: dict[int, int] = {}
             placement_active_by_sort: dict[int, bool] = {}
             for placement in placement_rows:
@@ -1688,19 +1680,12 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
             stmt = select(Question).where(Question.id.in_(chunk))
             for row in (await db.execute(stmt)).scalars().all():
                 existing_questions_by_id[int(row.id)] = row
-        print(
-            "[DB]"
-            f" existing_questions={len(existing_questions_by_id)}"
-            f" pre_mapped_qids={len(remote_qid_to_local_id)}"
-        )
+        print(f'[DB] existing_questions={len(existing_questions_by_id)} pre_mapped_qids={len(remote_qid_to_local_id)}')
 
-        source_bank_ids = {
-            int(bank.chapter_source_bank_id or bank.id)
-            for bank in bank_map.values()
-        }
+        source_bank_ids = {int(bank.chapter_source_bank_id or bank.id) for bank in bank_map.values()}
         source_bank_rows = (
-            await db.execute(select(QuestionBank).where(QuestionBank.id.in_(list(source_bank_ids))))
-        ).scalars().all()
+            (await db.execute(select(QuestionBank).where(QuestionBank.id.in_(list(source_bank_ids))))).scalars().all()
+        )
         source_bank_map = {int(bank.id): bank for bank in source_bank_rows}
 
         chapter_map_by_source_bank_id: dict[int, dict[str, int]] = {}
@@ -1708,11 +1693,13 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
         for source_bank_id in sorted(source_bank_ids):
             source_bank = source_bank_map.get(source_bank_id)
             if source_bank is None:
-                raise ImportErrorBase(f"chapter source bank missing: id={source_bank_id}")
+                raise ImportErrorBase(f'chapter source bank missing: id={source_bank_id}')
 
             chapter_rows = (
-                await db.execute(select(QuestionChapter).where(QuestionChapter.bank_id == source_bank_id))
-            ).scalars().all()
+                (await db.execute(select(QuestionChapter).where(QuestionChapter.bank_id == source_bank_id)))
+                .scalars()
+                .all()
+            )
             chapter_map: dict[str, int] = {}
             for row in chapter_rows:
                 name = normalize_chapter_name(row.name)
@@ -1722,15 +1709,15 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
             source_bank_code = str(source_bank.code or source_bank_id)
             for chapter_name in CANONICAL_CHAPTERS:
                 if chapter_name not in chapter_map:
-                    raise ImportErrorBase(f"chapter missing under {source_bank_code}: {chapter_name}")
+                    raise ImportErrorBase(f'chapter missing under {source_bank_code}: {chapter_name}')
 
             chapter_map_by_source_bank_id[source_bank_id] = chapter_map
             source_bank_code_by_id[source_bank_id] = source_bank_code
             print(
-                "[DB] chapters_ok"
-                f" source_bank_id={source_bank_id}"
-                f" source_bank_code={source_bank_code}"
-                f" count={len(chapter_map)}"
+                '[DB] chapters_ok'
+                f' source_bank_id={source_bank_id}'
+                f' source_bank_code={source_bank_code}'
+                f' count={len(chapter_map)}'
             )
 
         q_created = 0
@@ -1752,41 +1739,41 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                 continue
 
             if trace_each_question:
-                print(f"[DB][QUESTION] begin idx={idx_q}/{len(all_qids)} qid={qid}")
+                print(f'[DB][QUESTION] begin idx={idx_q}/{len(all_qids)} qid={qid}')
 
             options = build_option_items(row)
             answer_codes, raw_answers = parse_answers(row, len(options))
             question_type = map_question_type(row, len(options), len(answer_codes))
-            if question_type in ["single", "judgement"]:
-                correct_value = answer_codes[0] if answer_codes else (raw_answers[0] if raw_answers else "")
-                answer_data = {"correct": correct_value}
-            elif question_type == "multiple":
-                answer_data = {"correct": answer_codes if answer_codes else raw_answers}
+            if question_type in ['single', 'judgement']:
+                correct_value = answer_codes[0] if answer_codes else (raw_answers[0] if raw_answers else '')
+                answer_data = {'correct': correct_value}
+            elif question_type == 'multiple':
+                answer_data = {'correct': answer_codes if answer_codes else raw_answers}
             else:
-                answer_data = {"correct": raw_answers}
+                answer_data = {'correct': raw_answers}
 
-            stem = str(row.get("stem") or "").strip() or "<p>暂无题干</p>"
-            score = to_decimal(row.get("score"))
-            if score is None or score <= Decimal("0"):
-                score = Decimal("1")
+            stem = str(row.get('stem') or '').strip() or '<p>暂无题干</p>'
+            score = to_decimal(row.get('score'))
+            if score is None or score <= Decimal('0'):
+                score = Decimal('1')
             else:
-                score = score.quantize(Decimal("0.01"))
-            difficult = to_decimal(row.get("difficult")) or to_decimal(row.get("difficultyScore")) or Decimal("5")
-            if difficult <= Decimal("3"):
-                difficulty = "easy"
-            elif difficult <= Decimal("7"):
-                difficulty = "medium"
+                score = score.quantize(Decimal('0.01'))
+            difficult = to_decimal(row.get('difficult')) or to_decimal(row.get('difficultyScore')) or Decimal('5')
+            if difficult <= Decimal('3'):
+                difficulty = 'easy'
+            elif difficult <= Decimal('7'):
+                difficulty = 'medium'
             else:
-                difficulty = "hard"
-            status = 10 if int(row.get("status") or 0) == 2 else 0
+                difficulty = 'hard'
+            status = 10 if int(row.get('status') or 0) == 2 else 0
 
             points: list[str] = []
-            point_list = row.get("pointList")
+            point_list = row.get('pointList')
             if isinstance(point_list, list):
                 for node in point_list:
                     if not isinstance(node, dict):
                         continue
-                    names = node.get("pointsName")
+                    names = node.get('pointsName')
                     if not isinstance(names, list):
                         continue
                     for name in names:
@@ -1832,16 +1819,16 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
             existing_questions_by_id[local_question_id] = qobj
 
             if trace_each_question:
-                print(f"[DB][QUESTION] flush_question qid={qid}")
+                print(f'[DB][QUESTION] flush_question qid={qid}')
             await db.flush()
 
             if trace_each_question:
-                print(f"[DB][QUESTION] replace_options qid={qid}")
+                print(f'[DB][QUESTION] replace_options qid={qid}')
             qobj.options = QuestionService.normalize_options(options)
             await db.flush()
 
             if trace_each_question:
-                print(f"[DB][QUESTION] replace_analyses qid={qid}")
+                print(f'[DB][QUESTION] replace_analyses qid={qid}')
             await question_analysis_dao.replace_versions(
                 db,
                 question_id=local_question_id,
@@ -1849,24 +1836,24 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                 user_id=args.created_by,
             )
             if trace_each_question:
-                print(f"[DB][QUESTION] done qid={qid}")
+                print(f'[DB][QUESTION] done qid={qid}')
 
             if idx_q % 20 == 0 or idx_q == len(all_qids):
                 print(
-                    "[DB][QUESTION]"
-                    f" done={idx_q}/{len(all_qids)}"
-                    f" created={q_created}"
-                    f" updated={q_updated}"
-                    f" missing={q_missing}"
+                    '[DB][QUESTION]'
+                    f' done={idx_q}/{len(all_qids)}'
+                    f' created={q_created}'
+                    f' updated={q_updated}'
+                    f' missing={q_missing}'
                 )
 
         for idx_paper, paper in enumerate(paper_map.values(), start=1):
-            bank = bank_map[f"{args.paper_code_prefix.upper()}_{paper.paper_id}"]
+            bank = bank_map[f'{args.paper_code_prefix.upper()}_{paper.paper_id}']
             source_bank_id = int(bank.chapter_source_bank_id or bank.id)
             chapter_map = chapter_map_by_source_bank_id.get(source_bank_id)
             if chapter_map is None:
                 source_bank_code = source_bank_code_by_id.get(source_bank_id, str(source_bank_id))
-                raise ImportErrorBase(f"chapter map missing for source bank: {source_bank_code}")
+                raise ImportErrorBase(f'chapter map missing for source bank: {source_bank_code}')
 
             material_stmt = select(QuestionMaterial).where(
                 QuestionMaterial.bank_id == bank.id,
@@ -1930,8 +1917,8 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                 chapter_name = pick_chapter_name(row, module_name)
                 chapter_id = chapter_map.get(chapter_name) if chapter_name else None
                 sort_order = paper.qsort[index] if index < len(paper.qsort) else index + 1
-                placement_score = to_decimal(row.get("score"))
-                if placement_score is not None and placement_score <= Decimal("0"):
+                placement_score = to_decimal(row.get('score'))
+                if placement_score is not None and placement_score <= Decimal('0'):
                     placement_score = None
 
                 placement = placement_map_by_question_id.get(local_qid)
@@ -1963,7 +1950,7 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                 material_source_row = row
                 material_contents = extract_material_contents(row)
                 if not material_contents:
-                    parent_id = row.get("parent")
+                    parent_id = row.get('parent')
                     if isinstance(parent_id, int) and parent_id > 0:
                         parent_row = question_rows.get(parent_id)
                         if isinstance(parent_row, dict):
@@ -1980,11 +1967,11 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                         next_material_sort += 1
                         material_obj = QuestionMaterial(
                             bank_id=bank.id,
-                            title=f"{paper.paper_name} 材料 {next_material_sort}",
+                            title=f'{paper.paper_name} 材料 {next_material_sort}',
                             content=material_content,
                             category_id=None,
                             source=build_material_source(material_source_row, paper.paper_name),
-                            year=parse_year(material_source_row.get("year")),
+                            year=parse_year(material_source_row.get('year')),
                             sort_order=next_material_sort,
                             is_active=True,
                             created_by=args.created_by,
@@ -2037,41 +2024,41 @@ async def run_question_import_core(args: SimpleNamespace) -> int:
                     m_unlinked += len(remove_ids)
 
             print(
-                "[DB][PLACEMENT]"
-                f" done={idx_paper}/{len(paper_map)}"
-                f" bank_id={bank.id}"
-                f" p_created={p_created}"
-                f" p_updated={p_updated}"
-                f" p_skipped={p_skipped}"
-                f" m_created={m_created}"
-                f" m_linked={m_linked}"
-                f" m_unlinked={m_unlinked}"
-                f" m_sort_updated={m_sort_updated}"
+                '[DB][PLACEMENT]'
+                f' done={idx_paper}/{len(paper_map)}'
+                f' bank_id={bank.id}'
+                f' p_created={p_created}'
+                f' p_updated={p_updated}'
+                f' p_skipped={p_skipped}'
+                f' m_created={m_created}'
+                f' m_linked={m_linked}'
+                f' m_unlinked={m_unlinked}'
+                f' m_sort_updated={m_sort_updated}'
             )
 
         await db.flush()
         if args.dry_run:
-            print("[DB] rollback")
+            print('[DB] rollback')
             await db.rollback()
         else:
-            print("[DB] commit")
+            print('[DB] commit')
             await db.commit()
 
     print(
-        "[DONE]"
-        f" papers={len(paper_map)}"
-        f" unique_qids={len(all_qids)}"
-        f" q_created={q_created}"
-        f" q_updated={q_updated}"
-        f" q_missing={q_missing}"
-        f" p_created={p_created}"
-        f" p_updated={p_updated}"
-        f" p_skipped={p_skipped}"
-        f" m_created={m_created}"
-        f" m_linked={m_linked}"
-        f" m_unlinked={m_unlinked}"
-        f" m_sort_updated={m_sort_updated}"
-        f" dry_run={args.dry_run}"
+        '[DONE]'
+        f' papers={len(paper_map)}'
+        f' unique_qids={len(all_qids)}'
+        f' q_created={q_created}'
+        f' q_updated={q_updated}'
+        f' q_missing={q_missing}'
+        f' p_created={p_created}'
+        f' p_updated={p_updated}'
+        f' p_skipped={p_skipped}'
+        f' m_created={m_created}'
+        f' m_linked={m_linked}'
+        f' m_unlinked={m_unlinked}'
+        f' m_sort_updated={m_sort_updated}'
+        f' dry_run={args.dry_run}'
     )
     return 0
 
@@ -2100,7 +2087,7 @@ async def clear_question_locks() -> list[int]:
     async with async_db_session() as db:
         pids = [int(x) for x in (await db.execute(sa_text(sql))).scalars().all()]
         for pid in pids:
-            await db.execute(sa_text("select pg_terminate_backend(:pid)"), {"pid": pid})
+            await db.execute(sa_text('select pg_terminate_backend(:pid)'), {'pid': pid})
     return pids
 
 
@@ -2111,7 +2098,7 @@ async def verify_paper(paper_id: int) -> None:
     :param paper_id: 试卷 ID
     :return:
     """
-    code = f"PAPER_{paper_id}"
+    code = f'PAPER_{paper_id}'
     async with async_db_session() as db:
         bank_row = (
             await db.execute(
@@ -2123,11 +2110,11 @@ async def verify_paper(paper_id: int) -> None:
                     limit 1
                     """
                 ),
-                {"code": code},
+                {'code': code},
             )
         ).first()
         if not bank_row:
-            print(f"[校验] 本地未找到试卷 {code}")
+            print(f'[校验] 本地未找到试卷 {code}')
             return
 
         bank_id = int(bank_row.id)
@@ -2173,20 +2160,20 @@ async def verify_paper(paper_id: int) -> None:
                         ) as bad_chapter
                     """
                 ),
-                {"bank_id": bank_id, "source_bank_id": source_bank_id},
+                {'bank_id': bank_id, 'source_bank_id': source_bank_id},
             )
         ).first()
 
-    print(f"[校验] 试卷 id={paper_id} bank_id={bank_id} name={bank_row.name}")
+    print(f'[校验] 试卷 id={paper_id} bank_id={bank_id} name={bank_row.name}')
     print(
-        "[校验]"
-        f" 挂载={result.placement_count}"
-        f" 去重题数={result.distinct_question_count}"
-        f" 材料数={result.material_count}"
-        f" 材料关联数={result.material_relation_count}"
-        f" 缺失题目={result.question_missing}"
-        f" 空章节={result.null_chapter}"
-        f" 错章节={result.bad_chapter}"
+        '[校验]'
+        f' 挂载={result.placement_count}'
+        f' 去重题数={result.distinct_question_count}'
+        f' 材料数={result.material_count}'
+        f' 材料关联数={result.material_relation_count}'
+        f' 缺失题目={result.question_missing}'
+        f' 空章节={result.null_chapter}'
+        f' 错章节={result.bad_chapter}'
     )
 
 
@@ -2206,7 +2193,7 @@ async def build_incremental_plan(
         return [], []
 
     paper_ids = sorted({x.paper_id for x in remote_papers})
-    codes = [f"PAPER_{pid}" for pid in paper_ids]
+    codes = [f'PAPER_{pid}' for pid in paper_ids]
     remote_by_id = {x.paper_id: x for x in remote_papers}
 
     async with async_db_session() as db:
@@ -2216,7 +2203,7 @@ async def build_incremental_plan(
         bank_id_by_paper: dict[int, int] = {}
         for bank_id, code in bank_rows:
             try:
-                paper_id = int(str(code).split("_", 1)[1])
+                paper_id = int(str(code).split('_', 1)[1])
             except Exception:
                 continue
             bank_id_by_paper[paper_id] = int(bank_id)
@@ -2245,6 +2232,7 @@ async def build_incremental_plan(
             need_import.append(paper)
 
     return missing_bank, need_import
+
 
 async def fetch_local_empty_paper_banks(name_regex: str) -> list[LocalEmptyPaperBank]:
     """
@@ -2277,24 +2265,24 @@ async def fetch_local_empty_paper_banks(name_regex: str) -> list[LocalEmptyPaper
 
     result: list[LocalEmptyPaperBank] = []
     for row in rows:
-        code = str(row["code"] or "").strip()
-        name = str(row["name"] or "").strip()
+        code = str(row['code'] or '').strip()
+        name = str(row['name'] or '').strip()
         if not code or not name:
             continue
         if not pattern.search(name):
             continue
         try:
-            paper_id = int(code.split("_", 1)[1])
+            paper_id = int(code.split('_', 1)[1])
         except Exception:
             continue
         result.append(
             LocalEmptyPaperBank(
-                bank_id=int(row["bank_id"]),
+                bank_id=int(row['bank_id']),
                 paper_id=paper_id,
                 code=code,
                 name=name,
-                placement_count=int(row["placement_count"] or 0),
-                distinct_question_count=int(row["distinct_question_count"] or 0),
+                placement_count=int(row['placement_count'] or 0),
+                distinct_question_count=int(row['distinct_question_count'] or 0),
             )
         )
     return result
@@ -2333,25 +2321,25 @@ async def fetch_local_missing_material_paper_banks(name_regex: str) -> list[Loca
 
     result: list[LocalMissingMaterialPaperBank] = []
     for row in rows:
-        code = str(row["code"] or "").strip()
-        name = str(row["name"] or "").strip()
+        code = str(row['code'] or '').strip()
+        name = str(row['name'] or '').strip()
         if not code or not name:
             continue
         if not pattern.search(name):
             continue
         try:
-            paper_id = int(code.split("_", 1)[1])
+            paper_id = int(code.split('_', 1)[1])
         except Exception:
             continue
         result.append(
             LocalMissingMaterialPaperBank(
-                bank_id=int(row["bank_id"]),
+                bank_id=int(row['bank_id']),
                 paper_id=paper_id,
                 code=code,
                 name=name,
-                placement_count=int(row["placement_count"] or 0),
-                distinct_question_count=int(row["distinct_question_count"] or 0),
-                material_count=int(row["material_count"] or 0),
+                placement_count=int(row['placement_count'] or 0),
+                distinct_question_count=int(row['distinct_question_count'] or 0),
+                material_count=int(row['material_count'] or 0),
             )
         )
     return result
@@ -2426,67 +2414,67 @@ async def build_missing_material_repair_plan(
 async def run_empty_bank_repair() -> None:
     """Targeted import for local empty paper banks."""
     areas = await select_areas()
-    name_regex = ask("输入试卷关键词正则（为空=全部）", ".*")
-    dry_run = ask_yes_no("是否 DryRun（仅演练不落库）", False)
-    mirror_images = ask_yes_no("是否启用外链图片镜像到 OSS", False)
+    name_regex = ask('输入试卷关键词正则（为空=全部）', '.*')
+    dry_run = ask_yes_no('是否 DryRun（仅演练不落库）', False)
+    mirror_images = ask_yes_no('是否启用外链图片镜像到 OSS', False)
     mirror_safe_interval = 2.5
     if mirror_images:
-        mirror_safe_interval = ask_float("图片请求安全间隔秒数（建议 2-5）", 2.5)
-    max_banks = ask_int("本次最多补录多少套空题库（0=不限）", 0)
+        mirror_safe_interval = ask_float('图片请求安全间隔秒数（建议 2-5）', 2.5)
+    max_banks = ask_int('本次最多补录多少套空题库（0=不限）', 0)
 
     local_empty_banks, need_import, missing_remote = await build_empty_bank_repair_plan(areas, name_regex)
     print(
-        f"[空题库补录] 本地空题库={len(local_empty_banks)} "
-        f"可匹配远程={len(need_import)} 未匹配远程={len(missing_remote)}"
+        f'[空题库补录] 本地空题库={len(local_empty_banks)} '
+        f'可匹配远程={len(need_import)} 未匹配远程={len(missing_remote)}'
     )
 
     if local_empty_banks:
-        print("[空题库补录] 本地空题库样本:")
+        print('[空题库补录] 本地空题库样本:')
         for bank in local_empty_banks[:50]:
             print(
-                f"  - code={bank.code} bank_id={bank.bank_id} "
-                f"placements={bank.placement_count} questions={bank.distinct_question_count} {bank.name}"
+                f'  - code={bank.code} bank_id={bank.bank_id} '
+                f'placements={bank.placement_count} questions={bank.distinct_question_count} {bank.name}'
             )
         if len(local_empty_banks) > 50:
-            print(f"  ... 其余 {len(local_empty_banks) - 50} 条未展示")
+            print(f'  ... 其余 {len(local_empty_banks) - 50} 条未展示')
 
     if missing_remote:
-        print("[空题库补录] 以下本地空题库未在当前区域/关键词下匹配到远程试卷:")
+        print('[空题库补录] 以下本地空题库未在当前区域/关键词下匹配到远程试卷:')
         for bank in missing_remote[:50]:
-            print(f"  - code={bank.code} bank_id={bank.bank_id} {bank.name}")
+            print(f'  - code={bank.code} bank_id={bank.bank_id} {bank.name}')
         if len(missing_remote) > 50:
-            print(f"  ... 其余 {len(missing_remote) - 50} 条未展示")
+            print(f'  ... 其余 {len(missing_remote) - 50} 条未展示')
 
     if not need_import:
-        print("[空题库补录] 没有可补录的试卷。")
+        print('[空题库补录] 没有可补录的试卷。')
         return
 
     if max_banks > 0:
         need_import = need_import[:max_banks]
 
-    print("[空题库补录] 准备补录试卷:")
+    print('[空题库补录] 准备补录试卷:')
     for paper in need_import[:50]:
-        print(f"  - [{paper.area_name}] paper_id={paper.paper_id} qcount={paper.qcount} {paper.name}")
+        print(f'  - [{paper.area_name}] paper_id={paper.paper_id} qcount={paper.qcount} {paper.name}')
     if len(need_import) > 50:
-        print(f"  ... 其余 {len(need_import) - 50} 条未展示")
+        print(f'  ... 其余 {len(need_import) - 50} 条未展示')
 
-    if not ask_yes_no("是否继续执行空题库补录", True):
-        print("已取消。")
+    if not ask_yes_no('是否继续执行空题库补录', True):
+        print('已取消。')
         return
 
     success_count = 0
     for index, paper in enumerate(need_import, start=1):
         print(
-            f"[空题库补录] {index}/{len(need_import)} 开始 "
-            f"area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}"
+            f'[空题库补录] {index}/{len(need_import)} 开始 '
+            f'area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}'
         )
         pids = await clear_question_locks()
         if pids:
-            print(f"[空题库补录] 清理锁会话: {pids}")
+            print(f'[空题库补录] 清理锁会话: {pids}')
 
         args = build_import_args(
             areas=[paper.area_id],
-            name_regex=".*",
+            name_regex='.*',
             dry_run=dry_run,
             mirror_images=mirror_images,
             paper_id=paper.paper_id,
@@ -2497,26 +2485,26 @@ async def run_empty_bank_repair() -> None:
         try:
             await run_question_import_core(args)
             success_count += 1
-            print(f"[空题库补录] 完成 paper_id={paper.paper_id}")
+            print(f'[空题库补录] 完成 paper_id={paper.paper_id}')
             if not dry_run:
                 await verify_paper(paper.paper_id)
         except Exception as exc:
-            print(f"[空题库补录] 失败 paper_id={paper.paper_id} error={exc}")
+            print(f'[空题库补录] 失败 paper_id={paper.paper_id} error={exc}')
 
-    print(f"[空题库补录] 完成成功数={success_count}/{len(need_import)}")
+    print(f'[空题库补录] 完成成功数={success_count}/{len(need_import)}')
 
 
 async def run_missing_material_repair() -> None:
     """Targeted import for local paper banks with missing materials."""
     areas = await select_areas()
-    name_regex = ask("输入试卷关键词正则（为空=全部）", ".*")
-    target_paper_id = ask_int("仅补录指定 paper_id（0=按规则扫描全部）", 0)
-    dry_run = ask_yes_no("是否 DryRun（仅演练不落库）", False)
-    mirror_images = ask_yes_no("是否启用外链图片镜像到 OSS", False)
+    name_regex = ask('输入试卷关键词正则（为空=全部）', '.*')
+    target_paper_id = ask_int('仅补录指定 paper_id（0=按规则扫描全部）', 0)
+    dry_run = ask_yes_no('是否 DryRun（仅演练不落库）', False)
+    mirror_images = ask_yes_no('是否启用外链图片镜像到 OSS', False)
     mirror_safe_interval = 2.5
     if mirror_images:
-        mirror_safe_interval = ask_float("图片请求安全间隔秒数（建议 2-5）", 2.5)
-    max_banks = ask_int("本次最多补录多少套缺材料题库（0=不限）", 0)
+        mirror_safe_interval = ask_float('图片请求安全间隔秒数（建议 2-5）', 2.5)
+    max_banks = ask_int('本次最多补录多少套缺材料题库（0=不限）', 0)
 
     local_missing_banks, need_import, missing_remote = await build_missing_material_repair_plan(
         areas,
@@ -2524,57 +2512,57 @@ async def run_missing_material_repair() -> None:
         target_paper_id=target_paper_id,
     )
     print(
-        f"[缺材料补录] 本地缺材料题库={len(local_missing_banks)} "
-        f"可匹配远程={len(need_import)} 未匹配远程={len(missing_remote)}"
+        f'[缺材料补录] 本地缺材料题库={len(local_missing_banks)} '
+        f'可匹配远程={len(need_import)} 未匹配远程={len(missing_remote)}'
     )
 
     if local_missing_banks:
-        print("[缺材料补录] 本地缺材料题库样本:")
+        print('[缺材料补录] 本地缺材料题库样本:')
         for bank in local_missing_banks[:50]:
             print(
-                f"  - code={bank.code} bank_id={bank.bank_id} placements={bank.placement_count} "
-                f"questions={bank.distinct_question_count} materials={bank.material_count} {bank.name}"
+                f'  - code={bank.code} bank_id={bank.bank_id} placements={bank.placement_count} '
+                f'questions={bank.distinct_question_count} materials={bank.material_count} {bank.name}'
             )
         if len(local_missing_banks) > 50:
-            print(f"  ... 其余 {len(local_missing_banks) - 50} 条未展示")
+            print(f'  ... 其余 {len(local_missing_banks) - 50} 条未展示')
 
     if missing_remote:
-        print("[缺材料补录] 以下本地题库未在当前区域/关键词下匹配到远程试卷:")
+        print('[缺材料补录] 以下本地题库未在当前区域/关键词下匹配到远程试卷:')
         for bank in missing_remote[:50]:
-            print(f"  - code={bank.code} bank_id={bank.bank_id} {bank.name}")
+            print(f'  - code={bank.code} bank_id={bank.bank_id} {bank.name}')
         if len(missing_remote) > 50:
-            print(f"  ... 其余 {len(missing_remote) - 50} 条未展示")
+            print(f'  ... 其余 {len(missing_remote) - 50} 条未展示')
 
     if not need_import:
-        print("[缺材料补录] 没有可补录的试卷。")
+        print('[缺材料补录] 没有可补录的试卷。')
         return
 
     if max_banks > 0:
         need_import = need_import[:max_banks]
 
-    print("[缺材料补录] 准备补录试卷:")
+    print('[缺材料补录] 准备补录试卷:')
     for paper in need_import[:50]:
-        print(f"  - [{paper.area_name}] paper_id={paper.paper_id} qcount={paper.qcount} {paper.name}")
+        print(f'  - [{paper.area_name}] paper_id={paper.paper_id} qcount={paper.qcount} {paper.name}')
     if len(need_import) > 50:
-        print(f"  ... 其余 {len(need_import) - 50} 条未展示")
+        print(f'  ... 其余 {len(need_import) - 50} 条未展示')
 
-    if not ask_yes_no("是否继续执行缺材料补录", True):
-        print("已取消。")
+    if not ask_yes_no('是否继续执行缺材料补录', True):
+        print('已取消。')
         return
 
     success_count = 0
     for index, paper in enumerate(need_import, start=1):
         print(
-            f"[缺材料补录] {index}/{len(need_import)} 开始 "
-            f"area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}"
+            f'[缺材料补录] {index}/{len(need_import)} 开始 '
+            f'area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}'
         )
         pids = await clear_question_locks()
         if pids:
-            print(f"[缺材料补录] 清理锁会话: {pids}")
+            print(f'[缺材料补录] 清理锁会话: {pids}')
 
         args = build_import_args(
             areas=[paper.area_id],
-            name_regex=".*",
+            name_regex='.*',
             dry_run=dry_run,
             mirror_images=mirror_images,
             paper_id=paper.paper_id,
@@ -2585,13 +2573,13 @@ async def run_missing_material_repair() -> None:
         try:
             await run_question_import_core(args)
             success_count += 1
-            print(f"[缺材料补录] 完成 paper_id={paper.paper_id}")
+            print(f'[缺材料补录] 完成 paper_id={paper.paper_id}')
             if not dry_run:
                 await verify_paper(paper.paper_id)
         except Exception as exc:
-            print(f"[缺材料补录] 失败 paper_id={paper.paper_id} error={exc}")
+            print(f'[缺材料补录] 失败 paper_id={paper.paper_id} error={exc}')
 
-    print(f"[缺材料补录] 完成成功数={success_count}/{len(need_import)}")
+    print(f'[缺材料补录] 完成成功数={success_count}/{len(need_import)}')
 
 
 async def select_areas() -> list[AreaNode]:
@@ -2599,7 +2587,7 @@ async def select_areas() -> list[AreaNode]:
     try:
         areas = await fetch_remote_areas()
     except Exception as exc:
-        print(f"[警告] 地区接口获取失败，改用默认地区列表。原因: {exc}")
+        print(f'[警告] 地区接口获取失败，改用默认地区列表。原因: {exc}')
         areas = fallback_areas()
     return choose_areas_by_response(areas)
 
@@ -2607,10 +2595,10 @@ async def select_areas() -> list[AreaNode]:
 async def select_papers_interactive() -> list[RemotePaper]:
     """交互选择试卷。"""
     areas = await select_areas()
-    keyword = ask("输入试卷关键词正则（为空=全部）", ".*")
+    keyword = ask('输入试卷关键词正则（为空=全部）', '.*')
     papers = await fetch_remote_papers(areas, keyword)
     if not papers:
-        print("没有匹配到试卷。")
+        print('没有匹配到试卷。')
         return []
     return choose_papers_by_response(papers)
 
@@ -2620,36 +2608,33 @@ async def run_single_import() -> None:
     papers = await select_papers_interactive()
     if not papers:
         return
-    dry_run = ask_yes_no("是否 DryRun（仅演练不落库）", True)
-    mirror_images = ask_yes_no("是否启用外链图片镜像到 OSS", False)
+    dry_run = ask_yes_no('是否 DryRun（仅演练不落库）', True)
+    mirror_images = ask_yes_no('是否启用外链图片镜像到 OSS', False)
     mirror_safe_interval = 2.5
     if mirror_images:
-        mirror_safe_interval = ask_float("图片请求安全间隔秒数（建议 2-5）", 2.5)
-    smoke_mode = ask_yes_no("是否启用验收小模式（仅跑 1 套并输出 URL 对照样本）", True)
+        mirror_safe_interval = ask_float('图片请求安全间隔秒数（建议 2-5）', 2.5)
+    smoke_mode = ask_yes_no('是否启用验收小模式（仅跑 1 套并输出 URL 对照样本）', True)
     mirror_sample_limit = 0
     selected_papers = papers
     if smoke_mode:
         selected_papers = papers[:1]
         if not mirror_images:
-            print("[小模式] 已自动开启图片镜像，便于输出前后 URL 样本")
+            print('[小模式] 已自动开启图片镜像，便于输出前后 URL 样本')
             mirror_images = True
-        mirror_sample_limit = ask_int("输出多少条 URL 对照样本", 10)
-        print(
-            f"[小模式] 仅处理首套试卷 paper_id={selected_papers[0].paper_id} "
-            f"name={selected_papers[0].name}"
-        )
+        mirror_sample_limit = ask_int('输出多少条 URL 对照样本', 10)
+        print(f'[小模式] 仅处理首套试卷 paper_id={selected_papers[0].paper_id} name={selected_papers[0].name}')
 
     for index, paper in enumerate(selected_papers, start=1):
         print(
-            f"[导入] {index}/{len(selected_papers)} 开始 "
-            f"area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}"
+            f'[导入] {index}/{len(selected_papers)} 开始 '
+            f'area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}'
         )
         pids = await clear_question_locks()
         if pids:
-            print(f"[导入] 清理锁会话: {pids}")
+            print(f'[导入] 清理锁会话: {pids}')
         args = build_import_args(
             areas=[paper.area_id],
-            name_regex=".*",
+            name_regex='.*',
             dry_run=dry_run,
             mirror_images=mirror_images,
             paper_id=paper.paper_id,
@@ -2659,27 +2644,27 @@ async def run_single_import() -> None:
             mirror_safe_interval=mirror_safe_interval,
         )
         await run_question_import_core(args)
-        print(f"[导入] 完成 paper_id={paper.paper_id}")
+        print(f'[导入] 完成 paper_id={paper.paper_id}')
 
 
 async def run_area_batch() -> None:
     """按地区批量导入。"""
     areas = await select_areas()
-    name_regex = ask("输入试卷关键词正则（为空=全部）", ".*")
-    dry_run = ask_yes_no("是否 DryRun（仅演练不落库）", False)
-    mirror_images = ask_yes_no("是否启用外链图片镜像到 OSS", False)
+    name_regex = ask('输入试卷关键词正则（为空=全部）', '.*')
+    dry_run = ask_yes_no('是否 DryRun（仅演练不落库）', False)
+    mirror_images = ask_yes_no('是否启用外链图片镜像到 OSS', False)
     mirror_safe_interval = 2.5
     if mirror_images:
-        mirror_safe_interval = ask_float("图片请求安全间隔秒数（建议 2-5）", 2.5)
-    max_papers = ask_int("每个地区最多导入多少套（0=不限）", 0)
+        mirror_safe_interval = ask_float('图片请求安全间隔秒数（建议 2-5）', 2.5)
+    max_papers = ask_int('每个地区最多导入多少套（0=不限）', 0)
 
     success: list[int] = []
     failed: list[int] = []
     for index, area in enumerate(areas, start=1):
-        print(f"[地区批量] {index}/{len(areas)} 开始 area={area.name}(id={area.area_id})")
+        print(f'[地区批量] {index}/{len(areas)} 开始 area={area.name}(id={area.area_id})')
         pids = await clear_question_locks()
         if pids:
-            print(f"[地区批量] 清理锁会话: {pids}")
+            print(f'[地区批量] 清理锁会话: {pids}')
         try:
             args = build_import_args(
                 areas=[area.area_id],
@@ -2693,68 +2678,62 @@ async def run_area_batch() -> None:
             )
             await run_question_import_core(args)
             success.append(area.area_id)
-            print(f"[地区批量] 完成 area={area.name}(id={area.area_id})")
+            print(f'[地区批量] 完成 area={area.name}(id={area.area_id})')
         except Exception as exc:
             failed.append(area.area_id)
-            print(f"[地区批量] 失败 area={area.name}(id={area.area_id}) error={exc}")
+            print(f'[地区批量] 失败 area={area.name}(id={area.area_id}) error={exc}')
 
-    print(f"[地区批量] 成功地区 id={success}")
-    print(f"[地区批量] 失败地区 id={failed}")
+    print(f'[地区批量] 成功地区 id={success}')
+    print(f'[地区批量] 失败地区 id={failed}')
 
 
 async def run_incremental_batch() -> None:
     """按缺口执行增量导入。"""
     areas = await select_areas()
-    name_regex = ask("输入试卷关键词正则（为空=全部）", ".*")
-    dry_run = ask_yes_no("是否 DryRun（仅演练不落库）", False)
-    mirror_images = ask_yes_no("是否启用外链图片镜像到 OSS", False)
+    name_regex = ask('输入试卷关键词正则（为空=全部）', '.*')
+    dry_run = ask_yes_no('是否 DryRun（仅演练不落库）', False)
+    mirror_images = ask_yes_no('是否启用外链图片镜像到 OSS', False)
     mirror_safe_interval = 2.5
     if mirror_images:
-        mirror_safe_interval = ask_float("图片请求安全间隔秒数（建议 2-5）", 2.5)
+        mirror_safe_interval = ask_float('图片请求安全间隔秒数（建议 2-5）', 2.5)
 
     missing_bank, need_import = await build_incremental_plan(areas, name_regex)
-    print(f"[增量计划] 缺失题库记录={len(missing_bank)} 需增量导入={len(need_import)}")
+    print(f'[增量计划] 缺失题库记录={len(missing_bank)} 需增量导入={len(need_import)}')
 
     if missing_bank:
-        print("[增量计划] 以下试卷在本地缺少 bank 记录（跳过）:")
+        print('[增量计划] 以下试卷在本地缺少 bank 记录（跳过）:')
         for paper in missing_bank[:50]:
-            print(
-                f"  - [{paper.area_name}] paper_id={paper.paper_id} "
-                f"qcount={paper.qcount} {paper.name}"
-            )
+            print(f'  - [{paper.area_name}] paper_id={paper.paper_id} qcount={paper.qcount} {paper.name}')
         if len(missing_bank) > 50:
-            print(f"  ... 其余 {len(missing_bank) - 50} 条未展示")
+            print(f'  ... 其余 {len(missing_bank) - 50} 条未展示')
 
     if not need_import:
-        print("[增量计划] 没有需要导入的试卷。")
+        print('[增量计划] 没有需要导入的试卷。')
         return
 
-    print("[增量计划] 需导入试卷:")
+    print('[增量计划] 需导入试卷:')
     for paper in need_import[:50]:
-        print(
-            f"  - [{paper.area_name}] paper_id={paper.paper_id} "
-            f"qcount={paper.qcount} {paper.name}"
-        )
+        print(f'  - [{paper.area_name}] paper_id={paper.paper_id} qcount={paper.qcount} {paper.name}')
     if len(need_import) > 50:
-        print(f"  ... 其余 {len(need_import) - 50} 条未展示")
+        print(f'  ... 其余 {len(need_import) - 50} 条未展示')
 
-    if not ask_yes_no("是否继续执行增量导入", True):
-        print("已取消。")
+    if not ask_yes_no('是否继续执行增量导入', True):
+        print('已取消。')
         return
 
     success_count = 0
     for index, paper in enumerate(need_import, start=1):
         print(
-            f"[增量导入] {index}/{len(need_import)} 开始 "
-            f"area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}"
+            f'[增量导入] {index}/{len(need_import)} 开始 '
+            f'area={paper.area_name}(id={paper.area_id}) paper_id={paper.paper_id}'
         )
         pids = await clear_question_locks()
         if pids:
-            print(f"[增量导入] 清理锁会话: {pids}")
+            print(f'[增量导入] 清理锁会话: {pids}')
 
         args = build_import_args(
             areas=[paper.area_id],
-            name_regex=".*",
+            name_regex='.*',
             dry_run=dry_run,
             mirror_images=mirror_images,
             paper_id=paper.paper_id,
@@ -2765,20 +2744,20 @@ async def run_incremental_batch() -> None:
         try:
             await run_question_import_core(args)
             success_count += 1
-            print(f"[增量导入] 完成 paper_id={paper.paper_id}")
+            print(f'[增量导入] 完成 paper_id={paper.paper_id}')
         except Exception as exc:
-            print(f"[增量导入] 失败 paper_id={paper.paper_id} error={exc}")
+            print(f'[增量导入] 失败 paper_id={paper.paper_id} error={exc}')
 
-    print(f"[增量导入] 完成成功数={success_count}/{len(need_import)}")
+    print(f'[增量导入] 完成成功数={success_count}/{len(need_import)}')
 
 
 async def run_lock_cleanup() -> None:
     """执行锁清理。"""
     pids = await clear_question_locks()
     if pids:
-        print(f"[锁清理] 已终止会话: {pids}")
+        print(f'[锁清理] 已终止会话: {pids}')
     else:
-        print("[锁清理] 没有待清理会话。")
+        print('[锁清理] 没有待清理会话。')
 
 
 async def run_verify() -> None:
@@ -2792,54 +2771,54 @@ async def run_verify() -> None:
 
 async def main() -> int:
     """主入口。"""
-    if "PASTE_YOUR_COOKIE_HERE" in HUATU_COOKIE:
-        print("请先在脚本中填写 HUATU_COOKIE，或先设置环境变量 HUATU_COOKIE。")
+    if 'PASTE_YOUR_COOKIE_HERE' in HUATU_COOKIE:
+        print('请先在脚本中填写 HUATU_COOKIE，或先设置环境变量 HUATU_COOKIE。')
         return 1
 
     while True:
-        print("\n========== 题库导入控制台 ==========")
-        print("1) 清理数据库锁会话")
-        print("2) 从网页选择试卷并导入（不手填 id）")
-        print("3) 从网页选择地区并批量导入")
-        print("4) 增量导入（自动比对本地缺口）")
-        print("5) 从网页选择试卷并校验本地")
-        print("6) 针对本地空题库补录")
-        print("7) 针对本地缺材料题库补录")
-        print("0) 退出")
-        choice = ask("请选择功能", "0")
+        print('\n========== 题库导入控制台 ==========')
+        print('1) 清理数据库锁会话')
+        print('2) 从网页选择试卷并导入（不手填 id）')
+        print('3) 从网页选择地区并批量导入')
+        print('4) 增量导入（自动比对本地缺口）')
+        print('5) 从网页选择试卷并校验本地')
+        print('6) 针对本地空题库补录')
+        print('7) 针对本地缺材料题库补录')
+        print('0) 退出')
+        choice = ask('请选择功能', '0')
 
-        if choice == "0":
-            print("已退出。")
+        if choice == '0':
+            print('已退出。')
             return 0
-        if choice == "1":
+        if choice == '1':
             await run_lock_cleanup()
             continue
-        if choice == "2":
+        if choice == '2':
             await run_single_import()
             continue
-        if choice == "3":
+        if choice == '3':
             await run_area_batch()
             continue
-        if choice == "4":
+        if choice == '4':
             await run_incremental_batch()
             continue
-        if choice == "5":
+        if choice == '5':
             await run_verify()
             continue
-        if choice == "6":
+        if choice == '6':
             await run_empty_bank_repair()
             continue
-        if choice == "7":
+        if choice == '7':
             await run_missing_material_repair()
             continue
 
-        print("无效选择，请重试。")
+        print('无效选择，请重试。')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
     raise SystemExit(asyncio.run(main()))

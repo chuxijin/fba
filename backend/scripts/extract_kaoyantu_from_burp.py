@@ -8,6 +8,7 @@
     python backend/scripts/extract_kaoyantu_from_burp.py --input old.xml patch.xml --output backend/scripts/outputs/merged.xlsx
     python backend/scripts/extract_kaoyantu_from_burp.py --input burp_raw.txt --output backend/scripts/outputs/burp_questions.xlsx
 """
+
 import argparse
 import base64
 import json
@@ -210,7 +211,7 @@ def extract_balanced_json_objects(text: str) -> list[str]:
         if char == '}':
             depth -= 1
             if depth == 0:
-                objects.append(text[start_index:index + 1])
+                objects.append(text[start_index : index + 1])
                 start_index = None
 
     return objects
@@ -498,9 +499,9 @@ def build_chapter_path_map(responses: list[dict[str, Any]]) -> dict[int, tuple[s
         names: list[str] = []
         current: dict[str, Any] | None = item
         while current:
-            name = current.get('name')
-            if name:
-                names.append(str(name).replace('\t', ' ').strip())
+            name = str(current.get('name') or '').replace('\t', ' ').strip()
+            if name and name not in QUESTION_TYPE_NAMES:
+                names.append(name)
 
             parent_id = current.get('parent_id')
             if not isinstance(parent_id, int):
@@ -743,19 +744,25 @@ def main() -> None:
 
     analysis_count = sum(1 for question in questions if extract_analysis(question, analysis_map))
     missing_analysis_ids = build_missing_analysis_ids(questions, analysis_map)
-    print(json.dumps({
-        **load_stats,
-        'responses': len(responses),
-        'all_questions': all_questions_count,
-        'questions': len(questions),
-        'filtered_without_analysis': all_questions_count - len(questions),
-        'chapter_mappings': len(chapter_path_map),
-        'analysis_mappings': len(analysis_map),
-        'analysis_count': analysis_count,
-        'missing_analysis_count': len(missing_analysis_ids),
-        'missing_analysis_ids': missing_analysis_ids[:50],
-        'output': args.output,
-    }, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                **load_stats,
+                'responses': len(responses),
+                'all_questions': all_questions_count,
+                'questions': len(questions),
+                'filtered_without_analysis': all_questions_count - len(questions),
+                'chapter_mappings': len(chapter_path_map),
+                'analysis_mappings': len(analysis_map),
+                'analysis_count': analysis_count,
+                'missing_analysis_count': len(missing_analysis_ids),
+                'missing_analysis_ids': missing_analysis_ids[:50],
+                'output': args.output,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 if __name__ == '__main__':

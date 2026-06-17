@@ -419,8 +419,7 @@ async def clear_bank_content(db: AsyncSession, *, bank: QuestionBank, delete_his
     """
     placement_rows = (
         await db.execute(
-            select(QuestionPlacement.id, QuestionPlacement.question_id)
-            .where(QuestionPlacement.bank_id == bank.id)
+            select(QuestionPlacement.id, QuestionPlacement.question_id).where(QuestionPlacement.bank_id == bank.id)
         )
     ).all()
     placement_ids = [int(row.id) for row in placement_rows]
@@ -435,11 +434,11 @@ async def clear_bank_content(db: AsyncSession, *, bank: QuestionBank, delete_his
         session_ids = list(
             (
                 await db.execute(
-                    select(SessionQuestion.session_id)
-                    .where(SessionQuestion.placement_id.in_(placement_ids))
-                    .distinct()
+                    select(SessionQuestion.session_id).where(SessionQuestion.placement_id.in_(placement_ids)).distinct()
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         if session_ids:
             result = await db.execute(sa_delete(PracticeSession).where(PracticeSession.id.in_(session_ids)))
@@ -458,7 +457,9 @@ async def clear_bank_content(db: AsyncSession, *, bank: QuestionBank, delete_his
                         .where(QuestionPlacement.question_id.in_(question_ids))
                         .distinct()
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
             orphan_question_ids = sorted(question_ids - referenced_question_ids)
             if orphan_question_ids:
@@ -546,11 +547,7 @@ async def get_question_by_source_id(db: AsyncSession, source_id: str) -> Questio
     stmt = (
         select(Question)
         .join(QuestionAnalysis, QuestionAnalysis.question_id == Question.id)
-        .where(
-            QuestionAnalysis.answer_data.cast(PGJSONB).contains(
-                {'source': SOURCE, 'source_question_id': source_id}
-            )
-        )
+        .where(QuestionAnalysis.answer_data.cast(PGJSONB).contains({'source': SOURCE, 'source_question_id': source_id}))
         .limit(1)
     )
     return await db.scalar(stmt)

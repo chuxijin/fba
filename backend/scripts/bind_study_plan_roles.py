@@ -234,15 +234,15 @@ async def main() -> int:
     print(f'[OK] study plan roles={len(role_map)} cleared_user_cache={len(cleared_user_ids)}')
     for role_id, role in role_map.items():
         menus = role['menus']
-        print(f"- role_id={role_id} role_name={role['role_name']} menu_count={len(menus)}")
+        print(f'- role_id={role_id} role_name={role["role_name"]} menu_count={len(menus)}')
         for menu in menus:
             print(
-                f"  - menu_id={menu['menu_id']} name={menu['menu_name']} "
-                f"type={menu['menu_type']} perms={menu['menu_perms']}"
+                f'  - menu_id={menu["menu_id"]} name={menu["menu_name"]} '
+                f'type={menu["menu_type"]} perms={menu["menu_perms"]}'
             )
 
     if cleared_user_ids:
-        print(f"- cleared_user_ids={','.join(str(user_id) for user_id in cleared_user_ids)}")
+        print(f'- cleared_user_ids={",".join(str(user_id) for user_id in cleared_user_ids)}')
     if cache_error is not None:
         print(f'[WARN] clear user cache failed: {cache_error}')
     return 0

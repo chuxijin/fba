@@ -8,6 +8,7 @@
     python backend/scripts/export_kaoyantu_questions_excel.py --output backend/scripts/outputs/questions.xlsx
     python backend/scripts/export_kaoyantu_questions_excel.py --single-page --page 1
 """
+
 import argparse
 import json
 import time
@@ -590,11 +591,17 @@ def main() -> None:
         template_path=Path(args.template),
         output_path=Path(args.output),
     )
-    print(json.dumps({
-        'output': args.output,
-        'count': count,
-        'duplicate_count': data.get('export_duplicate_count', 0),
-    }, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                'output': args.output,
+                'count': count,
+                'duplicate_count': data.get('export_duplicate_count', 0),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@
 2. 通过 build_final_router() 聚合所有路由(含插件), 构造最小 FastAPI 实例后调用 app.openapi()
 3. 默认输出到 packages/api-sdk/openapi.json (跨包路径), 支持 --output 覆盖
 """
+
 from __future__ import annotations
 
 import argparse
