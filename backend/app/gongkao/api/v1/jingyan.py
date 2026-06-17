@@ -34,9 +34,6 @@ async def get_jingyan_list(
     is_published: Annotated[bool, Query(description='是否发布')] = True,
 ):
     contents = await content_service.get_list(
-        db=db, 
-        app_code=app_code, 
-        category_id=category_id, 
-        is_published=is_published
+        db=db, app_code=app_code, category_id=category_id, is_published=is_published
     )
     return response_base.success(data=contents)

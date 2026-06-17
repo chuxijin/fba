@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """资料模型"""
+
 import sqlalchemy as sa
 
 from sqlalchemy.orm import Mapped, mapped_column

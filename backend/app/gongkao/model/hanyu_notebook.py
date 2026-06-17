@@ -20,7 +20,9 @@ class GkHanyuNotebook(Base):
 
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='用户 ID')
-    hanyu_id: Mapped[int] = mapped_column(sa.BigInteger, sa.ForeignKey('gk_hanyu.id', ondelete='CASCADE'), index=True, comment='汉语词汇 ID')
+    hanyu_id: Mapped[int] = mapped_column(
+        sa.BigInteger, sa.ForeignKey('gk_hanyu.id', ondelete='CASCADE'), index=True, comment='汉语词汇 ID'
+    )
 
     # 关系属性
     hanyu: Mapped[GkHanyu] = relationship(init=False, backref='notebook_entries')

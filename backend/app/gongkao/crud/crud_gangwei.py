@@ -170,16 +170,14 @@ class CRUDGangwei(CRUDPlus[GkGangwei]):
             )
             .where(self.model.year == year)
             .where(
-                or_(
-                    *[
-                        and_(
-                            self.model.position_code == code,
-                            self.model.position_name == name,
-                            self.model.dept_name == dept,
-                        )
-                        for code, name, dept in keys
-                    ]
-                )
+                or_(*[
+                    and_(
+                        self.model.position_code == code,
+                        self.model.position_name == name,
+                        self.model.dept_name == dept,
+                    )
+                    for code, name, dept in keys
+                ])
             )
         )
         result = await db.execute(stmt)
@@ -246,11 +244,7 @@ class CRUDGangwei(CRUDPlus[GkGangwei]):
         """
         from sqlalchemy import update
 
-        stmt = (
-            update(self.model)
-            .where(self.model.id == pk)
-            .values(**score_data, updated_by=updated_by)
-        )
+        stmt = update(self.model).where(self.model.id == pk).values(**score_data, updated_by=updated_by)
         result = await db.execute(stmt)
         return result.rowcount
 

@@ -46,6 +46,7 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
 
         if getattr(params, 'notebook_only', False) and getattr(params, 'user_id', None) is not None:
             from backend.app.gongkao.model.hanyu_notebook import GkHanyuNotebook
+
             se = se.join(GkHanyuNotebook, GkHanyuNotebook.hanyu_id == self.model.id)
             se = se.where(GkHanyuNotebook.user_id == params.user_id)
             se = se.order_by(GkHanyuNotebook.id.desc())
@@ -124,9 +125,7 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
         :param db: 数据库会话
         :return:
         """
-        stmt = select(GkHanyu.type).where(
-            GkHanyu.type.isnot(None)
-        ).distinct().order_by(GkHanyu.type)
+        stmt = select(GkHanyu.type).where(GkHanyu.type.isnot(None)).distinct().order_by(GkHanyu.type)
         result = await db.execute(stmt)
         return [row[0] for row in result.all()]
 

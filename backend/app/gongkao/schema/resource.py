@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """资料 Schema"""
+
 from datetime import datetime
 
 from pydantic import Field
@@ -10,6 +11,7 @@ from backend.common.schema import SchemaBase
 
 class ResourceBase(SchemaBase):
     """资料基础"""
+
     title: str = Field(description='标题')
     description: str | None = Field(None, description='描述')
     category_id: int = Field(description='分类ID')
@@ -22,11 +24,13 @@ class ResourceBase(SchemaBase):
 
 class CreateResourceParam(ResourceBase):
     """创建资料"""
+
     pass
 
 
 class UpdateResourceParam(SchemaBase):
     """更新资料"""
+
     title: str | None = Field(None, description='标题')
     description: str | None = Field(None, description='描述')
     category_id: int | None = Field(None, description='分类ID')
@@ -39,6 +43,7 @@ class UpdateResourceParam(SchemaBase):
 
 class GetResourceDetail(ResourceBase):
     """资料详情"""
+
     id: int = Field(description='ID')
     view_count: int = Field(0, description='查看次数')
     created_time: datetime = Field(description='创建时间')
@@ -50,6 +55,7 @@ class GetResourceDetail(ResourceBase):
 
 class GetResourceListParams(SchemaBase):
     """资料列表查询参数"""
+
     title: str | None = Field(None, description='标题')
     category_id: int | list[int] | None = Field(None, description='分类ID')
     file_type: str | None = Field(None, description='文件类型')

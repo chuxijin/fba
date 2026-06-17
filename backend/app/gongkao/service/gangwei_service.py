@@ -101,8 +101,12 @@ GANGWEI_FIELDS = [
 # 数值类型字段（用于导入时类型转换）
 INT_FIELDS = {'year', 'recruit_num', 'apply_count', 'pass_count'}
 DECIMAL_FIELDS = {
-    'written_min_score', 'written_avg_score', 'written_max_score',
-    'interview_min_score', 'interview_avg_score', 'interview_max_score',
+    'written_min_score',
+    'written_avg_score',
+    'written_max_score',
+    'interview_min_score',
+    'interview_avg_score',
+    'interview_max_score',
 }
 
 # 分数导入专用字段定义
@@ -297,14 +301,10 @@ class GangweiService:
         file_content = await file.read()
 
         # 先读取原始行，供用户选择表头
-        raw_rows = await run_in_threadpool(
-            GangweiService._read_raw_rows_sync, file_content, file.filename, 10
-        )
+        raw_rows = await run_in_threadpool(GangweiService._read_raw_rows_sync, file_content, file.filename, 10)
 
         # 按指定表头行解析
-        df = await run_in_threadpool(
-            GangweiService._read_file_sync, file_content, file.filename, header_row
-        )
+        df = await run_in_threadpool(GangweiService._read_file_sync, file_content, file.filename, header_row)
 
         # 处理列名中的换行符和空格
         df.columns = df.columns.str.replace('\n', '', regex=False).str.strip()
@@ -356,14 +356,10 @@ class GangweiService:
         filename = file_key.split('_', 1)[1] if '_' in file_key else file_key
 
         # 读取原始行
-        raw_rows = await run_in_threadpool(
-            GangweiService._read_raw_rows_sync, file_content, filename, 10
-        )
+        raw_rows = await run_in_threadpool(GangweiService._read_raw_rows_sync, file_content, filename, 10)
 
         # 按指定表头行解析
-        df = await run_in_threadpool(
-            GangweiService._read_file_sync, file_content, filename, header_row
-        )
+        df = await run_in_threadpool(GangweiService._read_file_sync, file_content, filename, header_row)
 
         # 处理列名
         df.columns = df.columns.str.replace('\n', '', regex=False).str.strip()
@@ -522,9 +518,7 @@ class GangweiService:
 
         file_content = temp_file_path.read_bytes()
         filename = obj.file_key.split('_', 1)[1] if '_' in obj.file_key else obj.file_key
-        df = await run_in_threadpool(
-            GangweiService._read_file_sync, file_content, filename, obj.header_row
-        )
+        df = await run_in_threadpool(GangweiService._read_file_sync, file_content, filename, obj.header_row)
 
         # 处理列名
         df.columns = df.columns.str.replace('\n', '', regex=False).str.strip()
@@ -606,7 +600,7 @@ class GangweiService:
                 create_params.append(create_param)
             except ValidationError as e:
                 failed += 1
-                error_msg = '; '.join([f"{err['loc']}: {err['msg']}" for err in e.errors()])
+                error_msg = '; '.join([f'{err["loc"]}: {err["msg"]}' for err in e.errors()])
                 error_list.append(f'第 {row_num} 行: {error_msg}')
 
         # 事务性导入：只有全部验证通过才写入
@@ -682,14 +676,10 @@ class GangweiService:
         file_content = await file.read()
 
         # 读取原始行
-        raw_rows = await run_in_threadpool(
-            GangweiService._read_raw_rows_sync, file_content, file.filename, 10
-        )
+        raw_rows = await run_in_threadpool(GangweiService._read_raw_rows_sync, file_content, file.filename, 10)
 
         # 按指定表头行解析
-        df = await run_in_threadpool(
-            GangweiService._read_file_sync, file_content, file.filename, header_row
-        )
+        df = await run_in_threadpool(GangweiService._read_file_sync, file_content, file.filename, header_row)
 
         df.columns = df.columns.str.replace('\n', '', regex=False).str.strip()
         headers = df.columns.tolist()
@@ -735,13 +725,9 @@ class GangweiService:
         file_content = temp_file_path.read_bytes()
         filename = file_key.split('_', 2)[2] if file_key.count('_') >= 2 else file_key
 
-        raw_rows = await run_in_threadpool(
-            GangweiService._read_raw_rows_sync, file_content, filename, 10
-        )
+        raw_rows = await run_in_threadpool(GangweiService._read_raw_rows_sync, file_content, filename, 10)
 
-        df = await run_in_threadpool(
-            GangweiService._read_file_sync, file_content, filename, header_row
-        )
+        df = await run_in_threadpool(GangweiService._read_file_sync, file_content, filename, header_row)
 
         df.columns = df.columns.str.replace('\n', '', regex=False).str.strip()
         headers = df.columns.tolist()
@@ -841,9 +827,7 @@ class GangweiService:
 
         file_content = temp_file_path.read_bytes()
         filename = obj.file_key.split('_', 2)[2] if obj.file_key.count('_') >= 2 else obj.file_key
-        df = await run_in_threadpool(
-            GangweiService._read_file_sync, file_content, filename, obj.header_row
-        )
+        df = await run_in_threadpool(GangweiService._read_file_sync, file_content, filename, obj.header_row)
 
         df.columns = df.columns.str.replace('\n', '', regex=False).str.strip()
 

@@ -87,7 +87,7 @@ class DictMajorService:
         :return:
         """
         majors = await dict_major_dao.get_all(db, edu_level)
-        
+
         # 转换为字典列表
         nodes = []
         for major in majors:
@@ -100,14 +100,14 @@ class DictMajorService:
                 'edu_level': major.edu_level,
                 'sort_order': major.sort_order,
             })
-        
+
         # 按 sort_order 排序
         nodes.sort(key=lambda x: x.get('sort_order', 0))
-        
+
         # 构建树形结构（使用 code/parent_code）
         node_dict = {node['code']: node for node in nodes}
         tree: list[dict[str, Any]] = []
-        
+
         for node in nodes:
             parent_code = node.get('parent_code')
             if parent_code is None:
@@ -120,7 +120,7 @@ class DictMajorService:
                     parent_node['children'].append(node)
                 else:
                     tree.append(node)
-        
+
         return tree
 
     @staticmethod
@@ -149,7 +149,9 @@ class DictMajorService:
         major = await dict_major_dao.get_by_name(db, major_name, edu_level)
         if major:
             parent = await dict_major_dao.get_by_code(db, major.parent_code) if major.parent_code else None
-            discipline = await dict_major_dao.get_by_code(db, parent.parent_code) if parent and parent.parent_code else None
+            discipline = (
+                await dict_major_dao.get_by_code(db, parent.parent_code) if parent and parent.parent_code else None
+            )
             return MajorMatchResult(
                 major_code=major.code,
                 major_name=major.name,
@@ -166,7 +168,9 @@ class DictMajorService:
         for result in results:
             if result.aliases and major_name in result.aliases:
                 parent = await dict_major_dao.get_by_code(db, result.parent_code) if result.parent_code else None
-                discipline = await dict_major_dao.get_by_code(db, parent.parent_code) if parent and parent.parent_code else None
+                discipline = (
+                    await dict_major_dao.get_by_code(db, parent.parent_code) if parent and parent.parent_code else None
+                )
                 return MajorMatchResult(
                     major_code=result.code,
                     major_name=result.name,

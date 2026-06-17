@@ -83,7 +83,7 @@ class DictRegionService:
         :return:
         """
         regions = await dict_region_dao.get_all(db)
-        
+
         # 转换为字典列表
         nodes = []
         for region in regions:
@@ -97,14 +97,14 @@ class DictRegionService:
                 'is_remote_area': region.is_remote_area,
                 'sort_order': region.sort_order,
             })
-        
+
         # 按 sort_order 排序
         nodes.sort(key=lambda x: x.get('sort_order', 0))
-        
+
         # 构建树形结构（使用 code/parent_code）
         node_dict = {node['code']: node for node in nodes}
         tree: list[dict[str, Any]] = []
-        
+
         for node in nodes:
             parent_code = node.get('parent_code')
             if parent_code is None:
@@ -117,7 +117,7 @@ class DictRegionService:
                     parent_node['children'].append(node)
                 else:
                     tree.append(node)
-        
+
         return tree
 
     @staticmethod

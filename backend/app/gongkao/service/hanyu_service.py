@@ -5,7 +5,6 @@ from typing import Any
 import httpx
 import re
 
-from backend.core.conf import settings
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,7 +38,14 @@ class HanyuService:
         if not words:
             plain_txt = re.sub(r'<[^>]+>', '', html_snippet).strip()
             if plain_txt:
-                plain_txt = plain_txt.replace('、', ' ').replace('，', ' ').replace(',', ' ').replace('；', ' ').replace(';', ' ')
+                plain_txt = (
+                    plain_txt
+                    .replace('、', ' ')
+                    .replace('，', ' ')
+                    .replace(',', ' ')
+                    .replace('；', ' ')
+                    .replace(';', ' ')
+                )
                 words = [w.strip() for w in plain_txt.split() if w.strip()]
         return words
 
@@ -52,6 +58,7 @@ class HanyuService:
         :return: 不添加返回说明
         """
         import urllib.parse
+
         quoted_name = urllib.parse.quote(name)
         url = f'https://www.hanyuguoxue.com/chengyu/search?words={quoted_name}'
         headers = {
@@ -154,6 +161,7 @@ class HanyuService:
         :return: 不添加返回说明
         """
         import urllib.parse
+
         quoted_name = urllib.parse.quote(name)
         url = f'https://zdic.net/hans/{quoted_name}'
         headers = {
@@ -208,7 +216,11 @@ class HanyuService:
 
                     # 2. 提取释义
                     definition = None
-                    def_match = re.search(r'<span class="idiom-entry__label">解释</span>\s*<span class="idiom-entry__text">(.*?)</span>', html, re.S)
+                    def_match = re.search(
+                        r'<span class="idiom-entry__label">解释</span>\s*<span class="idiom-entry__text">(.*?)</span>',
+                        html,
+                        re.S,
+                    )
                     if def_match:
                         definition = def_match.group(1).strip()
                     else:
@@ -222,20 +234,30 @@ class HanyuService:
 
                     # 3. 提取出处
                     cc_text = None
-                    cc_match = re.search(r'<span class="idiom-entry__label">出处</span>\s*<span class="idiom-entry__text">\s*(.*?)\s*</span>', html, re.S)
+                    cc_match = re.search(
+                        r'<span class="idiom-entry__label">出处</span>\s*<span class="idiom-entry__text">\s*(.*?)\s*</span>',
+                        html,
+                        re.S,
+                    )
                     if cc_match:
                         cc_text = re.sub(r'<[^>]+>', '', cc_match.group(1)).strip()
                     else:
                         cc_list = re.findall(r'<li class="xxjs-citation__item">(.*?)</li>', html, re.S)
                         if cc_list:
-                            cc_text = '; '.join([re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', c)).strip() for c in cc_list])
+                            cc_text = '; '.join([
+                                re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', c)).strip() for c in cc_list
+                            ])
 
                     if cc_text:
                         result['chu_chu'] = [{'source': cc_text}]
 
                     # 提取例句
                     liju = []
-                    lj_match = re.search(r'<span class="idiom-entry__label">示例</span>\s*<span class="idiom-entry__text">\s*(.*?)\s*</span>', html, re.S)
+                    lj_match = re.search(
+                        r'<span class="idiom-entry__label">示例</span>\s*<span class="idiom-entry__text">\s*(.*?)\s*</span>',
+                        html,
+                        re.S,
+                    )
                     if lj_match:
                         lj_text = re.sub(r'<[^>]+>', '', lj_match.group(1)).strip()
                         if lj_text and lj_text != '无':
@@ -248,29 +270,49 @@ class HanyuService:
                 antonyms = []
 
                 # 方式 A：近反义词专属板块
-                syn_match = re.search(r'<span class="synonym-label synonym-label--syn">近义词</span>\s*<span class="synonym-tags">(.*?)</span>', html, re.S)
+                syn_match = re.search(
+                    r'<span class="synonym-label synonym-label--syn">近义词</span>\s*<span class="synonym-tags">(.*?)</span>',
+                    html,
+                    re.S,
+                )
                 if syn_match:
                     synonyms.extend(HanyuService._extract_words_from_html(syn_match.group(1)))
-                ant_match = re.search(r'<span class="synonym-label synonym-label--ant">反义词</span>\s*<span class="synonym-tags">(.*?)</span>', html, re.S)
+                ant_match = re.search(
+                    r'<span class="synonym-label synonym-label--ant">反义词</span>\s*<span class="synonym-tags">(.*?)</span>',
+                    html,
+                    re.S,
+                )
                 if ant_match:
                     antonyms.extend(HanyuService._extract_words_from_html(ant_match.group(1)))
 
                 # 方式 B：国语辞典中的近反义词板块
-                gy_syn_match = re.search(r'xxjs-block-label--syn">近义词</span>\s*<span class="xxjs-also__text">(.*?)</span>', html, re.S)
+                gy_syn_match = re.search(
+                    r'xxjs-block-label--syn">近义词</span>\s*<span class="xxjs-also__text">(.*?)</span>', html, re.S
+                )
                 if gy_syn_match:
                     synonyms.extend(HanyuService._extract_words_from_html(gy_syn_match.group(1)))
-                gy_ant_match = re.search(r'xxjs-block-label--ant">反义词</span>\s*<span class="xxjs-also__text">(.*?)</span>', html, re.S)
+                gy_ant_match = re.search(
+                    r'xxjs-block-label--ant">反义词</span>\s*<span class="xxjs-also__text">(.*?)</span>', html, re.S
+                )
                 if gy_ant_match:
                     antonyms.extend(HanyuService._extract_words_from_html(gy_ant_match.group(1)))
 
                 seen_syn = set()
-                result['synonyms'] = [s.strip() for s in synonyms if s.strip() and not (s.strip() in seen_syn or seen_syn.add(s.strip()))]
+                result['synonyms'] = [
+                    s.strip() for s in synonyms if s.strip() and not (s.strip() in seen_syn or seen_syn.add(s.strip()))
+                ]
                 seen_ant = set()
-                result['antonym'] = [a.strip() for a in antonyms if a.strip() and not (a.strip() in seen_ant or seen_ant.add(a.strip()))]
+                result['antonym'] = [
+                    a.strip() for a in antonyms if a.strip() and not (a.strip() in seen_ant or seen_ant.add(a.strip()))
+                ]
 
                 # 5. 提取褒贬与语法
                 baobian = None
-                grammar_match = re.search(r'<span class="idiom-entry__label">语法</span>\s*<span class="idiom-entry__text">(.*?)</span>', html, re.S)
+                grammar_match = re.search(
+                    r'<span class="idiom-entry__label">语法</span>\s*<span class="idiom-entry__text">(.*?)</span>',
+                    html,
+                    re.S,
+                )
                 if grammar_match:
                     grammar_text = grammar_match.group(1)
                     if '贬义' in grammar_text or '贬' in grammar_text:
@@ -298,7 +340,7 @@ class HanyuService:
         has_definition = False
         if hanyu.definition_info and isinstance(hanyu.definition_info, dict):
             has_definition = bool(hanyu.definition_info.get('definition'))
-        
+
         # 对于成语类型，如果出处列表为空，我们也认为数据不完整，应当重新拉取补全
         has_chu_chu = True
         if hanyu.type == '成语':
@@ -371,6 +413,7 @@ class HanyuService:
 
             if parsed_data:
                 from backend.app.gongkao.schema.hanyu import UpdateHanyuParam
+
                 update_obj = UpdateHanyuParam(**parsed_data)
                 await hanyu_dao.update(db, hanyu.id, update_obj, updated_by=1)
                 await db.flush()

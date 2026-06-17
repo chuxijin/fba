@@ -337,7 +337,9 @@ def check_major(
 
     user_educations = educations or []
     user_majors = [major for item in user_educations if (major := get_education_field(item, 'major_name'))]
-    user_categories = [category for item in user_educations if (category := get_education_field(item, 'major_category'))]
+    user_categories = [
+        category for item in user_educations if (category := get_education_field(item, 'major_category'))
+    ]
     user_disciplines = [
         discipline for item in user_educations if (discipline := get_education_field(item, 'major_discipline'))
     ]
@@ -348,7 +350,9 @@ def check_major(
 
     for major in user_majors:
         if major in req:
-            return ConditionCheckItem(name='专业', requirement=req, user_value=user_value, passed=True, reason=f'精确匹配: {major}')
+            return ConditionCheckItem(
+                name='专业', requirement=req, user_value=user_value, passed=True, reason=f'精确匹配: {major}'
+            )
 
     for major in user_majors:
         major_info = major_index.get(major)
@@ -376,7 +380,9 @@ def check_major(
 
     for category in user_categories:
         if category and category in req:
-            return ConditionCheckItem(name='专业', requirement=req, user_value=user_value, passed=True, reason=f'专业类匹配: {category}')
+            return ConditionCheckItem(
+                name='专业', requirement=req, user_value=user_value, passed=True, reason=f'专业类匹配: {category}'
+            )
 
     for discipline in user_disciplines:
         if discipline and discipline in req:
@@ -414,7 +420,9 @@ def check_major(
                     reason=f'同专业类: {user_major} 与 {candidate}',
                 )
 
-    return ConditionCheckItem(name='专业', requirement=req, user_value=user_value, passed=False, reason='专业不满足要求')
+    return ConditionCheckItem(
+        name='专业', requirement=req, user_value=user_value, passed=False, reason='专业不满足要求'
+    )
 
 
 def check_politics(req: str, user_politics: str | None) -> ConditionCheckItem:
@@ -432,14 +440,20 @@ def check_politics(req: str, user_politics: str | None) -> ConditionCheckItem:
         return ConditionCheckItem(name='政治面貌', requirement=req, user_value=None, passed=False, reason='未填写')
 
     if user_politics in req:
-        return ConditionCheckItem(name='政治面貌', requirement=req, user_value=user_politics, passed=True, reason='匹配')
+        return ConditionCheckItem(
+            name='政治面貌', requirement=req, user_value=user_politics, passed=True, reason='匹配'
+        )
 
     req_level = POLITICS_LEVELS.get(req.strip(), -1)
     user_level = POLITICS_LEVELS.get(user_politics, -1)
     if req_level >= 0 and user_level >= 0 and user_level >= req_level:
-        return ConditionCheckItem(name='政治面貌', requirement=req, user_value=user_politics, passed=True, reason='满足')
+        return ConditionCheckItem(
+            name='政治面貌', requirement=req, user_value=user_politics, passed=True, reason='满足'
+        )
 
-    return ConditionCheckItem(name='政治面貌', requirement=req, user_value=user_politics, passed=False, reason='不满足要求')
+    return ConditionCheckItem(
+        name='政治面貌', requirement=req, user_value=user_politics, passed=False, reason='不满足要求'
+    )
 
 
 def check_age(req: str, birth_date: date | None) -> ConditionCheckItem:
@@ -464,10 +478,14 @@ def check_age(req: str, birth_date: date | None) -> ConditionCheckItem:
     user_value = f'{age} 岁'
 
     if min_age is not None and age < min_age:
-        return ConditionCheckItem(name='年龄', requirement=req, user_value=user_value, passed=False, reason=f'低于 {min_age} 岁')
+        return ConditionCheckItem(
+            name='年龄', requirement=req, user_value=user_value, passed=False, reason=f'低于 {min_age} 岁'
+        )
 
     if max_age is not None and age > max_age:
-        return ConditionCheckItem(name='年龄', requirement=req, user_value=user_value, passed=False, reason=f'高于 {max_age} 岁')
+        return ConditionCheckItem(
+            name='年龄', requirement=req, user_value=user_value, passed=False, reason=f'高于 {max_age} 岁'
+        )
 
     return ConditionCheckItem(name='年龄', requirement=req, user_value=user_value, passed=True, reason='满足')
 

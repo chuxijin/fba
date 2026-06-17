@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """资料服务"""
+
 from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,27 +32,10 @@ class ResourceService:
         status: bool | None = None,
     ) -> Select:
         """获取资料列表"""
-        from sqlalchemy import select
-
-        from backend.app.gongkao.model.category import GkCategory
-
-        category_ids = []
-        if category_id:
-            # 递归查找所有子分类 ID
-            to_process = [category_id]
-            while to_process:
-                curr = to_process.pop(0)
-                category_ids.append(curr)
-                # 查找直接子分类
-                stmt = select(GkCategory.id).where(GkCategory.parent_id == curr)
-                result = await db.execute(stmt)
-                children = result.scalars().all()
-                to_process.extend(children)
-        
         return await resource_dao.get_list(
             db,
             title=title,
-            category_id=category_ids if category_ids else None,
+            category_id=category_id,
             file_type=file_type,
             status=status,
         )
@@ -77,51 +61,17 @@ class ResourceService:
         return await resource_dao.increment_view(db, pk)
 
     @staticmethod
-    async def upload_file(db: AsyncSession, file, category_id: int) -> dict:
+    async def upload_file(db: AsyncSession, file, category_id: int | None = None) -> dict:
         """
         上传资料预览文件到云存储
-        
+
         :param db: 数据库会话
         :param file: FastAPI UploadFile 对象
-        :param category_id: 分类ID
+        :param category_id: 分类ID（已废弃，保留参数兼容）
         :return: 上传结果
         """
-        from sqlalchemy import select
-
-        from backend.app.gongkao.model.category import GkCategory
         from backend.common.log import log
-        
-        # 解析分类路径
-        safe_parts = []
-        
-        try:
-            stmt = select(GkCategory).where(GkCategory.id == category_id)
-            result = await db.execute(stmt)
-            cat = result.scalars().first()
-            
-            if cat:
-                # 找到了分类，开始向上递归查找父级
-                path_nodes = [cat.name]
-                current = cat
-                # 防止死循环，限制深度
-                depth = 0
-                while current.parent_id and depth < 5:
-                    stmt = select(GkCategory).where(GkCategory.id == current.parent_id)
-                    result = await db.execute(stmt)
-                    parent = result.scalars().first()
-                    if parent:
-                        path_nodes.insert(0, parent.name)
-                        current = parent
-                    else:
-                        break
-                    depth += 1
-                safe_parts = [re.sub(r'[^\w\u4e00-\u9fff-]', '_', p) for p in path_nodes]
-        except Exception as e:
-            log.error(f'查询分类失败：{e!s}')
 
-        if not safe_parts:
-            safe_parts = ['other']
-        
         # 构建文件名
         filename = file.filename or 'unnamed'
         file_ext = filename.split('.')[-1].lower() if '.' in filename else ''
@@ -131,12 +81,11 @@ class ResourceService:
         else:
             new_filename = f'{filename}_{timestamp}'
 
-        category_path = '/'.join(safe_parts)
         uploaded_url, object_key = await storage_service.upload_with_filename(
             db=db,
             file=file,
             filename=new_filename,
-            path=f'gk_resource/{category_path}',
+            path='gk_resource',
             use_signed_url=False,
         )
         log.info('公考资料上传成功: %s', uploaded_url)
