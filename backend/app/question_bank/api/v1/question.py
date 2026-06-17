@@ -40,6 +40,7 @@ router = APIRouter()
 async def _resolve_session_id(db: CurrentSession, session_key: str, user_id: int) -> int:
     """按 session_key 解析会话 ID 并校验归属"""
     from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
+
     session = await practice_session_dao.get_by_key(db, session_key)
     if not session:
         raise errors.NotFoundError(msg='会话不存在')
@@ -570,7 +571,8 @@ async def import_from_excel(
     """
     content = await file.read()
     question_rows, material_rows = await question_import_service.parse_excel_file(
-        content=content, filename=file.filename,
+        content=content,
+        filename=file.filename,
     )
     data = await question_import_service.import_from_excel(
         db=db,

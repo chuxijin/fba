@@ -76,4 +76,3 @@ class GetMyEntitlement(SchemaBase):
     category: EntitlementCategory = Field(description='权益分类')
     description: str | None = Field(default=None, description='描述')
     balance: int | None = Field(default=None, description='余额(仅对配额类权益有效)')
-

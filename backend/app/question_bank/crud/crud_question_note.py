@@ -26,9 +26,7 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         """
         return await self.select_model(db, note_id)
 
-    async def get_by_user_and_question(
-        self, db: AsyncSession, user_id: int, question_id: int
-    ) -> QuestionNote | None:
+    async def get_by_user_and_question(self, db: AsyncSession, user_id: int, question_id: int) -> QuestionNote | None:
         """
         获取用户在特定题目下的笔记
 
@@ -106,11 +104,7 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         :param note_id: 笔记 ID
         :return:
         """
-        stmt = (
-            sa_update(QuestionNote)
-            .where(QuestionNote.id == note_id)
-            .values(view_count=QuestionNote.view_count + 1)
-        )
+        stmt = sa_update(QuestionNote).where(QuestionNote.id == note_id).values(view_count=QuestionNote.view_count + 1)
         result = await db.execute(stmt)
         return result.rowcount
 
@@ -294,8 +288,12 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         return [{'bank_id': r.bank_id, 'chapter_id': r.chapter_id, 'count': r.count} for r in rows]
 
     async def get_question_ids(
-        self, db: AsyncSession, user_id: int,
-        bank_id: int | None = None, chapter_id: int | None = None, knowledge_point: str | None = None,
+        self,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+        knowledge_point: str | None = None,
     ) -> list[int]:
         """
         按分组条件获取有笔记的题目 ID 列表
@@ -343,14 +341,11 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
         :param user_id: 用户 ID
         :return:
         """
-        stmt = (
-            select(
-                func.count().label('total'),
-                func.sum(case((QuestionNote.is_public == True, 1), else_=0)).label('public_count'),  # noqa: E712
-                func.sum(case((QuestionNote.is_featured == True, 1), else_=0)).label('featured_count'),  # noqa: E712
-            )
-            .where(QuestionNote.user_id == user_id)
-        )
+        stmt = select(
+            func.count().label('total'),
+            func.sum(case((QuestionNote.is_public == True, 1), else_=0)).label('public_count'),  # noqa: E712
+            func.sum(case((QuestionNote.is_featured == True, 1), else_=0)).label('featured_count'),  # noqa: E712
+        ).where(QuestionNote.user_id == user_id)
         row = (await db.execute(stmt)).one()
         return {
             'total': row.total or 0,
@@ -379,16 +374,13 @@ class CRUDQuestionNote(CRUDPlus[QuestionNote]):
                 'featured_count': 0,
             }
 
-        stmt = (
-            select(
-                func.count().label('total'),
-                func.sum(case((QuestionNote.is_public == True, 1), else_=0)).label('public_count'),  # noqa: E712
-                func.sum(case((QuestionNote.is_featured == True, 1), else_=0)).label('featured_count'),  # noqa: E712
-            )
-            .where(
-                QuestionNote.user_id == user_id,
-                QuestionNote.bank_id.in_(bank_ids),
-            )
+        stmt = select(
+            func.count().label('total'),
+            func.sum(case((QuestionNote.is_public == True, 1), else_=0)).label('public_count'),  # noqa: E712
+            func.sum(case((QuestionNote.is_featured == True, 1), else_=0)).label('featured_count'),  # noqa: E712
+        ).where(
+            QuestionNote.user_id == user_id,
+            QuestionNote.bank_id.in_(bank_ids),
         )
         row = (await db.execute(stmt)).one()
         return {
@@ -412,7 +404,9 @@ class CRUDUserNoteVote(CRUDPlus[UserNoteVote]):
         """
         return await self.select_model_by_column(db, user_id=user_id, note_id=note_id)
 
-    async def vote(self, db: AsyncSession, user_id: int, note_id: int, vote_value: int) -> tuple[UserNoteVote, int | None]:
+    async def vote(
+        self, db: AsyncSession, user_id: int, note_id: int, vote_value: int
+    ) -> tuple[UserNoteVote, int | None]:
         """
         投票（新增或更新）
 

@@ -63,9 +63,7 @@ async def get_subscription_list(
         DependsRBAC,
     ],
 )
-async def create_subscription(
-    db: CurrentSessionTransaction, obj: CreateSubscriptionParam
-) -> ResponseModel:
+async def create_subscription(db: CurrentSessionTransaction, obj: CreateSubscriptionParam) -> ResponseModel:
     """管理端创建订阅"""
     await subscription_service.create(db=db, obj=obj)
     return response_base.success()

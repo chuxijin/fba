@@ -67,11 +67,7 @@ class CRUDUserPracticeStats(CRUDPlus[UserPracticeStats]):
             update_data['practice_days'] = UserPracticeStats.practice_days + 1
             update_data['last_practice_date'] = today
 
-        stmt = (
-            update(UserPracticeStats)
-            .where(UserPracticeStats.id == stats.id)
-            .values(**update_data)
-        )
+        stmt = update(UserPracticeStats).where(UserPracticeStats.id == stats.id).values(**update_data)
         await db.execute(stmt)
         await db.flush()
 

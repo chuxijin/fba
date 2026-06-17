@@ -98,9 +98,7 @@ class QuestService:
         return GetQuestDetail.model_validate(quest)
 
     @staticmethod
-    async def get_quest_detail_with_user(
-        *, db: AsyncSession, pk: int, user_id: int | None
-    ) -> GetQuestWithUserDetail:
+    async def get_quest_detail_with_user(*, db: AsyncSession, pk: int, user_id: int | None) -> GetQuestWithUserDetail:
         """
         获取任务详情（含当前用户参与状态）
 
@@ -134,6 +132,7 @@ class QuestService:
         keyword: str | None = None,
         only_active: bool = False,
         domain_code: str | None = None,
+        quest_type: str | None = None,
     ) -> dict[str, Any]:
         """
         获取任务列表
@@ -143,9 +142,12 @@ class QuestService:
         :param keyword: 关键词
         :param only_active: 是否只看进行中
         :param domain_code: 领域码过滤
+        :param quest_type: 任务类型过滤(manual/auto)
         :return:
         """
-        stmt = await quest_dao.get_select(status=status, keyword=keyword, only_active=only_active, domain_code=domain_code)
+        stmt = await quest_dao.get_select(
+            status=status, keyword=keyword, only_active=only_active, domain_code=domain_code, quest_type=quest_type
+        )
         return await paging_data(db, stmt)
 
 

@@ -114,7 +114,7 @@ class CRUDBank(CRUDPlus[QuestionBank]):
         stmt = select(self.model.__table__)
         if filters:
             stmt = stmt.where(and_(*filters))
-            
+
         if order_by_created_time:
             stmt = stmt.order_by(self.model.created_time.desc())
 

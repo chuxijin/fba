@@ -9,5 +9,3 @@ from backend.core.conf import settings
 v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH)
 
 v1.include_router(mcp_v1)
-
-

@@ -14,9 +14,7 @@ class PaymentNotifier(Protocol):
     payment 模块在支付状态变更时回调对应方法，实现与业务模块的解耦。
     """
 
-    async def on_payment_success(
-        self, *, db: AsyncSession, order_no: str, trade_no: str, paid_amount: Decimal
-    ) -> None:
+    async def on_payment_success(self, *, db: AsyncSession, order_no: str, trade_no: str, paid_amount: Decimal) -> None:
         """支付成功回调"""
         ...
 

@@ -29,7 +29,10 @@ class CRUDStudyAbilityCatalog(CRUDPlus[StudyAbilityCatalog]):
         return await self.select_model(db, pk, deleted=0)
 
     async def get_by_key(
-        self, db: AsyncSession, ability_key: str, domain: str = 'civil_service',
+        self,
+        db: AsyncSession,
+        ability_key: str,
+        domain: str = 'civil_service',
     ) -> StudyAbilityCatalog | None:
         """
         按业务领域和能力标识获取目录项
@@ -100,7 +103,10 @@ class CRUDStudyAbilityCategoryBinding(CRUDPlus[StudyAbilityCategoryBinding]):
         return await self.select_model(db, pk, deleted=0)
 
     async def list_by_ability_mode(
-        self, db: AsyncSession, ability_key: str, mode: str | None,
+        self,
+        db: AsyncSession,
+        ability_key: str,
+        mode: str | None,
     ) -> Sequence[StudyAbilityCategoryBinding]:
         """
         获取能力练习绑定的分类节点
@@ -206,7 +212,10 @@ class CRUDStudyAbilityAttempt(CRUDPlus[StudyAbilityAttempt]):
     """能力练习原始记录数据库操作类"""
 
     async def get_by_client_session(
-        self, db: AsyncSession, user_id: int, client_session_id: str,
+        self,
+        db: AsyncSession,
+        user_id: int,
+        client_session_id: str,
     ) -> StudyAbilityAttempt | None:
         """
         按客户端会话 ID 获取练习记录
@@ -256,7 +265,10 @@ class CRUDStudyUserCategoryProfile(CRUDPlus[StudyUserCategoryProfile]):
         )
 
     async def list_by_user(
-        self, db: AsyncSession, user_id: int, source_type: str | None = None,
+        self,
+        db: AsyncSession,
+        user_id: int,
+        source_type: str | None = None,
     ) -> Sequence[StudyUserCategoryProfile]:
         """
         获取用户分类画像列表

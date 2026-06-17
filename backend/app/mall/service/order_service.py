@@ -24,6 +24,7 @@ class OrderService:
         now = timezone.now()
         timestamp = now.strftime('%Y%m%d%H%M%S')
         import random
+
         random_suffix = ''.join([str(random.randint(0, 9)) for _ in range(6)])
         return f'ORD{timestamp}{random_suffix}'
 

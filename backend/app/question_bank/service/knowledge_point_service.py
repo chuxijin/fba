@@ -79,11 +79,15 @@ class KnowledgePointService:
                     leaf_codes.append(c.code)
                 leaf_names.append(c.name)
 
-        return {
-            'id': category.id,
-            'name': category.name,
-            'children': all_nodes,
-        }, leaf_codes, leaf_names
+        return (
+            {
+                'id': category.id,
+                'name': category.name,
+                'children': all_nodes,
+            },
+            leaf_codes,
+            leaf_names,
+        )
 
     @staticmethod
     async def _batch_count_by_kp_codes(
@@ -224,12 +228,14 @@ class KnowledgePointService:
                 child_code = getattr(child, 'code', None)
                 child_count = count_map.get(child_code, 0) if child_code else count_map.get(child.name, 0)
 
-            nodes.append(KpChildNode(
-                id=child.id,
-                name=child.name,
-                question_count=child_count,
-                children=sub_nodes,
-            ))
+            nodes.append(
+                KpChildNode(
+                    id=child.id,
+                    name=child.name,
+                    question_count=child_count,
+                    children=sub_nodes,
+                )
+            )
 
         return nodes
 
@@ -248,7 +254,9 @@ class KnowledgePointService:
             count_map = await KnowledgePointService._batch_count_by_kp_codes(db, leaf_codes)
 
             kp_tree = KnowledgePointService._build_kp_tree(
-                info['children'], count_map, category_id,
+                info['children'],
+                count_map,
+                category_id,
             )
             total = sum(n.question_count for n in kp_tree)
 
@@ -296,13 +304,15 @@ class KnowledgePointService:
             total_a += a_count
             total_c += c_count
 
-            items.append(KpProgressNode(
-                name=name,
-                question_count=q_count,
-                answer_count=a_count,
-                correct_count=c_count,
-                correct_ratio=round(c_count / a_count * 100, 1) if a_count > 0 else 0,
-            ))
+            items.append(
+                KpProgressNode(
+                    name=name,
+                    question_count=q_count,
+                    answer_count=a_count,
+                    correct_count=c_count,
+                    correct_ratio=round(c_count / a_count * 100, 1) if a_count > 0 else 0,
+                )
+            )
 
         return GetKpProgressResponse(
             id=info['id'],

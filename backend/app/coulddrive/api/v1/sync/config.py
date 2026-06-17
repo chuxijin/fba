@@ -21,10 +21,10 @@ router = APIRouter()
 
 
 @router.get(
-    "/config", 
-    summary="获取同步配置列表",
+    '/config',
+    summary='获取同步配置列表',
     response_model=ResponseSchemaModel[PageData[GetSyncConfigDetail]],
-    dependencies=[DependsJwtAuth, DependsPagination]
+    dependencies=[DependsJwtAuth, DependsPagination],
 )
 async def get_sync_config_list(
     db: CurrentSession,
@@ -33,7 +33,7 @@ async def get_sync_config_list(
 ) -> ResponseSchemaModel[PageData[GetSyncConfigDetail]]:
     """
     获取同步配置列表
-    
+
     :param db: 数据库会话
     :param params: 查询参数
     :param page_params: 分页参数
@@ -50,10 +50,10 @@ async def get_sync_config_list(
 
 
 @router.post(
-    "/config",
-    summary="创建同步配置",
+    '/config',
+    summary='创建同步配置',
     response_model=ResponseSchemaModel[GetSyncConfigDetail],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def create_sync_config(
     request: Request,
@@ -62,7 +62,7 @@ async def create_sync_config(
 ) -> ResponseSchemaModel[GetSyncConfigDetail]:
     """
     创建同步配置
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param obj: 创建参数
@@ -74,10 +74,10 @@ async def create_sync_config(
 
 
 @router.put(
-    "/config/{config_id}",
-    summary="更新同步配置",
+    '/config/{config_id}',
+    summary='更新同步配置',
     response_model=ResponseSchemaModel[GetSyncConfigDetail],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def update_sync_config(
     request: Request,
@@ -87,7 +87,7 @@ async def update_sync_config(
 ) -> ResponseSchemaModel[GetSyncConfigDetail]:
     """
     更新同步配置
-    
+
     :param request: 请求对象
     :param config_id: 配置ID
     :param db: 数据库会话
@@ -96,20 +96,20 @@ async def update_sync_config(
     """
     db_obj = await sync_config_dao.select_model(db, config_id)
     if not db_obj:
-        return response_base.fail(message=f"同步配置 {config_id} 不存在")
-    
+        return response_base.fail(message=f'同步配置 {config_id} 不存在')
+
     # 设置更新者ID
     obj.updated_by = request.user.id
-    
+
     updated_config = await sync_config_dao.update(db, db_obj=db_obj, obj_in=obj)
     return response_base.success(data=updated_config)
 
 
 @router.delete(
-    "/config/{config_id}",
-    summary="删除同步配置",
+    '/config/{config_id}',
+    summary='删除同步配置',
     response_model=ResponseSchemaModel[dict],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def delete_sync_config(
     config_id: int,
@@ -117,13 +117,13 @@ async def delete_sync_config(
 ) -> ResponseSchemaModel[dict]:
     """
     删除同步配置
-    
+
     :param config_id: 配置ID
     :param db: 数据库会话
     :return: 删除结果
     """
     success = await sync_config_dao.delete(db, id=config_id)
     if not success:
-        return response_base.fail(message=f"同步配置 {config_id} 不存在或删除失败")
-    
-    return response_base.success(data={"message": "删除成功"}) 
+        return response_base.fail(message=f'同步配置 {config_id} 不存在或删除失败')
+
+    return response_base.success(data={'message': '删除成功'})

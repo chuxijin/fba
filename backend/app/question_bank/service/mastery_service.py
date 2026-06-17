@@ -33,7 +33,11 @@ class MasteryService:
         :return:
         """
         return await mastery_dao.on_correct(
-            db, user_id, question_id, custom_question_id, mastery_threshold,
+            db,
+            user_id,
+            question_id,
+            custom_question_id,
+            mastery_threshold,
         )
 
     @staticmethod

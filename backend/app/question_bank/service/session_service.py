@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any
 
 from loguru import logger
-from sqlalchemy import cast, func, or_, select, update
+from sqlalchemy import cast, or_, select
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, load_only, selectinload
@@ -59,7 +59,7 @@ from backend.app.question_bank.service.question_selector_service import question
 from backend.app.question_bank.service.question_service import question_service
 from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
 from backend.common.exception import errors
-from backend.database.db import async_db_session
+from backend.common.events import publish
 from backend.utils.timezone import timezone
 
 log = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ class SessionService:
         """
         if len(value) <= max_length:
             return value
-        return f'{value[:max_length - 1]}…'
+        return f'{value[: max_length - 1]}…'
 
     @classmethod
     def _build_knowledge_point_name(cls, source_snapshot: dict[str, Any] | None) -> str | None:
@@ -667,9 +667,7 @@ class SessionService:
         )
 
     @staticmethod
-    async def _get_question_type_map(
-        *, db: AsyncSession, question_ids: list[int]
-    ) -> dict[int, str]:
+    async def _get_question_type_map(*, db: AsyncSession, question_ids: list[int]) -> dict[int, str]:
         """
         获取题目类型映射
 
@@ -749,9 +747,7 @@ class SessionService:
             picked_question_ids = list({placement.question_id for placement in placements})
             question_type_map: dict[int, str] = {}
             if picked_question_ids:
-                type_stmt = select(Question.id, Question.type).where(
-                    Question.id.in_(picked_question_ids)
-                )
+                type_stmt = select(Question.id, Question.type).where(Question.id.in_(picked_question_ids))
                 type_rows = (await db.execute(type_stmt)).all()
                 question_type_map = {row[0]: row[1] for row in type_rows}
             return placements, question_type_map
@@ -900,9 +896,7 @@ class SessionService:
         return new_session
 
     @staticmethod
-    async def _get_owned_session(
-        *, db: AsyncSession, session_id: int, user_id: int
-    ) -> PracticeSession:
+    async def _get_owned_session(*, db: AsyncSession, session_id: int, user_id: int) -> PracticeSession:
         """
         获取当前用户可访问的会话
 
@@ -919,9 +913,7 @@ class SessionService:
         return session
 
     @staticmethod
-    async def _get_owned_session_detail(
-        *, db: AsyncSession, session_id: int, user_id: int
-    ) -> PracticeSession:
+    async def _get_owned_session_detail(*, db: AsyncSession, session_id: int, user_id: int) -> PracticeSession:
         """
         获取当前用户可访问的会话详情
 
@@ -1041,9 +1033,7 @@ class SessionService:
         return result
 
     @staticmethod
-    async def get_session_detail_by_key(
-        *, db: AsyncSession, session_key: str, user_id: int
-    ) -> dict:
+    async def get_session_detail_by_key(*, db: AsyncSession, session_key: str, user_id: int) -> dict:
         """
         按 session_key 获取练习会话详情（一条 SQL 取代 by_key + by_id 两步）
 
@@ -1080,8 +1070,13 @@ class SessionService:
 
     @staticmethod
     async def get_latest_session(
-        *, db: AsyncSession, user_id: int, session_type: str | None = None,
-        bank_id: int | None = None, chapter_id: int | None = None, source_key: str | None = None
+        *,
+        db: AsyncSession,
+        user_id: int,
+        session_type: str | None = None,
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+        source_key: str | None = None,
     ) -> PracticeSession | None:
         """
         获取用户最新的进行中会话
@@ -1095,8 +1090,12 @@ class SessionService:
         :return:
         """
         return await practice_session_dao.get_latest_session(
-            db=db, user_id=user_id, session_type=session_type,
-            bank_id=bank_id, chapter_id=chapter_id, source_key=source_key,
+            db=db,
+            user_id=user_id,
+            session_type=session_type,
+            bank_id=bank_id,
+            chapter_id=chapter_id,
+            source_key=source_key,
         )
 
     @staticmethod
@@ -1148,10 +1147,7 @@ class SessionService:
         :return:
         """
         # 鉴权 + 加载 session（题目明细按本次提交的 question_id 单独查询）
-        session_stmt = (
-            select(PracticeSession)
-            .where(PracticeSession.id == obj.session_id)
-        )
+        session_stmt = select(PracticeSession).where(PracticeSession.id == obj.session_id)
         session_result = await db.execute(session_stmt)
         session = session_result.scalars().first()
         if not session:
@@ -1193,7 +1189,9 @@ class SessionService:
                 'placement_id': sq.placement_id,
                 'seq_no': sq.seq_no,
                 'question_type': sq.question_type,
-                'user_answer': item.user_answer if item.user_answer is not None else {'mode': 'memorize', 'viewed': True},
+                'user_answer': item.user_answer
+                if item.user_answer is not None
+                else {'mode': 'memorize', 'viewed': True},
                 'answer_time': item.answer_time,
                 'full_score': sq.full_score,
             })
@@ -1205,7 +1203,8 @@ class SessionService:
             'total_time': session.total_time,
             'progress_percent': (
                 Decimal(str(round(session.completed_count / session.total_count * 100, 2)))
-                if session.total_count > 0 else Decimal('0')
+                if session.total_count > 0
+                else Decimal('0')
             ),
             'records': [],
             'judge_results': [],
@@ -1233,7 +1232,8 @@ class SessionService:
             result['total_time'] = total_time
             result['progress_percent'] = (
                 Decimal(str(round(completed_count / session.total_count * 100, 2)))
-                if session.total_count > 0 else Decimal('0')
+                if session.total_count > 0
+                else Decimal('0')
             )
             result['records'] = [
                 {
@@ -1367,11 +1367,7 @@ class SessionService:
         :return:
         """
         # 1. 加锁查询会话，防并发重复提交
-        lock_stmt = (
-            select(PracticeSession)
-            .where(PracticeSession.id == session_id)
-            .with_for_update()
-        )
+        lock_stmt = select(PracticeSession).where(PracticeSession.id == session_id).with_for_update()
         result = await db.execute(lock_stmt)
         session = result.scalars().first()
 
@@ -1438,11 +1434,7 @@ class SessionService:
 
         pre_submit_unjudged_qids = {record.question_id for record in records if record.is_correct is None}
         question_ids = [r.question_id for r in records]
-        stmt = (
-            select(Question)
-            .where(Question.id.in_(question_ids))
-            .options(selectinload(Question.analyses))
-        )
+        stmt = select(Question).where(Question.id.in_(question_ids)).options(selectinload(Question.analyses))
         q_result = await db.execute(stmt)
         question_map: dict[int, Question] = {q.id: q for q in q_result.scalars().all()}
 
@@ -1477,7 +1469,10 @@ class SessionService:
         subjective_records = [
             record
             for record in records
-            if (question_map.get(record.question_id) and question_map[record.question_id].type in SUBJECTIVE_QUESTION_TYPES)
+            if (
+                question_map.get(record.question_id)
+                and question_map[record.question_id].type in SUBJECTIVE_QUESTION_TYPES
+            )
         ]
         subjective_eval_map: dict[int, Any] = {}
         if subjective_records:
@@ -1493,10 +1488,7 @@ class SessionService:
             failed_subjective_records = [
                 record.seq_no
                 for record in subjective_records
-                if (
-                    record.id not in subjective_eval_map
-                    or subjective_eval_map[record.id].status != 'succeeded'
-                )
+                if (record.id not in subjective_eval_map or subjective_eval_map[record.id].status != 'succeeded')
             ]
             if failed_subjective_records:
                 seq_text = '、'.join(str(item) for item in failed_subjective_records[:10])
@@ -1585,8 +1577,7 @@ class SessionService:
 
             # 3c. 汇总错题本（按 question_id 宽松匹配，忽略 placement）
             should_update_wrong_book = (
-                question.type in SUBJECTIVE_QUESTION_TYPES
-                or record.question_id in pre_submit_unjudged_qids
+                question.type in SUBJECTIVE_QUESTION_TYPES or record.question_id in pre_submit_unjudged_qids
             )
             if should_update_wrong_book:
                 existing_wrong_list = existing_wrong_by_qid.get(record.question_id, [])
@@ -1642,6 +1633,7 @@ class SessionService:
 
         # 4b. 更新掌握状态
         from backend.app.question_bank.service.mastery_service import mastery_service
+
         for record in records:
             question = question_map.get(record.question_id)
             if not question:
@@ -1651,13 +1643,15 @@ class SessionService:
             if is_correct is not None:
                 if is_correct:
                     await mastery_service.on_correct(
-                        db=db, user_id=user_id,
+                        db=db,
+                        user_id=user_id,
                         question_id=record.question_id,
                         mastery_threshold=mastery_threshold,
                     )
                 else:
                     await mastery_service.on_wrong(
-                        db=db, user_id=user_id,
+                        db=db,
+                        user_id=user_id,
                         question_id=record.question_id,
                     )
 
@@ -1712,16 +1706,30 @@ class SessionService:
 
         log.info(
             'Session submitted: id=%d user=%d completed=%d correct=%d wrong=%d score=%s reward_exp=%s check_in=%s',
-            session_id, user_id, completed_count, correct_count, wrong_count, earned_score,
-            reward_exp, bool(check_in_result),
+            session_id,
+            user_id,
+            completed_count,
+            correct_count,
+            wrong_count,
+            earned_score,
+            reward_exp,
+            bool(check_in_result),
         )
+
+        await publish(
+            'study.session_completed',
+            user_id=user_id,
+            session_id=session_id,
+            completed_count=completed_count,
+            correct_count=correct_count,
+        )
+
         return SubmitPracticeSessionResult(
             completed_count=completed_count,
             correct_count=correct_count,
             wrong_count=wrong_count,
             accuracy_rate=(
-                Decimal(str(round(correct_count / completed_count * 100, 2)))
-                if completed_count > 0 else Decimal('0')
+                Decimal(str(round(correct_count / completed_count * 100, 2))) if completed_count > 0 else Decimal('0')
             ),
             score=earned_score if earned_score > 0 else None,
             total_score=total_score if total_score > 0 else None,
@@ -1802,9 +1810,7 @@ class SessionService:
         )
 
     @staticmethod
-    async def get_session_solution(
-        *, db: AsyncSession, session_id: int, user_id: int
-    ) -> list[dict]:
+    async def get_session_solution(*, db: AsyncSession, session_id: int, user_id: int) -> list[dict]:
         """
         获取会话全部题目的答案与解析
 
@@ -1942,9 +1948,9 @@ class SessionService:
             # Cut #3：仅当 session 涉及"申论"题库时才预取材料 ID
             # 非申论 session 完全跳过这条 SQL（典型 50-100ms 收益）
             shenlun_bank_ids = [
-                bid for bid, bank in bank_info_map.items()
-                if '申论' in str(getattr(bank, 'name', '') or '')
-                or '申论' in str(getattr(bank, 'desc', '') or '')
+                bid
+                for bid, bank in bank_info_map.items()
+                if '申论' in str(getattr(bank, 'name', '') or '') or '申论' in str(getattr(bank, 'desc', '') or '')
             ]
             if shenlun_bank_ids:
                 bank_material_stmt = (
@@ -2005,7 +2011,7 @@ class SessionService:
                 bank_desc = str(getattr(bank_info, 'desc', '') or '')
                 if '申论' in bank_name or '申论' in bank_desc:
                     material_ids = list(bank_material_map.get(placement_bank_id or 0, []))
-                
+
             all_material_ids.update(material_ids)
 
             questions_list.append({
@@ -2054,9 +2060,7 @@ class SessionService:
                 kp_raw = q_item.get('knowledge_point')
                 if isinstance(kp_raw, list):
                     q_item['knowledge_point_display'] = [
-                        code_map.get(kp.strip(), kp.strip())
-                        for kp in kp_raw
-                        if isinstance(kp, str) and kp.strip()
+                        code_map.get(kp.strip(), kp.strip()) for kp in kp_raw if isinstance(kp, str) and kp.strip()
                     ]
         timings.append(('sql7_resolve_kp_codes', perf_counter() - t0))
 
@@ -2110,7 +2114,10 @@ class SessionService:
             resolved_bank_ids = list(category_filter.bank_ids)
 
         return await practice_session_dao.get_select(
-            user_id=user_id, session_type=session_type, bank_ids=resolved_bank_ids, status=status,
+            user_id=user_id,
+            session_type=session_type,
+            bank_ids=resolved_bank_ids,
+            status=status,
         )
 
     @staticmethod
@@ -2129,7 +2136,9 @@ class SessionService:
         :return:
         """
         return await session_question_dao.get_select(
-            user_id=user_id, session_id=session_id, question_id=question_id,
+            user_id=user_id,
+            session_id=session_id,
+            question_id=question_id,
         )
 
     @classmethod

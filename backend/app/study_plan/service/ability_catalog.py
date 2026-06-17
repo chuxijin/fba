@@ -287,10 +287,7 @@ async def list_ability_bindings(
         role=role,
     )
     categories = await _list_binding_categories(db, [binding.category_id for binding in bindings])
-    return [
-        _build_binding_detail(binding, categories.get(binding.category_id))
-        for binding in bindings
-    ]
+    return [_build_binding_detail(binding, categories.get(binding.category_id)) for binding in bindings]
 
 
 async def create_ability_binding(
@@ -460,10 +457,14 @@ async def _ensure_catalog_key_exists(db: AsyncSession, ability_key: str) -> None
     :param ability_key: 能力标识
     :return:
     """
-    stmt = select(StudyAbilityCatalog.id).where(
-        StudyAbilityCatalog.ability_key == ability_key,
-        StudyAbilityCatalog.deleted == 0,
-    ).limit(1)
+    stmt = (
+        select(StudyAbilityCatalog.id)
+        .where(
+            StudyAbilityCatalog.ability_key == ability_key,
+            StudyAbilityCatalog.deleted == 0,
+        )
+        .limit(1)
+    )
     result = await db.execute(stmt)
     if result.scalar_one_or_none() is not None:
         return

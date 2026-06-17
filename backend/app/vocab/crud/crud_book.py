@@ -67,8 +67,10 @@ class CRUDBookWord(CRUDPlus[VocabBookWord]):
         :param book_id: 词书 ID
         :return:
         """
-        stmt = select(VocabBookWord.word_id).where(VocabBookWord.book_id == book_id).order_by(
-            VocabBookWord.sort_order.asc()
+        stmt = (
+            select(VocabBookWord.word_id)
+            .where(VocabBookWord.book_id == book_id)
+            .order_by(VocabBookWord.sort_order.asc())
         )
         result = await db.execute(stmt)
         return list(result.scalars().all())
@@ -80,11 +82,7 @@ class CRUDBookWord(CRUDPlus[VocabBookWord]):
         :param book_id: 词书 ID
         :return:
         """
-        return (
-            select(VocabBookWord)
-            .where(VocabBookWord.book_id == book_id)
-            .order_by(VocabBookWord.sort_order.asc())
-        )
+        return select(VocabBookWord).where(VocabBookWord.book_id == book_id).order_by(VocabBookWord.sort_order.asc())
 
 
 book_dao: CRUDBook = CRUDBook(VocabBook)

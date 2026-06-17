@@ -15,4 +15,3 @@ class AccessDebugParam(SchemaBase):
     user_id: int | None = Field(default=None, description='用户 ID')
     action: str = Field(default='access', description='动作')
     audience_attrs: dict[str, Any] = Field(default_factory=dict, description='用户画像快照')
-

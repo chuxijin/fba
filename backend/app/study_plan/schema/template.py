@@ -62,7 +62,8 @@ class CreateStudyPlanTemplateParam(StudyPlanTemplateSchemaBase):
     """创建模板参数"""
 
     items: list[CreateStudyPlanTemplateItemParam] = Field(
-        default_factory=list, description='模板项列表（可后续单独添加）',
+        default_factory=list,
+        description='模板项列表（可后续单独添加）',
     )
 
 

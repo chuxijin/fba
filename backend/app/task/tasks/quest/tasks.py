@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """悬赏任务相关定时任务"""
+
 import logging
 
 from sqlalchemy import select
@@ -19,7 +20,7 @@ async def release_expired_quest_claims() -> dict:
     """释放领取超时的悬赏任务记录, 回退名额"""
     try:
         result = await _release_expired_quest_claims()
-        logger.info(f"悬赏超时释放完成: 共释放 {result['released']} 条记录")
+        logger.info(f'悬赏超时释放完成: 共释放 {result["released"]} 条记录')
         return result
     except Exception as exc:
         logger.error(f'悬赏超时释放失败: {exc!s}')

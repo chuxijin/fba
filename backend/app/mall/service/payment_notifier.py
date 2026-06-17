@@ -13,9 +13,7 @@ class MallPaymentNotifier:
     """商城支付通知处理器"""
 
     @staticmethod
-    async def on_payment_success(
-        *, db: AsyncSession, order_no: str, trade_no: str, paid_amount: Decimal
-    ) -> None:
+    async def on_payment_success(*, db: AsyncSession, order_no: str, trade_no: str, paid_amount: Decimal) -> None:
         """
         支付成功 -> 更新订单状态
 

@@ -5,6 +5,7 @@
 
 用于解密微信小程序通过 getPhoneNumber 等 API 返回的加密数据
 """
+
 import base64
 import json
 

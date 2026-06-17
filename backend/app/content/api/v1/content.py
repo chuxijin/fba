@@ -27,7 +27,12 @@ from backend.database.db import CurrentSession
 router = APIRouter()
 
 
-@router.get('/list', summary='获取内容列表(分页)', response_model=ResponseSchemaModel[PageData[GetContentListDetails]], dependencies=[DependsPagination])
+@router.get(
+    '/list',
+    summary='获取内容列表(分页)',
+    response_model=ResponseSchemaModel[PageData[GetContentListDetails]],
+    dependencies=[DependsPagination],
+)
 async def get_sys_content_list(
     db: CurrentSession,
     app_code: Annotated[str | None, Query(description='应用标识')] = None,
@@ -64,40 +69,37 @@ async def get_link_detail(url: Annotated[str, Query(description='解析URL')]):
             title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
             title = title_match.group(1).strip() if title_match else ''
 
-            desc_match = re.search(r'<meta\s+name=[\"\']description[\"\']\s+content=[\"\']([^\"\']+)[\"\']', html, re.IGNORECASE)
+            desc_match = re.search(
+                r'<meta\s+name=[\"\']description[\"\']\s+content=[\"\']([^\"\']+)[\"\']', html, re.IGNORECASE
+            )
             if not desc_match:
-                desc_match = re.search(r'<meta\s+content=[\"\']([^\"\']+)[\"\']\s+name=[\"\']description[\"\']', html, re.IGNORECASE)
-            
+                desc_match = re.search(
+                    r'<meta\s+content=[\"\']([^\"\']+)[\"\']\s+name=[\"\']description[\"\']', html, re.IGNORECASE
+                )
+
             desc = ''
             if desc_match:
                 desc = desc_match.group(1).strip()
 
-            icon_match = re.search(r'<link\s+rel=[\"\'].*?icon.*?[\"\']\s+href=[\"\']([^\"\']+)[\"\']', html, re.IGNORECASE)
+            icon_match = re.search(
+                r'<link\s+rel=[\"\'].*?icon.*?[\"\']\s+href=[\"\']([^\"\']+)[\"\']', html, re.IGNORECASE
+            )
             icon = icon_match.group(1).strip() if icon_match else ''
             if icon and not icon.startswith('http'):
                 icon = urljoin(target_url, icon)
 
-            img_match = re.search(r'<meta\s+property=[\"\']og:image[\"\']\s+content=[\"\']([^\"\']+)[\"\']', html, re.IGNORECASE)
+            img_match = re.search(
+                r'<meta\s+property=[\"\']og:image[\"\']\s+content=[\"\']([^\"\']+)[\"\']', html, re.IGNORECASE
+            )
             image = img_match.group(1).strip() if img_match else icon
 
-            return {
-                "title": title or target_url,
-                "description": desc,
-                "image": image,
-                "icon": icon,
-                "url": target_url
-            }
+            return {'title': title or target_url, 'description': desc, 'image': image, 'icon': icon, 'url': target_url}
         except Exception:
-            return {
-                "title": target_url,
-                "description": "",
-                "image": "",
-                "icon": "",
-                "url": target_url
-            }
+            return {'title': target_url, 'description': '', 'image': '', 'icon': '', 'url': target_url}
 
     res = await run_in_threadpool(fetch_tdk, url)
     return JSONResponse(content=res)
+
 
 @router.get('/tags', summary='获取内容标签', response_model=ResponseSchemaModel[list[str]])
 async def get_sys_content_tags(
@@ -108,6 +110,7 @@ async def get_sys_content_tags(
     from sqlalchemy import select
 
     from backend.app.content.model.content import Content
+
     stmt = select(Content.tags).where(Content.tags.isnot(None))
     result = await db.execute(stmt)
     all_tags = set()
@@ -122,7 +125,10 @@ async def get_sys_content_by_slug(db: CurrentSession, slug: str):
     content = await content_service.get_by_slug(db=db, slug=slug)
     return response_base.success(data=content)
 
-@router.get('/{pk}/related', summary='获取相关内容列表', response_model=ResponseSchemaModel[list[GetContentListDetails]])
+
+@router.get(
+    '/{pk}/related', summary='获取相关内容列表', response_model=ResponseSchemaModel[list[GetContentListDetails]]
+)
 async def get_related_content_list(
     db: CurrentSession,
     pk: int,

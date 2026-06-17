@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """学员端业务编排服务（启动 / 完成模块）"""
+
 from typing import Any, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.schema.practice import CreatePracticeSessionParam, CreateSessionFromIdsParam
 from backend.app.question_bank.service.session_service import session_service
-from backend.app.study_plan.crud import study_plan_dao, study_plan_item_dao, study_plan_record_dao
+from backend.app.study_plan.crud import study_plan_dao, study_plan_item_dao
 from backend.app.study_plan.model.item import StudyPlanItem
 from backend.app.study_plan.model.plan import StudyPlan
 from backend.app.study_plan.model.record import StudyPlanRecord
@@ -22,7 +23,8 @@ from backend.common.exception import errors
 
 
 async def _ensure_practice_session(
-    db: AsyncSession, item: StudyPlanItem,
+    db: AsyncSession,
+    item: StudyPlanItem,
 ) -> str:
     """
     刷题类按需创建题库练习会话；已存在则复用
@@ -254,7 +256,9 @@ def _build_exam_config(extra: dict[str, Any]) -> dict[str, Any] | None:
 
 
 async def get_item_for_user(
-    db: AsyncSession, item_id: int, user_id: int,
+    db: AsyncSession,
+    item_id: int,
+    user_id: int,
 ) -> StudyPlanItem:
     """
     获取计划项并校验归属
@@ -290,7 +294,9 @@ async def get_plan_for_user(db: AsyncSession, plan_id: int, user_id: int) -> Stu
 
 
 async def list_items_of_my_plan(
-    db: AsyncSession, plan_id: int, user_id: int,
+    db: AsyncSession,
+    plan_id: int,
+    user_id: int,
 ) -> Sequence[StudyPlanItem]:
     """
     获取学员某计划的全部 items（按 plan_date + order_index）
@@ -305,7 +311,9 @@ async def list_items_of_my_plan(
 
 
 async def get_plan_progress_for_user(
-    db: AsyncSession, plan_id: int, user_id: int,
+    db: AsyncSession,
+    plan_id: int,
+    user_id: int,
 ) -> dict[str, int]:
     """
     计算学员某计划的整体完成进度
@@ -324,7 +332,9 @@ async def get_plan_progress_for_user(
 
 
 async def start_item(
-    db: AsyncSession, item_id: int, user_id: int,
+    db: AsyncSession,
+    item_id: int,
+    user_id: int,
 ) -> StartStudyPlanItemResult:
     """
     启动计划项；wrong_review 实时算错题；practice 按需绑定题库 session

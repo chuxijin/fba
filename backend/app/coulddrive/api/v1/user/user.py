@@ -25,35 +25,37 @@ from backend.database.db import CurrentSession
 
 router = APIRouter()
 
+
 @router.get(
     '/userinfo',
     summary='获取用户信息',
     description='获取用户信息',
     response_model=ResponseSchemaModel[BaseUserInfo],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def get_user_info(
-    x_token: Annotated[str, Header(description="认证令牌")],
+    x_token: Annotated[str, Header(description='认证令牌')],
     params: Annotated[UserInfoParam, Depends()],
 ) -> ResponseSchemaModel[BaseUserInfo]:
     service = CouldDriveService(auth_data=x_token, drive_type=params.drive_type)
     user_info = await service.get_user_info(params=params)
     return response_base.success(data=user_info)
 
+
 @router.get(
     '/relationshiplist',
     summary='获取关系列表',
     description='获取网盘关系列表',
     response_model=ResponseSchemaModel[PageData[RelationshipItem]],
-    dependencies=[DependsJwtAuth, DependsPagination]
+    dependencies=[DependsJwtAuth, DependsPagination],
 )
 async def get_relationship_list(
-    x_token: Annotated[str, Header(description="认证令牌")],
+    x_token: Annotated[str, Header(description='认证令牌')],
     params: Annotated[RelationshipParam, Depends()],
-    page_params: Annotated[_CustomPageParams, DependsPagination]
+    page_params: Annotated[_CustomPageParams, DependsPagination],
 ) -> ResponseSchemaModel[PageData[RelationshipItem]]:
     service = CouldDriveService(auth_data=x_token, drive_type=params.drive_type)
-    relationship_list = await service.call_method("get_relationship_list", params)
+    relationship_list = await service.call_method('get_relationship_list', params)
     page_data = paging_list_data(relationship_list, page_params)
     return response_base.success(data=page_data)
 
@@ -63,45 +65,38 @@ async def get_relationship_list(
     summary='获取用户列表',
     description='获取数据库中的所有网盘用户信息',
     response_model=ResponseSchemaModel[PageData[CoulddriveDriveAccountDetail]],
-    dependencies=[DependsJwtAuth, DependsPagination]
+    dependencies=[DependsJwtAuth, DependsPagination],
 )
 async def get_user_list(
     db: CurrentSession,
     params: Annotated[GetUserListParam, Depends()],
-    page_params: Annotated[_CustomPageParams, DependsPagination]
+    page_params: Annotated[_CustomPageParams, DependsPagination],
 ) -> ResponseSchemaModel[PageData[CoulddriveDriveAccountDetail]]:
     """
     获取数据库中的所有网盘用户信息
-    
+
     :param db: 数据库会话
     :param params: 查询参数
     :param page_params: 分页参数
     :return:
     """
-    user_list = await drive_account_dao.get_list_with_pagination(
-        db, 
-        type=params.type, 
-        is_valid=params.is_valid
-    )
+    user_list = await drive_account_dao.get_list_with_pagination(db, type=params.type, is_valid=params.is_valid)
     page_data = paging_list_data(user_list, page_params)
     return response_base.success(data=page_data)
 
 
 @router.post(
-    '/create',
-    summary='创建网盘用户',
-    response_model=ResponseSchemaModel[BaseUserInfo],
-    dependencies=[DependsJwtAuth]
+    '/create', summary='创建网盘用户', response_model=ResponseSchemaModel[BaseUserInfo], dependencies=[DependsJwtAuth]
 )
 async def create_yp_user(
     request: Request,
     db: CurrentSession,
-    x_token: Annotated[str, Header(description="认证令牌")],
+    x_token: Annotated[str, Header(description='认证令牌')],
     params: Annotated[UserInfoParam, Depends()],
 ) -> ResponseSchemaModel[BaseUserInfo]:
     """
     创建网盘用户
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param x_token: 认证令牌
@@ -111,13 +106,11 @@ async def create_yp_user(
     # 获取用户信息
     user_info_response = await get_user_info(x_token, params)
     user_data = user_info_response.data
-    
+
     # 创建或更新用户
     drive_type_str = params.drive_type.value if hasattr(params.drive_type, 'value') else params.drive_type
-    await drive_account_dao.create_or_update(
-        db, user_data, drive_type_str, x_token, request.user.id
-    )
-    
+    await drive_account_dao.create_or_update(db, user_data, drive_type_str, x_token, request.user.id)
+
     return response_base.success(data=user_data)
 
 
@@ -126,7 +119,7 @@ async def create_yp_user(
     summary='删除网盘用户',
     response_model=ResponseSchemaModel[str],
     dependencies=[DependsJwtAuth],
-    name='delete_coulddrive_user'
+    name='delete_coulddrive_user',
 )
 async def delete_coulddrive_user(
     user_id: int,
@@ -134,23 +127,24 @@ async def delete_coulddrive_user(
 ) -> ResponseSchemaModel[str]:
     """
     删除网盘用户
-    
+
     :param user_id: 用户ID
     :param db: 数据库会话
     :return: 删除结果
     """
     result = await drive_account_dao.delete(db, [user_id])
     if result > 0:
-        return response_base.success(data="删除成功")
+        return response_base.success(data='删除成功')
     else:
-        return response_base.fail(msg="删除失败，用户不存在")
+        return response_base.fail(msg='删除失败，用户不存在')
+
 
 @router.put(
     '/{user_id}/refresh',
     summary='刷新用户信息',
     description='从网盘API获取最新用户信息并更新到数据库',
     response_model=ResponseSchemaModel[BaseUserInfo],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def refresh_user_info(
     user_id: int,
@@ -166,11 +160,11 @@ async def refresh_user_info(
     # 获取数据库中的用户信息
     user_account = await drive_account_dao.get(db, user_id)
     if not user_account:
-        return response_base.fast_success(res=CustomResponse(404, "用户不存在"))
+        return response_base.fast_success(res=CustomResponse(404, '用户不存在'))
 
     if not user_account.cookies:
-        return response_base.fast_success(res=CustomResponse(400, "用户认证信息不完整"))
-    
+        return response_base.fast_success(res=CustomResponse(400, '用户认证信息不完整'))
+
     try:
         # 构造参数
         params = UserInfoParam(drive_type=user_account.type)
@@ -181,7 +175,7 @@ async def refresh_user_info(
 
         # 校验 API 返回的数据是否有效，防止假数据写入数据库
         if user_info.user_id == '0' or user_info.username == '未知用户':
-            raise ValueError("获取用户信息失败，Cookie 可能已失效")
+            raise ValueError('获取用户信息失败，Cookie 可能已失效')
 
         # 直接根据已知的 user_id 更新数据库记录，避免 username 不匹配时误创建新记录
         update_data = UpdateDriveAccountParam(
@@ -203,4 +197,4 @@ async def refresh_user_info(
         await db.rollback()
         await drive_account_dao.update_validity(db, user_id, False)
         await db.commit()
-        return response_base.fast_success(res=CustomResponse(500, f"刷新用户信息失败: {str(e)}"))
+        return response_base.fast_success(res=CustomResponse(500, f'刷新用户信息失败: {str(e)}'))

@@ -18,6 +18,7 @@ class WrongQuestionQueryParam(SchemaBase):
     cat_id: int | None = Field(None, gt=0, description='分类 ID（通过题库筛选）')
     keyword: str | None = Field(None, max_length=200, description='关键字搜索（搜索题干）')
     exclude_reviewed: bool | None = Field(None, description='排除已复盘的错题')
+    is_mastered: bool | None = Field(None, description='是否已掌握(基于掌握状态表)')
 
 
 # ===== 基础 =====

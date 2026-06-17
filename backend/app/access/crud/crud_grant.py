@@ -29,13 +29,10 @@ class CRUDDirectGrant(CRUDPlus[DirectGrant]):
         :param ts: 时间点
         :return:
         """
-        stmt = (
-            select(self.model)
-            .where(
-                self.model.user_id == user_id,
-                self.model.status == CommonStatus.ACTIVE,
-                self.model.valid_period.contains(ts),
-            )
+        stmt = select(self.model).where(
+            self.model.user_id == user_id,
+            self.model.status == CommonStatus.ACTIVE,
+            self.model.valid_period.contains(ts),
         )
         return (await db.execute(stmt)).scalars().all()
 

@@ -26,18 +26,16 @@ router = APIRouter()
 async def check_filesync_cron_tasks() -> ResponseSchemaModel[Dict[str, Any]]:
     """
     手动触发检查并执行文件同步定时任务
-    
+
     扫描所有启用的同步配置，检查其cron字段，
     如果到了执行时间则触发同步任务
-    
+
     :return: 任务ID和状态
     """
     task = check_and_execute_filesync_cron_tasks.delay()
-    return response_base.success(data={
-        "task_id": task.id,
-        "status": "submitted",
-        "message": "文件同步定时任务检查已提交到队列"
-    })
+    return response_base.success(
+        data={'task_id': task.id, 'status': 'submitted', 'message': '文件同步定时任务检查已提交到队列'}
+    )
 
 
 @router.post(
@@ -46,20 +44,18 @@ async def check_filesync_cron_tasks() -> ResponseSchemaModel[Dict[str, Any]]:
     dependencies=[DependsJwtAuth],
 )
 async def execute_filesync_task(
-    config_id: Annotated[int, Path(description="同步配置ID")]
+    config_id: Annotated[int, Path(description='同步配置ID')],
 ) -> ResponseSchemaModel[Dict[str, Any]]:
     """
     手动触发执行指定配置的文件同步任务
-    
+
     :param config_id: 同步配置ID
     :return: 任务ID和状态
     """
     task = execute_filesync_task_by_config_id.delay(config_id)
-    return response_base.success(data={
-        "task_id": task.id,
-        "status": "submitted",
-        "message": f"配置 {config_id} 的文件同步任务已提交到队列"
-    })
+    return response_base.success(
+        data={'task_id': task.id, 'status': 'submitted', 'message': f'配置 {config_id} 的文件同步任务已提交到队列'}
+    )
 
 
 @router.get(
@@ -70,15 +66,13 @@ async def execute_filesync_task(
 async def get_filesync_cron_configs() -> ResponseSchemaModel[Dict[str, Any]]:
     """
     获取所有设置了cron表达式的同步配置列表
-    
+
     :return: 配置列表
     """
     task = get_filesync_configs_with_cron.delay()
-    return response_base.success(data={
-        "task_id": task.id,
-        "status": "submitted",
-        "message": "获取cron配置任务已提交到队列"
-    })
+    return response_base.success(
+        data={'task_id': task.id, 'status': 'submitted', 'message': '获取cron配置任务已提交到队列'}
+    )
 
 
 @router.post(
@@ -89,12 +83,10 @@ async def get_filesync_cron_configs() -> ResponseSchemaModel[Dict[str, Any]]:
 async def cleanup_expired_filesync_data() -> ResponseSchemaModel[Dict[str, Any]]:
     """
     手动触发清理30天以外的文件同步数据（包括任务和任务项）
-    
+
     :return: 任务ID和状态
     """
     task = delete_filesync_data_older_than_30_days.delay()
-    return response_base.success(data={
-        "task_id": task.id,
-        "status": "submitted",
-        "message": "清理过期文件同步数据已提交到队列"
-    }) 
+    return response_base.success(
+        data={'task_id': task.id, 'status': 'submitted', 'message': '清理过期文件同步数据已提交到队列'}
+    )

@@ -17,7 +17,9 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/study-preference', summary='获取学习偏好设置', name='qbank_get_study_preference', dependencies=[DependsJwtAuth])
+@router.get(
+    '/study-preference', summary='获取学习偏好设置', name='qbank_get_study_preference', dependencies=[DependsJwtAuth]
+)
 async def get_study_preference(
     request: Request,
     db: CurrentSession,
@@ -27,7 +29,9 @@ async def get_study_preference(
     return response_base.success(data=data)
 
 
-@router.put('/study-preference', summary='更新学习偏好设置', name='qbank_update_study_preference', dependencies=[DependsJwtAuth])
+@router.put(
+    '/study-preference', summary='更新学习偏好设置', name='qbank_update_study_preference', dependencies=[DependsJwtAuth]
+)
 async def update_study_preference(
     request: Request,
     db: CurrentSessionTransaction,
@@ -70,7 +74,9 @@ async def init_category_preference(
     return response_base.success(data={'category_custom_tabs': category_custom_tabs})
 
 
-@router.delete('/practice-data', summary='重置做题数据', name='qbank_reset_practice_data', dependencies=[DependsJwtAuth])
+@router.delete(
+    '/practice-data', summary='重置做题数据', name='qbank_reset_practice_data', dependencies=[DependsJwtAuth]
+)
 async def reset_practice_data(
     request: Request,
     db: CurrentSessionTransaction,

@@ -45,9 +45,7 @@ class CRUDDefinition(CRUDPlus[VocabDefinition]):
         :return:
         """
         stmt = (
-            select(VocabDefinition)
-            .where(VocabDefinition.word_id == word_id)
-            .order_by(VocabDefinition.sort_order.asc())
+            select(VocabDefinition).where(VocabDefinition.word_id == word_id).order_by(VocabDefinition.sort_order.asc())
         )
         result = await db.execute(stmt)
         return list(result.scalars().all())
@@ -76,11 +74,7 @@ class CRUDExample(CRUDPlus[VocabExample]):
         :param word_id: 单词 ID
         :return:
         """
-        stmt = (
-            select(VocabExample)
-            .where(VocabExample.word_id == word_id)
-            .order_by(VocabExample.sort_order.asc())
-        )
+        stmt = select(VocabExample).where(VocabExample.word_id == word_id).order_by(VocabExample.sort_order.asc())
         result = await db.execute(stmt)
         return list(result.scalars().all())
 

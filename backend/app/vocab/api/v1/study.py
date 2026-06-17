@@ -17,7 +17,6 @@ from backend.app.vocab.service.review_service import review_service
 from backend.app.vocab.service.study_service import study_service
 from backend.app.vocab.crud.crud_user_book import user_book_dao
 from backend.app.vocab.crud.crud_user_word import user_word_dao
-from backend.app.vocab.schema.book import GetBookListItem
 from backend.app.vocab.service.book_service import book_service
 from backend.common.pagination import DependsPagination
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -92,6 +91,7 @@ async def finish_book(
 async def get_my_books(request: Request, db: CurrentSession) -> ResponseModel:
     """获取我的词书列表"""
     from backend.common.pagination import paging_data
+
     stmt = await user_book_dao.get_select_by_user(request.user.id)
     data = await paging_data(db, stmt)
     return response_base.success(data=data)

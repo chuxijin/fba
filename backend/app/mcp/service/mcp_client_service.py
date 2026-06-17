@@ -39,29 +39,27 @@ class MCPClient:
         formatted_tools: list[dict[str, Any]] = []
         for tool in tools:
             properties: dict[str, Any] = {}
-            for param_name, param_info in tool.inputSchema["properties"].items():
+            for param_name, param_info in tool.inputSchema['properties'].items():
                 param_data: dict[str, Any] = {
-                    "type": param_info["type"],
-                    "description": param_info.get("description", param_info.get("title", "")),
+                    'type': param_info['type'],
+                    'description': param_info.get('description', param_info.get('title', '')),
                 }
-                if param_info["type"] == "array" and "items" in param_info:
-                    param_data["items"] = {"type": param_info["items"].get("type")}
+                if param_info['type'] == 'array' and 'items' in param_info:
+                    param_data['items'] = {'type': param_info['items'].get('type')}
                 properties[param_name] = param_data
 
-            formatted_tools.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": {
-                            "type": "object",
-                            "properties": properties,
-                            "required": tool.inputSchema.get("required", []),
-                        },
+            formatted_tools.append({
+                'type': 'function',
+                'function': {
+                    'name': tool.name,
+                    'description': tool.description,
+                    'parameters': {
+                        'type': 'object',
+                        'properties': properties,
+                        'required': tool.inputSchema.get('required', []),
                     },
-                }
-            )
+                },
+            })
 
         return formatted_tools, self.session
 
@@ -73,5 +71,3 @@ class MCPClient:
             await self._streams_context.__aexit__(None, None, None)
 
     # 示例 OpenAI 客户端与对话循环已移除，如需自定义客户端可在外部按需实现
-
-

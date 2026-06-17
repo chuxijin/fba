@@ -7,8 +7,6 @@ from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.study_plan.crud import (
-    study_plan_dao,
-    study_plan_item_dao,
     study_plan_template_dao,
     study_plan_template_item_dao,
 )
@@ -97,20 +95,22 @@ async def instantiate_template(
             db,
             copy.deepcopy(ti.extra) if ti.extra is not None else None,
         )
-        items.append(StudyPlanItem(
-            plan_id=plan.id,
-            user_id=param.user_id,
-            plan_date=param.start_date + timedelta(days=ti.day_index - 1),
-            order_index=ti.order_index,
-            module_type=ti.module_type,
-            title=ti.title,
-            ref_type=ti.ref_type,
-            ref_id=ti.ref_id,
-            expected_minutes=ti.expected_minutes,
-            status='pending',
-            extra=enriched_extra,
-            created_by=creator_id,
-        ))
+        items.append(
+            StudyPlanItem(
+                plan_id=plan.id,
+                user_id=param.user_id,
+                plan_date=param.start_date + timedelta(days=ti.day_index - 1),
+                order_index=ti.order_index,
+                module_type=ti.module_type,
+                title=ti.title,
+                ref_type=ti.ref_type,
+                ref_id=ti.ref_id,
+                expected_minutes=ti.expected_minutes,
+                status='pending',
+                extra=enriched_extra,
+                created_by=creator_id,
+            )
+        )
     db.add_all(items)
     await db.flush()
 

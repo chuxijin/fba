@@ -56,8 +56,6 @@ class ActcodeUsage(Base):
     code_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='激活码 ID')
     app_id: Mapped[str] = mapped_column(sa.String(32), index=True, comment='应用 ID')
     user_id: Mapped[str] = mapped_column(sa.String(64), index=True, comment='用户 ID')
-    used_time: Mapped[datetime] = mapped_column(
-        TimeZone, init=False, default_factory=timezone.now, comment='使用时间'
-    )
+    used_time: Mapped[datetime] = mapped_column(TimeZone, init=False, default_factory=timezone.now, comment='使用时间')
     ip_address: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='IP 地址')
     device_info: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='设备信息')

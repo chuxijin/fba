@@ -24,6 +24,7 @@ def admin_verify(request: Request, _token: str = DependsJwtAuth) -> bool:
     :return:
     """
     from starlette.authentication import UnauthenticatedUser
+
     if isinstance(request.user, UnauthenticatedUser):
         raise errors.TokenError
 
@@ -75,10 +76,7 @@ async def get_dashboard_user_stats(db: CurrentSession) -> ResponseSchemaModel[Ge
             daily_counts[d_str] += 1
 
     # 组装 30 天趋势
-    trend_30 = [
-        DashboardTrendItem(date=d, count=daily_counts[d])
-        for d in dates_30
-    ]
+    trend_30 = [DashboardTrendItem(date=d, count=daily_counts[d]) for d in dates_30]
 
     # 组装 7 天趋势
     trend_7 = trend_30[-7:]

@@ -95,9 +95,7 @@ class CRUDInviteRelation(CRUDPlus[InviteRelation]):
         result = await db.execute(stmt)
         return result.scalar() or 0
 
-    async def get_select(
-        self, inviter_user_id: int | None = None, invitee_user_id: int | None = None
-    ) -> Select:
+    async def get_select(self, inviter_user_id: int | None = None, invitee_user_id: int | None = None) -> Select:
         """
         获取邀请关系列表查询表达式
 

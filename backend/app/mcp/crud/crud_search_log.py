@@ -16,5 +16,3 @@ class CRUDMcpSearchLog(CRUDPlus[McpSearchLog]):
 
 
 mcp_search_log_dao = CRUDMcpSearchLog(McpSearchLog)
-
-

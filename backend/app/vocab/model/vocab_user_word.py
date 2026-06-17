@@ -24,7 +24,9 @@ class VocabUserWord(Base):
     word_id: Mapped[int] = mapped_column(sa.BigInteger, comment='单词 ID')
     due: Mapped[datetime] = mapped_column(TimeZone, comment='下次到期时间')
     # FSRS v6 核心字段
-    state: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='FSRS 状态(1 learning 2 review 3 relearning)')
+    state: Mapped[int] = mapped_column(
+        sa.SmallInteger, default=1, comment='FSRS 状态(1 learning 2 review 3 relearning)'
+    )
     step: Mapped[int | None] = mapped_column(sa.SmallInteger, default=0, comment='FSRS 学习步骤')
     stability: Mapped[float | None] = mapped_column(sa.Float, default=None, comment='FSRS 稳定性(天)')
     difficulty: Mapped[float | None] = mapped_column(sa.Float, default=None, comment='FSRS 难度')

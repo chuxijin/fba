@@ -58,9 +58,7 @@ class CRUDGroupWord(CRUDPlus[VocabGroupWord]):
         :return:
         """
         return (
-            select(VocabGroupWord)
-            .where(VocabGroupWord.group_id == group_id)
-            .order_by(VocabGroupWord.added_at.desc())
+            select(VocabGroupWord).where(VocabGroupWord.group_id == group_id).order_by(VocabGroupWord.added_at.desc())
         )
 
 

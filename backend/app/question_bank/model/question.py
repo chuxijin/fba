@@ -26,12 +26,14 @@ question_material_relation = sa.Table(
     'study_question_material_relation',
     Base.metadata,
     sa.Column('question_id', sa.BigInteger, sa.ForeignKey('study_question.id', ondelete='CASCADE'), primary_key=True),
-    sa.Column('material_id', sa.BigInteger, sa.ForeignKey('study_question_material.id', ondelete='CASCADE'), primary_key=True),
+    sa.Column(
+        'material_id', sa.BigInteger, sa.ForeignKey('study_question_material.id', ondelete='CASCADE'), primary_key=True
+    ),
     sa.Column('sort_order', sa.Integer, default=0, comment='排序'),
     sa.Index('idx_qmr_material', 'material_id'),
     sa.Index('idx_qmr_question_sort', 'question_id', 'sort_order'),
     sa.Index('idx_qmr_material_sort', 'material_id', 'sort_order'),
-    comment='题目-材料关联表'
+    comment='题目-材料关联表',
 )
 
 
@@ -132,10 +134,7 @@ class Question(Base, UserMixin):
         comment='内容状态: 0=待审核, 10=已通过, 20=已拒绝',
     )
     content_vector: Mapped[list[float] | None] = mapped_column(
-        Vector(1536),
-        default=None,
-        deferred=True,
-        comment='内容语义向量(1536维)，统合用于自动标注、相似推荐与AI问答'
+        Vector(1536), default=None, deferred=True, comment='内容语义向量(1536维)，统合用于自动标注、相似推荐与AI问答'
     )
 
     # ============ 关系 ============
@@ -250,7 +249,9 @@ class QuestionStatistics(Base):
         default=None,
         comment='平均答题时间（秒）',
     )
-    valid_attempt_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='有效答题次数 (过滤 answer_time < 3s)')
+    valid_attempt_count: Mapped[int] = mapped_column(
+        sa.Integer, default=0, comment='有效答题次数 (过滤 answer_time < 3s)'
+    )
     valid_correct_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='有效答对次数')
     valid_avg_answer_time: Mapped[Decimal | None] = mapped_column(
         sa.Numeric(8, 2),

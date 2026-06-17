@@ -10,10 +10,9 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, TimeZone, UserMixin, id_key
-from backend.utils.timezone import timezone
 
 if TYPE_CHECKING:
-    from .practice import WrongQuestionBook, WrongQuestionCustom
+    from .practice import WrongQuestionCustom
     from .question import Question
 
 
@@ -27,8 +26,8 @@ class WrongMasteryStatus(Base, UserMixin):
         sa.Index('idx_mastery_next_review', 'user_id', 'next_review_time'),
         sa.CheckConstraint("status IN ('learning', 'mastered', 'forgotten')", name='ck_mastery_status'),
         sa.CheckConstraint(
-            "(question_id IS NOT NULL AND custom_question_id IS NULL) OR "
-            "(question_id IS NULL AND custom_question_id IS NOT NULL)",
+            '(question_id IS NOT NULL AND custom_question_id IS NULL) OR '
+            '(question_id IS NULL AND custom_question_id IS NOT NULL)',
             name='ck_mastery_source',
         ),
         {'comment': '错题掌握状态表'},

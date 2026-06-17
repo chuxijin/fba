@@ -132,7 +132,10 @@ class ChapterService:
             raise errors.ForbiddenError(msg='当前内容复用其他内容章节，请在章节源内容中维护章节')
 
         existing_chapter = await chapter_dao.get_by_name(
-            db=db, bank_id=obj.bank_id, name=obj.name, parent_id=obj.parent_id,
+            db=db,
+            bank_id=obj.bank_id,
+            name=obj.name,
+            parent_id=obj.parent_id,
         )
         if existing_chapter:
             raise errors.ConflictError(msg='同级章节名称已存在')
@@ -166,7 +169,10 @@ class ChapterService:
             raise errors.ForbiddenError(msg='当前内容复用其他内容章节，请在章节源内容中维护章节')
 
         existing_chapter = await chapter_dao.get_by_name(
-            db=db, bank_id=obj.bank_id, name=obj.name, parent_id=obj.parent_id,
+            db=db,
+            bank_id=obj.bank_id,
+            name=obj.name,
+            parent_id=obj.parent_id,
         )
         if existing_chapter and existing_chapter.id != chapter.id:
             raise errors.ConflictError(msg='同级章节名称已存在')

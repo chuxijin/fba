@@ -19,7 +19,9 @@ class CreateSlotParam(SchemaBase):
     subtitle: str | None = Field(None, max_length=255, description='副标题/摘要')
     image_url: str | None = Field(None, max_length=500, description='主图 URL')
     detail: str | None = Field(None, description='富文本详情')
-    jump_type: str = Field(default='none', max_length=32, description='跳转类型(none/url/miniprogram/quest/content/custom)')
+    jump_type: str = Field(
+        default='none', max_length=32, description='跳转类型(none/url/miniprogram/quest/content/custom)'
+    )
     jump_target: str | None = Field(None, max_length=500, description='跳转目标(URL 或业务 ID)')
     jump_extra: dict | None = Field(None, description='扩展跳转参数')
     start_time: datetime | None = Field(None, description='投放开始时间')

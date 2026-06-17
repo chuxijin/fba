@@ -23,7 +23,10 @@ class CRUDStudyMentorStudent(CRUDPlus[StudyMentorStudent]):
         return await self.select_model(db, relation_id, deleted=0)
 
     async def get_pair(
-        self, db: AsyncSession, mentor_id: int, student_id: int,
+        self,
+        db: AsyncSession,
+        mentor_id: int,
+        student_id: int,
     ) -> StudyMentorStudent | None:
         """
         获取指定导师与学员的关系
@@ -34,11 +37,16 @@ class CRUDStudyMentorStudent(CRUDPlus[StudyMentorStudent]):
         :return:
         """
         return await self.select_model_by_column(
-            db, mentor_id=mentor_id, student_id=student_id, deleted=0,
+            db,
+            mentor_id=mentor_id,
+            student_id=student_id,
+            deleted=0,
         )
 
     async def list_students_of_mentor(
-        self, db: AsyncSession, mentor_id: int,
+        self,
+        db: AsyncSession,
+        mentor_id: int,
     ) -> Sequence[StudyMentorStudent]:
         """
         获取导师名下所有生效学员
@@ -60,7 +68,9 @@ class CRUDStudyMentorStudent(CRUDPlus[StudyMentorStudent]):
         return result.scalars().all()
 
     async def list_mentors_of_student(
-        self, db: AsyncSession, student_id: int,
+        self,
+        db: AsyncSession,
+        student_id: int,
     ) -> Sequence[StudyMentorStudent]:
         """
         获取学员的所有生效导师

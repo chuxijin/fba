@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """题库相关定时任务"""
+
 import logging
 
 from datetime import datetime, timedelta
@@ -37,10 +38,10 @@ async def update_daily_user_ranks() -> dict:
     """
     try:
         result = await _update_daily_user_ranks()
-        logger.info(f"排名更新完成: 共更新 {result['total_users']} 个用户排名")
+        logger.info(f'排名更新完成: 共更新 {result["total_users"]} 个用户排名')
         return result
     except Exception as e:
-        logger.error(f"排名更新失败: {str(e)}")
+        logger.error(f'排名更新失败: {str(e)}')
         return {'total_users': 0, 'error': str(e)}
 
 
@@ -319,6 +320,7 @@ async def process_record_side_effects_async(
         # 6. 重算受影响题目的难度
         if allow_judge_now and objective_count > 0:
             from backend.app.question_bank.crud.crud_question import question_statistics_dao
+
             judged_question_ids = list({r.question_id for r in records if r.is_correct is not None})
             for qid in judged_question_ids:
                 await question_statistics_dao.update_difficulty(db=db, question_id=qid)

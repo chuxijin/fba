@@ -12,5 +12,3 @@ v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH)
 v1.include_router(account_router)
 v1.include_router(work_router)
 v1.include_router(metric_router)
-
-

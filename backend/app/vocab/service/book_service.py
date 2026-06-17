@@ -135,9 +135,7 @@ class BookService:
         for word_id in obj.word_ids:
             existing = await book_word_dao.get_by_book_and_word(db, pk, word_id)
             if not existing:
-                await book_word_dao.create_model(
-                    db, CreateBookWordParam(book_id=pk, word_id=word_id), commit=False
-                )
+                await book_word_dao.create_model(db, CreateBookWordParam(book_id=pk, word_id=word_id), commit=False)
                 added += 1
 
         if added > 0:

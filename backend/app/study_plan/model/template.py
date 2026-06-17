@@ -32,7 +32,9 @@ class StudyPlanTemplate(Base, UserMixin):
     name: Mapped[str] = mapped_column(sa.String(255), comment='模板名称')
     duration_days: Mapped[int] = mapped_column(sa.Integer, comment='覆盖天数')
     domain: Mapped[str] = mapped_column(
-        sa.String(32), default='civil_service', comment='业务领域: civil_service',
+        sa.String(32),
+        default='civil_service',
+        comment='业务领域: civil_service',
     )
     description: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='模板说明')
     is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
@@ -52,12 +54,16 @@ class StudyPlanTemplateItem(Base):
     __tablename__ = 'study_plan_template_item'
     __table_args__ = (
         sa.UniqueConstraint(
-            'template_id', 'day_index', 'order_index',
+            'template_id',
+            'day_index',
+            'order_index',
             name='uq_study_plan_template_item_position',
         ),
         sa.Index(
             'idx_study_plan_template_item_template_day',
-            'template_id', 'day_index', 'order_index',
+            'template_id',
+            'day_index',
+            'order_index',
         ),
         sa.CheckConstraint(
             "module_type IN ('review','practice','wrong_review','ability','resource')",
@@ -82,21 +88,29 @@ class StudyPlanTemplateItem(Base):
     day_index: Mapped[int] = mapped_column(sa.Integer, comment='第几天（1..duration_days）')
     order_index: Mapped[int] = mapped_column(sa.Integer, comment='当天顺序（从 0 开始）')
     module_type: Mapped[str] = mapped_column(
-        sa.String(16), comment='模块类型: review/practice/wrong_review/ability',
+        sa.String(16),
+        comment='模块类型: review/practice/wrong_review/ability',
     )
     title: Mapped[str] = mapped_column(sa.String(255), comment='模块标题')
     ref_type: Mapped[str] = mapped_column(
-        sa.String(32), comment='引用类型: content/question_set/wrong_dynamic/ability_task',
+        sa.String(32),
+        comment='引用类型: content/question_set/wrong_dynamic/ability_task',
     )
     ref_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger, default=None, comment='引用目标 ID（软引用）',
+        sa.BigInteger,
+        default=None,
+        comment='引用目标 ID（软引用）',
     )
     expected_minutes: Mapped[int] = mapped_column(sa.Integer, default=15, comment='预计耗时（分钟）')
     extra: Mapped[dict | None] = mapped_column(
-        CompatibleJSONB, default=None, comment='模块特定配置（同 study_plan_item.extra）',
+        CompatibleJSONB,
+        default=None,
+        comment='模块特定配置（同 study_plan_item.extra）',
     )
 
     # ============ 关系 ============
     template: Mapped[StudyPlanTemplate] = relationship(
-        init=False, back_populates='items', lazy='noload',
+        init=False,
+        back_populates='items',
+        lazy='noload',
     )

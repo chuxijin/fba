@@ -50,9 +50,7 @@ class CRUDPayTransaction(CRUDPlus[PayTransaction]):
         result = await db.execute(stmt)
         return result.scalars().first()
 
-    async def get_by_user(
-        self, db: AsyncSession, user_id: int, status: str | None = None
-    ) -> list[PayTransaction]:
+    async def get_by_user(self, db: AsyncSession, user_id: int, status: str | None = None) -> list[PayTransaction]:
         """
         获取用户的支付记录列表
 

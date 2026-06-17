@@ -47,9 +47,13 @@ class StudyMentorStudent(Base):
         comment='分配操作人（管理员 sys_user.id；管理员注销后为 NULL）',
     )
     status: Mapped[str] = mapped_column(
-        sa.String(16), default='active', comment='状态: active/paused',
+        sa.String(16),
+        default='active',
+        comment='状态: active/paused',
     )
     note: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='分配备注')
     assigned_at: Mapped[datetime] = mapped_column(
-        TimeZone, default_factory=timezone.now, comment='分配时间',
+        TimeZone,
+        default_factory=timezone.now,
+        comment='分配时间',
     )

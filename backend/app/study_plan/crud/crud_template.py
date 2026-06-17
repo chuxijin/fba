@@ -23,7 +23,9 @@ class CRUDStudyPlanTemplate(CRUDPlus[StudyPlanTemplate]):
         return await self.select_model(db, template_id, deleted=0)
 
     async def list_active(
-        self, db: AsyncSession, domain: str = 'civil_service',
+        self,
+        db: AsyncSession,
+        domain: str = 'civil_service',
     ) -> Sequence[StudyPlanTemplate]:
         """
         获取启用的模板列表
@@ -59,7 +61,9 @@ class CRUDStudyPlanTemplateItem(CRUDPlus[StudyPlanTemplateItem]):
         return await self.select_model(db, item_id, deleted=0)
 
     async def list_by_template(
-        self, db: AsyncSession, template_id: int,
+        self,
+        db: AsyncSession,
+        template_id: int,
     ) -> Sequence[StudyPlanTemplateItem]:
         """
         获取模板下所有模板项（按 day_index + order_index 升序）

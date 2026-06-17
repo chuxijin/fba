@@ -98,14 +98,18 @@ async def get_practice_questions(
     )
 
     result = [
-        question_service.serialize_question(question=q, bank_id=bank_id, chapter_id=chapter_id)
-        for q in questions
+        question_service.serialize_question(question=q, bank_id=bank_id, chapter_id=chapter_id) for q in questions
     ]
     await question_service._fill_kp_display_batch(db, result)
     return response_base.success(data=result)
 
 
-@router.get('/banks/{bank_id}/questions', summary='获取题库题目列表', name='practice_get_bank_questions', dependencies=[DependsJwtAuth])
+@router.get(
+    '/banks/{bank_id}/questions',
+    summary='获取题库题目列表',
+    name='practice_get_bank_questions',
+    dependencies=[DependsJwtAuth],
+)
 async def get_bank_questions(
     request: Request,
     db: CurrentSession,
@@ -136,7 +140,12 @@ async def get_bank_questions(
     return response_base.success(data=result)
 
 
-@router.get('/chapters/{chapter_id}/questions', summary='获取章节题目列表', name='practice_get_chapter_questions', dependencies=[DependsJwtAuth])
+@router.get(
+    '/chapters/{chapter_id}/questions',
+    summary='获取章节题目列表',
+    name='practice_get_chapter_questions',
+    dependencies=[DependsJwtAuth],
+)
 async def get_chapter_questions(
     request: Request,
     db: CurrentSession,
@@ -171,14 +180,15 @@ async def get_chapter_questions(
         difficulty=difficulty,
     )
     result = [
-        question_service.serialize_question(question=q, bank_id=bank_id, chapter_id=chapter_id)
-        for q in questions
+        question_service.serialize_question(question=q, bank_id=bank_id, chapter_id=chapter_id) for q in questions
     ]
     await question_service._fill_kp_display_batch(db, result)
     return response_base.success(data=result)
 
 
-@router.get('/questions/{pk}', summary='获取题目详情（刷题）', name='practice_get_question', dependencies=[DependsJwtAuth])
+@router.get(
+    '/questions/{pk}', summary='获取题目详情（刷题）', name='practice_get_question', dependencies=[DependsJwtAuth]
+)
 async def get_question(
     request: Request,
     db: CurrentSession,
@@ -198,7 +208,9 @@ async def get_question(
     return response_base.success(data=question)
 
 
-@router.get('/questions/{pk}/analysis', summary='查看题目解析', name='practice_get_analysis', dependencies=[DependsJwtAuth])
+@router.get(
+    '/questions/{pk}/analysis', summary='查看题目解析', name='practice_get_analysis', dependencies=[DependsJwtAuth]
+)
 async def get_analysis(
     request: Request,
     db: CurrentSessionTransaction,

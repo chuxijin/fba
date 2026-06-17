@@ -48,9 +48,7 @@ class PayTransaction(Base, UserMixin):
     )
     trade_no: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='第三方交易号')
     refund_no: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='商户退款单号')
-    refund_amount: Mapped[Decimal | None] = mapped_column(
-        sa.Numeric(10, 2), default=None, comment='已退款金额（元）'
-    )
+    refund_amount: Mapped[Decimal | None] = mapped_column(sa.Numeric(10, 2), default=None, comment='已退款金额（元）')
     notify_data: Mapped[dict | None] = mapped_column(CompatibleJSONB, default=None, comment='回调原始数据')
     product_name: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='商品描述快照')
     paid_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='支付成功时间')

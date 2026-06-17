@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import ConfigDict, Field
 
 from backend.app.vocab.schema.user_book import GetUserBookWithProgress
-from backend.app.vocab.schema.word import GetWordBrief, GetWordDetail
+from backend.app.vocab.schema.word import GetWordDetail
 from backend.common.schema import SchemaBase
 
 

@@ -50,6 +50,7 @@ class CRUDQuest(CRUDPlus[Quest]):
         keyword: str | None = None,
         only_active: bool = False,
         domain_code: str | None = None,
+        quest_type: str | None = None,
     ) -> Select:
         """
         获取任务列表查询表达式
@@ -58,6 +59,7 @@ class CRUDQuest(CRUDPlus[Quest]):
         :param keyword: 搜索关键词（匹配名称/任务码）
         :param only_active: 是否只看进行中（status=1）
         :param domain_code: 领域码过滤
+        :param quest_type: 任务类型过滤(manual/auto)
         :return:
         """
         stmt = select(Quest)
@@ -67,6 +69,9 @@ class CRUDQuest(CRUDPlus[Quest]):
             conditions.append(Quest.status == status)
         elif only_active:
             conditions.append(Quest.status == 1)
+
+        if quest_type is not None:
+            conditions.append(Quest.quest_type == quest_type)
 
         if keyword:
             keyword_like = f'%{keyword}%'
@@ -111,9 +116,7 @@ class CRUDQuestClaim(CRUDPlus[QuestClaim]):
         :param user_id: 用户 ID
         :return:
         """
-        return await self.select_model_by_column(
-            db, quest_id__eq=quest_id, user_id__eq=user_id, claim_status__eq=0
-        )
+        return await self.select_model_by_column(db, quest_id__eq=quest_id, user_id__eq=user_id, claim_status__eq=0)
 
     async def get_latest_by_user(self, db: AsyncSession, quest_id: int, user_id: int) -> QuestClaim | None:
         """

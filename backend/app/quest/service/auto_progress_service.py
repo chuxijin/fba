@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """自动进度型悬赏任务的事件处理器"""
+
 from datetime import timedelta
 from typing import Any
 
@@ -16,6 +17,9 @@ from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
 
 _TRIGGER_INVITE_ACCEPTED = 'invite.accepted'
+_TRIGGER_USER_REGISTERED = 'user.registered'
+_TRIGGER_USER_LOGGED_IN = 'user.logged_in'
+_TRIGGER_SESSION_COMPLETED = 'study.session_completed'
 
 # claim_status: 2 审核通过, 4 已发奖, 5 已放弃, 6 已撤销 → 不再推进
 _TERMINAL_CLAIM_STATUSES = frozenset({2, 4, 5, 6})
@@ -47,9 +51,7 @@ async def _list_active_triggered_quests(db: AsyncSession, trigger_type: str) -> 
     return active
 
 
-async def _record_progress_idempotent(
-    db: AsyncSession, claim_id: int, source_key: str
-) -> bool:
+async def _record_progress_idempotent(db: AsyncSession, claim_id: int, source_key: str) -> bool:
     """
     幂等插入进度流水, 返回 True 表示首次记录
 
@@ -66,9 +68,7 @@ async def _record_progress_idempotent(
     return True
 
 
-async def _get_or_create_claim(
-    *, db: AsyncSession, quest: Quest, user_id: int
-) -> QuestClaim | None:
+async def _get_or_create_claim(*, db: AsyncSession, quest: Quest, user_id: int) -> QuestClaim | None:
     """
     获取或懒创建用户的进行中领取记录
 
@@ -105,9 +105,7 @@ async def _get_or_create_claim(
     return claim
 
 
-async def _advance_claim(
-    *, db: AsyncSession, quest: Quest, user_id: int, source_key: str
-) -> None:
+async def _advance_claim(*, db: AsyncSession, quest: Quest, user_id: int, source_key: str) -> None:
     """
     推进单个 Quest 对单个用户的进度
 
@@ -163,9 +161,7 @@ async def on_invite_accepted(
     :return:
     """
     if not inviter_user_id or not relation_id:
-        log.warning(
-            f'invite.accepted 事件缺少必要字段 inviter_user_id={inviter_user_id} relation_id={relation_id}'
-        )
+        log.warning(f'invite.accepted 事件缺少必要字段 inviter_user_id={inviter_user_id} relation_id={relation_id}')
         return
 
     async with async_db_session.begin() as db:
@@ -176,10 +172,95 @@ async def on_invite_accepted(
         source_key = f'invite_relation:{relation_id}'
         for quest in quests:
             try:
-                await _advance_claim(
-                    db=db, quest=quest, user_id=inviter_user_id, source_key=source_key
-                )
+                await _advance_claim(db=db, quest=quest, user_id=inviter_user_id, source_key=source_key)
             except Exception as exc:
-                log.warning(
-                    f'推进任务进度异常 quest_id={quest.id} user_id={inviter_user_id} error={exc}'
-                )
+                log.warning(f'推进任务进度异常 quest_id={quest.id} user_id={inviter_user_id} error={exc}')
+
+
+@subscribe(_TRIGGER_USER_REGISTERED)
+async def on_user_registered(
+    *,
+    user_id: int | None = None,
+    **_: Any,
+) -> None:
+    """
+    处理用户注册事件, 推进所有 trigger_type=user.registered 的任务进度
+
+    :param user_id: 用户 ID
+    :return:
+    """
+    if not user_id:
+        log.warning('user.registered 事件缺少 user_id')
+        return
+
+    async with async_db_session.begin() as db:
+        quests = await _list_active_triggered_quests(db, _TRIGGER_USER_REGISTERED)
+        if not quests:
+            return
+
+        source_key = f'user_registered:{user_id}'
+        for quest in quests:
+            try:
+                await _advance_claim(db=db, quest=quest, user_id=user_id, source_key=source_key)
+            except Exception as exc:
+                log.warning(f'推进任务进度异常 quest_id={quest.id} user_id={user_id} error={exc}')
+
+
+@subscribe(_TRIGGER_USER_LOGGED_IN)
+async def on_user_logged_in(
+    *,
+    user_id: int | None = None,
+    **_: Any,
+) -> None:
+    """
+    处理用户登录事件, 推进所有 trigger_type=user.logged_in 的任务进度
+
+    :param user_id: 用户 ID
+    :return:
+    """
+    if not user_id:
+        log.warning('user.logged_in 事件缺少 user_id')
+        return
+
+    async with async_db_session.begin() as db:
+        quests = await _list_active_triggered_quests(db, _TRIGGER_USER_LOGGED_IN)
+        if not quests:
+            return
+
+        source_key = f'user_login:{user_id}:{timezone.now().strftime("%Y%m%d")}'
+        for quest in quests:
+            try:
+                await _advance_claim(db=db, quest=quest, user_id=user_id, source_key=source_key)
+            except Exception as exc:
+                log.warning(f'推进任务进度异常 quest_id={quest.id} user_id={user_id} error={exc}')
+
+
+@subscribe(_TRIGGER_SESSION_COMPLETED)
+async def on_session_completed(
+    *,
+    user_id: int | None = None,
+    session_id: int | None = None,
+    **_: Any,
+) -> None:
+    """
+    处理做题交卷事件, 推进所有 trigger_type=study.session_completed 的任务进度
+
+    :param user_id: 用户 ID
+    :param session_id: 会话 ID
+    :return:
+    """
+    if not user_id:
+        log.warning('study.session_completed 事件缺少 user_id')
+        return
+
+    async with async_db_session.begin() as db:
+        quests = await _list_active_triggered_quests(db, _TRIGGER_SESSION_COMPLETED)
+        if not quests:
+            return
+
+        source_key = f'session:{session_id}'
+        for quest in quests:
+            try:
+                await _advance_claim(db=db, quest=quest, user_id=user_id, source_key=source_key)
+            except Exception as exc:
+                log.warning(f'推进任务进度异常 quest_id={quest.id} user_id={user_id} error={exc}')

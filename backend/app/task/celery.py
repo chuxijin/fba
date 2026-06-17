@@ -30,7 +30,6 @@ def init_celery_tracing(*args, **kwargs) -> None:
     _celery_otel_initialized = True
 
 
-
 def find_task_packages() -> list[str]:
     packages = []
     task_dir = BASE_PATH / 'app' / 'task' / 'tasks'

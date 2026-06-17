@@ -242,9 +242,8 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
         :return:
         """
         from sqlalchemy import func
-        stmt = select(func.count()).select_from(WrongQuestionReview).where(
-            WrongQuestionReview.user_id == user_id
-        )
+
+        stmt = select(func.count()).select_from(WrongQuestionReview).where(WrongQuestionReview.user_id == user_id)
         result = await db.execute(stmt)
         return result.scalar() or 0
 
@@ -304,7 +303,6 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
                         if isinstance(kp_id, int):
                             counter[kp_id] = counter.get(kp_id, 0) + 1
         return sorted(counter.items(), key=lambda x: x[1], reverse=True)
-
 
 
 reason_tag_dao: CRUDReasonTag = CRUDReasonTag(WrongReasonTag)

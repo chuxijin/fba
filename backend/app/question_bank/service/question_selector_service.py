@@ -271,11 +271,18 @@ class QuestionSelectorService:
             or params.year_start is not None
             or params.year_end is not None
         )
-        needs_placement_exists = any(
-            value is not None for value in (params.bank_id, params.chapter_id, params.review_status, params.is_active)
-        ) or bool(params.bank_ids) or needs_bank_join
+        needs_placement_exists = (
+            any(
+                value is not None
+                for value in (params.bank_id, params.chapter_id, params.review_status, params.is_active)
+            )
+            or bool(params.bank_ids)
+            or needs_bank_join
+        )
         if needs_placement_exists:
-            placement_stmt = select(1).select_from(QuestionPlacement).where(QuestionPlacement.question_id == Question.id)
+            placement_stmt = (
+                select(1).select_from(QuestionPlacement).where(QuestionPlacement.question_id == Question.id)
+            )
             placement_stmt = cls._apply_placement_filters(
                 stmt=placement_stmt,
                 params=params,
@@ -302,9 +309,13 @@ class QuestionSelectorService:
         cat_ids: list[int] | None,
         chapter_scope_ids: list[int] | None,
     ) -> list[int]:
-        stmt = select(QuestionPlacement.question_id).select_from(QuestionPlacement).join(
-            Question,
-            Question.id == QuestionPlacement.question_id,
+        stmt = (
+            select(QuestionPlacement.question_id)
+            .select_from(QuestionPlacement)
+            .join(
+                Question,
+                Question.id == QuestionPlacement.question_id,
+            )
         )
         stmt = cls._apply_question_filters(stmt=stmt, params=params, kp_ids=kp_ids, kp_names=kp_names)
 

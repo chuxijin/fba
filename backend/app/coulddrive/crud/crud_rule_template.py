@@ -49,34 +49,31 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         stmt = select(self.model).order_by(desc(self.model.created_time))
 
         filters = []
-        
+
         if params.template_type is not None:
             filters.append(self.model.template_type == params.template_type)
-        
+
         if params.category is not None:
             filters.append(self.model.category == params.category)
-        
+
         if params.is_active is not None:
             filters.append(self.model.is_active == params.is_active)
-        
+
         if params.is_system is not None:
             filters.append(self.model.is_system == params.is_system)
-        
+
         if params.keyword is not None and params.keyword.strip():
-            keyword = f"%{params.keyword.strip()}%"
-            filters.append(
-                or_(
-                    self.model.template_name.like(keyword),
-                    self.model.description.like(keyword)
-                )
-            )
+            keyword = f'%{params.keyword.strip()}%'
+            filters.append(or_(self.model.template_name.like(keyword), self.model.description.like(keyword)))
 
         if filters:
             stmt = stmt.where(and_(*filters))
 
         return stmt
 
-    async def get_list_with_pagination(self, db: AsyncSession, params: GetRuleTemplateListParam) -> Sequence[RuleTemplate]:
+    async def get_list_with_pagination(
+        self, db: AsyncSession, params: GetRuleTemplateListParam
+    ) -> Sequence[RuleTemplate]:
         """
         获取规则模板分页列表
 
@@ -138,13 +135,13 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         # 获取模型数据，只包含可以在__init__中传递的字段
         create_data = obj.model_dump()
         create_data['created_by'] = created_by
-        
+
         # 创建模型实例（不包含init=False的字段）
         new_template = self.model(**create_data)
-        
+
         # 设置init=False的字段
         new_template.updated_by = created_by
-        
+
         db.add(new_template)
         await db.commit()
         await db.refresh(new_template)
@@ -161,7 +158,7 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         """
         update_data = obj.model_dump(exclude_unset=True)
         update_data['updated_by'] = updated_by
-        
+
         result = await self.update_model(db, pk, update_data)
         await db.commit()
         return result
@@ -176,11 +173,11 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         """
         # 物理删除
         from sqlalchemy import delete
-        
+
         stmt = delete(self.model).where(self.model.id.in_(pk))
         result = await db.execute(stmt)
         await db.commit()
-        
+
         return result.rowcount
 
     async def update_usage(self, db: AsyncSession, pk: int) -> int:
@@ -191,10 +188,9 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         :param pk: 规则模板 ID
         :return:
         """
-        result = await self.update_model(db, pk, {
-            "usage_count": self.model.usage_count + 1,
-            "last_used_at": timezone.now()
-        })
+        result = await self.update_model(
+            db, pk, {'usage_count': self.model.usage_count + 1, 'last_used_at': timezone.now()}
+        )
         await db.commit()
         return result
 
@@ -207,7 +203,7 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         :param is_active: 是否启用
         :return:
         """
-        result = await self.update_model(db, pk, {"is_active": is_active})
+        result = await self.update_model(db, pk, {'is_active': is_active})
         await db.commit()
         return result
 
@@ -220,20 +216,16 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         """
         # 总数量
         total_count = await db.scalar(select(func.count(self.model.id)))
-        
+
         # 启用数量
-        active_count = await db.scalar(
-            select(func.count(self.model.id)).where(self.model.is_active.is_(True))
-        )
-        
+        active_count = await db.scalar(select(func.count(self.model.id)).where(self.model.is_active.is_(True)))
+
         # 系统模板数量
-        system_count = await db.scalar(
-            select(func.count(self.model.id)).where(self.model.is_system.is_(True))
-        )
-        
+        system_count = await db.scalar(select(func.count(self.model.id)).where(self.model.is_system.is_(True)))
+
         # 用户模板数量
         user_count = total_count - system_count
-        
+
         # 分类统计
         category_stats_result = await db.execute(
             select(self.model.category, func.count(self.model.id))
@@ -241,21 +233,20 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
             .group_by(self.model.category)
         )
         category_stats = {row[0]: row[1] for row in category_stats_result.fetchall()}
-        
+
         # 类型统计
         type_stats_result = await db.execute(
-            select(self.model.template_type, func.count(self.model.id))
-            .group_by(self.model.template_type)
+            select(self.model.template_type, func.count(self.model.id)).group_by(self.model.template_type)
         )
         type_stats = {row[0]: row[1] for row in type_stats_result.fetchall()}
-        
+
         return {
-            "total_count": total_count or 0,
-            "active_count": active_count or 0,
-            "system_count": system_count or 0,
-            "user_count": user_count or 0,
-            "category_stats": category_stats,
-            "type_stats": type_stats
+            'total_count': total_count or 0,
+            'active_count': active_count or 0,
+            'system_count': system_count or 0,
+            'user_count': user_count or 0,
+            'category_stats': category_stats,
+            'type_stats': type_stats,
         }
 
     async def check_name_exists(self, db: AsyncSession, template_name: str, exclude_id: int | None = None) -> bool:
@@ -268,12 +259,12 @@ class CRUDRuleTemplate(CRUDPlus[RuleTemplate]):
         :return:
         """
         stmt = select(func.count(self.model.id)).where(self.model.template_name == template_name)
-        
+
         if exclude_id is not None:
             stmt = stmt.where(self.model.id != exclude_id)
-        
+
         count = await db.scalar(stmt)
         return count > 0
 
 
-rule_template_dao: CRUDRuleTemplate = CRUDRuleTemplate(RuleTemplate) 
+rule_template_dao: CRUDRuleTemplate = CRUDRuleTemplate(RuleTemplate)

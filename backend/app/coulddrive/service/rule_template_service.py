@@ -22,25 +22,28 @@ from backend.common.exception.errors import ForbiddenError, NotFoundError
 
 class MatchTarget(Enum):
     """匹配目标"""
-    NAME = "name"           # 文件名
-    PATH = "path"           # 完整路径
-    EXTENSION = "extension" # 扩展名
+
+    NAME = 'name'  # 文件名
+    PATH = 'path'  # 完整路径
+    EXTENSION = 'extension'  # 扩展名
 
 
 class ItemType(Enum):
     """项目类型"""
-    FILE = "file"     # 文件
-    FOLDER = "folder" # 目录
-    ANY = "any"       # 任意
+
+    FILE = 'file'  # 文件
+    FOLDER = 'folder'  # 目录
+    ANY = 'any'  # 任意
 
 
 class MatchMode(Enum):
     """匹配模式"""
-    CONTAINS = "contains"   # 包含
-    STARTS_WITH = "starts_with"  # 开头匹配
-    ENDS_WITH = "ends_with"      # 结尾匹配
-    REGEX = "regex"              # 正则表达式
-    EXACT = "exact"              # 精确匹配
+
+    CONTAINS = 'contains'  # 包含
+    STARTS_WITH = 'starts_with'  # 开头匹配
+    ENDS_WITH = 'ends_with'  # 结尾匹配
+    REGEX = 'regex'  # 正则表达式
+    EXACT = 'exact'  # 精确匹配
 
 
 class RuleTemplateService:
@@ -57,7 +60,7 @@ class RuleTemplateService:
         """
         rule_template = await rule_template_dao.get(db, template_id)
         if not rule_template:
-            raise NotFoundError(msg="规则模板不存在")
+            raise NotFoundError(msg='规则模板不存在')
         return rule_template
 
     @staticmethod
@@ -83,16 +86,13 @@ class RuleTemplateService:
         """
         # 检查模板名称是否已存在
         if await rule_template_dao.check_name_exists(db, obj.template_name):
-            raise ForbiddenError(msg="模板名称已存在")
-        
+            raise ForbiddenError(msg='模板名称已存在')
+
         await rule_template_dao.create(db, obj, created_by)
 
     @staticmethod
     async def update_rule_template(
-        db: AsyncSession, 
-        template_id: int, 
-        obj: UpdateRuleTemplateParam, 
-        updated_by: int
+        db: AsyncSession, template_id: int, obj: UpdateRuleTemplateParam, updated_by: int
     ) -> None:
         """
         更新规则模板
@@ -105,19 +105,19 @@ class RuleTemplateService:
         """
         # 检查模板是否存在
         rule_template = await RuleTemplateService.get_rule_template(db, template_id)
-        
+
         # 如果更新模板名称，检查是否重复
         if obj.template_name and obj.template_name != rule_template.template_name:
             if await rule_template_dao.check_name_exists(db, obj.template_name, template_id):
-                raise ForbiddenError(msg="模板名称已存在")
-        
+                raise ForbiddenError(msg='模板名称已存在')
+
         # 检查是否为系统模板
         if rule_template.is_system:
-            raise ForbiddenError(msg="系统模板不允许修改")
-        
+            raise ForbiddenError(msg='系统模板不允许修改')
+
         count = await rule_template_dao.update(db, template_id, obj, updated_by)
         if count == 0:
-            raise NotFoundError(msg="更新失败，规则模板不存在")
+            raise NotFoundError(msg='更新失败，规则模板不存在')
 
     @staticmethod
     async def delete_rule_template(db: AsyncSession, template_id: int) -> None:
@@ -129,14 +129,14 @@ class RuleTemplateService:
         :return:
         """
         rule_template = await RuleTemplateService.get_rule_template(db, template_id)
-        
+
         # 检查是否为系统模板
         if rule_template.is_system:
-            raise ForbiddenError(msg="系统模板不允许删除")
-        
+            raise ForbiddenError(msg='系统模板不允许删除')
+
         count = await rule_template_dao.delete(db, [template_id])
         if count == 0:
-            raise NotFoundError(msg="删除失败，规则模板不存在")
+            raise NotFoundError(msg='删除失败，规则模板不存在')
 
     @staticmethod
     async def delete_rule_templates(db: AsyncSession, template_ids: list[int]) -> None:
@@ -152,10 +152,10 @@ class RuleTemplateService:
             rule_template = await rule_template_dao.get(db, template_id)
             if rule_template and rule_template.is_system:
                 raise ForbiddenError(msg=f"模板 '{rule_template.template_name}' 是系统模板，不允许删除")
-        
+
         count = await rule_template_dao.delete(db, template_ids)
         if count == 0:
-            raise NotFoundError(msg="删除失败，规则模板不存在")
+            raise NotFoundError(msg='删除失败，规则模板不存在')
 
     @staticmethod
     async def use_rule_template(db: AsyncSession, template_id: int) -> RuleTemplate:
@@ -167,13 +167,13 @@ class RuleTemplateService:
         :return:
         """
         rule_template = await RuleTemplateService.get_rule_template(db, template_id)
-        
+
         if not rule_template.is_active:
-            raise ForbiddenError(msg="模板已禁用，无法使用")
-        
+            raise ForbiddenError(msg='模板已禁用，无法使用')
+
         # 更新使用统计
         await rule_template_dao.update_usage(db, template_id)
-        
+
         return rule_template
 
     @staticmethod
@@ -187,14 +187,14 @@ class RuleTemplateService:
         :return:
         """
         rule_template = await RuleTemplateService.get_rule_template(db, template_id)
-        
+
         # 检查是否为系统模板
         if rule_template.is_system:
-            raise ForbiddenError(msg="系统模板不允许修改状态")
-        
+            raise ForbiddenError(msg='系统模板不允许修改状态')
+
         count = await rule_template_dao.toggle_active(db, template_id, is_active)
         if count == 0:
-            raise NotFoundError(msg="操作失败，规则模板不存在")
+            raise NotFoundError(msg='操作失败，规则模板不存在')
 
     @staticmethod
     async def get_rule_template_stats(db: AsyncSession) -> RuleTemplateStatsDetail:
@@ -232,16 +232,18 @@ class RuleTemplateService:
 
 class ExclusionRule:
     """排除规则类"""
-    
-    def __init__(self,
-                 pattern: str,
-                 target: MatchTarget = MatchTarget.NAME,
-                 item_type: ItemType = ItemType.ANY,
-                 mode: MatchMode = MatchMode.CONTAINS,
-                 case_sensitive: bool = False):
+
+    def __init__(
+        self,
+        pattern: str,
+        target: MatchTarget = MatchTarget.NAME,
+        item_type: ItemType = ItemType.ANY,
+        mode: MatchMode = MatchMode.CONTAINS,
+        case_sensitive: bool = False,
+    ):
         """
         初始化排除规则
-        
+
         :param pattern: 匹配模式
         :param target: 匹配目标
         :param item_type: 项目类型
@@ -253,7 +255,7 @@ class ExclusionRule:
         self.item_type = item_type
         self.mode = mode
         self.case_sensitive = case_sensitive
-        
+
         # 预编译正则表达式
         if mode == MatchMode.REGEX:
             flags = 0 if case_sensitive else re.IGNORECASE
@@ -304,13 +306,13 @@ class ExclusionRule:
             return value == pattern
         elif self.mode == MatchMode.REGEX:
             return bool(self.regex and self.regex.search(value))
-        
+
         return False
 
 
 class ItemFilter:
     """项目过滤器"""
-    
+
     def __init__(self, exclusion_rules: Optional[List[ExclusionRule]] = None):
         """初始化过滤器"""
         self.exclusion_rules = exclusion_rules or []
@@ -329,15 +331,17 @@ class ItemFilter:
 
 class RenameRule:
     """重命名规则类"""
-    
-    def __init__(self,
-                 match_regex: str,
-                 replace_string: str,
-                 target_scope: MatchTarget = MatchTarget.NAME,
-                 case_sensitive: bool = False):
+
+    def __init__(
+        self,
+        match_regex: str,
+        replace_string: str,
+        target_scope: MatchTarget = MatchTarget.NAME,
+        case_sensitive: bool = False,
+    ):
         """
         初始化重命名规则
-        
+
         :param match_regex: 匹配的正则表达式
         :param replace_string: 替换字符串
         :param target_scope: 目标范围
@@ -347,7 +351,7 @@ class RenameRule:
         self.replace_string = replace_string
         self.target_scope = target_scope
         self.case_sensitive = case_sensitive
-        
+
         # 预编译正则表达式
         flags = 0 if case_sensitive else re.IGNORECASE
         self.regex = re.compile(match_regex, flags)
@@ -366,11 +370,11 @@ class RenameRule:
 
         # 应用重命名规则
         new_value = self.regex.sub(self.replace_string, original_value)
-        
+
         # 如果没有变化，返回None
         if new_value == original_value:
             return None
-            
+
         return new_value
 
 
@@ -378,7 +382,7 @@ def parse_exclusion_rules(rules_def: Optional[List[ExclusionRuleDefinition]]) ->
     """解析排除规则定义"""
     if not rules_def:
         return None
-    
+
     rules = []
     for rule_def in rules_def:
         try:
@@ -387,13 +391,13 @@ def parse_exclusion_rules(rules_def: Optional[List[ExclusionRuleDefinition]]) ->
                 target=MatchTarget(rule_def.target),
                 item_type=ItemType(rule_def.item_type),
                 mode=MatchMode(rule_def.mode),
-                case_sensitive=rule_def.case_sensitive
+                case_sensitive=rule_def.case_sensitive,
             )
             rules.append(rule)
         except (ValueError, AttributeError):
             # 跳过无效的规则定义
             continue
-    
+
     return ItemFilter(rules) if rules else None
 
 
@@ -401,7 +405,7 @@ def parse_rename_rules(rules_def: Optional[List[RenameRuleDefinition]]) -> Optio
     """解析重命名规则定义"""
     if not rules_def:
         return None
-    
+
     rules = []
     for rule_definition in rules_def:
         if rule_definition.enable:
@@ -410,35 +414,33 @@ def parse_rename_rules(rules_def: Optional[List[RenameRuleDefinition]]) -> Optio
                     match_regex=rule_definition.match_regex,
                     replace_string=rule_definition.replace_string,
                     target_scope=MatchTarget(rule_definition.target_scope),
-                    case_sensitive=rule_definition.case_sensitive
+                    case_sensitive=rule_definition.case_sensitive,
                 )
             )
     return rules
 
 
 async def parse_rule_templates(
-    exclude_template_id: Optional[int], 
-    rename_template_id: Optional[int],
-    db: AsyncSession
-) -> tuple[Optional[List[ExclusionRuleDefinition]], Optional[List[RenameRule]]]: # 修正类型注解
+    exclude_template_id: Optional[int], rename_template_id: Optional[int], db: AsyncSession
+) -> tuple[Optional[List[ExclusionRuleDefinition]], Optional[List[RenameRule]]]:  # 修正类型注解
     """
     解析规则模板
-    
+
     Args:
         exclude_template_id: 排除规则模板ID
         rename_template_id: 重命名规则模板ID
         db: 数据库会话
-        
+
     Returns:
         tuple[Optional[List[ExclusionRuleDefinition]], Optional[List[RenameRule]]]: 排除规则和重命名规则
     """
     import json
     import logging
-    
+
     logger = logging.getLogger(__name__)
     exclude_rules = None
     rename_rules = None
-    
+
     # 解析排除规则模板
     if exclude_template_id:
         try:
@@ -448,16 +450,14 @@ async def parse_rule_templates(
                 # 如果rule_config是字符串，需要解析JSON
                 if isinstance(rules_data, str):
                     rules_data = json.loads(rules_data)
-                
+
                 # 根据实际数据格式解析规则
                 rules_list = rules_data.get('rules', [])
                 if rules_list:
-                    exclude_rules = [
-                        ExclusionRuleDefinition(**rule) for rule in rules_list
-                    ]
+                    exclude_rules = [ExclusionRuleDefinition(**rule) for rule in rules_list]
         except Exception as e:
-            logger.error(f"解析排除规则模板失败: {e}")
-    
+            logger.error(f'解析排除规则模板失败: {e}')
+
     # 解析重命名规则模板
     if rename_template_id:
         try:
@@ -467,19 +467,17 @@ async def parse_rule_templates(
                 # 如果rule_config是字符串，需要解析JSON
                 if isinstance(rules_data, str):
                     rules_data = json.loads(rules_data)
-                
+
                 # 根据实际数据格式解析规则
                 rules_list = rules_data.get('rules', [])
                 if rules_list:
-                    rename_rules = [
-                        RenameRuleDefinition(**rule) for rule in rules_list
-                    ]
+                    rename_rules = [RenameRuleDefinition(**rule) for rule in rules_list]
                 if rename_rules:
                     rename_rules = parse_rename_rules(rename_rules)
         except Exception as e:
-            logger.error(f"解析重命名规则模板失败: {e}")
-    
+            logger.error(f'解析重命名规则模板失败: {e}')
+
     return exclude_rules, rename_rules
 
 
-rule_template_service = RuleTemplateService() 
+rule_template_service = RuleTemplateService()

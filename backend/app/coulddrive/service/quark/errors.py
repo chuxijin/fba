@@ -5,14 +5,14 @@ from typing import Any, Optional
 
 ERRORS = {
     0: 0,
-    -1: "由于您分享了违反相关法律法规的文件，分享功能已被禁用，之前分享出去的文件不受影响。",
-    41017: "禁止用户转存自己的文件",
-    41020: "转存文件token校验异常",
-    41035: "单次转存文件个数超出用户等级限制",
-    15000: "inner error",
+    -1: '由于您分享了违反相关法律法规的文件，分享功能已被禁用，之前分享出去的文件不受影响。',
+    41017: '禁止用户转存自己的文件',
+    41020: '转存文件token校验异常',
+    41035: '单次转存文件个数超出用户等级限制',
+    15000: 'inner error',
 }
 
-UNKNOWN_ERROR = "未知错误"
+UNKNOWN_ERROR = '未知错误'
 
 
 class QuarkApiError(Exception):
@@ -25,7 +25,7 @@ class QuarkApiError(Exception):
 def parse_errno(error_code: int, info: Any = None) -> Optional[QuarkApiError]:
     if error_code != 0:
         mean = ERRORS.get(error_code, info or UNKNOWN_ERROR)
-        msg = f"error_code: {error_code}, message: {mean}"
+        msg = f'error_code: {error_code}, message: {mean}'
         return QuarkApiError(msg, error_code=error_code)
     return None
 
@@ -38,26 +38,32 @@ def assert_ok(func):
     @wraps(func)
     async def async_check(*args, **kwargs):
         info = await func(*args, **kwargs)
-        code = info.get("code")  # 获取 code 字段
+        code = info.get('code')  # 获取 code 字段
         if code is None:
             code = 0  # 默认值
 
         # 支持夸克网盘的 "OK" 状态码
-        if code != 0 and code != "OK":  # 判断 code 是否为 0 或 "OK"
-            err = QuarkApiError(f"Error code: {code}, message: {info.get('message', 'Unknown error')}", error_code=code if isinstance(code, int) else None)
+        if code != 0 and code != 'OK':  # 判断 code 是否为 0 或 "OK"
+            err = QuarkApiError(
+                f'Error code: {code}, message: {info.get("message", "Unknown error")}',
+                error_code=code if isinstance(code, int) else None,
+            )
             raise err
         return info
 
     @wraps(func)
     def sync_check(*args, **kwargs):
         info = func(*args, **kwargs)
-        code = info.get("code")  # 获取 code 字段
+        code = info.get('code')  # 获取 code 字段
         if code is None:
             code = 0  # 默认值
 
         # 支持夸克网盘的 "OK" 状态码
-        if code != 0 and code != "OK":  # 判断 code 是否为 0 或 "OK"
-            err = QuarkApiError(f"Error code: {code}, message: {info.get('message', 'Unknown error')}", error_code=code if isinstance(code, int) else None)
+        if code != 0 and code != 'OK':  # 判断 code 是否为 0 或 "OK"
+            err = QuarkApiError(
+                f'Error code: {code}, message: {info.get("message", "Unknown error")}',
+                error_code=code if isinstance(code, int) else None,
+            )
             raise err
         return info
 

@@ -42,9 +42,7 @@ class GrowthEvent(DataClassBase):
     grade_after: Mapped[int] = mapped_column(sa.SmallInteger, comment='操作后等级')
     source: Mapped[str] = mapped_column(sa.String(32), comment='来源标识')
     source_key: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='来源键')
-    idempotency_key: Mapped[str | None] = mapped_column(
-        sa.String(128), unique=True, default=None, comment='幂等键'
-    )
+    idempotency_key: Mapped[str | None] = mapped_column(sa.String(128), unique=True, default=None, comment='幂等键')
     reason: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='原因')
     occurred_at: Mapped[datetime] = mapped_column(
         TimeZone, init=False, default_factory=timezone.now, comment='发生时间'

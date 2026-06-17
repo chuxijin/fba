@@ -25,8 +25,19 @@ class WrongReasonTag(Base):
 
     __tablename__ = 'study_wrong_reason_tag'
     __table_args__ = (
-        sa.Index('uq_reason_tag_system_name', 'name', unique=True, postgresql_where=sa.text('user_id IS NULL AND deleted = 0')),
-        sa.Index('uq_reason_tag_user_name', 'user_id', 'name', unique=True, postgresql_where=sa.text('user_id IS NOT NULL AND deleted = 0')),
+        sa.Index(
+            'uq_reason_tag_system_name',
+            'name',
+            unique=True,
+            postgresql_where=sa.text('user_id IS NULL AND deleted = 0'),
+        ),
+        sa.Index(
+            'uq_reason_tag_user_name',
+            'user_id',
+            'name',
+            unique=True,
+            postgresql_where=sa.text('user_id IS NOT NULL AND deleted = 0'),
+        ),
         {'comment': '错因标签表'},
     )
 
@@ -122,7 +133,9 @@ class WrongQuestionReview(Base):
     reasons: Mapped[list | None] = mapped_column(CompatibleJSONB, default=None, comment='错因标签 ID 数组')
     summary: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='一句话复盘')
     reviewed_time: Mapped[datetime] = mapped_column(
-        TimeZone, default_factory=timezone.now, comment='复盘时间',
+        TimeZone,
+        default_factory=timezone.now,
+        comment='复盘时间',
     )
 
     # ============ 关系 ============

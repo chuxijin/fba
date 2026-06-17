@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """领域事件相关 Celery 任务"""
+
 import logging
 
 from backend.app.task.celery import celery_app
@@ -23,7 +24,5 @@ async def dispatch_domain_event(event: str, payload: dict) -> dict:
     if result['failures']:
         logger.warning(f'事件分发存在失败 event={event} failures={result["failures"]}')
     else:
-        logger.info(
-            f'事件分发完成 event={event} handlers={result["handlers"]} success={result["success"]}'
-        )
+        logger.info(f'事件分发完成 event={event} handlers={result["handlers"]} success={result["success"]}')
     return result

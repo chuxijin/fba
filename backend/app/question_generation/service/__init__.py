@@ -5,4 +5,3 @@ from backend.app.question_generation.service.question_generation_service import 
 __all__ = [
     'question_generation_service',
 ]
-

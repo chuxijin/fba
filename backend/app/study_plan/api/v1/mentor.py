@@ -41,7 +41,6 @@ from backend.app.study_plan.service.recommendation_service import list_plan_item
 from backend.app.study_plan.service.template_service import instantiate_template
 from backend.common.exception import errors
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction

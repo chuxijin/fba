@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """排行榜机器人模拟服务"""
+
 import logging
 import random
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import httpx
 
@@ -31,10 +32,26 @@ NICKNAME_API_KEY = 'f7a0227f2527d8b98623d9bdcbc3f66c'
 
 # 本地 fallback 昵称池
 BOT_NICKNAMES_FALLBACK = [
-    '努力上岸', '每天进步一点', '冲鸭同学', '学无止境', '岸上见',
-    '追梦人', '一定会上岸', '加油备考', '坚持就是胜利', '奋斗的鱼',
-    '逢考必过', '努力变优秀', '静待花开', '全力以赴', '不负韶华',
-    '默默努力', '暗暗加油', '悄悄拔尖', '低调学习', '闷声上岸',
+    '努力上岸',
+    '每天进步一点',
+    '冲鸭同学',
+    '学无止境',
+    '岸上见',
+    '追梦人',
+    '一定会上岸',
+    '加油备考',
+    '坚持就是胜利',
+    '奋斗的鱼',
+    '逢考必过',
+    '努力变优秀',
+    '静待花开',
+    '全力以赴',
+    '不负韶华',
+    '默默努力',
+    '暗暗加油',
+    '悄悄拔尖',
+    '低调学习',
+    '闷声上岸',
 ]
 
 # 头像池（DiceBear Adventurer 风格）
@@ -47,8 +64,8 @@ AVATAR_STYLES = ['adventurer', 'avataaars', 'bottts', 'fun-emoji', 'lorelei', 'm
 BOT_PERSONALITIES = {
     'hardcore': {'weight': 10, 'active_prob': 0.60, 'per_round_min': 8, 'per_round_max': 20, 'total_cap': 15000},
     'diligent': {'weight': 25, 'active_prob': 0.40, 'per_round_min': 4, 'per_round_max': 10, 'total_cap': 8000},
-    'normal':   {'weight': 40, 'active_prob': 0.20, 'per_round_min': 2, 'per_round_max': 6,  'total_cap': 3000},
-    'casual':   {'weight': 25, 'active_prob': 0.08, 'per_round_min': 1, 'per_round_max': 4,  'total_cap': 1000},
+    'normal': {'weight': 40, 'active_prob': 0.20, 'per_round_min': 2, 'per_round_max': 6, 'total_cap': 3000},
+    'casual': {'weight': 25, 'active_prob': 0.08, 'per_round_min': 1, 'per_round_max': 4, 'total_cap': 1000},
 }
 
 
@@ -168,7 +185,9 @@ async def create_bot_users(db: AsyncSession, role_id: int, count: int) -> list[i
         params = BOT_PERSONALITIES[personality]
         # 初始化一些基础数据，让新机器人看起来不是完全从零开始
         init_days = random.randint(1, 14)
-        init_total = sum(random.randint(params['per_round_min'] * 3, params['per_round_max'] * 5) for _ in range(init_days))
+        init_total = sum(
+            random.randint(params['per_round_min'] * 3, params['per_round_max'] * 5) for _ in range(init_days)
+        )
         init_correct = int(init_total * random.uniform(0.55, 0.85))
 
         new_stats = UserPracticeStats(
@@ -220,16 +239,18 @@ async def simulate_round_activity(db: AsyncSession, role_id: int) -> dict[str, i
         if stats.total_count >= params['total_cap']:
             effective_prob *= 0.05  # 到顶后基本不再刷
         elif stats.total_count >= params['total_cap'] * 0.8:
-            effective_prob *= 0.3   # 接近上限时放缓
+            effective_prob *= 0.3  # 接近上限时放缓
 
         # 决定本轮是否活跃
         if random.random() > effective_prob:
             # 不活跃时检查是否需要中断连续天数
-            if stats.streak_days > 0 and stats.last_practice_date and stats.last_practice_date < today - timedelta(days=1):
+            if (
+                stats.streak_days > 0
+                and stats.last_practice_date
+                and stats.last_practice_date < today - timedelta(days=1)
+            ):
                 await db.execute(
-                    update(UserPracticeStats)
-                    .where(UserPracticeStats.id == stats.id)
-                    .values(streak_days=0)
+                    update(UserPracticeStats).where(UserPracticeStats.id == stats.id).values(streak_days=0)
                 )
             continue
 
@@ -262,18 +283,11 @@ async def simulate_round_activity(db: AsyncSession, role_id: int) -> dict[str, i
         if is_first_today:
             update_data['practice_days'] = UserPracticeStats.practice_days + 1
 
-        await db.execute(
-            update(UserPracticeStats)
-            .where(UserPracticeStats.id == stats.id)
-            .values(**update_data)
-        )
+        await db.execute(update(UserPracticeStats).where(UserPracticeStats.id == stats.id).values(**update_data))
 
         # 写入或更新打卡记录
         existing_checkin = (
-            await db.execute(
-                select(UserCheckIn)
-                .where(UserCheckIn.user_id == user_id, UserCheckIn.check_date == today)
-            )
+            await db.execute(select(UserCheckIn).where(UserCheckIn.user_id == user_id, UserCheckIn.check_date == today))
         ).scalar_one_or_none()
 
         if existing_checkin:
@@ -287,13 +301,15 @@ async def simulate_round_activity(db: AsyncSession, role_id: int) -> dict[str, i
                 )
             )
         else:
-            db.add(UserCheckIn(
-                user_id=user_id,
-                created_by=user_id,
-                check_date=today,
-                practice_count=round_count,
-                practice_duration=round_duration,
-            ))
+            db.add(
+                UserCheckIn(
+                    user_id=user_id,
+                    created_by=user_id,
+                    check_date=today,
+                    practice_count=round_count,
+                    practice_duration=round_duration,
+                )
+            )
 
         active_count += 1
 

@@ -60,7 +60,10 @@ class CRUDStudyPlan(CRUDPlus[StudyPlan]):
         return result.scalars().all()
 
     async def list_active_covering_date(
-        self, db: AsyncSession, user_id: int, target_date: date,
+        self,
+        db: AsyncSession,
+        user_id: int,
+        target_date: date,
     ) -> Sequence[StudyPlan]:
         """
         获取学员在指定日期覆盖范围内的所有生效计划（支持多 active 并存）

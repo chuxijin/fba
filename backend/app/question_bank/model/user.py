@@ -64,7 +64,13 @@ class UserAccount(Base):
         return self.user.nickname if self.user else None
 
     # ============ 练习刷题关系 ============
-    practice_sessions: Mapped[list['PracticeSession']] = relationship(init=False, back_populates='account', lazy='noload')
-    session_questions: Mapped[list['SessionQuestion']] = relationship(init=False, back_populates='account', lazy='noload')
-    wrong_questions: Mapped[list['WrongQuestionBook']] = relationship(init=False, back_populates='account', lazy='noload')
+    practice_sessions: Mapped[list['PracticeSession']] = relationship(
+        init=False, back_populates='account', lazy='noload'
+    )
+    session_questions: Mapped[list['SessionQuestion']] = relationship(
+        init=False, back_populates='account', lazy='noload'
+    )
+    wrong_questions: Mapped[list['WrongQuestionBook']] = relationship(
+        init=False, back_populates='account', lazy='noload'
+    )
     check_ins: Mapped[list['UserCheckIn']] = relationship(init=False, back_populates='account', lazy='noload')

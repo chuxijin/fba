@@ -74,17 +74,14 @@ async def _load_all_chapters(db: AsyncSession) -> list[dict[str, Any]]:
     """加载全部章节元数据"""
 
     async def factory() -> list[dict[str, Any]]:
-        stmt = (
-            select(
-                QuestionChapter.id,
-                QuestionChapter.bank_id,
-                QuestionChapter.parent_id,
-                QuestionChapter.name,
-                QuestionChapter.level,
-                QuestionChapter.sort_order,
-            )
-            .order_by(QuestionChapter.level, QuestionChapter.sort_order)
-        )
+        stmt = select(
+            QuestionChapter.id,
+            QuestionChapter.bank_id,
+            QuestionChapter.parent_id,
+            QuestionChapter.name,
+            QuestionChapter.level,
+            QuestionChapter.sort_order,
+        ).order_by(QuestionChapter.level, QuestionChapter.sort_order)
         rows = (await db.execute(stmt)).all()
         return [
             {
@@ -336,11 +333,7 @@ async def load_banks_and_chapters(
                 resolved_chapter_ids.add(parent_id)
                 pending_chapter_ids.append(parent_id)
 
-        chapters = [
-            chapter_map[chapter_id]
-            for chapter_id in resolved_chapter_ids
-            if chapter_id in chapter_map
-        ]
+        chapters = [chapter_map[chapter_id] for chapter_id in resolved_chapter_ids if chapter_id in chapter_map]
     else:
         chapters = [row for row in all_chapters if row['bank_id'] in requested_bank_ids]
 

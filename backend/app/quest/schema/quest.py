@@ -12,6 +12,7 @@ class CreateQuestParam(SchemaBase):
     """创建任务参数"""
 
     code: str = Field(min_length=1, max_length=64, description='任务码')
+    quest_type: str = Field(default='manual', max_length=16, description='任务类型(manual 手动领取/auto 事件自动触发)')
     name: str = Field(min_length=1, max_length=128, description='任务名称')
     brief: str = Field(min_length=1, max_length=255, description='任务简介')
     info: str | None = Field(None, max_length=500, description='任务信息')
@@ -43,6 +44,7 @@ class UpdateQuestParam(SchemaBase):
     """更新任务参数"""
 
     name: str | None = Field(None, max_length=128, description='任务名称')
+    quest_type: str | None = Field(None, max_length=16, description='任务类型(manual 手动领取/auto 事件自动触发)')
     brief: str | None = Field(None, max_length=255, description='任务简介')
     info: str | None = Field(None, max_length=500, description='任务信息')
     detail: str | None = Field(None, description='任务详情')
@@ -76,6 +78,7 @@ class GetQuestDetail(SchemaBase):
 
     id: int = Field(description='任务 ID')
     code: str = Field(description='任务码')
+    quest_type: str = Field(description='任务类型')
     name: str = Field(description='任务名称')
     brief: str = Field(description='任务简介')
     info: str | None = Field(None, description='任务信息')

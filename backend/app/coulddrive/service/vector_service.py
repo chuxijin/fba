@@ -30,7 +30,7 @@ class VectorService:
         :return: 1536 维的向量列表
         """
         if not text or not text.strip():
-            log.warning("尝试向量化空文本，返回零向量")
+            log.warning('尝试向量化空文本，返回零向量')
             return [0.0] * self.dimension
 
         try:
@@ -41,24 +41,24 @@ class VectorService:
 
             # 检查响应类型，处理不同格式的 API 返回
             if isinstance(response, str):
-                log.error(f"API 返回了字符串而非对象: {response[:200]}")
-                raise ValueError(f"向量化 API 返回格式错误: {response[:100]}")
+                log.error(f'API 返回了字符串而非对象: {response[:200]}')
+                raise ValueError(f'向量化 API 返回格式错误: {response[:100]}')
 
             # 标准 OpenAI API 响应格式
             if hasattr(response, 'data') and response.data:
                 embedding = response.data[0].embedding
-                log.debug(f"成功向量化文本 (长度: {len(text)}): {text[:50]}...")
+                log.debug(f'成功向量化文本 (长度: {len(text)}): {text[:50]}...')
                 return embedding
             else:
-                log.error(f"响应对象缺少 data 属性: {type(response)}")
-                raise ValueError("向量化 API 返回的响应格式不正确")
+                log.error(f'响应对象缺少 data 属性: {type(response)}')
+                raise ValueError('向量化 API 返回的响应格式不正确')
 
         except AttributeError as e:
-            log.error(f"向量化失败 - API 响应格式错误: {e}, 文本: {text[:100]}")
-            log.error(f"请检查 OPENAI_API_BASE 配置是否正确: {settings.OPENAI_API_BASE}")
-            raise ValueError(f"向量化服务配置错误，API 返回格式不兼容。请检查 API 端点配置。") from e
+            log.error(f'向量化失败 - API 响应格式错误: {e}, 文本: {text[:100]}')
+            log.error(f'请检查 OPENAI_API_BASE 配置是否正确: {settings.OPENAI_API_BASE}')
+            raise ValueError('向量化服务配置错误，API 返回格式不兼容。请检查 API 端点配置。') from e
         except Exception as e:
-            log.error(f"向量化失败: {e}, 文本: {text[:100]}")
+            log.error(f'向量化失败: {e}, 文本: {text[:100]}')
             raise
 
     async def batch_encode(self, texts: list[str], batch_size: int = 100) -> list[list[float]]:
@@ -73,7 +73,7 @@ class VectorService:
             return []
 
         # 过滤空文本
-        valid_texts = [text.strip() if text else "" for text in texts]
+        valid_texts = [text.strip() if text else '' for text in texts]
 
         results = []
         total = len(valid_texts)
@@ -89,10 +89,10 @@ class VectorService:
                 batch_embeddings = [item.embedding for item in response.data]
                 results.extend(batch_embeddings)
 
-                log.info(f"批量向量化进度: {min(i + batch_size, total)}/{total}")
+                log.info(f'批量向量化进度: {min(i + batch_size, total)}/{total}')
 
             except Exception as e:
-                log.error(f"批量向量化失败 (批次 {i // batch_size + 1}): {e}")
+                log.error(f'批量向量化失败 (批次 {i // batch_size + 1}): {e}')
                 # 失败的批次使用零向量
                 results.extend([[0.0] * self.dimension] * len(batch))
 
@@ -109,20 +109,20 @@ class VectorService:
         text_parts = []
 
         # 1. 资源介绍（最重要，包含详细描述）
-        resource_intro = (resource_data.get("resource_intro") or "").strip()
+        resource_intro = (resource_data.get('resource_intro') or '').strip()
         if resource_intro:
             text_parts.append(resource_intro)
 
         # 2. 描述（次要，补充说明）
-        description = (resource_data.get("description") or "").strip()
+        description = (resource_data.get('description') or '').strip()
         if description:
             text_parts.append(description)
 
         # 组合所有文本
-        combined_text = "\n".join(text_parts)
+        combined_text = '\n'.join(text_parts)
 
         if not combined_text:
-            log.warning(f"资源 {resource_data.get('id')} 没有可向量化的文本内容")
+            log.warning(f'资源 {resource_data.get("id")} 没有可向量化的文本内容')
             return [0.0] * self.dimension
 
         return await self.encode(combined_text)

@@ -5,6 +5,7 @@
 
 职责：遍历有效网盘账户，查找过期的本地分享并批量取消。
 """
+
 import asyncio
 import random
 
@@ -184,7 +185,7 @@ class ShareCleanupService:
         log.info(f'账户 {account.id} 共有 {total} 个过期分享，将分 {(total + batch_size - 1) // batch_size} 批处理')
 
         for i in range(0, total, batch_size):
-            batch = share_ids[i:i + batch_size]
+            batch = share_ids[i : i + batch_size]
             batch_num = i // batch_size + 1
 
             try:

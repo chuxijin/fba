@@ -24,7 +24,10 @@ class CRUDStudyPlanItem(CRUDPlus[StudyPlanItem]):
         return await self.select_model(db, item_id, deleted=0)
 
     async def list_by_user_and_date(
-        self, db: AsyncSession, user_id: int, target_date: date,
+        self,
+        db: AsyncSession,
+        user_id: int,
+        target_date: date,
     ) -> Sequence[StudyPlanItem]:
         """
         获取学员指定日期的所有计划项（按 order_index 升序）
@@ -63,7 +66,9 @@ class CRUDStudyPlanItem(CRUDPlus[StudyPlanItem]):
         return result.scalars().all()
 
     async def list_pending_before(
-        self, db: AsyncSession, before_date: date,
+        self,
+        db: AsyncSession,
+        before_date: date,
     ) -> Sequence[StudyPlanItem]:
         """
         获取截止指定日期之前所有未完成的计划项（用于跨天定时清理）
@@ -122,7 +127,9 @@ class CRUDStudyPlanItem(CRUDPlus[StudyPlanItem]):
         return result.scalars().first()
 
     async def bulk_skip_pending_before(
-        self, db: AsyncSession, before_date: date,
+        self,
+        db: AsyncSession,
+        before_date: date,
     ) -> int:
         """
         批量将截止指定日期之前的未完成项标记为 skipped

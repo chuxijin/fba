@@ -31,9 +31,7 @@ async def get_my_subscriptions(
 ) -> ResponseSchemaModel[list[GetMySubscription]]:
     """我的订阅列表"""
     user_id = int(request.user.id)
-    data = await my_access_service.get_subscriptions(
-        db=db, user_id=user_id, only_active=only_active
-    )
+    data = await my_access_service.get_subscriptions(db=db, user_id=user_id, only_active=only_active)
     return response_base.success(data=data)
 
 

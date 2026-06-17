@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """题库 session 交卷回调（由 question_bank API 层 lazy import 调用）"""
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.study_plan.crud import study_plan_item_dao
@@ -52,5 +53,8 @@ async def handle_session_completed(
     await study_plan_item_dao.update_status(db, item.id, 'completed')
     log.info(
         'session_hook: plan_item {} session_key={} 自动完成 (correct={}/{})',
-        item.id, session_key, correct_count, total_count,
+        item.id,
+        session_key,
+        correct_count,
+        total_count,
     )

@@ -67,14 +67,16 @@ class PracticeService:
             if count <= 0:
                 continue
 
-            result.append(GetPracticeHomeNode(
-                id=int(node['id']),
-                name=str(node.get('name') or ''),
-                count=count,
-                answerCount=answer_count,
-                bank_type=int(node.get('bank_type') or 1),
-                children=children or None,
-            ))
+            result.append(
+                GetPracticeHomeNode(
+                    id=int(node['id']),
+                    name=str(node.get('name') or ''),
+                    count=count,
+                    answerCount=answer_count,
+                    bank_type=int(node.get('bank_type') or 1),
+                    children=children or None,
+                )
+            )
 
         return result
 
@@ -108,16 +110,18 @@ class PracticeService:
         ):
             raise errors.RequestError(msg='题库合集不属于当前题库目录')
 
-        bank_rows = [{
-            'id': int(bank.id),
-            'cat_id': int(bank.cat_id),
-            'name': bank.name,
-            'bank_type': int(bank.bank_type),
-            'parent_id': bank.parent_id,
-            'sort_order': int(bank.sort_order or 0),
-            'status': int(bank.status),
-            'q_count_cache': int(bank.q_count_cache or 0),
-        }]
+        bank_rows = [
+            {
+                'id': int(bank.id),
+                'cat_id': int(bank.cat_id),
+                'name': bank.name,
+                'bank_type': int(bank.bank_type),
+                'parent_id': bank.parent_id,
+                'sort_order': int(bank.sort_order or 0),
+                'status': int(bank.status),
+                'q_count_cache': int(bank.q_count_cache or 0),
+            }
+        ]
         tree_data = await bank_mount_service.get_mount_tree(
             db=db,
             bank_select=bank_rows,
@@ -235,12 +239,9 @@ class PracticeService:
             raise errors.RequestError(msg='知识点分类不属于当前知识点目录')
 
         child_ids = await category_dao.get_all_children_ids(db, tab_id)
-        stmt = (
-            select(category_dao.model)
-            .where(
-                category_dao.model.id.in_(child_ids),
-                category_dao.model.status.is_(True),
-            )
+        stmt = select(category_dao.model).where(
+            category_dao.model.id.in_(child_ids),
+            category_dao.model.status.is_(True),
         )
         categories = list((await db.execute(stmt)).scalars().all())
         leaf_terms: list[str] = []

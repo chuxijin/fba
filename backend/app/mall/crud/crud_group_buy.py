@@ -53,6 +53,7 @@ class CRUDGroupBuyActivity(CRUDPlus[GroupBuyActivity]):
         :return:
         """
         from backend.utils.timezone import timezone
+
         now = timezone.now()
         stmt = (
             select(GroupBuyActivity)
@@ -91,9 +92,7 @@ class CRUDGroupBuyActivity(CRUDPlus[GroupBuyActivity]):
         activity = await self.create_model(db, activity_base, created_by=user_id)
 
         for ladder_price in obj_in.ladder_prices:
-            await group_buy_ladder_price_dao.create_model(
-                db, ladder_price, activity_id=activity.id, created_by=user_id
-            )
+            await group_buy_ladder_price_dao.create_model(db, ladder_price, activity_id=activity.id, created_by=user_id)
 
         return activity
 
@@ -119,6 +118,7 @@ class CRUDGroupBuyActivity(CRUDPlus[GroupBuyActivity]):
         :return:
         """
         from sqlalchemy import update
+
         stmt = (
             update(GroupBuyActivity)
             .where(

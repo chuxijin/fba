@@ -46,9 +46,7 @@ async def get_experience_rule_list(
     status: Annotated[int | None, Query(description='状态')] = None,
 ) -> ResponseSchemaModel[PageData[GetExperienceRuleDetail]]:
     """分页获取经验规则"""
-    stmt = await experience_rule_dao.get_select(
-        event_code=event_code, family_code=family_code, status=status
-    )
+    stmt = await experience_rule_dao.get_select(event_code=event_code, family_code=family_code, status=status)
     page_data = await paging_data(db, stmt)
     return response_base.success(data=page_data)
 
@@ -61,9 +59,7 @@ async def get_experience_rule_list(
         DependsRBAC,
     ],
 )
-async def create_experience_rule(
-    db: CurrentSessionTransaction, obj: CreateExperienceRuleParam
-) -> ResponseModel:
+async def create_experience_rule(db: CurrentSessionTransaction, obj: CreateExperienceRuleParam) -> ResponseModel:
     """创建经验规则"""
     await experience_rule_dao.create_model(db, obj)
     return response_base.success()

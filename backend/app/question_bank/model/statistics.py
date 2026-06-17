@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """统计相关模型"""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -63,10 +64,7 @@ class UserDailyRank(Base):
     rank_date: Mapped[date] = mapped_column(comment='排名日期')
     rank: Mapped[int] = mapped_column(comment='排名')
     total_users: Mapped[int] = mapped_column(comment='总用户数')
-    beat_percentage: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 2),
-        comment='击败用户百分比（0-100）'
-    )
+    beat_percentage: Mapped[Decimal] = mapped_column(sa.Numeric(5, 2), comment='击败用户百分比（0-100）')
     practice_count: Mapped[int] = mapped_column(comment='当日练习数量')
     correct_count: Mapped[int] = mapped_column(default=0, comment='当日答对数量')
     accuracy_rate: Mapped[Decimal] = mapped_column(
@@ -86,9 +84,7 @@ class UserPracticeStats(Base):
     """用户刷题统计快照表"""
 
     __tablename__ = 'study_user_practice_stats'
-    __table_args__ = (
-        {'comment': '用户刷题统计快照表'},
-    )
+    __table_args__ = ({'comment': '用户刷题统计快照表'},)
 
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(
@@ -103,4 +99,3 @@ class UserPracticeStats(Base):
     practice_days: Mapped[int] = mapped_column(sa.Integer, default=0, comment='练习天数')
     last_practice_date: Mapped[date | None] = mapped_column(default=None, comment='最后练习日期')
     streak_days: Mapped[int] = mapped_column(sa.Integer, default=0, server_default='0', comment='连续打卡天数')
-

@@ -22,6 +22,11 @@ class Quest(Base, UserMixin):
     code: Mapped[str] = mapped_column(sa.String(64), unique=True, index=True, comment='任务码')
     name: Mapped[str] = mapped_column(sa.String(128), comment='任务名称')
     brief: Mapped[str] = mapped_column(sa.String(255), comment='任务简介')
+    quest_type: Mapped[str] = mapped_column(
+        sa.String(16),
+        default='manual',
+        comment='任务类型(manual 手动领取/auto 事件自动触发)',
+    )
     info: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='任务信息')
     detail: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='任务详情')
     cover_image: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='封面图 URL')

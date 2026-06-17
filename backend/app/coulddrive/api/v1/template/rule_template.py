@@ -21,51 +21,48 @@ from backend.database.db import CurrentSession
 router = APIRouter()
 
 
-@router.get("/list", summary="获取规则模板列表", dependencies=[DependsJwtAuth])
+@router.get('/list', summary='获取规则模板列表', dependencies=[DependsJwtAuth])
 async def get_rule_template_list(
     db: CurrentSession,
-    template_type: Annotated[TemplateType | None, Query(description="模板类型")] = None,
-    category: Annotated[str | None, Query(description="分类")] = None,
-    is_active: Annotated[bool | None, Query(description="是否启用")] = None,
-    is_system: Annotated[bool | None, Query(description="是否系统内置模板")] = None,
-    keyword: Annotated[str | None, Query(description="关键词搜索")] = None,
-    page: Annotated[int, Query(description="页码", ge=1)] = 1,
-    size: Annotated[int, Query(description="每页数量", ge=1, le=100)] = 10,
+    template_type: Annotated[TemplateType | None, Query(description='模板类型')] = None,
+    category: Annotated[str | None, Query(description='分类')] = None,
+    is_active: Annotated[bool | None, Query(description='是否启用')] = None,
+    is_system: Annotated[bool | None, Query(description='是否系统内置模板')] = None,
+    keyword: Annotated[str | None, Query(description='关键词搜索')] = None,
+    page: Annotated[int, Query(description='页码', ge=1)] = 1,
+    size: Annotated[int, Query(description='每页数量', ge=1, le=100)] = 10,
 ) -> ResponseModel:
     """获取规则模板列表"""
     params = GetRuleTemplateListParam(
-        template_type=template_type,
-        category=category,
-        is_active=is_active,
-        is_system=is_system,
-        keyword=keyword
+        template_type=template_type, category=category, is_active=is_active, is_system=is_system, keyword=keyword
     )
-    
+
     rule_templates = await rule_template_service.get_rule_template_list(db, params)
-    
+
     # 转换为列表项格式
     template_list = [RuleTemplateListItem.model_validate(template) for template in rule_templates]
-    
+
     # 手动分页
     total = len(template_list)
     start = (page - 1) * size
     end = start + size
     items = template_list[start:end]
-    
+
     # 返回分页数据
-    return response_base.success(data={
-        "items": items,
-        "total": total,
-        "page": page,
-        "size": size,
-        "total_pages": (total + size - 1) // size,
-    })
+    return response_base.success(
+        data={
+            'items': items,
+            'total': total,
+            'page': page,
+            'size': size,
+            'total_pages': (total + size - 1) // size,
+        }
+    )
 
 
-@router.get("/{template_id}", summary="获取规则模板详情", dependencies=[DependsJwtAuth])
+@router.get('/{template_id}', summary='获取规则模板详情', dependencies=[DependsJwtAuth])
 async def get_rule_template_detail(
-    db: CurrentSession,
-    template_id: Annotated[int, Path(description="模板ID")]
+    db: CurrentSession, template_id: Annotated[int, Path(description='模板ID')]
 ) -> ResponseModel:
     """获取规则模板详情"""
     rule_template = await rule_template_service.get_rule_template(db, template_id)
@@ -73,53 +70,44 @@ async def get_rule_template_detail(
     return response_base.success(data=template_detail)
 
 
-@router.post("/", summary="创建规则模板", dependencies=[DependsJwtAuth])
-async def create_rule_template(
-    db: CurrentSession,
-    obj: CreateRuleTemplateParam,
-    request: Request
-) -> ResponseModel:
+@router.post('/', summary='创建规则模板', dependencies=[DependsJwtAuth])
+async def create_rule_template(db: CurrentSession, obj: CreateRuleTemplateParam, request: Request) -> ResponseModel:
     """创建规则模板"""
     await rule_template_service.create_rule_template(db, obj, request.user.id)
     return response_base.success()
 
 
-@router.put("/{template_id}", summary="更新规则模板", dependencies=[DependsJwtAuth])
+@router.put('/{template_id}', summary='更新规则模板', dependencies=[DependsJwtAuth])
 async def update_rule_template(
     db: CurrentSession,
-    template_id: Annotated[int, Path(description="模板ID")],
+    template_id: Annotated[int, Path(description='模板ID')],
     obj: UpdateRuleTemplateParam,
-    request: Request
+    request: Request,
 ) -> ResponseModel:
     """更新规则模板"""
     await rule_template_service.update_rule_template(db, template_id, obj, request.user.id)
     return response_base.success()
 
 
-@router.delete("/{template_id}", summary="删除规则模板", dependencies=[DependsJwtAuth])
+@router.delete('/{template_id}', summary='删除规则模板', dependencies=[DependsJwtAuth])
 async def delete_rule_template(
-    db: CurrentSession,
-    template_id: Annotated[int, Path(description="模板ID")]
+    db: CurrentSession, template_id: Annotated[int, Path(description='模板ID')]
 ) -> ResponseModel:
     """删除规则模板"""
     await rule_template_service.delete_rule_template(db, template_id)
     return response_base.success()
 
 
-@router.delete("/", summary="批量删除规则模板", dependencies=[DependsJwtAuth])
-async def delete_rule_templates(
-    db: CurrentSession,
-    obj: BatchDeleteRuleTemplateParam
-) -> ResponseModel:
+@router.delete('/', summary='批量删除规则模板', dependencies=[DependsJwtAuth])
+async def delete_rule_templates(db: CurrentSession, obj: BatchDeleteRuleTemplateParam) -> ResponseModel:
     """批量删除规则模板"""
     await rule_template_service.delete_rule_templates(db, obj.ids)
     return response_base.success()
 
 
-@router.post("/{template_id}/use", summary="使用规则模板", dependencies=[DependsJwtAuth])
+@router.post('/{template_id}/use', summary='使用规则模板', dependencies=[DependsJwtAuth])
 async def use_rule_template(
-    db: CurrentSession,
-    template_id: Annotated[int, Path(description="模板ID")]
+    db: CurrentSession, template_id: Annotated[int, Path(description='模板ID')]
 ) -> ResponseModel:
     """使用规则模板（更新使用统计并返回模板配置）"""
     rule_template = await rule_template_service.use_rule_template(db, template_id)
@@ -127,28 +115,27 @@ async def use_rule_template(
     return response_base.success(data=template_detail)
 
 
-@router.put("/{template_id}/toggle", summary="切换规则模板启用状态", dependencies=[DependsJwtAuth])
+@router.put('/{template_id}/toggle', summary='切换规则模板启用状态', dependencies=[DependsJwtAuth])
 async def toggle_rule_template_active(
     db: CurrentSession,
-    template_id: Annotated[int, Path(description="模板ID")],
-    is_active: Annotated[bool, Query(description="是否启用")]
+    template_id: Annotated[int, Path(description='模板ID')],
+    is_active: Annotated[bool, Query(description='是否启用')],
 ) -> ResponseModel:
     """切换规则模板启用状态"""
     await rule_template_service.toggle_rule_template_active(db, template_id, is_active)
     return response_base.success()
 
 
-@router.get("/stats/overview", summary="获取规则模板统计信息", dependencies=[DependsJwtAuth])
+@router.get('/stats/overview', summary='获取规则模板统计信息', dependencies=[DependsJwtAuth])
 async def get_rule_template_stats(db: CurrentSession) -> ResponseModel:
     """获取规则模板统计信息"""
     stats = await rule_template_service.get_rule_template_stats(db)
     return response_base.success(data=stats)
 
 
-@router.get("/type/{template_type}", summary="根据类型获取规则模板", dependencies=[DependsJwtAuth])
+@router.get('/type/{template_type}', summary='根据类型获取规则模板', dependencies=[DependsJwtAuth])
 async def get_templates_by_type(
-    db: CurrentSession,
-    template_type: Annotated[TemplateType, Path(description="模板类型")]
+    db: CurrentSession, template_type: Annotated[TemplateType, Path(description='模板类型')]
 ) -> ResponseModel:
     """根据类型获取规则模板"""
     rule_templates = await rule_template_service.get_templates_by_type(db, template_type)
@@ -156,12 +143,11 @@ async def get_templates_by_type(
     return response_base.success(data=template_list)
 
 
-@router.get("/category/{category}", summary="根据分类获取规则模板", dependencies=[DependsJwtAuth])
+@router.get('/category/{category}', summary='根据分类获取规则模板', dependencies=[DependsJwtAuth])
 async def get_templates_by_category(
-    db: CurrentSession,
-    category: Annotated[str, Path(description="分类")]
+    db: CurrentSession, category: Annotated[str, Path(description='分类')]
 ) -> ResponseModel:
     """根据分类获取规则模板"""
     rule_templates = await rule_template_service.get_templates_by_category(db, category)
     template_list = [RuleTemplateListItem.model_validate(template) for template in rule_templates]
-    return response_base.success(data=template_list) 
+    return response_base.success(data=template_list)

@@ -84,5 +84,3 @@ async def get_invite_share_config(db: CurrentSession) -> ResponseSchemaModel[lis
         })
 
     return response_base.success(data=result)
-
-

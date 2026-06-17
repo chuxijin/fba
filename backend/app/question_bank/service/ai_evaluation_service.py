@@ -159,7 +159,7 @@ class PracticeAIEvaluationService:
         :return:
         """
         for index in range(0, len(items), size):
-            yield list(items[index:index + size])
+            yield list(items[index : index + size])
 
     @staticmethod
     def _extract_text_content(message: dict[str, Any]) -> str:
@@ -205,7 +205,7 @@ class PracticeAIEvaluationService:
             end = text.rfind('}')
             if start < 0 or end < 0 or end <= start:
                 raise errors.ServerError(msg='AI 返回格式异常，无法解析为 JSON')
-            payload = json.loads(text[start:end + 1])
+            payload = json.loads(text[start : end + 1])
 
         if not isinstance(payload, dict):
             raise errors.ServerError(msg='AI 返回结构异常，期望为 JSON 对象')
@@ -351,7 +351,9 @@ class PracticeAIEvaluationService:
         return [item for item in values if item]
 
     @staticmethod
-    async def _resolve_runtime_model(db: AsyncSession, *, model_name: str = AI_DEFAULT_MODEL_NAME) -> tuple[AIModel, AIProvider]:
+    async def _resolve_runtime_model(
+        db: AsyncSession, *, model_name: str = AI_DEFAULT_MODEL_NAME
+    ) -> tuple[AIModel, AIProvider]:
         """
         获取可用 AI 模型和供应商
 
@@ -733,9 +735,7 @@ class PracticeAIEvaluationService:
                     },
                 )
                 should_increment_stats = (
-                    trigger_source == 'manual'
-                    and session.status == 'in_progress'
-                    and record.is_correct is None
+                    trigger_source == 'manual' and session.status == 'in_progress' and record.is_correct is None
                 )
                 await session_question_dao.update_judge_result(
                     db=db,
@@ -877,11 +877,7 @@ class PracticeAIEvaluationService:
             raise errors.NotFoundError(msg='当前会话暂无作答记录')
 
         question_ids = [record.question_id for record in records]
-        stmt = (
-            select(Question)
-            .where(Question.id.in_(question_ids))
-            .options(selectinload(Question.analyses))
-        )
+        stmt = select(Question).where(Question.id.in_(question_ids)).options(selectinload(Question.analyses))
         result = await db.execute(stmt)
         question_map = {question.id: question for question in result.scalars().all()}
 
@@ -1050,7 +1046,9 @@ class PracticeAIEvaluationService:
             db=db,
             session_id=session_id,
         )
-        evaluation_map = {item.session_question_id: item for item in latest_evaluations if item.session_question_id is not None}
+        evaluation_map = {
+            item.session_question_id: item for item in latest_evaluations if item.session_question_id is not None
+        }
 
         model, provider = await cls._resolve_runtime_model(db=db)
         wrong_records = [item for item in records if item.is_correct is False]

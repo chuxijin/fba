@@ -418,8 +418,12 @@ class CRUDQuestionFavorite(CRUDPlus[QuestionFavorite]):
         return [{'group_id': None, 'group_name': r.kp_name, 'count': r.count} for r in rows]
 
     async def get_question_ids(
-        self, db: AsyncSession, user_id: int,
-        bank_id: int | None = None, chapter_id: int | None = None, knowledge_point: str | None = None,
+        self,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int | None = None,
+        chapter_id: int | None = None,
+        knowledge_point: str | None = None,
     ) -> list[int]:
         """
         按分组条件获取收藏的题目 ID 列表

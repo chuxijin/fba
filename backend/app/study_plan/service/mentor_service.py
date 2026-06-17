@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """导师端权限与归属校验服务"""
+
 import sqlalchemy as sa
 
 from sqlalchemy import select

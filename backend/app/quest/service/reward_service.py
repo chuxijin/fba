@@ -100,9 +100,7 @@ class RewardService:
         except Exception as exc:
             success = False
             error_detail = str(exc)
-            log.warning(
-                f'悬赏任务奖励发放异常: claim_id={claim.id}, user_id={claim.user_id}, error={error_detail}'
-            )
+            log.warning(f'悬赏任务奖励发放异常: claim_id={claim.id}, user_id={claim.user_id}, error={error_detail}')
 
         if success:
             await quest_reward_log_dao.update_model(

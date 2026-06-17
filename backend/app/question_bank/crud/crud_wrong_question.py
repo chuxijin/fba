@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, timedelta
 
-from sqlalchemy import bindparam, case, cast, delete, func, literal_column, or_, select
+from sqlalchemy import bindparam, case, cast, delete, false, func, literal_column, or_, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
@@ -42,10 +42,10 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 ),
                 # placement → bank（阻止 parent selectin）→ chapter
                 selectinload(WrongQuestionBook.placement)
-                    .selectinload(QuestionPlacement.bank)
-                    .options(
-                        noload(QuestionBank.parent),
-                    ),
+                .selectinload(QuestionPlacement.bank)
+                .options(
+                    noload(QuestionBank.parent),
+                ),
                 selectinload(WrongQuestionBook.placement).selectinload(QuestionPlacement.chapter),
             )
         )
@@ -124,12 +124,9 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         if not question_ids:
             return []
 
-        stmt = (
-            select(WrongQuestionBook)
-            .where(
-                WrongQuestionBook.user_id == user_id,
-                WrongQuestionBook.question_id.in_(question_ids),
-            )
+        stmt = select(WrongQuestionBook).where(
+            WrongQuestionBook.user_id == user_id,
+            WrongQuestionBook.question_id.in_(question_ids),
         )
         result = await db.execute(stmt)
         return list(result.scalars().all())
@@ -475,20 +472,22 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         is_pinned: bool | None = None,
         bank_id: int | None = None,
         chapter_id: int | None = None,
-        cat_id: int | None = None,
+        cat_bank_ids: set[int] | None = None,
         keyword: str | None = None,
         exclude_reviewed: bool | None = None,
+        is_mastered: bool | None = None,
     ) -> Select:
         """
         获取错题本列表查询表达式
 
         :param user_id: 用户 ID
         :param is_pinned: 是否置顶
-        :param bank_id: 题库 ID（通过挂载筛选）
-        :param chapter_id: 章节 ID（通过挂载筛选）
-        :param cat_id: 分类 ID（通过题库筛选）
-        :param keyword: 关键字搜索（搜索题干）
+        :param bank_id: 题库 ID(通过挂载筛选)
+        :param chapter_id: 章节 ID(通过挂载筛选)
+        :param cat_bank_ids: 分类子树展开后的题库 ID 集合(空集合表示该分类下无题库,直接返回空)
+        :param keyword: 关键字搜索(搜索题干)
         :param exclude_reviewed: 排除已复盘的错题
+        :param is_mastered: 是否已掌握(基于 study_mastery_status,True=只看已掌握,False=只看未掌握含无记录)
         :return:
         """
         stmt = (
@@ -503,16 +502,19 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 ),
                 # placement → bank（阻止 parent selectin）→ chapter
                 selectinload(WrongQuestionBook.placement)
-                    .selectinload(QuestionPlacement.bank)
-                    .options(
-                        noload(QuestionBank.parent),
-                    ),
+                .selectinload(QuestionPlacement.bank)
+                .options(
+                    noload(QuestionBank.parent),
+                ),
                 selectinload(WrongQuestionBook.placement).selectinload(QuestionPlacement.chapter),
             )
         )
 
+        # 子树 bank_ids 显式为空集合 → 当前分类下无题库,直接返回空结果
+        if cat_bank_ids is not None and not cat_bank_ids:
+            return stmt.where(false())
 
-        if bank_id is not None or chapter_id is not None or cat_id is not None:
+        if bank_id is not None or chapter_id is not None or cat_bank_ids:
             stmt = stmt.join(
                 QuestionPlacement,
                 QuestionPlacement.id == WrongQuestionBook.placement_id,
@@ -521,12 +523,8 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 stmt = stmt.where(QuestionPlacement.bank_id == bank_id)
             if chapter_id is not None:
                 stmt = stmt.where(QuestionPlacement.chapter_id == chapter_id)
-            if cat_id is not None:
-                stmt = stmt.join(
-                    QuestionBank,
-                    QuestionBank.id == QuestionPlacement.bank_id,
-                )
-                stmt = stmt.where(QuestionBank.cat_id == cat_id)
+            if cat_bank_ids:
+                stmt = stmt.where(QuestionPlacement.bank_id.in_(cat_bank_ids))
 
         if keyword is not None:
             stmt = stmt.join(
@@ -541,6 +539,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         # 排除已复盘的错题
         if exclude_reviewed is True:
             from backend.app.question_bank.model.wrong_review import WrongQuestionReview
+
             reviewed_subq = (
                 select(WrongQuestionReview.wrong_book_id)
                 .where(WrongQuestionReview.user_id == user_id)
@@ -549,6 +548,24 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
                 .scalar_subquery()
             )
             stmt = stmt.where(WrongQuestionBook.id.notin_(reviewed_subq))
+
+        # 是否已掌握(基于 study_mastery_status,按 user_id + question_id 关联)
+        if is_mastered is not None:
+            from backend.app.question_bank.model.mastery import WrongMasteryStatus
+
+            mastered_subq = (
+                select(WrongMasteryStatus.question_id)
+                .where(WrongMasteryStatus.user_id == user_id)
+                .where(WrongMasteryStatus.question_id.isnot(None))
+                .where(WrongMasteryStatus.status == 'mastered')
+                .where(WrongMasteryStatus.deleted == 0)
+                .distinct()
+                .scalar_subquery()
+            )
+            if is_mastered:
+                stmt = stmt.where(WrongQuestionBook.question_id.in_(mastered_subq))
+            else:
+                stmt = stmt.where(WrongQuestionBook.question_id.notin_(mastered_subq))
 
         stmt = stmt.order_by(
             WrongQuestionBook.is_pinned.desc(),
@@ -673,7 +690,8 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
 
         if knowledge_point is not None:
             stmt = stmt.join(
-                Question, Question.id == WrongQuestionBook.question_id,
+                Question,
+                Question.id == WrongQuestionBook.question_id,
             )
             kp_col = cast(Question.knowledge_point, PGJSONB)
             stmt = stmt.where(
@@ -686,9 +704,7 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
             )
 
         if recent_days is not None and recent_days > 0:
-            stmt = stmt.where(
-                WrongQuestionBook.last_wrong_time >= timezone.now() - timedelta(days=recent_days)
-            )
+            stmt = stmt.where(WrongQuestionBook.last_wrong_time >= timezone.now() - timedelta(days=recent_days))
 
         rows = (await db.execute(stmt)).scalars().all()
         return list(rows)

@@ -42,10 +42,14 @@ class StudyPlan(Base, UserMixin):
     start_date: Mapped[date] = mapped_column(sa.Date, comment='起始日期')
     end_date: Mapped[date] = mapped_column(sa.Date, comment='结束日期')
     domain: Mapped[str] = mapped_column(
-        sa.String(32), default='civil_service', comment='业务领域: civil_service',
+        sa.String(32),
+        default='civil_service',
+        comment='业务领域: civil_service',
     )
     status: Mapped[str] = mapped_column(
-        sa.String(16), default='active', comment='状态: active/paused/finished',
+        sa.String(16),
+        default='active',
+        comment='状态: active/paused/finished',
     )
     template_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,

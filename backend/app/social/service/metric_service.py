@@ -57,5 +57,3 @@ class SocialWorkMetricService:
         """删除作品数据快照"""
         async with async_db_session() as db:
             return await social_work_metric_dao.delete(db, pks)
-
-

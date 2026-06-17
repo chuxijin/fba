@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """排名服务类"""
+
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -31,9 +32,7 @@ class RankService:
         rank_record = await daily_rank_dao.get_by_user_and_date(db, user_id, yesterday)
 
         if rank_record:
-            previous_record = await daily_rank_dao.get_by_user_and_date(
-                db, user_id, yesterday - timedelta(days=1)
-            )
+            previous_record = await daily_rank_dao.get_by_user_and_date(db, user_id, yesterday - timedelta(days=1))
             rank_change = None
             if previous_record:
                 rank_change = previous_record.rank - rank_record.rank
@@ -130,7 +129,7 @@ class RankService:
         """获取刷题数量排行榜"""
         # 查询总数用于计算排名
         count_stmt = select(func.count()).select_from(UserPracticeStats).where(UserPracticeStats.total_count > 0)
-        total_count = (await db.execute(count_stmt)).scalar() or 0
+        (await db.execute(count_stmt)).scalar() or 0
 
         # 查询当前页数据
         stmt = (
@@ -172,9 +171,7 @@ class RankService:
 
         # 用户不在当前页时，单独查询其排名
         if current_user_rank is None and offset == 0:
-            current_user_rank = await RankService._get_user_rank_fallback(
-                db, current_user_id, 'practice_count'
-            )
+            current_user_rank = await RankService._get_user_rank_fallback(db, current_user_id, 'practice_count')
 
         return RankListData(
             rank_type='practice_count',
@@ -218,7 +215,7 @@ class RankService:
         users_with_accuracy.sort(key=lambda x: x['accuracy'], reverse=True)
 
         # 分页
-        paginated_users = users_with_accuracy[offset:offset + limit]
+        paginated_users = users_with_accuracy[offset : offset + limit]
 
         top_users = []
         current_user_rank = None
@@ -253,7 +250,7 @@ class RankService:
         """获取坚持天数（连续打卡）排行榜"""
         # 查询总数用于计算排名
         count_stmt = select(func.count()).select_from(UserPracticeStats).where(UserPracticeStats.streak_days > 0)
-        total_count = (await db.execute(count_stmt)).scalar() or 0
+        (await db.execute(count_stmt)).scalar() or 0
 
         # 查询当前页数据
         stmt = (
@@ -295,9 +292,7 @@ class RankService:
 
         # 用户不在当前页时，单独查询其排名
         if current_user_rank is None and offset == 0:
-            current_user_rank = await RankService._get_user_rank_fallback(
-                db, current_user_id, 'streak_days'
-            )
+            current_user_rank = await RankService._get_user_rank_fallback(db, current_user_id, 'streak_days')
 
         return RankListData(
             rank_type='streak_days',
@@ -306,9 +301,7 @@ class RankService:
         )
 
     @staticmethod
-    async def _get_user_rank_fallback(
-        db: AsyncSession, user_id: int, rank_type: str
-    ) -> RankItem | None:
+    async def _get_user_rank_fallback(db: AsyncSession, user_id: int, rank_type: str) -> RankItem | None:
         """
         用户不在前 N 名时，单独查询其排名
 
@@ -340,11 +333,7 @@ class RankService:
             return None
 
         # 计算排在该用户前面的人数
-        rank_stmt = (
-            select(func.count())
-            .select_from(UserPracticeStats)
-            .where(value_col > user_row.value)
-        )
+        rank_stmt = select(func.count()).select_from(UserPracticeStats).where(value_col > user_row.value)
         higher_count = int((await db.scalar(rank_stmt)) or 0)
 
         return RankItem(

@@ -13,9 +13,7 @@ from backend.app.question_bank.model import UserDailyRank
 class CRUDDailyRank(CRUDPlus[UserDailyRank]):
     """用户每日排名数据库操作类"""
 
-    async def get_by_user_and_date(
-        self, db: AsyncSession, user_id: int, rank_date: date
-    ) -> UserDailyRank | None:
+    async def get_by_user_and_date(self, db: AsyncSession, user_id: int, rank_date: date) -> UserDailyRank | None:
         """
         获取用户指定日期的排名记录
 

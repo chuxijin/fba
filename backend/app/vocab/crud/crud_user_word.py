@@ -80,13 +80,10 @@ class CRUDUserWord(CRUDPlus[VocabUserWord]):
         """
         获取今日新学单词数 (精确按创建时间统计)
         """
-        stmt = (
-            select(func.count())
-            .where(
-                VocabUserWord.user_id == user_id,
-                VocabUserWord.created_time >= today_start,
-                VocabUserWord.created_time < today_end,
-            )
+        stmt = select(func.count()).where(
+            VocabUserWord.user_id == user_id,
+            VocabUserWord.created_time >= today_start,
+            VocabUserWord.created_time < today_end,
         )
         result = await db.execute(stmt)
         return result.scalar() or 0

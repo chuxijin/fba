@@ -212,9 +212,17 @@ class WrongQuestionService:
             ).model_dump()
 
         cached = await wrong_statistics_cache.get_or_set(*cache_key, factory=factory)
-        return WrongQuestionStatistics(**cached) if cached else WrongQuestionStatistics(
-            total_count=0, mastered_count=0, unmastered_count=0,
-            pinned_count=0, avg_wrong_count=0, avg_correct_streak=0,
+        return (
+            WrongQuestionStatistics(**cached)
+            if cached
+            else WrongQuestionStatistics(
+                total_count=0,
+                mastered_count=0,
+                unmastered_count=0,
+                pinned_count=0,
+                avg_wrong_count=0,
+                avg_correct_streak=0,
+            )
         )
 
     @staticmethod
@@ -263,7 +271,8 @@ class WrongQuestionService:
                 flat_counts = await wrong_question_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
                 if category_filter and kp_cat_id is not None:
                     flat_counts = [
-                        item for item in flat_counts
+                        item
+                        for item in flat_counts
                         if str(item['group_name'] or '').strip() in category_filter.knowledge_names
                     ]
                 count_map = {item['group_name']: item['count'] for item in flat_counts}
@@ -273,7 +282,8 @@ class WrongQuestionService:
                 flat_counts = await wrong_question_dao.get_bank_chapter_counts(db=db, user_id=user_id)
                 if category_filter and cat_id is not None:
                     flat_counts = [
-                        row for row in flat_counts
+                        row
+                        for row in flat_counts
                         if row['bank_id'] is not None and int(row['bank_id']) in category_filter.bank_ids
                     ]
                 count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
@@ -342,17 +352,13 @@ class WrongQuestionService:
             rows = await wrong_question_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
             if not category_filter or kp_cat_id is None:
                 return rows
-            return [
-                item for item in rows
-                if str(item['group_name'] or '').strip() in category_filter.knowledge_names
-            ]
+            return [item for item in rows if str(item['group_name'] or '').strip() in category_filter.knowledge_names]
 
         rows = await wrong_question_dao.get_grouped_by_bank(db=db, user_id=user_id)
         if not category_filter or cat_id is None:
             return rows
         return [
-            item for item in rows
-            if item['group_id'] is not None and int(item['group_id']) in category_filter.bank_ids
+            item for item in rows if item['group_id'] is not None and int(item['group_id']) in category_filter.bank_ids
         ]
 
     @staticmethod
@@ -377,12 +383,17 @@ class WrongQuestionService:
 
         if placement_id is not None:
             wrong = await wrong_question_dao.get_by_user_and_question(
-                db=db, user_id=user_id, question_id=question_id, placement_id=placement_id,
+                db=db,
+                user_id=user_id,
+                question_id=question_id,
+                placement_id=placement_id,
             )
             wrong_records = [wrong] if wrong else []
         else:
             wrong_records = await wrong_question_dao.list_by_user_and_question(
-                db=db, user_id=user_id, question_id=question_id,
+                db=db,
+                user_id=user_id,
+                question_id=question_id,
             )
 
         wrong_records = [item for item in wrong_records if item]

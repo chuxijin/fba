@@ -4,9 +4,9 @@
 
 覆盖 D10-D12 决策对应的 4 类 module_type 完成规则。
 """
+
 from typing import Any
 
-import pytest
 
 from backend.app.study_plan.service.completion import (
     CompletionCheckResult,
@@ -23,6 +23,7 @@ class _StubItem:
 
 
 # ============ review ============
+
 
 class TestReviewCompletion:
     """学习类完成判定"""
@@ -43,6 +44,7 @@ class TestReviewCompletion:
 
 
 # ============ practice ============
+
 
 class TestPracticeCompletion:
     """刷题类完成判定（D11：题数达标 + 正确率达标）"""
@@ -100,6 +102,7 @@ class TestPracticeCompletion:
 
 # ============ wrong_review ============
 
+
 class TestWrongReviewCompletion:
     """错题复盘类完成判定（D12：所有错题填完 reasons + summary）"""
 
@@ -156,6 +159,7 @@ class TestWrongReviewCompletion:
 
 # ============ ability ============
 
+
 class TestAbilityCompletion:
     """能力提升类完成判定"""
 
@@ -188,6 +192,7 @@ class TestAbilityCompletion:
 
 # ============ unknown ============
 
+
 class TestUnknownModuleType:
     """未知模块类型应被识别"""
 
@@ -198,6 +203,7 @@ class TestUnknownModuleType:
 
 
 # ============ result helpers ============
+
 
 class TestCompletionCheckResult:
     """CompletionCheckResult 工厂方法"""

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """材料服务类"""
+
 from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +57,9 @@ class MaterialService:
                 'id': material.bank.id,
                 'name': material.bank.name,
                 'code': material.bank.code or '',
-            } if material.bank else None,
+            }
+            if material.bank
+            else None,
             'question_count': question_count,
         }
 

@@ -254,9 +254,7 @@ class BankMountService:
             relation_edges = mount_relation_stmt.cte('relation_edges')
 
         reachable_banks = (
-            select(QuestionBank.id.label('bank_id'))
-            .where(*anchor_filters)
-            .cte('reachable_banks', recursive=True)
+            select(QuestionBank.id.label('bank_id')).where(*anchor_filters).cte('reachable_banks', recursive=True)
         )
 
         recursive_filters = [QuestionBank.id == relation_edges.c.child_id]
@@ -373,10 +371,7 @@ class BankMountService:
         :return:
         """
         relation_rows = list(mount_rows)
-        relation_pairs = {
-            (int(row['collection_id']), int(row['item_id']))
-            for row in mount_rows
-        }
+        relation_pairs = {(int(row['collection_id']), int(row['item_id'])) for row in mount_rows}
 
         for bank_id, bank in bank_by_id.items():
             parent_id = bank.get('parent_id')
@@ -456,11 +451,7 @@ class BankMountService:
                 root_ids=root_ids,
             )
 
-        mounted_item_ids = {
-            int(row['item_id'])
-            for row in relation_rows
-            if int(row['collection_id']) in bank_by_id
-        }
+        mounted_item_ids = {int(row['item_id']) for row in relation_rows if int(row['collection_id']) in bank_by_id}
         root_ids = [
             int(item['id'])
             for item in bank_select
@@ -546,7 +537,9 @@ class BankMountService:
         :param include_collections: 是否包含后代合集
         :return:
         """
-        normalized_collection_ids = list(dict.fromkeys(collection_id for collection_id in collection_ids if collection_id > 0))
+        normalized_collection_ids = list(
+            dict.fromkeys(collection_id for collection_id in collection_ids if collection_id > 0)
+        )
         if not normalized_collection_ids:
             return {}
 

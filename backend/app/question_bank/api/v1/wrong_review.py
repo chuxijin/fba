@@ -4,7 +4,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Request
 
-from backend.app.question_bank.crud.crud_wrong_review import custom_question_dao, review_dao
 from backend.app.question_bank.schema.wrong_review import (
     CreateCustomQuestionParam,
     CreateReasonTagParam,
@@ -184,7 +183,9 @@ async def get_custom_question(
     pk: Annotated[int, Path(description='错题 ID')],
 ) -> ResponseSchemaModel[GetCustomQuestionDetail]:
     question = await wrong_review_service.get_custom_question(
-        db=db, custom_id=pk, user_id=request.user.id,
+        db=db,
+        custom_id=pk,
+        user_id=request.user.id,
     )
     return response_base.success(data=GetCustomQuestionDetail.model_validate(question))
 
@@ -243,7 +244,9 @@ async def delete_custom_questions(
     ids: Annotated[list[int], Body(description='错题 ID 列表')],
 ) -> ResponseModel:
     count = await wrong_review_service.delete_custom_questions(
-        db=db, ids=ids, user_id=request.user.id,
+        db=db,
+        ids=ids,
+        user_id=request.user.id,
     )
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg=f'成功删除 {count} 条自定义错题'))
@@ -306,7 +309,9 @@ async def get_review(
     pk: Annotated[int, Path(description='复盘 ID')],
 ) -> ResponseSchemaModel[GetReviewDetail]:
     review = await wrong_review_service.get_review(
-        db=db, review_id=pk, user_id=request.user.id,
+        db=db,
+        review_id=pk,
+        user_id=request.user.id,
     )
     return response_base.success(data=GetReviewDetail.model_validate(review))
 
@@ -323,7 +328,9 @@ async def delete_review(
     pk: Annotated[int, Path(description='复盘 ID')],
 ) -> ResponseModel:
     count = await wrong_review_service.delete_review(
-        db=db, review_id=pk, user_id=request.user.id,
+        db=db,
+        review_id=pk,
+        user_id=request.user.id,
     )
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg='删除成功'))

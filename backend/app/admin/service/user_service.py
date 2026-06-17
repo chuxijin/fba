@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from fastapi import Request
@@ -13,6 +13,7 @@ from backend.app.admin.schema.user import (
     ResetPasswordParam,
     UpdateUserParam,
 )
+from backend.common.events import publish
 from backend.app.admin.schema.user_password_history import CreateUserPasswordHistoryParam
 from backend.app.admin.service.user_password_history_service import password_security_service
 from backend.app.admin.utils.password_security import password_verify, validate_new_password
@@ -109,6 +110,31 @@ class UserService:
                 raise errors.NotFoundError(msg='角色不存在')
         obj.nickname = obj.nickname or obj.username
         await user_dao.add(db, obj)
+
+    @staticmethod
+    async def register(
+        *,
+        db: AsyncSession,
+        user_data: dict[str, Any],
+        role_ids: list[int] | None = None,
+        creator: Callable[..., Any] | None = None,
+    ) -> User:
+        """
+        用户注册（自动触发注册事件）
+
+        :param db: 数据库会话
+        :param user_data: 用户字段字典
+        :param role_ids: 额外角色 ID 列表
+        :param creator: 自定义创建函数, 签名 (db, user_data) -> User, 为 None 时使用默认创建
+        :return:
+        """
+        if creator:
+            user = await creator(db, user_data)
+        else:
+            user = await user_dao.create_user_with_roles(db, user_data=user_data, role_ids=role_ids)
+            await db.flush()
+        await publish('user.registered', user_id=user.id)
+        return user
 
     @staticmethod
     async def update(*, db: AsyncSession, pk: int, obj: UpdateUserParam) -> int:

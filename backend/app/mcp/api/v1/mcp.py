@@ -12,19 +12,19 @@ from backend.common.response.response_schema import ResponseSchemaModel, respons
 router = APIRouter()
 
 
-@router.get("/tools", summary="列出 MCP 工具")
+@router.get('/tools', summary='列出 MCP 工具')
 async def list_mcp_tools() -> dict[str, Any]:
     """列出已注册的 MCP 工具名称与描述"""
-    return {"tools": get_registered_tools()}
+    return {'tools': get_registered_tools()}
 
 
-@router.get("/info", summary="MCP 服务信息")
+@router.get('/info', summary='MCP 服务信息')
 async def mcp_info() -> dict[str, str]:
     """返回 MCP SSE 入口提示，路径保持与参考项目一致（根级）"""
-    return {"sse_entry": "/sse", "post_message": "/messages/"}
+    return {'sse_entry': '/sse', 'post_message': '/messages/'}
 
 
-@router.post("/search", summary="搜索资源", response_model=ResponseSchemaModel[List[McpSearchResult]])
+@router.post('/search', summary='搜索资源', response_model=ResponseSchemaModel[List[McpSearchResult]])
 async def search_mcp_resources(
     search_param: Annotated[SearchResourceParam, Depends()],
 ) -> ResponseSchemaModel[List[McpSearchResult]]:
@@ -36,4 +36,3 @@ async def search_mcp_resources(
         enable_external_search=search_param.external_search,
     )
     return response_base.success(data=results)
-

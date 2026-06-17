@@ -49,6 +49,4 @@ class BaseEvaluator(ABC):
         matched: dict | None = None,
     ) -> None:
         """记录允许节点"""
-        explanation.append(
-            ExplanationNode(evaluator=evaluator, outcome='allow', reason=reason, matched=matched)
-        )
+        explanation.append(ExplanationNode(evaluator=evaluator, outcome='allow', reason=reason, matched=matched))

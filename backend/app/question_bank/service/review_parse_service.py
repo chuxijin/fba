@@ -19,20 +19,20 @@ log = logging.getLogger(__name__)
 # 匹配如：1. / 1、 / 1） / （1） / 第1题 / 一、
 # 要求：行首开始，且 `数字.` 后面不能紧跟数字（排除小数如 7.5）
 QUESTION_NUMBER_PATTERN = re.compile(
-    r'(?:^|\n)'                     # 行首
-    r'\s*(?:#+\s*)?'                # 可选的前置空格和 Markdown 标题标记（如 # 或 ### ）
+    r'(?:^|\n)'  # 行首
+    r'\s*(?:#+\s*)?'  # 可选的前置空格和 Markdown 标题标记（如 # 或 ### ）
     r'(?:'
-    r'\d{1,4}\s*[、．）\)]\s*'        # 1、 / 1） / 1．等
+    r'\d{1,4}\s*[、．）\)]\s*'  # 1、 / 1） / 1．等
     r'|'
-    r'\d{1,4}\s*\.\s*(?!\d)'         # 1. （排除小数如 7.5）
+    r'\d{1,4}\s*\.\s*(?!\d)'  # 1. （排除小数如 7.5）
     r'|'
-    r'[（(]\d{1,4}[）)]\s*'          # （1） / (1) 全角半角括号
+    r'[（(]\d{1,4}[）)]\s*'  # （1） / (1) 全角半角括号
     r'|'
-    r'第\s*\d{1,4}\s*题[.、：:\s]*'   # 第1题
+    r'第\s*\d{1,4}\s*题[.、：:\s]*'  # 第1题
     r'|'
     r'[一二三四五六七八九十百]+\s*[、.．]\s*'  # 一、 / 二、 中文数字章节
     r'|'
-    r'【\d{1,4}】\s*'                # 【1】方括号题号
+    r'【\d{1,4}】\s*'  # 【1】方括号题号
     r')',
     re.MULTILINE,
 )
@@ -278,7 +278,9 @@ class ReviewParseService:
             yield {'type': 'complete', 'materials': [], 'questions': [], 'answers': [], 'warnings': []}
             return
 
-        batches: list[list[dict[str, Any]]] = [segments[index:index + BATCH_SIZE] for index in range(0, total_segments, BATCH_SIZE)]
+        batches: list[list[dict[str, Any]]] = [
+            segments[index : index + BATCH_SIZE] for index in range(0, total_segments, BATCH_SIZE)
+        ]
 
         total_batches = len(batches)
         semaphore = asyncio.Semaphore(AI_CONCURRENCY)
@@ -366,7 +368,12 @@ class ReviewParseService:
                 use_prefix=total_batches > 1,
             )
             warnings = list(extract_result.warnings)
-            if batch_warning and not extract_result.questions and not extract_result.materials and not extract_result.answers:
+            if (
+                batch_warning
+                and not extract_result.questions
+                and not extract_result.materials
+                and not extract_result.answers
+            ):
                 warnings.append(batch_warning)
 
             return {
@@ -377,10 +384,7 @@ class ReviewParseService:
                 'warnings': warnings,
             }
 
-        tasks = [
-            asyncio.create_task(process_batch(batch_index, batch))
-            for batch_index, batch in enumerate(batches)
-        ]
+        tasks = [asyncio.create_task(process_batch(batch_index, batch)) for batch_index, batch in enumerate(batches)]
         batch_results: list[dict[str, Any] | None] = [None] * total_batches
         completed_batches = 0
         total_materials_count = 0
@@ -454,7 +458,9 @@ class ReviewParseService:
             yield {'type': 'complete', 'answers': [], 'warnings': []}
             return
 
-        batches: list[list[dict[str, Any]]] = [segments[index:index + BATCH_SIZE] for index in range(0, total_segments, BATCH_SIZE)]
+        batches: list[list[dict[str, Any]]] = [
+            segments[index : index + BATCH_SIZE] for index in range(0, total_segments, BATCH_SIZE)
+        ]
 
         total_batches = len(batches)
         semaphore = asyncio.Semaphore(AI_CONCURRENCY)
@@ -539,10 +545,7 @@ class ReviewParseService:
                 'warnings': warnings,
             }
 
-        tasks = [
-            asyncio.create_task(process_batch(batch_index, batch))
-            for batch_index, batch in enumerate(batches)
-        ]
+        tasks = [asyncio.create_task(process_batch(batch_index, batch)) for batch_index, batch in enumerate(batches)]
         batch_results: list[dict[str, Any] | None] = [None] * total_batches
         completed_batches = 0
         total_answers_count = 0
@@ -677,9 +680,25 @@ class ReviewParseService:
         ws = wb.active
         ws.title = '题目'
         headers = [
-            '序号', '题型', '题目', '选项A', '选项B', '选项C', '选项D',
-            '答案', '解析', '难度', '分数', '一级目录', '二级目录', '三级目录',
-            '知识点', '材料编号', '置信度', '审核状态', '⚠️校验',
+            '序号',
+            '题型',
+            '题目',
+            '选项A',
+            '选项B',
+            '选项C',
+            '选项D',
+            '答案',
+            '解析',
+            '难度',
+            '分数',
+            '一级目录',
+            '二级目录',
+            '三级目录',
+            '知识点',
+            '材料编号',
+            '置信度',
+            '审核状态',
+            '⚠️校验',
         ]
         header_font = Font(bold=True, size=11)
         header_fill = PatternFill(start_color='D9E1F2', end_color='D9E1F2', fill_type='solid')
@@ -1062,10 +1081,7 @@ class ReviewParseService:
         :return:
         """
         level1_name = (
-            question.get('chapter_level1_name')
-            or question.get('一级目录')
-            or question.get('chapter_name')
-            or ''
+            question.get('chapter_level1_name') or question.get('一级目录') or question.get('chapter_name') or ''
         )
         level2_name = question.get('chapter_level2_name') or question.get('二级目录') or ''
         level3_name = question.get('chapter_level3_name') or question.get('三级目录') or ''

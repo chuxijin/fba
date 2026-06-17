@@ -41,7 +41,9 @@ async def get_home_dashboard(
     return response_base.success(data=dashboard_data)
 
 
-@router.get('/practice-activity', summary='获取练习活跃趋势', name='home_practice_activity', dependencies=[DependsJwtAuth])
+@router.get(
+    '/practice-activity', summary='获取练习活跃趋势', name='home_practice_activity', dependencies=[DependsJwtAuth]
+)
 async def get_practice_activity(
     request: Request,
     db: CurrentSession,

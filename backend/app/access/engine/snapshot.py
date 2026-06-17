@@ -52,12 +52,8 @@ class UserGrantSnapshot:
         self._cached_direct_grant_codes = (
             set(cached_direct_grant_codes) if cached_direct_grant_codes is not None else None
         )
-        self._cached_subscription_ids = (
-            list(cached_subscription_ids) if cached_subscription_ids is not None else None
-        )
-        self._cached_direct_grant_ids = (
-            list(cached_direct_grant_ids) if cached_direct_grant_ids is not None else None
-        )
+        self._cached_subscription_ids = list(cached_subscription_ids) if cached_subscription_ids is not None else None
+        self._cached_direct_grant_ids = list(cached_direct_grant_ids) if cached_direct_grant_ids is not None else None
 
     @property
     def subscriptions(self) -> list[Subscription]:
@@ -145,9 +141,7 @@ class SnapshotService:
         return snapshot
 
     @classmethod
-    async def _load_from_cache(
-        cls, *, user_id: int, ts: datetime
-    ) -> UserGrantSnapshot | None:
+    async def _load_from_cache(cls, *, user_id: int, ts: datetime) -> UserGrantSnapshot | None:
         """尝试从 Redis 加载用户权益快照"""
         payload = await snapshot_payload_cache.get(user_id)
         if not payload:
@@ -181,9 +175,7 @@ class SnapshotService:
         await snapshot_payload_cache.invalidate(user_id)
 
     @classmethod
-    async def _load_from_db(
-        cls, *, db: AsyncSession, user_id: int, ts: datetime
-    ) -> UserGrantSnapshot:
+    async def _load_from_db(cls, *, db: AsyncSession, user_id: int, ts: datetime) -> UserGrantSnapshot:
         """从 DB 全量构建用户权益快照(原始路径, 5+ 条 SQL)"""
         subscriptions = await subscription_dao.list_active_for_user(db, user_id, ts)
         direct_grants = await direct_grant_dao.list_active_for_user(db, user_id=user_id, ts=ts)

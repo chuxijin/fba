@@ -43,13 +43,8 @@ async def delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
             return result
 
     except Exception as e:
-        logger.error(f"删除30天以外的文件同步数据失败: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "deleted_count": 0,
-            "message": f"删除失败: {str(e)}"
-        }
+        logger.error(f'删除30天以外的文件同步数据失败: {str(e)}')
+        return {'success': False, 'error': str(e), 'deleted_count': 0, 'message': f'删除失败: {str(e)}'}
 
 
 @celery_app.task(name='delete_celery_task_results')
@@ -65,12 +60,7 @@ async def delete_celery_task_results() -> Dict[str, Any]:
             threshold_date = timezone.now() - timedelta(days=30)
 
             # 构建删除语句：删除 date_done 在 30 天之前的记录
-            stmt = delete(Task).where(
-                and_(
-                    Task.date_done.isnot(None),
-                    Task.date_done < threshold_date
-                )
-            )
+            stmt = delete(Task).where(and_(Task.date_done.isnot(None), Task.date_done < threshold_date))
 
             # 执行删除
             result = await db.execute(stmt)
@@ -78,21 +68,15 @@ async def delete_celery_task_results() -> Dict[str, Any]:
 
             deleted_count = result.rowcount
 
-            logger.info(f"成功删除 {deleted_count} 条 30 天以外的 Celery 任务结果")
+            logger.info(f'成功删除 {deleted_count} 条 30 天以外的 Celery 任务结果')
 
             return {
-                "success": True,
-                "deleted_count": deleted_count,
-                "threshold_date": threshold_date.isoformat(),
-                "message": f"成功删除 {deleted_count} 条任务结果"
+                'success': True,
+                'deleted_count': deleted_count,
+                'threshold_date': threshold_date.isoformat(),
+                'message': f'成功删除 {deleted_count} 条任务结果',
             }
 
     except Exception as e:
-        logger.error(f"删除 Celery 任务结果时发生异常: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "deleted_count": 0,
-            "message": f"删除失败: {str(e)}"
-        }
-
+        logger.error(f'删除 Celery 任务结果时发生异常: {str(e)}')
+        return {'success': False, 'error': str(e), 'deleted_count': 0, 'message': f'删除失败: {str(e)}'}

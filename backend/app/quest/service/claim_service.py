@@ -24,6 +24,9 @@ class ClaimService:
         :param quest: 任务实体
         :return:
         """
+        if quest.quest_type == 'auto':
+            raise errors.RequestError(msg='该任务为自动触发型，无需手动领取')
+
         if quest.status == 0:
             raise errors.RequestError(msg='任务尚未发布')
         if quest.status == 2:
@@ -81,9 +84,7 @@ class ClaimService:
         return GetClaimDetail.model_validate(claim)
 
     @staticmethod
-    async def submit_claim(
-        *, db: AsyncSession, claim_id: int, user_id: int, obj: SubmitClaimParam
-    ) -> GetClaimDetail:
+    async def submit_claim(*, db: AsyncSession, claim_id: int, user_id: int, obj: SubmitClaimParam) -> GetClaimDetail:
         """
         提交任务内容
 
@@ -119,12 +120,7 @@ class ClaimService:
                 raise errors.RequestError(msg='该任务必须填写文字说明')
             # 兼容：如果都配置成 false，但 submission_required=True，那么至少提交任意一种
             if not (quest.require_link or quest.require_image or quest.require_note):
-                if not (
-                    obj.submission_links
-                    or obj.submission_images
-                    or obj.submission_data
-                    or obj.submission_note
-                ):
+                if not (obj.submission_links or obj.submission_images or obj.submission_data or obj.submission_note):
                     raise errors.RequestError(msg='请填写任务提交内容')
 
         update_data: dict[str, Any] = {
@@ -217,9 +213,7 @@ class ClaimService:
         :param claim_status: 状态
         :return:
         """
-        stmt = await quest_claim_dao.get_select(
-            quest_id=quest_id, user_id=user_id, claim_status=claim_status
-        )
+        stmt = await quest_claim_dao.get_select(quest_id=quest_id, user_id=user_id, claim_status=claim_status)
         return await paging_data(db, stmt)
 
 

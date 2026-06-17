@@ -70,18 +70,10 @@ class PracticeDataResetService:
         session_question_result = await db.execute(
             delete(SessionQuestion).where(SessionQuestion.session_id.in_(user_session_ids))
         )
-        practice_session_result = await db.execute(
-            delete(PracticeSession).where(PracticeSession.user_id == user_id)
-        )
-        wrong_question_result = await db.execute(
-            delete(WrongQuestionBook).where(WrongQuestionBook.user_id == user_id)
-        )
-        check_in_result = await db.execute(
-            delete(UserCheckIn).where(UserCheckIn.user_id == user_id)
-        )
-        daily_rank_result = await db.execute(
-            delete(UserDailyRank).where(UserDailyRank.user_id == user_id)
-        )
+        practice_session_result = await db.execute(delete(PracticeSession).where(PracticeSession.user_id == user_id))
+        wrong_question_result = await db.execute(delete(WrongQuestionBook).where(WrongQuestionBook.user_id == user_id))
+        check_in_result = await db.execute(delete(UserCheckIn).where(UserCheckIn.user_id == user_id))
+        daily_rank_result = await db.execute(delete(UserDailyRank).where(UserDailyRank.user_id == user_id))
         stats_result = await db.execute(
             update(UserPracticeStats)
             .where(UserPracticeStats.user_id == user_id)

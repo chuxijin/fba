@@ -47,9 +47,7 @@ class Feedback(Base):
     id: Mapped[id_key] = mapped_column(init=False)
 
     content: Mapped[str] = mapped_column(sa.Text, comment='反馈内容')
-    feedback_type: Mapped[str] = mapped_column(
-        sa.String(32), default=FeedbackType.OTHER, comment='反馈类型'
-    )
+    feedback_type: Mapped[str] = mapped_column(sa.String(32), default=FeedbackType.OTHER, comment='反馈类型')
     contact: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='联系方式')
     images: Mapped[list[str] | None] = mapped_column(CompatibleJSONB, default=None, comment='图片列表')
 
@@ -60,9 +58,7 @@ class Feedback(Base):
     target_id: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='关联目标 ID')
     target_text: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='关联目标描述')
 
-    status: Mapped[str] = mapped_column(
-        sa.String(20), default=FeedbackStatus.PENDING, comment='处理状态'
-    )
+    status: Mapped[str] = mapped_column(sa.String(20), default=FeedbackStatus.PENDING, comment='处理状态')
     reply_content: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='处理回复')
     read_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='首次查看时间')
     handled_by: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='处理人 ID')

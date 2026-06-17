@@ -62,9 +62,7 @@ async def get_template_list(
         DependsRBAC,
     ],
 )
-async def create_template(
-    db: CurrentSessionTransaction, obj: CreateTemplateParam
-) -> ResponseModel:
+async def create_template(db: CurrentSessionTransaction, obj: CreateTemplateParam) -> ResponseModel:
     """创建订阅模板"""
     await subscription_template_service.create(db=db, obj=obj)
     return response_base.success()

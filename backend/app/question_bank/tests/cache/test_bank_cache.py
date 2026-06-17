@@ -54,6 +54,7 @@ def reset_bank_cache_inflight() -> None:
     """每个测试前清空 single-flight 与 L1, 避免跨测试污染"""
     bank_cache._in_flight.clear()
     from backend.common.cache.local import local_cache_manager
+
     local_cache_manager.clear()
 
 
@@ -79,9 +80,7 @@ def _bank_orm(bank_id: int = 42, **overrides) -> SimpleNamespace:
     return SimpleNamespace(**base)
 
 
-def test_get_bank_snapshot_miss_calls_dao(
-    monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis
-) -> None:
+def test_get_bank_snapshot_miss_calls_dao(monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis) -> None:
     """缓存 miss 时回源 DAO 并 model_validate 成 Snapshot"""
     calls: list[int] = []
 
@@ -97,9 +96,7 @@ def test_get_bank_snapshot_miss_calls_dao(
     assert calls == [42]
 
 
-def test_get_bank_snapshot_hit_skips_dao(
-    monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis
-) -> None:
+def test_get_bank_snapshot_hit_skips_dao(monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis) -> None:
     """第二次调用走缓存, DAO 不应再次被调用"""
     calls: list[int] = []
 
@@ -114,9 +111,7 @@ def test_get_bank_snapshot_hit_skips_dao(
     assert calls == [42]
 
 
-def test_invalidate_bank_snapshots_clears_cache(
-    monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis
-) -> None:
+def test_invalidate_bank_snapshots_clears_cache(monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis) -> None:
     """失效后下次读必须 miss → 重新打 DAO"""
     calls: list[int] = []
 
@@ -133,9 +128,7 @@ def test_invalidate_bank_snapshots_clears_cache(
     assert calls == [42, 42]
 
 
-def test_get_bank_snapshot_dao_returns_none_propagates(
-    monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis
-) -> None:
+def test_get_bank_snapshot_dao_returns_none_propagates(monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis) -> None:
     """DAO 返回 None 时不应被缓存(避免缓存"不存在")"""
 
     async def fake_get(_db, _bank_id: int):
@@ -154,9 +147,7 @@ def test_bank_snapshot_excludes_volatile_fields() -> None:
     assert volatile.isdisjoint(fields)
 
 
-def test_concurrent_get_dedups_via_single_flight(
-    monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis
-) -> None:
+def test_concurrent_get_dedups_via_single_flight(monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis) -> None:
     """50 并发 miss 同一 bank → DAO 只调一次"""
     calls = 0
 

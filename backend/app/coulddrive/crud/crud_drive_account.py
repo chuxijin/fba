@@ -59,7 +59,9 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
 
         return stmt
 
-    async def get_list_with_pagination(self, db: AsyncSession, type: str | None = None, is_valid: bool | None = None) -> Sequence[DriveAccount]:
+    async def get_list_with_pagination(
+        self, db: AsyncSession, type: str | None = None, is_valid: bool | None = None
+    ) -> Sequence[DriveAccount]:
         """
         获取网盘账户分页列表
 
@@ -93,10 +95,11 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param type: 网盘类型
         :return:
         """
-        stmt = select(self.model).where(
-            self.model.type == type, 
-            self.model.is_valid.is_(True)
-        ).options(noload(DriveAccount.sync_configs), noload(DriveAccount.resources))
+        stmt = (
+            select(self.model)
+            .where(self.model.type == type, self.model.is_valid.is_(True))
+            .options(noload(DriveAccount.sync_configs), noload(DriveAccount.resources))
+        )
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -147,7 +150,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param used: 已使用空间
         :return:
         """
-        return await self.update_model(db, pk, {"quota": quota, "used": used})
+        return await self.update_model(db, pk, {'quota': quota, 'used': used})
 
     async def update_vip_status(self, db: AsyncSession, pk: int, is_vip: bool, is_supervip: bool) -> int:
         """
@@ -159,10 +162,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param is_supervip: 是否超级会员
         :return:
         """
-        return await self.update_model(db, pk, {
-            "is_vip": is_vip,
-            "is_supervip": is_supervip
-        })
+        return await self.update_model(db, pk, {'is_vip': is_vip, 'is_supervip': is_supervip})
 
     async def update_validity(self, db: AsyncSession, pk: int, is_valid: bool) -> int:
         """
@@ -173,15 +173,10 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param is_valid: 账号是否有效
         :return:
         """
-        return await self.update_model(db, pk, {"is_valid": is_valid})
+        return await self.update_model(db, pk, {'is_valid': is_valid})
 
     async def create_or_update(
-        self,
-        db: AsyncSession,
-        user_info: 'BaseUserInfo',
-        drive_type: str,
-        cookies: str,
-        current_user_id: int
+        self, db: AsyncSession, user_info: 'BaseUserInfo', drive_type: str, cookies: str, current_user_id: int
     ) -> None:
         """
         根据用户信息创建或更新网盘账户
@@ -195,7 +190,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         """
         # 改用 username + type 作为唯一标识（更稳定）
         existing_user = await self.get_by_username(db, username=user_info.username, type=drive_type)
-        
+
         if existing_user:
             # 用户已存在，更新信息（包括 user_id，以防它变化了）
             update_data = UpdateDriveAccountParam(
@@ -207,7 +202,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
                 is_vip=user_info.is_vip,
                 is_supervip=user_info.is_supervip,
                 cookies=cookies,
-                is_valid=True
+                is_valid=True,
             )
             await self.update(db, existing_user.id, update_data)
         else:
@@ -223,14 +218,14 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
                 type=drive_type,
                 cookies=cookies,
                 is_valid=True,
-                created_by=current_user_id
+                created_by=current_user_id,
             )
             await self.create(db, create_data, current_user_id=current_user_id)
 
     async def get_id_by_cookies(self, db: AsyncSession, cookies: str) -> int | None:
         """
         通过cookies获取网盘账户ID
-        
+
         :param db: 数据库会话
         :param cookies: 认证令牌
         :return: 网盘账户ID，如果未找到则返回None
@@ -238,4 +233,5 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         account = await self.select_model_by_column(db, cookies=cookies, is_valid=True)
         return account.id if account else None
 
-drive_account_dao: CRUDDriveAccount = CRUDDriveAccount(DriveAccount) 
+
+drive_account_dao: CRUDDriveAccount = CRUDDriveAccount(DriveAccount)

@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.admin.model.category import Category
 from backend.app.question_bank.model import PracticeSession, Question, SessionQuestion
 from backend.app.study_plan.crud import (
-    study_ability_attempt_category_dao,
     study_ability_attempt_dao,
     study_ability_catalog_dao,
     study_ability_category_binding_dao,
@@ -214,10 +213,7 @@ async def list_user_category_profiles(
         )
     )
     result = await db.execute(stmt)
-    return [
-        _build_profile_detail(profile, category)
-        for profile, category in result.all()
-    ]
+    return [_build_profile_detail(profile, category) for profile, category in result.all()]
 
 
 async def _resolve_profile_category_ids(
@@ -241,11 +237,7 @@ async def _resolve_profile_category_ids(
             Category.deleted == 0,
         )
         cte = anchor.cte('profile_category_tree', recursive=True)
-        recursive_part = (
-            select(Category.id)
-            .join(cte, Category.parent_id == cte.c.id)
-            .where(Category.deleted == 0)
-        )
+        recursive_part = select(Category.id).join(cte, Category.parent_id == cte.c.id).where(Category.deleted == 0)
         category_tree = cte.union_all(recursive_part)
         stmt = (
             select(Category.id)
@@ -938,9 +930,7 @@ def _refresh_profile_scores(
     accuracy_score = _clamp_score(accuracy_ratio / target_accuracy * Decimal('100'))
     speed_score = _resolve_speed_score(avg_seconds, benchmark_seconds, accuracy_score)
     mastery_score = (
-        accuracy_score * Decimal('0.75')
-        + speed_score * Decimal('0.15')
-        + confidence_score * Decimal('0.10')
+        accuracy_score * Decimal('0.75') + speed_score * Decimal('0.15') + confidence_score * Decimal('0.10')
     )
     mastery_score = _clamp_score(mastery_score)
 

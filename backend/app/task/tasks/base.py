@@ -67,10 +67,7 @@ class TaskBase(Task):
 
             await notify_service.send(
                 title=f'[{settings.MACHINE_ID}] 定时任务执行失败: {task_name}',
-                content=(
-                    f'任务ID: {task_id}\n'
-                    f'异常: {str(exc)[:500]}'
-                ),
+                content=(f'任务ID: {task_id}\n异常: {str(exc)[:500]}'),
                 options={'tags': '定时任务|执行失败'},
                 source='celery_task',
             )
@@ -85,13 +82,9 @@ class TaskBase(Task):
 
             await notify_service.send(
                 title=f'[{settings.MACHINE_ID}] 定时任务警告: {task_name}',
-                content=(
-                    f'任务ID: {task_id}\n'
-                    f'警告: {message}'
-                ),
+                content=(f'任务ID: {task_id}\n警告: {message}'),
                 options={'tags': '定时任务|警告'},
                 source='celery_task',
             )
         except Exception:
             pass
-

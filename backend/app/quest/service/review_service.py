@@ -117,9 +117,7 @@ class ReviewService:
         revoked = await reward_service.revoke_for_claim(db=db, claim=claim, quest=quest)
 
         if not revoked:
-            raise errors.RequestError(
-                msg='奖励撤销失败：可能用户可用经验不足或该奖励类型暂不支持自动撤销'
-            )
+            raise errors.RequestError(msg='奖励撤销失败：可能用户可用经验不足或该奖励类型暂不支持自动撤销')
 
         await quest_claim_dao.update_model(
             db,

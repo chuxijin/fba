@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """today_service 内部纯函数测试（_calc_day_index / _calc_progress）"""
+
 from datetime import date
 
 from backend.app.study_plan.service.today_service import _calc_day_index, _calc_progress

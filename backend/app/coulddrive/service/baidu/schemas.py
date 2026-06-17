@@ -1,4 +1,3 @@
-
 from collections import namedtuple
 from typing import Dict, List, NamedTuple, Optional
 from urllib.parse import unquote
@@ -45,26 +44,25 @@ class PcsFile(NamedTuple):
     dl_link: Optional[str] = None
 
     @staticmethod
-    def from_(info) -> "PcsFile":
+    def from_(info) -> 'PcsFile':
         return PcsFile(
-            path=info.get("path"),
-            is_dir=info.get("isdir") == 1,
-            is_file=info.get("isdir") == 0,
-            fs_id=info.get("fs_id"),
-            size=info.get("size"),
-            md5=info.get("md5"),
-            block_list=info.get("block_list"),
-            category=info.get("category"),
-            user_id=info.get("user_id"),
-            ctime=info.get("ctime"),
-            mtime=info.get("mtime"),
-            local_ctime=info.get("local_ctime"),
-            local_mtime=info.get("local_mtime"),
-            server_ctime=info.get("server_ctime"),
-            server_mtime=info.get("server_mtime"),
-            shared=info.get("shared"),
+            path=info.get('path'),
+            is_dir=info.get('isdir') == 1,
+            is_file=info.get('isdir') == 0,
+            fs_id=info.get('fs_id'),
+            size=info.get('size'),
+            md5=info.get('md5'),
+            block_list=info.get('block_list'),
+            category=info.get('category'),
+            user_id=info.get('user_id'),
+            ctime=info.get('ctime'),
+            mtime=info.get('mtime'),
+            local_ctime=info.get('local_ctime'),
+            local_mtime=info.get('local_mtime'),
+            server_ctime=info.get('server_ctime'),
+            server_mtime=info.get('server_mtime'),
+            shared=info.get('shared'),
         )
-
 
 
 class PcsSharedLink(NamedTuple):
@@ -84,16 +82,16 @@ class PcsSharedLink(NamedTuple):
     ctime: Optional[int] = None
 
     @staticmethod
-    def from_(info) -> "PcsSharedLink":
+    def from_(info) -> 'PcsSharedLink':
         return PcsSharedLink(
-            url=info.get("link") or info.get("shortlink"),
-            paths=info.get("paths") or [info.get("typicalPath")],
-            fs_ids=info.get("fsIds"),
-            password=info.get("password"),
-            expired=info.get("expiredTime") if info.get("expiredType") != -1 else -1,
-            channel=info.get("channel"),
-            share_id=info.get("share_id") or info.get("shareId") or info.get("shareid"),
-            ctime=info.get("ctime"),
+            url=info.get('link') or info.get('shortlink'),
+            paths=info.get('paths') or [info.get('typicalPath')],
+            fs_ids=info.get('fsIds'),
+            password=info.get('password'),
+            expired=info.get('expiredTime') if info.get('expiredType') != -1 else -1,
+            channel=info.get('channel'),
+            share_id=info.get('share_id') or info.get('shareId') or info.get('shareid'),
+            ctime=info.get('ctime'),
         )
 
     def has_password(self) -> bool:
@@ -106,7 +104,7 @@ class PcsSharedLink(NamedTuple):
     def available(self) -> bool:
         if not self.paths:
             return False
-        if self.paths[0].startswith("/"):
+        if self.paths[0].startswith('/'):
             return True
         else:
             return False
@@ -136,29 +134,29 @@ class PcsSharedPath(NamedTuple):
     bdstoken: Optional[str] = None
 
     @staticmethod
-    def from_(info) -> "PcsSharedPath":
-        if "parent_path" in info:
-            path = unquote(info["parent_path"] or "") + "/" + info["server_filename"]
+    def from_(info) -> 'PcsSharedPath':
+        if 'parent_path' in info:
+            path = unquote(info['parent_path'] or '') + '/' + info['server_filename']
         else:
-            path = info["path"]
+            path = info['path']
         return PcsSharedPath(
-            fs_id=info.get("fs_id"),
+            fs_id=info.get('fs_id'),
             path=path,
-            size=info.get("size"),
-            is_dir=info.get("isdir") == 1,
-            is_file=info.get("isdir") == 0,
-            md5=info.get("md5"),
-            local_ctime=info.get("local_ctime"),
-            local_mtime=info.get("local_mtime"),
-            server_ctime=info.get("server_ctime"),
-            server_mtime=info.get("server_mtime"),
-            uk=info.get("uk"),
-            share_id=info.get("share_id") or info.get("shareid"),
-            bdstoken=info.get("bdstoken"),
+            size=info.get('size'),
+            is_dir=info.get('isdir') == 1,
+            is_file=info.get('isdir') == 0,
+            md5=info.get('md5'),
+            local_ctime=info.get('local_ctime'),
+            local_mtime=info.get('local_mtime'),
+            server_ctime=info.get('server_ctime'),
+            server_mtime=info.get('server_mtime'),
+            uk=info.get('uk'),
+            share_id=info.get('share_id') or info.get('shareid'),
+            bdstoken=info.get('bdstoken'),
         )
 
 
-FromTo = namedtuple("FromTo", ["from_", "to_"])
+FromTo = namedtuple('FromTo', ['from_', 'to_'])
 
 
 class PcsQuota(NamedTuple):
@@ -188,5 +186,3 @@ class PcsUser(NamedTuple):
     quota: Optional[PcsQuota] = None
     products: Optional[List[PcsUserProduct]] = None
     level: Optional[int] = None
-
-

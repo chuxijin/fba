@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
 from backend.app.question_bank.crud.crud_question import question_statistics_dao
 from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
-from backend.app.question_bank.crud.crud_session_question import session_question_dao
 from backend.app.question_bank.model import QuestionFavorite, SessionQuestion
 from backend.app.question_bank.schema.favorite import (
     CreateQuestionFavoriteParam,
@@ -84,9 +83,7 @@ class FavoriteService:
         return await category_filter_service.get_question_filter(db=db, cat_id=cat_id, kp_cat_id=kp_cat_id)
 
     @staticmethod
-    async def create_favorite(
-        *, db: AsyncSession, user_id: int, obj: CreateQuestionFavoriteParam
-    ) -> QuestionFavorite:
+    async def create_favorite(*, db: AsyncSession, user_id: int, obj: CreateQuestionFavoriteParam) -> QuestionFavorite:
         """
         收藏题目
 
@@ -111,9 +108,7 @@ class FavoriteService:
             remark=obj.remark,
         )
 
-        await question_statistics_dao.update_stats(
-            db, obj.question_id, UpdateQuestionStatisticsParam(collect_delta=1)
-        )
+        await question_statistics_dao.update_stats(db, obj.question_id, UpdateQuestionStatisticsParam(collect_delta=1))
         await FavoriteService._clear_statistics_cache(user_id)
         return new_favorite
 
@@ -127,17 +122,13 @@ class FavoriteService:
         :param question_id: 题目 ID
         :return:
         """
-        favorite = await question_favorite_dao.get_by_user_and_question(
-            db=db, user_id=user_id, question_id=question_id
-        )
+        favorite = await question_favorite_dao.get_by_user_and_question(db=db, user_id=user_id, question_id=question_id)
         if not favorite:
             return 0
 
         count = await question_favorite_dao.delete(db=db, favorite_id=favorite.id)
         if count > 0:
-            await question_statistics_dao.update_stats(
-                db, question_id, UpdateQuestionStatisticsParam(collect_delta=-1)
-            )
+            await question_statistics_dao.update_stats(db, question_id, UpdateQuestionStatisticsParam(collect_delta=-1))
             await FavoriteService._clear_statistics_cache(user_id)
         return count
 
@@ -249,10 +240,7 @@ class FavoriteService:
         if question_ids_to_decrement:
             await question_statistics_dao.batch_update_stats(
                 db=db,
-                items=[
-                    {'question_id': question_id, 'collect_delta': -1}
-                    for question_id in question_ids_to_decrement
-                ],
+                items=[{'question_id': question_id, 'collect_delta': -1} for question_id in question_ids_to_decrement],
             )
 
         if count > 0:
@@ -298,9 +286,7 @@ class FavoriteService:
         return list(rows)
 
     @staticmethod
-    async def batch_check_favorites_by_session(
-        *, db: AsyncSession, user_id: int, session_id: int
-    ) -> dict[int, bool]:
+    async def batch_check_favorites_by_session(*, db: AsyncSession, user_id: int, session_id: int) -> dict[int, bool]:
         """
         通过会话批量检查收藏状态（单条 JOIN SQL，仅返回已收藏 ID）
 
@@ -397,9 +383,7 @@ class FavoriteService:
             return stats.model_dump()
 
         cached = await favorite_statistics_cache.get_or_set(*key_parts, factory=factory)
-        return FavoriteStatistics(**cached) if cached else FavoriteStatistics(
-            total_count=0, folder_count=0, folders=[]
-        )
+        return FavoriteStatistics(**cached) if cached else FavoriteStatistics(total_count=0, folder_count=0, folders=[])
 
     @staticmethod
     async def get_statistics_with_groups(
@@ -440,7 +424,8 @@ class FavoriteService:
                 flat_counts = await question_favorite_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
                 if category_filter and kp_cat_id is not None:
                     flat_counts = [
-                        item for item in flat_counts
+                        item
+                        for item in flat_counts
                         if str(item['group_name'] or '').strip() in category_filter.knowledge_names
                     ]
                 count_map = {item['group_name']: item['count'] for item in flat_counts}
@@ -450,7 +435,8 @@ class FavoriteService:
                 flat_counts = await question_favorite_dao.get_bank_chapter_counts(db=db, user_id=user_id)
                 if category_filter and cat_id is not None:
                     flat_counts = [
-                        row for row in flat_counts
+                        row
+                        for row in flat_counts
                         if row['bank_id'] is not None and int(row['bank_id']) in category_filter.bank_ids
                     ]
                 count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}
@@ -489,17 +475,13 @@ class FavoriteService:
             rows = await question_favorite_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
             if not category_filter or kp_cat_id is None:
                 return rows
-            return [
-                item for item in rows
-                if str(item['group_name'] or '').strip() in category_filter.knowledge_names
-            ]
+            return [item for item in rows if str(item['group_name'] or '').strip() in category_filter.knowledge_names]
 
         rows = await question_favorite_dao.get_grouped_by_bank(db=db, user_id=user_id)
         if not category_filter or cat_id is None:
             return rows
         return [
-            item for item in rows
-            if item['group_id'] is not None and int(item['group_id']) in category_filter.bank_ids
+            item for item in rows if item['group_id'] is not None and int(item['group_id']) in category_filter.bank_ids
         ]
 
 

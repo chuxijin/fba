@@ -152,8 +152,13 @@ async def fetch_news_list(page_num: int = 1, page_size: int = 10) -> dict[str, A
 @celery_app.task(name='sync_daily_news_to_shizhen', bind=True)
 async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
     result: dict[str, Any] = {
-        'success': True, 'fetched_count': 0, 'created_count': 0, 'updated_count': 0,
-        'skipped_count': 0, 'error_count': 0, 'message': '',
+        'success': True,
+        'fetched_count': 0,
+        'created_count': 0,
+        'updated_count': 0,
+        'skipped_count': 0,
+        'error_count': 0,
+        'message': '',
     }
     api_response = await fetch_news_list(page_num=1, page_size=10)
     if not api_response or api_response.get('code') != 0:
@@ -174,13 +179,13 @@ async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
                 summary = build_summary(content_html)
                 publish_time = datetime.combine(daily_date, time.min)
                 extra = build_extra(record, daily_date)
-                
+
                 # 使用通用的 content_dao 查询，并指定 app_code
                 existing = await content_dao.get_by_slug(db, slug)
 
                 if not existing:
                     create_obj = CreateContentParam(
-                        app_code=APP_CODE_GONGKAO, # 必填字段
+                        app_code=APP_CODE_GONGKAO,  # 必填字段
                         title=title,
                         slug=slug,
                         content_html=content_html,
@@ -279,10 +284,7 @@ async def update_hanyu_frequency() -> dict[str, Any]:
             text_rows = (await db.execute(target_text_sql)).mappings().all()
             target_text_count = len(text_rows)
 
-            matcher = build_hanyu_matcher([
-                (int(row['id']), str(row['name']))
-                for row in idiom_rows
-            ])
+            matcher = build_hanyu_matcher([(int(row['id']), str(row['name'])) for row in idiom_rows])
             frequency_map = {int(row['id']): 0 for row in idiom_rows}
             question_hanyu_ids: dict[int, set[int]] = {}
             for row in text_rows:
@@ -319,10 +321,10 @@ async def update_hanyu_frequency() -> dict[str, Any]:
         elapsed = (datetime.now() - start_time).total_seconds()
         result['elapsed_seconds'] = round(elapsed, 2)
         result['message'] = (
-            f"频次统计完成（言语理解与表达题干与选项）: 总计 {result['total_count']} 个成语, "
-            f"扫描 {len(question_hanyu_ids)} 道题 / {target_text_count} 段题干选项文本, "
-            f"更新 {result['updated_count']} 条记录, "
-            f"耗时 {result['elapsed_seconds']} 秒"
+            f'频次统计完成（言语理解与表达题干与选项）: 总计 {result["total_count"]} 个成语, '
+            f'扫描 {len(question_hanyu_ids)} 道题 / {target_text_count} 段题干选项文本, '
+            f'更新 {result["updated_count"]} 条记录, '
+            f'耗时 {result["elapsed_seconds"]} 秒'
         )
         logger.info(result['message'])
         return result

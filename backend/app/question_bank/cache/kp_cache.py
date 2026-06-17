@@ -4,7 +4,7 @@ from typing import Any
 
 from backend.app.question_bank.schema.knowledge_point import GetKpDetailResponse
 from backend.common.cache.redis_cache import RedisCache
-from backend.common.cache.serializers import JsonSerializer, PydanticSerializer
+from backend.common.cache.serializers import PydanticSerializer
 
 # 知识点详情缓存 TTL: 1 小时
 KP_DETAIL_CACHE_TTL = 3600
@@ -26,12 +26,14 @@ class ReasonTagListSerializer:
 
     def encode(self, value: list) -> bytes:
         from msgspec import json as msgspec_json
+
         # 将 Pydantic 模型列表转为字典列表
         data = [item.model_dump() if hasattr(item, 'model_dump') else item for item in value]
         return msgspec_json.encode(data)
 
     def decode(self, raw: bytes | str) -> list[dict[str, Any]]:
         from msgspec import json as msgspec_json
+
         return msgspec_json.decode(raw)
 
 

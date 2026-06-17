@@ -46,9 +46,7 @@ class GroupBuyTeam(Base, UserMixin):
     status: Mapped[str] = mapped_column(
         sa.String(16), default='pending', comment='状态: pending/success/failed/cancelled'
     )
-    start_time: Mapped[datetime] = mapped_column(
-        TimeZone, default_factory=timezone.now, comment='开团时间'
-    )
+    start_time: Mapped[datetime] = mapped_column(TimeZone, default_factory=timezone.now, comment='开团时间')
     success_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='成团时间')
     is_mock: Mapped[bool] = mapped_column(default=False, comment='是否模拟成团')
     share_code: Mapped[str | None] = mapped_column(
@@ -96,12 +94,8 @@ class GroupBuyMember(Base, UserMixin):
         comment='订单 ID',
     )
     is_leader: Mapped[bool] = mapped_column(default=False, comment='是否团长')
-    join_time: Mapped[datetime] = mapped_column(
-        TimeZone, default_factory=timezone.now, comment='参团时间'
-    )
-    inviter_user_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger, default=None, comment='邀请人用户 ID'
-    )
+    join_time: Mapped[datetime] = mapped_column(TimeZone, default_factory=timezone.now, comment='参团时间')
+    inviter_user_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='邀请人用户 ID')
 
     # ============ 关系 ============
     team: Mapped[GroupBuyTeam] = relationship(init=False, back_populates='members', lazy='noload')

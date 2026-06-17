@@ -50,18 +50,26 @@ class SocialWorkService:
             # 创建后尝试拉取首帧指标并写入快照
             account = await db.get(SocialAccount, obj.account_id)
             metrics = await fetch_metrics_for_work(account=account, work=work) if account else None
-            metric_data = metrics or { 'view_count': 0, 'like_count': 0, 'favorite_count': 0, 'comment_count': 0 }
+            metric_data = metrics or {'view_count': 0, 'like_count': 0, 'favorite_count': 0, 'comment_count': 0}
             # 直接构造 dict 交给 CRUD，内部走 model_dump 兼容
-            await social_work_metric_dao.create(db, obj=type('obj', (), {
-                'model_dump': lambda self=None: {
-                    'work_id': work.id,
-                    'view_count': metric_data.get('view_count', 0),
-                    'like_count': metric_data.get('like_count', 0),
-                    'favorite_count': metric_data.get('favorite_count', 0),
-                    'comment_count': metric_data.get('comment_count', 0),
-                    'share_count': metric_data.get('share_count', 0),
-                }
-            })(), current_user_id=current_user_id)
+            await social_work_metric_dao.create(
+                db,
+                obj=type(
+                    'obj',
+                    (),
+                    {
+                        'model_dump': lambda self=None: {
+                            'work_id': work.id,
+                            'view_count': metric_data.get('view_count', 0),
+                            'like_count': metric_data.get('like_count', 0),
+                            'favorite_count': metric_data.get('favorite_count', 0),
+                            'comment_count': metric_data.get('comment_count', 0),
+                            'share_count': metric_data.get('share_count', 0),
+                        }
+                    },
+                )(),
+                current_user_id=current_user_id,
+            )
             return work
 
     @staticmethod
@@ -78,5 +86,3 @@ class SocialWorkService:
         """删除作品"""
         async with async_db_session() as db:
             return await social_work_dao.delete(db, pks)
-
-

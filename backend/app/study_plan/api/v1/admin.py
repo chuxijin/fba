@@ -58,7 +58,6 @@ from backend.app.study_plan.service.item_detail_service import build_item_detail
 from backend.app.study_plan.service.practice_source import preview_practice_source
 from backend.common.exception import errors
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -332,17 +331,19 @@ async def study_plan_create_template(
         items = []
         for ti in param.items:
             enriched_extra = await enrich_ability_item_extra(db, ti.extra)
-            items.append(StudyPlanTemplateItem(
-                template_id=tpl.id,
-                day_index=ti.day_index,
-                order_index=ti.order_index,
-                module_type=ti.module_type,
-                title=ti.title,
-                ref_type=ti.ref_type,
-                ref_id=ti.ref_id,
-                expected_minutes=ti.expected_minutes,
-                extra=enriched_extra,
-            ))
+            items.append(
+                StudyPlanTemplateItem(
+                    template_id=tpl.id,
+                    day_index=ti.day_index,
+                    order_index=ti.order_index,
+                    module_type=ti.module_type,
+                    title=ti.title,
+                    ref_type=ti.ref_type,
+                    ref_id=ti.ref_id,
+                    expected_minutes=ti.expected_minutes,
+                    extra=enriched_extra,
+                )
+            )
         db.add_all(items)
         await db.flush()
     return response_base.success(data=GetStudyPlanTemplateDetail.model_validate(tpl))

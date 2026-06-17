@@ -1,4 +1,3 @@
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +33,7 @@ class ContentService:
             content = await content_dao.get_by_slug(db, obj.slug)
             if content:
                 raise errors.ForbiddenError(msg='别名已存在')
-        
+
         await content_dao.create_model(db, obj)
 
     @staticmethod
@@ -42,12 +41,12 @@ class ContentService:
         content = await content_dao.select_model(db, pk)
         if not content:
             raise errors.NotFoundError(msg='内容不存在')
-        
+
         if obj.slug and obj.slug != content.slug:
             content_slug = await content_dao.get_by_slug(db, obj.slug)
             if content_slug:
                 raise errors.ForbiddenError(msg='别名已存在')
-        
+
         # 如果是发布操作且之前未发布过，设置发布时间
         if obj.is_published and not content.is_published:
             if not obj.publish_time:
@@ -82,6 +81,7 @@ class ContentService:
         if category_id:
             # 引入 category_dao 获取此分类下的所有子分类 ID
             from backend.app.admin.crud.crud_category import category_dao
+
             children_ids = await category_dao.get_all_children_ids(db, category_id)
             if children_ids:
                 stmt = stmt.where(Content.category_id.in_(children_ids))
@@ -94,7 +94,7 @@ class ContentService:
             stmt = stmt.where(Content.title.ilike(keyword_like))
 
         stmt = stmt.order_by(Content.is_pinned.desc(), Content.sort_order.desc(), Content.created_time.desc())
-        
+
         # 使用项目标准的分页处理函数
         return await paging_data(db, stmt)
 
@@ -111,12 +111,11 @@ class ContentService:
         # 1. 策略 1：标签重合度查询
         if current_content.tags and len(current_content.tags) > 0:
             from sqlalchemy.dialects.postgresql import array
+
             stmt = (
                 select(Content)
                 .where(
-                    Content.id != pk,
-                    Content.is_published.is_(True),
-                    Content.tags.op('?|')(array(current_content.tags))
+                    Content.id != pk, Content.is_published.is_(True), Content.tags.op('?|')(array(current_content.tags))
                 )
                 .order_by(Content.view_count.desc())
                 .limit(30)  # 查出一批最近或最热的有重合标签的文章，再在内存精细排序
@@ -144,7 +143,7 @@ class ContentService:
                 .where(
                     Content.id.notin_(exclude_ids),
                     Content.is_published.is_(True),
-                    Content.category_id == current_content.category_id
+                    Content.category_id == current_content.category_id,
                 )
                 .order_by(Content.view_count.desc(), Content.created_time.desc())
                 .limit(remaining)

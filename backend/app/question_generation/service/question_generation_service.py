@@ -260,4 +260,5 @@ class QuestionGenerationService:
             qc_result=qc_result,
         )
 
+
 question_generation_service: QuestionGenerationService = QuestionGenerationService()

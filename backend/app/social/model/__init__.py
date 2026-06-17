@@ -7,9 +7,7 @@ from .metric import SocialWorkMetric
 from .work import SocialWork
 
 __all__ = [
-    "SocialAccount",
-    "SocialWork",
-    "SocialWorkMetric",
+    'SocialAccount',
+    'SocialWork',
+    'SocialWorkMetric',
 ]
-
-

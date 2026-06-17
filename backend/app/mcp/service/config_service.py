@@ -26,7 +26,7 @@ class McpConfigService:
     async def create(self, db: AsyncSession, data: UpsertMcpConfigParam, created_by: int) -> McpConfig:
         obj = await mcp_config_dao.get_by_mcp_and_field(db, data.mcp, data.field)
         if obj:
-            raise errors.ConflictError(msg=f"配置 {data.mcp}:{data.field} 已存在")
+            raise errors.ConflictError(msg=f'配置 {data.mcp}:{data.field} 已存在')
         created = await mcp_config_dao.create(db, data.mcp, data.field, data.value, created_by)
         await db.commit()
         return created
@@ -34,11 +34,13 @@ class McpConfigService:
     async def update(self, db: AsyncSession, data: UpsertMcpConfigParam, updated_by: int) -> McpConfig:
         obj = await mcp_config_dao.update(db, data.mcp, data.field, data.value, updated_by)
         if not obj:
-            raise errors.NotFoundError(msg="配置不存在")
+            raise errors.NotFoundError(msg='配置不存在')
         await db.commit()
         return obj
 
-    async def upsert_batch(self, db: AsyncSession, data: UpsertMcpConfigBatchParam, operator_id: int) -> list[McpConfig]:
+    async def upsert_batch(
+        self, db: AsyncSession, data: UpsertMcpConfigBatchParam, operator_id: int
+    ) -> list[McpConfig]:
         results: list[McpConfig] = []
         for it in data.items:
             exists = await mcp_config_dao.get_by_mcp_and_field(db, data.mcp, it.field)
@@ -58,5 +60,3 @@ class McpConfigService:
 
 
 mcp_config_service = McpConfigService()
-
-

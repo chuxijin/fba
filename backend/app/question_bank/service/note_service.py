@@ -493,17 +493,13 @@ class NoteService:
             rows = await question_note_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
             if not category_filter or kp_cat_id is None:
                 return rows
-            return [
-                item for item in rows
-                if str(item['group_name'] or '').strip() in category_filter.knowledge_names
-            ]
+            return [item for item in rows if str(item['group_name'] or '').strip() in category_filter.knowledge_names]
 
         rows = await question_note_dao.get_grouped_by_bank(db=db, user_id=user_id)
         if not category_filter or cat_id is None:
             return rows
         return [
-            item for item in rows
-            if item['group_id'] is not None and int(item['group_id']) in category_filter.bank_ids
+            item for item in rows if item['group_id'] is not None and int(item['group_id']) in category_filter.bank_ids
         ]
 
     @staticmethod
@@ -537,7 +533,8 @@ class NoteService:
             flat_counts = await question_note_dao.get_grouped_by_knowledge_point(db=db, user_id=user_id)
             if category_filter and kp_cat_id is not None:
                 flat_counts = [
-                    item for item in flat_counts
+                    item
+                    for item in flat_counts
                     if str(item['group_name'] or '').strip() in category_filter.knowledge_names
                 ]
             count_map = {item['group_name']: item['count'] for item in flat_counts}
@@ -547,7 +544,8 @@ class NoteService:
             flat_counts = await question_note_dao.get_bank_chapter_counts(db=db, user_id=user_id)
             if category_filter and cat_id is not None:
                 flat_counts = [
-                    row for row in flat_counts
+                    row
+                    for row in flat_counts
                     if row['bank_id'] is not None and int(row['bank_id']) in category_filter.bank_ids
                 ]
             count_map = {(row['bank_id'], row['chapter_id']): row['count'] for row in flat_counts}

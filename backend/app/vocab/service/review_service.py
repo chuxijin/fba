@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import datetime, timezone as datetime_timezone
+from datetime import datetime
 
 from fsrs import Card, Rating, Scheduler, State
 
@@ -144,4 +144,3 @@ class ReviewService:
 
 
 review_service: ReviewService = ReviewService()
-

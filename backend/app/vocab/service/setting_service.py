@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.vocab.crud.crud_user_setting import user_setting_dao
 from backend.app.vocab.schema.setting import GetSettingDetail, UpdateSettingParam
-from backend.common.exception import errors
 
 
 class SettingService:

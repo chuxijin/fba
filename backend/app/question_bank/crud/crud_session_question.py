@@ -76,9 +76,7 @@ class CRUDSessionQuestion(CRUDPlus[SessionQuestion]):
             rows.append(row)
 
         stmt = (
-            pg_insert(SessionQuestion)
-            .values(rows)
-            .on_conflict_do_nothing(index_elements=['session_id', 'question_id'])
+            pg_insert(SessionQuestion).values(rows).on_conflict_do_nothing(index_elements=['session_id', 'question_id'])
         )
         result = await db.execute(stmt)
         inserted_count = result.rowcount if result.rowcount is not None else -1
@@ -91,9 +89,7 @@ class CRUDSessionQuestion(CRUDPlus[SessionQuestion]):
             )
         await db.flush()
 
-    async def batch_create_pristine(
-        self, db: AsyncSession, session_id: int, items: list[dict]
-    ) -> None:
+    async def batch_create_pristine(self, db: AsyncSession, session_id: int, items: list[dict]) -> None:
         """
         批量创建会话题目明细(零冲突场景, 跳过 on_conflict_do_nothing 冲突探测)
 
@@ -237,9 +233,7 @@ class CRUDSessionQuestion(CRUDPlus[SessionQuestion]):
         """
         return await self.select_model_by_column(db, session_id=session_id, question_id=question_id)
 
-    async def get_by_session_and_seq(
-        self, db: AsyncSession, session_id: int, seq_no: int
-    ) -> SessionQuestion | None:
+    async def get_by_session_and_seq(self, db: AsyncSession, session_id: int, seq_no: int) -> SessionQuestion | None:
         """
         获取特定会话中指定题序的记录
 

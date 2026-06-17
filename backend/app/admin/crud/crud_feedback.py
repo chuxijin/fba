@@ -93,11 +93,7 @@ class CRUDFeedback(CRUDPlus[Feedback]):
         :param status: 处理状态
         :return:
         """
-        stmt = (
-            select(Feedback)
-            .where(Feedback.user_id == user_id)
-            .order_by(Feedback.created_time.desc())
-        )
+        stmt = select(Feedback).where(Feedback.user_id == user_id).order_by(Feedback.created_time.desc())
         if feedback_type is not None:
             stmt = stmt.where(Feedback.feedback_type == feedback_type)
         if status is not None:

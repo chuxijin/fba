@@ -58,7 +58,9 @@ class StudyPlanRecord(Base):
         comment='扩展数据（如错题复盘对应的 WrongQuestionReview ID 列表）',
     )
     completed_at: Mapped[datetime] = mapped_column(
-        TimeZone, default_factory=timezone.now, comment='完成时间',
+        TimeZone,
+        default_factory=timezone.now,
+        comment='完成时间',
     )
 
     # ============ 关系 ============

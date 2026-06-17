@@ -44,7 +44,9 @@ async def create_favorite(
     return response_base.success(data=GetQuestionFavoriteDetail.model_validate(new_favorite))
 
 
-@router.get('', summary='获取收藏列表', name='qbank_favorite_get_list', dependencies=[DependsJwtAuth, DependsPagination])
+@router.get(
+    '', summary='获取收藏列表', name='qbank_favorite_get_list', dependencies=[DependsJwtAuth, DependsPagination]
+)
 async def get_favorites(
     request: Request,
     db: CurrentSession,
@@ -52,9 +54,7 @@ async def get_favorites(
     is_pinned: Annotated[bool | None, Query(description='是否置顶')] = None,
 ) -> ResponseSchemaModel[PageData[GetQuestionFavoriteListItem]]:
     """获取用户的收藏列表（分页）"""
-    stmt = await question_favorite_dao.get_select(
-        user_id=request.user.id, folder_name=folder_name, is_pinned=is_pinned
-    )
+    stmt = await question_favorite_dao.get_select(user_id=request.user.id, folder_name=folder_name, is_pinned=is_pinned)
     page_data = await paging_data(db, stmt, GetQuestionFavoriteListItem)
     return response_base.success(data=page_data)
 
@@ -62,16 +62,19 @@ async def get_favorites(
 # ============ 收藏夹管理接口（具体路径，必须在 /{pk} 之前）============
 
 
-@router.delete('/questions/{question_id}', summary='通过题目ID取消收藏', name='qbank_favorite_delete_by_question', dependencies=[DependsJwtAuth])
+@router.delete(
+    '/questions/{question_id}',
+    summary='通过题目ID取消收藏',
+    name='qbank_favorite_delete_by_question',
+    dependencies=[DependsJwtAuth],
+)
 async def delete_favorite_by_question(
     request: Request,
     db: CurrentSessionTransaction,
     question_id: Annotated[int, Path(description='题目 ID')],
 ) -> ResponseModel:
     """通过题目ID直接取消收藏"""
-    count = await favorite_service.delete_favorite_by_question(
-        db=db, user_id=request.user.id, question_id=question_id
-    )
+    count = await favorite_service.delete_favorite_by_question(db=db, user_id=request.user.id, question_id=question_id)
 
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg='取消收藏成功'))
@@ -112,9 +115,7 @@ async def check_favorited(
     question_ids: Annotated[list[int], Body(description='题目 ID 列表（可以是单个或多个）')],
 ) -> ResponseSchemaModel[dict[int, bool]]:
     """批量检查题目的收藏状态"""
-    status_map = await favorite_service.check_favorited(
-        db=db, user_id=request.user.id, question_ids=question_ids
-    )
+    status_map = await favorite_service.check_favorited(db=db, user_id=request.user.id, question_ids=question_ids)
     return response_base.success(data=status_map)
 
 
@@ -129,7 +130,11 @@ async def get_statistics(
     """获取用户的收藏统计数据，传 group_by 时返回树形分组"""
     if group_by:
         data = await favorite_service.get_statistics_with_groups(
-            db=db, user_id=request.user.id, group_by=group_by, cat_id=cat_id, kp_cat_id=kp_cat_id,
+            db=db,
+            user_id=request.user.id,
+            group_by=group_by,
+            cat_id=cat_id,
+            kp_cat_id=kp_cat_id,
         )
         return response_base.success(data=data)
     stats = await favorite_service.get_statistics(db=db, user_id=request.user.id, cat_id=cat_id, kp_cat_id=kp_cat_id)
@@ -173,7 +178,11 @@ async def get_question_ids(
         )
 
     ids = await question_favorite_dao.get_question_ids(
-        db=db, user_id=request.user.id, bank_id=bank_id, chapter_id=chapter_id, knowledge_point=knowledge_point,
+        db=db,
+        user_id=request.user.id,
+        bank_id=bank_id,
+        chapter_id=chapter_id,
+        knowledge_point=knowledge_point,
     )
     return response_base.success(data=ids)
 
@@ -222,9 +231,7 @@ async def set_pin(
     is_pinned: Annotated[bool, Body(embed=True, description='是否置顶')],
 ) -> ResponseModel:
     """设置收藏置顶或取消置顶"""
-    count = await favorite_service.set_pin(
-        db=db, favorite_id=pk, user_id=request.user.id, is_pinned=is_pinned
-    )
+    count = await favorite_service.set_pin(db=db, favorite_id=pk, user_id=request.user.id, is_pinned=is_pinned)
 
     if count > 0:
         return response_base.success()
@@ -238,9 +245,7 @@ async def delete_favorites(
     favorite_ids: Annotated[list[int], Body(description='收藏 ID 列表（支持单个或批量）')],
 ) -> ResponseModel:
     """取消收藏题目（支持单个和批量）"""
-    count = await favorite_service.delete_favorites(
-        db=db, favorite_ids=favorite_ids, user_id=request.user.id
-    )
+    count = await favorite_service.delete_favorites(db=db, favorite_ids=favorite_ids, user_id=request.user.id)
 
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg=f'成功取消 {count} 个收藏'))

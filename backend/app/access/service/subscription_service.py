@@ -37,9 +37,7 @@ class SubscriptionService:
         return sub
 
     @staticmethod
-    async def list_active(
-        db: AsyncSession, *, user_id: int, ts: datetime | None = None
-    ) -> Sequence[Subscription]:
+    async def list_active(db: AsyncSession, *, user_id: int, ts: datetime | None = None) -> Sequence[Subscription]:
         """
         列出用户当前有效订阅
 
@@ -99,23 +97,23 @@ class SubscriptionService:
             from backend.app.question_bank.service.user_message_service import user_message_service
             from backend.common.log import log
 
-            lower_str = sub.valid_period.lower.strftime("%Y-%m-%d %H:%M:%S") if sub.valid_period.lower else "-"
-            upper_str = sub.valid_period.upper.strftime("%Y-%m-%d %H:%M:%S") if sub.valid_period.upper else "永久"
+            lower_str = sub.valid_period.lower.strftime('%Y-%m-%d %H:%M:%S') if sub.valid_period.lower else '-'
+            upper_str = sub.valid_period.upper.strftime('%Y-%m-%d %H:%M:%S') if sub.valid_period.upper else '永久'
 
             await user_message_service.create(
                 db=db,
                 obj_in=CreateUserMessageParam(
-                    title="订阅开通通知",
-                    content=f"恭喜！您的「{template.name}」订阅已成功开通，有效期为 {lower_str} 至 {upper_str}。",
-                    target_type="user",
+                    title='订阅开通通知',
+                    content=f'恭喜！您的「{template.name}」订阅已成功开通，有效期为 {lower_str} 至 {upper_str}。',
+                    target_type='user',
                     user_id=obj.user_id,
-                    message_type="personal",
+                    message_type='personal',
                     status=1,
-                    publish_time=timezone.now()
-                )
+                    publish_time=timezone.now(),
+                ),
             )
         except Exception as e:
-            log.error(f"发送订阅消息通知失败: {e}", exc_info=True)
+            log.error(f'发送订阅消息通知失败: {e}', exc_info=True)
 
         return sub
 
@@ -171,30 +169,28 @@ class SubscriptionService:
             from backend.app.question_bank.service.user_message_service import user_message_service
             from backend.common.log import log
 
-            lower_str = start.strftime("%Y-%m-%d %H:%M:%S")
-            upper_str = end.strftime("%Y-%m-%d %H:%M:%S") if end else "永久"
+            lower_str = start.strftime('%Y-%m-%d %H:%M:%S')
+            upper_str = end.strftime('%Y-%m-%d %H:%M:%S') if end else '永久'
 
             await user_message_service.create(
                 db=db,
                 obj_in=CreateUserMessageParam(
-                    title="订阅开通通知",
-                    content=f"恭喜！您的「{template.name}」订阅已成功开通，有效期为 {lower_str} 至 {upper_str}。",
-                    target_type="user",
+                    title='订阅开通通知',
+                    content=f'恭喜！您的「{template.name}」订阅已成功开通，有效期为 {lower_str} 至 {upper_str}。',
+                    target_type='user',
                     user_id=user_id,
-                    message_type="personal",
+                    message_type='personal',
                     status=1,
-                    publish_time=timezone.now()
-                )
+                    publish_time=timezone.now(),
+                ),
             )
         except Exception as e:
-            log.error(f"发送订阅模板消息通知失败: {e}", exc_info=True)
+            log.error(f'发送订阅模板消息通知失败: {e}', exc_info=True)
 
         return sub
 
     @staticmethod
-    async def cancel(
-        db: AsyncSession, *, pk: int, obj: CancelSubscriptionParam
-    ) -> int:
+    async def cancel(db: AsyncSession, *, pk: int, obj: CancelSubscriptionParam) -> int:
         """
         取消订阅(标记 status=cancelled)
 
@@ -305,22 +301,22 @@ class SubscriptionService:
                 from backend.app.question_bank.service.user_message_service import user_message_service
                 from backend.common.log import log
 
-                upper_str = new_upper.strftime("%Y-%m-%d %H:%M:%S")
+                upper_str = new_upper.strftime('%Y-%m-%d %H:%M:%S')
 
                 await user_message_service.create(
                     db=db,
                     obj_in=CreateUserMessageParam(
-                        title="订阅续期通知",
-                        content=f"您的「{template.name}」订阅已成功延期 {days} 天，到期时间更新为 {upper_str}。",
-                        target_type="user",
+                        title='订阅续期通知',
+                        content=f'您的「{template.name}」订阅已成功延期 {days} 天，到期时间更新为 {upper_str}。',
+                        target_type='user',
                         user_id=user_id,
-                        message_type="personal",
+                        message_type='personal',
                         status=1,
-                        publish_time=timezone.now()
-                    )
+                        publish_time=timezone.now(),
+                    ),
                 )
             except Exception as e:
-                log.error(f"发送订阅续期消息通知失败: {e}", exc_info=True)
+                log.error(f'发送订阅续期消息通知失败: {e}', exc_info=True)
 
             return existing
 

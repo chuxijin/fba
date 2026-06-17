@@ -117,18 +117,20 @@ class CategoryFilterService:
         root_category = aliased(category_dao.model)
         target_category = aliased(category_dao.model)
         path_prefix = func.coalesce(func.nullif(root_category.path, ''), cast(root_category.id, String))
-        stmt = select(exists().where(
-            root_category.id == int(root_cat_id),
-            target_category.id == int(target_cat_id),
-            target_category.app_code == QBANK_CATEGORY_APP_CODE,
-            target_category.type == 'product_catalog',
-            target_category.status.is_(True),
-            or_(
-                target_category.id == root_category.id,
-                target_category.path == path_prefix,
-                target_category.path.like(func.concat(path_prefix, '/%')),
-            ),
-        ))
+        stmt = select(
+            exists().where(
+                root_category.id == int(root_cat_id),
+                target_category.id == int(target_cat_id),
+                target_category.app_code == QBANK_CATEGORY_APP_CODE,
+                target_category.type == 'product_catalog',
+                target_category.status.is_(True),
+                or_(
+                    target_category.id == root_category.id,
+                    target_category.path == path_prefix,
+                    target_category.path.like(func.concat(path_prefix, '/%')),
+                ),
+            )
+        )
         return bool(await db.scalar(stmt))
 
     @staticmethod
@@ -184,12 +186,9 @@ class CategoryFilterService:
         if not category_ids:
             return set()
 
-        stmt = (
-            select(QuestionBank.id)
-            .where(
-                QuestionBank.status == 1,
-                QuestionBank.cat_id.in_(category_ids),
-            )
+        stmt = select(QuestionBank.id).where(
+            QuestionBank.status == 1,
+            QuestionBank.cat_id.in_(category_ids),
         )
         rows = (await db.execute(stmt)).scalars().all()
         return {int(bank_id) for bank_id in rows}

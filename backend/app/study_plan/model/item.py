@@ -28,7 +28,8 @@ class StudyPlanItem(Base, UserMixin):
         sa.Index('idx_study_plan_item_user_date_status', 'user_id', 'plan_date', 'status'),
         sa.Index(
             'idx_study_plan_item_ref',
-            'ref_type', 'ref_id',
+            'ref_type',
+            'ref_id',
             postgresql_where=sa.text('ref_id IS NOT NULL'),
         ),
         sa.CheckConstraint(
@@ -62,11 +63,13 @@ class StudyPlanItem(Base, UserMixin):
     plan_date: Mapped[date] = mapped_column(sa.Date, comment='所属日期')
     order_index: Mapped[int] = mapped_column(sa.Integer, comment='当日顺序（从 0 开始）')
     module_type: Mapped[str] = mapped_column(
-        sa.String(16), comment='模块类型: review/practice/wrong_review/ability',
+        sa.String(16),
+        comment='模块类型: review/practice/wrong_review/ability',
     )
     title: Mapped[str] = mapped_column(sa.String(255), comment='模块标题')
     ref_type: Mapped[str] = mapped_column(
-        sa.String(32), comment='引用类型: content/question_set/wrong_dynamic/ability_task',
+        sa.String(32),
+        comment='引用类型: content/question_set/wrong_dynamic/ability_task',
     )
     ref_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
@@ -75,7 +78,9 @@ class StudyPlanItem(Base, UserMixin):
     )
     expected_minutes: Mapped[int] = mapped_column(sa.Integer, default=15, comment='预计耗时（分钟）')
     status: Mapped[str] = mapped_column(
-        sa.String(16), default='pending', comment='状态: pending/in_progress/completed/skipped',
+        sa.String(16),
+        default='pending',
+        comment='状态: pending/in_progress/completed/skipped',
     )
     extra: Mapped[dict | None] = mapped_column(
         CompatibleJSONB,

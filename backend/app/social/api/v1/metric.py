@@ -81,7 +81,11 @@ async def get_social_work_trend(
     from backend.database.db import async_db_session
 
     async with async_db_session() as db:
-        stmt = select(SocialWorkMetric).where(SocialWorkMetric.work_id == work_id).order_by(SocialWorkMetric.record_time.asc())
+        stmt = (
+            select(SocialWorkMetric)
+            .where(SocialWorkMetric.work_id == work_id)
+            .order_by(SocialWorkMetric.record_time.asc())
+        )
         result = await db.execute(stmt)
         items = result.scalars().all()
         data = [
@@ -96,5 +100,3 @@ async def get_social_work_trend(
             for i in items
         ]
         return response_base.success(data=data)
-
-

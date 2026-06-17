@@ -75,7 +75,11 @@ async def get_statistics(
     """获取用户的笔记统计数据，传 group_by 时返回树形分组"""
     if group_by:
         data = await note_service.get_statistics_with_groups(
-            db=db, user_id=request.user.id, group_by=group_by, cat_id=cat_id, kp_cat_id=kp_cat_id,
+            db=db,
+            user_id=request.user.id,
+            group_by=group_by,
+            cat_id=cat_id,
+            kp_cat_id=kp_cat_id,
         )
         return response_base.success(data=data)
     stats = await note_service.get_statistics(db=db, user_id=request.user.id, cat_id=cat_id, kp_cat_id=kp_cat_id)
@@ -119,7 +123,11 @@ async def get_question_ids(
         )
 
     ids = await question_note_dao.get_question_ids(
-        db=db, user_id=request.user.id, bank_id=bank_id, chapter_id=chapter_id, knowledge_point=knowledge_point,
+        db=db,
+        user_id=request.user.id,
+        bank_id=bank_id,
+        chapter_id=chapter_id,
+        knowledge_point=knowledge_point,
     )
     return response_base.success(data=ids)
 
@@ -132,9 +140,7 @@ async def get_question_public_notes(
     is_featured: Annotated[bool | None, Query(description='只看精选')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionNoteListItem]]:
     """获取题目的所有公开笔记（按质量分排序）"""
-    note_list = await note_service.get_question_public_notes(
-        db=db, question_id=question_id, is_featured=is_featured
-    )
+    note_list = await note_service.get_question_public_notes(db=db, question_id=question_id, is_featured=is_featured)
     return response_base.success(data=note_list)
 
 
@@ -157,9 +163,7 @@ async def update_note(
     obj: UpdateQuestionNoteParam,
 ) -> ResponseModel:
     """更新笔记内容和公开状态（支持局部更新）"""
-    count = await note_service.update_note(
-        db=db, note_id=pk, user_id=request.user.id, obj=obj
-    )
+    count = await note_service.update_note(db=db, note_id=pk, user_id=request.user.id, obj=obj)
 
     if count > 0:
         return response_base.success()

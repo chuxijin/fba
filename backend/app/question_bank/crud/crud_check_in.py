@@ -13,9 +13,7 @@ from backend.utils.timezone import timezone
 class CRUDCheckIn(CRUDPlus[UserCheckIn]):
     """用户打卡数据库操作类"""
 
-    async def get_by_user_and_date(
-        self, db: AsyncSession, user_id: int, check_date: date
-    ) -> UserCheckIn | None:
+    async def get_by_user_and_date(self, db: AsyncSession, user_id: int, check_date: date) -> UserCheckIn | None:
         """
         获取用户指定日期的打卡记录
 
@@ -85,11 +83,7 @@ class CRUDCheckIn(CRUDPlus[UserCheckIn]):
         :param user_id: 用户 ID
         :return:
         """
-        stmt = (
-            select(UserCheckIn)
-            .where(UserCheckIn.user_id == user_id)
-            .order_by(UserCheckIn.check_date.desc())
-        )
+        stmt = select(UserCheckIn).where(UserCheckIn.user_id == user_id).order_by(UserCheckIn.check_date.desc())
         result = await db.execute(stmt)
         records = result.scalars().all()
 
@@ -119,10 +113,7 @@ class CRUDCheckIn(CRUDPlus[UserCheckIn]):
         :param user_id: 用户 ID
         :return:
         """
-        stmt = (
-            select(func.count(UserCheckIn.id))
-            .where(UserCheckIn.user_id == user_id)
-        )
+        stmt = select(func.count(UserCheckIn.id)).where(UserCheckIn.user_id == user_id)
         result = await db.scalar(stmt)
         return result or 0
 

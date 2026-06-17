@@ -11,4 +11,3 @@ router = APIRouter(prefix='/question-generation')
 router.include_router(material_router, prefix='/materials', tags=['AI 出题素材'])
 router.include_router(task_router, prefix='/tasks', tags=['AI 出题任务'])
 router.include_router(candidate_router, prefix='/candidates', tags=['AI 候选题'])
-

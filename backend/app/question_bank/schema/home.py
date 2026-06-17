@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """首页相关 Schema"""
+
 import datetime
 
 from decimal import Decimal

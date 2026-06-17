@@ -47,7 +47,9 @@ class CRUDSocialAccount(CRUDPlus[SocialAccount]):
         # 显式禁用关系加载，避免异步上下文外 await
         return await self.select_order('id', 'desc', load_strategies={'works': 'noload'}, **filters)
 
-    async def create(self, db: AsyncSession, obj: CreateSocialAccountParam, current_user_id: int | None = None) -> SocialAccount:
+    async def create(
+        self, db: AsyncSession, obj: CreateSocialAccountParam, current_user_id: int | None = None
+    ) -> SocialAccount:
         """
         创建账号
 
@@ -79,6 +81,7 @@ class CRUDSocialAccount(CRUDPlus[SocialAccount]):
         if isinstance(ai, str):
             try:
                 import json
+
                 data['account_info'] = json.loads(ai)
             except Exception:
                 data['account_info'] = None
@@ -91,7 +94,9 @@ class CRUDSocialAccount(CRUDPlus[SocialAccount]):
         await db.refresh(account)
         return account
 
-    async def update(self, db: AsyncSession, pk: int, obj: UpdateSocialAccountParam, current_user_id: int | None = None) -> int:
+    async def update(
+        self, db: AsyncSession, pk: int, obj: UpdateSocialAccountParam, current_user_id: int | None = None
+    ) -> int:
         """
         更新账号
 
@@ -123,6 +128,7 @@ class CRUDSocialAccount(CRUDPlus[SocialAccount]):
         if isinstance(ai2, str):
             try:
                 import json
+
                 update_data['account_info'] = json.loads(ai2)
             except Exception:
                 update_data['account_info'] = None
@@ -141,5 +147,3 @@ class CRUDSocialAccount(CRUDPlus[SocialAccount]):
 
 # 实例
 social_account_dao = CRUDSocialAccount(SocialAccount)
-
-

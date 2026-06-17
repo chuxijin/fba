@@ -222,7 +222,9 @@ async def cleanup_expired_render_books() -> dict[str, Any]:
         while True:
             async with async_db_session() as db:
                 jobs = await render_book_job_dao.list_expired_jobs(
-                    db=db, threshold=threshold, limit=BATCH_SIZE,
+                    db=db,
+                    threshold=threshold,
+                    limit=BATCH_SIZE,
                 )
                 if not jobs:
                     break

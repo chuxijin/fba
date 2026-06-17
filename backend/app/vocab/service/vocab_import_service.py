@@ -51,13 +51,20 @@ class VocabImportService:
         df = df.where(df.notna(), None)
 
         col_map = {
-            '单词': '单词', '美式音标': '美式音标', '英式音标': '英式音标',
+            '单词': '单词',
+            '美式音标': '美式音标',
+            '英式音标': '英式音标',
             '常用释义': '常用释义',
-            '释义1_词性': '释义1_词性', '释义1_中文': '释义1_中文',
-            '释义2_词性': '释义2_词性', '释义2_中文': '释义2_中文',
-            '释义3_词性': '释义3_词性', '释义3_中文': '释义3_中文',
-            '例句1_英文': '例句1_英文', '例句1_中文': '例句1_中文',
-            '例句2_英文': '例句2_英文', '例句2_中文': '例句2_中文',
+            '释义1_词性': '释义1_词性',
+            '释义1_中文': '释义1_中文',
+            '释义2_词性': '释义2_词性',
+            '释义2_中文': '释义2_中文',
+            '释义3_词性': '释义3_词性',
+            '释义3_中文': '释义3_中文',
+            '例句1_英文': '例句1_英文',
+            '例句1_中文': '例句1_中文',
+            '例句2_英文': '例句2_英文',
+            '例句2_中文': '例句2_中文',
             '词频等级': '词频等级',
         }
 
@@ -118,13 +125,9 @@ class VocabImportService:
 
         # 预加载已有单词索引（按 word 文本 -> id）
 
-        existing_stmt = select(VocabWord.id, VocabWord.word).where(
-            VocabWord.word.in_([r.单词 for r in rows])
-        )
+        existing_stmt = select(VocabWord.id, VocabWord.word).where(VocabWord.word.in_([r.单词 for r in rows]))
         existing_result = await db.execute(existing_stmt)
-        existing_map: dict[str, int] = {
-            row.word.lower(): row.id for row in existing_result.all()
-        }
+        existing_map: dict[str, int] = {row.word.lower(): row.id for row in existing_result.all()}
 
         # 如果要关联词书，预加载已关联的 word_id
         linked_word_ids: set[int] = set()
@@ -157,22 +160,26 @@ class VocabImportService:
                         )
                         linked_word_ids.add(word_id)
                         linked_count += 1
-                        results.append(VocabImportResultItem(
-                            row_number=row_index,
-                            word=row.单词,
-                            success=True,
-                            action='linked',
-                            word_id=word_id,
-                        ))
+                        results.append(
+                            VocabImportResultItem(
+                                row_number=row_index,
+                                word=row.单词,
+                                success=True,
+                                action='linked',
+                                word_id=word_id,
+                            )
+                        )
                     else:
                         skipped_count += 1
-                        results.append(VocabImportResultItem(
-                            row_number=row_index,
-                            word=row.单词,
-                            success=True,
-                            action='skipped',
-                            word_id=word_id,
-                        ))
+                        results.append(
+                            VocabImportResultItem(
+                                row_number=row_index,
+                                word=row.单词,
+                                success=True,
+                                action='skipped',
+                                word_id=word_id,
+                            )
+                        )
                     success_count += 1
                     continue
 
@@ -226,33 +233,39 @@ class VocabImportService:
 
                 # 关联词书
                 if book_id is not None:
-                    db.add(VocabBookWord(
-                        book_id=book_id,
-                        word_id=word_id,
-                        sort_order=row_index,
-                    ))
+                    db.add(
+                        VocabBookWord(
+                            book_id=book_id,
+                            word_id=word_id,
+                            sort_order=row_index,
+                        )
+                    )
                     linked_word_ids.add(word_id)
 
                 existing_map[word_lower] = word_id
                 created_count += 1
                 success_count += 1
-                results.append(VocabImportResultItem(
-                    row_number=row_index,
-                    word=row.单词,
-                    success=True,
-                    action='created',
-                    word_id=word_id,
-                ))
+                results.append(
+                    VocabImportResultItem(
+                        row_number=row_index,
+                        word=row.单词,
+                        success=True,
+                        action='created',
+                        word_id=word_id,
+                    )
+                )
 
             except Exception as e:
                 log.warning(f'单词导入第 {row_index} 行失败: {e}')
-                results.append(VocabImportResultItem(
-                    row_number=row_index,
-                    word=row.单词,
-                    success=False,
-                    action='error',
-                    error_message=str(e),
-                ))
+                results.append(
+                    VocabImportResultItem(
+                        row_number=row_index,
+                        word=row.单词,
+                        success=False,
+                        action='error',
+                        error_message=str(e),
+                    )
+                )
 
         # 更新词书 word_count
         if book is not None:
@@ -289,12 +302,20 @@ class VocabImportService:
 
             # 表头
             headers = [
-                '单词', '美式音标', '英式音标', '常用释义',
-                '释义1_词性', '释义1_中文',
-                '释义2_词性', '释义2_中文',
-                '释义3_词性', '释义3_中文',
-                '例句1_英文', '例句1_中文',
-                '例句2_英文', '例句2_中文',
+                '单词',
+                '美式音标',
+                '英式音标',
+                '常用释义',
+                '释义1_词性',
+                '释义1_中文',
+                '释义2_词性',
+                '释义2_中文',
+                '释义3_词性',
+                '释义3_中文',
+                '例句1_英文',
+                '例句1_中文',
+                '例句2_英文',
+                '例句2_中文',
                 '词频等级',
             ]
             ws.append(headers)
@@ -310,41 +331,73 @@ class VocabImportService:
 
             # 示例数据
             ws.append([
-                'abandon', '/əˈbændən/', '/əˈbændən/', '放弃；遗弃',
-                'v.', '放弃，遗弃；沉溺于',
-                'n.', '放纵，放任',
-                None, None,
-                'He abandoned his wife and children.', '他抛弃了妻子和孩子。',
-                'The project was abandoned due to lack of funding.', '由于缺乏资金，该项目被放弃了。',
+                'abandon',
+                '/əˈbændən/',
+                '/əˈbændən/',
+                '放弃；遗弃',
+                'v.',
+                '放弃，遗弃；沉溺于',
+                'n.',
+                '放纵，放任',
+                None,
+                None,
+                'He abandoned his wife and children.',
+                '他抛弃了妻子和孩子。',
+                'The project was abandoned due to lack of funding.',
+                '由于缺乏资金，该项目被放弃了。',
                 5,
             ])
             ws.append([
-                'ability', '/əˈbɪləti/', '/əˈbɪlɪti/', '能力；才能',
-                'n.', '能力，才能',
-                None, None,
-                None, None,
-                'She has the ability to solve complex problems.', '她有解决复杂问题的能力。',
-                None, None,
+                'ability',
+                '/əˈbɪləti/',
+                '/əˈbɪlɪti/',
+                '能力；才能',
+                'n.',
+                '能力，才能',
+                None,
+                None,
+                None,
+                None,
+                'She has the ability to solve complex problems.',
+                '她有解决复杂问题的能力。',
+                None,
+                None,
                 4,
             ])
             ws.append([
-                'abstract', '/ˈæbstrækt/', '/ˈæbstrækt/', '抽象的；摘要',
-                'adj.', '抽象的，理论性的',
-                'n.', '摘要，概要',
-                'v.', '提取，摘录',
-                'Abstract art is not to everyone\'s taste.', '抽象艺术并非人人喜欢。',
-                None, None,
+                'abstract',
+                '/ˈæbstrækt/',
+                '/ˈæbstrækt/',
+                '抽象的；摘要',
+                'adj.',
+                '抽象的，理论性的',
+                'n.',
+                '摘要，概要',
+                'v.',
+                '提取，摘录',
+                "Abstract art is not to everyone's taste.",
+                '抽象艺术并非人人喜欢。',
+                None,
+                None,
                 3,
             ])
 
             # 列宽
             col_widths = {
-                'A': 14, 'B': 16, 'C': 16, 'D': 22,
-                'E': 10, 'F': 24,
-                'G': 10, 'H': 24,
-                'I': 10, 'J': 24,
-                'K': 40, 'L': 30,
-                'M': 40, 'N': 30,
+                'A': 14,
+                'B': 16,
+                'C': 16,
+                'D': 22,
+                'E': 10,
+                'F': 24,
+                'G': 10,
+                'H': 24,
+                'I': 10,
+                'J': 24,
+                'K': 40,
+                'L': 30,
+                'M': 40,
+                'N': 30,
                 'O': 10,
             }
             for col_letter, width in col_widths.items():

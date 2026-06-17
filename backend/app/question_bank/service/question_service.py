@@ -314,9 +314,7 @@ class QuestionService:
         for item in items:
             kp_codes = QuestionService._extract_kp_codes(item)
             if kp_codes:
-                item['knowledge_point_display'] = [
-                    code_map.get(code, code) for code in kp_codes
-                ]
+                item['knowledge_point_display'] = [code_map.get(code, code) for code in kp_codes]
 
     @staticmethod
     def serialize_question(
@@ -417,9 +415,7 @@ class QuestionService:
         kp_codes = QuestionService._extract_kp_codes(data)
         if kp_codes:
             code_map = await knowledge_point_service.resolve_codes_to_names(db, kp_codes)
-            data['knowledge_point_display'] = [
-                code_map.get(code, code) for code in kp_codes
-            ]
+            data['knowledge_point_display'] = [code_map.get(code, code) for code in kp_codes]
 
         # 详情接口对齐 GetQuestionDetail schema：补齐 options / placements
         data['options'] = QuestionService.normalize_options(question.options)
@@ -704,30 +700,37 @@ class QuestionService:
             kp_column = cast(Question.knowledge_point, PGJSONB)
             conditions = []
             for kp_id in normalized_ids:
-                conditions.extend((kp_column.contains([kp_id]), kp_column.contains([{'id': kp_id}]), kp_column.contains([{'category_id': kp_id}]), kp_column.contains([{'cat_id': kp_id}])))
+                conditions.extend((
+                    kp_column.contains([kp_id]),
+                    kp_column.contains([{'id': kp_id}]),
+                    kp_column.contains([{'category_id': kp_id}]),
+                    kp_column.contains([{'cat_id': kp_id}]),
+                ))
 
             for kp_name in normalized_names:
-                conditions.extend((kp_column.contains([kp_name]), kp_column.contains([{'name': kp_name}]), kp_column.contains([{'label': kp_name}]), kp_column.contains([{'title': kp_name}])))
+                conditions.extend((
+                    kp_column.contains([kp_name]),
+                    kp_column.contains([{'name': kp_name}]),
+                    kp_column.contains([{'label': kp_name}]),
+                    kp_column.contains([{'title': kp_name}]),
+                ))
 
             stmt = stmt.where(or_(*conditions))
 
-        stmt = (
-            stmt.group_by(
-                QuestionBank.id,
-                QuestionBank.cat_id,
-                QuestionBank.name,
-                QuestionBank.code,
-                QuestionBank.desc,
-                QuestionBank.bank_type,
-                QuestionBank.difficulty,
-                QuestionBank.parent_id,
-                QuestionBank.q_count_cache,
-            )
-            .order_by(
-                QuestionBank.name.desc(),
-                func.count(func.distinct(Question.id)).desc(),
-                QuestionBank.id.desc(),
-            )
+        stmt = stmt.group_by(
+            QuestionBank.id,
+            QuestionBank.cat_id,
+            QuestionBank.name,
+            QuestionBank.code,
+            QuestionBank.desc,
+            QuestionBank.bank_type,
+            QuestionBank.difficulty,
+            QuestionBank.parent_id,
+            QuestionBank.q_count_cache,
+        ).order_by(
+            QuestionBank.name.desc(),
+            func.count(func.distinct(Question.id)).desc(),
+            QuestionBank.id.desc(),
         )
 
         rows = (await db.execute(stmt)).mappings().all()
@@ -767,12 +770,18 @@ class QuestionService:
 
         # 4. 写挂载
         await question_placement_dao.replace_for_question(
-            db, question_id=question.id, items=obj.placements, user_id=user_id,
+            db,
+            question_id=question.id,
+            items=obj.placements,
+            user_id=user_id,
         )
 
         # 5. 写解析
         await question_analysis_dao.replace_versions(
-            db, question_id=question.id, items=obj.analyses, user_id=user_id,
+            db,
+            question_id=question.id,
+            items=obj.analyses,
+            user_id=user_id,
         )
 
         # 6. 写材料关联
@@ -828,18 +837,26 @@ class QuestionService:
             # 先记录旧挂载用于计算 cache delta
             old_placements = await question_placement_dao.list_by_question_ids(db, question_ids=[pk])
             await question_placement_dao.replace_for_question(
-                db, question_id=pk, items=obj.placements, user_id=user_id,
+                db,
+                question_id=pk,
+                items=obj.placements,
+                user_id=user_id,
             )
             # 旧挂载 -1，新挂载 +1
             await QuestionService._update_placement_caches_from_old(
-                db=db, old_placements=old_placements, new_placements=obj.placements,
+                db=db,
+                old_placements=old_placements,
+                new_placements=obj.placements,
             )
             count = max(count, 1)
 
         # 4. 更新解析（全量替换）
         if obj.analyses is not None:
             await question_analysis_dao.replace_versions(
-                db, question_id=pk, items=obj.analyses, user_id=user_id,
+                db,
+                question_id=pk,
+                items=obj.analyses,
+                user_id=user_id,
             )
             count = max(count, 1)
 
@@ -1022,10 +1039,7 @@ class QuestionService:
                 return False
             if len(user_answer) != len(correct_answer):
                 return False
-            return all(
-                str(u).strip() == str(c).strip()
-                for u, c in zip(user_answer, correct_answer)
-            )
+            return all(str(u).strip() == str(c).strip() for u, c in zip(user_answer, correct_answer))
 
         if question_type == 'shortAnswer':
             keywords = correct_data.get('keywords', [])
@@ -1274,9 +1288,7 @@ class QuestionService:
                 .values(q_count_cache=QuestionBank.q_count_cache + delta)
             )
 
-            result = await db.execute(
-                select(QuestionBank.parent_id).where(QuestionBank.id == current_id)
-            )
+            result = await db.execute(select(QuestionBank.parent_id).where(QuestionBank.id == current_id))
             parent_id = result.scalar()
             current_id = parent_id
 

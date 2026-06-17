@@ -24,26 +24,22 @@ logger = logging.getLogger(__name__)
 
 class SyncTaskService:
     """同步任务服务"""
-    
+
     def __init__(self):
         """初始化同步任务服务"""
         pass
-    
+
     async def get_sync_tasks_by_config_id(
-        self, 
-        config_id: int, 
-        status: str | None = None, 
-        *,
-        db: AsyncSession
+        self, config_id: int, status: str | None = None, *, db: AsyncSession
     ) -> list[GetSyncTaskDetail]:
         """
         根据配置ID获取同步任务列表
-        
+
         Args:
             config_id: 配置ID
             status: 任务状态筛选
             db: 数据库会话
-            
+
         Returns:
             list[GetSyncTaskDetail]: 同步任务列表
         """
@@ -52,33 +48,28 @@ class SyncTaskService:
     async def get_sync_task_detail(self, task_id: int, db: AsyncSession) -> GetSyncTaskWithRelationDetail | None:
         """
         获取同步任务详情
-        
+
         Args:
             task_id: 任务ID
             db: 数据库会话
-            
+
         Returns:
             GetSyncTaskWithRelationDetail | None: 同步任务详情
         """
         return await sync_task_dao.get_task_with_items(db, task_id=task_id)
 
     async def get_sync_task_items(
-        self, 
-        task_id: int, 
-        status: str | None = None,
-        operation_type: str | None = None,
-        *,
-        db: AsyncSession
+        self, task_id: int, status: str | None = None, operation_type: str | None = None, *, db: AsyncSession
     ) -> list[GetSyncTaskItemDetail]:
         """
         获取同步任务项列表
-        
+
         Args:
             task_id: 任务ID
             status: 任务项状态筛选
             operation_type: 操作类型筛选
             db: 数据库会话
-            
+
         Returns:
             list[GetSyncTaskItemDetail]: 同步任务项列表
         """
@@ -89,11 +80,11 @@ class SyncTaskService:
     async def get_task_statistics(self, task_id: int, db: AsyncSession) -> dict[str, int]:
         """
         获取任务统计信息
-        
+
         Args:
             task_id: 任务ID
             db: 数据库会话
-            
+
         Returns:
             dict[str, int]: 统计信息字典
         """
@@ -102,58 +93,54 @@ class SyncTaskService:
     async def delete_tasks_30days(self, db: AsyncSession) -> Dict[str, Any]:
         """
         删除30天以外的文件同步任务和任务项数据
-        
+
         Args:
             db: 数据库会话
-            
+
         Returns:
             Dict[str, Any]: 删除结果统计
         """
         try:
             # 计算30天前的日期
             cutoff_date = timezone.now() - timedelta(days=30)
-            
+
             # 先删除30天以外的同步任务项（因为外键约束）
-            task_items_stmt = delete(SyncTaskItem).where(
-                SyncTaskItem.created_time < cutoff_date
-            )
+            task_items_stmt = delete(SyncTaskItem).where(SyncTaskItem.created_time < cutoff_date)
             task_items_result = await db.execute(task_items_stmt)
             deleted_task_items_count = task_items_result.rowcount
-            
+
             # 再删除30天以外的同步任务
-            tasks_stmt = delete(SyncTask).where(
-                SyncTask.created_time < cutoff_date
-            )
+            tasks_stmt = delete(SyncTask).where(SyncTask.created_time < cutoff_date)
             tasks_result = await db.execute(tasks_stmt)
             deleted_tasks_count = tasks_result.rowcount
-            
+
             # 提交事务
             await db.commit()
-            
+
             total_deleted = deleted_task_items_count + deleted_tasks_count
-            
-            logger.info(f"成功删除30天以外的数据: 任务项 {deleted_task_items_count} 条, 任务 {deleted_tasks_count} 条")
-            
+
+            logger.info(f'成功删除30天以外的数据: 任务项 {deleted_task_items_count} 条, 任务 {deleted_tasks_count} 条')
+
             return {
-                "success": True,
-                "deleted_task_items": deleted_task_items_count,
-                "deleted_tasks": deleted_tasks_count,
-                "total_deleted": total_deleted,
-                "cutoff_date": cutoff_date.isoformat(),
-                "message": f"成功删除30天以外的数据: 任务项 {deleted_task_items_count} 条, 任务 {deleted_tasks_count} 条"
+                'success': True,
+                'deleted_task_items': deleted_task_items_count,
+                'deleted_tasks': deleted_tasks_count,
+                'total_deleted': total_deleted,
+                'cutoff_date': cutoff_date.isoformat(),
+                'message': f'成功删除30天以外的数据: 任务项 {deleted_task_items_count} 条, 任务 {deleted_tasks_count} 条',
             }
-            
+
         except Exception as e:
-            logger.error(f"删除30天以外的文件同步数据失败: {str(e)}")
+            logger.error(f'删除30天以外的文件同步数据失败: {str(e)}')
             # 回滚事务
             await db.rollback()
             return {
-                "success": False,
-                "error": str(e),
-                "deleted_task_items": 0,
-                "deleted_tasks": 0,
-                "total_deleted": 0,
-                "message": f"删除失败: {str(e)}"
+                'success': False,
+                'error': str(e),
+                'deleted_task_items': 0,
+                'deleted_tasks': 0,
+                'total_deleted': 0,
+                'message': f'删除失败: {str(e)}',
             }
 
 
@@ -163,4 +150,4 @@ sync_task_service = SyncTaskService()
 
 def get_sync_task_service() -> SyncTaskService:
     """获取同步任务服务实例"""
-    return sync_task_service 
+    return sync_task_service

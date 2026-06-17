@@ -6,12 +6,10 @@ from .crud_metric import CRUDSocialWorkMetric, social_work_metric_dao
 from .crud_work import CRUDSocialWork, social_work_dao
 
 __all__ = [
-    "CRUDSocialAccount",
-    "CRUDSocialWork",
-    "CRUDSocialWorkMetric",
-    "social_account_dao",
-    "social_work_dao",
-    "social_work_metric_dao",
+    'CRUDSocialAccount',
+    'CRUDSocialWork',
+    'CRUDSocialWorkMetric',
+    'social_account_dao',
+    'social_work_dao',
+    'social_work_metric_dao',
 ]
-
-

@@ -61,9 +61,7 @@ async def get_slot_list(
     keyword: Annotated[str | None, Query(description='搜索关键词')] = None,
 ) -> ResponseModel:
     """管理端获取运营位列表"""
-    data = await slot_service.get_slot_list(
-        db=db, status=status, slot_type=slot_type, scene=scene, keyword=keyword
-    )
+    data = await slot_service.get_slot_list(db=db, status=status, slot_type=slot_type, scene=scene, keyword=keyword)
     return response_base.success(data=data)
 
 

@@ -67,9 +67,12 @@ async def get_quest_list_for_admin(
     status: Annotated[int | None, Query(description='状态过滤')] = None,
     keyword: Annotated[str | None, Query(description='搜索关键词')] = None,
     domain_code: Annotated[str | None, Query(description='领域码过滤')] = None,
+    quest_type: Annotated[str | None, Query(description='任务类型(manual/auto)')] = None,
 ) -> ResponseModel:
     """管理端获取任务列表"""
-    data = await quest_service.get_quest_list(db=db, status=status, keyword=keyword, domain_code=domain_code)
+    data = await quest_service.get_quest_list(
+        db=db, status=status, keyword=keyword, domain_code=domain_code, quest_type=quest_type
+    )
     return response_base.success(data=data)
 
 
@@ -99,9 +102,7 @@ async def review_claim(
     obj: ReviewClaimParam,
 ) -> ResponseSchemaModel[ReviewClaimResult]:
     """审核领取记录"""
-    data = await review_service.review(
-        db=db, claim_id=pk, reviewer_id=request.user.id, obj=obj
-    )
+    data = await review_service.review(db=db, claim_id=pk, reviewer_id=request.user.id, obj=obj)
     return response_base.success(data=data)
 
 
@@ -123,7 +124,5 @@ async def revoke_claim(
     obj: RevokeClaimParam,
 ) -> ResponseSchemaModel[RevokeClaimResult]:
     """撤销已审核记录, 同时回收已发放的奖励"""
-    data = await review_service.revoke(
-        db=db, claim_id=pk, reviewer_id=request.user.id, obj=obj
-    )
+    data = await review_service.revoke(db=db, claim_id=pk, reviewer_id=request.user.id, obj=obj)
     return response_base.success(data=data)

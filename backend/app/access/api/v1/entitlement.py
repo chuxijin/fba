@@ -66,9 +66,7 @@ async def get_entitlement_list(
         DependsRBAC,
     ],
 )
-async def create_entitlement(
-    db: CurrentSessionTransaction, obj: CreateEntitlementParam
-) -> ResponseModel:
+async def create_entitlement(db: CurrentSessionTransaction, obj: CreateEntitlementParam) -> ResponseModel:
     """创建权益"""
     await entitlement_service.create(db=db, obj=obj)
     return response_base.success()

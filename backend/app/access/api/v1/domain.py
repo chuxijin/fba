@@ -53,9 +53,7 @@ async def get_study_domain_list(
         DependsRBAC,
     ],
 )
-async def create_study_domain(
-    db: CurrentSessionTransaction, obj: CreateStudyDomainParam
-) -> ResponseModel:
+async def create_study_domain(db: CurrentSessionTransaction, obj: CreateStudyDomainParam) -> ResponseModel:
     """创建学习领域"""
     await study_domain_service.create(db=db, obj=obj)
     return response_base.success()

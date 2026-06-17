@@ -20,6 +20,7 @@ from backend.app.actcode.schema.actcode import OrderCodeActivateResult, OrderCod
 from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.model.user import User
 from backend.app.admin.service.auth_service import auth_service
+from backend.app.admin.service.user_service import user_service
 from backend.app.admin.utils.password_security import get_hash_password
 from backend.app.question_bank.service.user_account_service import user_account_service
 from backend.common.exception import errors
@@ -242,8 +243,8 @@ class ActivateService:
         password = get_hash_password(cls.ORDER_DEFAULT_PASSWORD, salt)
         nickname = f'用户{order_no[-6:]}' if len(order_no) >= 6 else username
 
-        return await user_dao.create_user_with_roles(
-            db,
+        return await user_service.register(
+            db=db,
             user_data={
                 'username': username,
                 'nickname': nickname,
@@ -362,9 +363,7 @@ class ActivateService:
             if usage.user_id != str(user.id):
                 raise errors.ConflictError(msg='该订单号已绑定其他账号')
 
-            subscription = await cls._get_membership_snapshot(
-                db, user_id=user.id, batch=batch, order_no=actcode.code
-            )
+            subscription = await cls._get_membership_snapshot(db, user_id=user.id, batch=batch, order_no=actcode.code)
             return False, subscription
 
         cls._ensure_order_consumable(actcode=actcode, batch=batch, usage=usage)
@@ -437,9 +436,7 @@ class ActivateService:
             template_code=template_code,
             template_name=template_name,
             subscription_valid_to=subscription.valid_period.upper if subscription else None,
-            message='订单号激活成功'
-            if just_activated
-            else '订单号已绑定当前账号',
+            message='订单号激活成功' if just_activated else '订单号已绑定当前账号',
         )
 
     @classmethod
@@ -483,11 +480,7 @@ class ActivateService:
         )
 
         token_data = await auth_service.issue_login_token(
-            db=db,
-            response=response,
-            user=bound_user,
-            background_tasks=background_tasks,
-            success_msg='订单号登录成功'
+            db=db, response=response, user=bound_user, background_tasks=background_tasks, success_msg='订单号登录成功'
         )
 
         template_code, template_name = await cls._resolve_template_meta(db, subscription=subscription)

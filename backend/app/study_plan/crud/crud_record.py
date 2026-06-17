@@ -39,7 +39,9 @@ class CRUDStudyPlanRecord(CRUDPlus[StudyPlanRecord]):
         return result.scalars().all()
 
     async def get_latest_by_item(
-        self, db: AsyncSession, item_id: int,
+        self,
+        db: AsyncSession,
+        item_id: int,
     ) -> StudyPlanRecord | None:
         """
         获取计划项的最近一次完成记录
@@ -71,7 +73,8 @@ class CRUDStudyPlanRecord(CRUDPlus[StudyPlanRecord]):
         ranked = (
             select(
                 StudyPlanRecord.id.label('id'),
-                func.row_number()
+                func
+                .row_number()
                 .over(
                     partition_by=StudyPlanRecord.item_id,
                     order_by=(StudyPlanRecord.completed_at.desc(), StudyPlanRecord.id.desc()),
@@ -81,11 +84,7 @@ class CRUDStudyPlanRecord(CRUDPlus[StudyPlanRecord]):
             .where(StudyPlanRecord.item_id.in_(item_ids), StudyPlanRecord.deleted == 0)
             .subquery()
         )
-        stmt = (
-            select(StudyPlanRecord)
-            .join(ranked, StudyPlanRecord.id == ranked.c.id)
-            .where(ranked.c.row_number == 1)
-        )
+        stmt = select(StudyPlanRecord).join(ranked, StudyPlanRecord.id == ranked.c.id).where(ranked.c.row_number == 1)
         result = await db.execute(stmt)
         return result.scalars().all()
 

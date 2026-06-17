@@ -8,7 +8,7 @@ from fastapi import APIRouter
 
 from backend.app.access.model.pack import EntitlementPack
 from backend.app.access.model.subscription import Subscription
-from backend.app.access.model.template import SubscriptionTemplate, TemplatePack
+from backend.app.access.model.template import TemplatePack
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.rbac import DependsRBAC
@@ -47,7 +47,10 @@ async def get_dashboard_stats(db: CurrentSession) -> ResponseSchemaModel[dict]:
 
     # 生效订阅数
     active_count = await db.scalar(
-        sa.select(sa.func.count()).select_from(Subscription).where(
+        sa
+        .select(sa.func.count())
+        .select_from(Subscription)
+        .where(
             Subscription.status == 'active',
             Subscription.valid_period.contains(now),
         )
@@ -55,7 +58,10 @@ async def get_dashboard_stats(db: CurrentSession) -> ResponseSchemaModel[dict]:
 
     # 7 天内到期
     exp_7 = await db.scalar(
-        sa.select(sa.func.count()).select_from(Subscription).where(
+        sa
+        .select(sa.func.count())
+        .select_from(Subscription)
+        .where(
             Subscription.status == 'active',
             sa.func.upper(Subscription.valid_period) <= d7,
             sa.func.upper(Subscription.valid_period) > now,
@@ -64,7 +70,10 @@ async def get_dashboard_stats(db: CurrentSession) -> ResponseSchemaModel[dict]:
 
     # 30 天内到期
     exp_30 = await db.scalar(
-        sa.select(sa.func.count()).select_from(Subscription).where(
+        sa
+        .select(sa.func.count())
+        .select_from(Subscription)
+        .where(
             Subscription.status == 'active',
             sa.func.upper(Subscription.valid_period) <= d30,
             sa.func.upper(Subscription.valid_period) > now,
@@ -72,65 +81,76 @@ async def get_dashboard_stats(db: CurrentSession) -> ResponseSchemaModel[dict]:
     )
 
     # Pack 分布: 每个 pack 有多少生效订阅
-    pack_rows = (await db.execute(
-        sa.select(
-            EntitlementPack.name,
-            sa.func.count(sa.distinct(Subscription.id)),
+    pack_rows = (
+        await db.execute(
+            sa
+            .select(
+                EntitlementPack.name,
+                sa.func.count(sa.distinct(Subscription.id)),
+            )
+            .select_from(Subscription)
+            .join(TemplatePack, TemplatePack.template_id == Subscription.template_id)
+            .join(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
+            .where(
+                Subscription.status == 'active',
+                Subscription.valid_period.contains(now),
+            )
+            .group_by(EntitlementPack.name)
         )
-        .select_from(Subscription)
-        .join(TemplatePack, TemplatePack.template_id == Subscription.template_id)
-        .join(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
-        .where(
-            Subscription.status == 'active',
-            Subscription.valid_period.contains(now),
-        )
-        .group_by(EntitlementPack.name)
-    )).all()
+    ).all()
     pack_dist = {row[0]: row[1] for row in pack_rows}
 
     # Grade 分布
-    grade_rows = (await db.execute(
-        sa.select(
-            sa.cast(EntitlementPack.grade, sa.String),
-            sa.func.count(sa.distinct(Subscription.id)),
+    grade_rows = (
+        await db.execute(
+            sa
+            .select(
+                sa.cast(EntitlementPack.grade, sa.String),
+                sa.func.count(sa.distinct(Subscription.id)),
+            )
+            .select_from(Subscription)
+            .join(TemplatePack, TemplatePack.template_id == Subscription.template_id)
+            .join(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
+            .where(
+                Subscription.status == 'active',
+                Subscription.valid_period.contains(now),
+            )
+            .group_by(EntitlementPack.grade)
         )
-        .select_from(Subscription)
-        .join(TemplatePack, TemplatePack.template_id == Subscription.template_id)
-        .join(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
-        .where(
-            Subscription.status == 'active',
-            Subscription.valid_period.contains(now),
-        )
-        .group_by(EntitlementPack.grade)
-    )).all()
+    ).all()
     grade_dist = {row[0]: row[1] for row in grade_rows}
 
     # Domain 分布
     from backend.app.access.model.domain import StudyDomain
 
-    domain_rows = (await db.execute(
-        sa.select(
-            StudyDomain.name,
-            sa.func.count(sa.distinct(Subscription.id)),
+    domain_rows = (
+        await db.execute(
+            sa
+            .select(
+                StudyDomain.name,
+                sa.func.count(sa.distinct(Subscription.id)),
+            )
+            .select_from(Subscription)
+            .join(TemplatePack, TemplatePack.template_id == Subscription.template_id)
+            .join(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
+            .join(StudyDomain, StudyDomain.id == EntitlementPack.domain_id)
+            .where(
+                Subscription.status == 'active',
+                Subscription.valid_period.contains(now),
+                EntitlementPack.domain_id.isnot(None),
+            )
+            .group_by(StudyDomain.name)
         )
-        .select_from(Subscription)
-        .join(TemplatePack, TemplatePack.template_id == Subscription.template_id)
-        .join(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
-        .join(StudyDomain, StudyDomain.id == EntitlementPack.domain_id)
-        .where(
-            Subscription.status == 'active',
-            Subscription.valid_period.contains(now),
-            EntitlementPack.domain_id.isnot(None),
-        )
-        .group_by(StudyDomain.name)
-    )).all()
+    ).all()
     domain_dist = {row[0]: row[1] for row in domain_rows}
 
-    return response_base.success(data={
-        'active_subscription_count': active_count or 0,
-        'expiring_in_7_days': exp_7 or 0,
-        'expiring_in_30_days': exp_30 or 0,
-        'pack_distribution': pack_dist,
-        'grade_distribution': grade_dist,
-        'domain_distribution': domain_dist,
-    })
+    return response_base.success(
+        data={
+            'active_subscription_count': active_count or 0,
+            'expiring_in_7_days': exp_7 or 0,
+            'expiring_in_30_days': exp_30 or 0,
+            'pack_distribution': pack_dist,
+            'grade_distribution': grade_dist,
+            'domain_distribution': domain_dist,
+        }
+    )

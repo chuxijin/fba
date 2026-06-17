@@ -177,8 +177,7 @@ class UserSettingsService:
 
         if category_custom_tabs is not None:
             current_settings['category_custom_tabs'] = {
-                str(scope_key): [tab.model_dump() for tab in tabs]
-                for scope_key, tabs in category_custom_tabs.items()
+                str(scope_key): [tab.model_dump() for tab in tabs] for scope_key, tabs in category_custom_tabs.items()
             }
 
         if mastery_threshold is not None:

@@ -71,9 +71,7 @@ async def get_grant_list(
         DependsRBAC,
     ],
 )
-async def create_grant(
-    db: CurrentSessionTransaction, obj: CreateDirectGrantParam
-) -> ResponseModel:
+async def create_grant(db: CurrentSessionTransaction, obj: CreateDirectGrantParam) -> ResponseModel:
     """创建直接授予"""
     await direct_grant_service.create(db=db, obj=obj)
     return response_base.success()

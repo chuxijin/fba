@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """打卡服务类"""
+
 import calendar
 
 from datetime import date, datetime
@@ -44,9 +45,7 @@ class CheckInService:
         )
 
     @staticmethod
-    async def _get_reward_context(
-        *, db: AsyncSession, user_id: int
-    ) -> tuple[int, ExperienceRule | None]:
+    async def _get_reward_context(*, db: AsyncSession, user_id: int) -> tuple[int, ExperienceRule | None]:
         """
         获取签到奖励上下文
 
@@ -97,9 +96,7 @@ class CheckInService:
             return None
 
     @staticmethod
-    async def check_in(
-        *, db: AsyncSession, user_id: int, practice_count: int, practice_duration: int
-    ) -> CheckInResult:
+    async def check_in(*, db: AsyncSession, user_id: int, practice_count: int, practice_duration: int) -> CheckInResult:
         """
         用户打卡
 
@@ -168,9 +165,7 @@ class CheckInService:
         )
 
     @staticmethod
-    async def get_check_in_calendar(
-        *, db: AsyncSession, user_id: int, year: int, month: int
-    ) -> CheckInCalendarData:
+    async def get_check_in_calendar(*, db: AsyncSession, user_id: int, year: int, month: int) -> CheckInCalendarData:
         """
         获取打卡日历数据
 
@@ -224,14 +219,11 @@ class CheckInService:
         :return:
         """
         today_start = datetime.combine(timezone.now().date(), datetime.min.time(), tzinfo=timezone.tz_info)
-        stmt = (
-            select(func.count(SessionQuestion.id))
-            .where(
-                SessionQuestion.user_id == user_id,
-                SessionQuestion.created_time >= today_start,
-                SessionQuestion.user_answer.isnot(None),
-                SessionQuestion.is_correct.isnot(None),
-            )
+        stmt = select(func.count(SessionQuestion.id)).where(
+            SessionQuestion.user_id == user_id,
+            SessionQuestion.created_time >= today_start,
+            SessionQuestion.user_answer.isnot(None),
+            SessionQuestion.is_correct.isnot(None),
         )
         result = await db.scalar(stmt)
         return result or 0
@@ -261,7 +253,6 @@ class CheckInService:
             'practice_duration': int(row.practice_duration or 0),
         }
 
-
     @staticmethod
     async def _sync_streak_days(db: AsyncSession, user_id: int, streak: int) -> None:
         """
@@ -275,11 +266,7 @@ class CheckInService:
         if stats.streak_days != streak:
             from sqlalchemy import update as sa_update
 
-            stmt = (
-                sa_update(UserPracticeStats)
-                .where(UserPracticeStats.id == stats.id)
-                .values(streak_days=streak)
-            )
+            stmt = sa_update(UserPracticeStats).where(UserPracticeStats.id == stats.id).values(streak_days=streak)
             await db.execute(stmt)
             await db.flush()
 

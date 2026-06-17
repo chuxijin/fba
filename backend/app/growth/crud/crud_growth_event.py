@@ -10,9 +10,7 @@ from backend.app.growth.model.event import GrowthEvent
 class CRUDGrowthEvent(CRUDPlus[GrowthEvent]):
     """成长事件 CRUD"""
 
-    async def get_by_idempotency_key(
-        self, db: AsyncSession, idempotency_key: str
-    ) -> GrowthEvent | None:
+    async def get_by_idempotency_key(self, db: AsyncSession, idempotency_key: str) -> GrowthEvent | None:
         """
         通过幂等键查询事件
 

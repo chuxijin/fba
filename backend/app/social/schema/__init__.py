@@ -22,20 +22,18 @@ from .work import (
 
 __all__ = [
     # account
-    "SocialAccountBase",
-    "CreateSocialAccountParam",
-    "UpdateSocialAccountParam",
-    "GetSocialAccountDetail",
+    'SocialAccountBase',
+    'CreateSocialAccountParam',
+    'UpdateSocialAccountParam',
+    'GetSocialAccountDetail',
     # work
-    "SocialWorkBase",
-    "CreateSocialWorkParam",
-    "UpdateSocialWorkParam",
-    "GetSocialWorkDetail",
+    'SocialWorkBase',
+    'CreateSocialWorkParam',
+    'UpdateSocialWorkParam',
+    'GetSocialWorkDetail',
     # metric
-    "SocialWorkMetricBase",
-    "CreateSocialWorkMetricParam",
-    "UpdateSocialWorkMetricParam",
-    "GetSocialWorkMetricDetail",
+    'SocialWorkMetricBase',
+    'CreateSocialWorkMetricParam',
+    'UpdateSocialWorkMetricParam',
+    'GetSocialWorkMetricDetail',
 ]
-
-

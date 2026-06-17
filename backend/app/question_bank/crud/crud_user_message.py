@@ -112,7 +112,9 @@ class CRUDUserMessage(CRUDPlus[UserMessage]):
             stmt = stmt.where(UserMessage.message_type == message_type)
         return stmt
 
-    async def get_detail_for_user(self, db: AsyncSession, message_id: int, user_id: int) -> tuple[UserMessage, bool, datetime | None] | None:
+    async def get_detail_for_user(
+        self, db: AsyncSession, message_id: int, user_id: int
+    ) -> tuple[UserMessage, bool, datetime | None] | None:
         """
         获取用户可见消息详情
 
@@ -232,10 +234,14 @@ class CRUDUserMessage(CRUDPlus[UserMessage]):
         """
         now = timezone.now()
         if message.target_type == 'user':
-            stmt = update(UserMessage).where(
-                UserMessage.id == message.id,
-                UserMessage.user_id == user_id,
-            ).values(read_time=now)
+            stmt = (
+                update(UserMessage)
+                .where(
+                    UserMessage.id == message.id,
+                    UserMessage.user_id == user_id,
+                )
+                .values(read_time=now)
+            )
             await db.execute(stmt)
             await db.flush()
             return

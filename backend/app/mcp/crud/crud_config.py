@@ -47,7 +47,7 @@ class CRUDMcpConfig(CRUDPlus[McpConfig]):
         obj = res.scalar_one_or_none()
         if not obj:
             return None
-        await self.update_model(db, obj.id, {"value": value, "updated_by": updated_by}, commit=False)
+        await self.update_model(db, obj.id, {'value': value, 'updated_by': updated_by}, commit=False)
         return obj
 
     async def get_by_mcp_and_field(self, db: AsyncSession, mcp: str, field: str) -> McpConfig | None:
@@ -58,12 +58,10 @@ class CRUDMcpConfig(CRUDPlus[McpConfig]):
     async def get_list(self, mcp: str | None, field: str | None):
         filters = {}
         if mcp is not None:
-            filters["mcp__like"] = f"%{mcp}%"
+            filters['mcp__like'] = f'%{mcp}%'
         if field is not None:
-            filters["field__like"] = f"%{field}%"
-        return await self.select_order("created_time", "desc", **filters)
+            filters['field__like'] = f'%{field}%'
+        return await self.select_order('created_time', 'desc', **filters)
 
 
 mcp_config_dao = CRUDMcpConfig(McpConfig)
-
-

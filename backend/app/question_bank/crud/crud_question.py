@@ -528,9 +528,8 @@ class CRUDQuestionAnalysis(CRUDPlus[QuestionAnalysis]):
         :param question_id: 题目 ID
         :return:
         """
-        stmt = (
-            select(QuestionAnalysis)
-            .where(QuestionAnalysis.question_id == question_id, QuestionAnalysis.is_default.is_(True))
+        stmt = select(QuestionAnalysis).where(
+            QuestionAnalysis.question_id == question_id, QuestionAnalysis.is_default.is_(True)
         )
         result = await db.execute(stmt)
         row = result.scalars().first()
@@ -776,9 +775,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
             await db.flush()
         return stats
 
-    async def update_stats(
-        self, db: AsyncSession, question_id: int, obj: UpdateQuestionStatisticsParam
-    ) -> None:
+    async def update_stats(self, db: AsyncSession, question_id: int, obj: UpdateQuestionStatisticsParam) -> None:
         """
         更新题目统计（全原子操作，避免并发丢计数）
 
@@ -823,9 +820,8 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     ),
                     obj.answer_time,
                 ),
-                else_=(
-                    (QuestionStatistics.avg_answer_time * QuestionStatistics.attempt_count) + obj.answer_time
-                ) / new_attempt,
+                else_=((QuestionStatistics.avg_answer_time * QuestionStatistics.attempt_count) + obj.answer_time)
+                / new_attempt,
             )
 
             # 有效数据追踪（过滤秒杀）
@@ -844,8 +840,10 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                         obj.answer_time,
                     ),
                     else_=(
-                        (QuestionStatistics.valid_avg_answer_time * QuestionStatistics.valid_attempt_count) + obj.answer_time
-                    ) / new_valid_attempt,
+                        (QuestionStatistics.valid_avg_answer_time * QuestionStatistics.valid_attempt_count)
+                        + obj.answer_time
+                    )
+                    / new_valid_attempt,
                 )
 
         if obj.option_select is not None and len(obj.option_select) > 0:
@@ -859,7 +857,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
 
                 for option_key in obj.option_select:
                     current_count = sa.cast(
-                        sa.func.coalesce(base_val.op('->>')(option_key), "0"),
+                        sa.func.coalesce(base_val.op('->>')(option_key), '0'),
                         sa.Integer,
                     )
                     new_count = current_count + 1
@@ -878,11 +876,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                         0,
                     )
                     new_count = current_count + 1
-                    base_val = sa.func.json_set(
-                        base_val,
-                        sa.text(f"'$.{option_key}'"),
-                        new_count
-                    )
+                    base_val = sa.func.json_set(base_val, sa.text(f"'$.{option_key}'"), new_count)
                 values['option_select_stats'] = base_val
 
         if attempt_delta > 0 or correct_delta > 0:
@@ -909,11 +903,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
 
         values['last_updated'] = timezone.now().replace(tzinfo=None)
 
-        stmt = (
-            sa_update(QuestionStatistics)
-            .where(QuestionStatistics.question_id == question_id)
-            .values(**values)
-        )
+        stmt = sa_update(QuestionStatistics).where(QuestionStatistics.question_id == question_id).values(**values)
         await db.execute(stmt)
 
     async def batch_update_stats(self, db: AsyncSession, items: list[dict[str, Any]]) -> None:
@@ -1026,11 +1016,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         insert_stmt = insert_stmt.on_conflict_do_nothing(index_elements=[QuestionStatistics.question_id])
         await db.execute(insert_stmt)
 
-        lock_stmt = (
-            select(QuestionStatistics)
-            .where(QuestionStatistics.question_id.in_(question_ids))
-            .with_for_update()
-        )
+        lock_stmt = select(QuestionStatistics).where(QuestionStatistics.question_id.in_(question_ids)).with_for_update()
         rows = (await db.execute(lock_stmt)).scalars().all()
         stats_map = {row.question_id: row for row in rows}
         current_time = timezone.now().replace(tzinfo=None)
@@ -1057,18 +1043,12 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
             if aggregated_item['attempt_count'] > 0:
                 if current_attempt <= 0 or stats.avg_answer_time is None:
                     new_avg_answer_time = (
-                        aggregated_item['answer_time_total']
-                        / Decimal(aggregated_item['attempt_count'])
+                        aggregated_item['answer_time_total'] / Decimal(aggregated_item['attempt_count'])
                     ).quantize(Decimal('0.01'))
                 else:
                     current_avg = Decimal(str(stats.avg_answer_time))
-                    total_answer_time = (
-                        current_avg * Decimal(current_attempt)
-                        + aggregated_item['answer_time_total']
-                    )
-                    new_avg_answer_time = (
-                        total_answer_time / Decimal(new_attempt)
-                    ).quantize(Decimal('0.01'))
+                    total_answer_time = current_avg * Decimal(current_attempt) + aggregated_item['answer_time_total']
+                    new_avg_answer_time = (total_answer_time / Decimal(new_attempt)).quantize(Decimal('0.01'))
 
             current_option_stats = stats.option_select_stats
             if not isinstance(current_option_stats, dict):
@@ -1080,9 +1060,9 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
 
             new_correct_rate = Decimal('0')
             if new_attempt > 0:
-                new_correct_rate = (
-                    Decimal(new_correct) * Decimal('100') / Decimal(new_attempt)
-                ).quantize(Decimal('0.01'))
+                new_correct_rate = (Decimal(new_correct) * Decimal('100') / Decimal(new_attempt)).quantize(
+                    Decimal('0.01')
+                )
 
             # 有效统计滚动均值
             current_valid_attempt = int(stats.valid_attempt_count or 0)
@@ -1093,18 +1073,16 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
             if aggregated_item['valid_attempt_count'] > 0:
                 if current_valid_attempt <= 0 or stats.valid_avg_answer_time is None:
                     new_valid_avg_answer_time = (
-                        aggregated_item['valid_answer_time_total']
-                        / Decimal(aggregated_item['valid_attempt_count'])
+                        aggregated_item['valid_answer_time_total'] / Decimal(aggregated_item['valid_attempt_count'])
                     ).quantize(Decimal('0.01'))
                 else:
                     current_valid_avg = Decimal(str(stats.valid_avg_answer_time))
                     total_valid_time = (
-                        current_valid_avg * Decimal(current_valid_attempt)
-                        + aggregated_item['valid_answer_time_total']
+                        current_valid_avg * Decimal(current_valid_attempt) + aggregated_item['valid_answer_time_total']
                     )
-                    new_valid_avg_answer_time = (
-                        total_valid_time / Decimal(new_valid_attempt)
-                    ).quantize(Decimal('0.01'))
+                    new_valid_avg_answer_time = (total_valid_time / Decimal(new_valid_attempt)).quantize(
+                        Decimal('0.01')
+                    )
 
             # 中位数 + 难度计算
             median_time = await self.get_median_answer_time(db, question_id)
@@ -1181,9 +1159,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         :param question_id: 题目 ID
         :return: 中位数或 None
         """
-        stmt = select(
-            func.percentile_cont(0.5).within_group(SessionQuestion.answer_time)
-        ).where(
+        stmt = select(func.percentile_cont(0.5).within_group(SessionQuestion.answer_time)).where(
             SessionQuestion.question_id == question_id,
             SessionQuestion.user_answer.isnot(None),
             SessionQuestion.is_correct.isnot(None),
@@ -1213,11 +1189,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
             median_time=median_time,
         )
 
-        stmt = (
-            sa_update(Question)
-            .where(Question.id == question_id)
-            .values(difficulty=difficulty)
-        )
+        stmt = sa_update(Question).where(Question.id == question_id).values(difficulty=difficulty)
         await db.execute(stmt)
 
 

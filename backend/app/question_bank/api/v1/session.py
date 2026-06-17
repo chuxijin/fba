@@ -34,6 +34,7 @@ router = APIRouter()
 async def _resolve_session_id(db: CurrentSession, session_key: str, user_id: int) -> int:
     """按 session_key 解析会话 ID 并校验归属"""
     from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
+
     session = await practice_session_dao.get_by_key(db, session_key)
     if not session:
         raise errors.NotFoundError(msg='会话不存在')
@@ -104,9 +105,7 @@ async def create_session(
     timings.append(('create_unified_session', perf_counter() - t0))
 
     t0 = perf_counter()
-    session = await session_service.get_session_detail(
-        db=db, session_id=new_session.id, user_id=request.user.id
-    )
+    session = await session_service.get_session_detail(db=db, session_id=new_session.id, user_id=request.user.id)
     timings.append(('get_session_detail_after_create', perf_counter() - t0))
 
     t0 = perf_counter()
@@ -128,7 +127,9 @@ async def create_session(
     return response
 
 
-@router.get('/latest', summary='获取最新进行中的会话', name='qbank_practice_get_latest_session', dependencies=[DependsJwtAuth])
+@router.get(
+    '/latest', summary='获取最新进行中的会话', name='qbank_practice_get_latest_session', dependencies=[DependsJwtAuth]
+)
 async def get_latest_session(
     request: Request,
     db: CurrentSession,
@@ -223,7 +224,9 @@ async def get_sessions(
     return response_base.success(data=page_data)
 
 
-@router.get('/{session_key}', summary='获取练习会话详情', name='qbank_practice_get_session', dependencies=[DependsJwtAuth])
+@router.get(
+    '/{session_key}', summary='获取练习会话详情', name='qbank_practice_get_session', dependencies=[DependsJwtAuth]
+)
 async def get_session(
     request: Request,
     db: CurrentSession,
@@ -250,7 +253,9 @@ async def get_session(
     return response_base.success(data=session_data)
 
 
-@router.post('/{session_key}/submit', summary='提交练习会话', name='qbank_practice_submit_session', dependencies=[DependsJwtAuth])
+@router.post(
+    '/{session_key}/submit', summary='提交练习会话', name='qbank_practice_submit_session', dependencies=[DependsJwtAuth]
+)
 async def submit_session(
     request: Request,
     db: CurrentSessionTransaction,
@@ -260,7 +265,10 @@ async def submit_session(
     """提交练习会话"""
     sid = await _resolve_session_id(db, session_key, request.user.id)
     result = await session_service.submit_session(
-        db=db, session_id=sid, user_id=request.user.id, obj=obj,
+        db=db,
+        session_id=sid,
+        user_id=request.user.id,
+        obj=obj,
     )
 
     from backend.app.study_plan.service.session_hook import handle_session_completed
@@ -293,7 +301,12 @@ async def submit_session(
     return response_base.success(data=result)
 
 
-@router.post('/{session_key}/abandon', summary='放弃练习会话', name='qbank_practice_abandon_session', dependencies=[DependsJwtAuth])
+@router.post(
+    '/{session_key}/abandon',
+    summary='放弃练习会话',
+    name='qbank_practice_abandon_session',
+    dependencies=[DependsJwtAuth],
+)
 async def abandon_session(
     request: Request,
     db: CurrentSessionTransaction,
@@ -307,7 +320,9 @@ async def abandon_session(
     return response_base.fail()
 
 
-@router.delete('/{session_key}', summary='删除练习会话', name='qbank_practice_delete_session', dependencies=[DependsJwtAuth])
+@router.delete(
+    '/{session_key}', summary='删除练习会话', name='qbank_practice_delete_session', dependencies=[DependsJwtAuth]
+)
 async def delete_session(
     request: Request,
     db: CurrentSessionTransaction,
@@ -324,7 +339,12 @@ async def delete_session(
 # ============ 答题记录接口 ============
 
 
-@router.post('/{session_key}/records', summary='批量提交或更新答题记录', name='qbank_practice_upsert_records', dependencies=[DependsJwtAuth])
+@router.post(
+    '/{session_key}/records',
+    summary='批量提交或更新答题记录',
+    name='qbank_practice_upsert_records',
+    dependencies=[DependsJwtAuth],
+)
 async def upsert_records(
     request: Request,
     db: CurrentSession,
@@ -350,7 +370,9 @@ async def upsert_records(
     return response_base.success(data=result)
 
 
-@router.get('/records/{pk}', summary='获取答题记录详情', name='qbank_practice_get_record', dependencies=[DependsJwtAuth])
+@router.get(
+    '/records/{pk}', summary='获取答题记录详情', name='qbank_practice_get_record', dependencies=[DependsJwtAuth]
+)
 async def get_record(
     request: Request,
     db: CurrentSession,
@@ -381,7 +403,12 @@ async def get_records(
     return response_base.success(data=page_data)
 
 
-@router.get('/{session_key}/records', summary='获取会话全部答题记录', name='qbank_practice_get_session_records', dependencies=[DependsJwtAuth])
+@router.get(
+    '/{session_key}/records',
+    summary='获取会话全部答题记录',
+    name='qbank_practice_get_session_records',
+    dependencies=[DependsJwtAuth],
+)
 async def get_session_records(
     request: Request,
     db: CurrentSession,
@@ -396,7 +423,12 @@ async def get_session_records(
 # ============ 报告 / 解析 ============
 
 
-@router.get('/{session_key}/report', summary='获取会话答题报告', name='qbank_practice_get_session_report', dependencies=[DependsJwtAuth])
+@router.get(
+    '/{session_key}/report',
+    summary='获取会话答题报告',
+    name='qbank_practice_get_session_report',
+    dependencies=[DependsJwtAuth],
+)
 async def get_session_report(
     request: Request,
     db: CurrentSession,
@@ -408,7 +440,12 @@ async def get_session_report(
     return response_base.success(data=report)
 
 
-@router.get('/{session_key}/solution', summary='获取会话答案解析', name='qbank_practice_get_session_solution', dependencies=[DependsJwtAuth])
+@router.get(
+    '/{session_key}/solution',
+    summary='获取会话答案解析',
+    name='qbank_practice_get_session_solution',
+    dependencies=[DependsJwtAuth],
+)
 async def get_session_solution(
     request: Request,
     db: CurrentSession,

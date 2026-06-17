@@ -70,9 +70,7 @@ async def get_rule_list(
         DependsRBAC,
     ],
 )
-async def create_rule(
-    db: CurrentSessionTransaction, obj: CreateRuleParam
-) -> ResponseModel:
+async def create_rule(db: CurrentSessionTransaction, obj: CreateRuleParam) -> ResponseModel:
     """创建资源规则"""
     await resource_rule_service.create(db=db, obj=obj)
     return response_base.success()
@@ -125,9 +123,7 @@ async def delete_rule(
         DependsRBAC,
     ],
 )
-async def bulk_upsert_rules(
-    db: CurrentSessionTransaction, obj: BulkUpsertRulesParam
-) -> ResponseModel:
+async def bulk_upsert_rules(db: CurrentSessionTransaction, obj: BulkUpsertRulesParam) -> ResponseModel:
     """按资源类型批量回填规则"""
     count = await resource_rule_service.bulk_upsert(db=db, obj=obj)
     return response_base.success(data={'created': count})

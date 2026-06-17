@@ -33,14 +33,15 @@ from backend.common.log import log
 # 第一部分：配置项定义（学习 Alist Items）
 # ============================================================
 
+
 class ConfigItemType:
     """配置项类型常量"""
 
-    STRING = "string"
-    SELECT = "select"
-    BOOL = "bool"
-    NUMBER = "number"
-    PASSWORD = "password"
+    STRING = 'string'
+    SELECT = 'select'
+    BOOL = 'bool'
+    NUMBER = 'number'
+    PASSWORD = 'password'
 
 
 class ConfigItem(BaseModel):
@@ -63,6 +64,7 @@ class ConfigItem(BaseModel):
 # ============================================================
 # 第二部分：驱动注册表（学习 Alist RegisterDriver）
 # ============================================================
+
 
 class DriverRegistry:
     """
@@ -88,11 +90,12 @@ class DriverRegistry:
 
         :param drive_type: 驱动类型枚举
         """
+
         def decorator(driver_class: type['BaseDriveClient']):
             try:
                 cls._drivers[drive_type] = driver_class
             except Exception as e:
-                log.error(f"驱动注册失败: {drive_type.value} -> {driver_class.__name__}, 错误: {e}")
+                log.error(f'驱动注册失败: {drive_type.value} -> {driver_class.__name__}, 错误: {e}')
                 raise
             return driver_class
 
@@ -117,6 +120,7 @@ class DriverRegistry:
 # ============================================================
 # 第三部分：驱动基类（学习 Alist Driver Interface）
 # ============================================================
+
 
 class DriveAuthError(Exception):
     """网盘认证失效异常（Cookie/Token 过期）"""
@@ -169,7 +173,7 @@ class BaseDriveClient(ABC):
         :param cookies: cookie 字符串
         :return: 配置字典
         """
-        return {"cookie": cookies}
+        return {'cookie': cookies}
 
     def _is_auth_error(self, exc: Exception) -> bool:
         """判断是否为认证失效错误"""
@@ -221,13 +225,13 @@ class BaseDriveClient(ABC):
         :param config: 配置字典
         :return: {"errors": [], "warnings": []}
         """
-        result = {"errors": [], "warnings": []}
+        result = {'errors': [], 'warnings': []}
 
         config_items = cls.get_config_items()
 
         for item in config_items:
             if item.required and not config.get(item.name):
-                result["errors"].append(f"缺少必需参数: {item.label or item.name}")
+                result['errors'].append(f'缺少必需参数: {item.label or item.name}')
 
         return result
 
@@ -294,15 +298,15 @@ class BaseDriveClient(ABC):
 
     async def create_share(self, params: ShareParam, **kwargs) -> BaseShareInfo:
         """创建分享链接（可选实现）"""
-        raise NotImplementedError(f"{self.__class__.__name__} 不支持创建分享")
+        raise NotImplementedError(f'{self.__class__.__name__} 不支持创建分享')
 
     async def cancel_share(self, params: CancelShareParam, **kwargs) -> bool:
         """取消分享链接（可选实现）"""
-        raise NotImplementedError(f"{self.__class__.__name__} 不支持取消分享")
+        raise NotImplementedError(f'{self.__class__.__name__} 不支持取消分享')
 
     async def transfer(self, params: TransferParam, **kwargs) -> bool:
         """转存文件（可选实现）"""
-        raise NotImplementedError(f"{self.__class__.__name__} 不支持转存")
+        raise NotImplementedError(f'{self.__class__.__name__} 不支持转存')
 
     async def get_relationship_list(self, params: RelationshipParam, **kwargs) -> list[RelationshipItem]:
         """获取关系列表（可选实现）"""
@@ -316,7 +320,9 @@ class BaseDriveClient(ABC):
         """获取文件详细信息（可选实现）"""
         return None
 
-    async def search(self, keyword: str, fid: str | None = None, file_type: str | None = None, **kwargs) -> list[BaseFileInfo]:
+    async def search(
+        self, keyword: str, fid: str | None = None, file_type: str | None = None, **kwargs
+    ) -> list[BaseFileInfo]:
         """搜索文件（可选实现）"""
         return []
 
@@ -336,6 +342,7 @@ class BaseDriveClient(ABC):
 # ============================================================
 # 第四部分：网盘服务统一接口 - 双模式架构
 # ============================================================
+
 
 class CouldDriveService:
     """
@@ -395,10 +402,10 @@ class CouldDriveService:
         internal_mode = db is not None and user_id is not None
 
         if external_mode and internal_mode:
-            raise ValueError("不能同时使用外部模式和内部模式")
+            raise ValueError('不能同时使用外部模式和内部模式')
 
         if not external_mode and not internal_mode:
-            raise ValueError("必须选择一种模式：外部模式(auth_data+drive_type) 或 内部模式(db+user_id)")
+            raise ValueError('必须选择一种模式：外部模式(auth_data+drive_type) 或 内部模式(db+user_id)')
 
         # ========== 外部模式 ==========
         self._external_mode = external_mode
@@ -438,11 +445,11 @@ class CouldDriveService:
 
             self._user_cache = await drive_account_dao.get(self._db, self._user_id)
             if not self._user_cache:
-                raise ValueError(f"网盘用户不存在: {self._user_id}")
+                raise ValueError(f'网盘用户不存在: {self._user_id}')
 
             # 🔐 权限校验：如果传了 current_user_id，则校验所有权
             if self._current_user_id and self._user_cache.user_id != self._current_user_id:
-                raise PermissionError(f"无权访问网盘账户: {self._user_id}")
+                raise PermissionError(f'无权访问网盘账户: {self._user_id}')
 
             # 缓存 drive_type 枚举，避免每次调用重复转换
             self._drive_type = DriveType(self._user_cache.type)
@@ -457,7 +464,7 @@ class CouldDriveService:
         auth_data, drive_type = await self._ensure_auth_info()
         driver_class = DriverRegistry.get_driver_class(drive_type)
         if not driver_class:
-            raise ValueError(f"未注册的驱动类型: {drive_type}")
+            raise ValueError(f'未注册的驱动类型: {drive_type}')
 
         self._client = driver_class(config=auth_data)
         return self._client
@@ -468,12 +475,7 @@ class CouldDriveService:
 
     @classmethod
     def create_from_request(
-        cls,
-        db: AsyncSession,
-        request: Any,
-        x_token: str,
-        drive_type: DriveType,
-        drive_account_id: int | None = None
+        cls, db: AsyncSession, request: Any, x_token: str, drive_type: DriveType, drive_account_id: int | None = None
     ) -> CouldDriveService:
         """
         从请求自动创建服务实例（自动判断模式）
@@ -487,28 +489,16 @@ class CouldDriveService:
         """
         if drive_account_id:
             # 内部模式：带权限校验
-            return cls(
-                db=db,
-                user_id=drive_account_id,
-                current_user_id=request.user.id
-            )
+            return cls(db=db, user_id=drive_account_id, current_user_id=request.user.id)
         else:
             # 外部模式：调试用
-            return cls(
-                auth_data=x_token,
-                drive_type=drive_type
-            )
+            return cls(auth_data=x_token, drive_type=drive_type)
 
     # ========================================================
     # 【核心调用方法】- 统一调用接口
     # ========================================================
 
-    async def call_method(
-        self,
-        method_name: str,
-        params: Any,
-        **kwargs
-    ) -> Any:
+    async def call_method(self, method_name: str, params: Any, **kwargs) -> Any:
         """
         统一方法调用接口
 
@@ -520,7 +510,7 @@ class CouldDriveService:
 
         method = getattr(client, method_name, None)
         if method is None:
-            raise AttributeError(f"驱动 {client.__class__.__name__} 不支持方法: {method_name}")
+            raise AttributeError(f'驱动 {client.__class__.__name__} 不支持方法: {method_name}')
 
         return await method(params, **kwargs)
 
@@ -538,7 +528,7 @@ class CouldDriveService:
             params.drive_type = drive_type
         method = getattr(client, method_name, None)
         if method is None:
-            raise AttributeError(f"驱动 {client.__class__.__name__} 不支持方法: {method_name}")
+            raise AttributeError(f'驱动 {client.__class__.__name__} 不支持方法: {method_name}')
         return await method(params, **kwargs)
 
     # ========================================================
@@ -547,51 +537,51 @@ class CouldDriveService:
 
     async def get_user_info(self, params: UserInfoParam, **kwargs) -> BaseUserInfo:
         """获取用户信息"""
-        return await self._call("get_user_info", params, **kwargs)
+        return await self._call('get_user_info', params, **kwargs)
 
     async def get_disk_list(self, params: ListFilesParam, **kwargs) -> list[BaseFileInfo]:
         """列出文件"""
-        return await self._call("get_disk_list", params, **kwargs)
+        return await self._call('get_disk_list', params, **kwargs)
 
     async def get_share_info(self, params: ListShareInfoParam, **kwargs) -> list[BaseShareInfo] | dict[str, Any]:
         """获取分享信息"""
-        return await self._call("get_share_info", params, **kwargs)
+        return await self._call('get_share_info', params, **kwargs)
 
     async def get_share_list(self, params: ListShareFilesParam, **kwargs) -> list[BaseFileInfo]:
         """获取分享文件列表"""
-        return await self._call("get_share_list", params, **kwargs)
+        return await self._call('get_share_list', params, **kwargs)
 
     async def create_share(self, params: ShareParam, **kwargs) -> BaseShareInfo:
         """创建分享"""
-        return await self._call("create_share", params, **kwargs)
+        return await self._call('create_share', params, **kwargs)
 
     async def cancel_share(self, params: CancelShareParam, **kwargs) -> bool:
         """取消分享"""
-        return await self._call("cancel_share", params, **kwargs)
+        return await self._call('cancel_share', params, **kwargs)
 
     async def transfer_files(self, params: TransferParam, **kwargs) -> bool:
         """转存文件"""
-        return await self._call("transfer", params, **kwargs)
+        return await self._call('transfer', params, **kwargs)
 
     async def mkdir(self, params: MkdirParam, **kwargs) -> BaseFileInfo:
         """创建文件夹"""
-        return await self._call("mkdir", params, **kwargs)
+        return await self._call('mkdir', params, **kwargs)
 
     async def rename(self, params: RenameParam, **kwargs) -> bool:
         """重命名文件"""
-        return await self._call("rename", params, **kwargs)
+        return await self._call('rename', params, **kwargs)
 
     async def move(self, params: MoveParam, **kwargs) -> bool:
         """移动文件"""
-        return await self._call("move", params, **kwargs)
+        return await self._call('move', params, **kwargs)
 
     async def copy(self, params: CopyParam, **kwargs) -> bool:
         """复制文件"""
-        return await self._call("copy", params, **kwargs)
+        return await self._call('copy', params, **kwargs)
 
     async def remove(self, params: RemoveParam, **kwargs) -> bool:
         """删除文件"""
-        return await self._call("remove", params, **kwargs)
+        return await self._call('remove', params, **kwargs)
 
 
 # ============================================================

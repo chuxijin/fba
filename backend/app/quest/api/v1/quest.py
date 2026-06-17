@@ -22,10 +22,11 @@ async def get_quest_list(
     keyword: Annotated[str | None, Query(description='搜索关键词')] = None,
     only_active: Annotated[bool, Query(description='只看进行中')] = False,
     domain_code: Annotated[str | None, Query(description='领域码过滤')] = None,
+    quest_type: Annotated[str | None, Query(description='任务类型(manual/auto)')] = None,
 ) -> ResponseModel:
     """获取任务列表"""
     data = await quest_service.get_quest_list(
-        db=db, status=status, keyword=keyword, only_active=only_active, domain_code=domain_code
+        db=db, status=status, keyword=keyword, only_active=only_active, domain_code=domain_code, quest_type=quest_type
     )
     return response_base.success(data=data)
 
@@ -83,7 +84,5 @@ async def get_my_claims(
     claim_status: Annotated[int | None, Query(description='状态过滤')] = None,
 ) -> ResponseModel:
     """获取我的领取列表"""
-    data = await claim_service.get_my_claims(
-        db=db, user_id=request.user.id, claim_status=claim_status
-    )
+    data = await claim_service.get_my_claims(db=db, user_id=request.user.id, claim_status=claim_status)
     return response_base.success(data=data)

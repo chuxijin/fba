@@ -242,9 +242,7 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         """
         return await self.update_model(db, session_id, {'status': 'abandoned'})
 
-    async def update_progress(
-        self, db: AsyncSession, session_id: int, *, completed_count: int, total_time: int
-    ) -> int:
+    async def update_progress(self, db: AsyncSession, session_id: int, *, completed_count: int, total_time: int) -> int:
         """
         更新会话做题进度（已完成题数和累计用时）
 
@@ -254,10 +252,14 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param total_time: 累计用时（秒）
         :return:
         """
-        return await self.update_model(db, session_id, {
-            'completed_count': completed_count,
-            'total_time': total_time,
-        })
+        return await self.update_model(
+            db,
+            session_id,
+            {
+                'completed_count': completed_count,
+                'total_time': total_time,
+            },
+        )
 
     async def get_select(
         self,
@@ -279,7 +281,11 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param status: 状态
         :return:
         """
-        stmt = select(PracticeSession).where(PracticeSession.del_flag.is_(False)).order_by(PracticeSession.start_time.desc())
+        stmt = (
+            select(PracticeSession)
+            .where(PracticeSession.del_flag.is_(False))
+            .order_by(PracticeSession.start_time.desc())
+        )
 
         if user_id is not None:
             stmt = stmt.where(PracticeSession.user_id == user_id)
@@ -304,7 +310,9 @@ class CRUDPracticeSession(CRUDPlus[PracticeSession]):
         :param session_id: 会话 ID
         :return:
         """
-        return await self.delete_model_by_column(db, id=session_id, logical_deletion=True, deleted_flag_column='del_flag')
+        return await self.delete_model_by_column(
+            db, id=session_id, logical_deletion=True, deleted_flag_column='del_flag'
+        )
 
 
 practice_session_dao: CRUDPracticeSession = CRUDPracticeSession(PracticeSession)

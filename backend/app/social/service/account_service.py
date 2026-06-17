@@ -59,5 +59,3 @@ class SocialAccountService:
         """删除账号"""
         async with async_db_session() as db:
             return await social_account_dao.delete(db, pks)
-
-

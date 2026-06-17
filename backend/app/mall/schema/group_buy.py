@@ -59,9 +59,7 @@ class GroupBuyActivityBase(SchemaBase):
 class CreateGroupBuyActivityParam(GroupBuyActivityBase):
     """创建拼团活动参数"""
 
-    ladder_prices: list[CreateGroupBuyLadderPriceParam] = Field(
-        min_length=1, max_length=10, description='阶梯价格列表'
-    )
+    ladder_prices: list[CreateGroupBuyLadderPriceParam] = Field(min_length=1, max_length=10, description='阶梯价格列表')
 
 
 class UpdateGroupBuyActivityParam(SchemaBase):

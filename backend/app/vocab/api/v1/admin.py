@@ -60,7 +60,9 @@ async def get_book_list(
     status: Annotated[int | None, Query(description='状态过滤')] = None,
 ) -> ResponseModel:
     """获取词书列表"""
-    data = await book_service.get_book_list(db=db, category=category, keyword=keyword, is_official=is_official, status=status)
+    data = await book_service.get_book_list(
+        db=db, category=category, keyword=keyword, is_official=is_official, status=status
+    )
     return response_base.success(data=data)
 
 

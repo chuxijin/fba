@@ -43,12 +43,8 @@ def _patch_pipeline(
     async def fake_load(*_args, **_kwargs):
         return snapshot
 
-    monkeypatch.setattr(
-        'backend.app.access.engine.decide.rule_resolver.resolve', fake_resolve
-    )
-    monkeypatch.setattr(
-        'backend.app.access.engine.decide.snapshot_service.load', fake_load
-    )
+    monkeypatch.setattr('backend.app.access.engine.decide.rule_resolver.resolve', fake_resolve)
+    monkeypatch.setattr('backend.app.access.engine.decide.snapshot_service.load', fake_load)
 
 
 @pytest.mark.asyncio
@@ -216,9 +212,7 @@ async def test_engine_writes_log_only_on_deny(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_engine_handles_kaoyan_user_accessing_kaogong(
-    monkeypatch, vip_kaoyan_snapshot
-) -> None:
+async def test_engine_handles_kaoyan_user_accessing_kaogong(monkeypatch, vip_kaoyan_snapshot) -> None:
     """考研 VIP 用户访问考公付费题库, 应当被拒绝(多领域并存核心场景)"""
     _patch_pipeline(
         monkeypatch,
@@ -234,9 +228,7 @@ async def test_engine_handles_kaoyan_user_accessing_kaogong(
 
 
 @pytest.mark.asyncio
-async def test_engine_grants_all_in_one_user_for_any_domain(
-    monkeypatch, all_in_one_svip_snapshot
-) -> None:
+async def test_engine_grants_all_in_one_user_for_any_domain(monkeypatch, all_in_one_svip_snapshot) -> None:
     """全家桶 SVIP 用户访问任意领域付费题库, 全部放行"""
     for code in ['qbank.kaoyan.access', 'qbank.kaogong.access', 'qbank.cet.access']:
         _patch_pipeline(

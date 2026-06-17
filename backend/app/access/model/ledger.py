@@ -54,9 +54,7 @@ class QuotaLedger(DataClassBase):
     source: Mapped[str] = mapped_column(sa.String(32), comment='来源标识')
     scope_key: Mapped[str] = mapped_column(sa.String(64), default='global', comment='业务范围键')
     source_ref: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='来源引用')
-    idempotency_key: Mapped[str | None] = mapped_column(
-        sa.String(128), unique=True, default=None, comment='幂等键'
-    )
+    idempotency_key: Mapped[str | None] = mapped_column(sa.String(128), unique=True, default=None, comment='幂等键')
     reason: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='原因')
     occurred_at: Mapped[datetime] = mapped_column(
         TimeZone,

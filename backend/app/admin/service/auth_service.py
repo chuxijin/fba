@@ -13,6 +13,7 @@ from backend.app.admin.service.user_password_history_service import password_sec
 from backend.app.admin.utils.password_security import password_verify
 from backend.common.context import ctx
 from backend.common.enums import LoginLogStatusType, StatusType
+from backend.common.events import publish
 from backend.common.exception import errors
 from backend.common.i18n import t
 from backend.common.log import log
@@ -91,6 +92,8 @@ class AuthService:
                 status=LoginLogStatusType.success.value,
                 msg=success_msg or t('success.login.success'),
             )
+
+        await publish('user.logged_in', user_id=user.id)
 
         return GetLoginToken(
             access_token=access_token_data.access_token,
@@ -342,14 +345,15 @@ class AuthService:
 
             import bcrypt
 
+            from backend.app.admin.service.user_service import user_service
             from backend.app.admin.utils.password_security import get_hash_password
 
             salt = bcrypt.gensalt()
             random_password = secrets.token_urlsafe(16)
             nickname = f'用户_{obj.phone[-4:]}'
 
-            user = await user_dao.create_user_with_roles(
-                db,
+            user = await user_service.register(
+                db=db,
                 user_data={
                     'username': obj.phone,
                     'password': get_hash_password(random_password, salt),
@@ -359,7 +363,6 @@ class AuthService:
                     'status': 1,
                 },
             )
-            await db.flush()
             log.info(f'短信登录自动注册用户: {obj.phone}')
 
         # 3. 检查用户状态

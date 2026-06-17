@@ -39,6 +39,7 @@ async def fetch_metrics_for_work(*, account: 'SocialAccount', work: 'SocialWork'
 
     try:
         from cozepy import Coze, TokenAuth
+
         coze = Coze(auth=TokenAuth(token=token), base_url=base_url)
         # 作品地址作为输入参数（具体 key 视工作流而定）
         # 常见写法：inputs={'url': work.work_url}
@@ -74,6 +75,7 @@ async def fetch_metrics_for_work(*, account: 'SocialAccount', work: 'SocialWork'
                 payload = output_val
 
             if isinstance(payload, dict):
+
                 def to_int(v: Any) -> int:
                     # 有些字段可能是字符串或 'false'
                     try:
@@ -97,4 +99,3 @@ async def fetch_metrics_for_work(*, account: 'SocialAccount', work: 'SocialWork'
         return None
 
     return None
-

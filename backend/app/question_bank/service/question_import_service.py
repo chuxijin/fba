@@ -43,11 +43,16 @@ log = logging.getLogger(__name__)
 
 # 题型映射
 TYPE_MAPPING: dict[str, str] = {
-    '单选': 'single', '单选题': 'single',
-    '多选': 'multiple', '多选题': 'multiple',
-    '判断': 'judgement', '判断题': 'judgement',
-    '填空': 'fill', '填空题': 'fill',
-    '简答': 'shortAnswer', '简答题': 'shortAnswer',
+    '单选': 'single',
+    '单选题': 'single',
+    '多选': 'multiple',
+    '多选题': 'multiple',
+    '判断': 'judgement',
+    '判断题': 'judgement',
+    '填空': 'fill',
+    '填空题': 'fill',
+    '简答': 'shortAnswer',
+    '简答题': 'shortAnswer',
 }
 
 # 难度由答题数据动态计算，导入时不预设
@@ -168,25 +173,31 @@ class QuestionImportService:
             options: list[UpsertQuestionOptionItem] = []
             if row_data['options_data']:
                 for code, opt in row_data['options_data'].items():
-                    options.append(UpsertQuestionOptionItem(
-                        option_code=code,
-                        content=opt['content'],
-                        sort_order=ord(code) - ord('A'),
-                    ))
+                    options.append(
+                        UpsertQuestionOptionItem(
+                            option_code=code,
+                            content=opt['content'],
+                            sort_order=ord(code) - ord('A'),
+                        )
+                    )
 
-            placements = [UpsertQuestionPlacementItem(
-                bank_id=obj.bank_id,
-                chapter_id=row_data['chapter_id'],
-                sort_order=row_data['sort_order'],
-                is_active=True,
-                score=row_data['default_score'],
-            )]
+            placements = [
+                UpsertQuestionPlacementItem(
+                    bank_id=obj.bank_id,
+                    chapter_id=row_data['chapter_id'],
+                    sort_order=row_data['sort_order'],
+                    is_active=True,
+                    score=row_data['default_score'],
+                )
+            ]
 
-            analyses = [UpsertQuestionAnalysisItem(
-                answer_data=row_data['answer_data'],
-                content=row_data['analysis_content'],
-                is_default=True,
-            )]
+            analyses = [
+                UpsertQuestionAnalysisItem(
+                    answer_data=row_data['answer_data'],
+                    content=row_data['analysis_content'],
+                    is_default=True,
+                )
+            ]
 
             create_param = CreateQuestionParam(
                 core=core,
@@ -258,11 +269,7 @@ class QuestionImportService:
             material_id_map[key] = material.id
 
         # ============ 第二阶段：构建全库复用索引 ============
-        row_types = {
-            TYPE_MAPPING.get(row.题型)
-            for row in question_rows
-            if TYPE_MAPPING.get(row.题型)
-        }
+        row_types = {TYPE_MAPPING.get(row.题型) for row in question_rows if TYPE_MAPPING.get(row.题型)}
         normalized_stems = {
             QuestionImportService._normalize_stem(row.题目)
             for row in question_rows
@@ -316,11 +323,13 @@ class QuestionImportService:
                     for option_key in ['A', 'B', 'C', 'D']:
                         option_value = getattr(row, f'选项{option_key}', None)
                         if option_value:
-                            options.append(UpsertQuestionOptionItem(
-                                option_code=option_key,
-                                content=str(option_value),
-                                sort_order=ord(option_key) - ord('A'),
-                            ))
+                            options.append(
+                                UpsertQuestionOptionItem(
+                                    option_code=option_key,
+                                    content=str(option_value),
+                                    sort_order=ord(option_key) - ord('A'),
+                                )
+                            )
 
                 # 答案
                 answer_data = QuestionImportService._parse_answer(row.答案, question_type)
@@ -394,13 +403,15 @@ class QuestionImportService:
                             question_id=existing_qid,
                             material_ids=material_ids,
                         )
-                        results.append(ImportResultItem(
-                            row_number=row_index,
-                            success=True,
-                            question_id=existing_qid,
-                            error_message=row_message or '本批次重复题目，已复用首条记录',
-                            action='skipped',
-                        ))
+                        results.append(
+                            ImportResultItem(
+                                row_number=row_index,
+                                success=True,
+                                question_id=existing_qid,
+                                error_message=row_message or '本批次重复题目，已复用首条记录',
+                                action='skipped',
+                            )
+                        )
                         continue
 
                     placement_item = UpsertQuestionPlacementItem(
@@ -421,16 +432,18 @@ class QuestionImportService:
                         action = 'exists'
                         message = row_message or '当前内容已存在，已更新挂载信息'
                     else:
-                        db.add(QuestionPlacement(
-                            question_id=existing_qid,
-                            bank_id=bank_id,
-                            chapter_id=chapter_id,
-                            sort_order=sort_order,
-                            is_active=True,
-                            score=default_score,
-                            review_status=10,
-                            created_by=user_id,
-                        ))
+                        db.add(
+                            QuestionPlacement(
+                                question_id=existing_qid,
+                                bank_id=bank_id,
+                                chapter_id=chapter_id,
+                                sort_order=sort_order,
+                                is_active=True,
+                                score=default_score,
+                                review_status=10,
+                                created_by=user_id,
+                            )
+                        )
                         await db.flush()
                         await QuestionService._update_placement_caches(
                             db=db,
@@ -448,13 +461,15 @@ class QuestionImportService:
                         material_ids=material_ids,
                     )
 
-                    results.append(ImportResultItem(
-                        row_number=row_index,
-                        success=True,
-                        question_id=existing_qid,
-                        error_message=message,
-                        action=action,
-                    ))
+                    results.append(
+                        ImportResultItem(
+                            row_number=row_index,
+                            success=True,
+                            question_id=existing_qid,
+                            error_message=message,
+                            action=action,
+                        )
+                    )
                 else:
                     # 新建题目
                     core = QuestionCoreBase(
@@ -464,18 +479,22 @@ class QuestionImportService:
                         default_score=default_score,
                         knowledge_point=knowledge_point,
                     )
-                    placements = [UpsertQuestionPlacementItem(
-                        bank_id=bank_id,
-                        chapter_id=chapter_id,
-                        sort_order=sort_order,
-                        is_active=True,
-                        score=default_score,
-                    )]
-                    analyses = [UpsertQuestionAnalysisItem(
-                        answer_data=answer_data,
-                        content=row.解析 or '暂无解析',
-                        is_default=True,
-                    )]
+                    placements = [
+                        UpsertQuestionPlacementItem(
+                            bank_id=bank_id,
+                            chapter_id=chapter_id,
+                            sort_order=sort_order,
+                            is_active=True,
+                            score=default_score,
+                        )
+                    ]
+                    analyses = [
+                        UpsertQuestionAnalysisItem(
+                            answer_data=answer_data,
+                            content=row.解析 or '暂无解析',
+                            is_default=True,
+                        )
+                    ]
                     create_param = CreateQuestionParam(
                         core=core,
                         options=options,
@@ -497,24 +516,28 @@ class QuestionImportService:
                     )
                     batch_mounted_question_ids.add(question.id)
 
-                    results.append(ImportResultItem(
-                        row_number=row_index,
-                        success=True,
-                        question_id=question.id,
-                        error_message=row_message,
-                        action='created',
-                    ))
+                    results.append(
+                        ImportResultItem(
+                            row_number=row_index,
+                            success=True,
+                            question_id=question.id,
+                            error_message=row_message,
+                            action='created',
+                        )
+                    )
 
                 success_count += 1
 
             except Exception as e:
                 log.warning(f'Excel 导入第 {row_index} 行失败: {e}')
-                results.append(ImportResultItem(
-                    row_number=row_index,
-                    success=False,
-                    question_id=None,
-                    error_message=str(e),
-                ))
+                results.append(
+                    ImportResultItem(
+                        row_number=row_index,
+                        success=False,
+                        question_id=None,
+                        error_message=str(e),
+                    )
+                )
 
         fail_count = len(question_rows) - success_count
         return ExcelImportResult(
@@ -659,12 +682,14 @@ class QuestionImportService:
         """
         options: list[UpsertQuestionOptionItem] = []
         for option in QuestionService.normalize_options(question.options, active_only=True):
-            options.append(UpsertQuestionOptionItem(
-                option_code=option['option_code'],
-                content=option['content'],
-                sort_order=option['sort_order'],
-                is_active=option['is_active'],
-            ))
+            options.append(
+                UpsertQuestionOptionItem(
+                    option_code=option['option_code'],
+                    content=option['content'],
+                    sort_order=option['sort_order'],
+                    is_active=option['is_active'],
+                )
+            )
 
         return QuestionImportService._build_question_fingerprint(
             question_type=question.type,
@@ -889,11 +914,22 @@ class QuestionImportService:
         df_questions = df_questions.where(df_questions.notna(), None)
         question_rows: list[QuestionImportRow] = []
         col_map = {
-            '序号': 'ID', '题型': '题型', '题目': '题目',
-            '选项A': '选项A', '选项B': '选项B', '选项C': '选项C', '选项D': '选项D',
-            '答案': '答案', '解析': '解析', '难度': '难度', '分数': '分数',
-            '一级目录': '一级目录', '二级目录': '二级目录', '三级目录': '三级目录',
-            '知识点': '知识点', '材料编号': '材料编号',
+            '序号': 'ID',
+            '题型': '题型',
+            '题目': '题目',
+            '选项A': '选项A',
+            '选项B': '选项B',
+            '选项C': '选项C',
+            '选项D': '选项D',
+            '答案': '答案',
+            '解析': '解析',
+            '难度': '难度',
+            '分数': '分数',
+            '一级目录': '一级目录',
+            '二级目录': '二级目录',
+            '三级目录': '三级目录',
+            '知识点': '知识点',
+            '材料编号': '材料编号',
         }
         for _, pandas_row in df_questions.iterrows():
             row_dict: dict[str, Any] = {}
@@ -922,11 +958,13 @@ class QuestionImportService:
                 mat_content = pandas_row.get('材料内容')
                 if pd.notna(mat_id) and pd.notna(mat_content) and mat_id:
                     mat_title = pandas_row.get('材料标题')
-                    material_rows.append(MaterialImportRow(
-                        材料编号=str(mat_id),
-                        材料标题=mat_title if pd.notna(mat_title) else None,
-                        材料内容=str(mat_content),
-                    ))
+                    material_rows.append(
+                        MaterialImportRow(
+                            材料编号=str(mat_id),
+                            材料标题=mat_title if pd.notna(mat_title) else None,
+                            材料内容=str(mat_content),
+                        )
+                    )
         except Exception:
             log.warning('读取材料 sheet 失败，跳过材料导入', exc_info=True)
 
@@ -948,16 +986,40 @@ class QuestionImportService:
             ws1 = wb.active
             ws1.title = '题目'
             ws1.append([
-                '序号', '题型', '题目', '选项A', '选项B', '选项C', '选项D',
-                '答案', '解析', '难度', '分数', '一级目录', '二级目录',
-                '三级目录', '知识点', '材料编号',
+                '序号',
+                '题型',
+                '题目',
+                '选项A',
+                '选项B',
+                '选项C',
+                '选项D',
+                '答案',
+                '解析',
+                '难度',
+                '分数',
+                '一级目录',
+                '二级目录',
+                '三级目录',
+                '知识点',
+                '材料编号',
             ])
             ws1.append([
-                1, '单选', '下列关于宪法的说法，正确的是（ ）',
-                '宪法具有最高法律效力', '宪法由全国人大常委会制定',
-                '宪法修改由国务院提议', '宪法不具有直接法律效力',
-                'A', '根据《宪法》规定，宪法具有最高法律效力。',
-                '中等', 1, '常识判断', '宪法基础', None, '宪法学', None,
+                1,
+                '单选',
+                '下列关于宪法的说法，正确的是（ ）',
+                '宪法具有最高法律效力',
+                '宪法由全国人大常委会制定',
+                '宪法修改由国务院提议',
+                '宪法不具有直接法律效力',
+                'A',
+                '根据《宪法》规定，宪法具有最高法律效力。',
+                '中等',
+                1,
+                '常识判断',
+                '宪法基础',
+                None,
+                '宪法学',
+                None,
             ])
 
             # Sheet2: 材料
@@ -990,7 +1052,7 @@ class QuestionImportService:
         :param user_id: 操作用户 ID
         :return:
         """
-        from backend.app.question_bank.service.question_service import QuestionService, question_service
+        from backend.app.question_bank.service.question_service import question_service
 
         bank = await bank_dao.get(db, bank_id)
         if not bank:
@@ -1019,11 +1081,7 @@ class QuestionImportService:
         for q_data in questions_data:
             # 2a. 章节处理
             chapter_id = None
-            level1_name = (
-                q_data.get('chapter_level1_name')
-                or q_data.get('一级目录')
-                or q_data.get('chapter_name')
-            )
+            level1_name = q_data.get('chapter_level1_name') or q_data.get('一级目录') or q_data.get('chapter_name')
             level2_name = q_data.get('chapter_level2_name') or q_data.get('二级目录')
             level3_name = q_data.get('chapter_level3_name') or q_data.get('三级目录')
             if level1_name:
@@ -1068,31 +1126,37 @@ class QuestionImportService:
             if isinstance(raw_options, dict):
                 for code, opt in raw_options.items():
                     content = opt.get('content', '') if isinstance(opt, dict) else str(opt)
-                    options.append(UpsertQuestionOptionItem(
-                        option_code=code.upper(),
-                        content=content,
-                        sort_order=ord(code.upper()) - ord('A'),
-                    ))
+                    options.append(
+                        UpsertQuestionOptionItem(
+                            option_code=code.upper(),
+                            content=content,
+                            sort_order=ord(code.upper()) - ord('A'),
+                        )
+                    )
 
             # 2e. 构建挂载（一题一挂载，挂到 bank + chapter）
-            placements = [UpsertQuestionPlacementItem(
-                bank_id=bank_id,
-                chapter_id=chapter_id,
-                sort_order=sort_order,
-                is_active=True,
-                score=q_default_score,
-                review_status=10,
-            )]
+            placements = [
+                UpsertQuestionPlacementItem(
+                    bank_id=bank_id,
+                    chapter_id=chapter_id,
+                    sort_order=sort_order,
+                    is_active=True,
+                    score=q_default_score,
+                    review_status=10,
+                )
+            ]
 
             # 2f. 构建解析
             answer_data = q_data.get('answer_data') or {}
             analysis_content = q_data.get('analysis_content') or ''
-            analyses = [UpsertQuestionAnalysisItem(
-                type='official',
-                is_default=True,
-                answer_data=answer_data,
-                content=analysis_content or '暂无解析',
-            )]
+            analyses = [
+                UpsertQuestionAnalysisItem(
+                    type='official',
+                    is_default=True,
+                    answer_data=answer_data,
+                    content=analysis_content or '暂无解析',
+                )
+            ]
 
             # 2g. 材料关联
             material_ids: list[int] | None = None

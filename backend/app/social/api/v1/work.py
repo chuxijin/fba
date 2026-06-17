@@ -67,4 +67,3 @@ async def delete_social_work(
 ) -> ResponseModel:
     await service.delete(pks=pks)
     return response_base.success()
-

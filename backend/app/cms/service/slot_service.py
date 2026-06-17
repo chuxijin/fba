@@ -123,9 +123,7 @@ class SlotService:
             return True
 
         if slot.max_show_per_user > 0:
-            shown = await cms_slot_log_dao.count_by_action(
-                db, slot_id=slot.id, user_id=user_id, action=ACTION_SHOW
-            )
+            shown = await cms_slot_log_dao.count_by_action(db, slot_id=slot.id, user_id=user_id, action=ACTION_SHOW)
             if shown >= slot.max_show_per_user:
                 return False
 
@@ -138,9 +136,7 @@ class SlotService:
                 return False
 
         if slot.close_dismiss_count > 0:
-            closed = await cms_slot_log_dao.count_by_action(
-                db, slot_id=slot.id, user_id=user_id, action=ACTION_CLOSE
-            )
+            closed = await cms_slot_log_dao.count_by_action(db, slot_id=slot.id, user_id=user_id, action=ACTION_CLOSE)
             if closed >= slot.close_dismiss_count:
                 return False
 
@@ -274,9 +270,7 @@ class SlotService:
         :param keyword: 搜索关键词
         :return:
         """
-        stmt = await cms_slot_dao.get_select(
-            status=status, slot_type=slot_type, scene=scene, keyword=keyword
-        )
+        stmt = await cms_slot_dao.get_select(status=status, slot_type=slot_type, scene=scene, keyword=keyword)
         return await paging_data(db, stmt)
 
 

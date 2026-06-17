@@ -42,9 +42,7 @@ class ResourceRule(Base):
     valid_period: Mapped[Range[datetime] | None] = mapped_column(
         TSTZRANGE, default=None, comment='生效时间段, NULL 表示永久'
     )
-    audience_filter: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default_factory=dict, comment='受众过滤条件'
-    )
+    audience_filter: Mapped[dict[str, Any]] = mapped_column(JSONB, default_factory=dict, comment='受众过滤条件')
     inherit_to_children: Mapped[bool] = mapped_column(default=True, comment='是否级联到子资源')
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         'metadata',

@@ -33,7 +33,5 @@ async def report_action(
 ) -> ResponseModel:
     """上报运营位行为(0 曝光 1 点击 2 关闭)"""
     user_id = getattr(request.user, 'id', None) if hasattr(request, 'user') else None
-    await slot_service.report_action(
-        db=db, slot_id=pk, user_id=user_id, action=obj.action, scene=obj.scene
-    )
+    await slot_service.report_action(db=db, slot_id=pk, user_id=user_id, action=obj.action, scene=obj.scene)
     return response_base.success()

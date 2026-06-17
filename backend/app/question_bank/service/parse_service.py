@@ -33,7 +33,7 @@ class ParseService:
         :return:
         """
         if not images_dir_name:
-            raise ValueError("必须提供 images_dir_name 参数")
+            raise ValueError('必须提供 images_dir_name 参数')
 
         file_bytes = await run_in_threadpool(file_path.read_bytes)
         result = await ocr_service.parse_document_bytes(
@@ -477,11 +477,7 @@ class ParseService:
                 warning = '题干为空，疑似答案解析册条目，不能直接作为新题入库'
                 if warning not in item['warnings']:
                     item['warnings'].append(warning)
-            chapter_level1_name = (
-                item.get('chapter_level1_name')
-                or item.get('一级目录')
-                or item.get('chapter_name')
-            )
+            chapter_level1_name = item.get('chapter_level1_name') or item.get('一级目录') or item.get('chapter_name')
             item['chapter_level1_name'] = chapter_level1_name
             item['chapter_level2_name'] = item.get('chapter_level2_name') or item.get('二级目录')
             item['chapter_level3_name'] = item.get('chapter_level3_name') or item.get('三级目录')
@@ -586,23 +582,11 @@ class ParseService:
         :return:
         """
         job_data = await ParseService._read_review_job(job_id)
-        materials = [
-            item for item in job_data.get('materials', [])
-            if item.get('status') != 'rejected'
-        ]
-        questions = [
-            item for item in job_data.get('questions', [])
-            if item.get('status') != 'rejected'
-        ]
+        materials = [item for item in job_data.get('materials', []) if item.get('status') != 'rejected']
+        questions = [item for item in job_data.get('questions', []) if item.get('status') != 'rejected']
         questions = ParseService._normalize_review_questions(questions)
-        skipped_empty_stem_count = len([
-            item for item in questions
-            if not str(item.get('stem') or '').strip()
-        ])
-        questions = [
-            item for item in questions
-            if str(item.get('stem') or '').strip()
-        ]
+        skipped_empty_stem_count = len([item for item in questions if not str(item.get('stem') or '').strip()])
+        questions = [item for item in questions if str(item.get('stem') or '').strip()]
         answers = job_data.get('answers', [])
         if not questions and answers:
             raise ValueError('当前审核任务只有答案解析，请复制到原题后再入库')

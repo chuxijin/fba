@@ -4,8 +4,6 @@ import asyncio
 
 from typing import Annotated
 
-import anyio
-
 from fastapi import APIRouter, Depends, File, Path, Query, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 
@@ -39,17 +37,9 @@ from backend.utils.timezone import timezone
 router = APIRouter()
 
 
-
-
-@router.get(
-    '',
-    summary='获取资源列表',
-    dependencies=[DependsPagination]
-)
+@router.get('', summary='获取资源列表', dependencies=[DependsPagination])
 async def get_resource_list(
-    request: Request,
-    db: CurrentSession,
-    params: Annotated[GetResourceListParam, Depends()]
+    request: Request, db: CurrentSession, params: Annotated[GetResourceListParam, Depends()]
 ) -> ResponseModel:
     """
     获取资源列表
@@ -67,7 +57,7 @@ async def get_resource_list(
     '/hot',
     summary='获取热门资源列表',
     response_model=ResponseSchemaModel[list[ResourceListItem]],
-    dependencies=[DependsPagination]
+    dependencies=[DependsPagination],
 )
 async def get_hot_resource_list(
     request: Request,
@@ -75,7 +65,7 @@ async def get_hot_resource_list(
     category_id: Annotated[int | None, Query(description='分类ID')] = None,
     resource_type: Annotated[str | None, Query(description='资源类型')] = None,
     resource_types: Annotated[list[str] | None, Query(description='资源类型列表，可重复传参或逗号分隔')] = None,
-    limit: Annotated[int, Query(description='数量限制', ge=1, le=50)] = 20
+    limit: Annotated[int, Query(description='数量限制', ge=1, le=50)] = 20,
 ) -> ResponseSchemaModel[list[ResourceListItem]]:
     """
     获取热门资源列表（按热度排序）
@@ -122,12 +112,10 @@ async def record_resource_click(
     '/statistics',
     summary='获取资源统计信息',
     response_model=ResponseSchemaModel[ResourceStatistics],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def get_resource_statistics(
-    request: Request,
-    db: CurrentSession,
-    user_id: Annotated[int | None, Query(description='用户ID')] = None
+    request: Request, db: CurrentSession, user_id: Annotated[int | None, Query(description='用户ID')] = None
 ) -> ResponseSchemaModel[ResourceStatistics]:
     """
     获取资源统计信息
@@ -145,12 +133,10 @@ async def get_resource_statistics(
     '/statistics/trend',
     summary='获取整体资源统计趋势',
     response_model=ResponseSchemaModel[OverallStatisticsTrendResponse],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def get_overall_statistics_trend(
-    request: Request,
-    db: CurrentSession,
-    params: Annotated[GetOverallStatisticsTrendParam, Depends()]
+    request: Request, db: CurrentSession, params: Annotated[GetOverallStatisticsTrendParam, Depends()]
 ) -> ResponseSchemaModel[OverallStatisticsTrendResponse]:
     """
     获取整体资源统计趋势
@@ -168,12 +154,10 @@ async def get_overall_statistics_trend(
     '/view-trend',
     summary='获取资源浏览量趋势',
     response_model=ResponseSchemaModel[ResourceViewTrendResponse],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def get_resource_view_trend(
-    request: Request,
-    db: CurrentSession,
-    params: Annotated[GetResourceViewTrendParam, Depends()]
+    request: Request, db: CurrentSession, params: Annotated[GetResourceViewTrendParam, Depends()]
 ) -> ResponseSchemaModel[ResourceViewTrendResponse]:
     """
     获取资源浏览量趋势
@@ -192,7 +176,7 @@ async def create_resource(
     request: Request,
     db: CurrentSession,
     params: CreateResourceParam,
-    auto_vectorize: Annotated[bool, Query(description='是否自动向量化资源')] = False
+    auto_vectorize: Annotated[bool, Query(description='是否自动向量化资源')] = False,
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     创建资源
@@ -203,15 +187,14 @@ async def create_resource(
     :param auto_vectorize: 是否自动向量化资源
     :return: 资源详情
     """
-    resource = await resource_service.create(db=db, obj=params, created_by=request.user.id, auto_vectorize=auto_vectorize)
+    resource = await resource_service.create(
+        db=db, obj=params, created_by=request.user.id, auto_vectorize=auto_vectorize
+    )
     return response_base.success(data=resource)
 
 
 @router.get(
-    '/vector-search',
-    summary='向量搜索资源',
-    response_model=ResponseSchemaModel[list],
-    dependencies=[DependsJwtAuth]
+    '/vector-search', summary='向量搜索资源', response_model=ResponseSchemaModel[list], dependencies=[DependsJwtAuth]
 )
 async def vector_search_resources(
     request: Request,
@@ -272,16 +255,13 @@ async def vector_search_resources(
 
 
 @router.post(
-    '/vectorize',
-    summary='向量化资源（支持单个或批量）',
-    response_model=ResponseModel,
-    dependencies=[DependsJwtAuth]
+    '/vectorize', summary='向量化资源（支持单个或批量）', response_model=ResponseModel, dependencies=[DependsJwtAuth]
 )
 async def vectorize_resources(
     request: Request,
     db: CurrentSession,
     resource_id: Annotated[int | None, Query(description='单个资源ID')] = None,
-    batch_size: Annotated[int, Query(description='批量处理时的每批次数量', ge=1, le=200)] = 50
+    batch_size: Annotated[int, Query(description='批量处理时的每批次数量', ge=1, le=200)] = 50,
 ) -> ResponseModel:
     """
     向量化资源
@@ -306,8 +286,7 @@ async def vectorize_resources(
         # 批量向量化
         count = await resource_service.batch_update_vectors(db=db, batch_size=batch_size)
         return response_base.success(
-            res=CustomResponse(code=200, msg=f'成功向量化 {count} 个资源'),
-            data={'count': count}
+            res=CustomResponse(code=200, msg=f'成功向量化 {count} 个资源'), data={'count': count}
         )
 
 
@@ -317,9 +296,7 @@ async def vectorize_resources(
     response_model=ResponseSchemaModel[GetResourceDetail],
 )
 async def get_resource_detail(
-    request: Request,
-    db: CurrentSession,
-    resource_id: Annotated[int, Path(description='资源ID')]
+    request: Request, db: CurrentSession, resource_id: Annotated[int, Path(description='资源ID')]
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     获取资源详情
@@ -337,14 +314,14 @@ async def get_resource_detail(
     '/{resource_id}',
     summary='更新资源',
     response_model=ResponseSchemaModel[GetResourceDetail],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def update_resource(
     request: Request,
     db: CurrentSession,
     resource_id: Annotated[int, Path(description='资源ID')],
     obj: UpdateResourceUserParam,
-    auto_refresh: Annotated[bool, Query(description='是否自动刷新分享信息')] = False
+    auto_refresh: Annotated[bool, Query(description='是否自动刷新分享信息')] = False,
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     更新资源
@@ -358,7 +335,9 @@ async def update_resource(
     """
     # 将用户输入参数转换为完整的更新参数
     update_param = UpdateResourceParam(**obj.model_dump(exclude_unset=True))
-    resource = await resource_service.update(db=db, pk=resource_id, obj=update_param, updated_by=request.user.id, auto_refresh=auto_refresh)
+    resource = await resource_service.update(
+        db=db, pk=resource_id, obj=update_param, updated_by=request.user.id, auto_refresh=auto_refresh
+    )
     return response_base.success(data=resource)
 
 
@@ -366,12 +345,10 @@ async def update_resource(
     '/{resource_id}/refresh-share-info',
     summary='刷新资源分享信息',
     response_model=ResponseSchemaModel[GetResourceDetail],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def refresh_resource_share_info(
-    request: Request,
-    db: CurrentSession,
-    resource_id: Annotated[int, Path(description='资源ID')]
+    request: Request, db: CurrentSession, resource_id: Annotated[int, Path(description='资源ID')]
 ) -> ResponseSchemaModel[GetResourceDetail]:
     """
     刷新资源分享信息
@@ -385,17 +362,8 @@ async def refresh_resource_share_info(
     return response_base.success(data=resource)
 
 
-@router.delete(
-    '',
-    summary='删除资源（支持批量）',
-    response_model=ResponseModel,
-    dependencies=[DependsJwtAuth]
-)
-async def delete_resources(
-    request: Request,
-    db: CurrentSession,
-    params: BatchDeleteResourceParam
-) -> ResponseModel:
+@router.delete('', summary='删除资源（支持批量）', response_model=ResponseModel, dependencies=[DependsJwtAuth])
+async def delete_resources(request: Request, db: CurrentSession, params: BatchDeleteResourceParam) -> ResponseModel:
     """
     删除资源（支持单个或批量）
 
@@ -413,17 +381,17 @@ async def delete_resources(
     '/{resource_id}/view-history',
     summary='记录资源浏览量',
     response_model=ResponseSchemaModel[GetResourceViewHistoryDetail],
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def create_resource_view_history(
     request: Request,
     db: CurrentSession,
     resource_id: Annotated[int, Path(description='资源ID')],
-    params: CreateResourceViewHistoryParam
+    params: CreateResourceViewHistoryParam,
 ) -> ResponseSchemaModel[GetResourceViewHistoryDetail]:
     """
     记录资源浏览量
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param resource_id: 资源ID
@@ -435,19 +403,17 @@ async def create_resource_view_history(
 
 
 @router.get(
-    '/{resource_id}/view-history',
-    summary='获取资源浏览量历史',
-    dependencies=[DependsJwtAuth, DependsPagination]
+    '/{resource_id}/view-history', summary='获取资源浏览量历史', dependencies=[DependsJwtAuth, DependsPagination]
 )
 async def get_resource_view_history(
     request: Request,
     db: CurrentSession,
     resource_id: Annotated[int, Path(description='资源ID')],
-    params: Annotated[GetResourceViewHistoryListParam, Depends()]
+    params: Annotated[GetResourceViewHistoryListParam, Depends()],
 ) -> ResponseModel:
     """
     获取资源浏览量历史
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param resource_id: 资源ID
@@ -459,20 +425,17 @@ async def get_resource_view_history(
 
 
 @router.put(
-    '/{resource_id}/view-count',
-    summary='更新资源浏览量',
-    response_model=ResponseModel,
-    dependencies=[DependsJwtAuth]
+    '/{resource_id}/view-count', summary='更新资源浏览量', response_model=ResponseModel, dependencies=[DependsJwtAuth]
 )
 async def update_resource_view_count(
     request: Request,
     db: CurrentSession,
     resource_id: Annotated[int, Path(description='资源ID')],
-    params: UpdateResourceViewCountParam
+    params: UpdateResourceViewCountParam,
 ) -> ResponseModel:
     """
     更新资源浏览量
-    
+
     :param request: 请求对象
     :param db: 数据库会话
     :param resource_id: 资源ID
@@ -485,46 +448,39 @@ async def update_resource_view_count(
 
 @router.delete('/view-histories', summary='清理旧的浏览量历史记录', dependencies=[DependsJwtAuth])
 async def clean_old_view_history(
-    db: CurrentSession,
-    days: Annotated[int, Query(description='保留天数')] = 30
+    db: CurrentSession, days: Annotated[int, Query(description='保留天数')] = 30
 ) -> ResponseModel:
     """清理旧的浏览量历史记录"""
     count = await run_in_threadpool(resource_view_history_service.clean_old_view_history, db, days)
     return response_base.success(data={'count': count})
 
 
-@router.post(
-    '/upload',
-    summary='上传资源文件',
-    description='上传资源文件到服务器',
-    dependencies=[DependsJwtAuth]
-)
+@router.post('/upload', summary='上传资源文件', description='上传资源文件到服务器', dependencies=[DependsJwtAuth])
 async def upload_resource_file(
-    db: CurrentSession,
-    file: Annotated[UploadFile, File(description="文件")]
+    db: CurrentSession, file: Annotated[UploadFile, File(description='文件')]
 ) -> ResponseModel:
     """
     上传资源文件到云存储
-    
+
     :param db: 数据库会话
     :param file: 文件对象
     :return: 文件路径和类型
     """
     try:
         import uuid
-        
+
         filename = file.filename
         ext = filename.split('.')[-1].lower() if '.' in filename else ''
-        
+
         # 简单检查文件类型（可选）
         # if ext not in ALLOWED_EXTENSIONS:
         #     return response_base.fail(res=CustomResponse(code=400, msg='不支持的文件类型'))
-            
+
         # 生成对象路径: resources/YYYYMMDD/uuid.ext
         today = timezone.now().strftime('%Y%m%d')
-            
+
         base_name = filename.rsplit('.', 1)[0]
-        new_filename = f"{base_name}_{uuid.uuid4().hex[:8]}.{ext}"
+        new_filename = f'{base_name}_{uuid.uuid4().hex[:8]}.{ext}'
         uploaded_url, object_key = await storage_service.upload_with_filename(
             db=db,
             file=file,
@@ -532,14 +488,16 @@ async def upload_resource_file(
             path=f'resources/{today}',
             use_signed_url=False,
         )
-        
-        return response_base.success(data={
-            'url': uploaded_url,
-            'local_path': None,
-            'filename': filename,
-            'file_type': ext,
-            'object_key': object_key,
-        })
-        
+
+        return response_base.success(
+            data={
+                'url': uploaded_url,
+                'local_path': None,
+                'filename': filename,
+                'file_type': ext,
+                'object_key': object_key,
+            }
+        )
+
     except Exception as e:
         return response_base.fail(res=CustomResponse(code=500, msg=f'文件上传失败: {str(e)}'))

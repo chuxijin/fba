@@ -23,12 +23,10 @@ from backend.app.access.engine.cycle import build_cycle_key
 from backend.app.access.model.entitlement import Entitlement
 from backend.app.access.model.pack import EntitlementPack, PackItem
 from backend.app.access.model.subscription import Subscription
-from backend.app.access.model.template import SubscriptionTemplate
 from backend.app.access.schema.base import TimePeriodOutput
 from backend.app.access.schema.entitlement import GetMyEntitlement
 from backend.app.access.schema.my import GetMyAccessSummary
 from backend.app.access.schema.subscription import GetMySubscription, GetMySubscriptionLedger
-from backend.app.access.service.subscription_service import subscription_service
 from backend.common.cache.redis_cache import RedisCache
 from backend.common.cache.serializers import PydanticSerializer
 from backend.utils.timezone import timezone
@@ -166,12 +164,12 @@ class MyAccessService:
             missing_cycle_codes = [code for code in quota_codes if code not in cycle_types]
             if missing_cycle_codes:
                 rule_cycle_types = await MyAccessService._get_quota_cycle_types_from_rules(
-                    db, missing_cycle_codes,
+                    db,
+                    missing_cycle_codes,
                 )
                 cycle_types.update(rule_cycle_types)
             entitlement_cycle_keys = {
-                code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
-                for code in quota_codes
+                code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now) for code in quota_codes
             }
             from backend.app.access.crud.crud_ledger import quota_ledger_dao
 
@@ -282,12 +280,12 @@ class MyAccessService:
             missing_cycle_codes = [code for code in quota_codes if code not in cycle_types]
             if missing_cycle_codes:
                 rule_cycle_types = await MyAccessService._get_quota_cycle_types_from_rules(
-                    db, missing_cycle_codes,
+                    db,
+                    missing_cycle_codes,
                 )
                 cycle_types.update(rule_cycle_types)
             entitlement_cycle_keys = {
-                code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
-                for code in quota_codes
+                code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now) for code in quota_codes
             }
             from backend.app.access.crud.crud_ledger import quota_ledger_dao
 
@@ -600,12 +598,10 @@ class MyAccessService:
         :param entitlement_map: 权益映射
         :return:
         """
-        access_codes = {
-            code for code, ent in entitlement_map.items()
-            if ent['category'] == EntitlementCategory.ACCESS
-        }
+        access_codes = {code for code, ent in entitlement_map.items() if ent['category'] == EntitlementCategory.ACCESS}
         return {
-            code: ent for code, ent in entitlement_map.items()
+            code: ent
+            for code, ent in entitlement_map.items()
             if not (code.endswith('.trial') and code.replace('.trial', '.view') in access_codes)
         }
 

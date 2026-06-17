@@ -76,15 +76,11 @@ class Product(Base, UserMixin):
     )
     name: Mapped[str] = mapped_column(sa.String(256), comment='商品名称')
     subtitle: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='商品副标题')
-    product_type: Mapped[str] = mapped_column(
-        sa.String(16), default='virtual', comment='商品类型: virtual/physical'
-    )
+    product_type: Mapped[str] = mapped_column(sa.String(16), default='virtual', comment='商品类型: virtual/physical')
     cover_image: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='封面图')
     images: Mapped[list | None] = mapped_column(CompatibleJSONB, default=None, comment='商品图片列表')
     detail: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='商品详情')
-    status: Mapped[str] = mapped_column(
-        sa.String(16), default='draft', comment='状态: draft/on_sale/off_sale/deleted'
-    )
+    status: Mapped[str] = mapped_column(sa.String(16), default='draft', comment='状态: draft/on_sale/off_sale/deleted')
     sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序权重')
     sales_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='销量')
     virtual_sales: Mapped[int] = mapped_column(sa.Integer, default=0, comment='虚拟销量')
@@ -125,9 +121,7 @@ class ProductSKU(Base, UserMixin):
     price: Mapped[Decimal] = mapped_column(sa.Numeric(10, 2), comment='售价')
     sku_code: Mapped[str | None] = mapped_column(sa.String(64), default=None, unique=True, comment='SKU 编码')
     specs: Mapped[dict | None] = mapped_column(CompatibleJSONB, default=None, comment='规格属性 JSON')
-    original_price: Mapped[Decimal | None] = mapped_column(
-        sa.Numeric(10, 2), default=None, comment='原价'
-    )
+    original_price: Mapped[Decimal | None] = mapped_column(sa.Numeric(10, 2), default=None, comment='原价')
     stock: Mapped[int] = mapped_column(sa.Integer, default=0, comment='库存')
     sales_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='销量')
     image: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='SKU 图片')

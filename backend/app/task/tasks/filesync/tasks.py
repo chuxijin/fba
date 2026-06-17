@@ -37,13 +37,7 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
 
     :return: 执行结果统计
     """
-    result = {
-        "checked_configs": 0,
-        "executed_tasks": 0,
-        "failed_tasks": 0,
-        "skipped_tasks": 0,
-        "execution_details": []
-    }
+    result = {'checked_configs': 0, 'executed_tasks': 0, 'failed_tasks': 0, 'skipped_tasks': 0, 'execution_details': []}
 
     # 用于收集详细信息的临时列表
     temp_details = []
@@ -52,7 +46,7 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
         async with async_db_session() as db:
             # 获取所有启用的同步配置
             enabled_configs = await sync_config_dao.get_enabled_configs(db)
-            result["checked_configs"] = len(enabled_configs)
+            result['checked_configs'] = len(enabled_configs)
 
             current_time = timezone.now()
 
@@ -60,57 +54,45 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                 try:
                     # 检查是否有cron表达式
                     if not config.cron:
-                        result["skipped_tasks"] += 1
+                        result['skipped_tasks'] += 1
                         temp_details.append({
-                            "config_id": config.id,
-                            "status": "skipped",
-                            "reason": "没有设置cron表达式"
+                            'config_id': config.id,
+                            'status': 'skipped',
+                            'reason': '没有设置cron表达式',
                         })
                         continue
 
                     # 检查任务是否过期
                     end_time = datetime.fromisoformat(str(config.end_time)) if config.end_time else None
                     if end_time and current_time > end_time:
-                        result["skipped_tasks"] += 1
-                        temp_details.append({
-                            "config_id": config.id,
-                            "status": "skipped",
-                            "reason": "任务已过期"
-                        })
+                        result['skipped_tasks'] += 1
+                        temp_details.append({'config_id': config.id, 'status': 'skipped', 'reason': '任务已过期'})
                         continue
 
                     # 验证cron表达式
                     if not _is_valid_cron_expression(config.cron):
-                        result["failed_tasks"] += 1
-                        temp_details.append({
-                            "config_id": config.id,
-                            "status": "failed",
-                            "reason": "cron表达式无效"
-                        })
+                        result['failed_tasks'] += 1
+                        temp_details.append({'config_id': config.id, 'status': 'failed', 'reason': 'cron表达式无效'})
                         continue
 
                     # 检查是否到了执行时间
                     should_execute = _should_execute_now(config.cron, config.last_sync, current_time)
 
                     if not should_execute:
-                        result["skipped_tasks"] += 1
-                        temp_details.append({
-                            "config_id": config.id,
-                            "status": "skipped",
-                            "reason": "未到执行时间"
-                        })
+                        result['skipped_tasks'] += 1
+                        temp_details.append({'config_id': config.id, 'status': 'skipped', 'reason': '未到执行时间'})
                         continue
 
                     # 派发前检查 Redis 锁，避免重复派发
-                    lock_key = f"{FILESYNC_EXEC_LOCK_PREFIX}{config.id}"
+                    lock_key = f'{FILESYNC_EXEC_LOCK_PREFIX}{config.id}'
                     if await redis_client.exists(lock_key):
-                        result["skipped_tasks"] += 1
+                        result['skipped_tasks'] += 1
                         temp_details.append({
-                            "config_id": config.id,
-                            "status": "skipped",
-                            "reason": "已有任务正在执行（Redis 锁存在）"
+                            'config_id': config.id,
+                            'status': 'skipped',
+                            'reason': '已有任务正在执行（Redis 锁存在）',
                         })
-                        log_task_skipped(config.id, f"Redis 锁存在, key={lock_key}")
+                        log_task_skipped(config.id, f'Redis 锁存在, key={lock_key}')
                         continue
 
                     # 执行同步任务
@@ -122,29 +104,25 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
                     # 调试日志
                     log_task_dispatch('execute_filesync_task_by_config_id', config.id, celery_task_id)
 
-                    result["executed_tasks"] += 1
+                    result['executed_tasks'] += 1
                     temp_details.append({
-                        "config_id": config.id,
-                        "status": "dispatched",
-                        "reason": "已推送至后台队列异步执行"
+                        'config_id': config.id,
+                        'status': 'dispatched',
+                        'reason': '已推送至后台队列异步执行',
                     })
-                    logger.info(f"配置 {config.remark} 的同步任务已成功派发到 Celery 队列")
+                    logger.info(f'配置 {config.remark} 的同步任务已成功派发到 Celery 队列')
 
                 except Exception as e:
-                    logger.error(f"处理配置 {config.id} 时发生错误: {str(e)}")
-                    result["failed_tasks"] += 1
-                    temp_details.append({
-                        "config_id": config.id,
-                        "status": "error",
-                        "error": str(e)
-                    })
+                    logger.error(f'处理配置 {config.id} 时发生错误: {str(e)}')
+                    result['failed_tasks'] += 1
+                    temp_details.append({'config_id': config.id, 'status': 'error', 'error': str(e)})
 
     except Exception as e:
-        logger.error(f"检查文件同步定时任务时发生错误: {str(e)}")
-        result["error"] = str(e)
+        logger.error(f'检查文件同步定时任务时发生错误: {str(e)}')
+        result['error'] = str(e)
 
     # 合并相同状态和原因的配置
-    result["execution_details"] = _merge_execution_details(temp_details)
+    result['execution_details'] = _merge_execution_details(temp_details)
 
     return result
 
@@ -158,42 +136,40 @@ async def execute_filesync_task_by_config_id(self, config_id: int) -> Dict[str, 
     :return: 执行结果
     """
     celery_task_id = self.request.id
-    lock_key = f"{FILESYNC_EXEC_LOCK_PREFIX}{config_id}"
+    lock_key = f'{FILESYNC_EXEC_LOCK_PREFIX}{config_id}'
 
     try:
         # 原子性分布式锁：SET NX + EX，保证同一 config_id 只有一个 worker 在执行
-        lock_acquired = await redis_client.set(
-            lock_key, celery_task_id, nx=True, ex=FILESYNC_EXEC_LOCK_TTL
-        )
+        lock_acquired = await redis_client.set(lock_key, celery_task_id, nx=True, ex=FILESYNC_EXEC_LOCK_TTL)
         if not lock_acquired:
-            logger.warning(f"配置 {config_id} 获取 Redis 锁失败，已有任务正在执行，跳过本次")
-            log_task_skipped(config_id, f"Redis 锁竞争失败, celery_id={celery_task_id}")
+            logger.warning(f'配置 {config_id} 获取 Redis 锁失败，已有任务正在执行，跳过本次')
+            log_task_skipped(config_id, f'Redis 锁竞争失败, celery_id={celery_task_id}')
             return {
-                "success": True,
-                "config_id": config_id,
-                "skipped": True,
-                "message": "已有正在执行的同步任务（Redis 锁），跳过本次执行"
+                'success': True,
+                'config_id': config_id,
+                'skipped': True,
+                'message': '已有正在执行的同步任务（Redis 锁），跳过本次执行',
             }
 
         try:
             async with async_db_session() as db:
                 # 二级防护：数据库幂等性检查
                 if await sync_task_dao.has_running_task(db, config_id=config_id):
-                    logger.warning(f"配置 {config_id} 已有正在运行的同步任务，跳过本次执行")
-                    log_task_skipped(config_id, f"已有 running 任务, celery_id={celery_task_id}")
+                    logger.warning(f'配置 {config_id} 已有正在运行的同步任务，跳过本次执行')
+                    log_task_skipped(config_id, f'已有 running 任务, celery_id={celery_task_id}')
                     return {
-                        "success": True,
-                        "config_id": config_id,
-                        "skipped": True,
-                        "message": "已有正在运行的同步任务，跳过本次执行"
+                        'success': True,
+                        'config_id': config_id,
+                        'skipped': True,
+                        'message': '已有正在运行的同步任务，跳过本次执行',
                     }
 
                 log_task_start(config_id, task_id=None, celery_task_id=celery_task_id)
 
                 result = await file_sync_service.execute_sync_by_config_id(config_id, db)
 
-                if not result.get("success"):
-                    logger.error(f"配置 {config_id} 同步任务执行失败: {result.get('error')}")
+                if not result.get('success'):
+                    logger.error(f'配置 {config_id} 同步任务执行失败: {result.get("error")}')
 
                 log_task_end(
                     config_id,
@@ -215,14 +191,10 @@ async def execute_filesync_task_by_config_id(self, config_id: int) -> Dict[str, 
             await redis_client.delete(lock_key)
         except Exception:
             pass
-        error_msg = f"执行配置 {config_id} 同步任务时发生错误: {str(e)}"
+        error_msg = f'执行配置 {config_id} 同步任务时发生错误: {str(e)}'
         logger.error(error_msg)
         log_task_end(config_id, task_id=None, success=False, error=error_msg)
-        return {
-            "success": False,
-            "error": error_msg,
-            "config_id": config_id
-        }
+        return {'success': False, 'error': error_msg, 'config_id': config_id}
 
 
 @celery_app.task(name='get_filesync_configs_with_cron')
@@ -240,41 +212,41 @@ async def get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
             for config in enabled_configs:
                 if config.cron:
                     config_info = {
-                        "id": config.id,
-                        "remark": config.remark,
-                        "cron": config.cron,
-                        "last_sync": str(config.last_sync) if config.last_sync else None,
-                        "end_time": str(config.end_time) if config.end_time else None,
-                        "src_path": config.src_path,
-                        "dst_path": config.dst_path,
-                        "type": config.type,
-                        "is_valid_cron": _is_valid_cron_expression(config.cron)
+                        'id': config.id,
+                        'remark': config.remark,
+                        'cron': config.cron,
+                        'last_sync': str(config.last_sync) if config.last_sync else None,
+                        'end_time': str(config.end_time) if config.end_time else None,
+                        'src_path': config.src_path,
+                        'dst_path': config.dst_path,
+                        'type': config.type,
+                        'is_valid_cron': _is_valid_cron_expression(config.cron),
                     }
 
                     # 计算下次执行时间
-                    if config_info["is_valid_cron"]:
+                    if config_info['is_valid_cron']:
                         try:
                             cron = croniter(config.cron, timezone.now())
                             next_run = cron.get_next(datetime)
-                            config_info["next_run"] = next_run.isoformat()
+                            config_info['next_run'] = next_run.isoformat()
                         except Exception:
-                            config_info["next_run"] = None
+                            config_info['next_run'] = None
                     else:
-                        config_info["next_run"] = None
+                        config_info['next_run'] = None
 
                     configs_with_cron.append(config_info)
 
             return configs_with_cron
 
     except Exception as e:
-        logger.error(f"获取cron配置时发生错误: {str(e)}")
+        logger.error(f'获取cron配置时发生错误: {str(e)}')
         return []
 
 
 def _is_valid_cron_expression(cron_expr: str) -> bool:
     """
     验证cron表达式是否有效
-    
+
     :param cron_expr: cron表达式
     :return: 是否有效
     """
@@ -288,7 +260,7 @@ def _is_valid_cron_expression(cron_expr: str) -> bool:
 def _should_execute_now(cron_expr: str, last_sync: Any | None, current_time: datetime) -> bool:
     """
     判断是否应该在当前时间执行任务
-    
+
     :param cron_expr: cron表达式
     :param last_sync: 上次同步时间
     :param current_time: 当前时间
@@ -297,88 +269,85 @@ def _should_execute_now(cron_expr: str, last_sync: Any | None, current_time: dat
     try:
         # 基于当前时间创建 croniter
         cron = croniter(cron_expr, current_time)
-        
+
         # 获取当前时间之前的最近一次应该执行的时间
         prev_execution_time = cron.get_prev(datetime)
-        
+
         # 计算当前检查时间与最近执行时间的差距（分钟）
         # 如果差距在合理范围内（比如5分钟内），认为是在执行窗口内
         time_diff_minutes = (current_time - prev_execution_time).total_seconds() / 60
-        
+
         # 定义执行窗口：最近执行时间后的5分钟内都算有效执行窗口
         execution_window_minutes = 5
-        
+
         # 检查是否在执行窗口内
         in_execution_window = 0 <= time_diff_minutes <= execution_window_minutes
-        
+
         # 从未同步过的情况：只有在执行窗口内才执行
         if last_sync is None:
             return in_execution_window
-        
+
         # 已有同步历史的情况：检查上次同步时间是否早于最近的执行时间
         last_sync_dt = datetime.fromisoformat(str(last_sync)) if last_sync else None
         if last_sync_dt and last_sync_dt < prev_execution_time and in_execution_window:
             return True
-        
+
         return False
-    
+
     except Exception as e:
-        logger.error(f"解析cron表达式 {cron_expr} 时发生错误: {str(e)}")
+        logger.error(f'解析cron表达式 {cron_expr} 时发生错误: {str(e)}')
         return False
 
 
 def _merge_execution_details(details: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     合并相同状态和原因的执行详情
-    
+
     :param details: 原始执行详情列表
     :return: 合并后的执行详情列表
     """
     if not details:
         return []
-    
+
     # 用于分组的字典，key为(status, reason/error)，value为配置ID列表和其他信息
     groups = {}
-    
+
     for detail in details:
-        status = detail.get("status")
-        
+        status = detail.get('status')
+
         # 根据状态确定分组的key
-        if status in ["skipped", "failed"] and "reason" in detail:
+        if status in ['skipped', 'failed'] and 'reason' in detail:
             # 对于有reason的情况，使用(status, reason)作为key
-            group_key = (status, detail.get("reason"))
-        elif status == "failed" and "error" in detail:
+            group_key = (status, detail.get('reason'))
+        elif status == 'failed' and 'error' in detail:
             # 对于有error的情况，使用(status, error)作为key
-            group_key = (status, detail.get("error"))
+            group_key = (status, detail.get('error'))
         else:
             # 对于success等其他情况，每个配置单独一条记录
-            group_key = (status, detail.get("config_id"))
-        
+            group_key = (status, detail.get('config_id'))
+
         if group_key not in groups:
-            groups[group_key] = {
-                "config_ids": [],
-                "detail": detail.copy()
-            }
-        
-        groups[group_key]["config_ids"].append(detail.get("config_id"))
-    
+            groups[group_key] = {'config_ids': [], 'detail': detail.copy()}
+
+        groups[group_key]['config_ids'].append(detail.get('config_id'))
+
     # 生成合并后的结果
     merged_details = []
     for (status, reason_or_error), group_data in groups.items():
-        config_ids = group_data["config_ids"]
-        detail = group_data["detail"]
-        
+        config_ids = group_data['config_ids']
+        detail = group_data['detail']
+
         if len(config_ids) > 1:
             # 多个配置ID，合并显示
-            detail["config_id"] = config_ids
+            detail['config_id'] = config_ids
         else:
             # 单个配置ID，保持原样
-            detail["config_id"] = config_ids[0]
-        
+            detail['config_id'] = config_ids[0]
+
         merged_details.append(detail)
-    
+
     # 按状态排序：success -> failed -> error -> skipped
-    status_order = {"success": 1, "failed": 2, "error": 3, "skipped": 4}
-    merged_details.sort(key=lambda x: status_order.get(x.get("status"), 5))
-    
-    return merged_details 
+    status_order = {'success': 1, 'failed': 2, 'error': 3, 'skipped': 4}
+    merged_details.sort(key=lambda x: status_order.get(x.get('status'), 5))
+
+    return merged_details

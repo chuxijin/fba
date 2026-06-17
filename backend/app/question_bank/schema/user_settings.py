@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+
 class CustomTab(BaseModel):
     """自定义 Tab"""
 
@@ -30,7 +31,9 @@ class StudyPreferenceSettings(BaseModel):
     current_cat_id: int | None = Field(None, description='当前题库目录分类 ID')
     current_kp_cat_id: int | None = Field(None, description='当前知识点分类 ID')
     practice_mode: str = Field(default='practice', description='做题模式：practice/exercise/memorize')
-    category_custom_tabs: CategoryCustomTabs = Field(default_factory=dict, description='按分类范围隔离的自定义 Tab 列表')
+    category_custom_tabs: CategoryCustomTabs = Field(
+        default_factory=dict, description='按分类范围隔离的自定义 Tab 列表'
+    )
     mastery_threshold: int = Field(default=3, ge=1, le=20, description='错题连续答对掌握阈值')
     theme_mode: ThemeMode = Field(default='light', description='主题模式：light/dark/auto')
     random_practice_count: int = Field(default=20, ge=10, le=100, description='随机练习题目数')
@@ -56,7 +59,9 @@ class GetStudyPreferenceResponse(BaseModel):
     current_cat_id: int | None = Field(None, description='当前题库目录分类 ID')
     current_kp_cat_id: int | None = Field(None, description='当前知识点分类 ID')
     practice_mode: str = Field(description='做题模式：practice/exercise/memorize')
-    category_custom_tabs: CategoryCustomTabs = Field(default_factory=dict, description='按分类范围隔离的自定义 Tab 列表')
+    category_custom_tabs: CategoryCustomTabs = Field(
+        default_factory=dict, description='按分类范围隔离的自定义 Tab 列表'
+    )
     mastery_threshold: int = Field(default=3, description='错题连续答对掌握阈值')
     theme_mode: ThemeMode = Field(default='light', description='主题模式：light/dark/auto')
     random_practice_count: int = Field(default=20, description='随机练习题目数')

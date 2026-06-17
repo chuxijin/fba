@@ -86,23 +86,23 @@ class DirectGrantService:
             from backend.common.log import log
             from backend.utils.timezone import timezone
 
-            lower_str = grant.valid_period.lower.strftime("%Y-%m-%d %H:%M:%S") if grant.valid_period.lower else "-"
-            upper_str = grant.valid_period.upper.strftime("%Y-%m-%d %H:%M:%S") if grant.valid_period.upper else "永久"
+            lower_str = grant.valid_period.lower.strftime('%Y-%m-%d %H:%M:%S') if grant.valid_period.lower else '-'
+            upper_str = grant.valid_period.upper.strftime('%Y-%m-%d %H:%M:%S') if grant.valid_period.upper else '永久'
 
             await user_message_service.create(
                 db=db,
                 obj_in=CreateUserMessageParam(
-                    title="权益授予通知",
-                    content=f"系统已成功为您授予专属特权「{entitlement.name}」，有效期为 {lower_str} 至 {upper_str}。",
-                    target_type="user",
+                    title='权益授予通知',
+                    content=f'系统已成功为您授予专属特权「{entitlement.name}」，有效期为 {lower_str} 至 {upper_str}。',
+                    target_type='user',
                     user_id=obj.user_id,
-                    message_type="personal",
+                    message_type='personal',
                     status=1,
-                    publish_time=timezone.now()
-                )
+                    publish_time=timezone.now(),
+                ),
             )
         except Exception as e:
-            log.error(f"发送权益授予消息通知失败: {e}", exc_info=True)
+            log.error(f'发送权益授予消息通知失败: {e}', exc_info=True)
 
         return grant
 

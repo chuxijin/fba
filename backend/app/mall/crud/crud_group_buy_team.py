@@ -30,15 +30,13 @@ class CRUDGroupBuyTeam(CRUDPlus[GroupBuyTeam]):
         :param team_id: 团队 ID
         :return:
         """
-        stmt = (
-            select(GroupBuyTeam)
-            .where(GroupBuyTeam.id == team_id)
-            .options(selectinload(GroupBuyTeam.members))
-        )
+        stmt = select(GroupBuyTeam).where(GroupBuyTeam.id == team_id).options(selectinload(GroupBuyTeam.members))
         result = await db.execute(stmt)
         return result.unique().scalars().first()
 
-    async def get_by_activity(self, db: AsyncSession, activity_id: int, status: str | None = None) -> list[GroupBuyTeam]:
+    async def get_by_activity(
+        self, db: AsyncSession, activity_id: int, status: str | None = None
+    ) -> list[GroupBuyTeam]:
         """
         获取活动的团队列表
 
@@ -79,6 +77,7 @@ class CRUDGroupBuyTeam(CRUDPlus[GroupBuyTeam]):
         :return:
         """
         from backend.utils.timezone import timezone
+
         now = timezone.now()
         stmt = (
             select(GroupBuyTeam)
@@ -102,6 +101,7 @@ class CRUDGroupBuyTeam(CRUDPlus[GroupBuyTeam]):
         :return:
         """
         from backend.utils.timezone import timezone
+
         now = timezone.now()
         stmt = (
             select(GroupBuyTeam)

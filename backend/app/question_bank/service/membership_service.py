@@ -173,9 +173,7 @@ class MembershipService:
             raise errors.ForbiddenError(msg=f'篇章 ID {chapter_id} 不属于题库 ID {bank_id} 的篇章来源')
 
     @classmethod
-    async def verify_bank_chapter_access(
-        cls, *, db: AsyncSession, user_id: int, bank_id: int, chapter_id: int
-    ) -> None:
+    async def verify_bank_chapter_access(cls, *, db: AsyncSession, user_id: int, bank_id: int, chapter_id: int) -> None:
         """
         校验篇章与题库关系并校验访问权限
 
@@ -214,17 +212,22 @@ class MembershipService:
             # Cut A: 一次性加载 bank, 复用给后续 verify_bank_chapter_relation + verify_bank_access
             bank = await bank_dao.get(db, bank_id)
             await cls.verify_bank_chapter_relation(
-                db=db, bank_id=bank_id, chapter_id=chapter_id, bank=bank, chapter=chapter,
+                db=db,
+                bank_id=bank_id,
+                chapter_id=chapter_id,
+                bank=bank,
+                chapter=chapter,
             )
             if user_id is not None:
                 await cls.verify_bank_access(
-                    db=db, user_id=user_id, bank_id=bank_id, bank=bank,
+                    db=db,
+                    user_id=user_id,
+                    bank_id=bank_id,
+                    bank=bank,
                 )
             return bank_id
 
-        candidate_bank_ids = await cls._get_active_bank_ids_by_chapter_source(
-            db=db, source_bank_id=chapter.bank_id
-        )
+        candidate_bank_ids = await cls._get_active_bank_ids_by_chapter_source(db=db, source_bank_id=chapter.bank_id)
         if not candidate_bank_ids:
             raise errors.NotFoundError(msg='篇章关联内容不存在')
         if len(candidate_bank_ids) > 1:
@@ -267,9 +270,7 @@ class MembershipService:
         return [row[0] for row in rows]
 
     @classmethod
-    async def verify_question_access(
-        cls, *, db: AsyncSession, user_id: int, question_id: int
-    ) -> None:
+    async def verify_question_access(cls, *, db: AsyncSession, user_id: int, question_id: int) -> None:
         """
         校验用户是否有访问题目的权限
 
@@ -299,9 +300,7 @@ class MembershipService:
         raise last_error or errors.ForbiddenError(msg='当前题目需要会员权限')
 
     @classmethod
-    async def verify_question_ids_access(
-        cls, *, db: AsyncSession, user_id: int, question_ids: list[int]
-    ) -> None:
+    async def verify_question_ids_access(cls, *, db: AsyncSession, user_id: int, question_ids: list[int]) -> None:
         """
         批量校验题目访问权限
 
@@ -356,9 +355,7 @@ class MembershipService:
         return result
 
     @classmethod
-    async def verify_bank_list_access(
-        cls, *, db: AsyncSession, user_id: int, bank_id: int
-    ) -> None:
+    async def verify_bank_list_access(cls, *, db: AsyncSession, user_id: int, bank_id: int) -> None:
         """
         校验题库题目列表访问权限
 
@@ -370,9 +367,7 @@ class MembershipService:
         await cls.verify_bank_access(db=db, user_id=user_id, bank_id=bank_id)
 
     @classmethod
-    async def verify_placement_access(
-        cls, *, db: AsyncSession, user_id: int, placement_id: int
-    ) -> None:
+    async def verify_placement_access(cls, *, db: AsyncSession, user_id: int, placement_id: int) -> None:
         """
         校验题目挂载访问权限
 
@@ -431,9 +426,7 @@ class MembershipService:
         if not need_verify:
             return
 
-        if await cls._user_has_feature(
-            db=db, user_id=user_id, entitlement_code=_FEATURE_ADVANCED_FILTER
-        ):
+        if await cls._user_has_feature(db=db, user_id=user_id, entitlement_code=_FEATURE_ADVANCED_FILTER):
             return
         raise errors.ForbiddenError(msg='当前筛选条件需要会员权限')
 
@@ -465,16 +458,12 @@ class MembershipService:
         if not need_verify:
             return
 
-        if await cls._user_has_feature(
-            db=db, user_id=user_id, entitlement_code=_FEATURE_KNOWLEDGE_PRACTICE
-        ):
+        if await cls._user_has_feature(db=db, user_id=user_id, entitlement_code=_FEATURE_KNOWLEDGE_PRACTICE):
             return
         raise errors.ForbiddenError(msg='按知识点刷题需要会员权限')
 
     @staticmethod
-    async def verify_session_access(
-        *, db: AsyncSession, user_id: int, session_id: int
-    ) -> None:
+    async def verify_session_access(*, db: AsyncSession, user_id: int, session_id: int) -> None:
         """
         校验会话访问权限
 

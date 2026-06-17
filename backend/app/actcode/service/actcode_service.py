@@ -111,9 +111,9 @@ class ActcodeService:
 
             if config.use_checksum:
                 checksum = ActcodeService._calculate_checksum(code_body.replace(config.separator, ''))
-                code = f"{config.prefix}{code_body}{config.separator}{checksum}{config.suffix}"
+                code = f'{config.prefix}{code_body}{config.separator}{checksum}{config.suffix}'
             else:
-                code = f"{config.prefix}{code_body}{config.suffix}"
+                code = f'{config.prefix}{code_body}{config.suffix}'
 
             return code
 
@@ -212,7 +212,9 @@ class ActcodeService:
         return count
 
     @staticmethod
-    async def get_code_list(*, db: AsyncSession, batch_id: int | None = None, status: int | None = None) -> dict[str, Any]:
+    async def get_code_list(
+        *, db: AsyncSession, batch_id: int | None = None, status: int | None = None
+    ) -> dict[str, Any]:
         """
         获取激活码列表
 

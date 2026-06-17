@@ -19,39 +19,41 @@ router = APIRouter()
     summary='提交同步任务',
     description='根据配置ID提交异步同步任务',
     response_model=ResponseModel,
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def execute_sync_task(
-    config_id: Annotated[int, Path(description="同步配置ID")],
-    db: CurrentSession
+    config_id: Annotated[int, Path(description='同步配置ID')], db: CurrentSession
 ) -> ResponseModel:
     """提交异步同步任务"""
     try:
         # 验证配置是否存在
         from backend.app.coulddrive.crud.crud_filesync import sync_config_dao
+
         config = await sync_config_dao.select_model(db, config_id)
         if not config:
-            return response_base.fail(res=ResponseModel(code=404, msg=f"同步配置 {config_id} 不存在"))
-        
+            return response_base.fail(res=ResponseModel(code=404, msg=f'同步配置 {config_id} 不存在'))
+
         if not config.enable:
-            return response_base.fail(res=ResponseModel(code=400, msg="同步配置已禁用"))
-        
+            return response_base.fail(res=ResponseModel(code=400, msg='同步配置已禁用'))
+
         # 临时直接执行，避免Celery导入问题
         try:
             # 直接执行同步任务（临时解决方案）
             result = await file_sync_service.execute_sync_by_config_id(config_id, db)
-            return response_base.success(data={
-                "task_id": f"direct_{config_id}_{int(__import__('time').time())}",
-                "config_id": config_id,
-                "status": "completed",
-                "result": result,
-                "message": "同步任务执行完成"
-            })
+            return response_base.success(
+                data={
+                    'task_id': f'direct_{config_id}_{int(__import__("time").time())}',
+                    'config_id': config_id,
+                    'status': 'completed',
+                    'result': result,
+                    'message': '同步任务执行完成',
+                }
+            )
         except Exception as sync_error:
-            return response_base.fail(res=ResponseModel(code=500, msg=f"执行同步任务失败: {str(sync_error)}"))
-    
+            return response_base.fail(res=ResponseModel(code=500, msg=f'执行同步任务失败: {str(sync_error)}'))
+
     except Exception as e:
-        return response_base.fail(res=ResponseModel(code=500, msg=f"提交同步任务失败: {str(e)}"))
+        return response_base.fail(res=ResponseModel(code=500, msg=f'提交同步任务失败: {str(e)}'))
 
 
 @router.get(
@@ -59,64 +61,59 @@ async def execute_sync_task(
     summary='查询任务状态',
     description='根据Celery任务ID查询异步任务状态',
     response_model=ResponseModel,
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
-async def get_task_status(
-    task_id: Annotated[str, Path(description="Celery任务ID")]
-) -> ResponseModel:
+async def get_task_status(task_id: Annotated[str, Path(description='Celery任务ID')]) -> ResponseModel:
     """查询异步任务状态"""
     try:
         from backend.app.task.celery import celery_app
-        
+
         # 获取任务状态
         async_result = celery_app.AsyncResult(task_id)
-        
+
         task_info = {
-            "task_id": task_id,
-            "status": async_result.status,
-            "ready": async_result.ready(),
-            "successful": async_result.successful() if async_result.ready() else None,
-            "failed": async_result.failed() if async_result.ready() else None,
+            'task_id': task_id,
+            'status': async_result.status,
+            'ready': async_result.ready(),
+            'successful': async_result.successful() if async_result.ready() else None,
+            'failed': async_result.failed() if async_result.ready() else None,
         }
-        
+
         # 如果任务完成，获取结果
         if async_result.ready():
             if async_result.successful():
                 result = async_result.result
-                task_info.update({
-                    "result": result if result is not None else {},
-                    "message": "任务执行完成"
-                })
+                task_info.update({'result': result if result is not None else {}, 'message': '任务执行完成'})
             elif async_result.failed():
                 task_info.update({
-                    "error": str(async_result.info) if async_result.info else "任务执行失败",
-                    "message": "任务执行失败"
+                    'error': str(async_result.info) if async_result.info else '任务执行失败',
+                    'message': '任务执行失败',
                 })
         else:
             # 任务还在执行中
-            task_info["message"] = "任务正在执行中"
-        
+            task_info['message'] = '任务正在执行中'
+
         return response_base.success(data=task_info)
-    
+
     except Exception as e:
-        return response_base.fail(res=ResponseModel(code=500, msg=f"查询任务状态失败: {str(e)}"))
+        return response_base.fail(res=ResponseModel(code=500, msg=f'查询任务状态失败: {str(e)}'))
 
 
 @router.get(
     '/{config_id}/tasks',
     summary='获取同步任务列表',
     description='根据配置ID获取同步任务执行历史列表',
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def get_sync_tasks(
-    config_id: Annotated[int, Path(description="同步配置ID")],
+    config_id: Annotated[int, Path(description='同步配置ID')],
     db: CurrentSession,
     page_params: Annotated[_CustomPageParams, DependsPagination],
-    status: Annotated[str | None, Query(description="任务状态")] = None
+    status: Annotated[str | None, Query(description='任务状态')] = None,
 ):
     """
     获取同步任务列表
-    
+
     :param config_id: 同步配置ID
     :param db: 数据库会话
     :param page_params: 分页参数
@@ -125,69 +122,62 @@ async def get_sync_tasks(
     """
     try:
         # 获取任务列表
-        tasks = await sync_task_service.get_sync_tasks_by_config_id(
-            config_id=config_id,
-            status=status,
-            db=db
-        )
-        
+        tasks = await sync_task_service.get_sync_tasks_by_config_id(config_id=config_id, status=status, db=db)
+
         # 使用项目现有分页方法
         from backend.common.pagination import paging_list_data
-        
+
         # 执行分页
         page_data = paging_list_data(tasks, page_params)
-        
+
         return response_base.success(data=page_data)
-        
+
     except Exception as e:
-        return response_base.fail(res=ResponseModel(code=500, msg=f"获取同步任务列表失败: {str(e)}"))
+        return response_base.fail(res=ResponseModel(code=500, msg=f'获取同步任务列表失败: {str(e)}'))
 
 
 @router.get(
     '/task/{task_id}',
     summary='获取同步任务详情',
     description='根据任务ID获取同步任务详情信息',
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
-async def get_sync_task_detail(
-    task_id: Annotated[int, Path(description="同步任务ID")],
-    db: CurrentSession
-):
+async def get_sync_task_detail(task_id: Annotated[int, Path(description='同步任务ID')], db: CurrentSession):
     """
     获取同步任务详情
-    
+
     :param task_id: 同步任务ID
     :param db: 数据库会话
     :return: 同步任务详情
     """
     try:
         task_detail = await sync_task_service.get_sync_task_detail(task_id, db)
-        
+
         if not task_detail:
-            return response_base.fail(res=ResponseModel(code=404, msg=f"同步任务 {task_id} 不存在"))
-        
+            return response_base.fail(res=ResponseModel(code=404, msg=f'同步任务 {task_id} 不存在'))
+
         return response_base.success(data=task_detail)
-        
+
     except Exception as e:
-        return response_base.fail(res=ResponseModel(code=500, msg=f"获取同步任务详情失败: {str(e)}"))
+        return response_base.fail(res=ResponseModel(code=500, msg=f'获取同步任务详情失败: {str(e)}'))
 
 
 @router.get(
     '/task/{task_id}/items',
     summary='获取同步任务项列表',
     description='根据任务ID获取同步任务项目详情列表',
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def get_sync_task_items(
-    task_id: Annotated[int, Path(description="同步任务ID")],
+    task_id: Annotated[int, Path(description='同步任务ID')],
     db: CurrentSession,
     page_params: Annotated[_CustomPageParams, DependsPagination],
-    status: Annotated[str | None, Query(description="任务项状态")] = None,
-    operation_type: Annotated[str | None, Query(description="操作类型")] = None
+    status: Annotated[str | None, Query(description='任务项状态')] = None,
+    operation_type: Annotated[str | None, Query(description='操作类型')] = None,
 ):
     """
     获取同步任务项列表
-    
+
     :param task_id: 同步任务ID
     :param db: 数据库会话
     :param page_params: 分页参数
@@ -198,22 +188,19 @@ async def get_sync_task_items(
     try:
         # 获取任务项列表
         task_items = await sync_task_service.get_sync_task_items(
-            task_id=task_id,
-            status=status,
-            operation_type=operation_type,
-            db=db
+            task_id=task_id, status=status, operation_type=operation_type, db=db
         )
-        
+
         # 使用项目现有分页方法
         from backend.common.pagination import paging_list_data
-        
+
         # 执行分页
         page_data = paging_list_data(task_items, page_params)
-        
+
         return response_base.success(data=page_data)
 
     except Exception as e:
-        return response_base.fail(res=ResponseModel(code=500, msg=f"获取同步任务项列表失败: {str(e)}"))
+        return response_base.fail(res=ResponseModel(code=500, msg=f'获取同步任务项列表失败: {str(e)}'))
 
 
 @router.post(
@@ -221,11 +208,10 @@ async def get_sync_task_items(
     summary='取消同步任务',
     description='请求取消正在运行的同步任务',
     response_model=ResponseModel,
-    dependencies=[DependsJwtAuth]
+    dependencies=[DependsJwtAuth],
 )
 async def cancel_sync_task(
-    task_id: Annotated[int, Path(description="同步任务ID")],
-    db: CurrentSession
+    task_id: Annotated[int, Path(description='同步任务ID')], db: CurrentSession
 ) -> ResponseModel:
     """
     取消同步任务
@@ -237,13 +223,14 @@ async def cancel_sync_task(
     try:
         # 获取任务
         from backend.app.coulddrive.crud.crud_filesync import sync_task_dao
+
         sync_task = await sync_task_dao.get(db, task_id)
 
         if not sync_task:
-            return response_base.fail(res=ResponseModel(code=404, msg=f"同步任务 {task_id} 不存在"))
+            return response_base.fail(res=ResponseModel(code=404, msg=f'同步任务 {task_id} 不存在'))
 
         # 检查任务状态
-        if sync_task.status not in ["running", "pending"]:
+        if sync_task.status not in ['running', 'pending']:
             return response_base.fail(
                 res=ResponseModel(code=400, msg=f"任务状态为 '{sync_task.status}'，只能取消运行中或待处理的任务")
             )
@@ -251,29 +238,24 @@ async def cancel_sync_task(
         # 检查是否已经请求取消
         if sync_task.cancel_requested:
             return response_base.success(
-                data={
-                    "task_id": task_id,
-                    "message": "取消请求已发送，任务正在停止中",
-                    "status": sync_task.status
-                }
+                data={'task_id': task_id, 'message': '取消请求已发送，任务正在停止中', 'status': sync_task.status}
             )
 
         # 设置取消标志
         from backend.app.coulddrive.schema.filesync import UpdateSyncTaskParam
+
         update_params = UpdateSyncTaskParam(
             cancel_requested=True,
-            start_time=sync_task.start_time if isinstance(sync_task.start_time, __import__('datetime').datetime) else None
+            start_time=sync_task.start_time
+            if isinstance(sync_task.start_time, __import__('datetime').datetime)
+            else None,
         )
         await sync_task_dao.update(db, db_obj=sync_task, obj_in=update_params)
         await db.commit()
 
         return response_base.success(
-            data={
-                "task_id": task_id,
-                "message": "取消请求已发送，任务将在下一个检查点停止",
-                "status": sync_task.status
-            }
+            data={'task_id': task_id, 'message': '取消请求已发送，任务将在下一个检查点停止', 'status': sync_task.status}
         )
 
     except Exception as e:
-        return response_base.fail(res=ResponseModel(code=500, msg=f"取消同步任务失败: {str(e)}"))
+        return response_base.fail(res=ResponseModel(code=500, msg=f'取消同步任务失败: {str(e)}'))

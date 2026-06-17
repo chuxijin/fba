@@ -52,9 +52,7 @@ class GroupBuyService:
         return await group_buy_activity_dao.get_active_activities(db)
 
     @staticmethod
-    async def create_activity(
-        *, db: AsyncSession, obj: CreateGroupBuyActivityParam, user_id: int
-    ) -> GroupBuyActivity:
+    async def create_activity(*, db: AsyncSession, obj: CreateGroupBuyActivityParam, user_id: int) -> GroupBuyActivity:
         """
         创建拼团活动
 
@@ -88,9 +86,7 @@ class GroupBuyService:
         return await group_buy_activity_dao.create(db, obj, user_id)
 
     @staticmethod
-    async def update_activity(
-        *, db: AsyncSession, activity_id: int, obj: UpdateGroupBuyActivityParam
-    ) -> int:
+    async def update_activity(*, db: AsyncSession, activity_id: int, obj: UpdateGroupBuyActivityParam) -> int:
         """
         更新拼团活动
 

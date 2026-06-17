@@ -24,7 +24,7 @@ class Resource(Base, UserMixin):
     __tablename__ = 'yp_resource'
 
     id: Mapped[id_key] = mapped_column(init=False)
-    
+
     # 必填字段
     category_id: Mapped[int] = mapped_column(ForeignKey('sys_category.id', ondelete='CASCADE'), comment='分类ID')
     main_name: Mapped[str] = mapped_column(String(200), comment='主要名字')
@@ -35,13 +35,15 @@ class Resource(Base, UserMixin):
     user_id: Mapped[int] = mapped_column(
         ForeignKey('yp_user.id', ondelete='CASCADE', use_alter=True), comment='所属用户ID'
     )
-    
+
     # 可选字段（有默认值）
     description: Mapped[str | None] = mapped_column(Text, default=None, comment='描述')
     resource_intro: Mapped[str | None] = mapped_column(Text, default=None, comment='资源介绍')
     resource_image: Mapped[str | None] = mapped_column(String(500), default=None, comment='资源图片')
     content: Mapped[str | None] = mapped_column(Text, default=None, comment='内容')
-    content_vector: Mapped[list[float] | None] = mapped_column(Vector(1536), default=None, deferred=True, comment='内容向量(1536维，默认不加载)')
+    content_vector: Mapped[list[float] | None] = mapped_column(
+        Vector(1536), default=None, deferred=True, comment='内容向量(1536维，默认不加载)'
+    )
     remark: Mapped[str | None] = mapped_column(Text, default=None, comment='备注')
     share_id: Mapped[str | None] = mapped_column(String(200), default=None, comment='分享ID')
     pwd_id: Mapped[str | None] = mapped_column(String(100), default=None, comment='密码ID')
@@ -55,19 +57,23 @@ class Resource(Base, UserMixin):
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, comment='实际过期时间')
     expired_left: Mapped[int | None] = mapped_column(BigInteger, default=None, comment='剩余过期天数')
     uk_uid: Mapped[str | None] = mapped_column(String(200), default=None, comment='用户唯一标识')
-    
+
     # 有默认值的字段
-    is_temp_file: Mapped[int] = mapped_column(Integer, default=0, comment='临时处理模式(0无操作 1定时删除 2定时刷新 3定时更新)')
+    is_temp_file: Mapped[int] = mapped_column(
+        Integer, default=0, comment='临时处理模式(0无操作 1定时删除 2定时刷新 3定时更新)'
+    )
     view_count: Mapped[int] = mapped_column(BigInteger, default=0, comment='浏览量')
     sort: Mapped[int] = mapped_column(default=0, comment='排序')
     status: Mapped[int] = mapped_column(default=1, comment='状态(0停用 1正常)')
     audit_status: Mapped[int] = mapped_column(default=0, comment='审核状态(0待审核 1通过 2拒绝)')
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, comment='是否删除')
     expired_type: Mapped[int] = mapped_column(default=0, comment='过期类型(0永久 1定时)')
-    
+
     # 新增字段
     local_file_path: Mapped[str | None] = mapped_column(String(500), default=None, comment='本地文件路径')
-    file_type: Mapped[str | None] = mapped_column(String(50), default=None, comment='文件类型(pdf/video/audio/doc/zip等)')
+    file_type: Mapped[str | None] = mapped_column(
+        String(50), default=None, comment='文件类型(pdf/video/audio/doc/zip等)'
+    )
     hot: Mapped[int] = mapped_column(Integer, default=0, comment='热度值')
 
     @property
@@ -81,12 +87,12 @@ class Resource(Base, UserMixin):
     # 关系
     user: Mapped[DriveAccount] = relationship(init=False, back_populates='resources')
     category: Mapped[Category] = relationship(init=False)
-    view_history: Mapped[list["ResourceViewHistory"]] = relationship(
+    view_history: Mapped[list['ResourceViewHistory']] = relationship(
         init=False,
-        back_populates="resource",
-        cascade="all, delete-orphan",
-        foreign_keys="ResourceViewHistory.pwd_id",
-        primaryjoin="Resource.pwd_id == foreign(ResourceViewHistory.pwd_id)"
+        back_populates='resource',
+        cascade='all, delete-orphan',
+        foreign_keys='ResourceViewHistory.pwd_id',
+        primaryjoin='Resource.pwd_id == foreign(ResourceViewHistory.pwd_id)',
     )
 
 
@@ -101,17 +107,17 @@ class ResourceViewHistory(Base):
     record_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default_factory=timezone.now, comment='记录时间'
     )
-    
+
     # 关系
     resource: Mapped[Resource] = relationship(
-        init=False, 
-        back_populates="view_history",
-        foreign_keys="ResourceViewHistory.pwd_id",
-        primaryjoin="ResourceViewHistory.pwd_id == Resource.pwd_id"
+        init=False,
+        back_populates='view_history',
+        foreign_keys='ResourceViewHistory.pwd_id',
+        primaryjoin='ResourceViewHistory.pwd_id == Resource.pwd_id',
     )
 
     # 索引
     __table_args__ = (
         Index('idx_pwd_record_time', 'pwd_id', 'record_time'),
         Index('idx_record_time', 'record_time'),
-    ) 
+    )

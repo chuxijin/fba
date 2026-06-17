@@ -28,18 +28,19 @@ class CRUDReviewLog(CRUDPlus[VocabReviewLog]):
         :param today_end: 今天结束时间
         :return:
         """
-        stmt = (
-            select(
-                func.count(func.distinct(VocabReviewLog.word_id)).label('total_words'),
-                func.sum(VocabReviewLog.duration_ms).label('total_duration_ms'),
-                func.count(func.distinct(case((VocabReviewLog.state == 0, VocabReviewLog.word_id), else_=None))).label('today_new'),
-                func.count(func.distinct(case((VocabReviewLog.state != 0, VocabReviewLog.word_id), else_=None))).label('today_review'),
-            )
-            .where(
-                VocabReviewLog.user_id == user_id,
-                VocabReviewLog.reviewed_at >= today_start,
-                VocabReviewLog.reviewed_at < today_end,
-            )
+        stmt = select(
+            func.count(func.distinct(VocabReviewLog.word_id)).label('total_words'),
+            func.sum(VocabReviewLog.duration_ms).label('total_duration_ms'),
+            func.count(func.distinct(case((VocabReviewLog.state == 0, VocabReviewLog.word_id), else_=None))).label(
+                'today_new'
+            ),
+            func.count(func.distinct(case((VocabReviewLog.state != 0, VocabReviewLog.word_id), else_=None))).label(
+                'today_review'
+            ),
+        ).where(
+            VocabReviewLog.user_id == user_id,
+            VocabReviewLog.reviewed_at >= today_start,
+            VocabReviewLog.reviewed_at < today_end,
         )
         result = await db.execute(stmt)
         row = result.one()

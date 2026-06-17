@@ -30,12 +30,17 @@ class StudyAbilityCatalog(Base, UserMixin):
         sa.UniqueConstraint('domain', 'ability_key', name='uq_study_ability_catalog_domain_key'),
         sa.Index('idx_study_ability_catalog_domain_active', 'domain', 'is_active'),
         sa.CheckConstraint('default_minutes >= 0', name='ck_study_ability_catalog_minutes'),
-        sa.CheckConstraint('default_question_count IS NULL OR default_question_count > 0',
-                           name='ck_study_ability_catalog_question_count'),
-        sa.CheckConstraint('default_accuracy IS NULL OR (default_accuracy >= 0 AND default_accuracy <= 1)',
-                           name='ck_study_ability_catalog_accuracy'),
-        sa.CheckConstraint('benchmark_seconds IS NULL OR benchmark_seconds > 0',
-                           name='ck_study_ability_catalog_benchmark'),
+        sa.CheckConstraint(
+            'default_question_count IS NULL OR default_question_count > 0',
+            name='ck_study_ability_catalog_question_count',
+        ),
+        sa.CheckConstraint(
+            'default_accuracy IS NULL OR (default_accuracy >= 0 AND default_accuracy <= 1)',
+            name='ck_study_ability_catalog_accuracy',
+        ),
+        sa.CheckConstraint(
+            'benchmark_seconds IS NULL OR benchmark_seconds > 0', name='ck_study_ability_catalog_benchmark'
+        ),
         {'comment': '能力练习目录表'},
     )
 
@@ -54,7 +59,9 @@ class StudyAbilityCatalog(Base, UserMixin):
     supports_result: Mapped[bool] = mapped_column(default=True, comment='是否支持自动结算')
     is_active: Mapped[bool] = mapped_column(default=True, comment='是否启用')
     extra: Mapped[dict[str, Any] | None] = mapped_column(CompatibleJSONB, default=None, comment='扩展配置')
-    url_base: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='URL 基座（不含 query），与 param_schema 配合派生最终 URL')
+    url_base: Mapped[str | None] = mapped_column(
+        sa.String(512), default=None, comment='URL 基座（不含 query），与 param_schema 配合派生最终 URL'
+    )
     param_schema: Mapped[dict[str, Any] | None] = mapped_column(
         CompatibleJSONB,
         default=None,
@@ -68,13 +75,17 @@ class StudyAbilityCategoryBinding(Base, UserMixin):
     __tablename__ = 'study_ability_category_binding'
     __table_args__ = (
         sa.UniqueConstraint(
-            'ability_key', 'mode', 'category_id', 'role',
+            'ability_key',
+            'mode',
+            'category_id',
+            'role',
             name='uq_study_ability_binding_key_mode_category_role',
         ),
         sa.Index('idx_study_ability_binding_key_mode', 'ability_key', 'mode'),
         sa.Index('idx_study_ability_binding_category', 'category_id'),
-        sa.CheckConstraint("role IN ('knowledge_point','solution_method','ability')",
-                           name='ck_study_ability_binding_role'),
+        sa.CheckConstraint(
+            "role IN ('knowledge_point','solution_method','ability')", name='ck_study_ability_binding_role'
+        ),
         sa.CheckConstraint('weight > 0', name='ck_study_ability_binding_weight'),
         sa.CheckConstraint('confidence >= 0 AND confidence <= 1', name='ck_study_ability_binding_confidence'),
         {'comment': '能力练习分类绑定表'},
@@ -106,13 +117,15 @@ class StudyAbilityAttempt(Base):
         sa.Index('idx_study_ability_attempt_user_time', 'user_id', 'completed_at'),
         sa.Index('idx_study_ability_attempt_key_time', 'ability_key', 'completed_at'),
         sa.Index('idx_study_ability_attempt_plan_item', 'study_plan_item_id'),
-        sa.CheckConstraint('total_count >= 0 AND correct_count >= 0 AND wrong_count >= 0',
-                           name='ck_study_ability_attempt_counts_nonneg'),
-        sa.CheckConstraint('correct_count <= total_count AND wrong_count <= total_count',
-                           name='ck_study_ability_attempt_counts_logic'),
+        sa.CheckConstraint(
+            'total_count >= 0 AND correct_count >= 0 AND wrong_count >= 0',
+            name='ck_study_ability_attempt_counts_nonneg',
+        ),
+        sa.CheckConstraint(
+            'correct_count <= total_count AND wrong_count <= total_count', name='ck_study_ability_attempt_counts_logic'
+        ),
         sa.CheckConstraint('duration_seconds >= 0', name='ck_study_ability_attempt_duration'),
-        sa.CheckConstraint('score IS NULL OR (score >= 0 AND score <= 100)',
-                           name='ck_study_ability_attempt_score'),
+        sa.CheckConstraint('score IS NULL OR (score >= 0 AND score <= 100)', name='ck_study_ability_attempt_score'),
         {'comment': '能力练习原始记录表'},
     )
 
@@ -148,7 +161,9 @@ class StudyAbilityAttempt(Base):
     metric_data: Mapped[dict[str, Any] | None] = mapped_column(CompatibleJSONB, default=None, comment='特殊指标')
     records: Mapped[list[dict[str, Any]] | None] = mapped_column(CompatibleJSONB, default=None, comment='小题明细')
     completed_at: Mapped[datetime] = mapped_column(TimeZone, default_factory=timezone.now, comment='完成时间')
-    completed_date: Mapped[date] = mapped_column(sa.Date, default_factory=lambda: timezone.now().date(), comment='完成日期')
+    completed_date: Mapped[date] = mapped_column(
+        sa.Date, default_factory=lambda: timezone.now().date(), comment='完成日期'
+    )
 
     item: Mapped[StudyPlanItem | None] = relationship(init=False, lazy='noload')
     record: Mapped[StudyPlanRecord | None] = relationship(init=False, lazy='noload')
@@ -168,8 +183,9 @@ class StudyAbilityAttemptCategory(Base):
         sa.Index('idx_study_ability_attempt_category_attempt', 'attempt_id'),
         sa.Index('idx_study_ability_attempt_category_user_cat_time', 'user_id', 'category_id', 'completed_at'),
         sa.Index('idx_study_ability_attempt_category_cat_time', 'category_id', 'completed_at'),
-        sa.CheckConstraint("role IN ('knowledge_point','solution_method','ability')",
-                           name='ck_study_ability_attempt_category_role'),
+        sa.CheckConstraint(
+            "role IN ('knowledge_point','solution_method','ability')", name='ck_study_ability_attempt_category_role'
+        ),
         sa.CheckConstraint('weight > 0', name='ck_study_ability_attempt_category_weight'),
         sa.CheckConstraint('total_count >= 0 AND correct_count >= 0', name='ck_study_ability_attempt_category_counts'),
         sa.CheckConstraint('duration_seconds >= 0', name='ck_study_ability_attempt_category_duration'),
@@ -214,10 +230,11 @@ class StudyUserCategoryProfile(Base):
         sa.Index('idx_study_user_category_profile_user', 'user_id'),
         sa.Index('idx_study_user_category_profile_category', 'category_id'),
         sa.Index('idx_study_user_category_profile_mastery', 'mastery_score'),
-        sa.CheckConstraint("source_type IN ('ability','question_bank')",
-                           name='ck_study_user_category_profile_source'),
-        sa.CheckConstraint('attempt_count >= 0 AND total_count >= 0 AND correct_count >= 0',
-                           name='ck_study_user_category_profile_counts'),
+        sa.CheckConstraint("source_type IN ('ability','question_bank')", name='ck_study_user_category_profile_source'),
+        sa.CheckConstraint(
+            'attempt_count >= 0 AND total_count >= 0 AND correct_count >= 0',
+            name='ck_study_user_category_profile_counts',
+        ),
         sa.CheckConstraint('duration_seconds >= 0', name='ck_study_user_category_profile_duration'),
         {'comment': '用户分类画像表'},
     )

@@ -122,9 +122,7 @@ class EntitlementPackService:
         :param status: 状态
         :return:
         """
-        return await entitlement_pack_dao.get_select(
-            grade=grade, domain_id=domain_id, status=status
-        )
+        return await entitlement_pack_dao.get_select(grade=grade, domain_id=domain_id, status=status)
 
     @staticmethod
     async def create(db: AsyncSession, *, obj: CreatePackParam) -> EntitlementPack:

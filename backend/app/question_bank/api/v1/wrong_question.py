@@ -13,6 +13,7 @@ from backend.app.question_bank.schema.wrong_question import (
     WrongQuestionGroupItem,
     WrongQuestionQueryParam,
 )
+from backend.app.question_bank.service.category_filter_service import category_filter_service
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.wrong_question_service import wrong_question_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
@@ -27,7 +28,9 @@ router = APIRouter()
 # ===== 统计接口（必须在 /{pk} 之前注册，避免路径参数误匹配） =====
 
 
-@router.get('/statistics', summary='获取错题本统计', name='qbank_wrong_question_statistics', dependencies=[DependsJwtAuth])
+@router.get(
+    '/statistics', summary='获取错题本统计', name='qbank_wrong_question_statistics', dependencies=[DependsJwtAuth]
+)
 async def get_statistics(
     request: Request,
     db: CurrentSession,
@@ -38,7 +41,11 @@ async def get_statistics(
     """获取用户的错题本统计数据，传 group_by 时返回树形分组"""
     if group_by:
         data = await wrong_question_service.get_statistics_with_groups(
-            db=db, user_id=request.user.id, group_by=group_by, cat_id=cat_id, kp_cat_id=kp_cat_id,
+            db=db,
+            user_id=request.user.id,
+            group_by=group_by,
+            cat_id=cat_id,
+            kp_cat_id=kp_cat_id,
         )
         return response_base.success(data=data)
     stats = await wrong_question_service.get_statistics(
@@ -87,7 +94,11 @@ async def get_question_ids(
         )
 
     ids = await wrong_question_dao.get_question_ids(
-        db=db, user_id=request.user.id, bank_id=bank_id, chapter_id=chapter_id, knowledge_point=knowledge_point,
+        db=db,
+        user_id=request.user.id,
+        bank_id=bank_id,
+        chapter_id=chapter_id,
+        knowledge_point=knowledge_point,
     )
     return response_base.success(data=ids)
 
@@ -150,14 +161,23 @@ async def get_wrong_questions(
             user_id=request.user.id,
         )
 
+    # cat_id 通过分类子树展开为 bank_ids,与做题/收藏/笔记的领域语义保持一致
+    cat_bank_ids: set[int] | None = None
+    if query.cat_id is not None:
+        category_filter = await category_filter_service.get_question_filter(
+            db=db, cat_id=query.cat_id, kp_cat_id=None
+        )
+        cat_bank_ids = category_filter.bank_ids if category_filter else set()
+
     stmt = await wrong_question_dao.get_select(
         user_id=request.user.id,
         is_pinned=query.is_pinned,
         bank_id=query.bank_id,
         chapter_id=query.chapter_id,
-        cat_id=query.cat_id,
+        cat_bank_ids=cat_bank_ids,
         keyword=query.keyword,
         exclude_reviewed=query.exclude_reviewed,
+        is_mastered=query.is_mastered,
     )
     page_data = await paging_data(db, stmt, GetWrongQuestionListItem)
     return response_base.success(data=page_data)
@@ -187,9 +207,7 @@ async def delete_wrong_questions(
     wrong_ids: Annotated[list[int], Body(description='错题 ID 列表（支持单个或批量）')],
 ) -> ResponseModel:
     """从错题本移除题目"""
-    count = await wrong_question_service.delete_wrong_questions(
-        db=db, wrong_ids=wrong_ids, user_id=request.user.id
-    )
+    count = await wrong_question_service.delete_wrong_questions(db=db, wrong_ids=wrong_ids, user_id=request.user.id)
     if count > 0:
         return response_base.success(res=CustomResponse(code=200, msg=f'成功删除 {count} 条错题记录'))
     return response_base.fail(res=CustomResponse(code=400, msg='删除失败'))

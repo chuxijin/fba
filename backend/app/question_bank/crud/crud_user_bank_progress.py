@@ -61,7 +61,9 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
         correct_time = sa.case(
             (
                 SessionQuestion.is_correct.is_(True),
-                func.coalesce(SessionQuestion.judged_at, SessionQuestion.updated_time, SessionQuestion.created_time, func.now()),
+                func.coalesce(
+                    SessionQuestion.judged_at, SessionQuestion.updated_time, SessionQuestion.created_time, func.now()
+                ),
             ),
             else_=None,
         )
@@ -176,19 +178,21 @@ class CRUDUserBankQuestionProgress(CRUDPlus[UserBankQuestionProgress]):
                 last_correct_time = row.judged_at or answered_time
 
             if progress is None:
-                db.add(UserBankQuestionProgress(
-                    user_id=row.user_id,
-                    bank_id=row.bank_id,
-                    question_id=row.question_id,
-                    placement_id=row.placement_id,
-                    chapter_id=row.chapter_id,
-                    last_session_id=row.session_id,
-                    last_session_question_id=row.last_session_question_id,
-                    is_correct=row.is_correct is True,
-                    first_answered_time=row.created_time or answered_time,
-                    last_answered_time=answered_time,
-                    last_correct_time=last_correct_time,
-                ))
+                db.add(
+                    UserBankQuestionProgress(
+                        user_id=row.user_id,
+                        bank_id=row.bank_id,
+                        question_id=row.question_id,
+                        placement_id=row.placement_id,
+                        chapter_id=row.chapter_id,
+                        last_session_id=row.session_id,
+                        last_session_question_id=row.last_session_question_id,
+                        is_correct=row.is_correct is True,
+                        first_answered_time=row.created_time or answered_time,
+                        last_answered_time=answered_time,
+                        last_correct_time=last_correct_time,
+                    )
+                )
                 affected_count += 1
                 continue
 

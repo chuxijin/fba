@@ -300,10 +300,7 @@ class HomeService:
             .group_by(practice_date_expr)
         )
         rows = (await db.execute(stmt)).all()
-        count_map = {
-            HomeService._normalize_date(row.practice_date): int(row.count or 0)
-            for row in rows
-        }
+        count_map = {HomeService._normalize_date(row.practice_date): int(row.count or 0) for row in rows}
 
         days: list[PracticeActivityDay] = []
         current_date = start_date
@@ -352,10 +349,7 @@ class HomeService:
             .group_by(practice_month_expr)
         )
         rows = (await db.execute(stmt)).all()
-        count_map = {
-            str(row.practice_month)[:7]: int(row.count or 0)
-            for row in rows
-        }
+        count_map = {str(row.practice_month)[:7]: int(row.count or 0) for row in rows}
 
         months: list[PracticeActivityMonth] = []
         current_month = start_month
@@ -430,9 +424,7 @@ class HomeService:
             total_duration += duration
 
         accuracy_rate = (
-            Decimal((total_correct / total_count) * 100).quantize(Decimal('0.01'))
-            if total_count > 0
-            else Decimal('0')
+            Decimal((total_correct / total_count) * 100).quantize(Decimal('0.01')) if total_count > 0 else Decimal('0')
         )
 
         return WeekPracticeStats(
@@ -487,9 +479,7 @@ class HomeService:
         my_total = int(row.my_total)
         my_correct = int(row.my_correct)
         accuracy_rate = (
-            Decimal((my_correct / my_total) * 100).quantize(Decimal('0.01'))
-            if my_total > 0
-            else Decimal('0')
+            Decimal((my_correct / my_total) * 100).quantize(Decimal('0.01')) if my_total > 0 else Decimal('0')
         )
 
         total_stats = {

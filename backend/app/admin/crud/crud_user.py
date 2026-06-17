@@ -39,7 +39,6 @@ from backend.utils.timezone import timezone
 class CRUDUser(CRUDPlus[User]):
     """用户数据库操作类"""
 
-
     @staticmethod
     def _active_user_role_join_condition() -> Any:
         """构建生效用户角色关联条件"""
@@ -190,15 +189,12 @@ class CRUDUser(CRUDPlus[User]):
 
         salt = bcrypt.gensalt()
         password = obj.password if obj.password else '123456'
-        dict_obj.update(
-            {
-                'password': get_hash_password(password, salt),
-                'salt': salt,
-            }
-        )
+        dict_obj.update({
+            'password': get_hash_password(password, salt),
+            'salt': salt,
+        })
 
         await self.create_user_with_roles(db, user_data=dict_obj)
-
 
     async def update(self, db: AsyncSession, user_id: int, obj: UpdateUserParam) -> int:
         """
@@ -488,7 +484,9 @@ class CRUDUser(CRUDPlus[User]):
         for role_id in unique_role_ids:
             await self._get_role_or_error(db, role_id)
 
-        user_role_data = [AddUserRoleParam(user_id=user_id, role_id=role_id).model_dump() for role_id in unique_role_ids]
+        user_role_data = [
+            AddUserRoleParam(user_id=user_id, role_id=role_id).model_dump() for role_id in unique_role_ids
+        ]
         await db.execute(insert(user_role), user_role_data)
 
     async def create_user_with_roles(

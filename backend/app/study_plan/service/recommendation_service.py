@@ -113,10 +113,7 @@ def _aggregate_profiles(profiles: list[GetStudyUserCategoryProfileDetail]) -> li
         grouped[profile.category_id] = group
 
     aggregates = [_build_profile_aggregate(group) for group in grouped.values()]
-    return [
-        item for item in aggregates
-        if item.mastery_score < 78 or item.weakness_score > 25
-    ]
+    return [item for item in aggregates if item.mastery_score < 78 or item.weakness_score > 25]
 
 
 def _build_profile_aggregate(group: list[GetStudyUserCategoryProfileDetail]) -> ProfileAggregate:
@@ -161,11 +158,7 @@ async def _list_catalog_map(db: AsyncSession) -> dict[str, GetStudyPlanAbilityCa
         domain='civil_service',
         include_inactive=False,
     )
-    return {
-        item.key: item
-        for item in catalog
-        if item.supports_study_plan
-    }
+    return {item.key: item for item in catalog if item.supports_study_plan}
 
 
 async def _list_bindings_map(

@@ -65,7 +65,10 @@ async def get_bank_progress_summary(
 ) -> ResponseSchemaModel[list[BankProgressSummary]]:
     """🔒 登录接口 - 批量获取刷题内容累计进度摘要"""
     data = await bank_service.get_progress_summaries(
-        db=db, bank_ids=bank_ids, cat_id=cat_id, user_id=request.user.id,
+        db=db,
+        bank_ids=bank_ids,
+        cat_id=cat_id,
+        user_id=request.user.id,
     )
     return response_base.success(data=data)
 
@@ -128,12 +131,14 @@ async def get_bank_questions_all(
     items = data.get('items', []) if isinstance(data, dict) else data
     result_with_answer = [GetQuestionWithAnswer(**item) for item in items]
 
-    return response_base.success(data={
-        'total': getattr(bank, 'q_count_cache', len(result_with_answer)),
-        'offset': offset,
-        'limit': limit,
-        'items': result_with_answer,
-    })
+    return response_base.success(
+        data={
+            'total': getattr(bank, 'q_count_cache', len(result_with_answer)),
+            'offset': offset,
+            'limit': limit,
+            'items': result_with_answer,
+        }
+    )
 
 
 @router.get('', summary='获取刷题内容树形列表', name='qbank_get_bank_list')
@@ -187,7 +192,10 @@ async def create_bank(request: Request, db: CurrentSessionTransaction, obj: Crea
     ],
 )
 async def update_bank(
-    request: Request, db: CurrentSessionTransaction, pk: Annotated[int, Path(description='内容 ID')], obj: UpdateBankParam
+    request: Request,
+    db: CurrentSessionTransaction,
+    pk: Annotated[int, Path(description='内容 ID')],
+    obj: UpdateBankParam,
 ) -> ResponseModel:
     """🔐 管理员接口 - 只有管理员可以更新刷题内容"""
     user_id = await get_authenticated_user_id(request)

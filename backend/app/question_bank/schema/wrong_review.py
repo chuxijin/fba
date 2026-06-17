@@ -43,7 +43,9 @@ class CreateCustomQuestionParam(SchemaBase):
     answer: str | None = Field(None, description='正确答案')
     explanation: str | None = Field(None, description='解析')
     source: str | None = Field(None, max_length=255, description='来源')
-    reasons: dict | list | None = Field(None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]')
+    reasons: dict | list | None = Field(
+        None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]'
+    )
     knowledge_points: list[dict] | None = Field(None, description='知识点数组 [{id: int, name: str}]')
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, ge=0, description='做题用时（秒）')
@@ -60,7 +62,9 @@ class UpdateCustomQuestionParam(SchemaBase):
     answer: str | None = Field(None, description='正确答案')
     explanation: str | None = Field(None, description='解析')
     source: str | None = Field(None, max_length=255, description='来源')
-    reasons: dict | list | None = Field(None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]')
+    reasons: dict | list | None = Field(
+        None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]'
+    )
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, ge=0, description='做题用时（秒）')
 
@@ -80,7 +84,9 @@ class GetCustomQuestionDetail(SchemaBase):
     answer: str | None = Field(None, description='正确答案')
     explanation: str | None = Field(None, description='解析')
     source: str | None = Field(None, description='来源')
-    reasons: dict | list | None = Field(None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]')
+    reasons: dict | list | None = Field(
+        None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]'
+    )
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, description='做题用时（秒）')
     created_time: datetime = Field(description='创建时间')
@@ -97,7 +103,9 @@ class GetCustomQuestionListItem(SchemaBase):
     images: list[str] | None = Field(None, description='截图 URL 数组')
     category_id: int | None = Field(None, description='关联题库分类 ID')
     source: str | None = Field(None, description='来源')
-    reasons: dict | list | None = Field(None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]')
+    reasons: dict | list | None = Field(
+        None, description='错因数据: {tags: [...], knowledge_points: [...]} 或旧格式 [ID数组]'
+    )
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, description='做题用时（秒）')
     created_time: datetime = Field(description='创建时间')
@@ -121,11 +129,12 @@ class CreateReviewParam(SchemaBase):
     wrong_book_id: int | None = Field(None, gt=0, description='关联自动收录错题 ID')
     custom_question_id: int | None = Field(None, gt=0, description='关联自定义错题 ID')
     duration_seconds: int = Field(ge=0, description='复盘用时（秒）')
-    reasons: dict | list | None = Field(None, description='错因数据: {tags: [错因标签ID], knowledge_points: [知识点ID]} 或旧格式 [ID数组]')
+    reasons: dict | list | None = Field(
+        None, description='错因数据: {tags: [错因标签ID], knowledge_points: [知识点ID]} 或旧格式 [ID数组]'
+    )
     knowledge_points: list[dict] | None = Field(None, description='知识点数组 [{id: int, name: str}]')
     summary: str | None = Field(None, description='一句话复盘')
     is_mastered: bool = Field(False, description='是否手动标记为已掌握')
-
 
 
 class GetReviewDetail(SchemaBase):
@@ -224,5 +233,6 @@ class GetReviewDashboard(SchemaBase):
     total_review_count: int = Field(description='总复盘记录数')
     today_pending_count: int = Field(description='今日待复盘数')
     reason_distribution: list[ReasonDistributionItem] = Field(default_factory=list, description='错因分布')
-    knowledge_point_distribution: list[KnowledgePointDistributionItem] = Field(default_factory=list, description='知识点分布')
-
+    knowledge_point_distribution: list[KnowledgePointDistributionItem] = Field(
+        default_factory=list, description='知识点分布'
+    )

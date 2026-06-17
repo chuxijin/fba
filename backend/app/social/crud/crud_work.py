@@ -40,15 +40,18 @@ class CRUDSocialWork(CRUDPlus[SocialWork]):
 
         return stmt.order_by(self.model.id.desc())
 
-    async def create(self, db: AsyncSession, obj: CreateSocialWorkParam, current_user_id: int | None = None) -> SocialWork:
+    async def create(
+        self, db: AsyncSession, obj: CreateSocialWorkParam, current_user_id: int | None = None
+    ) -> SocialWork:
         """创建作品"""
         data = obj.model_dump()
         # 自动从链接提取 external_id（支持多平台，如 B站、小红书）
         if (not data.get('external_id')) and isinstance(data.get('work_url'), str):
             import re
+
             patterns = [
-                r"/video/([A-Za-z0-9]+)",           # bilibili: /video/BV1....
-                r"/explore/([A-Za-z0-9]+)",         # xiaohongshu: /explore/<id>
+                r'/video/([A-Za-z0-9]+)',  # bilibili: /video/BV1....
+                r'/explore/([A-Za-z0-9]+)',  # xiaohongshu: /explore/<id>
             ]
             for pat in patterns:
                 m = re.search(pat, data['work_url'])
@@ -59,6 +62,7 @@ class CRUDSocialWork(CRUDPlus[SocialWork]):
         if not data.get('external_id'):
             try:
                 from urllib.parse import urlparse
+
                 path = urlparse(data.get('work_url') or '').path or ''
                 seg = path.rstrip('/').split('/')[-1]
                 data['external_id'] = seg or data.get('external_id')
@@ -72,7 +76,9 @@ class CRUDSocialWork(CRUDPlus[SocialWork]):
         await db.refresh(work)
         return work
 
-    async def update(self, db: AsyncSession, pk: int, obj: UpdateSocialWorkParam, current_user_id: int | None = None) -> int:
+    async def update(
+        self, db: AsyncSession, pk: int, obj: UpdateSocialWorkParam, current_user_id: int | None = None
+    ) -> int:
         """更新作品"""
         update_data = obj.model_dump(exclude_unset=True)
         if current_user_id:
@@ -90,5 +96,3 @@ class CRUDSocialWork(CRUDPlus[SocialWork]):
 
 # 实例
 social_work_dao = CRUDSocialWork(SocialWork)
-
-

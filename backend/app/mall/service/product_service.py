@@ -48,9 +48,7 @@ class ProductService:
         return await product_category_dao.get_by_parent(db, parent_id)
 
     @staticmethod
-    async def create_category(
-        *, db: AsyncSession, obj: CreateProductCategoryParam, user_id: int
-    ) -> ProductCategory:
+    async def create_category(*, db: AsyncSession, obj: CreateProductCategoryParam, user_id: int) -> ProductCategory:
         """
         创建商品分类
 
@@ -66,9 +64,7 @@ class ProductService:
         return await product_category_dao.create(db, obj, user_id)
 
     @staticmethod
-    async def update_category(
-        *, db: AsyncSession, category_id: int, obj: UpdateProductCategoryParam
-    ) -> int:
+    async def update_category(*, db: AsyncSession, category_id: int, obj: UpdateProductCategoryParam) -> int:
         """
         更新商品分类
 

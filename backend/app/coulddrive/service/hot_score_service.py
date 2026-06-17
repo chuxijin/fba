@@ -48,11 +48,7 @@ def calculate_hot_score(
     :param age_days: 资源创建天数
     :return:
     """
-    engagement = (
-        click_count * WEIGHT_CLICK
-        + view_count * WEIGHT_VIEW
-        + search_count * WEIGHT_SEARCH
-    )
+    engagement = click_count * WEIGHT_CLICK + view_count * WEIGHT_VIEW + search_count * WEIGHT_SEARCH
     # 避免 age_days 为负
     age_days = max(age_days, 0.0)
     decay = math.pow(1 + age_days / HALF_LIFE_DAYS, GRAVITY)

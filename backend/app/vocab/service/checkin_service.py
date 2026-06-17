@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -77,7 +76,7 @@ class CheckinService:
 
         from backend.app.vocab.crud.crud_review_log import review_log_dao
         from backend.app.vocab.crud.crud_user_word import user_word_dao
-        
+
         real_stats = await review_log_dao.count_today(db, user_id, today_start, today_end)
         real_new = await user_word_dao.count_today_new(db, user_id, today_start, today_end)
         total_unique_words = real_stats.get('total_words', 0)
@@ -113,9 +112,10 @@ class CheckinService:
         today = timezone.now().date()
         current_streak = await checkin_dao.get_current_streak(db, user_id, today)
         # 简单统计总打卡天数
-        stmt = await checkin_dao.get_select_by_user(user_id)
+        await checkin_dao.get_select_by_user(user_id)
         from sqlalchemy import func, select as sa_select
         from backend.app.vocab.model import VocabCheckin
+
         count_stmt = sa_select(func.count()).where(
             VocabCheckin.user_id == user_id,
             VocabCheckin.streak_days > 0,

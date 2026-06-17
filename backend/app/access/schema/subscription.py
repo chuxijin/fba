@@ -55,6 +55,7 @@ class GetSubscriptionDetail(SchemaBase):
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(default=None, description='更新时间')
     username: str | None = Field(default=None, description='用户名')
+    nickname: str | None = Field(default=None, description='用户昵称')
     template_code: str | None = Field(default=None, description='模板编码')
     template_name: str | None = Field(default=None, description='模板名称')
     valid_from: datetime | None = Field(default=None, description='生效时间')

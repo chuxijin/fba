@@ -65,7 +65,9 @@ class CreatePracticeSessionParam(SchemaBase):
     year_start: int | None = Field(None, ge=1900, le=2100, description='起始年份（按试卷年份）')
     region: str | None = Field(None, max_length=100, description='地区关键字（算入试卷名称/编码/描述）')
     cat_id: int | None = Field(None, gt=0, description='分类 ID（知识点合集筛选）')
-    knowledge_point: list[KnowledgePointValue] | None = Field(None, min_length=1, max_length=200, description='考点标签筛选')
+    knowledge_point: list[KnowledgePointValue] | None = Field(
+        None, min_length=1, max_length=200, description='考点标签筛选'
+    )
     limit: int | None = Field(None, ge=1, le=500, description='抽题数量上限')
     shuffle: bool = Field(False, description='是否打乱题序')
     question_types: list[QuestionType] | None = Field(None, min_length=1, max_length=20, description='题型过滤')
@@ -80,7 +82,6 @@ class CreateSessionFromIdsParam(SchemaBase):
     practice_name: str | None = Field(None, max_length=255, description='会话名称')
     bank_id: int | None = Field(None, gt=0, description='题库 ID（可选，用于限定挂载上下文）')
     chapter_id: int | None = Field(None, gt=0, description='章节 ID（可选，用于限定挂载上下文）')
-
 
 
 class PracticeSessionQueryParam(SchemaBase):

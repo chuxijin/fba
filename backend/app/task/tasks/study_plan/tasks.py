@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """学习规划相关定时任务"""
+
 import logging
 
 from backend.app.study_plan.crud import study_plan_item_dao
@@ -20,7 +21,7 @@ async def sweep_expired_study_plan_items() -> dict:
     """
     try:
         result = await _sweep_expired_study_plan_items()
-        logger.info(f"学习规划过期项清理完成: 标记 {result['skipped']} 项为 skipped")
+        logger.info(f'学习规划过期项清理完成: 标记 {result["skipped"]} 项为 skipped')
         return result
     except Exception as e:
         logger.error(f'学习规划过期项清理失败: {e}')

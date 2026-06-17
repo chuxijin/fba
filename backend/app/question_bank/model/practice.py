@@ -59,7 +59,9 @@ class PracticeSession(Base, UserMixin):
 
     id: Mapped[id_key] = mapped_column(init=False)
     session_key: Mapped[str] = mapped_column(
-        sa.String(32), unique=True, comment='会话唯一标识',
+        sa.String(32),
+        unique=True,
+        comment='会话唯一标识',
     )
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger,
@@ -83,29 +85,41 @@ class PracticeSession(Base, UserMixin):
         comment='章节 ID',
     )
     practice_name: Mapped[str | None] = mapped_column(
-        sa.String(255), default=None, comment='练习名称（快照）',
+        sa.String(255),
+        default=None,
+        comment='练习名称（快照）',
     )
     source_key: Mapped[str | None] = mapped_column(
-        sa.String(64), default=None, comment='来源签名',
+        sa.String(64),
+        default=None,
+        comment='来源签名',
     )
     source_snapshot: Mapped[dict | None] = mapped_column(
-        CompatibleJSONB, default=None, comment='来源快照',
+        CompatibleJSONB,
+        default=None,
+        comment='来源快照',
     )
     status: Mapped[str] = mapped_column(
-        sa.String(32), default='in_progress', comment='状态: in_progress/completed/abandoned',
+        sa.String(32),
+        default='in_progress',
+        comment='状态: in_progress/completed/abandoned',
     )
     total_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='题目总数')
     completed_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='已完成数量')
     correct_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='答对数量')
     wrong_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='答错数量')
     accuracy_rate: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 2), default=Decimal('0'), comment='正确率（0-100）',
+        sa.Numeric(5, 2),
+        default=Decimal('0'),
+        comment='正确率（0-100）',
     )
     score: Mapped[Decimal | None] = mapped_column(sa.Numeric(8, 2), default=None, comment='得分')
     total_score: Mapped[Decimal | None] = mapped_column(sa.Numeric(8, 2), default=None, comment='总分')
     total_time: Mapped[int] = mapped_column(sa.Integer, default=0, comment='总用时（秒）')
     start_time: Mapped[datetime] = mapped_column(
-        TimeZone, default_factory=timezone.now, comment='开始时间',
+        TimeZone,
+        default_factory=timezone.now,
+        comment='开始时间',
     )
     submit_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='提交时间')
     exam_config: Mapped[dict | None] = mapped_column(CompatibleJSONB, default=None, comment='考试配置')
@@ -167,10 +181,13 @@ class SessionQuestion(Base):
     )
     seq_no: Mapped[int] = mapped_column(sa.Integer, comment='题目在会话中的顺序（从 1 开始）')
     question_type: Mapped[str] = mapped_column(
-        sa.String(16), comment='题型: single/multiple/judgement/fill/shortAnswer',
+        sa.String(16),
+        comment='题型: single/multiple/judgement/fill/shortAnswer',
     )
     full_score: Mapped[Decimal] = mapped_column(
-        sa.Numeric(8, 2), default=Decimal('0'), comment='满分',
+        sa.Numeric(8, 2),
+        default=Decimal('0'),
+        comment='满分',
     )
     # ============ 答题记录字段（原 PracticeRecord 合并） ============
     user_answer: Mapped[dict | list | str | None] = mapped_column(CompatibleJSONB, default=None, comment='用户答案')
@@ -187,7 +204,6 @@ class SessionQuestion(Base):
     placement: Mapped[QuestionPlacement] = relationship(init=False, lazy='noload')
 
 
-
 class WrongQuestionBook(Base, UserMixin):
     """错题本表"""
 
@@ -196,14 +212,17 @@ class WrongQuestionBook(Base, UserMixin):
         # partial unique index: 按题目归并（无挂载）
         sa.Index(
             'uq_wrong_book_user_question_when_no_placement',
-            'user_id', 'question_id',
+            'user_id',
+            'question_id',
             unique=True,
             postgresql_where=sa.text('placement_id IS NULL'),
         ),
         # partial unique index: 按挂载区分
         sa.Index(
             'uq_wrong_book_user_question_placement',
-            'user_id', 'question_id', 'placement_id',
+            'user_id',
+            'question_id',
+            'placement_id',
             unique=True,
             postgresql_where=sa.text('placement_id IS NOT NULL'),
         ),
@@ -238,7 +257,9 @@ class WrongQuestionBook(Base, UserMixin):
     last_practice_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最后一次练习时间')
     is_pinned: Mapped[bool] = mapped_column(default=False, comment='是否置顶')
     pinned_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='置顶时间')
-    last_wrong_answer: Mapped[list | None] = mapped_column(CompatibleJSONB, default=None, comment='最后一次答错的选项，JSON数组格式')
+    last_wrong_answer: Mapped[list | None] = mapped_column(
+        CompatibleJSONB, default=None, comment='最后一次答错的选项，JSON数组格式'
+    )
 
     # ============ 关系 ============
     account: Mapped[UserAccount] = relationship(init=False, back_populates='wrong_questions', lazy='noload')

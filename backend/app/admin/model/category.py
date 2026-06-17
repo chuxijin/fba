@@ -36,8 +36,11 @@ class Category(Base, UserMixin):
 
     # 树结构
     parent_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger, sa.ForeignKey('sys_category.id', ondelete='SET NULL'), 
-        default=None, index=True, comment='父级分类 ID'
+        sa.BigInteger,
+        sa.ForeignKey('sys_category.id', ondelete='SET NULL'),
+        default=None,
+        index=True,
+        comment='父级分类 ID',
     )
     level: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='层级')
     path: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='物化路径')
@@ -46,9 +49,7 @@ class Category(Base, UserMixin):
     parent: Mapped[Optional['Category']] = relationship(
         init=False, back_populates='children', remote_side='Category.id'
     )
-    children: Mapped[list['Category']] = relationship(
-        init=False, back_populates='parent'
-    )
+    children: Mapped[list['Category']] = relationship(init=False, back_populates='parent')
 
     # 展示相关
     icon: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='图标')
@@ -62,4 +63,3 @@ class Category(Base, UserMixin):
     # 扩展
     remark: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='备注')
     extra_data: Mapped[dict | None] = mapped_column(JSONB, default=None, comment='扩展数据')
-

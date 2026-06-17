@@ -234,7 +234,7 @@ class WrongReviewService:
                 raise errors.NotFoundError(msg='错题记录不存在')
             if book.user_id != user_id:
                 raise errors.ForbiddenError(msg='无权复盘该错题')
-                
+
         elif review_type == 'custom':
             if not custom_question_id:
                 raise errors.BadRequestError(msg='自定义错题复盘必须提供 custom_question_id')
@@ -243,12 +243,16 @@ class WrongReviewService:
                 raise errors.NotFoundError(msg='自定义错题不存在')
             if question.user_id != user_id:
                 raise errors.ForbiddenError(msg='无权复盘该错题')
-            
+
             # 同步更新 custom 表的 reasons 和 summary
-            await custom_question_dao.update(db, custom_question_id, {
-                'reasons': kwargs.get('reasons'),
-                'summary': kwargs.get('summary'),
-            })
+            await custom_question_dao.update(
+                db,
+                custom_question_id,
+                {
+                    'reasons': kwargs.get('reasons'),
+                    'summary': kwargs.get('summary'),
+                },
+            )
         else:
             raise errors.BadRequestError(msg='review_type 必须为 auto 或 custom')
 
@@ -257,33 +261,37 @@ class WrongReviewService:
 
         # 更新掌握状态
         from backend.app.question_bank.service.mastery_service import mastery_service
+
         if is_mastered:
             # 手动标记为已掌握
             if review_type == 'auto' and wrong_book_id:
                 await mastery_service.mark_as_mastered(
-                    db=db, user_id=user_id,
+                    db=db,
+                    user_id=user_id,
                     question_id=book.question_id,
                 )
             elif review_type == 'custom' and custom_question_id:
                 await mastery_service.mark_as_mastered(
-                    db=db, user_id=user_id,
+                    db=db,
+                    user_id=user_id,
                     custom_question_id=custom_question_id,
                 )
         else:
             # 普通复盘，只更新复盘次数
             if review_type == 'auto' and wrong_book_id:
                 await mastery_service.on_review(
-                    db=db, user_id=user_id,
+                    db=db,
+                    user_id=user_id,
                     question_id=book.question_id,
                 )
             elif review_type == 'custom' and custom_question_id:
                 await mastery_service.on_review(
-                    db=db, user_id=user_id,
+                    db=db,
+                    user_id=user_id,
                     custom_question_id=custom_question_id,
                 )
 
         return review
-
 
     @staticmethod
     async def list_reviews(*, db: AsyncSession, user_id: int, **query):
@@ -352,9 +360,7 @@ class WrongReviewService:
         from backend.app.question_bank.service.wrong_question_service import wrong_question_service
 
         # 错题统计
-        stats = await wrong_question_service.get_statistics(
-            db=db, user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id
-        )
+        stats = await wrong_question_service.get_statistics(db=db, user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id)
         total_wrong = stats.total_count
         unmastered = stats.unmastered_count
 
@@ -666,7 +672,6 @@ async def _get_reviewed_questions(
     """
     from sqlalchemy import select
 
-    from backend.app.question_bank.model.practice import WrongQuestionBook
     from backend.app.question_bank.model.question import Question
     from backend.app.question_bank.model.wrong_review import WrongQuestionReview
 
@@ -762,5 +767,3 @@ async def _get_reviewed_questions(
 
 
 wrong_review_service = WrongReviewService()
-
-

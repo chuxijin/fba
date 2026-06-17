@@ -25,6 +25,7 @@ def process_expired_teams() -> dict[str, int]:
             return count
 
     from backend.utils.async_helper import run_await
+
     count = run_await(_process())
 
     logger.info(f'处理完成，共处理 {count} 个过期团队')

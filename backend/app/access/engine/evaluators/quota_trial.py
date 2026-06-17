@@ -66,9 +66,7 @@ class QuotaTrialEvaluator(BaseEvaluator):
 
         for rule in trial_rules:
             source_ref = f'{ctx.resource_type}:{ctx.resource_id}'
-            idempotency_key = (
-                f'trial:{ctx.user_id}:{rule.entitlement_code}:{source_ref}'
-            )
+            idempotency_key = f'trial:{ctx.user_id}:{rule.entitlement_code}:{source_ref}'
             cycle_type = (rule.metadata_ or {}).get('cycle_type', CycleType.MONTHLY)
             entry = await ledger_service.try_consume(
                 db,

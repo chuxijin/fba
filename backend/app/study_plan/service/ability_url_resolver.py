@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """能力 URL 派生服务：基于 catalog.url_base + param_schema 与计划项 extra，重写出最终 URL"""
+
 from __future__ import annotations
 
 from typing import Any

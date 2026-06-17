@@ -283,7 +283,9 @@ class TeamService:
             if not activity:
                 continue
 
-            if activity.enable_mock_team and team.current_people >= (team.required_people - (activity.mock_team_threshold or 1)):
+            if activity.enable_mock_team and team.current_people >= (
+                team.required_people - (activity.mock_team_threshold or 1)
+            ):
                 await group_buy_team_dao.update_model(
                     db,
                     team.id,

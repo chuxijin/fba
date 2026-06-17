@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """材料管理 API 路由"""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
@@ -124,4 +125,3 @@ async def unlink_questions(
     if count > 0:
         return response_base.success()
     return response_base.fail()
-

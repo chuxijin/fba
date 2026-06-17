@@ -24,9 +24,7 @@ class CRUDCategory(CRUDPlus[Category]):
         """
         return await self.select_model(db, pk)
 
-    async def get_by_code(
-        self, db: AsyncSession, app_code: str, type_: str, code: str
-    ) -> Category | None:
+    async def get_by_code(self, db: AsyncSession, app_code: str, type_: str, code: str) -> Category | None:
         """
         通过编码获取分类
 
@@ -51,9 +49,7 @@ class CRUDCategory(CRUDPlus[Category]):
         :param parent_id: 父级 ID
         :return:
         """
-        return await self.select_model_by_column(
-            db, app_code=app_code, type=type_, name=name, parent_id=parent_id
-        )
+        return await self.select_model_by_column(db, app_code=app_code, type=type_, name=name, parent_id=parent_id)
 
     async def get_all(
         self,

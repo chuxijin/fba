@@ -55,9 +55,7 @@ class Order(Base, UserMixin):
     sku_name: Mapped[str] = mapped_column(sa.String(128), comment='SKU 名称（快照）')
     unit_price: Mapped[Decimal] = mapped_column(sa.Numeric(10, 2), comment='单价')
     total_amount: Mapped[Decimal] = mapped_column(sa.Numeric(10, 2), comment='订单总额')
-    order_type: Mapped[str] = mapped_column(
-        sa.String(16), default='normal', comment='订单类型: normal/group_buy'
-    )
+    order_type: Mapped[str] = mapped_column(sa.String(16), default='normal', comment='订单类型: normal/group_buy')
     quantity: Mapped[int] = mapped_column(sa.Integer, default=1, comment='购买数量')
     paid_amount: Mapped[Decimal] = mapped_column(sa.Numeric(10, 2), default=Decimal('0'), comment='已支付金额')
     status: Mapped[str] = mapped_column(

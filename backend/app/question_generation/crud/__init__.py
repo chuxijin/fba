@@ -11,4 +11,3 @@ __all__ = [
     'material_dao',
     'task_dao',
 ]
-

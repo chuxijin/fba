@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter, Depends, Path, Query, Request
 
-from backend.app.study_plan.crud import study_plan_dao, study_plan_item_dao
+from backend.app.study_plan.crud import study_plan_dao
 from backend.app.study_plan.schema.ability import (
     BatchSubmitStudyAbilityAttemptParam,
     BatchSubmitStudyAbilityAttemptResult,
@@ -165,7 +165,8 @@ async def study_plan_complete(
 
 @router.get('/me/plans', summary='我的计划列表', response_model=ResponseSchemaModel[list[GetStudyPlanDetail]])
 async def study_plan_list_my_plans(
-    request: Request, db: CurrentSession,
+    request: Request,
+    db: CurrentSession,
 ) -> ResponseSchemaModel[list[GetStudyPlanDetail]]:
     plans = await study_plan_dao.list_by_user(db, request.user.id)
     return response_base.success(
@@ -175,7 +176,8 @@ async def study_plan_list_my_plans(
 
 @router.get('/me/uncompleted-count', summary='历史未完成项数量（提醒铃铛）', response_model=ResponseSchemaModel[int])
 async def study_plan_my_uncompleted_count(
-    request: Request, db: CurrentSession,
+    request: Request,
+    db: CurrentSession,
 ) -> ResponseSchemaModel[int]:
     count = await count_uncompleted_history(db, request.user.id)
     return response_base.success(data=count)

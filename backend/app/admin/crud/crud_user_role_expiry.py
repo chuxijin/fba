@@ -147,18 +147,22 @@ class CRUDUserRoleExpiry:
         :param user_id: 用户 ID
         :return:
         """
-        stmt = select(
-            user_role.c.id,
-            user_role.c.user_id,
-            user_role.c.role_id,
-            user_role.c.valid_from,
-            user_role.c.valid_to,
-            user_role.c.status,
-        ).where(
-            user_role.c.user_id == user_id,
-        ).order_by(
-            user_role.c.valid_to.desc().nulls_last(),
-            user_role.c.id.desc(),
+        stmt = (
+            select(
+                user_role.c.id,
+                user_role.c.user_id,
+                user_role.c.role_id,
+                user_role.c.valid_from,
+                user_role.c.valid_to,
+                user_role.c.status,
+            )
+            .where(
+                user_role.c.user_id == user_id,
+            )
+            .order_by(
+                user_role.c.valid_to.desc().nulls_last(),
+                user_role.c.id.desc(),
+            )
         )
         result = await db.execute(stmt)
         rows = result.fetchall()

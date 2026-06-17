@@ -45,9 +45,7 @@ async def get_pack_list(
     status: Annotated[CommonStatus | None, Query(description='状态')] = None,
 ) -> ResponseSchemaModel[PageData[GetPackDetail]]:
     """分页获取权益包"""
-    stmt = await entitlement_pack_service.get_select(
-        grade=grade, domain_id=domain_id, status=status
-    )
+    stmt = await entitlement_pack_service.get_select(grade=grade, domain_id=domain_id, status=status)
     page_data = await paging_data(db, stmt)
     return response_base.success(data=page_data)
 
@@ -60,9 +58,7 @@ async def get_pack_list(
         DependsRBAC,
     ],
 )
-async def create_pack(
-    db: CurrentSessionTransaction, obj: CreatePackParam
-) -> ResponseSchemaModel[GetPackDetail]:
+async def create_pack(db: CurrentSessionTransaction, obj: CreatePackParam) -> ResponseSchemaModel[GetPackDetail]:
     """创建权益包"""
     data = await entitlement_pack_service.create(db=db, obj=obj)
     return response_base.success(data=data)

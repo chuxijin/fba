@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,26 +26,31 @@ class FileService:
         :return: 上传结果
         """
         upload_file_verify(file)
-        upload_path = 'sys/upload'
+
         if folder:
             normalized_folder = folder.strip('/').replace('\\', '/')
             if '..' in normalized_folder:
                 raise NotFoundError(msg='非法的文件夹路径')
-            if normalized_folder:
-                upload_path = f'{upload_path}/{normalized_folder}'
+            upload_path = normalized_folder or 'sys/upload'
+        else:
+            upload_path = 'sys/upload'
 
-        url, object_key = await storage_service.upload(
+        file_ext = Path(file.filename or '').suffix.lstrip('.').lower()
+        new_filename = f'{uuid4().hex}.{file_ext}' if file_ext else uuid4().hex
+
+        url, object_key = await storage_service.upload_with_filename(
             db=db,
             file=file,
+            filename=new_filename,
             path=upload_path,
             use_signed_url=False,
         )
         return {
             'url': url,
             'local_path': None,
-            'file_type': Path(file.filename or '').suffix.lstrip('.').lower(),
+            'file_type': file_ext,
             'size': getattr(file, 'size', None),
-            'filename': Path(file.filename or '').name,
+            'filename': new_filename,
             'object_key': object_key,
         }
 
@@ -115,7 +121,7 @@ class FileService:
                 except ValueError:
                     # 如果相对路径计算失败，回退到 safe path
                     continue
-                
+
                 file_info = {
                     'name': item_path.name,
                     'url': f'{base_url}/static/upload/{relative_path}',
@@ -251,5 +257,6 @@ class FileService:
             return 'document'
         else:
             return 'other'
+
 
 file_service = FileService()

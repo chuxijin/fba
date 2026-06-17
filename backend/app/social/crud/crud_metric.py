@@ -29,7 +29,9 @@ class CRUDSocialWorkMetric(CRUDPlus[SocialWorkMetric]):
             filters['work_id'] = work_id
         return await self.select_order('record_time', 'desc', load_strategies={'work': 'noload'}, **filters)
 
-    async def create(self, db: AsyncSession, obj: CreateSocialWorkMetricParam, current_user_id: int | None = None) -> SocialWorkMetric:
+    async def create(
+        self, db: AsyncSession, obj: CreateSocialWorkMetricParam, current_user_id: int | None = None
+    ) -> SocialWorkMetric:
         """创建作品数据快照"""
         data = obj.model_dump()
         if 'created_by' not in data:
@@ -40,7 +42,9 @@ class CRUDSocialWorkMetric(CRUDPlus[SocialWorkMetric]):
         await db.refresh(metric)
         return metric
 
-    async def update(self, db: AsyncSession, pk: int, obj: UpdateSocialWorkMetricParam, current_user_id: int | None = None) -> int:
+    async def update(
+        self, db: AsyncSession, pk: int, obj: UpdateSocialWorkMetricParam, current_user_id: int | None = None
+    ) -> int:
         """更新作品数据快照"""
         update_data = obj.model_dump(exclude_unset=True)
         if current_user_id:
@@ -58,5 +62,3 @@ class CRUDSocialWorkMetric(CRUDPlus[SocialWorkMetric]):
 
 # 实例
 social_work_metric_dao = CRUDSocialWorkMetric(SocialWorkMetric)
-
-

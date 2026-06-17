@@ -53,9 +53,7 @@ class GroupBuyActivity(Base, UserMixin):
     end_time: Mapped[datetime] = mapped_column(TimeZone, comment='活动结束时间')
     stock: Mapped[int] = mapped_column(sa.Integer, default=0, comment='活动库存')
     sales_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='已售数量')
-    status: Mapped[str] = mapped_column(
-        sa.String(16), default='draft', comment='状态: draft/active/paused/ended'
-    )
+    status: Mapped[str] = mapped_column(sa.String(16), default='draft', comment='状态: draft/active/paused/ended')
     enable_mock_team: Mapped[bool] = mapped_column(default=False, comment='是否启用模拟成团')
     mock_team_threshold: Mapped[int | None] = mapped_column(
         sa.Integer, default=None, comment='模拟成团阈值（剩余多少人时触发）'
@@ -92,9 +90,7 @@ class GroupBuyLadderPrice(Base, UserMixin):
     )
     people_count: Mapped[int] = mapped_column(sa.Integer, comment='成团人数')
     price: Mapped[Decimal] = mapped_column(sa.Numeric(10, 2), comment='拼团价格')
-    original_price: Mapped[Decimal | None] = mapped_column(
-        sa.Numeric(10, 2), default=None, comment='原价'
-    )
+    original_price: Mapped[Decimal | None] = mapped_column(sa.Numeric(10, 2), default=None, comment='原价')
 
     # ============ 关系 ============
     activity: Mapped[GroupBuyActivity] = relationship(init=False, back_populates='ladder_prices', lazy='noload')

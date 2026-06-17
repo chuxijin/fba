@@ -34,10 +34,7 @@ def get_debug_logger() -> logging.Logger:
     handler = logging.FileHandler(str(log_file), encoding='utf-8')
     handler.setLevel(logging.DEBUG)
 
-    formatter = logging.Formatter(
-        '%(asctime)s | %(levelname)-7s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    formatter = logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     handler.setFormatter(formatter)
     _debug_logger.addHandler(handler)
 
@@ -55,11 +52,11 @@ def log_task_dispatch(task_name: str, config_id: int, celery_task_id: str) -> No
     """
     dl = get_debug_logger()
     dl.info(
-        f"{'='*60}\n"
-        f"  [派发] task={task_name}, config_id={config_id}\n"
-        f"  celery_task_id={celery_task_id}\n"
-        f"  时间={timezone.now().isoformat()}\n"
-        f"{'='*60}"
+        f'{"=" * 60}\n'
+        f'  [派发] task={task_name}, config_id={config_id}\n'
+        f'  celery_task_id={celery_task_id}\n'
+        f'  时间={timezone.now().isoformat()}\n'
+        f'{"=" * 60}'
     )
 
 
@@ -73,10 +70,7 @@ def log_task_start(config_id: int, task_id: int | None, celery_task_id: str | No
     :return:
     """
     dl = get_debug_logger()
-    dl.info(
-        f"[开始] config_id={config_id}, db_task_id={task_id}, "
-        f"celery_task_id={celery_task_id}, pid={os.getpid()}"
-    )
+    dl.info(f'[开始] config_id={config_id}, db_task_id={task_id}, celery_task_id={celery_task_id}, pid={os.getpid()}')
 
 
 def log_task_skipped(config_id: int, reason: str) -> None:
@@ -88,15 +82,11 @@ def log_task_skipped(config_id: int, reason: str) -> None:
     :return:
     """
     dl = get_debug_logger()
-    dl.warning(f"[跳过] config_id={config_id}, 原因: {reason}")
+    dl.warning(f'[跳过] config_id={config_id}, 原因: {reason}')
 
 
 def log_overwrite_scan(
-    task_id: int | None,
-    phase: str,
-    path: str,
-    file_count: int,
-    file_names: list[str] | None = None
+    task_id: int | None, phase: str, path: str, file_count: int, file_names: list[str] | None = None
 ) -> None:
     """
     记录覆盖同步的目录扫描结果
@@ -115,19 +105,12 @@ def log_overwrite_scan(
         if len(file_names) > 50:
             names_str += f'\n    ... 还有 {len(file_names) - 50} 个'
     dl.info(
-        f"[扫描] task_id={task_id}, 阶段={phase}\n"
-        f"  路径: {path}\n"
-        f"  数量: {file_count}\n"
-        f"  文件列表:\n    {names_str}"
+        f'[扫描] task_id={task_id}, 阶段={phase}\n  路径: {path}\n  数量: {file_count}\n  文件列表:\n    {names_str}'
     )
 
 
 def log_api_call(
-    task_id: int | None,
-    operation: str,
-    file_count: int,
-    api_result: Any,
-    extra: dict[str, Any] | None = None
+    task_id: int | None, operation: str, file_count: int, api_result: Any, extra: dict[str, Any] | None = None
 ) -> None:
     """
     记录网盘 API 调用结果
@@ -143,21 +126,17 @@ def log_api_call(
     extra_str = ''
     if extra:
         try:
-            extra_str = f"\n  额外信息: {json.dumps(extra, ensure_ascii=False, default=str)[:500]}"
+            extra_str = f'\n  额外信息: {json.dumps(extra, ensure_ascii=False, default=str)[:500]}'
         except Exception:
-            extra_str = f"\n  额外信息: {str(extra)[:500]}"
+            extra_str = f'\n  额外信息: {str(extra)[:500]}'
     dl.info(
-        f"[API] task_id={task_id}, 操作={operation}, 文件数={file_count}\n"
-        f"  API返回: {api_result} (类型: {type(api_result).__name__}){extra_str}"
+        f'[API] task_id={task_id}, 操作={operation}, 文件数={file_count}\n'
+        f'  API返回: {api_result} (类型: {type(api_result).__name__}){extra_str}'
     )
 
 
 def log_target_verify(
-    task_id: int | None,
-    target_path: str,
-    expected_count: int,
-    actual_count: int,
-    actual_files: list[str] | None = None
+    task_id: int | None, target_path: str, expected_count: int, actual_count: int, actual_files: list[str] | None = None
 ) -> None:
     """
     记录转存后的目标目录验证
@@ -178,20 +157,16 @@ def log_target_verify(
             names_str += f'\n    ... 还有 {len(actual_files) - 50} 个'
 
     dl.info(
-        f"[验证] task_id={task_id}, 目标路径: {target_path}\n"
-        f"  预期文件数: {expected_count}\n"
-        f"  实际文件数: {actual_count}\n"
-        f"  状态: {match_status}\n"
-        f"  实际文件:\n    {names_str}"
+        f'[验证] task_id={task_id}, 目标路径: {target_path}\n'
+        f'  预期文件数: {expected_count}\n'
+        f'  实际文件数: {actual_count}\n'
+        f'  状态: {match_status}\n'
+        f'  实际文件:\n    {names_str}'
     )
 
 
 def log_task_end(
-    config_id: int,
-    task_id: int | None,
-    success: bool,
-    stats: dict[str, Any] | None = None,
-    error: str | None = None
+    config_id: int, task_id: int | None, success: bool, stats: dict[str, Any] | None = None, error: str | None = None
 ) -> None:
     """
     记录任务结束
@@ -206,10 +181,7 @@ def log_task_end(
     dl = get_debug_logger()
     stats_str = ''
     if stats:
-        safe_stats = {
-            k: v for k, v in stats.items()
-            if k not in ('pending_task_items', 'transferred_files_info')
-        }
+        safe_stats = {k: v for k, v in stats.items() if k not in ('pending_task_items', 'transferred_files_info')}
         try:
             stats_str = json.dumps(safe_stats, ensure_ascii=False, default=str)
         except Exception:
@@ -217,8 +189,8 @@ def log_task_end(
 
     status = '✅ 成功' if success else '❌ 失败'
     dl.info(
-        f"[结束] config_id={config_id}, task_id={task_id}, 状态={status}\n"
-        f"  统计: {stats_str}\n"
-        f"  错误: {error or '无'}\n"
-        f"{'='*60}"
+        f'[结束] config_id={config_id}, task_id={task_id}, 状态={status}\n'
+        f'  统计: {stats_str}\n'
+        f'  错误: {error or "无"}\n'
+        f'{"=" * 60}'
     )

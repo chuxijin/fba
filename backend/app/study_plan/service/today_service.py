@@ -70,7 +70,9 @@ async def get_today_plan(db: AsyncSession, user_id: int) -> TodayStudyPlanDetail
 
 
 async def count_uncompleted_history(
-    db: AsyncSession, user_id: int, before_date: date | None = None,
+    db: AsyncSession,
+    user_id: int,
+    before_date: date | None = None,
 ) -> int:
     """
     统计学员历史上未完成的计划项数量（用于今日页提醒铃铛）

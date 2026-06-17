@@ -23,7 +23,9 @@ router = APIRouter()
 
 
 @router.get('/me', summary='获取当前用户信息', dependencies=[DependsJwtAuth])
-async def get_current_user(request: Request, db: CurrentSession) -> ResponseSchemaModel[GetCurrentUserInfoWithRelationDetail]:
+async def get_current_user(
+    request: Request, db: CurrentSession
+) -> ResponseSchemaModel[GetCurrentUserInfoWithRelationDetail]:
     data = request.user.model_dump()
     # 查询当前用户的角色有效期记录，附带角色名称
     user_id = data['id']

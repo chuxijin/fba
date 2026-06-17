@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.vocab.crud.crud_book import book_dao, book_word_dao
@@ -12,7 +11,6 @@ from backend.app.vocab.crud.crud_word import definition_dao, example_dao, word_d
 from backend.app.vocab.model import VocabWord
 from backend.app.vocab.schema.review import GetStudySession, GetStudyStats, StudySessionWord
 from backend.app.vocab.schema.word import GetDefinitionDetail, GetExampleDetail, GetWordDetail
-from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
 
@@ -102,13 +100,14 @@ class StudyService:
         today_review_count = max(0, today_total_unique - today_new_count)
 
         due_words = await user_word_dao.get_due_words(db, user_id, now, limit=1000)
-        
+
         active_ub = await user_book_dao.get_active_book(db, user_id)
         active_book_model = None
         if active_ub:
             book = await book_dao.select_model(db, active_ub.book_id)
             if book:
                 from backend.app.vocab.schema.user_book import GetUserBookWithProgress
+
                 book_words = await book_word_dao.get_word_ids_by_book(db, active_ub.book_id)
                 learned_ids = await user_word_dao.get_learned_word_ids(db, user_id)
                 learned_in_book = [wid for wid in book_words if wid in learned_ids]
@@ -124,7 +123,7 @@ class StudyService:
                     book_cover=book.cover_image,
                     total_words=len(book_words),
                     learned_words=len(learned_in_book),
-                    mastered_words=0  # 如果需要精细可以之后再算，或者这里传 0
+                    mastered_words=0,  # 如果需要精细可以之后再算，或者这里传 0
                 )
 
         return GetStudyStats(

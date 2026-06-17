@@ -83,9 +83,7 @@ class CRUDMaterial(CRUDPlus[QuestionMaterial]):
 
         if params.keyword:
             keyword = f'%{params.keyword}%'
-            stmt = stmt.where(
-                (self.model.title.ilike(keyword)) | (self.model.source.ilike(keyword))
-            )
+            stmt = stmt.where((self.model.title.ilike(keyword)) | (self.model.source.ilike(keyword)))
 
         stmt = stmt.order_by(self.model.sort_order.asc(), self.model.id.desc())
         result = await db.execute(stmt)
@@ -154,8 +152,10 @@ class CRUDMaterial(CRUDPlus[QuestionMaterial]):
         :param material_id: 材料 ID
         :return:
         """
-        stmt = select(func.count()).select_from(question_material_relation).where(
-            question_material_relation.c.material_id == material_id
+        stmt = (
+            select(func.count())
+            .select_from(question_material_relation)
+            .where(question_material_relation.c.material_id == material_id)
         )
         result = await db.execute(stmt)
         return result.scalar() or 0
@@ -178,8 +178,7 @@ class CRUDMaterial(CRUDPlus[QuestionMaterial]):
             return
 
         values = [
-            {'material_id': material_id, 'question_id': qid, 'sort_order': idx}
-            for idx, qid in enumerate(question_ids)
+            {'material_id': material_id, 'question_id': qid, 'sort_order': idx} for idx, qid in enumerate(question_ids)
         ]
         await db.execute(question_material_relation.insert(), values)
 
@@ -197,9 +196,7 @@ class CRUDMaterial(CRUDPlus[QuestionMaterial]):
         :param question_ids: 题目 ID 列表（为空则解除所有关联）
         :return:
         """
-        stmt = question_material_relation.delete().where(
-            question_material_relation.c.material_id == material_id
-        )
+        stmt = question_material_relation.delete().where(question_material_relation.c.material_id == material_id)
         if question_ids:
             stmt = stmt.where(question_material_relation.c.question_id.in_(question_ids))
         result = await db.execute(stmt)

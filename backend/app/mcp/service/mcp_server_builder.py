@@ -24,15 +24,13 @@ def _ensure_mcp() -> Any:
     # 运行时导入，避免编辑器无法解析导入
     from mcp.server.fastmcp import FastMCP  # type: ignore
 
-    mcp = FastMCP("resource_search")
+    mcp = FastMCP('resource_search')
     # 注册工具
     register_resource_search_tools(mcp)
 
     # 缓存工具列表（避免访问内部私有对象）
     global _registered_tools_cache
-    _registered_tools_cache = [
-        {"name": "search_resources", "description": "搜索资源库（基于 yp_resource）"}
-    ]
+    _registered_tools_cache = [{'name': 'search_resources', 'description': '搜索资源库（基于 yp_resource）'}]
     _mcp = mcp
     return mcp
 
@@ -49,7 +47,7 @@ def _create_starlette_app(mcp_server: Any, *, debug: bool = False) -> Starlette:
     """创建 Starlette 应用，挂载 SSE 传输与入口"""
     from mcp.server.sse import SseServerTransport  # type: ignore
 
-    sse = SseServerTransport("/messages/")
+    sse = SseServerTransport('/messages/')
 
     async def handle_sse(request: Request):
         async with sse.connect_sse(
@@ -67,8 +65,8 @@ def _create_starlette_app(mcp_server: Any, *, debug: bool = False) -> Starlette:
     return Starlette(
         debug=debug,
         routes=[
-            Route("/sse", endpoint=handle_sse),
-            Mount("/messages/", app=sse.handle_post_message),
+            Route('/sse', endpoint=handle_sse),
+            Mount('/messages/', app=sse.handle_post_message),
         ],
     )
 
@@ -84,7 +82,7 @@ def create_sse_components() -> Tuple[Callable[..., Any], Any]:
     from mcp.server.sse import SseServerTransport  # type: ignore
 
     mcp_server: Any = _ensure_mcp()._mcp_server  # type: ignore[attr-defined]
-    sse = SseServerTransport("/messages/")
+    sse = SseServerTransport('/messages/')
 
     async def handle_sse(request: Request):
         async with sse.connect_sse(
@@ -100,5 +98,3 @@ def create_sse_components() -> Tuple[Callable[..., Any], Any]:
         return Response(status_code=204)
 
     return handle_sse, sse.handle_post_message
-
-

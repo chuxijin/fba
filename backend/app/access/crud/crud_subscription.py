@@ -30,13 +30,10 @@ class CRUDSubscription(CRUDPlus[Subscription]):
         :param ts: 时间点
         :return:
         """
-        stmt = (
-            select(self.model)
-            .where(
-                self.model.user_id == user_id,
-                self.model.status == SubscriptionStatus.ACTIVE,
-                self.model.valid_period.contains(ts),
-            )
+        stmt = select(self.model).where(
+            self.model.user_id == user_id,
+            self.model.status == SubscriptionStatus.ACTIVE,
+            self.model.valid_period.contains(ts),
         )
         return (await db.execute(stmt)).scalars().all()
 
@@ -317,6 +314,7 @@ class CRUDSubscription(CRUDPlus[Subscription]):
                 Subscription.created_time,
                 Subscription.updated_time,
                 User.username.label('username'),
+                User.nickname.label('nickname'),
                 SubscriptionTemplate.code.label('template_code'),
                 SubscriptionTemplate.name.label('template_name'),
                 func.lower(Subscription.valid_period).label('valid_from'),
@@ -368,6 +366,7 @@ class CRUDSubscription(CRUDPlus[Subscription]):
                 Subscription.created_time,
                 Subscription.updated_time,
                 User.username.label('username'),
+                User.nickname.label('nickname'),
                 SubscriptionTemplate.code.label('template_code'),
                 SubscriptionTemplate.name.label('template_name'),
                 func.lower(Subscription.valid_period).label('valid_from'),
@@ -378,7 +377,6 @@ class CRUDSubscription(CRUDPlus[Subscription]):
             .where(Subscription.id == pk)
         )
         return (await db.execute(stmt)).first()
-
 
     async def expire_due(self, db: AsyncSession) -> int:
         """

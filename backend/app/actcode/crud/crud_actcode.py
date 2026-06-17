@@ -70,11 +70,8 @@ class CRUDActcodeBatchDao(CRUDPlus[ActcodeBatch]):
         :return:
         """
         from sqlalchemy import update
-        stmt = (
-            update(self.model)
-            .where(self.model.id == pk)
-            .values(used_count=self.model.used_count + 1)
-        )
+
+        stmt = update(self.model).where(self.model.id == pk).values(used_count=self.model.used_count + 1)
         await db.execute(stmt)
 
 
@@ -120,11 +117,7 @@ class CRUDActcodeDao(CRUDPlus[Actcode]):
         """
         from sqlalchemy import func, literal
 
-        stmt = (
-            select(self.model)
-            .where(func.position(self.model.code.op('IN')(literal(text))) > 0)
-            .limit(1)
-        )
+        stmt = select(self.model).where(func.position(self.model.code.op('IN')(literal(text))) > 0).limit(1)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 

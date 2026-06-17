@@ -14,12 +14,11 @@ from .user import DriveAccount
 # 使用时请导入：from backend.app.admin.model.category import Category
 
 __all__ = [
-    "DriveAccount",
-    "SyncConfig", 
-    "SyncTask",
-    "SyncTaskItem",
-    "RuleTemplate",
-    "Resource",
-    "ResourceViewHistory",
+    'DriveAccount',
+    'SyncConfig',
+    'SyncTask',
+    'SyncTaskItem',
+    'RuleTemplate',
+    'Resource',
+    'ResourceViewHistory',
 ]
-

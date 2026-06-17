@@ -5,7 +5,6 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.growth.constants import GrowthEventOp, next_tier_exp_required, resolve_grade
-from backend.app.growth.crud.crud_experience_rule import experience_rule_dao
 from backend.app.growth.crud.crud_growth_account import growth_account_dao
 from backend.app.growth.crud.crud_growth_event import growth_event_dao
 from backend.app.growth.model.account import GrowthAccount
@@ -32,7 +31,9 @@ class ExperienceService:
         :return:
         """
         account = await growth_account_dao.get_by_user(
-            db, user_id=user_id, for_update=for_update,
+            db,
+            user_id=user_id,
+            for_update=for_update,
         )
         if account is not None:
             return account
@@ -78,9 +79,7 @@ class ExperienceService:
             account = await cls._ensure_account(db, user_id=user_id)
             return cls._progress_payload(account)
 
-        account = await cls._ensure_account(
-            db, user_id=user_id, for_update=True
-        )
+        account = await cls._ensure_account(db, user_id=user_id, for_update=True)
         new_total = account.total_exp + exp_delta
         new_available = account.available_exp + exp_delta
 
@@ -137,9 +136,7 @@ class ExperienceService:
             account = await cls._ensure_account(db, user_id=user_id)
             return cls._progress_payload(account)
 
-        account = await cls._ensure_account(
-            db, user_id=user_id, for_update=True
-        )
+        account = await cls._ensure_account(db, user_id=user_id, for_update=True)
         if account.available_exp < exp_delta:
             raise errors.RequestError(msg='可用经验不足')
 
@@ -162,9 +159,7 @@ class ExperienceService:
         return cls._progress_payload(account)
 
     @staticmethod
-    async def get_user_progress(
-        db: AsyncSession, *, user_id: int
-    ) -> dict[str, Any] | None:
+    async def get_user_progress(db: AsyncSession, *, user_id: int) -> dict[str, Any] | None:
         """
         查询用户成长进度
 

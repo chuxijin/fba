@@ -50,9 +50,7 @@ class CRUDProductCategory(CRUDPlus[ProductCategory]):
         """
         return await self.create_model(db, obj_in, created_by=user_id)
 
-    async def update(
-        self, db: AsyncSession, category_id: int, obj_in: UpdateProductCategoryParam
-    ) -> int:
+    async def update(self, db: AsyncSession, category_id: int, obj_in: UpdateProductCategoryParam) -> int:
         """
         更新商品分类
 

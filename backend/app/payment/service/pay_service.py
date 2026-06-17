@@ -8,7 +8,6 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.payment.crud.crud_pay_transaction import pay_transaction_dao
-from backend.app.payment.model.pay_transaction import PayTransaction
 from backend.app.payment.schema.pay import CreatePrepayParam, PrepayResult
 from backend.app.payment.service.notifier import PaymentNotifier
 from backend.common.exception import errors
@@ -87,7 +86,7 @@ class PayService:
             'product_name': params.product_name,
             'created_by': params.user_id,
         }
-        txn = await pay_transaction_dao.create_model(db, txn_data)
+        await pay_transaction_dao.create_model(db, txn_data)
 
         # 调用支付渠道预下单
         provider = get_provider(params.pay_type)
@@ -272,7 +271,7 @@ class PayService:
             reason=reason,
         )
 
-        now = timezone.now()
+        timezone.now()
         await pay_transaction_dao.update_model(
             db,
             txn.id,
