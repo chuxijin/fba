@@ -1,4 +1,3 @@
-
 from anyio import open_file
 from fastapi import UploadFile
 
@@ -54,7 +53,7 @@ async def upload_file(file: UploadFile, folder: str | None = None) -> str:
     :return:
     """
     filename = build_filename(file)
-    
+
     upload_path = UPLOAD_DIR
     relative_path = filename
 
@@ -79,7 +78,7 @@ async def upload_file(file: UploadFile, folder: str | None = None) -> str:
     except Exception as e:
         log.error(f'上传文件 {filename} 失败：{e!s}')
         raise errors.RequestError(msg='上传文件失败')
-    
+
     return relative_path
 
 

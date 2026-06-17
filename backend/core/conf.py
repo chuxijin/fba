@@ -135,7 +135,9 @@ class Settings(BaseSettings):
         re.compile(rf'^{FASTAPI_API_V1_PATH}/qbank/banks/\d+$'),  # 题库详情（公开接口）
         re.compile(rf'^{FASTAPI_API_V1_PATH}/resources/\d+/click$'),  # 资源点击统计（公开接口）
         re.compile(rf'^{FASTAPI_API_V1_PATH}/webhook/inbound/[^/]+$'),  # Webhook 入站接收（外部推送免鉴权）
-        re.compile(rf'^{FASTAPI_API_V1_PATH}/webhook/inbound/structured/[^/]+$'),  # Webhook 结构化入站（外部推送免鉴权）
+        re.compile(
+            rf'^{FASTAPI_API_V1_PATH}/webhook/inbound/structured/[^/]+$'
+        ),  # Webhook 结构化入站（外部推送免鉴权）
     ]
 
     # 用户安全
@@ -298,7 +300,7 @@ class Settings(BaseSettings):
     OPERA_LOG_BODY_MAX_SIZE: int = 10240  # 10 KB
 
     # Server Chan
-    SERVER_CHAN_SEND_KEY: str = "SCT241185TZMzg15OPJD8qIxVo6I0DUGTw"
+    SERVER_CHAN_SEND_KEY: str = 'SCT241185TZMzg15OPJD8qIxVo6I0DUGTw'
 
     # Plugin 配置
     PLUGIN_REQUIRED: list[str] = ['dict']
@@ -613,7 +615,6 @@ class Settings(BaseSettings):
     CHAOJI_KAOYAN_AGENT_KEY: str = ''
     CHAOJI_KAOYAN_ORDER_TYPE: int = 6
     CHAOJI_KAOYAN_REQUEST_TIMEOUT: int = 20
-
 
     @model_validator(mode='before')
     @classmethod

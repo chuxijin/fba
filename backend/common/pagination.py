@@ -165,9 +165,7 @@ async def paging_data(db: AsyncSession, select: Select, schema_cls=None, **kwarg
     # 如果提供了 schema_cls，立即在异步上下文中转换 ORM 对象为 Schema
     # 这样可以避免在 model_dump() 时触发 SQLAlchemy 的懒加载
     if schema_cls:
-        paginated_data.items = [
-            schema_cls.model_validate(item) for item in paginated_data.items
-        ]
+        paginated_data.items = [schema_cls.model_validate(item) for item in paginated_data.items]
 
     page_data = paginated_data.model_dump()
     return page_data

@@ -14,6 +14,7 @@ def _ensure_virtual_provider() -> None:
     """延迟注册虚拟支付 Provider（避免未配置时导入报错）"""
     if 'virtual' not in _PROVIDER_REGISTRY:
         from backend.common.payment.providers.virtual import virtual_pay_provider
+
         _PROVIDER_REGISTRY['virtual'] = virtual_pay_provider
 
 

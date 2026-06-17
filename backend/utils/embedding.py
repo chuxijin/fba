@@ -50,7 +50,7 @@ async def batch_embed(texts: list[str], *, model: str | None = None, batch_size:
     results: list[list[float]] = []
 
     for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
+        batch = texts[i : i + batch_size]
         response = await client.embeddings.create(input=batch, model=model)
         results.extend([item.embedding for item in response.data])
 

@@ -61,9 +61,7 @@ async def dispatch_locally(event_name: str, payload: dict[str, Any]) -> dict[str
         except Exception as exc:
             handler_name = getattr(handler, '__qualname__', repr(handler))
             failures.append(f'{handler_name}: {exc}')
-            log.warning(
-                f'事件订阅器执行失败 event={event_name} handler={handler_name} error={exc}'
-            )
+            log.warning(f'事件订阅器执行失败 event={event_name} handler={handler_name} error={exc}')
 
     return {
         'event': event_name,

@@ -129,4 +129,3 @@ async def load_crawler_config(db: AsyncSession) -> None:
         'CRAWLER_COOKIE': str,
     }
     await _load_config(db, 'crawler', mapping, 'CRAWLER_CONFIG_STATUS')
-

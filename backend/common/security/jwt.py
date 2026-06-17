@@ -438,7 +438,9 @@ async def jwt_authentication(token: str) -> GetUserInfoWithRelationDetail:
         raise errors.TokenError(msg=invalid_message or 'Token 已过期')
 
     if token != redis_token:
-        await mark_session_invalid(ctx.user_id, token_payload.session_uuid, reason=TokenInvalidReason.permission_changed)
+        await mark_session_invalid(
+            ctx.user_id, token_payload.session_uuid, reason=TokenInvalidReason.permission_changed
+        )
         raise errors.TokenError(msg='Token 已失效')
 
     return await get_jwt_user(ctx.user_id)

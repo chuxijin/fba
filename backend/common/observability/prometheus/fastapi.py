@@ -55,7 +55,9 @@ def inc_fastapi_request(*, method: str, path: str) -> None:
     ).inc()
 
 
-def observe_fastapi_request_cost_time(*, method: str, path: str, elapsed: float, trace_id: str, status_code: int | str) -> None:
+def observe_fastapi_request_cost_time(
+    *, method: str, path: str, elapsed: float, trace_id: str, status_code: int | str
+) -> None:
     """记录 FastAPI 请求耗时"""
     _PROMETHEUS_FASTAPI_REQUEST_COST_TIME_HISTOGRAM.labels(
         app_name=settings.GRAFANA_PROMETHEUS_APP_NAME, method=method, path=path, status_code=status_code

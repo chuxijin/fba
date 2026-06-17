@@ -239,11 +239,13 @@ def register_mcp_starlette(app: FastAPI) -> None:
     # 将 /sse 挂为子应用：
     # - GET /sse               -> SSE 握手
     # - POST /sse/messages/... -> 消息通道（与 mcp.client.sse 期望一致）
-    sse_subapp = Starlette(routes=[
-        Route("/", endpoint=handle_sse),
-        Mount("/messages", app=post_message_app),
-    ])
-    app.mount("/sse", sse_subapp)
+    sse_subapp = Starlette(
+        routes=[
+            Route('/', endpoint=handle_sse),
+            Mount('/messages', app=post_message_app),
+        ]
+    )
+    app.mount('/sse', sse_subapp)
 
 
 def register_socket_app(app: FastAPI) -> None:

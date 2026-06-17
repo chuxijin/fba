@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import json
 
-from fastapi.concurrency import run_in_threadpool
 
 from backend.common.log import log
 from backend.common.payment.base import PaymentProvider

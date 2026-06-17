@@ -105,9 +105,7 @@ def test_compound_key_order_matters(fake_redis: FakeRedis) -> None:
 
 
 def test_pydantic_serializer_roundtrip(fake_redis: FakeRedis) -> None:
-    cache = RedisCache(
-        prefix='test:pyd', ttl=60, serializer=PydanticSerializer(SampleModel)
-    )
+    cache = RedisCache(prefix='test:pyd', ttl=60, serializer=PydanticSerializer(SampleModel))
     run(cache.set(1, value=SampleModel(user_id=1, name='alice')))
     got = run(cache.get(1))
     assert isinstance(got, SampleModel)
@@ -115,9 +113,7 @@ def test_pydantic_serializer_roundtrip(fake_redis: FakeRedis) -> None:
 
 
 def test_dataclass_serializer_roundtrip(fake_redis: FakeRedis) -> None:
-    cache = RedisCache(
-        prefix='test:dc', ttl=60, serializer=DataclassSerializer(SamplePoint)
-    )
+    cache = RedisCache(prefix='test:dc', ttl=60, serializer=DataclassSerializer(SamplePoint))
     run(cache.set(1, value=SamplePoint(x=3, y=4)))
     got = run(cache.get(1))
     assert isinstance(got, SamplePoint) and got.x == 3 and got.y == 4
@@ -191,9 +187,7 @@ def test_invalidate_prefix_removes_all(fake_redis: FakeRedis) -> None:
     assert run(cache.get(2, 'a')) == {'val': 'c'}
 
 
-def test_redis_get_failure_returns_none(
-    monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis
-) -> None:
+def test_redis_get_failure_returns_none(monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis) -> None:
     async def boom(*_a, **_kw):
         raise ConnectionError('redis down')
 
@@ -202,9 +196,7 @@ def test_redis_get_failure_returns_none(
     assert run(cache.get(1)) is None
 
 
-def test_redis_set_failure_silently_skips(
-    monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis
-) -> None:
+def test_redis_set_failure_silently_skips(monkeypatch: pytest.MonkeyPatch, fake_redis: FakeRedis) -> None:
     async def boom(*_a, **_kw):
         raise ConnectionError('redis down')
 

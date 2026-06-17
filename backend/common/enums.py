@@ -169,6 +169,8 @@ class JobType(StrEnum):
 
     job = '校招'
     internship = '实习'
+
+
 class LifespanStage(IntEnum):
     """lifespan 执行阶段"""
 

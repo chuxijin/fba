@@ -88,7 +88,9 @@ class VipFulfiller(BaseRewardFulfiller):
                     db,
                     user_id=user_id,
                     template_code=template_code,
-                    source=SubscriptionSource(source) if source in {s.value for s in SubscriptionSource} else SubscriptionSource.GIFT,
+                    source=SubscriptionSource(source)
+                    if source in {s.value for s in SubscriptionSource}
+                    else SubscriptionSource.GIFT,
                     source_ref=source_key,
                 )
             else:
@@ -97,13 +99,13 @@ class VipFulfiller(BaseRewardFulfiller):
                     user_id=user_id,
                     template_code=template_code,
                     days=days,
-                    source=SubscriptionSource(source) if source in {s.value for s in SubscriptionSource} else SubscriptionSource.GIFT,
+                    source=SubscriptionSource(source)
+                    if source in {s.value for s in SubscriptionSource}
+                    else SubscriptionSource.GIFT,
                     source_ref=source_key,
                 )
         except Exception as exc:
-            log.warning(
-                f'会员发放失败: user_id={user_id}, template={template_code}, error={exc!s}'
-            )
+            log.warning(f'会员发放失败: user_id={user_id}, template={template_code}, error={exc!s}')
             return False
 
         log.info(
@@ -182,10 +184,7 @@ class PointsFulfiller(BaseRewardFulfiller):
             log.warning(f'经验发放失败: user_id={user_id}, amount={amount}, error={exc!s}')
             return False
 
-        log.info(
-            f'经验发放成功: user_id={user_id}, amount={amount}, '
-            f'source={source}, source_key={source_key}'
-        )
+        log.info(f'经验发放成功: user_id={user_id}, amount={amount}, source={source}, source_key={source_key}')
         return True
 
     async def revoke(self, *, db: AsyncSession, user_id: int, reward_data: dict) -> bool:
@@ -221,10 +220,7 @@ class PointsFulfiller(BaseRewardFulfiller):
             log.warning(f'经验撤销失败: user_id={user_id}, amount={amount}, error={exc!s}')
             return False
 
-        log.info(
-            f'经验撤销成功: user_id={user_id}, amount={amount}, '
-            f'source_key={source_key}'
-        )
+        log.info(f'经验撤销成功: user_id={user_id}, amount={amount}, source_key={source_key}')
         return True
 
 
