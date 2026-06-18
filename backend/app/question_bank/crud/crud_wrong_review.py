@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
@@ -295,6 +296,132 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
                     if isinstance(tag_id, int):
                         counter[tag_id] = counter.get(tag_id, 0) + 1
         return sorted(counter.items(), key=lambda x: x[1], reverse=True)
+
+    async def get_reason_and_kp_counts(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        cat_id: int | None = None,
+    ) -> tuple[dict[int, int], dict[int, int]]:
+        """
+        一次查询同时统计错因标签和知识点出现次数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param cat_id: 领域分类 ID
+        :return: (tag_counter, kp_counter)
+        """
+        stmt = (
+            select(WrongQuestionReview.reasons)
+            .where(WrongQuestionReview.user_id == user_id)
+            .where(WrongQuestionReview.reasons.isnot(None))
+        )
+        if cat_id is not None:
+            stmt = stmt.where(WrongQuestionReview.cat_id == cat_id)
+
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
+
+        tag_counter: dict[int, int] = {}
+        kp_counter: dict[int, int] = {}
+
+        for reasons_data in rows:
+            if not isinstance(reasons_data, dict):
+                # 旧格式：数组 [1, 2, 3]
+                if isinstance(reasons_data, list):
+                    for tag_id in reasons_data:
+                        if isinstance(tag_id, int):
+                            tag_counter[tag_id] = tag_counter.get(tag_id, 0) + 1
+                continue
+
+            # 新格式：字典 {tags: [...], knowledge_points: [...]}
+            tag_ids = reasons_data.get('tags', [])
+            if isinstance(tag_ids, list):
+                for tag_id in tag_ids:
+                    if isinstance(tag_id, int):
+                        tag_counter[tag_id] = tag_counter.get(tag_id, 0) + 1
+
+            kp_ids = reasons_data.get('knowledge_points', [])
+            if isinstance(kp_ids, list):
+                for kp in kp_ids:
+                    if isinstance(kp, dict):
+                        kp_id = kp.get('id')
+                        if isinstance(kp_id, int):
+                            kp_counter[kp_id] = kp_counter.get(kp_id, 0) + 1
+                    elif isinstance(kp, int):
+                        kp_counter[kp] = kp_counter.get(kp, 0) + 1
+
+        return tag_counter, kp_counter
+
+    async def get_knowledge_point_distribution_by_parent(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        parent_category_id: int,
+        cat_id: int | None = None,
+    ) -> list[dict]:
+        """
+        按父节点获取知识点错题分布
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param parent_category_id: 父分类 ID
+        :param cat_id: 领域分类 ID
+        :return: [{kp_id, kp_name, wrong_count, percentage}]
+        """
+        from backend.app.admin.model.category import Category
+
+        # 获取直接子节点
+        children_result = await db.execute(
+            select(Category.id, Category.name)
+            .where(
+                Category.parent_id == parent_category_id,
+                Category.status.is_(True),
+            )
+            .order_by(Category.sort_order)
+        )
+        children = children_result.all()
+
+        if not children:
+            return []
+
+        children_map = {c.id: c.name for c in children}
+        children_ids = list(children_map.keys())
+
+        # 获取知识点统计（通过合并查询）
+        _, kp_counter = await self.get_reason_and_kp_counts(db, user_id, cat_id)
+
+        if not kp_counter:
+            return []
+
+        # 查询叶子知识点的 path，按子节点聚合
+        leaf_ids = list(kp_counter.keys())
+        leaf_paths = await db.execute(
+            select(Category.id, Category.path).where(Category.id.in_(leaf_ids))
+        )
+
+        counter: dict[int, int] = {cid: 0 for cid in children_map}
+        for row in leaf_paths.all():
+            leaf_path = row.path or ''
+            if not leaf_path:
+                continue
+            for child_id in children_ids:
+                if f'/{child_id}/' in f'/{leaf_path}/':
+                    counter[child_id] = counter.get(child_id, 0) + kp_counter.get(row.id, 0)
+                    break
+
+        total = sum(counter.values())
+
+        return [
+            {
+                'kp_id': cid,
+                'kp_name': children_map[cid],
+                'wrong_count': count,
+                'percentage': round(count / total * 100, 1) if total else 0.0,
+            }
+            for cid, count in sorted(counter.items(), key=lambda x: x[1], reverse=True)
+            if count > 0
+        ]
 
     async def get_knowledge_point_counts(
         self,

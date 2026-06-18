@@ -92,6 +92,27 @@ async def get_reviewed_questions(
     return response_base.success(data=data)
 
 
+@router.get(
+    '/knowledge-point-distribution',
+    summary='获取知识点错题分布（按层级）',
+    name='qbank_wrong_review_kp_distribution',
+    dependencies=[DependsJwtAuth],
+)
+async def get_knowledge_point_distribution(
+    request: Request,
+    db: CurrentSession,
+    parent_id: int,
+    cat_id: int | None = None,
+) -> ResponseSchemaModel[list[dict]]:
+    data = await wrong_review_service.get_knowledge_point_distribution(
+        db=db,
+        user_id=request.user.id,
+        parent_id=parent_id,
+        cat_id=cat_id,
+    )
+    return response_base.success(data=data)
+
+
 # ───────────────── 错因标签 ─────────────────
 
 

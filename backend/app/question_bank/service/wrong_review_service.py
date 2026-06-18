@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank.cache.kp_cache import reason_tag_cache
@@ -377,13 +378,15 @@ class WrongReviewService:
         # 今日待复盘数
         today_pending = await _count_today_pending(db, user_id)
 
-        # 错因分布（按领域过滤）
-        reason_counts = await review_dao.get_reason_counts(db, user_id, cat_id=cat_id)
+        # 合并查询：错因 + 知识点统计
+        tag_counter, kp_counter = await review_dao.get_reason_and_kp_counts(db, user_id, cat_id=cat_id)
         tags = await reason_tag_dao.list_user_tags(db, user_id)
+
+        # 构建错因分布
         tag_map = {t.id: t for t in tags}
-        total_reason_refs = sum(c for _, c in reason_counts)
+        total_reason_refs = sum(tag_counter.values())
         reason_distribution = []
-        for tag_id, count in reason_counts:
+        for tag_id, count in sorted(tag_counter.items(), key=lambda x: x[1], reverse=True):
             tag = tag_map.get(tag_id)
             if not tag:
                 continue
@@ -395,8 +398,43 @@ class WrongReviewService:
                 'percentage': round(count / total_reason_refs * 100, 1) if total_reason_refs else 0.0,
             })
 
-        # 错题按知识点分布（从复盘记录的 reasons 中统计，按领域过滤）
-        knowledge_point_distribution = await _get_knowledge_point_distribution(db, user_id, cat_id=cat_id)
+        # 构建知识点分布（复用 kp_counter）
+        root_id = 109 if kp_cat_id == 1401 else (kp_cat_id or cat_id)
+        knowledge_point_distribution = []
+        if root_id and kp_counter:
+            from backend.app.admin.model.category import Category
+            children_result = await db.execute(
+                select(Category.id, Category.name)
+                .where(Category.parent_id == root_id, Category.status.is_(True))
+                .order_by(Category.sort_order)
+            )
+            children = children_result.all()
+            if children:
+                children_map = {c.id: c.name for c in children}
+                children_ids = list(children_map.keys())
+                leaf_paths = await db.execute(
+                    select(Category.id, Category.path).where(Category.id.in_(list(kp_counter.keys())))
+                )
+                counter: dict[int, int] = {cid: 0 for cid in children_map}
+                for row in leaf_paths.all():
+                    leaf_path = row.path or ''
+                    if not leaf_path:
+                        continue
+                    for child_id in children_ids:
+                        if f'/{child_id}/' in f'/{leaf_path}/':
+                            counter[child_id] = counter.get(child_id, 0) + kp_counter.get(row.id, 0)
+                            break
+                total = sum(counter.values())
+                knowledge_point_distribution = [
+                    {
+                        'kp_id': cid,
+                        'kp_name': children_map[cid],
+                        'wrong_count': count,
+                        'percentage': round(count / total * 100, 1) if total else 0.0,
+                    }
+                    for cid, count in sorted(counter.items(), key=lambda x: x[1], reverse=True)
+                    if count > 0
+                ]
 
         return {
             'total_wrong_count': total_wrong,
@@ -440,6 +478,27 @@ class WrongReviewService:
         :return:
         """
         return await _get_reviewed_questions(db, user_id, tag_id=tag_id, kp_id=kp_id)
+
+    @staticmethod
+    async def get_knowledge_point_distribution(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        parent_id: int,
+        cat_id: int | None = None,
+    ) -> list[dict]:
+        """
+        获取知识点错题分布（按层级）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param parent_id: 父分类 ID
+        :param cat_id: 领域分类 ID
+        :return:
+        """
+        return await _get_knowledge_point_distribution(
+            db, user_id, cat_id=cat_id, parent_category_id=parent_id
+        )
 
 
 async def _count_today_pending(db: AsyncSession, user_id: int) -> int:
@@ -539,71 +598,34 @@ async def _get_knowledge_point_distribution(
     db: AsyncSession,
     user_id: int,
     cat_id: int | None = None,
+    kp_cat_id: int | None = None,
+    parent_category_id: int | None = None,
 ) -> list[dict]:
     """
     获取用户复盘记录中标注的知识点分布
 
     :param db: 数据库会话
     :param user_id: 用户 ID
-    :param cat_id: 领域分类 ID
+    :param cat_id: 领域分类 ID（用于过滤复盘记录）
+    :param kp_cat_id: 知识点根分类 ID（用于查询知识点树）
+    :param parent_category_id: 父分类 ID（None 表示顶层）
     :return:
     """
-    from collections import Counter
+    if parent_category_id is not None:
+        # 按父节点查询子节点分布
+        return await review_dao.get_knowledge_point_distribution_by_parent(
+            db, user_id, parent_category_id, cat_id
+        )
 
-    from sqlalchemy import select
+    # 默认显示顶层知识点分布
+    # TODO: 临时固定为行测(109)，后续改为动态获取
+    root_id = 109 if kp_cat_id == 1401 else (kp_cat_id or cat_id)
+    if not root_id:
+        return []
 
-    from backend.app.question_bank.model.wrong_review import WrongQuestionReview
-
-    # 获取所有复盘记录的 reasons（包含知识点）
-    stmt = (
-        select(WrongQuestionReview.reasons)
-        .where(WrongQuestionReview.user_id == user_id)
-        .where(WrongQuestionReview.reasons.isnot(None))
+    return await review_dao.get_knowledge_point_distribution_by_parent(
+        db, user_id, root_id, cat_id
     )
-    if cat_id is not None:
-        stmt = stmt.where(WrongQuestionReview.cat_id == cat_id)
-
-    result = await db.execute(stmt)
-    rows = result.scalars().all()
-
-    # 统计知识点分布
-    kp_counter: Counter[int] = Counter()
-    kp_names: dict[int, str] = {}
-
-    for reasons in rows:
-        if not isinstance(reasons, dict):
-            continue
-
-        # reasons 格式: {'tags': [...], 'knowledge_points': [...]}
-        knowledge_points = reasons.get('knowledge_points', [])
-        if not isinstance(knowledge_points, list):
-            continue
-
-        for kp in knowledge_points:
-            if isinstance(kp, dict):
-                kp_id = kp.get('id')
-                kp_name = kp.get('name')
-                if kp_id and kp_name:
-                    kp_counter[kp_id] += 1
-                    kp_names[kp_id] = kp_name
-            elif isinstance(kp, int):
-                # 只有 ID
-                kp_counter[kp] += 1
-                kp_names[kp] = f'知识点{kp}'
-
-    # 取前 10 个
-    top_kps = kp_counter.most_common(10)
-    total = sum(count for _, count in top_kps)
-
-    return [
-        {
-            'kp_id': kp_id,
-            'kp_name': kp_names.get(kp_id, '未知知识点'),
-            'wrong_count': count,
-            'percentage': round(count / total * 100, 1) if total else 0.0,
-        }
-        for kp_id, count in top_kps
-    ]
 
 
 async def _get_bank_distribution(
