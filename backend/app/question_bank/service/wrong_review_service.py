@@ -235,6 +235,10 @@ class WrongReviewService:
             if book.user_id != user_id:
                 raise errors.ForbiddenError(msg='无权复盘该错题')
 
+            # 获取 cat_id：通过 placement -> bank -> cat_id
+            if book.placement and book.placement.bank:
+                kwargs['cat_id'] = book.placement.bank.cat_id
+
         elif review_type == 'custom':
             if not custom_question_id:
                 raise errors.BadRequestError(msg='自定义错题复盘必须提供 custom_question_id')
@@ -243,6 +247,9 @@ class WrongReviewService:
                 raise errors.NotFoundError(msg='自定义错题不存在')
             if question.user_id != user_id:
                 raise errors.ForbiddenError(msg='无权复盘该错题')
+
+            # 直接使用 custom_question 的 category_id
+            kwargs['cat_id'] = question.category_id
 
             # 同步更新 custom 表的 reasons 和 summary
             await custom_question_dao.update(
@@ -364,14 +371,14 @@ class WrongReviewService:
         total_wrong = stats.total_count
         unmastered = stats.unmastered_count
 
-        # 复盘记录总数
-        total_review = await review_dao.count_by_user(db, user_id)
+        # 复盘记录总数（按领域过滤）
+        total_review = await review_dao.count_by_user(db, user_id, cat_id=cat_id)
 
         # 今日待复盘数
         today_pending = await _count_today_pending(db, user_id)
 
-        # 错因分布
-        reason_counts = await review_dao.get_reason_counts(db, user_id)
+        # 错因分布（按领域过滤）
+        reason_counts = await review_dao.get_reason_counts(db, user_id, cat_id=cat_id)
         tags = await reason_tag_dao.list_user_tags(db, user_id)
         tag_map = {t.id: t for t in tags}
         total_reason_refs = sum(c for _, c in reason_counts)
@@ -388,8 +395,8 @@ class WrongReviewService:
                 'percentage': round(count / total_reason_refs * 100, 1) if total_reason_refs else 0.0,
             })
 
-        # 错题按知识点分布（从复盘记录的 reasons 中统计）
-        knowledge_point_distribution = await _get_knowledge_point_distribution(db, user_id)
+        # 错题按知识点分布（从复盘记录的 reasons 中统计，按领域过滤）
+        knowledge_point_distribution = await _get_knowledge_point_distribution(db, user_id, cat_id=cat_id)
 
         return {
             'total_wrong_count': total_wrong,
@@ -531,12 +538,14 @@ async def _get_today_pending_list(db: AsyncSession, user_id: int) -> list[dict]:
 async def _get_knowledge_point_distribution(
     db: AsyncSession,
     user_id: int,
+    cat_id: int | None = None,
 ) -> list[dict]:
     """
     获取用户复盘记录中标注的知识点分布
 
     :param db: 数据库会话
     :param user_id: 用户 ID
+    :param cat_id: 领域分类 ID
     :return:
     """
     from collections import Counter
@@ -551,6 +560,8 @@ async def _get_knowledge_point_distribution(
         .where(WrongQuestionReview.user_id == user_id)
         .where(WrongQuestionReview.reasons.isnot(None))
     )
+    if cat_id is not None:
+        stmt = stmt.where(WrongQuestionReview.cat_id == cat_id)
 
     result = await db.execute(stmt)
     rows = result.scalars().all()

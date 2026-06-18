@@ -233,26 +233,41 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
         """
         return await self.delete_model(db, review_id)
 
-    async def count_by_user(self, db: AsyncSession, user_id: int) -> int:
+    async def count_by_user(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        cat_id: int | None = None,
+    ) -> int:
         """
         统计用户的总复盘记录数
 
         :param db: 数据库会话
         :param user_id: 用户 ID
+        :param cat_id: 领域分类 ID
         :return:
         """
         from sqlalchemy import func
 
         stmt = select(func.count()).select_from(WrongQuestionReview).where(WrongQuestionReview.user_id == user_id)
+        if cat_id is not None:
+            stmt = stmt.where(WrongQuestionReview.cat_id == cat_id)
+
         result = await db.execute(stmt)
         return result.scalar() or 0
 
-    async def get_reason_counts(self, db: AsyncSession, user_id: int) -> list[tuple[int, int]]:
+    async def get_reason_counts(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        cat_id: int | None = None,
+    ) -> list[tuple[int, int]]:
         """
         统计用户复盘记录中各错因标签的出现次数
 
         :param db: 数据库会话
         :param user_id: 用户 ID
+        :param cat_id: 领域分类 ID
         :return:
         """
         stmt = (
@@ -260,6 +275,9 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
             .where(WrongQuestionReview.user_id == user_id)
             .where(WrongQuestionReview.reasons.isnot(None))
         )
+        if cat_id is not None:
+            stmt = stmt.where(WrongQuestionReview.cat_id == cat_id)
+
         result = await db.execute(stmt)
         rows = result.scalars().all()
         counter: dict[int, int] = {}
@@ -278,12 +296,18 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
                         counter[tag_id] = counter.get(tag_id, 0) + 1
         return sorted(counter.items(), key=lambda x: x[1], reverse=True)
 
-    async def get_knowledge_point_counts(self, db: AsyncSession, user_id: int) -> list[tuple[int, int]]:
+    async def get_knowledge_point_counts(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        cat_id: int | None = None,
+    ) -> list[tuple[int, int]]:
         """
         统计用户复盘记录中各知识点的出现次数
 
         :param db: 数据库会话
         :param user_id: 用户 ID
+        :param cat_id: 领域分类 ID
         :return:
         """
         stmt = (
@@ -291,6 +315,9 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
             .where(WrongQuestionReview.user_id == user_id)
             .where(WrongQuestionReview.reasons.isnot(None))
         )
+        if cat_id is not None:
+            stmt = stmt.where(WrongQuestionReview.cat_id == cat_id)
+
         result = await db.execute(stmt)
         rows = result.scalars().all()
         counter: dict[int, int] = {}

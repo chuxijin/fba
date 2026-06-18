@@ -129,6 +129,11 @@ class WrongQuestionReview(Base):
         default=None,
         comment='关联自定义错题',
     )
+    cat_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        default=None,
+        comment='领域分类 ID（用于按领域过滤）',
+    )
     duration_seconds: Mapped[int] = mapped_column(sa.Integer, default=0, comment='复盘用时（秒）')
     reasons: Mapped[list | None] = mapped_column(CompatibleJSONB, default=None, comment='错因标签 ID 数组')
     summary: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='一句话复盘')
