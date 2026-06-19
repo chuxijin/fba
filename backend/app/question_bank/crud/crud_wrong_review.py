@@ -3,7 +3,7 @@
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy_crud_plus import CRUDPlus
@@ -13,6 +13,7 @@ from backend.app.question_bank.model.wrong_review import (
     WrongQuestionReview,
     WrongReasonTag,
 )
+from backend.app.question_bank.model.practice import WrongQuestionBook
 
 
 class CRUDReasonTag(CRUDPlus[WrongReasonTag]):
@@ -256,6 +257,87 @@ class CRUDWrongQuestionReview(CRUDPlus[WrongQuestionReview]):
 
         result = await db.execute(stmt)
         return result.scalar() or 0
+
+    async def get_review_summary(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        cat_id: int | None = None,
+        today_start: datetime | None = None,
+    ) -> tuple[int, int, dict[int, int], dict[int, int]]:
+        """
+        一次查询同时获取复盘总数、今日待复盘数、错因标签计数与知识点计数
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param cat_id: 领域分类 ID
+        :param today_start: 今日零点时间，用于统计今日待复盘数
+        :return: (review_total, today_pending, tag_counter, kp_counter)
+        """
+        stmt = (
+            select(WrongQuestionReview.reasons, func.count().over().label('total'))
+            .where(WrongQuestionReview.user_id == user_id)
+        )
+        if cat_id is not None:
+            stmt = stmt.where(WrongQuestionReview.cat_id == cat_id)
+
+        # 今日待复盘数：标量子查询，作为附加列一次往返取回
+        if today_start is not None:
+            reviewed_subq = (
+                select(WrongQuestionReview.wrong_book_id)
+                .where(WrongQuestionReview.user_id == user_id)
+                .where(WrongQuestionReview.wrong_book_id.isnot(None))
+                .scalar_subquery()
+            )
+            today_pending_subq = (
+                select(func.count())
+                .select_from(WrongQuestionBook)
+                .where(WrongQuestionBook.user_id == user_id)
+                .where(WrongQuestionBook.last_wrong_time >= today_start)
+                .where(WrongQuestionBook.id.notin_(reviewed_subq))
+                .scalar_subquery()
+                .label('today_pending')
+            )
+            stmt = stmt.add_columns(today_pending_subq)
+
+        result = await db.execute(stmt)
+        rows = result.all()
+
+        review_total = int(rows[0].total) if rows else 0
+        today_pending = int(rows[0].today_pending) if rows and today_start is not None else 0
+        tag_counter: dict[int, int] = {}
+        kp_counter: dict[int, int] = {}
+
+        for row in rows:
+            reasons_data = row.reasons
+            if reasons_data is None:
+                continue
+            if not isinstance(reasons_data, dict):
+                # 旧格式：数组 [1, 2, 3]
+                if isinstance(reasons_data, list):
+                    for tag_id in reasons_data:
+                        if isinstance(tag_id, int):
+                            tag_counter[tag_id] = tag_counter.get(tag_id, 0) + 1
+                continue
+
+            # 新格式：字典 {tags: [...], knowledge_points: [...]}
+            tag_ids = reasons_data.get('tags', [])
+            if isinstance(tag_ids, list):
+                for tag_id in tag_ids:
+                    if isinstance(tag_id, int):
+                        tag_counter[tag_id] = tag_counter.get(tag_id, 0) + 1
+
+            kp_ids = reasons_data.get('knowledge_points', [])
+            if isinstance(kp_ids, list):
+                for kp in kp_ids:
+                    if isinstance(kp, dict):
+                        kp_id = kp.get('id')
+                        if isinstance(kp_id, int):
+                            kp_counter[kp_id] = kp_counter.get(kp_id, 0) + 1
+                    elif isinstance(kp, int):
+                        kp_counter[kp] = kp_counter.get(kp, 0) + 1
+
+        return review_total, today_pending, tag_counter, kp_counter
 
     async def get_reason_counts(
         self,

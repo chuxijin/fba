@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import select
+import asyncio
+
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank.cache.kp_cache import reason_tag_cache
@@ -365,22 +367,43 @@ class WrongReviewService:
         :param kp_cat_id: 知识点分类 ID
         :return:
         """
+        from datetime import datetime, time
+
+        from backend.app.admin.model.category import Category
         from backend.app.question_bank.service.wrong_question_service import wrong_question_service
+        from backend.database.db import async_db_session
+        from backend.utils.timezone import timezone
 
-        # 错题统计
-        stats = await wrong_question_service.get_statistics(db=db, user_id=user_id, cat_id=cat_id, kp_cat_id=kp_cat_id)
-        total_wrong = stats.total_count
-        unmastered = stats.unmastered_count
+        root_id = 109 if kp_cat_id == 1401 else (kp_cat_id or cat_id)
+        today_start = datetime.combine(timezone.now().date(), time.min)
+        today_start = today_start.replace(tzinfo=timezone.tz_info)
 
-        # 复盘记录总数（按领域过滤）
-        total_review = await review_dao.count_by_user(db, user_id, cat_id=cat_id)
+        # 错题统计（走缓存，命中时仅一次 Redis 往返）
+        async def _stats() -> tuple[int, int]:
+            stats = await wrong_question_service.get_statistics(
+                db=db,
+                user_id=user_id,
+                cat_id=cat_id,
+                kp_cat_id=kp_cat_id,
+            )
+            return stats.total_count, stats.unmastered_count
 
-        # 今日待复盘数
-        today_pending = await _count_today_pending(db, user_id)
+        # 复盘总数 + 今日待复盘 + 错因/知识点计数（原 count_by_user、_count_today_pending、
+        # get_reason_and_kp_counts 三次查询合并为一次）
+        async def _review_summary() -> tuple[int, int, dict[int, int], dict[int, int]]:
+            async with async_db_session() as sdb:
+                return await review_dao.get_review_summary(
+                    sdb, user_id, cat_id=cat_id, today_start=today_start
+                )
 
-        # 合并查询：错因 + 知识点统计
-        tag_counter, kp_counter = await review_dao.get_reason_and_kp_counts(db, user_id, cat_id=cat_id)
-        tags = await reason_tag_dao.list_user_tags(db, user_id)
+        # 错因标签（与上述互不依赖，独立子会话并行）
+        async def _tags() -> list:
+            async with async_db_session() as sdb:
+                return await reason_tag_dao.list_user_tags(sdb, user_id)
+
+        (total_wrong, unmastered), (total_review, today_pending, tag_counter, kp_counter), tags = (
+            await asyncio.gather(_stats(), _review_summary(), _tags())
+        )
 
         # 构建错因分布
         tag_map = {t.id: t for t in tags}
@@ -398,31 +421,36 @@ class WrongReviewService:
                 'percentage': round(count / total_reason_refs * 100, 1) if total_reason_refs else 0.0,
             })
 
-        # 构建知识点分布（复用 kp_counter）
-        root_id = 109 if kp_cat_id == 1401 else (kp_cat_id or cat_id)
+        # 构建知识点分布：一次查询同时取直接子节点与被标注叶子的 path
         knowledge_point_distribution = []
         if root_id and kp_counter:
-            from backend.app.admin.model.category import Category
-            children_result = await db.execute(
-                select(Category.id, Category.name)
-                .where(Category.parent_id == root_id, Category.status.is_(True))
-                .order_by(Category.sort_order)
-            )
-            children = children_result.all()
-            if children:
-                children_map = {c.id: c.name for c in children}
-                children_ids = list(children_map.keys())
-                leaf_paths = await db.execute(
-                    select(Category.id, Category.path).where(Category.id.in_(list(kp_counter.keys())))
+            cat_rows = (
+                await db.execute(
+                    select(Category.id, Category.name, Category.path, Category.parent_id)
+                    .where(
+                        Category.status.is_(True),
+                        or_(Category.parent_id == root_id, Category.id.in_(list(kp_counter.keys()))),
+                    )
                 )
+            ).all()
+            children_map: dict[int, str] = {}
+            leaf_paths: dict[int, str] = {}
+            for row in cat_rows:
+                # 直接子节点作为分布维度
+                if row.parent_id == root_id and row.name is not None:
+                    children_map[row.id] = row.name
+                # 被标注的叶子取 path 用于归集
+                if row.id in kp_counter and row.path:
+                    leaf_paths[row.id] = row.path
+            if children_map and leaf_paths:
+                children_ids = list(children_map.keys())
                 counter: dict[int, int] = {cid: 0 for cid in children_map}
-                for row in leaf_paths.all():
-                    leaf_path = row.path or ''
+                for leaf_id, leaf_path in leaf_paths.items():
                     if not leaf_path:
                         continue
                     for child_id in children_ids:
                         if f'/{child_id}/' in f'/{leaf_path}/':
-                            counter[child_id] = counter.get(child_id, 0) + kp_counter.get(row.id, 0)
+                            counter[child_id] = counter.get(child_id, 0) + kp_counter.get(leaf_id, 0)
                             break
                 total = sum(counter.values())
                 knowledge_point_distribution = [
@@ -499,44 +527,6 @@ class WrongReviewService:
         return await _get_knowledge_point_distribution(
             db, user_id, cat_id=cat_id, parent_category_id=parent_id
         )
-
-
-async def _count_today_pending(db: AsyncSession, user_id: int) -> int:
-    """
-    统计今日新增且未复盘的错题数
-
-    :param db: 数据库会话
-    :param user_id: 用户 ID
-    :return:
-    """
-    from datetime import datetime, time
-
-    from sqlalchemy import func, select
-
-    from backend.app.question_bank.model.practice import WrongQuestionBook
-    from backend.app.question_bank.model.wrong_review import WrongQuestionReview
-    from backend.utils.timezone import timezone
-
-    today_start = datetime.combine(timezone.now().date(), time.min)
-    today_start = today_start.replace(tzinfo=timezone.tz_info)
-
-    # 今日新增或更新的未掌握错题中，排除已有复盘记录的
-    reviewed_subq = (
-        select(WrongQuestionReview.wrong_book_id)
-        .where(WrongQuestionReview.user_id == user_id)
-        .where(WrongQuestionReview.wrong_book_id.isnot(None))
-        .correlate()
-        .scalar_subquery()
-    )
-    stmt = (
-        select(func.count())
-        .select_from(WrongQuestionBook)
-        .where(WrongQuestionBook.user_id == user_id)
-        .where(WrongQuestionBook.last_wrong_time >= today_start)
-        .where(WrongQuestionBook.id.notin_(reviewed_subq))
-    )
-    result = await db.execute(stmt)
-    return result.scalar() or 0
 
 
 async def _get_today_pending_list(db: AsyncSession, user_id: int) -> list[dict]:
