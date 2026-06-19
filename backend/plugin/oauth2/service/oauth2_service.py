@@ -11,6 +11,7 @@ from fastapi import BackgroundTasks, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_user import user_dao
+from backend.app.admin.model import User
 from backend.app.admin.schema.token import GetLoginToken
 from backend.app.admin.schema.user import AddOAuth2UserParam
 from backend.app.admin.service.login_log_service import login_log_service
