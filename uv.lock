@@ -1308,7 +1308,7 @@ requires-dist = [
     { name = "gevent", specifier = ">=26.5.0" },
     { name = "granian", specifier = ">=2.7.5" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "idna", specifier = ">=3.10,<3.18" },
+    { name = "idna", specifier = ">=3.10,<3.17" },
     { name = "itsdangerous", specifier = ">=2.2.0" },
     { name = "jieba", specifier = ">=0.42.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
