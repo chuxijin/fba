@@ -18,6 +18,7 @@ from backend.app.admin.service.login_log_service import login_log_service
 from backend.app.admin.service.user_service import user_service
 from backend.common.context import ctx
 from backend.common.enums import LoginLogStatusType
+from backend.common.events import publish
 from backend.common.exception import errors
 from backend.common.i18n import t
 from backend.common.log import log
@@ -342,6 +343,10 @@ class OAuth2Service:
             msg=t('success.login.oauth2_success'),
         )
         await redis_client.delete(f'{settings.LOGIN_CAPTCHA_REDIS_PREFIX}:{ctx.ip}')
+
+        # 发布登录事件
+        await publish('user.logged_in', user_id=sys_user.id)
+
         response.set_cookie(
             key=settings.COOKIE_REFRESH_TOKEN_KEY,
             value=refresh_token_data.refresh_token,
