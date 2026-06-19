@@ -57,6 +57,7 @@ dependencies = [
   "rtoml>=0.13.0",
   "sqlalchemy-crud-plus>=1.13.3",
   "sqlalchemy[asyncio]>=2.0.50",
+  "idna>=3.10,<3.18",
   "sqlparse>=0.5.5",
   "starlette-context>=0.5.1",
   "user-agents>=2.2.0",
