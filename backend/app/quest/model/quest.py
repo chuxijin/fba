@@ -54,11 +54,10 @@ class Quest(Base, UserMixin):
     submission_schema: Mapped[dict | None] = mapped_column(sa.JSON, default=None, comment='结构化提交字段配置')
     reward_type: Mapped[str] = mapped_column(sa.String(32), default='points', comment='奖励类型(vip/points/feature)')
     reward_data: Mapped[dict | None] = mapped_column(sa.JSON, default=None, comment='奖励数据')
-    trigger_type: Mapped[str | None] = mapped_column(
-        sa.String(64),
+    trigger_type: Mapped[list | None] = mapped_column(
+        sa.dialects.postgresql.JSONB,
         default=None,
-        index=True,
-        comment='自动触发类型(None=人工领取, 如 invite.accepted/groupbuy.team_success)',
+        comment='自动触发类型列表(None=人工领取, 如 ["user.registered", "user.logged_in"])',
     )
     trigger_target: Mapped[int] = mapped_column(
         default=0,

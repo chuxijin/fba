@@ -34,7 +34,7 @@ async def _list_active_triggered_quests(db: AsyncSession, trigger_type: str) -> 
     :return:
     """
     stmt = select(Quest).where(
-        Quest.trigger_type == trigger_type,
+        Quest.trigger_type.contains([trigger_type]),
         Quest.status == 1,
     )
     result = await db.execute(stmt)
@@ -84,6 +84,13 @@ async def _get_or_create_claim(*, db: AsyncSession, quest: Quest, user_id: int) 
     if quest.total_quota and quest.claimed_count >= quest.total_quota:
         log.info(f'任务名额已满, 跳过自动进度 quest_id={quest.id} user_id={user_id}')
         return None
+
+    # 检查用户已有的未放弃领取数（含已发奖、进行中、待审核等）
+    if quest.max_claims_per_user > 0:
+        all_count = await quest_claim_dao.count_active_by_user(db, quest.id, user_id)
+        if all_count >= quest.max_claims_per_user:
+            log.info(f'已达领取上限, 跳过 quest_id={quest.id} user_id={user_id} count={all_count}')
+            return None
 
     now = timezone.now()
     expire_time = None
