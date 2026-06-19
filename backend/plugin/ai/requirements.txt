@@ -1,1 +1,2 @@
 pydantic-ai-slim[openai,anthropic]>=1.38.0
+idna>=3.10,<3.18
