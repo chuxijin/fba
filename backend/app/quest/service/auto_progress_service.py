@@ -5,7 +5,8 @@
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import cast, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +35,7 @@ async def _list_active_triggered_quests(db: AsyncSession, trigger_type: str) -> 
     :return:
     """
     stmt = select(Quest).where(
-        Quest.trigger_type.contains([trigger_type]),
+        Quest.trigger_type.op('@>')(cast([trigger_type], JSONB)),
         Quest.status == 1,
     )
     result = await db.execute(stmt)
