@@ -1,1 +1,2 @@
-tencentcloud-sdk-python==3.0.1029 
+tencentcloud-sdk-python==3.0.1029
+idna>=3.10,<3.18
