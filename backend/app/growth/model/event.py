@@ -26,7 +26,7 @@ class GrowthEvent(DataClassBase):
 
     id: Mapped[id_key] = mapped_column(init=False)
     user_id: Mapped[int] = mapped_column(sa.BigInteger, comment='用户 ID')
-    family_code: Mapped[str] = mapped_column(sa.String(16), comment='等级族群')
+    family_code: Mapped[str] = mapped_column(sa.String(16), init=False, default='FREE', comment='等级族群')
     operation: Mapped[GrowthEventOp] = mapped_column(
         PG_ENUM(
             GrowthEventOp,

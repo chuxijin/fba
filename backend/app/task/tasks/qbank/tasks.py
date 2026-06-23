@@ -151,7 +151,6 @@ async def process_record_side_effects_async(
     :return:
     """
     from backend.app.question_bank.service.question_service import QuestionService
-    from backend.app.question_bank.service.user_settings_service import user_settings_service
 
     if not record_ids:
         return {'processed': 0}
@@ -186,11 +185,6 @@ async def process_record_side_effects_async(
                 )
             )
             question_map = {q.id: q for q in (await db.execute(q_stmt)).scalars().all()}
-
-            mastery_threshold = await user_settings_service.get_mastery_threshold(
-                db=db,
-                user_id=user_id,
-            )
 
             existing_wrongs = await wrong_question_dao.list_by_user_and_questions(
                 db=db,
@@ -237,18 +231,12 @@ async def process_record_side_effects_async(
                 if is_correct:
                     for existing_wrong in existing_wrong_list:
                         new_streak = existing_wrong.correct_streak + 1
-                        is_mastered = existing_wrong.is_mastered or new_streak >= mastery_threshold
-                        mastered_time = existing_wrong.mastered_time
-                        if is_mastered and mastered_time is None:
-                            mastered_time = judge_time
                         wrong_update_rows.append({
                             'filter_wrong_id': existing_wrong.id,
                             'set_wrong_count': existing_wrong.wrong_count,
                             'set_correct_streak': new_streak,
                             'set_last_wrong_time': existing_wrong.last_wrong_time,
                             'set_last_practice_time': judge_time,
-                            'set_is_mastered': is_mastered,
-                            'set_mastered_time': mastered_time,
                         })
                 else:
                     if existing_wrong_list:
@@ -259,8 +247,6 @@ async def process_record_side_effects_async(
                                 'set_correct_streak': 0,
                                 'set_last_wrong_time': judge_time,
                                 'set_last_practice_time': existing_wrong.last_practice_time,
-                                'set_is_mastered': False,
-                                'set_mastered_time': None,
                             })
                     else:
                         wrong_create_rows.append({
@@ -272,8 +258,6 @@ async def process_record_side_effects_async(
                             'first_wrong_time': judge_time,
                             'last_wrong_time': judge_time,
                             'last_practice_time': None,
-                            'is_mastered': False,
-                            'mastered_time': None,
                             'created_by': user_id,
                         })
 
