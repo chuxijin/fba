@@ -446,6 +446,8 @@ class HanyuService:
         if user_id:
             hanyu.in_notebook = await HanyuService.check_in_notebook(db=db, user_id=user_id, hanyu_id=pk)
 
+        hanyu.question_count = len(hanyu.frequency) if hanyu.frequency else 0
+
         return hanyu
 
     @staticmethod
@@ -563,6 +565,11 @@ class HanyuService:
             for item in page_data['items']:
                 item['in_notebook'] = item['id'] in notebook_ids
 
+        if page_data.get('items'):
+            for item in page_data['items']:
+                freq = item.get('frequency')
+                item['question_count'] = len(freq) if isinstance(freq, list) else 0
+
         return page_data
 
     @staticmethod
@@ -622,18 +629,49 @@ class HanyuService:
         return await hanyu_dao.delete(db, obj.ids)
 
     @staticmethod
-    async def increment_frequency(*, db: AsyncSession, pk: int) -> int:
+    async def increment_frequency(*, db: AsyncSession, pk: int, question_id: int) -> int:
         """
-        增加使用频次
+        追加题目 ID 到相关题目列表
 
         :param db: 数据库会话
         :param pk: ID
+        :param question_id: 题目 ID
         :return:
         """
         hanyu = await hanyu_dao.get(db, pk)
         if not hanyu:
             raise errors.NotFoundError(msg='汉语词汇不存在')
-        return await hanyu_dao.increment_frequency(db, pk)
+        return await hanyu_dao.increment_frequency(db, pk, question_id)
+
+    @staticmethod
+    async def create_practice_session(*, db: AsyncSession, user_id: int, pk: int) -> str:
+        """
+        根据词汇相关题目创建练习会话
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param pk: 汉语词汇 ID
+        :return: session_key
+        """
+        from backend.app.question_bank.schema.practice import CreateSessionFromIdsParam
+        from backend.app.question_bank.service.session_service import session_service
+
+        hanyu = await hanyu_dao.get(db, pk)
+        if not hanyu:
+            raise errors.NotFoundError(msg='汉语词汇不存在')
+
+        question_ids = hanyu.frequency or []
+        if not question_ids:
+            raise errors.ForbiddenError(msg=f'词语 "{hanyu.name}" 暂无相关题目')
+
+        obj = CreateSessionFromIdsParam(
+            question_ids=question_ids,
+            session_type='random',
+            practice_name=f'词语练习 - {hanyu.name}',
+            shuffle=True,
+        )
+        session = await session_service.create_session_from_ids(db=db, user_id=user_id, obj=obj)
+        return session.session_key
 
 
 hanyu_service: HanyuService = HanyuService()

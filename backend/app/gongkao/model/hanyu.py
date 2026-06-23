@@ -31,4 +31,4 @@ class GkHanyu(Base, UserMixin):
     synonyms: Mapped[list | None] = mapped_column(JSONB, default=None, comment='近义词')
     chu_chu: Mapped[dict | None] = mapped_column(JSONB, default=None, comment='出处')
     yin_zheng: Mapped[dict | None] = mapped_column(JSONB, default=None, comment='引证')
-    frequency: Mapped[int] = mapped_column(default=0, index=True, comment='使用频次')
+    frequency: Mapped[list | None] = mapped_column(JSONB, default=None, comment='相关题目ID列表')

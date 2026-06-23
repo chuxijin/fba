@@ -229,7 +229,7 @@ async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
 
 @celery_app.task(name='update_hanyu_frequency')
 async def update_hanyu_frequency() -> dict[str, Any]:
-    """更新汉语词汇使用频次"""
+    """更新汉语词汇相关题目 ID 列表"""
     result: dict[str, Any] = {
         'success': True,
         'total_count': 0,
@@ -239,7 +239,7 @@ async def update_hanyu_frequency() -> dict[str, Any]:
         'message': '',
     }
     start_time = datetime.now()
-    logger.info('开始统计汉语词汇使用频次（言语理解与表达题干与选项）...')
+    logger.info('开始统计汉语词汇相关题目（言语理解与表达题干与选项）...')
 
     try:
         async with async_db_session.begin() as db:
@@ -285,7 +285,7 @@ async def update_hanyu_frequency() -> dict[str, Any]:
             target_text_count = len(text_rows)
 
             matcher = build_hanyu_matcher([(int(row['id']), str(row['name'])) for row in idiom_rows])
-            frequency_map = {int(row['id']): 0 for row in idiom_rows}
+            frequency_map: dict[int, set[int]] = {int(row['id']): set() for row in idiom_rows}
             question_hanyu_ids: dict[int, set[int]] = {}
             for row in text_rows:
                 content = strip_html_tags(str(row['content'] or ''))
@@ -295,27 +295,30 @@ async def update_hanyu_frequency() -> dict[str, Any]:
                 question_matches = question_hanyu_ids.setdefault(question_id, set())
                 question_matches.update(match_hanyu_ids(content, matcher))
 
-            for matched_ids in question_hanyu_ids.values():
+            for question_id, matched_ids in question_hanyu_ids.items():
                 for word_id in matched_ids:
-                    frequency_map[word_id] += 1
+                    frequency_map[word_id].add(question_id)
 
-            update_params: list[dict[str, int]] = []
+            update_params: list[dict[str, Any]] = []
             for row in idiom_rows:
                 word_id = int(row['id'])
-                frequency = frequency_map[word_id]
-                if int(row['frequency'] or 0) == frequency:
+                question_ids = sorted(frequency_map[word_id])
+                old_freq = row['frequency']
+                old_count = len(old_freq) if isinstance(old_freq, list) else (old_freq or 0)
+                if old_count == len(question_ids):
                     continue
-                update_params.append({'id': word_id, 'frequency': frequency})
+                update_params.append({
+                    'id': word_id,
+                    'frequency': question_ids if question_ids else None,
+                })
 
             if update_params:
-                await db.execute(
-                    text("""
-                        UPDATE gk_hanyu
-                        SET frequency = :frequency
-                        WHERE id = :id
-                    """),
-                    update_params,
-                )
+                import json
+                for param in update_params:
+                    await db.execute(
+                        text("UPDATE gk_hanyu SET frequency = CAST(:freq AS jsonb) WHERE id = :hid"),
+                        {'freq': json.dumps(param['frequency']), 'hid': param['id']},
+                    )
             result['updated_count'] = len(update_params)
 
         elapsed = (datetime.now() - start_time).total_seconds()

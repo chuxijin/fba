@@ -15,6 +15,7 @@ from backend.app.gongkao.schema.hanyu import (
 from backend.app.gongkao.service.hanyu_service import hanyu_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
+from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -124,14 +125,26 @@ async def delete_hanyu(db: CurrentSessionTransaction, obj: DeleteHanyuParam) -> 
     return response_base.fail()
 
 
-@router.post('/{pk}/frequency', summary='增加汉语词汇使用频次')
+@router.post('/{pk}/frequency', summary='追加题目到词语相关题目列表')
 async def increment_hanyu_frequency(
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='id')],
+    question_id: Annotated[int, Query(description='题目 ID')],
 ) -> ResponseModel:
-    """增加汉语词汇使用频次"""
-    await hanyu_service.increment_frequency(db=db, pk=pk)
+    """追加题目 ID 到词语相关题目列表"""
+    await hanyu_service.increment_frequency(db=db, pk=pk, question_id=question_id)
     return response_base.success()
+
+
+@router.post('/{pk}/practice-session', summary='创建词语相关练习会话', dependencies=[DependsJwtAuth])
+async def create_hanyu_practice_session(
+    request: Request,
+    db: CurrentSessionTransaction,
+    pk: Annotated[int, Path(description='汉语词汇 ID')],
+) -> ResponseSchemaModel[dict]:
+    """根据词汇相关题目创建练习会话"""
+    session_key = await hanyu_service.create_practice_session(db=db, user_id=request.user.id, pk=pk)
+    return response_base.success(data={'session_key': session_key})
 
 
 @router.post('/notebook/{hanyu_id}', summary='加入生词本')

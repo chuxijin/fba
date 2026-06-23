@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import sqlalchemy as sa
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
@@ -52,7 +53,11 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
             se = se.order_by(GkHanyuNotebook.id.desc())
         else:
             se = se.order_by(
-                self.model.frequency.desc(),
+                sa.case(
+                    (self.model.frequency.is_(None), 0),
+                    (sa.func.jsonb_typeof(self.model.frequency) == 'array', sa.func.jsonb_array_length(self.model.frequency)),
+                    else_=0,
+                ).desc().nullslast(),
                 self.model.created_time.desc(),
             )
 
@@ -63,7 +68,13 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
         if params.structure is not None:
             se = se.where(self.model.structure == params.structure)
         if params.min_frequency is not None:
-            se = se.where(self.model.frequency >= params.min_frequency)
+            se = se.where(
+                sa.and_(
+                    self.model.frequency.isnot(None),
+                    sa.func.jsonb_typeof(self.model.frequency) == 'array',
+                    sa.func.jsonb_array_length(self.model.frequency) >= params.min_frequency,
+                )
+            )
         if params.name:
             se = se.where(self.model.name.ilike(f'%{params.name}%'))
 
@@ -105,18 +116,30 @@ class CRUDHanyu(CRUDPlus[GkHanyu]):
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=pks)
 
-    async def increment_frequency(self, db: AsyncSession, pk: int) -> int:
+    async def increment_frequency(self, db: AsyncSession, pk: int, question_id: int) -> int:
         """
-        增加使用频次
+        追加题目 ID 到相关题目列表
 
         :param db: 数据库会话
         :param pk: 主键 ID
+        :param question_id: 题目 ID
         :return:
         """
-        hanyu = await self.get(db, pk)
-        if hanyu:
-            return await self.update_model(db, pk, {'frequency': hanyu.frequency + 1})
-        return 0
+        from sqlalchemy import text
+
+        result = await db.execute(
+            text("""
+                UPDATE gk_hanyu
+                SET frequency = CASE
+                    WHEN frequency IS NULL THEN to_jsonb(ARRAY[:qid]::bigint[])
+                    WHEN NOT (frequency @> to_jsonb(ARRAY[:qid]::bigint[])) THEN frequency || to_jsonb(:qid::bigint)
+                    ELSE frequency
+                END
+                WHERE id = :pk
+            """),
+            {'qid': question_id, 'pk': pk},
+        )
+        return result.rowcount
 
     async def get_types(self, db: AsyncSession) -> list[str]:
         """
