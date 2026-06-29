@@ -52,7 +52,7 @@ dependencies = [
   "pymysql>=1.1.2",
   "pyrate-limiter>=4.0.2",
   "python-jose>=3.5.0",
-  "python-socketio>=5.16.2",
+  "python-socketio>=5.16.3",
   "redis[hiredis]>=8.0.0",
   "rtoml>=0.13.0",
   "sqlalchemy-crud-plus>=1.13.3",
@@ -87,6 +87,7 @@ dependencies = [
   "wechatpayv3>=1.2.44",
   # [ App ] 单词本 FSRS 间隔重复算法
   "fsrs>=6.3.1",
+  "akshare>=1.18.64",
 ]
 dynamic = ["version"]
 
