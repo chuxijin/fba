@@ -88,6 +88,7 @@ dependencies = [
   # [ App ] 单词本 FSRS 间隔重复算法
   "fsrs>=6.3.1",
   "akshare>=1.18.64",
+  "pydantic-ai>=2.0.0",
 ]
 dynamic = ["version"]
 
