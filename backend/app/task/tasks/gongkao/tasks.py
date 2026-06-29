@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import asyncio
 import logging
 import re
 
@@ -7,7 +8,7 @@ from collections import deque
 from datetime import date, datetime, time
 from typing import Any
 
-import httpx
+import akshare as ak
 
 from sqlalchemy import text
 
@@ -19,12 +20,11 @@ from backend.utils.timezone import timezone
 
 logger = logging.getLogger(__name__)
 
-NEWS_API_URL = 'https://saduck.top/api/news/getNewsList'
-NEWS_API_TIMEOUT = 30
 SYSTEM_USER_ID = 1
 CONTENT_TYPE_SHIZHEN = 'shizhen'
 DEFAULT_TAGS = ['时政', '新闻联播']
 APP_CODE_GONGKAO = 'gongkao'
+CCTV_NEWS_URL = 'https://tv.cctv.com/lm/xwlb/'
 
 
 def build_hanyu_matcher(words: list[tuple[int, str]]) -> list[dict[str, Any]]:
@@ -83,19 +83,28 @@ def match_hanyu_ids(text: str, matcher: list[dict[str, Any]]) -> set[int]:
 
 
 def build_content_slug(daily_date: date) -> str:
+    """构建时政内容 slug"""
     return f'shizhen-{daily_date.isoformat()}'
 
 
-def normalize_news_html(intro: str) -> str:
-    html = str(intro or '').strip()
-    if not html:
-        return ''
-    html = html.replace('\r\n', '').replace('\n', '').replace('\r', '')
-    html = re.sub(r'<mark[^>]*>(.*?)</mark>', r'\1', html, flags=re.IGNORECASE | re.DOTALL)
-    html = html.replace('<spanstyle=', '<span style=')
-    html = re.sub(r'</spanstyle="[^"]*">', '</span>', html)
-    html = re.sub(r'<p[^>]*>', '<p style="text-align: justify;">', html, flags=re.IGNORECASE)
-    return html
+def build_news_html(news_items: list[dict[str, str]]) -> str:
+    """将多条新闻组合为 HTML"""
+    parts: list[str] = []
+    for item in news_items:
+        parts.append(f'<h3>{item["title"]}</h3>')
+        for paragraph in item['content'].split('\n'):
+            paragraph = paragraph.strip()
+            if paragraph:
+                parts.append(f'<p style="text-align: justify;">{paragraph}</p>')
+    return '\n'.join(parts)
+
+
+def build_news_summary(news_items: list[dict[str, str]]) -> str:
+    """从新闻标题构建摘要"""
+    summary = '；'.join(item['title'] for item in news_items)
+    if len(summary) > 500:
+        summary = f'{summary[:497].rstrip()}...'
+    return summary
 
 
 def strip_html_tags(content: str) -> str:
@@ -107,123 +116,85 @@ def strip_html_tags(content: str) -> str:
     return text.strip()
 
 
-def build_summary(intro: str) -> str:
-    items = re.findall(r'<li[^>]*>(.*?)</li>', intro, flags=re.IGNORECASE | re.DOTALL)
-    cleaned_items: list[str] = []
-    for item in items:
-        text = strip_html_tags(item)
-        if text:
-            cleaned_items.append(text)
-    if cleaned_items:
-        summary = '；'.join(cleaned_items)
-    else:
-        summary = strip_html_tags(intro)
-    if len(summary) > 500:
-        summary = f'{summary[:497].rstrip()}...'
-    return summary
-
-
-def build_extra(record: dict[str, Any], daily_date: date) -> dict[str, Any]:
-    extra: dict[str, Any] = {
-        'content_type': CONTENT_TYPE_SHIZHEN,
-        'daily_date': daily_date.isoformat(),
-    }
-    origin_url = str(record.get('url') or '').strip()
-    if origin_url:
-        extra['origin_url'] = origin_url
-    return extra
-
-
-async def fetch_news_list(page_num: int = 1, page_size: int = 10) -> dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient(timeout=NEWS_API_TIMEOUT) as client:
-            response = await client.post(
-                NEWS_API_URL,
-                json={'total': 0, 'pageSize': page_size, 'pageNum': page_num},
-                headers={'Content-Type': 'application/json'},
-            )
-            response.raise_for_status()
-            return response.json()
-    except Exception as exc:
-        logger.error('Fetch news list failed: %s', exc)
-        return None
-
-
 @celery_app.task(name='sync_daily_news_to_shizhen', bind=True)
 async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
+    """同步每日新闻联播文字稿到时政内容"""
+    today = timezone.now().date()
+    date_str = today.strftime('%Y%m%d')
+
     result: dict[str, Any] = {
         'success': True,
-        'fetched_count': 0,
-        'created_count': 0,
-        'updated_count': 0,
-        'skipped_count': 0,
-        'error_count': 0,
+        'date': date_str,
+        'news_count': 0,
+        'action': '',
         'message': '',
     }
-    api_response = await fetch_news_list(page_num=1, page_size=10)
-    if not api_response or api_response.get('code') != 0:
-        raise RuntimeError('获取新闻列表失败')
-    records = api_response.get('result', {}).get('records', [])
-    result['fetched_count'] = len(records)
+
+    try:
+        df = await asyncio.to_thread(ak.news_cctv, date=date_str)
+    except Exception as exc:
+        raise RuntimeError(f'AKShare 获取新闻联播失败: {exc}') from exc
+
+    if df is None or df.empty:
+        result['message'] = f'{date_str} 暂无新闻联播数据'
+        return result
+
+    news_items = [
+        {'title': str(row['title']), 'content': str(row['content'])}
+        for _, row in df.iterrows()
+    ]
+    result['news_count'] = len(news_items)
+
+    slug = build_content_slug(today)
+    title = f'新闻联播 {today.isoformat()}'
+    content_html = build_news_html(news_items)
+    summary = build_news_summary(news_items)
+    publish_time = datetime.combine(today, time.min)
+    extra: dict[str, Any] = {
+        'content_type': CONTENT_TYPE_SHIZHEN,
+        'daily_date': today.isoformat(),
+        'origin_url': CCTV_NEWS_URL,
+    }
+
     async with async_db_session.begin() as db:
-        for record in records:
-            try:
-                if int(record.get('isDelete') or 0) == 1:
-                    result['skipped_count'] += 1
-                    continue
-                add_time = str(record.get('addTime') or '').strip()
-                daily_date = datetime.strptime(add_time, '%Y-%m-%d').replace(tzinfo=timezone.tz_info).date()
-                slug = build_content_slug(daily_date)
-                title = str(record.get('title') or f'news {daily_date.isoformat()}').strip()
-                content_html = normalize_news_html(str(record.get('intro') or ''))
-                summary = build_summary(content_html)
-                publish_time = datetime.combine(daily_date, time.min)
-                extra = build_extra(record, daily_date)
+        existing = await content_dao.get_by_slug(db, slug)
 
-                # 使用通用的 content_dao 查询，并指定 app_code
-                existing = await content_dao.get_by_slug(db, slug)
+        if not existing:
+            create_obj = CreateContentParam(
+                app_code=APP_CODE_GONGKAO,
+                title=title,
+                slug=slug,
+                content_html=content_html,
+                summary=summary,
+                tags=list(DEFAULT_TAGS),
+                is_pinned=False,
+                is_public=True,
+                is_published=True,
+                publish_time=publish_time,
+                extra=extra,
+            )
+            await content_dao.create_model(db, create_obj, created_by=SYSTEM_USER_ID)
+            result['action'] = 'created'
+        else:
+            update_obj = UpdateContentParam()
+            changed = False
+            if existing.content_html != content_html:
+                update_obj.content_html = content_html
+                changed = True
+            if existing.summary != summary:
+                update_obj.summary = summary
+                changed = True
+            if existing.extra != extra:
+                update_obj.extra = extra
+                changed = True
 
-                if not existing:
-                    create_obj = CreateContentParam(
-                        app_code=APP_CODE_GONGKAO,  # 必填字段
-                        title=title,
-                        slug=slug,
-                        content_html=content_html,
-                        summary=summary,
-                        tags=list(DEFAULT_TAGS),
-                        is_pinned=False,
-                        is_public=True,
-                        is_published=True,
-                        publish_time=publish_time,
-                        extra=extra,
-                    )
-                    await content_dao.create(db, create_obj)
-                    result['created_count'] += 1
-                    continue
+            if changed:
+                await content_dao.update_model(db, existing.id, update_obj)
+                result['action'] = 'updated'
+            else:
+                result['action'] = 'skipped'
 
-                update_obj = UpdateContentParam()
-                changed = False
-                if existing.title != title:
-                    update_obj.title = title
-                    changed = True
-                if existing.content_html != content_html:
-                    update_obj.content_html = content_html
-                    changed = True
-                if existing.summary != summary:
-                    update_obj.summary = summary
-                    changed = True
-                if existing.extra != extra:
-                    update_obj.extra = extra
-                    changed = True
-
-                if changed:
-                    await content_dao.update(db, existing.id, update_obj)
-                    result['updated_count'] += 1
-                else:
-                    result['skipped_count'] += 1
-            except Exception as exc:
-                result['error_count'] += 1
-                logger.error('Failed to process news record: %s', exc)
+    result['message'] = f'{date_str} 新闻联播 {len(news_items)} 条, {result["action"]}'
     return result
 
 
