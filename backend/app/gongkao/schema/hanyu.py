@@ -23,7 +23,7 @@ class HanyuSchemaBase(SchemaBase):
     synonyms: list | None = Field(None, description='近义词')
     chu_chu: list | None = Field(None, description='出处')
     yin_zheng: list | None = Field(None, description='引证')
-    frequency: int = Field(default=0, description='使用频次')
+    frequency: list | None = Field(None, description='相关题目ID列表')
 
 
 class HanyuParam(SchemaBase):
@@ -58,7 +58,7 @@ class UpdateHanyuParam(SchemaBase):
     synonyms: list | None = Field(None, description='近义词')
     chu_chu: list | None = Field(None, description='出处')
     yin_zheng: list | None = Field(None, description='引证')
-    frequency: int | None = Field(None, description='使用频次')
+    frequency: list | None = Field(None, description='相关题目ID列表')
 
 
 class DeleteHanyuParam(SchemaBase):
@@ -78,6 +78,7 @@ class GetHanyuDetail(HanyuSchemaBase):
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
     in_notebook: bool | None = Field(None, description='是否已加入生词本')
+    question_count: int = Field(default=0, description='相关题目数量')
 
 
 class GetHanyuListDetail(SchemaBase):
@@ -91,6 +92,7 @@ class GetHanyuListDetail(SchemaBase):
     pinyin: str | None = Field(None, description='拼音')
     baobian: str | None = Field(None, description='褒贬色彩')
     structure: str | None = Field(None, description='结构')
-    frequency: int = Field(description='使用频次')
+    frequency: list | None = Field(None, description='相关题目ID列表')
+    question_count: int = Field(default=0, description='相关题目数量')
     created_time: datetime = Field(description='创建时间')
     in_notebook: bool | None = Field(None, description='是否已加入生词本')
