@@ -10,7 +10,8 @@ class LocalCacheManager:
 
     def __init__(self) -> None:
         self.hot_cache: cachebox.TTLCache = cachebox.TTLCache(
-            settings.CACHE_LOCAL_MAXSIZE, global_ttl=settings.CACHE_LOCAL_TTL
+            settings.CACHE_LOCAL_MAXSIZE,
+            settings.CACHE_LOCAL_TTL,
         )
 
     def get(self, key: str) -> Any:
