@@ -174,6 +174,29 @@ class GetStudyAbilityAttemptDetail(SchemaBase):
     created_time: datetime = Field(description='创建时间')
 
 
+class GetStudyAbilityAttemptListItem(SchemaBase):
+    """能力练习历史列表项"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description='记录 ID')
+    client_session_id: str = Field(description='客户端会话 ID')
+    ability_key: str = Field(description='能力标识')
+    mode: str | None = Field(default=None, description='练习模式')
+    difficulty: str | None = Field(default=None, description='难度')
+    source: str = Field(description='来源')
+    study_plan_item_id: int | None = Field(default=None, description='学习计划项 ID')
+    study_plan_record_id: int | None = Field(default=None, description='学习计划完成记录 ID')
+    total_count: int = Field(description='总题数')
+    correct_count: int = Field(description='正确题数')
+    wrong_count: int = Field(description='错误题数')
+    duration_seconds: int = Field(description='总耗时秒')
+    avg_seconds: float | None = Field(default=None, description='平均耗时秒')
+    score: float | None = Field(default=None, description='标准化分数')
+    metric_data: dict[str, Any] | None = Field(default=None, description='特殊指标')
+    completed_at: datetime = Field(description='完成时间')
+
+
 class SubmitStudyAbilityAttemptResult(SchemaBase):
     """能力练习提交结果"""
 

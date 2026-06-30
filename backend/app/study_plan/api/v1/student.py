@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, Depends, Path, Query, Request
+from datetime import date
+
+from fastapi import APIRouter, Depends, Path, Query, Request, Response
 
 from backend.app.study_plan.crud import study_plan_dao
 from backend.app.study_plan.schema.ability import (
     BatchSubmitStudyAbilityAttemptParam,
     BatchSubmitStudyAbilityAttemptResult,
+    GetStudyAbilityAttemptDetail,
+    GetStudyAbilityAttemptListItem,
     GetStudyPlanAbilityCatalogItem,
     GetStudyUserCategoryProfileDetail,
     SubmitStudyAbilityAttemptParam,
@@ -22,6 +26,8 @@ from backend.app.study_plan.schema.today import TodayStudyPlanDetail
 from backend.app.study_plan.service.ability_catalog import list_ability_catalog_with_db
 from backend.app.study_plan.service.ability_profile import (
     batch_submit_ability_attempts,
+    get_user_attempt_detail,
+    list_user_attempts,
     list_user_category_profiles,
     submit_ability_attempt,
 )
@@ -96,6 +102,52 @@ async def study_plan_batch_sync_ability_attempts(
 ) -> ResponseSchemaModel[BatchSubmitStudyAbilityAttemptResult]:
     result = await batch_submit_ability_attempts(db, request.user.id, param)
     return response_base.success(data=result)
+
+
+@router.get(
+    '/ability-attempts',
+    summary='我的能力练习历史列表',
+    response_model=ResponseSchemaModel[list[GetStudyAbilityAttemptListItem]],
+)
+async def study_plan_list_my_ability_attempts(
+    request: Request,
+    db: CurrentSession,
+    response: Response,
+    ability_key: str | None = Query(default=None, description='能力标识过滤'),
+    source: str | None = Query(default=None, description='来源过滤'),
+    mode: str | None = Query(default=None, description='练习模式过滤'),
+    start: date | None = Query(default=None, description='完成日期起始'),
+    end: date | None = Query(default=None, description='完成日期截止'),
+    offset: int = Query(default=0, ge=0, description='偏移量'),
+    limit: int = Query(default=20, ge=1, le=100, description='每页数量'),
+) -> ResponseSchemaModel[list[GetStudyAbilityAttemptListItem]]:
+    items, total = await list_user_attempts(
+        db,
+        request.user.id,
+        ability_key=ability_key,
+        source=source,
+        mode=mode,
+        start=start,
+        end=end,
+        offset=offset,
+        limit=limit,
+    )
+    response.headers['X-Total-Count'] = str(total)
+    return response_base.success(data=items)
+
+
+@router.get(
+    '/ability-attempts/{client_session_id}',
+    summary='能力练习记录详情',
+    response_model=ResponseSchemaModel[GetStudyAbilityAttemptDetail],
+)
+async def study_plan_get_ability_attempt_detail(
+    request: Request,
+    db: CurrentSession,
+    client_session_id: str = Path(description='客户端会话 ID'),
+) -> ResponseSchemaModel[GetStudyAbilityAttemptDetail]:
+    detail = await get_user_attempt_detail(db, request.user.id, client_session_id)
+    return response_base.success(data=detail)
 
 
 @router.get(

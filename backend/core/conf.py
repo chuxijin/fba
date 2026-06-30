@@ -573,6 +573,12 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = ''
 
     ##################################################
+    # [ App ] Halo 博客
+    ##################################################
+    HALO_BASE_URL: str = ''
+    HALO_PAT: str = ''
+
+    ##################################################
     # 响应加密
     ##################################################
     RESPONSE_ENCRYPT_ENABLED: bool = False
