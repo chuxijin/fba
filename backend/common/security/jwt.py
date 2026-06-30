@@ -260,7 +260,7 @@ async def create_access_token(user_id: int, *, multi_login: bool, **kwargs) -> A
 
     if not multi_login:
         await mark_user_sessions_invalid(user_id, reason=TokenInvalidReason.session_replaced)
-        await redis_client.delete_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user_id}')
+        await redis_client.delete_by_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user_id}')
 
     await redis_client.set(
         f'{settings.TOKEN_REDIS_PREFIX}:{user_id}:{session_uuid}',
@@ -297,7 +297,7 @@ async def create_refresh_token(session_uuid: str, user_id: int, *, multi_login: 
 
     if not multi_login:
         await mark_user_refresh_sessions_invalid(user_id, reason=TokenInvalidReason.session_replaced)
-        await redis_client.delete_prefix(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}')
+        await redis_client.delete_by_prefix(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}')
 
     await redis_client.set(
         f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}:{session_uuid}',

@@ -22,7 +22,7 @@ class ConfigService:
     """参数配置服务类"""
 
     @staticmethod
-    @cached(settings.CACHE_CONFIG_REDIS_PREFIX, key='pk')
+    @cached(namespace=settings.CACHE_CONFIG_REDIS_PREFIX, key='pk')
     async def get(*, db: AsyncSession, pk: int) -> Config:
         """
         获取参数配置详情
@@ -37,7 +37,7 @@ class ConfigService:
         return config
 
     @staticmethod
-    @cached(settings.CACHE_CONFIG_REDIS_PREFIX, key='type')
+    @cached(namespace=settings.CACHE_CONFIG_REDIS_PREFIX, key='type')
     async def get_all(*, db: AsyncSession, type: str | None) -> Sequence[Config | None]:
         """
         获取所有参数配置
@@ -75,7 +75,7 @@ class ConfigService:
         return {config.key: config.value for config in configs}
 
     @staticmethod
-    @cache_invalidate(settings.CACHE_CONFIG_REDIS_PREFIX)
+    @cache_invalidate(namespace=settings.CACHE_CONFIG_REDIS_PREFIX)
     async def create(*, db: AsyncSession, obj: CreateConfigParam) -> None:
         """
         创建参数配置
@@ -90,7 +90,7 @@ class ConfigService:
         await config_dao.create(db, obj)
 
     @staticmethod
-    @cache_invalidate(settings.CACHE_CONFIG_REDIS_PREFIX)
+    @cache_invalidate(namespace=settings.CACHE_CONFIG_REDIS_PREFIX)
     async def update(*, db: AsyncSession, pk: int, obj: UpdateConfigParam) -> int:
         """
         更新参数配置
@@ -111,7 +111,7 @@ class ConfigService:
         return count
 
     @staticmethod
-    @cache_invalidate(settings.CACHE_CONFIG_REDIS_PREFIX)
+    @cache_invalidate(namespace=settings.CACHE_CONFIG_REDIS_PREFIX)
     async def bulk_update(*, db: AsyncSession, objs: list[UpdateConfigsParam]) -> int:
         """
         批量更新参数配置
@@ -140,7 +140,7 @@ class ConfigService:
         return count
 
     @staticmethod
-    @cache_invalidate(settings.CACHE_CONFIG_REDIS_PREFIX)
+    @cache_invalidate(namespace=settings.CACHE_CONFIG_REDIS_PREFIX)
     async def delete(*, db: AsyncSession, pks: list[int]) -> int:
         """
         批量删除参数配置
