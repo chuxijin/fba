@@ -159,6 +159,7 @@ export type {
 // Coulddrive
 export type {
   CoulddriveDriveType,
+  CoulddriveJsonValue,
   CoulddriveResourceKnowledgeItem,
   CoulddriveResourceListItem,
   CoulddriveResourceListParams,

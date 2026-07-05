@@ -1,6 +1,13 @@
 import type { PaginationParams } from './common';
 
-export type CoulddriveDriveType = 'BaiduDrive' | 'QuarkDrive' | 'AlistDrive' | 'LocalFile' | string;
+export type CoulddriveDriveType = 'BaiduDrive' | 'QuarkDrive' | 'OpenListDrive' | 'LocalFile' | string;
+export type CoulddriveJsonValue =
+  | boolean
+  | CoulddriveJsonValue[]
+  | null
+  | number
+  | string
+  | { [key: string]: CoulddriveJsonValue };
 
 export interface CoulddriveResourceListParams extends PaginationParams {
   category_id?: number;
@@ -17,23 +24,23 @@ export interface CoulddriveResourceListItem {
   id: number;
   category_id: number;
   category_name?: string | null;
-  main_name: string;
+  remark?: string | null;
   title?: string | null;
+  org_name?: string | null;
   resource_type: string;
-  description?: string | null;
   resource_intro?: string | null;
+  resource_image?: CoulddriveJsonValue;
   url_type: CoulddriveDriveType;
   url: string;
   extract_code?: string | null;
-  local_file_path?: string | null;
+  storage_key?: string | null;
   file_type?: string | null;
   file_size?: number | null;
-  view_count: number;
+  view_count?: number;
   hot: number;
-  remark?: string | null;
-  status: number;
-  audit_status: number;
-  expired_type: number;
+  status?: number;
+  audit_status?: number;
+  expired_type?: number;
   expired_at?: string | null;
   created_time: string;
   updated_time?: string | null;
