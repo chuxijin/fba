@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from pydantic import Field
 
 from backend.common.schema import SchemaBase
@@ -38,3 +40,24 @@ class HaloTagItem(SchemaBase):
     name: str = Field(..., description='Halo 内部标识')
     display_name: str = Field(..., description='显示名称')
     slug: str = Field(..., description='别名')
+
+
+class DocTreeNode(SchemaBase):
+    """Docsme 文档树节点"""
+
+    name: str = Field(..., description='节点 UUID')
+    title: str = Field(..., description='标题')
+    slug: str = Field(..., description='别名')
+    type: str = Field(..., description='节点类型: TREE（目录）或 DOC（文档）')
+    permalink: str = Field('', description='前端路径')
+    children: list['DocTreeNode'] = Field(default_factory=list, description='子节点')
+
+
+class DocDetail(SchemaBase):
+    """Docsme 文档详情（含 HTML 正文）"""
+
+    name: str = Field(..., description='Doc UUID')
+    title: str = Field(..., description='标题')
+    permalink: str = Field('', description='前端路径')
+    content: str = Field('', description='HTML 正文')
+    updated_at: str | None = Field(None, description='最后更新时间')
