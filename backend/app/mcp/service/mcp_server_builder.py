@@ -9,10 +9,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Mount, Route
 
-from backend.app.mcp.service.resource_search_service import register_resource_search_tools
-
 _mcp: Any | None = None
-_registered_tools_cache: list[dict[str, str]] | None = None
+_registered_tools_cache: list[dict[str, str]] = []
 
 
 def _ensure_mcp() -> Any:
@@ -25,22 +23,13 @@ def _ensure_mcp() -> Any:
     from mcp.server.fastmcp import FastMCP  # type: ignore
 
     mcp = FastMCP('resource_search')
-    # 注册工具
-    register_resource_search_tools(mcp)
-
-    # 缓存工具列表（避免访问内部私有对象）
-    global _registered_tools_cache
-    _registered_tools_cache = [{'name': 'search_resources', 'description': '搜索资源库（基于 yp_resource）'}]
     _mcp = mcp
     return mcp
 
 
 def get_registered_tools() -> list[dict[str, str]]:
     """返回已注册工具的名称与描述"""
-    if _registered_tools_cache is not None:
-        return _registered_tools_cache
-    _ = _ensure_mcp()
-    return _registered_tools_cache or []
+    return _registered_tools_cache
 
 
 def _create_starlette_app(mcp_server: Any, *, debug: bool = False) -> Starlette:
