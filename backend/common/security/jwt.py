@@ -96,7 +96,7 @@ async def mark_user_tokens_invalid(
     :param exclude_session_uuid: 排除的会话 UUID
     :return:
     """
-    keys = await redis_client.get_prefix(f'{token_prefix}:{user_id}:')
+    keys = await redis_client.get_by_prefix(f'{token_prefix}:{user_id}:')
     for key in keys:
         session_uuid = key.rsplit(':', 1)[-1]
         if exclude_session_uuid and session_uuid == exclude_session_uuid:

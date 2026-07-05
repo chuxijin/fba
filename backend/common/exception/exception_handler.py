@@ -61,7 +61,8 @@ async def _validation_exception_handler(exc: RequestValidationError | Validation
         message = 'json解析失败'
     else:
         error_input = error.get('input')
-        field = str(error.get('loc')[-1])
+        loc = error.get('loc')
+        field = str(loc[-1]) if loc else 'unknown'
         error_msg = error.get('msg')
         message = f'{field} {error_msg}，输入：{error_input}' if settings.ENVIRONMENT == 'dev' else error_msg
     msg = f'请求参数非法: {message}'

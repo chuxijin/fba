@@ -19,6 +19,7 @@ sio = socketio.AsyncServer(
         redis_options={
             'socket_timeout': None,
             'socket_connect_timeout': settings.REDIS_TIMEOUT,
+            'protocol': 2,
         },
     ),
     async_mode='asgi',

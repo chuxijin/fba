@@ -48,7 +48,11 @@ def _requirements_installed(requirements_file: Path) -> bool:  # noqa: C901
         except PackageNotFoundError:
             return False
 
-        if requirement.specifier and not requirement.specifier.contains(dist.version, prereleases=True):
+        version = dist.version
+        if not version:
+            return False
+
+        if requirement.specifier and not requirement.specifier.contains(version, prereleases=True):
             return False
 
         requested_extras = tuple(sorted(requirement.extras))
