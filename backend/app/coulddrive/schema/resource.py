@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
 
 from pydantic import ConfigDict, Field
+from pydantic.types import JsonValue
 
 from backend.app.coulddrive.schema.enum import DriveType
 from backend.common.schema import SchemaBase
@@ -13,136 +13,125 @@ from backend.common.schema import SchemaBase
 class ResourceBase(SchemaBase):
     """资源基础 schema"""
 
-    # 用户手动填写的必填字段
-    category_id: int = Field(..., description='分类ID')
-    main_name: str = Field(..., description='主要名字')
-    resource_type: str = Field(..., description='资源类型')
-    url: str = Field(..., description='链接')
-    url_type: DriveType = Field(..., description='链接类型')
+    category_id: int = Field(description='分类 ID')
+    resource_type: str = Field(description='资源类型')
+    url: str = Field(description='链接')
+    url_type: DriveType = Field(description='链接类型')
 
-    # 用户手动填写的可选字段
-    description: Optional[str] = Field(None, description='描述')
-    resource_intro: Optional[str] = Field(None, description='资源介绍')
-    resource_image: Optional[str] = Field(None, description='资源图片')
-    extract_code: Optional[str] = Field(None, description='提取码')
+    remark: str | None = Field(None, description='资源标题')
+    org_name: str | None = Field(None, description='机构或老师名称')
+    resource_intro: str | None = Field(None, description='资源介绍')
+    resource_image: JsonValue | None = Field(None, description='资源图片 JSON')
+    extract_code: str | None = Field(None, description='提取码')
     is_temp_file: int = Field(0, ge=0, le=3, description='临时处理模式(0无操作 1定时删除 2定时刷新 3定时更新)')
-    price: Optional[Decimal] = Field(None, description='价格')
-    suggested_price: Optional[Decimal] = Field(None, description='建议价格')
+    price: Decimal | None = Field(None, description='价格')
+    suggested_price: Decimal | None = Field(None, description='建议价格')
     sort: int = Field(0, description='排序')
-    remark: Optional[str] = Field(None, description='备注')
 
-    # 自动获取的字段（可选，通常由系统自动填充）
-    title: Optional[str] = Field(None, description='分享标题')
-    share_id: Optional[str] = Field(None, description='分享ID')
-    pwd_id: Optional[str] = Field(None, description='密码ID')
+    title: str | None = Field(None, description='分享标题')
+    share_id: str | None = Field(None, description='分享 ID')
+    pwd_id: str | None = Field(None, description='密码 ID')
     expired_type: int = Field(0, description='过期类型(0永久 1定时)')
     view_count: int = Field(0, description='浏览量')
-    expired_at: Optional[datetime] = Field(None, description='过期时间')
-    expired_left: Optional[int] = Field(None, description='剩余过期时间')
+    expired_at: datetime | None = Field(None, description='过期时间')
+    expired_left: int | None = Field(None, description='剩余过期时间')
     audit_status: int = Field(0, description='审核状态(0待审核 1通过 2拒绝)')
     status: int = Field(1, description='状态(0停用 1正常)')
-    file_only_num: Optional[str] = Field(None, description='文件唯一编号')
-    file_size: Optional[int] = Field(None, description='文件大小')
-    path_info: Optional[str] = Field(None, description='路径信息')
-    file_id: Optional[str] = Field(None, description='文件ID')
-    content: Optional[str] = Field(None, description='内容')
-    uk_uid: Optional[str] = Field(None, description='用户唯一标识')
-    local_file_path: Optional[str] = Field(None, description='本地文件路径')
-    file_type: Optional[str] = Field(None, description='文件类型')
+    file_only_num: str | None = Field(None, description='文件唯一编号')
+    file_size: int | None = Field(None, description='文件大小')
+    path_info: str | None = Field(None, description='路径信息')
+    file_id: str | None = Field(None, description='文件 ID')
+    content: str | None = Field(None, description='内容')
+    uk_uid: str | None = Field(None, description='用户唯一标识')
+    storage_key: str | None = Field(None, description='存储对象 Key')
+    file_type: str | None = Field(None, description='文件类型')
 
 
 class CreateResourceParam(SchemaBase):
     """创建资源参数"""
 
-    # 用户手动填写的必填字段
-    category_id: int = Field(..., description='分类ID')
-    main_name: str = Field(..., description='主要名字')
-    resource_type: str = Field(..., description='资源类型')
-    url: str = Field(..., description='链接')
-    url_type: DriveType = Field(..., description='链接类型')
-    user_id: int = Field(..., description='所属用户ID')
+    category_id: int = Field(description='分类 ID')
+    resource_type: str = Field(description='资源类型')
+    url: str = Field(description='链接')
+    url_type: DriveType = Field(description='链接类型')
+    user_id: int = Field(description='所属用户 ID')
 
-    # 用户手动填写的可选字段
-    description: Optional[str] = Field(None, description='描述')
-    resource_intro: Optional[str] = Field(None, description='资源介绍')
-    resource_image: Optional[str] = Field(None, description='资源图片')
-    extract_code: Optional[str] = Field(None, description='提取码')
+    remark: str | None = Field(None, description='资源标题')
+    org_name: str | None = Field(None, description='机构或老师名称')
+    resource_intro: str | None = Field(None, description='资源介绍')
+    resource_image: JsonValue | None = Field(None, description='资源图片 JSON')
+    extract_code: str | None = Field(None, description='提取码')
     is_temp_file: int = Field(0, ge=0, le=3, description='临时处理模式(0无操作 1定时删除 2定时刷新 3定时更新)')
-    price: Optional[Decimal] = Field(None, description='价格')
-    suggested_price: Optional[Decimal] = Field(None, description='建议价格')
+    price: Decimal | None = Field(None, description='价格')
+    suggested_price: Decimal | None = Field(None, description='建议价格')
     sort: int = Field(0, description='排序')
-    remark: Optional[str] = Field(None, description='备注')
-    local_file_path: Optional[str] = Field(None, description='本地文件路径')
-    file_type: Optional[str] = Field(None, description='文件类型')
+    storage_key: str | None = Field(None, description='存储对象 Key')
+    file_type: str | None = Field(None, description='文件类型')
 
 
 class UpdateResourceParam(SchemaBase):
     """更新资源参数"""
 
-    # 所有字段都是可选的
-    category_id: Optional[int] = Field(None, description='分类ID')
-    main_name: Optional[str] = Field(None, description='主要名字')
-    resource_type: Optional[str] = Field(None, description='资源类型')
-    description: Optional[str] = Field(None, description='描述')
-    resource_intro: Optional[str] = Field(None, description='资源介绍')
-    resource_image: Optional[str] = Field(None, description='资源图片')
-    url: Optional[str] = Field(None, description='链接')
-    url_type: Optional[DriveType] = Field(None, description='链接类型')
-    extract_code: Optional[str] = Field(None, description='提取码')
-    is_temp_file: Optional[int] = Field(
+    category_id: int | None = Field(None, description='分类 ID')
+    resource_type: str | None = Field(None, description='资源类型')
+    remark: str | None = Field(None, description='资源标题')
+    org_name: str | None = Field(None, description='机构或老师名称')
+    resource_intro: str | None = Field(None, description='资源介绍')
+    resource_image: JsonValue | None = Field(None, description='资源图片 JSON')
+    url: str | None = Field(None, description='链接')
+    url_type: DriveType | None = Field(None, description='链接类型')
+    extract_code: str | None = Field(None, description='提取码')
+    is_temp_file: int | None = Field(
         None, ge=0, le=3, description='临时处理模式(0无操作 1定时删除 2定时刷新 3定时更新)'
     )
-    price: Optional[Decimal] = Field(None, description='价格')
-    suggested_price: Optional[Decimal] = Field(None, description='建议价格')
-    sort: Optional[int] = Field(None, description='排序')
-    remark: Optional[str] = Field(None, description='备注')
-    title: Optional[str] = Field(None, description='分享标题')
-    share_id: Optional[str] = Field(None, description='分享ID')
-    pwd_id: Optional[str] = Field(None, description='密码ID')
-    expired_type: Optional[int] = Field(None, description='过期类型(0永久 1定时)')
-    view_count: Optional[int] = Field(None, description='浏览量')
-    expired_at: Optional[datetime] = Field(None, description='过期时间')
-    expired_left: Optional[int] = Field(None, description='剩余过期时间')
-    audit_status: Optional[int] = Field(None, description='审核状态(0待审核 1通过 2拒绝)')
-    status: Optional[int] = Field(None, description='状态(0停用 1正常)')
-    file_only_num: Optional[str] = Field(None, description='文件唯一编号')
-    file_size: Optional[int] = Field(None, description='文件大小')
-    path_info: Optional[str] = Field(None, description='路径信息')
-    file_id: Optional[str] = Field(None, description='文件ID')
-    content: Optional[str] = Field(None, description='内容')
-    uk_uid: Optional[str] = Field(None, description='用户唯一标识')
-    local_file_path: Optional[str] = Field(None, description='本地文件路径')
-    file_type: Optional[str] = Field(None, description='文件类型')
+    price: Decimal | None = Field(None, description='价格')
+    suggested_price: Decimal | None = Field(None, description='建议价格')
+    sort: int | None = Field(None, description='排序')
+    title: str | None = Field(None, description='分享标题')
+    share_id: str | None = Field(None, description='分享 ID')
+    pwd_id: str | None = Field(None, description='密码 ID')
+    expired_type: int | None = Field(None, description='过期类型(0永久 1定时)')
+    view_count: int | None = Field(None, description='浏览量')
+    expired_at: datetime | None = Field(None, description='过期时间')
+    expired_left: int | None = Field(None, description='剩余过期时间')
+    audit_status: int | None = Field(None, description='审核状态(0待审核 1通过 2拒绝)')
+    status: int | None = Field(None, description='状态(0停用 1正常)')
+    file_only_num: str | None = Field(None, description='文件唯一编号')
+    file_size: int | None = Field(None, description='文件大小')
+    path_info: str | None = Field(None, description='路径信息')
+    file_id: str | None = Field(None, description='文件 ID')
+    content: str | None = Field(None, description='内容')
+    uk_uid: str | None = Field(None, description='用户唯一标识')
+    storage_key: str | None = Field(None, description='存储对象 Key')
+    file_type: str | None = Field(None, description='文件类型')
 
 
 class UpdateResourceUserParam(SchemaBase):
-    """用户更新资源参数（Swagger 显示用）"""
+    """用户更新资源参数"""
 
-    # 用户可以修改的基本信息字段
-    category_id: Optional[int] = Field(None, description='分类ID')
-    main_name: Optional[str] = Field(None, description='主要名字')
-    resource_type: Optional[str] = Field(None, description='资源类型')
-    description: Optional[str] = Field(None, description='描述')
-    resource_intro: Optional[str] = Field(None, description='资源介绍')
-    resource_image: Optional[str] = Field(None, description='资源图片')
-    url: Optional[str] = Field(None, description='链接')
-    url_type: Optional[DriveType] = Field(None, description='链接类型')
-    extract_code: Optional[str] = Field(None, description='提取码')
-    is_temp_file: Optional[int] = Field(
+    category_id: int | None = Field(None, description='分类 ID')
+    resource_type: str | None = Field(None, description='资源类型')
+    remark: str | None = Field(None, description='资源标题')
+    org_name: str | None = Field(None, description='机构或老师名称')
+    resource_intro: str | None = Field(None, description='资源介绍')
+    resource_image: JsonValue | None = Field(None, description='资源图片 JSON')
+    url: str | None = Field(None, description='链接')
+    url_type: DriveType | None = Field(None, description='链接类型')
+    extract_code: str | None = Field(None, description='提取码')
+    is_temp_file: int | None = Field(
         None, ge=0, le=3, description='临时处理模式(0无操作 1定时删除 2定时刷新 3定时更新)'
     )
-    price: Optional[Decimal] = Field(None, description='价格')
-    suggested_price: Optional[Decimal] = Field(None, description='建议价格')
-    sort: Optional[int] = Field(None, description='排序')
-    remark: Optional[str] = Field(None, description='备注')
-    local_file_path: Optional[str] = Field(None, description='本地文件路径')
-    file_type: Optional[str] = Field(None, description='文件类型')
+    price: Decimal | None = Field(None, description='价格')
+    suggested_price: Decimal | None = Field(None, description='建议价格')
+    sort: int | None = Field(None, description='排序')
+    storage_key: str | None = Field(None, description='存储对象 Key')
+    file_type: str | None = Field(None, description='文件类型')
 
 
 class BatchDeleteResourceParam(SchemaBase):
     """批量删除资源参数"""
 
-    ids: List[int] = Field(..., description='资源ID列表', min_length=1)
+    ids: list[int] = Field(description='资源 ID 列表', min_length=1)
 
 
 class GetResourceDetail(ResourceBase):
@@ -150,28 +139,28 @@ class GetResourceDetail(ResourceBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(..., description='主键ID')
-    category_id: Optional[int] = Field(None, description='分类ID')
-    category_name: Optional[str] = Field(None, description='分类名称')
-    user_id: int = Field(..., description='所属用户ID')
+    id: int = Field(description='主键 ID')
+    category_id: int | None = Field(None, description='分类 ID')
+    category_name: str | None = Field(None, description='分类名称')
+    user_id: int = Field(description='所属用户 ID')
     is_deleted: bool = Field(False, description='是否删除')
-    created_by: int = Field(..., description='创建者')
-    updated_by: Optional[int] = Field(None, description='修改者')
-    created_time: datetime = Field(..., description='创建时间')
-    updated_time: Optional[datetime] = Field(None, description='更新时间')
+    created_by: int = Field(description='创建者')
+    updated_by: int | None = Field(None, description='修改者')
+    created_time: datetime = Field(description='创建时间')
+    updated_time: datetime | None = Field(None, description='更新时间')
 
 
 class GetResourceListParam(SchemaBase):
     """获取资源列表参数"""
 
-    category_id: Optional[int] = Field(None, description='分类ID')
-    resource_type: Optional[str] = Field(None, description='资源类型')
-    url_type: Optional[DriveType] = Field(None, description='链接类型')
-    status: Optional[int] = Field(None, description='状态')
-    expired_type: Optional[int] = Field(None, description='过期类型')
-    user_id: Optional[int] = Field(None, description='所属用户ID')
-    is_deleted: Optional[bool] = Field(None, description='是否删除')
-    keyword: Optional[str] = Field(None, description='关键词搜索(标题、主要名字)')
+    category_id: int | None = Field(None, description='分类 ID')
+    resource_type: str | None = Field(None, description='资源类型')
+    url_type: DriveType | None = Field(None, description='链接类型')
+    status: int | None = Field(None, description='状态')
+    expired_type: int | None = Field(None, description='过期类型')
+    user_id: int | None = Field(None, description='所属用户 ID')
+    is_deleted: bool | None = Field(None, description='是否删除')
+    keyword: str | None = Field(None, description='关键词搜索(标题、机构、介绍)')
 
 
 class ResourceListItem(SchemaBase):
@@ -179,72 +168,62 @@ class ResourceListItem(SchemaBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(..., description='主键ID')
-    category_id: int = Field(..., description='分类ID')
-    category_name: Optional[str] = Field(None, description='分类名称')
-    main_name: str = Field(..., description='主要名字')
-    title: Optional[str] = Field(None, description='标题')
-    resource_type: str = Field(..., description='资源类型')
-    description: Optional[str] = Field(None, description='描述')
-    resource_intro: Optional[str] = Field(None, description='资源介绍')
-    url_type: DriveType = Field(..., description='链接类型')
-    url: str = Field(..., description='链接')
-    price: Optional[Decimal] = Field(None, description='价格')
-    suggested_price: Optional[Decimal] = Field(None, description='建议价格')
-    view_count: int = Field(0, description='浏览量')
-    sort: int = Field(0, description='排序')
-    status: int = Field(1, description='状态(0停用 1正常)')
-    audit_status: int = Field(0, description='审核状态(0待审核 1通过 2拒绝)')
-    is_deleted: bool = Field(False, description='是否删除')
-    user_id: int = Field(..., description='所属用户ID')
-    expired_at: Optional[datetime] = Field(None, description='实际过期时间')
-    expired_left: Optional[int] = Field(None, description='剩余过期天数')
-    expired_type: int = Field(0, description='过期类型(0永久 1定时)')
-    remark: Optional[str] = Field(None, description='备注')
-    created_time: datetime = Field(..., description='创建时间')
-    updated_time: Optional[datetime] = Field(None, description='更新时间')
-    local_file_path: Optional[str] = Field(None, description='本地文件路径')
-    file_type: Optional[str] = Field(None, description='文件类型')
-    pwd_id: Optional[str] = Field(None, description='密码ID')
+    id: int = Field(description='主键 ID')
+    category_id: int = Field(description='分类 ID')
+    category_name: str | None = Field(None, description='分类名称')
+    remark: str | None = Field(None, description='资源标题')
+    title: str | None = Field(None, description='分享标题')
+    org_name: str | None = Field(None, description='机构或老师名称')
+    resource_type: str = Field(description='资源类型')
+    resource_intro: str | None = Field(None, description='资源介绍')
+    resource_image: JsonValue | None = Field(None, description='资源图片 JSON')
+    url_type: DriveType = Field(description='链接类型')
+    url: str = Field(description='链接')
+    file_size: int | None = Field(None, description='文件大小')
+    storage_key: str | None = Field(None, description='存储对象 Key')
+    file_type: str | None = Field(None, description='文件类型')
     hot: int = Field(0, description='热度值')
+    status: int = Field(1, description='状态(0停用 1正常)')
+    created_time: datetime = Field(description='创建时间')
+    updated_time: datetime | None = Field(None, description='更新时间')
 
 
 class ResourceKnowledgeItem(SchemaBase):
-    """资源知识库项（供AI调用，包含完整内容）"""
+    """资源知识库项"""
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(..., description='主键ID')
-    category_id: int = Field(..., description='分类ID')
-    category_name: Optional[str] = Field(None, description='分类名称')
-    main_name: str = Field(..., description='主要名字')
-    title: Optional[str] = Field(None, description='标题')
-    resource_type: str = Field(..., description='资源类型')
-    description: Optional[str] = Field(None, description='描述')
-    resource_intro: Optional[str] = Field(None, description='资源介绍')
-    content: Optional[str] = Field(None, description='完整内容')
-    url_type: DriveType = Field(..., description='链接类型')
-    url: str = Field(..., description='链接')
-    extract_code: Optional[str] = Field(None, description='提取码')
-    price: Optional[Decimal] = Field(None, description='价格')
-    suggested_price: Optional[Decimal] = Field(None, description='建议价格')
+    id: int = Field(description='主键 ID')
+    category_id: int = Field(description='分类 ID')
+    category_name: str | None = Field(None, description='分类名称')
+    remark: str | None = Field(None, description='资源标题')
+    title: str | None = Field(None, description='分享标题')
+    org_name: str | None = Field(None, description='机构或老师名称')
+    resource_type: str = Field(description='资源类型')
+    resource_intro: str | None = Field(None, description='资源介绍')
+    content: str | None = Field(None, description='完整内容')
+    url_type: DriveType = Field(description='链接类型')
+    url: str = Field(description='链接')
+    extract_code: str | None = Field(None, description='提取码')
+    price: Decimal | None = Field(None, description='价格')
+    suggested_price: Decimal | None = Field(None, description='建议价格')
     view_count: int = Field(0, description='浏览量')
-    created_time: datetime = Field(..., description='创建时间')
-    updated_time: Optional[datetime] = Field(None, description='更新时间')
+    created_time: datetime = Field(description='创建时间')
+    updated_time: datetime | None = Field(None, description='更新时间')
 
 
 class VectorSearchResultItem(SchemaBase):
-    """向量搜索结果项（用于搜索框）"""
+    """向量搜索结果项"""
 
-    resource: ResourceListItem = Field(..., description='资源信息')
-    similarity: float = Field(..., description='相似度分数 (0-1)')
+    resource: ResourceListItem = Field(description='资源信息')
+    similarity: float = Field(description='相似度分数 (0-1)')
 
 
 class VectorSearchKnowledgeResultItem(SchemaBase):
-    """向量搜索结果项（供AI知识库调用）"""
+    """向量搜索知识库结果项"""
 
-    resource: ResourceKnowledgeItem = Field(..., description='资源详细信息（含完整内容）')
-    similarity: float = Field(..., description='相似度分数 (0-1)')
+    resource: ResourceKnowledgeItem = Field(description='资源详细信息')
+    similarity: float = Field(description='相似度分数 (0-1)')
 
 
 class ResourceStatistics(SchemaBase):
@@ -257,15 +236,14 @@ class ResourceStatistics(SchemaBase):
     rejected_count: int = Field(0, description='已拒绝数量')
     deleted_count: int = Field(0, description='已删除数量')
     total_views: int = Field(0, description='总浏览量')
-    today_start_views: int = Field(0, description='今日0点总浏览量')
+    today_start_views: int = Field(0, description='今日 0 点总浏览量')
     today_growth: int = Field(0, description='今日增长量')
 
 
-# 浏览量历史记录相关Schema
 class ResourceViewHistoryBase(SchemaBase):
-    """浏览量历史记录基础schema"""
+    """浏览量历史记录基础 schema"""
 
-    pwd_id: str = Field(..., description='资源唯一ID')
+    pwd_id: str = Field(description='资源唯一 ID')
     view_count: int = Field(0, description='当时的浏览量')
 
 
@@ -278,53 +256,52 @@ class CreateResourceViewHistoryParam(ResourceViewHistoryBase):
 class GetResourceViewHistoryDetail(ResourceViewHistoryBase):
     """获取浏览量历史记录详情"""
 
-    id: int = Field(..., description='记录ID')
-    record_time: datetime = Field(..., description='记录时间')
+    id: int = Field(description='记录 ID')
+    record_time: datetime = Field(description='记录时间')
 
 
 class GetResourceViewHistoryListParam(SchemaBase):
     """获取浏览量历史记录列表参数"""
 
-    pwd_id: Optional[str] = Field(None, description='资源唯一ID')
-    start_time: Optional[datetime] = Field(None, description='开始时间')
-    end_time: Optional[datetime] = Field(None, description='结束时间')
+    pwd_id: str | None = Field(None, description='资源唯一 ID')
+    start_time: datetime | None = Field(None, description='开始时间')
+    end_time: datetime | None = Field(None, description='结束时间')
 
 
 class ResourceViewTrendData(SchemaBase):
     """资源浏览量趋势数据"""
 
-    record_time: datetime = Field(..., description='记录时间')
+    record_time: datetime = Field(description='记录时间')
     view_count: int = Field(0, description='浏览量')
 
 
 class GetResourceViewTrendParam(SchemaBase):
     """获取资源浏览量趋势参数"""
 
-    pwd_id: str = Field(..., description='资源唯一ID')
-    start_time: Optional[datetime] = Field(None, description='开始时间')
-    end_time: Optional[datetime] = Field(None, description='结束时间')
+    pwd_id: str = Field(description='资源唯一 ID')
+    start_time: datetime | None = Field(None, description='开始时间')
+    end_time: datetime | None = Field(None, description='结束时间')
 
 
 class ResourceViewTrendResponse(SchemaBase):
     """资源浏览量趋势响应"""
 
-    pwd_id: str = Field(..., description='资源唯一ID')
+    pwd_id: str = Field(description='资源唯一 ID')
     current_view_count: int = Field(0, description='当前浏览量')
-    trend_data: List[ResourceViewTrendData] = Field([], description='趋势数据')
+    trend_data: list[ResourceViewTrendData] = Field(default_factory=list, description='趋势数据')
 
 
 class UpdateResourceViewCountParam(SchemaBase):
     """更新资源浏览量参数"""
 
-    pwd_id: str = Field(..., description='资源唯一ID')
-    view_count: int = Field(..., description='新的浏览量')
+    pwd_id: str = Field(description='资源唯一 ID')
+    view_count: int = Field(description='新的浏览量')
 
 
-# 整体统计趋势相关Schema
 class OverallStatisticsTrendData(SchemaBase):
     """整体统计趋势数据点"""
 
-    date: str = Field(..., description='日期 (YYYY-MM-DD)')
+    date: str = Field(description='日期 (YYYY-MM-DD)')
     total_count: int = Field(0, description='总资源数')
     total_views: int = Field(0, description='总浏览量')
     active_count: int = Field(0, description='活跃资源数')
@@ -334,16 +311,16 @@ class OverallStatisticsTrendData(SchemaBase):
 class GetOverallStatisticsTrendParam(SchemaBase):
     """获取整体统计趋势参数"""
 
-    start_date: Optional[str] = Field(None, description='开始日期 (YYYY-MM-DD)')
-    end_date: Optional[str] = Field(None, description='结束日期 (YYYY-MM-DD)')
-    days: Optional[int] = Field(7, description='获取最近天数 (默认7天)')
+    start_date: str | None = Field(None, description='开始日期 (YYYY-MM-DD)')
+    end_date: str | None = Field(None, description='结束日期 (YYYY-MM-DD)')
+    days: int | None = Field(7, description='获取最近天数 (默认 7)')
 
 
 class OverallStatisticsTrendResponse(SchemaBase):
     """整体统计趋势响应"""
 
-    trend_data: List[OverallStatisticsTrendData] = Field([], description='趋势数据')
-    summary: dict = Field({}, description='汇总信息')
+    trend_data: list[OverallStatisticsTrendData] = Field(default_factory=list, description='趋势数据')
+    summary: dict = Field(default_factory=dict, description='汇总信息')
 
 
 class GongkaoResourceResponse(SchemaBase):
@@ -351,13 +328,15 @@ class GongkaoResourceResponse(SchemaBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(..., description='主键ID')
-    title: Optional[str] = Field(None, description='标题')
-    url_type: DriveType = Field(..., description='链接类型')
-    url: str = Field(..., description='链接')
-    local_file_path: Optional[str] = Field(None, description='本地文件路径')
-    file_type: Optional[str] = Field(None, description='文件类型')
+    id: int = Field(description='主键 ID')
+    title: str | None = Field(None, description='标题')
+    remark: str | None = Field(None, description='资源标题')
+    org_name: str | None = Field(None, description='机构或老师名称')
+    url_type: DriveType = Field(description='链接类型')
+    url: str = Field(description='链接')
+    storage_key: str | None = Field(None, description='存储对象 Key')
+    file_type: str | None = Field(None, description='文件类型')
     hot: int = Field(0, description='热度值')
-    category_id: int = Field(..., description='分类ID')
-    file_size: Optional[int] = Field(None, description='文件大小')
-    created_time: datetime = Field(..., description='创建时间')
+    category_id: int = Field(description='分类 ID')
+    file_size: int | None = Field(None, description='文件大小')
+    created_time: datetime = Field(description='创建时间')

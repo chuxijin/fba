@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 
 from datetime import datetime, timedelta
@@ -41,9 +42,52 @@ from backend.common.pagination import paging_data
 from backend.utils.sensitive_words import contains_sensitive_words
 from backend.utils.timezone import timezone
 
+RESOURCE_UPDATE_FIELDS = {
+    'category_id',
+    'resource_type',
+    'remark',
+    'org_name',
+    'resource_intro',
+    'resource_image',
+    'url',
+    'url_type',
+    'extract_code',
+    'is_temp_file',
+    'price',
+    'suggested_price',
+    'sort',
+    'title',
+    'share_id',
+    'pwd_id',
+    'expired_type',
+    'view_count',
+    'expired_at',
+    'expired_left',
+    'audit_status',
+    'status',
+    'file_only_num',
+    'file_size',
+    'path_info',
+    'file_id',
+    'content',
+    'uk_uid',
+    'storage_key',
+    'file_type',
+}
+
 
 class ResourceService:
     """资源服务类"""
+
+    @staticmethod
+    def _get_display_title(resource: Resource) -> str:
+        """
+        获取资源展示标题
+
+        :param resource: 资源模型
+        :return:
+        """
+        return resource.remark or resource.title or f'资源 {resource.id}'
 
     @staticmethod
     def _normalize_resource_types(
@@ -75,6 +119,67 @@ class ResourceService:
             return None
 
         return list(dict.fromkeys(normalized_types))
+
+    @staticmethod
+    def _normalize_resource_image_json(value: Any) -> Any:
+        """
+        归一化资源图片 JSON
+
+        :param value: 资源图片输入值
+        :return:
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+
+            if text.startswith(('[', '{')):
+                try:
+                    return ResourceService._normalize_resource_image_json(json.loads(text))
+                except json.JSONDecodeError:
+                    return text
+
+            if '\n' in text or ',' in text or '，' in text:
+                items = [
+                    item.strip()
+                    for item in text.replace('，', ',').replace('\n', ',').split(',')
+                    if item.strip()
+                ]
+                return items or None
+
+            return text
+
+        if isinstance(value, list):
+            items: list[Any] = []
+            for item in value:
+                if isinstance(item, str):
+                    text = item.strip()
+                    if text:
+                        items.append(text)
+                    continue
+
+                if item is not None:
+                    items.append(item)
+
+            return items or None
+
+        return value
+
+    @staticmethod
+    def _normalize_resource_image_in_data(data: dict[str, Any]) -> None:
+        """
+        归一化资源图片字段
+
+        :param data: 资源数据
+        :return:
+        """
+        if 'resource_image' not in data:
+            return
+
+        data['resource_image'] = ResourceService._normalize_resource_image_json(data['resource_image'])
 
     @staticmethod
     async def get(*, db: AsyncSession, pk: int) -> GetResourceDetail:
@@ -226,6 +331,7 @@ class ResourceService:
 
         # 创建完整的资源数据
         resource_data = obj.model_dump()
+        ResourceService._normalize_resource_image_in_data(resource_data)
         resource_data['created_by'] = created_by
 
         # 如果获取到分享信息，添加分享相关字段
@@ -244,7 +350,7 @@ class ResourceService:
         else:
             # 使用默认值
             resource_data.update({
-                'title': obj.main_name,
+                'title': obj.remark or '未命名资源',
                 'share_id': None,
                 'pwd_id': None,
                 'expired_type': 0,
@@ -258,47 +364,16 @@ class ResourceService:
                 'path_info': None,
             })
 
+        resource_data['title'] = resource_data.get('title') or resource_data.get('remark') or '未命名资源'
+
         # 检查密码ID是否已存在，如果存在则更新现有记录
         if resource_data.get('pwd_id'):
             existing_resource = await resource_dao.get_by_pwd_id(db, resource_data['pwd_id'])
             if existing_resource:
                 # 更新现有记录 - 只更新允许的字段
                 update_data = {}
-                allowed_update_fields = {
-                    'category_id',
-                    'main_name',
-                    'resource_type',
-                    'description',
-                    'resource_intro',
-                    'resource_image',
-                    'url',
-                    'url_type',
-                    'extract_code',
-                    'is_temp_file',
-                    'price',
-                    'suggested_price',
-                    'sort',
-                    'remark',
-                    'title',
-                    'share_id',
-                    'pwd_id',
-                    'expired_type',
-                    'view_count',
-                    'expired_at',
-                    'expired_left',
-                    'audit_status',
-                    'status',
-                    'file_only_num',
-                    'file_size',
-                    'path_info',
-                    'file_id',
-                    'content',
-                    'uk_uid',
-                    'local_file_path',
-                    'file_type',
-                }
 
-                for field in allowed_update_fields:
+                for field in RESOURCE_UPDATE_FIELDS:
                     if field in resource_data:
                         update_data[field] = resource_data[field]
 
@@ -339,41 +414,8 @@ class ResourceService:
             if existing_resource:
                 # 更新现有记录 - 只更新允许的字段
                 update_data = {}
-                allowed_update_fields = {
-                    'category_id',
-                    'main_name',
-                    'resource_type',
-                    'description',
-                    'resource_intro',
-                    'resource_image',
-                    'url',
-                    'url_type',
-                    'extract_code',
-                    'is_temp_file',
-                    'price',
-                    'suggested_price',
-                    'sort',
-                    'remark',
-                    'title',
-                    'share_id',
-                    'pwd_id',
-                    'expired_type',
-                    'view_count',
-                    'expired_at',
-                    'expired_left',
-                    'audit_status',
-                    'status',
-                    'file_only_num',
-                    'file_size',
-                    'path_info',
-                    'file_id',
-                    'content',
-                    'uk_uid',
-                    'local_file_path',
-                    'file_type',
-                }
 
-                for field in allowed_update_fields:
+                for field in RESOURCE_UPDATE_FIELDS:
                     if field in resource_data:
                         update_data[field] = resource_data[field]
 
@@ -456,6 +498,7 @@ class ResourceService:
 
         # 准备更新数据
         update_data = obj.model_dump(exclude_unset=True)
+        ResourceService._normalize_resource_image_in_data(update_data)
         update_data['updated_by'] = updated_by
 
         # 如果需要自动刷新分享信息
@@ -866,7 +909,7 @@ class ResourceService:
             # 创建新的分享参数
             share_params = ShareParam(
                 drive_type=DriveType(drive_account.type),
-                file_name=resource.title or resource.main_name,
+                file_name=ResourceService._get_display_title(resource),
                 file_ids=[resource.file_id],
                 expired_type=expired_type,
                 password=resource.extract_code,
@@ -908,7 +951,7 @@ class ResourceService:
             return {
                 'success': True,
                 'resource_id': pk,
-                'resource_title': resource.title or resource.main_name,
+                'resource_title': ResourceService._get_display_title(resource),
                 'old_url': resource.url,
                 'new_url': new_share_info.url,
                 'new_expired_at': new_share_info.expired_at.isoformat() if new_share_info.expired_at else None,
@@ -982,7 +1025,7 @@ class ResourceService:
                         summary['failed_resources'] += 1
                         summary['details'].append({
                             'resource_id': res.id,
-                            'resource_title': res.title or res.main_name,
+                            'resource_title': ResourceService._get_display_title(res),
                             'status': 'failed',
                             'reason': refresh_result.get('error'),
                         })
@@ -995,7 +1038,7 @@ class ResourceService:
                     summary['failed_resources'] += 1
                     summary['details'].append({
                         'resource_id': res.id,
-                        'resource_title': res.title or res.main_name,
+                        'resource_title': ResourceService._get_display_title(res),
                         'status': 'error',
                         'error': str(e),
                     })
@@ -1109,7 +1152,7 @@ class ResourceService:
                         result['failed_resources'] += 1
                         result['refresh_details'].append({
                             'resource_id': resource.id,
-                            'resource_title': resource.title or resource.main_name,
+                            'resource_title': ResourceService._get_display_title(resource),
                             'status': 'failed',
                             'reason': refresh_result.get('error'),
                             'expiry_category': expiry_category,
@@ -1123,7 +1166,7 @@ class ResourceService:
                     result['failed_resources'] += 1
                     result['refresh_details'].append({
                         'resource_id': resource.id,
-                        'resource_title': resource.title or resource.main_name,
+                        'resource_title': ResourceService._get_display_title(resource),
                         'status': 'error',
                         'error': str(e),
                         'expiry_category': getattr(resource, 'expiry_category', 'unknown'),

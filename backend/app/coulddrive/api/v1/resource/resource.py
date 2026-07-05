@@ -26,13 +26,14 @@ from backend.app.coulddrive.schema.resource import (
     UpdateResourceViewCountParam,
 )
 from backend.app.coulddrive.service.resource_service import resource_service, resource_view_history_service
+from backend.app.coulddrive.service.resource_upload_service import ResourceUploadSizeError
+from backend.app.coulddrive.service.resource_upload_service import ResourceUploadTypeError
+from backend.app.coulddrive.service.resource_upload_service import resource_upload_service
 from backend.common.pagination import DependsPagination
 from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession
-from backend.plugin.oss.service.storage_service import storage_service
-from backend.utils.timezone import timezone
 
 router = APIRouter()
 
@@ -467,37 +468,51 @@ async def upload_resource_file(
     :return: 文件路径和类型
     """
     try:
-        import uuid
+        data = await resource_upload_service.upload_file(db=db, file=file)
+        return response_base.success(data=data)
 
-        filename = file.filename
-        ext = filename.split('.')[-1].lower() if '.' in filename else ''
-
-        # 简单检查文件类型（可选）
-        # if ext not in ALLOWED_EXTENSIONS:
-        #     return response_base.fail(res=CustomResponse(code=400, msg='不支持的文件类型'))
-
-        # 生成对象路径: resources/YYYYMMDD/uuid.ext
-        today = timezone.now().strftime('%Y%m%d')
-
-        base_name = filename.rsplit('.', 1)[0]
-        new_filename = f'{base_name}_{uuid.uuid4().hex[:8]}.{ext}'
-        uploaded_url, object_key = await storage_service.upload_with_filename(
-            db=db,
-            file=file,
-            filename=new_filename,
-            path=f'resources/{today}',
-            use_signed_url=False,
-        )
-
-        return response_base.success(
-            data={
-                'url': uploaded_url,
-                'local_path': None,
-                'filename': filename,
-                'file_type': ext,
-                'object_key': object_key,
-            }
-        )
+    except ResourceUploadSizeError as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=str(e)))
 
     except Exception as e:
         return response_base.fail(res=CustomResponse(code=500, msg=f'文件上传失败: {str(e)}'))
+
+
+@router.post(
+    '/upload/pdf-previews',
+    summary='上传 PDF 生成资源缩略图',
+    description='仅上传 PDF 前几页生成的缩略图，不保存原 PDF 文件',
+    dependencies=[DependsJwtAuth],
+)
+async def upload_resource_pdf_previews(
+    db: CurrentSession,
+    file: Annotated[UploadFile, File(description='PDF 文件')],
+    page_count: Annotated[int, Query(description='预览页数', ge=1, le=10)] = 3,
+    max_side: Annotated[int, Query(description='图片最长边像素', ge=160, le=2000)] = 960,
+    quality: Annotated[int, Query(description='JPEG 质量', ge=1, le=95)] = 86,
+) -> ResponseModel:
+    """
+    上传 PDF 生成资源缩略图
+
+    :param db: 数据库会话
+    :param file: PDF 文件对象
+    :param page_count: 预览页数
+    :param max_side: 图片最长边像素
+    :param quality: JPEG 质量
+    :return:
+    """
+    try:
+        data = await resource_upload_service.upload_pdf_previews(
+            db=db,
+            file=file,
+            page_count=page_count,
+            max_side=max_side,
+            quality=quality,
+        )
+        return response_base.success(data=data)
+
+    except (ResourceUploadSizeError, ResourceUploadTypeError, ValueError) as e:
+        return response_base.fail(res=CustomResponse(code=400, msg=str(e)))
+
+    except Exception as e:
+        return response_base.fail(res=CustomResponse(code=500, msg=f'PDF 缩略图生成失败: {str(e)}'))

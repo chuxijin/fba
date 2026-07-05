@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import sqlalchemy as sa
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import Base, UserMixin, id_key
@@ -16,6 +19,8 @@ from backend.utils.timezone import timezone
 if TYPE_CHECKING:
     from backend.app.admin.model.category import Category
     from backend.app.coulddrive.model.user import DriveAccount
+
+CompatibleJSONB = sa.JSON().with_variant(JSONB, 'postgresql')
 
 
 class Resource(Base, UserMixin):
@@ -27,7 +32,6 @@ class Resource(Base, UserMixin):
 
     # 必填字段
     category_id: Mapped[int] = mapped_column(ForeignKey('sys_category.id', ondelete='CASCADE'), comment='分类ID')
-    main_name: Mapped[str] = mapped_column(String(200), comment='主要名字')
     title: Mapped[str] = mapped_column(String(255), comment='标题')
     resource_type: Mapped[str] = mapped_column(String(50), comment='资源类型')
     url_type: Mapped[str] = mapped_column(String(50), comment='链接类型')
@@ -37,14 +41,18 @@ class Resource(Base, UserMixin):
     )
 
     # 可选字段（有默认值）
-    description: Mapped[str | None] = mapped_column(Text, default=None, comment='描述')
     resource_intro: Mapped[str | None] = mapped_column(Text, default=None, comment='资源介绍')
-    resource_image: Mapped[str | None] = mapped_column(String(500), default=None, comment='资源图片')
+    resource_image: Mapped[Any | None] = mapped_column(
+        CompatibleJSONB,
+        default=None,
+        comment='资源图片 JSON',
+    )
+    org_name: Mapped[str | None] = mapped_column(String(100), default=None, comment='机构或老师名称')
     content: Mapped[str | None] = mapped_column(Text, default=None, comment='内容')
     content_vector: Mapped[list[float] | None] = mapped_column(
         Vector(1536), default=None, deferred=True, comment='内容向量(1536维，默认不加载)'
     )
-    remark: Mapped[str | None] = mapped_column(Text, default=None, comment='备注')
+    remark: Mapped[str | None] = mapped_column(Text, default=None, comment='资源标题')
     share_id: Mapped[str | None] = mapped_column(String(200), default=None, comment='分享ID')
     pwd_id: Mapped[str | None] = mapped_column(String(100), default=None, comment='密码ID')
     extract_code: Mapped[str | None] = mapped_column(String(50), default=None, comment='提取码')
@@ -69,8 +77,7 @@ class Resource(Base, UserMixin):
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, comment='是否删除')
     expired_type: Mapped[int] = mapped_column(default=0, comment='过期类型(0永久 1定时)')
 
-    # 新增字段
-    local_file_path: Mapped[str | None] = mapped_column(String(500), default=None, comment='本地文件路径')
+    storage_key: Mapped[str | None] = mapped_column(String(500), default=None, comment='存储对象 Key')
     file_type: Mapped[str | None] = mapped_column(
         String(50), default=None, comment='文件类型(pdf/video/audio/doc/zip等)'
     )

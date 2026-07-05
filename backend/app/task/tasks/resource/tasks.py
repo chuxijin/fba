@@ -159,11 +159,13 @@ async def get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
 
             result = []
             for resource in expiring_resources:
+                resource_title = resource.remark or resource.title or f'资源 {resource.id}'
                 result.append({
                     'id': resource.id,
-                    'resource_title': resource.title or resource.main_name,
-                    'main_name': resource.main_name,
+                    'resource_title': resource_title,
                     'title': resource.title,
+                    'remark': resource.remark,
+                    'org_name': resource.org_name,
                     'url': resource.url,
                     'expired_at': resource.expired_at.isoformat() if resource.expired_at else None,
                     'expired_type': resource.expired_type,
