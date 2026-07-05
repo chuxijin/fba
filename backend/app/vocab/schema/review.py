@@ -6,6 +6,7 @@ from pydantic import ConfigDict, Field
 
 from backend.app.vocab.schema.user_book import GetUserBookWithProgress
 from backend.app.vocab.schema.word import GetWordDetail
+from backend.common.fsrs import ReviewForecast as ReviewForecast, ReviewResult as ReviewResult
 from backend.common.schema import SchemaBase
 
 
@@ -73,21 +74,3 @@ class GetStudyStats(SchemaBase):
     today_duration_seconds: int = Field(default=0, description='今日学习时长(秒)')
     due_count: int = Field(default=0, description='待复习词数')
     active_book: GetUserBookWithProgress | None = Field(None, description='当前在学的词书')
-
-
-class ReviewResult(SchemaBase):
-    """复习结果"""
-
-    next_due: datetime = Field(description='下次到期时间')
-    new_state: int = Field(description='更新后的状态')
-    stability: float | None = Field(None, description='更新后的稳定性')
-    difficulty: float | None = Field(None, description='更新后的难度')
-
-
-class ReviewForecast(SchemaBase):
-    """复习预测"""
-
-    again: datetime = Field(description='选 Again 后下次复习时间')
-    hard: datetime = Field(description='选 Hard 后下次复习时间')
-    good: datetime = Field(description='选 Good 后下次复习时间')
-    easy: datetime = Field(description='选 Easy 后下次复习时间')
