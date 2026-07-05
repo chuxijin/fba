@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.filesync import SyncConfig, SyncTask, SyncTaskItem
+from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.filesync import (
     CreateSyncConfigParam,
     CreateSyncTaskItemParam,
@@ -98,6 +99,9 @@ class CRUDSyncConfig(CRUDPlus[SyncConfig]):
         filter_conditions = []
         for key, value in filters.items():
             if hasattr(SyncConfig, key) and value is not None:
+                if key == 'type':
+                    filter_conditions.append(getattr(SyncConfig, key).in_(DriveType.compatible_values(value)))
+                    continue
                 filter_conditions.append(getattr(SyncConfig, key) == value)
 
         if filter_conditions:
@@ -192,7 +196,7 @@ class CRUDSyncConfig(CRUDPlus[SyncConfig]):
         if enable is not None:
             filters.append(SyncConfig.enable == enable)
         if type is not None:
-            filters.append(SyncConfig.type == type)
+            filters.append(SyncConfig.type.in_(DriveType.compatible_values(type)))
         if remark is not None:
             filters.append(SyncConfig.remark.ilike(f'%{remark}%'))
         if created_by is not None:

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
+from datetime import date
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.study_plan.model.ability_profile import (
@@ -229,6 +231,103 @@ class CRUDStudyAbilityAttempt(CRUDPlus[StudyAbilityAttempt]):
             db,
             user_id=user_id,
             client_session_id=client_session_id,
+            deleted=0,
+        )
+
+    async def list_by_user(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        ability_key: str | None = None,
+        source: str | None = None,
+        mode: str | None = None,
+        start: date | None = None,
+        end: date | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[Sequence[StudyAbilityAttempt], int]:
+        """
+        按用户分页查询能力练习历史列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param ability_key: 能力标识过滤
+        :param source: 来源过滤
+        :param mode: 练习模式过滤
+        :param start: 完成日期起始
+        :param end: 完成日期截止
+        :param offset: 偏移量
+        :param limit: 每页数量
+        :return:
+        """
+        filters = [StudyAbilityAttempt.user_id == user_id, StudyAbilityAttempt.deleted == 0]
+        if ability_key:
+            filters.append(StudyAbilityAttempt.ability_key == ability_key)
+        if source:
+            filters.append(StudyAbilityAttempt.source == source)
+        if mode:
+            filters.append(StudyAbilityAttempt.mode == mode)
+        if start is not None:
+            filters.append(StudyAbilityAttempt.completed_date >= start)
+        if end is not None:
+            filters.append(StudyAbilityAttempt.completed_date <= end)
+
+        count_stmt = select(func.count()).select_from(StudyAbilityAttempt).where(*filters)
+        total = int((await db.execute(count_stmt)).scalar() or 0)
+        if total == 0:
+            return [], 0
+
+        list_stmt = (
+            select(StudyAbilityAttempt)
+            .options(load_only(  # 列表不返回 records，减小体积
+                StudyAbilityAttempt.id,
+                StudyAbilityAttempt.client_session_id,
+                StudyAbilityAttempt.user_id,
+                StudyAbilityAttempt.ability_key,
+                StudyAbilityAttempt.mode,
+                StudyAbilityAttempt.difficulty,
+                StudyAbilityAttempt.source,
+                StudyAbilityAttempt.study_plan_item_id,
+                StudyAbilityAttempt.study_plan_record_id,
+                StudyAbilityAttempt.total_count,
+                StudyAbilityAttempt.correct_count,
+                StudyAbilityAttempt.wrong_count,
+                StudyAbilityAttempt.duration_seconds,
+                StudyAbilityAttempt.avg_seconds,
+                StudyAbilityAttempt.score,
+                StudyAbilityAttempt.metric_data,
+                StudyAbilityAttempt.completed_at,
+                StudyAbilityAttempt.completed_date,
+                StudyAbilityAttempt.created_time,
+                StudyAbilityAttempt.deleted,
+                StudyAbilityAttempt.deleted_time,
+            ))
+            .where(*filters)
+            .order_by(StudyAbilityAttempt.completed_at.desc(), StudyAbilityAttempt.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        rows = (await db.execute(list_stmt)).scalars().all()
+        return rows, total
+
+    async def get_by_user_id(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        attempt_id: int,
+    ) -> StudyAbilityAttempt | None:
+        """
+        按 ID 获取用户自己的练习记录（防越权）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param attempt_id: 练习记录 ID
+        :return:
+        """
+        return await self.select_model_by_column(
+            db,
+            id=attempt_id,
+            user_id=user_id,
             deleted=0,
         )
 

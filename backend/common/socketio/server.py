@@ -11,9 +11,16 @@ from backend.core.conf import settings
 from backend.database.redis import redis_client
 
 # 创建 Socket.IO 服务器实例
+# socket_timeout=None：pub/sub 长连接需无限等待，避免空闲时误判断连循环
+# 参考 python-socketio 5.16.3 对 redis 客户端管理器异常捕获的修复
 sio = socketio.AsyncServer(
     client_manager=socketio.AsyncRedisManager(
         f'redis://:{urllib.parse.quote(settings.REDIS_PASSWORD)}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DATABASE}',
+        redis_options={
+            'socket_timeout': None,
+            'socket_connect_timeout': settings.REDIS_TIMEOUT,
+            'protocol': 2,
+        },
     ),
     async_mode='asgi',
     cors_allowed_origins=settings.CORS_ALLOWED_ORIGINS,

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Alist 数据结构定义
-"""
+"""OpenList 数据结构定义"""
 
 from __future__ import annotations
 
@@ -11,8 +9,8 @@ from typing import Any, Dict, List, Optional
 
 
 @dataclass
-class AlistFile:
-    """Alist 文件信息"""
+class OpenListFile:
+    """OpenList 文件信息"""
 
     name: str
     path: str
@@ -28,16 +26,16 @@ class AlistFile:
 
 
 @dataclass
-class AlistQuota:
-    """Alist 配额信息"""
+class OpenListQuota:
+    """OpenList 配额信息"""
 
     quota: int
     used: int
 
 
 @dataclass
-class AlistResponse:
-    """Alist API 响应"""
+class OpenListResponse:
+    """OpenList API 响应"""
 
     code: int
     message: str
@@ -45,10 +43,10 @@ class AlistResponse:
 
 
 @dataclass
-class AlistListResponse:
-    """Alist 文件列表响应"""
+class OpenListListResponse:
+    """OpenList 文件列表响应"""
 
-    content: List[AlistFile]
+    content: List[OpenListFile]
     total: int
     readme: str = ''
     header: str = ''
@@ -57,8 +55,8 @@ class AlistListResponse:
 
 
 @dataclass
-class AlistOperationResponse:
-    """Alist 操作响应"""
+class OpenListOperationResponse:
+    """OpenList 操作响应"""
 
     success: bool
     message: str = ''

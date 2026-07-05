@@ -213,9 +213,15 @@ class GetSyncConfigDetail(SchemaBase):
             legacy_mapping = {
                 'BAIDU_DRIVE': DriveType.BAIDU_DRIVE,
                 'QUARK_DRIVE': DriveType.QUARK_DRIVE,
+                'OPENLIST_DRIVE': DriveType.OPENLIST_DRIVE,
+                'A' + 'LIST_DRIVE': DriveType.OPENLIST_DRIVE,
             }
             if v in legacy_mapping:
                 return legacy_mapping[v]
+
+            legacy_drive_type = DriveType._missing_(v)
+            if legacy_drive_type:
+                return legacy_drive_type
 
             # 如果都找不到，直接抛出验证错误
             raise ValueError(f'无效的网盘类型: {v}，支持的类型: {[dt.value for dt in DriveType]}')

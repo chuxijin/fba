@@ -129,3 +129,17 @@ async def load_crawler_config(db: AsyncSession) -> None:
         'CRAWLER_COOKIE': str,
     }
     await _load_config(db, 'crawler', mapping, 'CRAWLER_CONFIG_STATUS')
+
+
+async def load_ai_config(db: AsyncSession) -> None:
+    """
+    获取 AI 配置
+
+    :param db: 数据库会话
+    :return:
+    """
+    mapping = {
+        'AI_EXA_API_KEY': str,
+        'AI_TAVILY_API_KEY': str,
+    }
+    await _load_config(db, 'ai', mapping, 'AI_CONFIG_STATUS')

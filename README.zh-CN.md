@@ -62,7 +62,7 @@
 | `actcode` | 激活码：批量生成、兑换、使用记录追踪 |
 | `membership` | 会员系统：套餐管理、订阅生命周期 |
 | `mall` | 商城 & 支付：微信支付 V3、订单、退款 |
-| `coulddrive` | 云盘管理：百度网盘、夸克网盘、Alist 统一 API |
+| `coulddrive` | 云盘管理：百度网盘、夸克网盘、OpenList 统一 API |
 | `bili` | B 站集成：内容同步（APScheduler 调度） |
 | `jia` | 推送服务：Firebase Cloud Messaging |
 | `invite` | 邀请系统 |
@@ -196,7 +196,7 @@ fba --sql PATH              # 执行 SQL 脚本
 - 与阿奇索订单联动，支持订单号直接激活
 
 ### ☁️ 云盘资源管理
-- 百度网盘、夸克网盘、Alist 统一 API
+- 百度网盘、夸克网盘、OpenList 统一 API
 - 文件列表、上传、下载、批量操作
 
 ### 🔐 安全 & 认证

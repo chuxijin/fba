@@ -123,7 +123,7 @@ class QuarkClient(BaseDriveClient):
         'require login',
     )
 
-    # ========== Alist 风格：配置项声明 ==========
+    # ========== 驱动配置项声明 ==========
 
     @classmethod
     def get_config_items(cls) -> List[ConfigItem]:

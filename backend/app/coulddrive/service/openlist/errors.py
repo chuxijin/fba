@@ -8,18 +8,18 @@ ERRORS = {200: 'success', 500: '服务器内部错误', 401: '未授权', 403: '
 UNKNOWN_ERROR = '未知错误'
 
 
-class AlistApiError(Exception):
+class OpenListApiError(Exception):
     def __init__(self, message: str, error_code: Optional[int] = None, cause=None):
         self.__cause__ = cause
         self.error_code = error_code
         super().__init__(message)
 
 
-def parse_errno(error_code: int, info: Any = None) -> Optional[AlistApiError]:
+def parse_errno(error_code: int, info: Any = None) -> Optional[OpenListApiError]:
     if error_code != 200:
         mean = ERRORS.get(error_code, info or UNKNOWN_ERROR)
         msg = f'error_code: {error_code}, message: {mean}'
-        return AlistApiError(msg, error_code=error_code)
+        return OpenListApiError(msg, error_code=error_code)
     return None
 
 
@@ -36,7 +36,10 @@ def assert_ok(func):
             code = 500  # 如果没有code字段，视为服务器错误
 
         if code != 200:  # 判断 code 是否为 200
-            err = AlistApiError(f'Error code: {code}, message: {info.get("message", "Unknown error")}')
+            err = OpenListApiError(
+                f'Error code: {code}, message: {info.get("message", "Unknown error")}',
+                error_code=code,
+            )
             raise err
         return info.get('data', info)  # 如果成功，返回data字段，如果没有data字段则返回整个响应
 
@@ -48,7 +51,10 @@ def assert_ok(func):
             code = 500  # 如果没有code字段，视为服务器错误
 
         if code != 200:  # 判断 code 是否为 200
-            err = AlistApiError(f'Error code: {code}, message: {info.get("message", "Unknown error")}')
+            err = OpenListApiError(
+                f'Error code: {code}, message: {info.get("message", "Unknown error")}',
+                error_code=code,
+            )
             raise err
         return info.get('data', info)  # 如果成功，返回data字段，如果没有data字段则返回整个响应
 

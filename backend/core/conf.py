@@ -311,6 +311,9 @@ class Settings(BaseSettings):
 
     # HTTP 请求
     HTTP_REQUEST_TIMEOUT: int = 60  # HTTP 请求超时时间（秒）
+    OPENLIST_BASE_URL: str = ''  # OpenList 服务地址
+    OPENLIST_TASK_WAIT_TIMEOUT: int = 3600  # OpenList 复制任务等待超时时间（秒）
+    OPENLIST_TASK_POLL_INTERVAL: float = 2.0  # OpenList 复制任务轮询间隔（秒）
 
     # I18n 配置
     I18N_DEFAULT_LANGUAGE: str = 'zh-CN'
@@ -573,8 +576,19 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = ''
 
     ##################################################
-    # 响应加密
+    # [ App ] Halo 博客
     ##################################################
+    HALO_BASE_URL: str = ''
+    HALO_PAT: str = ''
+
+    ##################################################
+    # [ App ] Halo 博客数据库（直接读取 Docsme 文档）
+    ##################################################
+    HALO_DB_HOST: str = '127.0.0.1'
+    HALO_DB_PORT: int = 3307
+    HALO_DB_USER: str = 'root'
+    HALO_DB_PASSWORD: str = ''
+    HALO_DB_NAME: str = 'halo'
     RESPONSE_ENCRYPT_ENABLED: bool = False
     RESPONSE_ENCRYPT_SECRET_KEY: str = ''  # AES 密钥，32 字符 hex 字符串（16 bytes）
     RESPONSE_ENCRYPT_INCLUDE: list[str] = []  # 加密路径前缀，为空则加密所有 API 路径

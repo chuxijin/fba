@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from math import exp
 from typing import Any
@@ -31,6 +31,7 @@ from backend.app.study_plan.schema.ability import (
     BatchSubmitStudyAbilityAttemptParam,
     BatchSubmitStudyAbilityAttemptResult,
     GetStudyAbilityAttemptDetail,
+    GetStudyAbilityAttemptListItem,
     GetStudyUserCategoryProfileDetail,
     SubmitStudyAbilityAttemptParam,
     SubmitStudyAbilityAttemptResult,
@@ -166,6 +167,65 @@ async def batch_submit_ability_attempts(
         results.append(result)
 
     return BatchSubmitStudyAbilityAttemptResult(total=len(param.attempts), results=results)
+
+
+async def list_user_attempts(
+    db: AsyncSession,
+    user_id: int,
+    ability_key: str | None = None,
+    source: str | None = None,
+    mode: str | None = None,
+    start: date | None = None,
+    end: date | None = None,
+    offset: int = 0,
+    limit: int = 20,
+) -> tuple[list[GetStudyAbilityAttemptListItem], int]:
+    """
+    获取用户能力练习历史列表
+
+    :param db: 数据库会话
+    :param user_id: 学员用户 ID
+    :param ability_key: 能力标识过滤
+    :param source: 来源过滤
+    :param mode: 练习模式过滤
+    :param start: 完成日期起始
+    :param end: 完成日期截止
+    :param offset: 偏移量
+    :param limit: 每页数量
+    :return:
+    """
+    rows, total = await study_ability_attempt_dao.list_by_user(
+        db,
+        user_id=user_id,
+        ability_key=ability_key,
+        source=source,
+        mode=mode,
+        start=start,
+        end=end,
+        offset=offset,
+        limit=limit,
+    )
+    items = [GetStudyAbilityAttemptListItem.model_validate(row) for row in rows]
+    return items, total
+
+
+async def get_user_attempt_detail(
+    db: AsyncSession,
+    user_id: int,
+    client_session_id: str,
+) -> GetStudyAbilityAttemptDetail:
+    """
+    获取单次练习详情（含 records）
+
+    :param db: 数据库会话
+    :param user_id: 学员用户 ID
+    :param client_session_id: 客户端会话 ID
+    :return:
+    """
+    attempt = await study_ability_attempt_dao.get_by_client_session(db, user_id, client_session_id)
+    if attempt is None:
+        raise errors.NotFoundError(msg='能力练习记录不存在或无权访问')
+    return GetStudyAbilityAttemptDetail.model_validate(attempt)
 
 
 async def list_user_category_profiles(

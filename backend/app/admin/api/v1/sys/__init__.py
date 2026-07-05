@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
+from backend.app.admin.api.v1.sys.cat import router as cat_router
 from backend.app.admin.api.v1.sys.category import router as category_router
 from backend.app.admin.api.v1.sys.data_rule import router as data_rule_router
 from backend.app.admin.api.v1.sys.data_scope import router as data_scope_router
@@ -11,15 +12,18 @@ from backend.app.admin.api.v1.sys.file import router as file_router
 from backend.app.admin.api.v1.sys.menu import router as menu_router
 from backend.app.admin.api.v1.sys.plugin import router as plugin_router
 from backend.app.admin.api.v1.sys.role import router as role_router
+from backend.app.admin.api.v1.sys.tag import router as tag_router
 from backend.app.admin.api.v1.sys.user import router as user_router
 from backend.app.admin.api.v1.sys.dashboard import router as dashboard_router
 
 router = APIRouter(prefix='/sys')
 
+router.include_router(cat_router, prefix='/cats', tags=['系统分类（新版）'])
 router.include_router(category_router, prefix='/categories', tags=['系统分类'])
 router.include_router(dept_router, prefix='/depts', tags=['系统部门'])
 router.include_router(menu_router, prefix='/menus', tags=['系统菜单'])
 router.include_router(role_router, prefix='/roles', tags=['系统角色'])
+router.include_router(tag_router, prefix='/tags', tags=['系统标签'])
 router.include_router(user_router, prefix='/users', tags=['系统用户'])
 router.include_router(data_rule_router, prefix='/data-rules', tags=['系统数据规则'])
 router.include_router(data_scope_router, prefix='/data-scopes', tags=['系统数据范围'])

@@ -96,7 +96,7 @@ async def mark_user_tokens_invalid(
     :param exclude_session_uuid: 排除的会话 UUID
     :return:
     """
-    keys = await redis_client.get_prefix(f'{token_prefix}:{user_id}:')
+    keys = await redis_client.get_by_prefix(f'{token_prefix}:{user_id}:')
     for key in keys:
         session_uuid = key.rsplit(':', 1)[-1]
         if exclude_session_uuid and session_uuid == exclude_session_uuid:
@@ -260,7 +260,7 @@ async def create_access_token(user_id: int, *, multi_login: bool, **kwargs) -> A
 
     if not multi_login:
         await mark_user_sessions_invalid(user_id, reason=TokenInvalidReason.session_replaced)
-        await redis_client.delete_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user_id}')
+        await redis_client.delete_by_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user_id}')
 
     await redis_client.set(
         f'{settings.TOKEN_REDIS_PREFIX}:{user_id}:{session_uuid}',
@@ -297,7 +297,7 @@ async def create_refresh_token(session_uuid: str, user_id: int, *, multi_login: 
 
     if not multi_login:
         await mark_user_refresh_sessions_invalid(user_id, reason=TokenInvalidReason.session_replaced)
-        await redis_client.delete_prefix(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}')
+        await redis_client.delete_by_prefix(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}')
 
     await redis_client.set(
         f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}:{session_uuid}',

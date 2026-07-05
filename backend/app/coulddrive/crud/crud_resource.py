@@ -111,7 +111,10 @@ class CRUDResource(CRUDPlus[Resource]):
         # 关键词搜索
         if params.keyword:
             keyword_filter = or_(
-                self.model.title.ilike(f'%{params.keyword}%'), self.model.main_name.ilike(f'%{params.keyword}%')
+                self.model.remark.ilike(f'%{params.keyword}%'),
+                self.model.title.ilike(f'%{params.keyword}%'),
+                self.model.org_name.ilike(f'%{params.keyword}%'),
+                self.model.resource_intro.ilike(f'%{params.keyword}%'),
             )
             filters.append(keyword_filter)
 
@@ -647,7 +650,6 @@ class CRUDResource(CRUDPlus[Resource]):
         # 转换为字典格式（只包含向量化需要的字段）
         resource_data = {
             'id': resource.id,
-            'description': resource.description,
             'resource_intro': resource.resource_intro,
         }
 
@@ -657,9 +659,6 @@ class CRUDResource(CRUDPlus[Resource]):
         resource_intro = (resource_data.get('resource_intro') or '').strip()
         if resource_intro:
             text_parts.append(resource_intro)
-        description = (resource_data.get('description') or '').strip()
-        if description:
-            text_parts.append(description)
         combined_text = '\n'.join(text_parts)
 
         if not combined_text:
@@ -707,8 +706,6 @@ class CRUDResource(CRUDPlus[Resource]):
                     text_parts = []
                     if resource.resource_intro:
                         text_parts.append(resource.resource_intro.strip())
-                    if resource.description:
-                        text_parts.append(resource.description.strip())
                     texts.append('\n'.join(text_parts))
 
                 vectors = await batch_embed(texts, batch_size=batch_size)

@@ -23,7 +23,8 @@ values
 (2048602512818307072, '任务周期类型', 'task_period_type', '定时任务周期类型', now(), null),
 (2048602512881221632, '通知公告', 'notice', '通知类型', now(), null),
 (2048602512948330496, '在线状态', 'user_online_status', '用户在线状态', now(), null),
-(2048602513015439360, '插件类型', 'sys_plugin_type', '插件类型', now(), null);
+(2048602513015439360, '插件类型', 'sys_plugin_type', '插件类型', now(), null),
+(2048602515372638208, '资源类型', 'resource_type', '资源管理资源类型', now(), null);
 
 insert into sys_dict_data (id, type_code, label, value, color, sort, status, remark, type_id, created_time, updated_time)
 values
@@ -62,4 +63,10 @@ values
 (2048602515104202752, 'user_online_status', '离线', '0', 'warning', 1, 1, '用户离线状态', 2048602512948330496, now(), null),
 (2048602515171311616, 'user_online_status', '在线', '1', 'success', 2, 1, '用户在线状态', 2048602512948330496, now(), null),
 (2048602515238420480, 'sys_plugin_type', '压缩包', '0', 'gold', 1, 1, '插件类型-压缩包', 2048602513015439360, now(), null),
-(2048602515305529344, 'sys_plugin_type', 'GIT', '1', 'processing', 2, 1, '插件类型-GIT', 2048602513015439360, now(), null);
+(2048602515305529344, 'sys_plugin_type', 'GIT', '1', 'processing', 2, 1, '插件类型-GIT', 2048602513015439360, now(), null),
+(2048602515439747072, 'resource_type', '课程', '课程', 'blue', 1, 1, '课程资源', 2048602515372638208, now(), null),
+(2048602515506855936, 'resource_type', '电子书', '电子书', 'green', 2, 1, '电子书资源', 2048602515372638208, now(), null),
+(2048602515573964800, 'resource_type', '笔记', '笔记', 'cyan', 3, 1, '笔记资源', 2048602515372638208, now(), null),
+(2048602515641073664, 'resource_type', '软件', '软件', 'purple', 4, 1, '软件资源', 2048602515372638208, now(), null),
+(2048602515708182528, 'resource_type', '真题', '真题', 'orange', 5, 1, '真题资源', 2048602515372638208, now(), null),
+(2048602515775291392, 'resource_type', '其他', '其他', 'default', 6, 1, '其他资源', 2048602515372638208, now(), null);

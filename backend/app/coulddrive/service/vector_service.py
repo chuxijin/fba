@@ -113,11 +113,6 @@ class VectorService:
         if resource_intro:
             text_parts.append(resource_intro)
 
-        # 2. 描述（次要，补充说明）
-        description = (resource_data.get('description') or '').strip()
-        if description:
-            text_parts.append(description)
-
         # 组合所有文本
         combined_text = '\n'.join(text_parts)
 

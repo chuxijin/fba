@@ -31,7 +31,8 @@ values
 (9, '任务周期类型', 'task_period_type', '定时任务周期类型', now(), null),
 (10, '通知公告', 'notice', '通知类型', now(), null),
 (11, '在线状态', 'user_online_status', '用户在线状态', now(), null),
-(12, '插件类型', 'sys_plugin_type', '插件类型', now(), null);
+(12, '插件类型', 'sys_plugin_type', '插件类型', now(), null),
+(13, '资源类型', 'resource_type', '资源管理资源类型', now(), null);
 
 insert into sys_dict_data (id, type_code, label, value, color, sort, status, remark, type_id, created_time, updated_time)
 values
@@ -70,7 +71,13 @@ values
 (33, 'user_online_status', '离线', '0', 'warning', 1, 1, '用户离线状态', 11, now(), null),
 (34, 'user_online_status', '在线', '1', 'success', 2, 1, '用户在线状态', 11, now(), null),
 (35, 'sys_plugin_type', '压缩包', '0', 'gold', 1, 1, '插件类型-压缩包', 12, now(), null),
-(36, 'sys_plugin_type', 'GIT', '1', 'processing', 2, 1, '插件类型-GIT', 12, now(), null);
+(36, 'sys_plugin_type', 'GIT', '1', 'processing', 2, 1, '插件类型-GIT', 12, now(), null),
+(37, 'resource_type', '课程', '课程', 'blue', 1, 1, '课程资源', 13, now(), null),
+(38, 'resource_type', '电子书', '电子书', 'green', 2, 1, '电子书资源', 13, now(), null),
+(39, 'resource_type', '笔记', '笔记', 'cyan', 3, 1, '笔记资源', 13, now(), null),
+(40, 'resource_type', '软件', '软件', 'purple', 4, 1, '软件资源', 13, now(), null),
+(41, 'resource_type', '真题', '真题', 'orange', 5, 1, '真题资源', 13, now(), null),
+(42, 'resource_type', '其他', '其他', 'default', 6, 1, '其他资源', 13, now(), null);
 
 select setval(pg_get_serial_sequence('sys_dict_type', 'id'),coalesce(max(id), 0) + 1, true) from sys_dict_type;
 select setval(pg_get_serial_sequence('sys_dict_data', 'id'),coalesce(max(id), 0) + 1, true) from sys_dict_data;

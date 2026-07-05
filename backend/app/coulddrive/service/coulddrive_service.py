@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import importlib
+
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -30,7 +32,7 @@ from backend.app.coulddrive.schema.user import BaseUserInfo, RelationshipItem
 from backend.common.log import log
 
 # ============================================================
-# 第一部分：配置项定义（学习 Alist Items）
+# 第一部分：配置项定义（驱动自描述）
 # ============================================================
 
 
@@ -46,7 +48,7 @@ class ConfigItemType:
 
 class ConfigItem(BaseModel):
     """
-    驱动配置项定义 - Alist 风格
+    驱动配置项定义
 
     用于驱动声明需要的配置参数，前端可根据此动态生成表单
     """
@@ -62,13 +64,13 @@ class ConfigItem(BaseModel):
 
 
 # ============================================================
-# 第二部分：驱动注册表（学习 Alist RegisterDriver）
+# 第二部分：驱动注册表
 # ============================================================
 
 
 class DriverRegistry:
     """
-    驱动注册表 - Alist 核心机制
+    驱动注册表
 
     功能：
     1. 自动注册驱动类
@@ -82,6 +84,22 @@ class DriverRegistry:
     """
 
     _drivers: dict[DriveType, type['BaseDriveClient']] = {}
+    _drivers_loaded: bool = False
+
+    @classmethod
+    def ensure_drivers_loaded(cls) -> None:
+        """确保驱动模块已导入并完成注册"""
+        if cls._drivers_loaded:
+            return
+
+        cls._drivers_loaded = True
+        try:
+            importlib.import_module('backend.app.coulddrive.service.baidu.client')
+            importlib.import_module('backend.app.coulddrive.service.openlist.client')
+            importlib.import_module('backend.app.coulddrive.service.quark.client')
+        except Exception:
+            cls._drivers_loaded = False
+            raise
 
     @classmethod
     def register(cls, drive_type: DriveType):
@@ -114,11 +132,12 @@ class DriverRegistry:
     @classmethod
     def get_all_drivers(cls) -> dict[DriveType, type['BaseDriveClient']]:
         """获取所有已注册的驱动"""
+        cls.ensure_drivers_loaded()
         return cls._drivers.copy()
 
 
 # ============================================================
-# 第三部分：驱动基类（学习 Alist Driver Interface）
+# 第三部分：驱动基类
 # ============================================================
 
 
@@ -132,7 +151,7 @@ class DriveAuthError(Exception):
 
 class BaseDriveClient(ABC):
     """
-    网盘驱动基类 - Alist 风格
+    网盘驱动基类
 
     特点：
     1. ABC 抽象基类，强制子类实现关键方法
@@ -190,13 +209,13 @@ class BaseDriveClient(ABC):
         """驱动类型标识"""
         pass
 
-    # ========== 配置相关（Alist 风格）==========
+    # ========== 配置相关 ==========
 
     @classmethod
     @abstractmethod
     def get_config_items(cls) -> list[ConfigItem]:
         """
-        声明驱动需要的配置项 - Alist Items() 机制
+        声明驱动需要的配置项
 
         每个驱动自己声明需要什么配置，前端可根据此动态生成表单
 
@@ -462,6 +481,7 @@ class CouldDriveService:
             return self._client
 
         auth_data, drive_type = await self._ensure_auth_info()
+        DriverRegistry.ensure_drivers_loaded()
         driver_class = DriverRegistry.get_driver_class(drive_type)
         if not driver_class:
             raise ValueError(f'未注册的驱动类型: {drive_type}')
@@ -584,11 +604,4 @@ class CouldDriveService:
         return await self._call('remove', params, **kwargs)
 
 
-# ============================================================
-# 驱动自动注册（导入驱动模块触发装饰器）
-# ============================================================
-
-# 导入所有驱动模块，触发 @DriverRegistry.register() 装饰器
-from backend.app.coulddrive.service.alist.client import AlistClient  # noqa: F401, E402
-from backend.app.coulddrive.service.baidu.client import BaiduClient  # noqa: F401, E402
-from backend.app.coulddrive.service.quark.client import QuarkClient  # noqa: F401, E402
+# 驱动模块由 DriverRegistry.ensure_drivers_loaded 懒加载，避免驱动直连导入时循环引用

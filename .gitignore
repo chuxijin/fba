@@ -94,6 +94,7 @@ backend/scripts/quality.sh
 .claude/
 .serena/
 .agents/
+.workbuddy/
 .superpowers/
 superpowers/
 .codegraph/

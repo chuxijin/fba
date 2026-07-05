@@ -62,7 +62,7 @@ A comprehensive full-stack platform for civil service exam preparation, powered 
 | `actcode` | Activation code: batch generation, redemption, usage tracking |
 | `membership` | Membership system: plans, subscription management |
 | `mall` | Mall & payments: WeChat Pay V3, orders, refunds |
-| `coulddrive` | Cloud drive: Baidu NetDisk, Quark Drive, Alist unified API |
+| `coulddrive` | Cloud drive: Baidu NetDisk, Quark Drive, OpenList unified API |
 | `bili` | Bilibili integration: content sync with APScheduler |
 | `jia` | Push notifications: Firebase Cloud Messaging |
 | `invite` | Invite system |
@@ -196,7 +196,7 @@ fba --sql PATH              # Execute SQL script
 - Order-based activation (Agiso integration)
 
 ### ☁️ Cloud Drive
-- Unified API for Baidu NetDisk, Quark Drive, Alist
+- Unified API for Baidu NetDisk, Quark Drive, OpenList
 - File listing, upload, download, batch operations
 
 ### 🔐 Security & Auth
