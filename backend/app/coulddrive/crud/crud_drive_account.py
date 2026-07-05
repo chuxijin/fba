@@ -8,6 +8,7 @@ from sqlalchemy.orm import noload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.coulddrive.model.user import DriveAccount
+from backend.app.coulddrive.schema.enum import DriveType
 from backend.app.coulddrive.schema.user import CreateDriveAccountParam, UpdateDriveAccountParam
 
 if TYPE_CHECKING:
@@ -36,7 +37,12 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         :param type: 网盘类型
         :return:
         """
-        return await self.select_model_by_column(db, username=username, type=type)
+        stmt = select(self.model).where(
+            self.model.username == username,
+            self.model.type.in_(DriveType.compatible_values(type)),
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
 
     async def get_list(self, type: str | None, is_valid: bool | None) -> Select:
         """
@@ -50,7 +56,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
 
         filters = []
         if type is not None:
-            filters.append(self.model.type == type)
+            filters.append(self.model.type.in_(DriveType.compatible_values(type)))
         if is_valid is not None:
             filters.append(self.model.is_valid == is_valid)
 
@@ -97,7 +103,7 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         """
         stmt = (
             select(self.model)
-            .where(self.model.type == type, self.model.is_valid.is_(True))
+            .where(self.model.type.in_(DriveType.compatible_values(type)), self.model.is_valid.is_(True))
             .options(noload(DriveAccount.sync_configs), noload(DriveAccount.resources))
         )
         result = await db.execute(stmt)
@@ -192,6 +198,9 @@ class CRUDDriveAccount(CRUDPlus[DriveAccount]):
         existing_user = await self.get_by_username(db, username=user_info.username, type=drive_type)
 
         if existing_user:
+            if existing_user.type != drive_type:
+                existing_user.type = drive_type
+
             # 用户已存在，更新信息（包括 user_id，以防它变化了）
             update_data = UpdateDriveAccountParam(
                 user_id=user_info.user_id,

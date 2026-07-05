@@ -105,7 +105,7 @@ def _extract_shorturl_from_url(url: str) -> str:
 
 @DriverRegistry.register(DriveType.BAIDU_DRIVE)
 class BaiduClient(BaseDriveClient):
-    """百度网盘 PCS API - Alist 风格驱动
+    """百度网盘 PCS API 驱动
 
     这是对`BaiduPCS`的封装。它将原始BaiduPCS请求的响应内容解析为一些内部数据结构。
 
@@ -117,7 +117,7 @@ class BaiduClient(BaseDriveClient):
     # 百度认证相关错误码
     AUTH_ERROR_CODES: set[int] = {-4, -5, -6, -11, 3, 31041, 31042, 31044, 31045}
 
-    # ========== Alist 风格：配置项声明 ==========
+    # ========== 驱动配置项声明 ==========
 
     @classmethod
     def get_config_items(cls) -> List[ConfigItem]:

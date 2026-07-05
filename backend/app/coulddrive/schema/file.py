@@ -83,19 +83,19 @@ class RenameRuleDefinition(SchemaBase):
 
 
 class ShareSourceDefinition(SchemaBase):
-    """分享源定义"""
+    """同步源定义"""
 
-    file_path: str = Field(..., description='分享内部路径')
-    source_type: str = Field(..., description='分享来源类型')
-    source_id: str = Field(..., description='分享来源ID')
+    file_path: str = Field(..., description='源路径')
+    source_type: str = Field(..., description='来源类型')
+    source_id: str = Field('', description='来源 ID，local 源可为空')
     ext_params: dict[str, Any] = Field(default_factory=dict, description='扩展参数')
 
     @field_validator('source_type')
     @classmethod
     def check_share_source_type(cls, v: str) -> str:
-        """验证分享来源类型"""
-        if v not in ['friend', 'group', 'link']:
-            raise ValueError("分享来源类型必须是 'friend' 或 'group' 或 'link'")
+        """验证来源类型"""
+        if v not in ['local', 'friend', 'group', 'link']:
+            raise ValueError("来源类型必须是 'local'、'friend'、'group' 或 'link'")
         return v
 
 

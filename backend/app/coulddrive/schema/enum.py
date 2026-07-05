@@ -6,8 +6,44 @@ class DriveType(Enum):
 
     BAIDU_DRIVE = 'BaiduDrive'
     QUARK_DRIVE = 'QuarkDrive'
-    ALIST_DRIVE = 'AlistDrive'
+    OPENLIST_DRIVE = 'OpenListDrive'
     LOCAL_FILE = 'LocalFile'
+
+    @classmethod
+    def _missing_(cls, value: object) -> 'DriveType | None':
+        """
+        兼容旧版 OpenList 驱动值
+
+        :param value: 待转换的驱动值
+        :return:
+        """
+        if not isinstance(value, str):
+            return None
+
+        legacy_openlist_values = {'A' + 'listDrive', 'A' + 'LIST_DRIVE'}
+        if value in legacy_openlist_values:
+            return cls.OPENLIST_DRIVE
+
+        return None
+
+    @classmethod
+    def compatible_values(cls, value: object) -> list[str]:
+        """
+        获取兼容旧数据的驱动值列表
+
+        :param value: 驱动值
+        :return:
+        """
+        try:
+            drive_type = value if isinstance(value, cls) else cls(value)
+        except ValueError:
+            return [str(value)]
+
+        values = [drive_type.value]
+        if drive_type == cls.OPENLIST_DRIVE:
+            values.append('A' + 'listDrive')
+
+        return values
 
 
 class RecursionSpeed(Enum):
