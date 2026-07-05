@@ -18,6 +18,14 @@ alwaysApply: true
     - SQLAlchemy 2.0（如果使用 ORM 功能）
     - SQLAlchemy 配置: @backend\database\db.py
 
+## MCP 工具路由规则
+
+### 数据库操作
+
+- 本地开发库使用 `fba_dev` MCP，schema 固定为 `public`
+- 生产/预发库使用对应 MCP，业务 schema 固定为 `fba`
+- `DATABASE_SCHEMA` 在项目代码里表示数据库名，不表示 PostgreSQL schema，不能为了使用 `public` schema 而改成 `public`
+
 ## SQLAlchemy 规范
 
 - 模型类文档只需描述它是什么表
