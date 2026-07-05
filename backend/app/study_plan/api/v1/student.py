@@ -49,11 +49,17 @@ from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter(
-    dependencies=[DependsJwtAuth, Depends(DependsStudyPlanWhitelist)],
+    dependencies=[DependsJwtAuth],
 )
+STUDY_PLAN_WHITELIST_DEPENDENCIES = [Depends(DependsStudyPlanWhitelist)]
 
 
-@router.get('/today', summary='获取今日计划', response_model=ResponseSchemaModel[TodayStudyPlanDetail])
+@router.get(
+    '/today',
+    summary='获取今日计划',
+    response_model=ResponseSchemaModel[TodayStudyPlanDetail],
+    dependencies=STUDY_PLAN_WHITELIST_DEPENDENCIES,
+)
 async def study_plan_get_today(request: Request, db: CurrentSession) -> ResponseSchemaModel[TodayStudyPlanDetail]:
     detail = await get_today_plan(db, request.user.id)
     return response_base.success(data=detail)
@@ -176,6 +182,7 @@ async def study_plan_get_ability_profile(
     '/items/{item_id}',
     summary='获取计划项详情',
     response_model=ResponseSchemaModel[GetStudyPlanItemDetail],
+    dependencies=STUDY_PLAN_WHITELIST_DEPENDENCIES,
 )
 async def study_plan_get_item(
     request: Request,
@@ -190,6 +197,7 @@ async def study_plan_get_item(
     '/items/{item_id}/start',
     summary='启动计划项',
     response_model=ResponseSchemaModel[StartStudyPlanItemResult],
+    dependencies=STUDY_PLAN_WHITELIST_DEPENDENCIES,
 )
 async def study_plan_start(
     request: Request,
@@ -204,6 +212,7 @@ async def study_plan_start(
     '/items/{item_id}/complete',
     summary='提交计划项完成',
     response_model=ResponseSchemaModel[GetStudyPlanRecordDetail],
+    dependencies=STUDY_PLAN_WHITELIST_DEPENDENCIES,
 )
 async def study_plan_complete(
     request: Request,
@@ -215,7 +224,12 @@ async def study_plan_complete(
     return response_base.success(data=GetStudyPlanRecordDetail.model_validate(record))
 
 
-@router.get('/me/plans', summary='我的计划列表', response_model=ResponseSchemaModel[list[GetStudyPlanDetail]])
+@router.get(
+    '/me/plans',
+    summary='我的计划列表',
+    response_model=ResponseSchemaModel[list[GetStudyPlanDetail]],
+    dependencies=STUDY_PLAN_WHITELIST_DEPENDENCIES,
+)
 async def study_plan_list_my_plans(
     request: Request,
     db: CurrentSession,
@@ -226,7 +240,12 @@ async def study_plan_list_my_plans(
     )
 
 
-@router.get('/me/uncompleted-count', summary='历史未完成项数量（提醒铃铛）', response_model=ResponseSchemaModel[int])
+@router.get(
+    '/me/uncompleted-count',
+    summary='历史未完成项数量（提醒铃铛）',
+    response_model=ResponseSchemaModel[int],
+    dependencies=STUDY_PLAN_WHITELIST_DEPENDENCIES,
+)
 async def study_plan_my_uncompleted_count(
     request: Request,
     db: CurrentSession,
@@ -239,6 +258,7 @@ async def study_plan_my_uncompleted_count(
     '/me/plans/{plan_id}/items',
     summary='我的某计划的所有 items（总体规划页）',
     response_model=ResponseSchemaModel[list[GetStudyPlanItemDetail]],
+    dependencies=STUDY_PLAN_WHITELIST_DEPENDENCIES,
 )
 async def study_plan_list_my_plan_items(
     request: Request,
@@ -255,6 +275,7 @@ async def study_plan_list_my_plan_items(
     '/me/plans/{plan_id}/progress',
     summary='我的某计划的进度（总体规划页顶部）',
     response_model=ResponseSchemaModel[StudyPlanProgress],
+    dependencies=STUDY_PLAN_WHITELIST_DEPENDENCIES,
 )
 async def study_plan_my_plan_progress(
     request: Request,
