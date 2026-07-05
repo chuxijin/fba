@@ -13,6 +13,7 @@ from backend.app.invite.api.router import v1 as invite_v1
 from backend.app.mall.api.router import v1 as mall_v1
 from backend.app.payment.api.router import v1 as payment_v1
 from backend.app.mcp.api.router import v1 as mcp_v1
+from backend.app.pomodoro.api.router import v1 as pomodoro_v1
 from backend.app.quest.api.router import v1 as quest_v1
 from backend.app.question_generation.api.router import v1 as question_generation_v1
 from backend.app.question_bank.api.router import v1 as question_bank_v1
@@ -43,3 +44,4 @@ router.include_router(quest_v1)
 router.include_router(cms_v1)
 router.include_router(vocab_v1)
 router.include_router(study_plan_v1)
+router.include_router(pomodoro_v1)
