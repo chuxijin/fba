@@ -69,6 +69,33 @@ class CRUDPomodoroHabitCheckin(CRUDPlus[PomodoroHabitCheckin]):
             checkin_date__eq=checkin_date,
         )
 
+    async def get_by_habits_and_date(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        habit_ids: list[int],
+        checkin_date: date,
+    ) -> list[PomodoroHabitCheckin]:
+        """
+        获取多个习惯当日打卡
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param habit_ids: 习惯 ID 列表
+        :param checkin_date: 打卡日期
+        :return:
+        """
+        if not habit_ids:
+            return []
+
+        stmt = select(PomodoroHabitCheckin).where(
+            PomodoroHabitCheckin.user_id == user_id,
+            PomodoroHabitCheckin.habit_id.in_(habit_ids),
+            PomodoroHabitCheckin.checkin_date == checkin_date,
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_select_by_user(
         self,
         user_id: int,

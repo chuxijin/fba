@@ -66,6 +66,10 @@ class GetPomodoroHabitDetail(PomodoroHabitSchemaBase):
     repeat_days: str | None = Field(None, description='自定义重复星期，逗号分隔，0=周一...6=周日')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
+    checkin_count: int = Field(0, description='今日打卡次数')
+    today_checkin_count: int = Field(0, description='今日打卡次数')
+    checked_today: bool = Field(False, description='今日是否已打卡')
+    is_checked_today: bool = Field(False, description='今日是否已打卡')
     tags: list[GetSysTagTargetWithTag] = Field(default_factory=list, description='标签列表')
     categories: list[GetSysCatTargetWithCat] = Field(default_factory=list, description='分类列表')
 

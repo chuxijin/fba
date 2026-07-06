@@ -54,6 +54,7 @@ class PomodoroTaskService:
         :param keyword: 标题关键词
         :return:
         """
+        await PomodoroTaskService.generate_repeat_tasks(db=db, user_id=user_id)
         stmt = await pomodoro_task_dao.get_select_by_user(user_id=user_id, status=status, keyword=keyword)
         return await paging_data(db, stmt, schema_cls=GetPomodoroTaskListItem)
 
@@ -214,6 +215,9 @@ class PomodoroTaskService:
         :return:
         """
         repeat_type = template.repeat_type
+        if template.schedule_date is not None and target_date <= template.schedule_date:
+            return False
+
         if repeat_type == PomodoroRepeatType.daily.value:
             return True
 

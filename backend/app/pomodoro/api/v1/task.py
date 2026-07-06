@@ -34,7 +34,7 @@ router = APIRouter(prefix='/pomodoro/tasks', tags=['番茄任务'], dependencies
 )
 async def get_pomodoro_task_list(
     request: Request,
-    db: CurrentSession,
+    db: CurrentSessionTransaction,
     status: Annotated[PomodoroTaskStatus | None, Query(description='任务状态')] = None,
     keyword: Annotated[str | None, Query(description='标题关键词')] = None,
 ) -> ResponseModel:

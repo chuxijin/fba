@@ -10,6 +10,7 @@ from backend.app.pomodoro.schema.habit import (
     CreatePomodoroHabitCheckinInternal,
     CreatePomodoroHabitInternal,
     CreatePomodoroHabitParam,
+    GetPomodoroHabitDetail,
     UpdatePomodoroHabitParam,
 )
 from backend.common.exception import errors
@@ -51,7 +52,9 @@ class PomodoroHabitService:
         :return:
         """
         stmt = await pomodoro_habit_dao.get_select_by_user(user_id=user_id, status=status)
-        return await paging_data(db, stmt)
+        data = await paging_data(db, stmt, schema_cls=GetPomodoroHabitDetail)
+        await PomodoroHabitService._fill_today_checkin_status(db=db, user_id=user_id, page_data=data)
+        return data
 
     @staticmethod
     async def create(*, db: AsyncSession, user_id: int, obj: CreatePomodoroHabitParam) -> PomodoroHabit:
@@ -191,6 +194,40 @@ class PomodoroHabitService:
         """
         stmt = await pomodoro_habit_checkin_dao.get_select_by_user(user_id=user_id, year=year, month=month)
         return await paging_data(db, stmt)
+
+    @staticmethod
+    async def _fill_today_checkin_status(*, db: AsyncSession, user_id: int, page_data: dict) -> None:
+        """
+        填充今日习惯打卡状态
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param page_data: 分页数据
+        :return:
+        """
+        items = page_data.get('items')
+        if not isinstance(items, list) or not items:
+            return
+
+        habit_ids = [int(item['id']) for item in items if isinstance(item, dict) and item.get('id')]
+        checkins = await pomodoro_habit_checkin_dao.get_by_habits_and_date(
+            db,
+            user_id=user_id,
+            habit_ids=habit_ids,
+            checkin_date=timezone.now().date(),
+        )
+        checkin_count_map = {checkin.habit_id: checkin.count for checkin in checkins}
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            checkin_count = checkin_count_map.get(int(item['id']), 0)
+            checked_today = checkin_count > 0
+            item['checkin_count'] = checkin_count
+            item['today_checkin_count'] = checkin_count
+            item['checked_today'] = checked_today
+            item['is_checked_today'] = checked_today
 
 
 pomodoro_habit_service: PomodoroHabitService = PomodoroHabitService()
