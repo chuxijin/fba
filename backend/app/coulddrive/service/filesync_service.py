@@ -1322,6 +1322,7 @@ class FileSyncService:
         sync_method: str,
         recursion_speed: RecursionSpeed,
         item_filter: ItemFilter | None,
+        rename_rules: list[RenameRule] | None,
         current_depth: int,
         max_depth: int,
         stats: dict[str, Any],
@@ -1342,6 +1343,7 @@ class FileSyncService:
         :param sync_method: 同步方式
         :param recursion_speed: 递归速度
         :param item_filter: 过滤器
+        :param rename_rules: 重命名规则
         :param current_depth: 当前递归深度
         :param max_depth: 最大递归深度
         :param stats: 同步统计信息字典
@@ -1479,6 +1481,7 @@ class FileSyncService:
                     sync_method,
                     recursion_speed,
                     item_filter,
+                    rename_rules,
                     current_depth + 1,
                     max_depth,
                     stats,
