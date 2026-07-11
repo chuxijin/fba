@@ -60,6 +60,10 @@ def get_local_beat_schedule() -> dict[str, dict[str, Any]]:
             'task': 'check_expired_memberships',
             'schedule': TzAwareCrontab('10', '0'),
         },
+        '关闭超时支付订单': {
+            'task': 'close_timeout_pending_pay_orders',
+            'schedule': TzAwareCrontab('*/5'),
+        },
         '同步资源热度评分': {
             'task': 'sync_resource_hot_scores',
             'schedule': TzAwareCrontab('0', '1'),

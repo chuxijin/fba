@@ -18,7 +18,7 @@ class PaymentProvider(ABC):
         """
 
     @abstractmethod
-    async def query(self, *, order_no: str) -> dict:
+    async def query(self, *, order_no: str, **kwargs) -> dict:
         """
         查询订单支付状态
 
@@ -27,7 +27,7 @@ class PaymentProvider(ABC):
         """
 
     @abstractmethod
-    async def close(self, *, order_no: str) -> None:
+    async def close(self, *, order_no: str, **kwargs) -> None:
         """
         关闭订单
 
@@ -37,7 +37,7 @@ class PaymentProvider(ABC):
 
     @abstractmethod
     async def refund(
-        self, *, order_no: str, refund_no: str, total_fee: int, refund_fee: int, reason: str | None = None
+        self, *, order_no: str, refund_no: str, total_fee: int, refund_fee: int, reason: str | None = None, **kwargs
     ) -> dict:
         """
         申请退款
@@ -71,3 +71,13 @@ class PaymentProvider(ABC):
         :return:
         """
         return callback_data
+
+    def normalize_query_data(self, query_data: dict, *, order_no: str) -> dict:
+        """
+        将查询结果归一化为标准格式
+
+        :param query_data: 原始查询结果
+        :param order_no: 业务订单号
+        :return:
+        """
+        return query_data

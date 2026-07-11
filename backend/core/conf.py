@@ -472,6 +472,8 @@ class Settings(BaseSettings):
     ##################################################
     # [ App ] 微信支付 V3
     ##################################################
+    PAYMENT_PENDING_ORDER_TIMEOUT_MINUTES: int = 30
+
     # .env 微信支付配置
     WECHAT_PAY_MCH_ID: str = ''
     WECHAT_PAY_API_V3_KEY: str = ''

@@ -10,6 +10,19 @@ from backend.app.payment.model.pay_transaction import PayTransaction
 class CRUDPayTransaction(CRUDPlus[PayTransaction]):
     """支付记录数据库操作类"""
 
+    async def create_from_dict(self, db: AsyncSession, data: dict[str, object]) -> PayTransaction:
+        """
+        通过字典创建支付记录
+
+        :param db: 数据库会话
+        :param data: 支付记录数据
+        :return:
+        """
+        transaction = PayTransaction(**data)
+        db.add(transaction)
+        await db.flush()
+        return transaction
+
     async def get(self, db: AsyncSession, pk: int) -> PayTransaction | None:
         """
         获取支付记录详情

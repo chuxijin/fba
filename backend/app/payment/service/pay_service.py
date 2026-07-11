@@ -3,17 +3,22 @@
 import random
 import string
 
+from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.payment.crud.crud_pay_order import pay_order_dao
 from backend.app.payment.crud.crud_pay_transaction import pay_transaction_dao
 from backend.app.payment.schema.pay import CreatePrepayParam, PrepayResult
 from backend.app.payment.service.notifier import PaymentNotifier
+from backend.app.payment.service.subscription_notifier import subscription_payment_notifier
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.payment import get_provider
 from backend.common.payment.dispatcher import decrypt_callback
+from backend.core.conf import settings
 from backend.utils.timezone import timezone
 
 
@@ -54,6 +59,76 @@ class PayService:
         return int(amount * 100)
 
     @staticmethod
+    def _resolve_paid_time(paid_time: Any = None) -> datetime:
+        """
+        解析支付完成时间
+
+        :param paid_time: 渠道返回的支付时间
+        :return:
+        """
+        if isinstance(paid_time, int | float) and paid_time > 0:
+            return timezone.from_datetime(timezone.to_utc(int(paid_time)))
+        return timezone.now()
+
+    @staticmethod
+    async def _mark_payment_success(
+        *,
+        db: AsyncSession,
+        txn_id: int,
+        order_no: str,
+        trade_no: str,
+        paid_time: datetime,
+        notify_data: dict[str, Any],
+    ) -> None:
+        """
+        标记支付成功并通知业务发放
+
+        :param db: 数据库会话
+        :param txn_id: 支付记录 ID
+        :param order_no: 业务订单号
+        :param trade_no: 第三方交易号
+        :param paid_time: 支付时间
+        :param notify_data: 渠道通知或查询数据
+        :return:
+        """
+        txn = await pay_transaction_dao.get(db, txn_id)
+        if not txn:
+            log.warning(f'支付成功处理未找到支付记录: order_no={order_no}, txn_id={txn_id}')
+            return
+
+        if txn.status != 'paid':
+            await pay_transaction_dao.update_model(
+                db,
+                txn.id,
+                {
+                    'status': 'paid',
+                    'trade_no': trade_no,
+                    'paid_time': paid_time,
+                    'notify_data': notify_data,
+                },
+            )
+
+        pay_order = await pay_order_dao.get_by_order_no(db, order_no)
+        if pay_order and pay_order.status != 'paid':
+            await pay_order_dao.update_model(
+                db,
+                pay_order.id,
+                {
+                    'status': 'paid',
+                    'trade_no': trade_no,
+                    'paid_time': paid_time,
+                },
+            )
+
+        if PayService._notifier:
+            await PayService._notifier.on_payment_success(
+                db=db,
+                order_no=order_no,
+                trade_no=trade_no,
+                paid_amount=txn.amount,
+            )
+
+    @staticmethod
     async def create_prepay(*, db: AsyncSession, params: CreatePrepayParam) -> PrepayResult:
         """
         创建预支付
@@ -86,7 +161,7 @@ class PayService:
             'product_name': params.product_name,
             'created_by': params.user_id,
         }
-        await pay_transaction_dao.create_model(db, txn_data)
+        await pay_transaction_dao.create_from_dict(db, txn_data)
 
         # 调用支付渠道预下单
         provider = get_provider(params.pay_type)
@@ -98,7 +173,10 @@ class PayService:
             description=params.product_name,
             pay_type=params.pay_type,
             openid=params.openid,
+            session_key=params.session_key,
+            product_id=params.product_id,
             payer_ip=params.payer_ip,
+            env=params.env,
         )
 
         log.info(f'预下单成功: order_no={params.order_no}, transaction_no={transaction_no}, pay_type={params.pay_type}')
@@ -125,13 +203,21 @@ class PayService:
             log.error(f'支付回调缺少订单号: {callback_data}')
             return
 
-        txn = await pay_transaction_dao.get_by_order_no(db, order_no, status='pending')
+        txn = await pay_transaction_dao.get_by_order_no(db, order_no)
         if not txn:
             log.warning(f'支付回调未找到待支付记录: order_no={order_no}')
             return
 
         # 幂等：已支付则跳过
         if txn.status == 'paid':
+            pay_order = await pay_order_dao.get_by_order_no(db, order_no)
+            if PayService._notifier and pay_order and pay_order.fulfill_status != 'fulfilled':
+                await PayService._notifier.on_payment_success(
+                    db=db,
+                    order_no=order_no,
+                    trade_no=trade_no or txn.trade_no or '',
+                    paid_amount=txn.amount,
+                )
             log.info(f'支付回调幂等跳过: order_no={order_no}')
             return
 
@@ -139,28 +225,90 @@ class PayService:
             log.warning(f'支付未成功: order_no={order_no}, state={trade_state}')
             return
 
-        now = timezone.now()
-        await pay_transaction_dao.update_model(
-            db,
-            txn.id,
-            {
-                'status': 'paid',
-                'trade_no': trade_no,
-                'paid_time': now,
-                'notify_data': callback_data,
-            },
+        paid_time = PayService._resolve_paid_time(callback_data.get('paid_time'))
+        await PayService._mark_payment_success(
+            db=db,
+            txn_id=txn.id,
+            order_no=order_no,
+            trade_no=trade_no or '',
+            paid_time=paid_time,
+            notify_data=callback_data,
         )
 
-        # 通知业务模块
-        if PayService._notifier:
-            await PayService._notifier.on_payment_success(
-                db=db,
-                order_no=order_no,
-                trade_no=trade_no or '',
-                paid_amount=txn.amount,
-            )
-
         log.info(f'支付回调处理成功: order_no={order_no}, trade_no={trade_no}')
+
+    @staticmethod
+    async def sync_payment_status(
+        *, db: AsyncSession, order_no: str, user_id: int, openid: str | None = None
+    ) -> dict[str, Any]:
+        """
+        主动同步支付状态并发放权益
+
+        :param db: 数据库会话
+        :param order_no: 业务订单号
+        :param user_id: 用户 ID
+        :param openid: 微信 openid
+        :return:
+        """
+        txn = await pay_transaction_dao.get_by_order_no(db, order_no)
+        if not txn:
+            raise errors.NotFoundError(msg='支付记录不存在')
+        if txn.user_id != user_id:
+            raise errors.ForbiddenError(msg='无权查询该支付记录')
+
+        pay_order = await pay_order_dao.get_by_order_no(db, order_no)
+        if not pay_order:
+            raise errors.NotFoundError(msg='支付订单不存在')
+        if pay_order.user_id != user_id:
+            raise errors.ForbiddenError(msg='无权查询该支付订单')
+
+        if txn.status == 'paid':
+            if PayService._notifier and pay_order.fulfill_status != 'fulfilled':
+                await PayService._notifier.on_payment_success(
+                    db=db,
+                    order_no=order_no,
+                    trade_no=txn.trade_no or '',
+                    paid_amount=txn.amount,
+                )
+            pay_order = await pay_order_dao.get_by_order_no(db, order_no)
+            return {
+                'order_no': order_no,
+                'status': pay_order.status if pay_order else 'paid',
+                'fulfill_status': pay_order.fulfill_status if pay_order else 'fulfilled',
+                'paid': True,
+                'fulfilled': bool(pay_order and pay_order.fulfill_status == 'fulfilled'),
+            }
+
+        env = int((pay_order.extra_data or {}).get('env') or 0)
+        if txn.pay_type == 'virtual' and not openid:
+            raise errors.RequestError(msg='确认虚拟支付状态需要微信登录 code')
+
+        provider = get_provider(txn.pay_type)
+        query_result = await provider.query(order_no=order_no, env=env, openid=openid)
+        query_data = provider.normalize_query_data(query_result, order_no=order_no)
+        trade_state = query_data.get('trade_state')
+
+        if trade_state == 'SUCCESS':
+            paid_time = PayService._resolve_paid_time(query_data.get('paid_time'))
+            await PayService._mark_payment_success(
+                db=db,
+                txn_id=txn.id,
+                order_no=order_no,
+                trade_no=str(query_data.get('trade_no') or ''),
+                paid_time=paid_time,
+                notify_data=query_data,
+            )
+        else:
+            log.info(f'主动同步支付状态未支付: order_no={order_no}, state={trade_state}')
+
+        pay_order = await pay_order_dao.get_by_order_no(db, order_no)
+        return {
+            'order_no': order_no,
+            'status': pay_order.status if pay_order else 'pending',
+            'fulfill_status': pay_order.fulfill_status if pay_order else 'pending',
+            'paid': bool(pay_order and pay_order.status == 'paid'),
+            'fulfilled': bool(pay_order and pay_order.fulfill_status == 'fulfilled'),
+        }
 
     @staticmethod
     async def handle_refund_callback(*, db: AsyncSession, headers: dict, body: bytes) -> None:
@@ -199,6 +347,14 @@ class PayService:
                 },
             )
 
+            pay_order = await pay_order_dao.get_by_order_no(db, order_no)
+            if pay_order:
+                await pay_order_dao.update_model(
+                    db,
+                    pay_order.id,
+                    {'status': 'refunded', 'refunded_time': now},
+                )
+
             # 通知业务模块
             if PayService._notifier:
                 await PayService._notifier.on_refund_success(db=db, order_no=order_no)
@@ -227,8 +383,12 @@ class PayService:
         if not txn.pay_type:
             raise errors.ForbiddenError(msg='该记录尚未发起支付')
 
+        pay_order = await pay_order_dao.get_by_order_no(db, order_no)
+        env = int((pay_order.extra_data or {}).get('env') or 0) if pay_order else 0
+        openid = str((pay_order.extra_data or {}).get('openid') or '') if pay_order else ''
+
         provider = get_provider(txn.pay_type)
-        result = await provider.query(order_no=order_no)
+        result = await provider.query(order_no=order_no, env=env, openid=openid or None)
         return result
 
     @staticmethod
@@ -262,6 +422,9 @@ class PayService:
         refund_fee = PayService._yuan_to_fen(actual_refund)
         refund_no = PayService._generate_refund_no()
 
+        pay_order = await pay_order_dao.get_by_order_no(db, order_no)
+        env = int((pay_order.extra_data or {}).get('env') or 0) if pay_order else 0
+
         provider = get_provider(txn.pay_type)
         result = await provider.refund(
             order_no=order_no,
@@ -269,9 +432,9 @@ class PayService:
             total_fee=total_fee,
             refund_fee=refund_fee,
             reason=reason,
+            env=env,
         )
 
-        timezone.now()
         await pay_transaction_dao.update_model(
             db,
             txn.id,
@@ -281,12 +444,18 @@ class PayService:
                 'refund_amount': actual_refund,
             },
         )
+        if pay_order:
+            await pay_order_dao.update_model(
+                db,
+                pay_order.id,
+                {'status': 'refund_pending'},
+            )
 
         log.info(f'退款提交成功: order_no={order_no}, refund_no={refund_no}')
         return {'refund_no': refund_no, 'status': result.get('status', 'PROCESSING')}
 
     @staticmethod
-    async def close_payment(*, db: AsyncSession, order_no: str) -> None:
+    async def close_payment(*, db: AsyncSession, order_no: str) -> bool:
         """
         关闭支付（供订单取消时调用）
 
@@ -294,33 +463,97 @@ class PayService:
         :param order_no: 业务订单号
         :return:
         """
+        pay_order = await pay_order_dao.get_by_order_no(db, order_no)
         txn = await pay_transaction_dao.get_by_order_no(db, order_no, status='pending')
-        if not txn:
-            return
+        if not txn and not pay_order:
+            return False
 
-        try:
-            provider = get_provider(txn.pay_type)
-            await provider.close(order_no=order_no)
-        except Exception as e:
-            log.warning(f'关闭预付单失败: order_no={order_no}, error={e}')
+        should_close_order = bool(pay_order and pay_order.status == 'pending')
+        if not txn and not should_close_order:
+            return False
 
         now = timezone.now()
-        await pay_transaction_dao.update_model(
-            db,
-            txn.id,
-            {'status': 'closed', 'closed_time': now},
-        )
+        if txn:
+            try:
+                env = int((pay_order.extra_data or {}).get('env') or 0) if pay_order else 0
+                provider = get_provider(txn.pay_type)
+                await provider.close(order_no=order_no, env=env)
+            except Exception as e:
+                log.warning(f'关闭预付单失败: order_no={order_no}, error={e}')
+
+            await pay_transaction_dao.update_model(
+                db,
+                txn.id,
+                {'status': 'closed', 'closed_time': now},
+            )
+
+        if should_close_order and pay_order:
+            await pay_order_dao.update_model(db, pay_order.id, {'status': 'closed', 'closed_time': now})
 
         # 通知业务模块
-        if PayService._notifier:
+        if PayService._notifier and should_close_order:
             await PayService._notifier.on_payment_closed(db=db, order_no=order_no)
 
         log.info(f'支付关闭成功: order_no={order_no}')
+        return True
+
+    @staticmethod
+    async def close_timeout_pending_orders(
+        *,
+        db: AsyncSession,
+        timeout_minutes: int | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """
+        批量关闭超时未支付订单
+
+        :param db: 数据库会话
+        :param timeout_minutes: 超时分钟数
+        :param limit: 单次处理上限
+        :return:
+        """
+        effective_timeout = max(int(timeout_minutes or settings.PAYMENT_PENDING_ORDER_TIMEOUT_MINUTES), 1)
+        batch_limit = max(int(limit), 1)
+        threshold = timezone.now() - timedelta(minutes=effective_timeout)
+        orders = await pay_order_dao.get_timeout_pending_orders(
+            db,
+            created_before=threshold,
+            limit=batch_limit,
+        )
+        order_nos = [order.order_no for order in orders]
+        summary: dict[str, Any] = {
+            'timeout_minutes': effective_timeout,
+            'threshold': threshold.isoformat(),
+            'scanned_count': len(order_nos),
+            'closed_count': 0,
+            'skipped_count': 0,
+            'failed_count': 0,
+            'closed_order_nos': [],
+            'skipped_order_nos': [],
+            'failed_order_nos': [],
+        }
+
+        for order_no in order_nos:
+            try:
+                closed = await PayService.close_payment(db=db, order_no=order_no)
+                if not closed:
+                    summary['skipped_order_nos'].append(order_no)
+                    continue
+
+                await db.commit()
+                summary['closed_order_nos'].append(order_no)
+            except Exception as exc:
+                await db.rollback()
+                summary['failed_order_nos'].append(order_no)
+                log.error(f'关闭超时支付订单失败: order_no={order_no}, error={exc}')
+
+        summary['closed_count'] = len(summary['closed_order_nos'])
+        summary['skipped_count'] = len(summary['skipped_order_nos'])
+        summary['failed_count'] = len(summary['failed_order_nos'])
+        return summary
 
 
 pay_service: PayService = PayService()
 
-# 注册商城支付通知器
-from backend.app.mall.service.payment_notifier import mall_payment_notifier
-
-pay_service.register_notifier(mall_payment_notifier)
+# 注册订阅支付通知器
+pay_service.register_notifier(subscription_payment_notifier)

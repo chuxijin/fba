@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class PaymentNotifier(Protocol):
     """支付结果通知接口
 
-    业务模块（如 mall）实现此接口，并通过 register_notifier() 注册。
+    业务模块实现此接口，并通过 register_notifier() 注册。
     payment 模块在支付状态变更时回调对应方法，实现与业务模块的解耦。
     """
 

@@ -3,22 +3,29 @@
 import hashlib
 import hmac
 import json
+import time
 
+from typing import Any
+from xml.etree.ElementTree import Element, ParseError, fromstring
 
 from backend.common.log import log
 from backend.common.payment.base import PaymentProvider
 from backend.core.conf import settings
+from backend.database.redis import redis_client
 
 
 class VirtualPayProvider(PaymentProvider):
     """微信小程序虚拟支付实现"""
 
     API_BASE = 'https://api.weixin.qq.com'
+    ACCESS_TOKEN_CACHE_KEY = 'fba:payment:virtual_pay:access_token'
 
     def __init__(self) -> None:
         self._session = None
+        self._access_token: str | None = None
+        self._access_token_expire_at: float = 0
 
-    async def _get_session(self):
+    async def _get_session(self) -> Any:
         """懒加载 aiohttp ClientSession"""
         if self._session is not None:
             return self._session
@@ -67,11 +74,66 @@ class VirtualPayProvider(PaymentProvider):
         :param env: 0=现网, 1=沙箱
         :return:
         """
-        if env == 1:
-            return settings.VIRTUAL_PAY_SANDBOX_APPKEY
-        return settings.VIRTUAL_PAY_APPKEY
+        appkey = settings.VIRTUAL_PAY_SANDBOX_APPKEY if env == 1 else settings.VIRTUAL_PAY_APPKEY
+        if not appkey:
+            raise ValueError('微信虚拟支付 AppKey 未配置')
+        return appkey
 
-    async def _call_xpay_api(self, uri: str, body: dict, env: int = 0) -> dict:
+    async def _get_access_token(self, *, force_refresh: bool = False) -> str:
+        """
+        获取小程序接口调用凭证
+
+        :param force_refresh: 是否强制刷新
+        :return:
+        """
+        now = time.time()
+        if not force_refresh and self._access_token and now < self._access_token_expire_at:
+            return self._access_token
+
+        if not force_refresh:
+            try:
+                cached_token = await redis_client.get(self.ACCESS_TOKEN_CACHE_KEY)
+                if cached_token:
+                    self._access_token = str(cached_token)
+                    self._access_token_expire_at = now + 300
+                    return self._access_token
+            except Exception as e:
+                log.warning(f'读取微信 access_token 缓存失败: {e}')
+
+        appid = settings.WX_MINIAPP_APPID
+        secret = settings.WX_MINIAPP_SECRET
+        if not appid or not secret:
+            raise ValueError('微信小程序 AppID 或 AppSecret 未配置')
+
+        session = await self._get_session()
+        async with session.get(
+            f'{self.API_BASE}/cgi-bin/token',
+            params={
+                'grant_type': 'client_credential',
+                'appid': appid,
+                'secret': secret,
+            },
+        ) as resp:
+            result = await resp.json()
+
+        access_token = result.get('access_token')
+        if not access_token:
+            log.error(f'获取微信 access_token 失败: {result}')
+            raise RuntimeError(f'获取微信 access_token 失败: {result.get("errmsg", "unknown")}')
+
+        expires_in = int(result.get('expires_in') or 7200)
+        ttl = max(60, expires_in - 300)
+        self._access_token = str(access_token)
+        self._access_token_expire_at = now + ttl
+
+        try:
+            await redis_client.set(self.ACCESS_TOKEN_CACHE_KEY, self._access_token, ex=ttl)
+        except Exception as e:
+            log.warning(f'缓存微信 access_token 失败: {e}')
+
+        return self._access_token
+
+    async def _call_xpay_api(self, uri: str, body: dict[str, Any], env: int = 0) -> dict[str, Any]:
         """
         调用微信虚拟支付服务端 API
 
@@ -84,14 +146,36 @@ class VirtualPayProvider(PaymentProvider):
         appkey = self._get_appkey(env)
         body_str = json.dumps(body, separators=(',', ':'))
         pay_sig = self._calc_pay_sig(uri, body_str, appkey)
+        access_token = await self._get_access_token()
 
-        url = f'{self.API_BASE}{uri}?pay_sig={pay_sig}'
+        async with session.post(
+            f'{self.API_BASE}{uri}',
+            params={'access_token': access_token, 'pay_sig': pay_sig},
+            data=body_str,
+            headers={'Content-Type': 'application/json'},
+        ) as resp:
+            response_text = await resp.text()
 
-        async with session.post(url, data=body_str, headers={'Content-Type': 'application/json'}) as resp:
-            result = await resp.json()
-            return result
+        if not response_text.strip():
+            return {'errcode': 0}
 
-    async def prepay(self, *, order_no: str, total_fee: int, description: str, **kwargs) -> dict:
+        result = json.loads(response_text)
+        if result.get('errcode') in (40001, 40014, 42001):
+            access_token = await self._get_access_token(force_refresh=True)
+            async with session.post(
+                f'{self.API_BASE}{uri}',
+                params={'access_token': access_token, 'pay_sig': pay_sig},
+                data=body_str,
+                headers={'Content-Type': 'application/json'},
+            ) as resp:
+                response_text = await resp.text()
+            if not response_text.strip():
+                return {'errcode': 0}
+            result = json.loads(response_text)
+
+        return result
+
+    async def prepay(self, *, order_no: str, total_fee: int, description: str, **kwargs) -> dict[str, Any]:
         """
         虚拟支付预下单（返回客户端签名参数）
 
@@ -106,8 +190,11 @@ class VirtualPayProvider(PaymentProvider):
         offerid = settings.VIRTUAL_PAY_OFFERID
         openid = kwargs.get('openid')
         session_key = kwargs.get('session_key')
+        product_id = str(kwargs.get('product_id') or order_no)
         env = kwargs.get('env', 0)
 
+        if not offerid:
+            raise ValueError('微信虚拟支付 OfferID 未配置')
         if not openid:
             raise ValueError('虚拟支付必须提供 openid')
         if not session_key:
@@ -119,7 +206,7 @@ class VirtualPayProvider(PaymentProvider):
             'buyQuantity': 1,
             'env': env,
             'currencyType': 'CNY',
-            'productId': order_no,
+            'productId': product_id,
             'goodsPrice': total_fee,
             'outTradeNo': order_no,
             'attach': description,
@@ -134,13 +221,18 @@ class VirtualPayProvider(PaymentProvider):
         # signature: 用户态签名
         signature = self._calc_signature(sign_data, session_key)
 
-        log.info(f'虚拟支付预下单成功: order_no={order_no}')
+        log.info(
+            '虚拟支付预下单成功: '
+            f'order_no={order_no}, product_id={product_id}, env={env}, total_fee={total_fee}, '
+            f'offerid={offerid}, appkey_len={len(appkey)}, appkey_tail={appkey[-4:]}'
+        )
         return {
+            'mode': 'short_series_goods',
             'offerId': offerid,
             'buyQuantity': 1,
             'env': env,
             'currencyType': 'CNY',
-            'productId': order_no,
+            'productId': product_id,
             'goodsPrice': total_fee,
             'outTradeNo': order_no,
             'attach': description,
@@ -149,18 +241,24 @@ class VirtualPayProvider(PaymentProvider):
             'signData': sign_data,
         }
 
-    async def query(self, *, order_no: str) -> dict:
+    async def query(self, *, order_no: str, **kwargs) -> dict[str, Any]:
         """
         查询虚拟支付订单状态
 
         :param order_no: 商户订单号
         :return:
         """
+        env = int(kwargs.get('env') or 0)
+        openid = kwargs.get('openid')
+        if not openid:
+            raise ValueError('虚拟支付查询必须提供 openid')
+
         body = {
-            'app_id': settings.WX_MINIAPP_APPID,
-            'out_trade_no': order_no,
+            'openid': openid,
+            'env': env,
+            'order_id': order_no,
         }
-        result = await self._call_xpay_api('/xpay/query_order', body)
+        result = await self._call_xpay_api('/xpay/query_order', body, env=env)
 
         if result.get('errcode', 0) != 0:
             log.error(f'虚拟支付查询失败: order_no={order_no}, result={result}')
@@ -169,7 +267,33 @@ class VirtualPayProvider(PaymentProvider):
         log.info(f'虚拟支付查询成功: order_no={order_no}')
         return result
 
-    async def close(self, *, order_no: str) -> None:
+    def normalize_query_data(self, query_data: dict, *, order_no: str) -> dict[str, Any]:
+        """
+        将虚拟支付查询结果归一化为标准格式
+
+        :param query_data: 查询结果
+        :param order_no: 业务订单号
+        :return:
+        """
+        order = query_data.get('order') or {}
+        if not isinstance(order, dict):
+            order = {}
+
+        status = order.get('status')
+        try:
+            status_value = int(status)
+        except (TypeError, ValueError):
+            status_value = -1
+        trade_state = 'SUCCESS' if status_value in (2, 3, 4) else str(status or '')
+        return {
+            'order_no': order.get('order_id') or order_no,
+            'trade_no': order.get('wxpay_order_id') or order.get('channel_order_id') or order.get('wx_order_id') or '',
+            'trade_state': trade_state,
+            'paid_time': order.get('paid_time') or None,
+            'raw_data': query_data,
+        }
+
+    async def close(self, *, order_no: str, **kwargs) -> None:
         """
         关闭虚拟支付订单
 
@@ -181,8 +305,15 @@ class VirtualPayProvider(PaymentProvider):
         log.info(f'虚拟支付关闭（跳过）: order_no={order_no}')
 
     async def refund(
-        self, *, order_no: str, refund_no: str, total_fee: int, refund_fee: int, reason: str | None = None
-    ) -> dict:
+        self,
+        *,
+        order_no: str,
+        refund_no: str,
+        total_fee: int,
+        refund_fee: int,
+        reason: str | None = None,
+        **kwargs,
+    ) -> dict[str, Any]:
         """
         虚拟支付退款
 
@@ -193,17 +324,19 @@ class VirtualPayProvider(PaymentProvider):
         :param reason: 退款原因
         :return:
         """
+        env = int(kwargs.get('env') or 0)
         body = {
             'app_id': settings.WX_MINIAPP_APPID,
             'out_trade_no': order_no,
             'out_refund_no': refund_no,
             'total_fee': total_fee,
             'refund_fee': refund_fee,
+            'env': env,
         }
         if reason:
             body['refund_reason'] = reason
 
-        result = await self._call_xpay_api('/xpay/refund_order', body)
+        result = await self._call_xpay_api('/xpay/refund_order', body, env=env)
 
         if result.get('errcode', 0) != 0:
             log.error(f'虚拟支付退款失败: order_no={order_no}, result={result}')
@@ -213,7 +346,7 @@ class VirtualPayProvider(PaymentProvider):
         return result
 
     @staticmethod
-    def _parse_xml_element(element) -> dict:
+    def _parse_xml_element(element: Element) -> dict[str, Any]:
         """
         递归解析 XML 元素（处理嵌套结构）
 
@@ -228,7 +361,7 @@ class VirtualPayProvider(PaymentProvider):
                 data[child.tag] = child.text
         return data
 
-    def decrypt_callback(self, *, headers: dict, body: bytes) -> dict:
+    def decrypt_callback(self, *, headers: dict, body: bytes) -> dict[str, Any]:
         """
         解密虚拟支付回调通知
 
@@ -238,15 +371,20 @@ class VirtualPayProvider(PaymentProvider):
         :param body: 请求体原始字节
         :return:
         """
-        import xml.etree.ElementTree as ET
+        body_text = body.decode('utf-8')
+        if body_text.lstrip().startswith('{'):
+            data = json.loads(body_text)
+            if not isinstance(data, dict):
+                raise ValueError('虚拟支付 JSON 回调格式错误')
+            return data
 
         try:
-            root = ET.fromstring(body.decode('utf-8'))
+            root = fromstring(body_text)
             return self._parse_xml_element(root)
-        except ET.ParseError as e:
+        except ParseError as e:
             raise ValueError(f'虚拟支付回调 XML 解析失败: {e}')
 
-    def normalize_callback_data(self, callback_data: dict, *, event: str = 'payment') -> dict:
+    def normalize_callback_data(self, callback_data: dict, *, event: str = 'payment') -> dict[str, Any]:
         """
         将虚拟支付回调数据归一化为标准格式
 
@@ -262,17 +400,16 @@ class VirtualPayProvider(PaymentProvider):
             }
         # payment
         wechat_pay_info = callback_data.get('WeChatPayInfo', {})
-        if isinstance(wechat_pay_info, dict):
-            trade_no = wechat_pay_info.get('TransactionId', '')
-        else:
-            trade_no = ''
+        trade_no = wechat_pay_info.get('TransactionId', '') if isinstance(wechat_pay_info, dict) else ''
+        paid_time = wechat_pay_info.get('PaidTime') if isinstance(wechat_pay_info, dict) else None
         return {
             'order_no': callback_data.get('OutTradeNo', ''),
             'trade_no': trade_no,
             'trade_state': 'SUCCESS',
+            'paid_time': paid_time,
         }
 
-    async def notify_provide_goods(self, *, order_no: str, env: int = 0) -> dict:
+    async def notify_provide_goods(self, *, order_no: str, env: int = 0) -> dict[str, Any]:
         """
         通知已发货（现金单）
 
@@ -281,8 +418,8 @@ class VirtualPayProvider(PaymentProvider):
         :return:
         """
         body = {
-            'app_id': settings.WX_MINIAPP_APPID,
-            'out_trade_no': order_no,
+            'order_id': order_no,
+            'env': env,
         }
         result = await self._call_xpay_api('/xpay/notify_provide_goods', body, env=env)
 

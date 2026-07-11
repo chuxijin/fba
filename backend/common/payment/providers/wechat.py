@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 import json
 
+from pathlib import Path
+from typing import Any
+
 from fastapi.concurrency import run_in_threadpool
 
 from backend.common.log import log
@@ -16,7 +19,7 @@ class WechatPayProvider(PaymentProvider):
         """初始化微信支付"""
         self._wxpay = None
 
-    def _get_wxpay(self):
+    def _get_wxpay(self) -> Any:
         """懒加载 WeChatPay 实例"""
         if self._wxpay is not None:
             return self._wxpay
@@ -26,8 +29,7 @@ class WechatPayProvider(PaymentProvider):
         private_key_path = settings.WECHAT_PAY_PRIVATE_KEY_PATH
         cert_path = settings.WECHAT_PAY_CERT_PATH
 
-        with open(private_key_path, 'r') as f:
-            private_key = f.read()
+        private_key = Path(private_key_path).read_text(encoding='utf-8')
 
         self._wxpay = WeChatPay(
             wechatpay_type=WeChatPayType.MINIPROG,
@@ -89,7 +91,7 @@ class WechatPayProvider(PaymentProvider):
         log.info(f'微信预下单成功: order_no={order_no}, pay_type={pay_type}')
         return result_data
 
-    async def query(self, *, order_no: str) -> dict:
+    async def query(self, *, order_no: str, **kwargs) -> dict:
         """
         查询订单支付状态
 
@@ -105,7 +107,7 @@ class WechatPayProvider(PaymentProvider):
 
         return json.loads(result) if isinstance(result, str) else result
 
-    async def close(self, *, order_no: str) -> None:
+    async def close(self, *, order_no: str, **kwargs) -> None:
         """
         关闭订单
 
@@ -122,7 +124,7 @@ class WechatPayProvider(PaymentProvider):
         log.info(f'微信关闭订单成功: order_no={order_no}')
 
     async def refund(
-        self, *, order_no: str, refund_no: str, total_fee: int, refund_fee: int, reason: str | None = None
+        self, *, order_no: str, refund_no: str, total_fee: int, refund_fee: int, reason: str | None = None, **kwargs
     ) -> dict:
         """
         申请退款
