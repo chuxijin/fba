@@ -210,7 +210,7 @@ async def update_hanyu_frequency() -> dict[str, Any]:
         'message': '',
     }
     start_time = datetime.now()
-    logger.info('开始统计汉语词汇相关题目（言语理解与表达题干与选项）...')
+    logger.info('开始统计汉语词汇相关题目（逻辑填空题干与选项）...')
 
     try:
         async with async_db_session.begin() as db:
@@ -228,7 +228,7 @@ async def update_hanyu_frequency() -> dict[str, Any]:
                     SELECT q.id, q.stem, q.options
                     FROM study_question q
                     WHERE q.knowledge_point IS NOT NULL
-                      AND q.knowledge_point::text LIKE '%言语理解与表达%'
+                      AND q.knowledge_point::text LIKE '%逻辑填空%'
                 ),
                 target_texts AS (
                     SELECT
@@ -295,7 +295,7 @@ async def update_hanyu_frequency() -> dict[str, Any]:
         elapsed = (datetime.now() - start_time).total_seconds()
         result['elapsed_seconds'] = round(elapsed, 2)
         result['message'] = (
-            f'频次统计完成（言语理解与表达题干与选项）: 总计 {result["total_count"]} 个成语, '
+            f'频次统计完成（逻辑填空题干与选项）: 总计 {result["total_count"]} 个成语, '
             f'扫描 {len(question_hanyu_ids)} 道题 / {target_text_count} 段题干选项文本, '
             f'更新 {result["updated_count"]} 条记录, '
             f'耗时 {result["elapsed_seconds"]} 秒'
