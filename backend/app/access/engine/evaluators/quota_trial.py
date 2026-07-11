@@ -47,6 +47,7 @@ class QuotaTrialEvaluator(BaseEvaluator):
                     db,
                     user_id=ctx.user_id,
                     entitlement_code=rule.entitlement_code,
+                    scope_key=ctx.scope_key,
                     cycle_type=cycle_type,
                 )
                 if balance > 0:
@@ -65,8 +66,8 @@ class QuotaTrialEvaluator(BaseEvaluator):
             return Decision.deny(reason_code=ReasonCode.QUOTA_EXHAUSTED, explanation=explanation)
 
         for rule in trial_rules:
-            source_ref = f'{ctx.resource_type}:{ctx.resource_id}'
-            idempotency_key = f'trial:{ctx.user_id}:{rule.entitlement_code}:{source_ref}'
+            source_ref = ctx.source_ref or f'{ctx.resource_type}:{ctx.resource_id}'
+            idempotency_key = f'trial:{ctx.user_id}:{rule.entitlement_code}:{ctx.scope_key}:{source_ref}'
             cycle_type = (rule.metadata_ or {}).get('cycle_type', CycleType.MONTHLY)
             entry = await ledger_service.try_consume(
                 db,
@@ -74,7 +75,7 @@ class QuotaTrialEvaluator(BaseEvaluator):
                 entitlement_code=rule.entitlement_code,
                 amount=1,
                 cycle_type=cycle_type,
-                scope_key='global',
+                scope_key=ctx.scope_key,
                 source='trial',
                 source_ref=source_ref,
                 idempotency_key=idempotency_key,

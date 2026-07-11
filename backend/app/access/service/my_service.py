@@ -157,37 +157,13 @@ class MyAccessService:
             for code, entitlement in entitlement_map.items()
             if entitlement['category'] == EntitlementCategory.QUOTA
         ]
-        balances: dict[str, int] = {}
-        if quota_codes:
-            cycle_types = MyAccessService._get_quota_cycle_types_from_items(pack_items, quota_codes)
-            # 从 resource_rule metadata 补查未命中的配额周期类型
-            missing_cycle_codes = [code for code in quota_codes if code not in cycle_types]
-            if missing_cycle_codes:
-                rule_cycle_types = await MyAccessService._get_quota_cycle_types_from_rules(
-                    db,
-                    missing_cycle_codes,
-                )
-                cycle_types.update(rule_cycle_types)
-            entitlement_cycle_keys = {
-                code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now) for code in quota_codes
-            }
-            from backend.app.access.crud.crud_ledger import quota_ledger_dao
-
-            balances = await quota_ledger_dao.get_latest_entries(
-                db,
-                user_id=user_id,
-                entitlement_cycle_keys=entitlement_cycle_keys,
-                scope_key='global',
-            )
-
-            missing_codes = sorted(set(quota_codes) - set(balances))
-            if missing_codes:
-                fallback_limits = MyAccessService._compute_quota_limits_from_items(
-                    pack_items,
-                    missing_codes,
-                )
-                for code in missing_codes:
-                    balances[code] = fallback_limits.get(code, 0)
+        balances = await MyAccessService._load_quota_balances(
+            db,
+            user_id=user_id,
+            now=now,
+            pack_items=pack_items,
+            quota_codes=quota_codes,
+        )
 
         return [
             GetMyEntitlement(
@@ -273,37 +249,13 @@ class MyAccessService:
             for code, entitlement in entitlement_map.items()
             if entitlement['category'] == EntitlementCategory.QUOTA
         ]
-        balances: dict[str, int] = {}
-        if quota_codes:
-            cycle_types = MyAccessService._get_quota_cycle_types_from_items(pack_items, quota_codes)
-            # 从 resource_rule metadata 补查未命中的配额周期类型
-            missing_cycle_codes = [code for code in quota_codes if code not in cycle_types]
-            if missing_cycle_codes:
-                rule_cycle_types = await MyAccessService._get_quota_cycle_types_from_rules(
-                    db,
-                    missing_cycle_codes,
-                )
-                cycle_types.update(rule_cycle_types)
-            entitlement_cycle_keys = {
-                code: build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now) for code in quota_codes
-            }
-            from backend.app.access.crud.crud_ledger import quota_ledger_dao
-
-            balances = await quota_ledger_dao.get_latest_entries(
-                db,
-                user_id=user_id,
-                entitlement_cycle_keys=entitlement_cycle_keys,
-                scope_key='global',
-            )
-
-            missing_codes = sorted(set(quota_codes) - set(balances))
-            if missing_codes:
-                fallback_limits = MyAccessService._compute_quota_limits_from_items(
-                    pack_items,
-                    missing_codes,
-                )
-                for code in missing_codes:
-                    balances[code] = fallback_limits.get(code, 0)
+        balances = await MyAccessService._load_quota_balances(
+            db,
+            user_id=user_id,
+            now=now,
+            pack_items=pack_items,
+            quota_codes=quota_codes,
+        )
 
         return [
             GetMyEntitlement(
@@ -633,6 +585,54 @@ class MyAccessService:
         return cycle_types
 
     @staticmethod
+    async def _get_quota_scope_keys_from_rules(
+        db: AsyncSession,
+        quota_codes: list[str],
+    ) -> dict[str, str]:
+        """
+        从 resource_rule 与资源档案解析配额范围键
+
+        :param db: 数据库会话
+        :param quota_codes: 配额权益编码
+        :return:
+        """
+        from sqlalchemy import select as sa_select
+
+        import backend.app.access.service.resource_profiles  # noqa: F401
+
+        from backend.app.access.model.rule import ResourceRule
+        from backend.app.access.service.resource_profile_registry import access_profile_registry
+
+        stmt = sa_select(ResourceRule).where(
+            ResourceRule.entitlement_code.in_(quota_codes),
+            ResourceRule.status == 'active',
+        )
+        rules = (await db.execute(stmt)).scalars().all()
+        if not rules:
+            return {}
+
+        profile_scope_map = {
+            (profile.resource_type, profile.resource_id): profile.scope_key
+            for profile in access_profile_registry.list_profiles()
+        }
+
+        code_scope_keys: dict[str, set[str]] = {}
+        for rule in rules:
+            scope_key = profile_scope_map.get((rule.resource_type, rule.resource_id), 'global')
+            code_scope_keys.setdefault(rule.entitlement_code, set()).add(scope_key)
+
+        resolved_scope_keys: dict[str, str] = {}
+        for code, scope_keys in code_scope_keys.items():
+            non_global_scope_keys = {scope_key for scope_key in scope_keys if scope_key != 'global'}
+            if len(non_global_scope_keys) == 1:
+                resolved_scope_keys[code] = next(iter(non_global_scope_keys))
+                continue
+            if not non_global_scope_keys and len(scope_keys) == 1:
+                resolved_scope_keys[code] = next(iter(scope_keys))
+
+        return resolved_scope_keys
+
+    @staticmethod
     def _compute_quota_limits_from_items(
         pack_items: list[dict[str, Any]],
         quota_codes: list[str],
@@ -656,6 +656,69 @@ class MyAccessService:
             if value > quota_limits.get(str(code), 0):
                 quota_limits[str(code)] = value
         return quota_limits
+
+    @staticmethod
+    async def _load_quota_balances(
+        db: AsyncSession,
+        *,
+        user_id: int,
+        now: datetime,
+        pack_items: list[dict[str, Any]],
+        quota_codes: list[str],
+    ) -> dict[str, int]:
+        """
+        加载配额权益余额
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param now: 当前时间
+        :param pack_items: 权益包成员行
+        :param quota_codes: 配额权益编码
+        :return:
+        """
+        if not quota_codes:
+            return {}
+
+        cycle_types = MyAccessService._get_quota_cycle_types_from_items(pack_items, quota_codes)
+        missing_cycle_codes = [code for code in quota_codes if code not in cycle_types]
+        if missing_cycle_codes:
+            rule_cycle_types = await MyAccessService._get_quota_cycle_types_from_rules(
+                db,
+                missing_cycle_codes,
+            )
+            cycle_types.update(rule_cycle_types)
+
+        scope_keys = await MyAccessService._get_quota_scope_keys_from_rules(db, quota_codes)
+        entitlement_groups: dict[str, dict[str, str]] = {}
+        for code in quota_codes:
+            cycle_key = build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
+            scope_key = scope_keys.get(code, 'global')
+            entitlement_groups.setdefault(scope_key, {})[code] = cycle_key
+
+        from backend.app.access.crud.crud_ledger import quota_ledger_dao
+
+        balances: dict[str, int] = {}
+        for scope_key, entitlement_cycle_keys in entitlement_groups.items():
+            group_balances = await quota_ledger_dao.get_latest_entries(
+                db,
+                user_id=user_id,
+                entitlement_cycle_keys=entitlement_cycle_keys,
+                scope_key=scope_key,
+            )
+            balances.update(group_balances)
+
+        missing_codes = sorted(set(quota_codes) - set(balances))
+        if not missing_codes:
+            return balances
+
+        fallback_limits = MyAccessService._compute_quota_limits_from_items(
+            pack_items,
+            missing_codes,
+        )
+        for code in missing_codes:
+            balances[code] = fallback_limits.get(code, 0)
+
+        return balances
 
     @staticmethod
     def _build_subscription_items_from_rows(rows: Sequence[Row]) -> list[GetMySubscription]:

@@ -17,6 +17,8 @@ class AccessContext(SchemaBase):
     resource_id: int = Field(description='资源 ID')
     action: str = Field(default='access', description='动作')
     consume_trial: bool = Field(default=True, description='是否允许扣减试看额度')
+    scope_key: str = Field(default='global', description='配额范围键')
+    source_ref: str | None = Field(default=None, description='来源引用，用于扣减幂等')
     request_ts: datetime | None = Field(default=None, description='请求时间, 空则按服务器当前')
     audience_attrs: dict[str, Any] = Field(default_factory=dict, description='用户画像快照')
 

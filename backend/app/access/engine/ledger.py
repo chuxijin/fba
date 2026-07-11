@@ -462,6 +462,9 @@ class LedgerService:
         )
         db.add(entry)
         await db.flush()
+        from backend.app.access.service.my_service import my_summary_cache
+
+        await my_summary_cache.invalidate(user_id)
         return entry
 
     @staticmethod

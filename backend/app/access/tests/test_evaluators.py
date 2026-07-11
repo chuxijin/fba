@@ -138,6 +138,72 @@ async def test_quota_trial_consumes_and_grants(empty_snapshot: FakeSnapshot, mon
 
 
 @pytest.mark.asyncio
+async def test_quota_trial_consumes_with_scope_and_source_ref(empty_snapshot: FakeSnapshot, monkeypatch) -> None:
+    """试看扣减应带上业务范围与来源引用，保证幂等隔离"""
+    captured: dict[str, object] = {}
+    fake_entry = SimpleNamespace(id=1002, balance_after=1)
+
+    async def fake_try_consume(*_args, **kwargs):
+        captured.update(kwargs)
+        return fake_entry
+
+    monkeypatch.setattr(
+        'backend.app.access.engine.evaluators.quota_trial.ledger_service.try_consume',
+        fake_try_consume,
+    )
+
+    evaluator = QuotaTrialEvaluator()
+    rules = [make_rule(GrantMode.TRIAL, entitlement_code='content.render_book.trial')]
+    explanation: list = []
+
+    decision = await evaluator.evaluate(
+        None,
+        make_ctx(scope_key='render_book', source_ref='render_job:job_001'),
+        rules,
+        empty_snapshot,
+        explanation,
+    )
+
+    assert decision is not None
+    assert decision.allowed
+    assert captured['scope_key'] == 'render_book'
+    assert captured['source_ref'] == 'render_job:job_001'
+    assert captured['idempotency_key'] == 'trial:42:content.render_book.trial:render_book:render_job:job_001'
+
+
+@pytest.mark.asyncio
+async def test_quota_trial_precheck_reads_balance_by_scope(empty_snapshot: FakeSnapshot, monkeypatch) -> None:
+    """试看预检应按 scope_key 读取余额，避免串用其他业务配额"""
+    captured: dict[str, object] = {}
+
+    async def fake_get_balance(*_args, **kwargs):
+        captured.update(kwargs)
+        return 3
+
+    monkeypatch.setattr(
+        'backend.app.access.engine.evaluators.quota_trial.ledger_service.get_balance',
+        fake_get_balance,
+    )
+
+    evaluator = QuotaTrialEvaluator()
+    rules = [make_rule(GrantMode.TRIAL, entitlement_code='content.render_book.trial')]
+    explanation: list = []
+
+    decision = await evaluator.evaluate(
+        None,
+        make_ctx(consume_trial=False, scope_key='render_book'),
+        rules,
+        empty_snapshot,
+        explanation,
+    )
+
+    assert decision is not None
+    assert decision.allowed
+    assert captured['scope_key'] == 'render_book'
+    assert captured['entitlement_code'] == 'content.render_book.trial'
+
+
+@pytest.mark.asyncio
 async def test_quota_trial_denies_when_balance_zero(empty_snapshot: FakeSnapshot, monkeypatch) -> None:
     """试看额度耗尽, 拒绝"""
 

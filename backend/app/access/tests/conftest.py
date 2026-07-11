@@ -70,6 +70,7 @@ def make_rule(
     entitlement_code: str = 'qbank.kaoyan.access',
     rule_id: int = 1,
     priority: int = 0,
+    metadata_: dict[str, Any] | None = None,
 ) -> SimpleNamespace:
     """
     构造测试用 ResourceRule 替身
@@ -78,6 +79,7 @@ def make_rule(
     :param entitlement_code: 权益编码
     :param rule_id: 规则 ID
     :param priority: 优先级
+    :param metadata_: 规则扩展元数据
     :return:
     """
     return SimpleNamespace(
@@ -87,6 +89,7 @@ def make_rule(
         entitlement_code=entitlement_code,
         grant_mode=grant_mode,
         priority=priority,
+        metadata_=metadata_ or {},
     )
 
 
@@ -96,6 +99,8 @@ def make_ctx(
     resource_type: str = 'qbank',
     resource_id: int = 42,
     consume_trial: bool = True,
+    scope_key: str = 'global',
+    source_ref: str | None = None,
 ) -> AccessContext:
     """
     构造测试用 AccessContext
@@ -104,6 +109,8 @@ def make_ctx(
     :param resource_type: 资源类型
     :param resource_id: 资源 ID
     :param consume_trial: 是否允许扣减试看
+    :param scope_key: 配额范围键
+    :param source_ref: 扣减来源引用
     :return:
     """
     return AccessContext(
@@ -111,6 +118,8 @@ def make_ctx(
         resource_type=resource_type,
         resource_id=resource_id,
         consume_trial=consume_trial,
+        scope_key=scope_key,
+        source_ref=source_ref,
     )
 
 
