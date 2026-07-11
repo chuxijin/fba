@@ -48,6 +48,6 @@ async def get_current_user_info(
         ]
 
     # 追加学习规划灰度虚拟角色（命中白名单时返回 study_plan_internal）
-    apply_virtual_roles(data, request.user.id)
+    await apply_virtual_roles(data, request.user.id)
 
     return response_base.success(data=data)

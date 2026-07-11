@@ -42,6 +42,7 @@ from backend.plugin.render_book.schema.render import (
     RenderVariant,
 )
 from backend.plugin.render_book.service.payload_service import render_payload_service
+from backend.plugin.render_book.service.quota_service import render_book_quota_service
 from backend.plugin.render_book.utils import get_template_registry
 
 
@@ -234,7 +235,16 @@ class RenderService:
         if job.payload_path:
             self._write_json(Path(job.payload_path), document_payload.model_dump(mode='json'))
 
+        quota_user_id = self._coerce_positive_int(job.metadata.get('user_id'))
+        quota_source_ref = f'render_preview:{job.job_id}'
+        quota_decision = None
         try:
+            if quota_user_id is not None:
+                quota_decision = await render_book_quota_service.consume_quota(
+                    db=db,
+                    user_id=quota_user_id,
+                    source_ref=quota_source_ref,
+                )
             await self.mark_job_running(db=db, job_id=job.job_id)
 
             executor_result = await self._call_render_executor(
@@ -292,6 +302,13 @@ class RenderService:
                 resolved_metadata=resolved_metadata,
             )
         except Exception as exc:
+            if quota_user_id is not None and quota_decision is not None:
+                await render_book_quota_service.refund_quota(
+                    db=db,
+                    user_id=quota_user_id,
+                    decision=quota_decision,
+                    source_ref=quota_source_ref,
+                )
             await self.mark_job_failed(db=db, job_id=job.job_id, error_message=str(exc))
             raise
 
@@ -692,9 +709,22 @@ class RenderService:
         if not render_variants:
             raise errors.RequestError(msg='当前任务缺少 render_variants，无法执行渲染。')
 
-        await self.mark_job_running(db=db, job_id=job_id)
+        quota_user_id = self._coerce_positive_int(job.user_id) or self._coerce_positive_int(
+            (job.metadata_json or {}).get('user_id')
+        )
+        quota_source_ref = f'render_job:{job.job_id}'
+        quota_decision = None
 
         try:
+            if quota_user_id is not None:
+                quota_decision = await render_book_quota_service.consume_quota(
+                    db=db,
+                    user_id=quota_user_id,
+                    source_ref=quota_source_ref,
+                )
+
+            await self.mark_job_running(db=db, job_id=job_id)
+
             for variant in render_variants:
                 executor_result = await self._call_render_executor(
                     template_key=job.template_key,
@@ -783,6 +813,13 @@ class RenderService:
                 raise errors.NotFoundError(msg='渲染任务不存在')
             return final_job
         except Exception as exc:
+            if quota_user_id is not None and quota_decision is not None:
+                await render_book_quota_service.refund_quota(
+                    db=db,
+                    user_id=quota_user_id,
+                    decision=quota_decision,
+                    source_ref=quota_source_ref,
+                )
             await self.mark_job_failed(db=db, job_id=job_id, error_message=str(exc))
             raise
 
@@ -966,6 +1003,10 @@ class RenderService:
             solution_mode=job.solution_mode,
             output_targets=output_targets,
         )
+        metadata = dict(job.metadata_json or {})
+        if metadata.get('user_id') is None and job.user_id is not None:
+            metadata['user_id'] = job.user_id
+
         return RenderJobRead(
             job_id=job.job_id,
             status=job.status,
@@ -983,7 +1024,7 @@ class RenderService:
             options=RenderOptions.model_validate(job.options or {}),
             output_targets=output_targets,
             render_variants=list(job.render_variants or []),
-            metadata=job.metadata_json or {},
+            metadata=metadata,
             payload_path=job.payload_path,
             question_count=job.question_count,
             material_count=job.material_count,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from backend.app.coulddrive.service.filesync.planner import build_directory_sync_plan, build_target_delete_plan
+from backend.app.coulddrive.service.rule_template_service import RenameRule
 
 
 def test_build_directory_sync_plan_copies_new_file_and_tracks_missing_folder() -> None:
@@ -59,17 +60,53 @@ def test_build_directory_sync_plan_copies_changed_same_name_file() -> None:
     assert plan.processed_target_signatures == {('same.txt', 3)}
 
 
-def test_build_directory_sync_plan_preserves_same_size_rename_behavior() -> None:
-    """同大小不同名文件沿用历史隐式改名判断"""
+def test_build_directory_sync_plan_treats_same_size_different_name_as_new_file() -> None:
+    """不同名文件即便同大小也应视为新文件"""
     source_file_map = {'new.txt': {'file_size': 5, 'file_id': 'source-file-id'}}
     target_file_map = {'old.txt': {'file_size': 5, 'file_id': 'target-file-id'}}
 
     plan = build_directory_sync_plan(source_file_map, target_file_map, '/source', '/target')
 
     assert plan.files_processed == 1
+    assert plan.files_skipped == 0
+    assert plan.files_to_transfer == [
+        {
+            'file_name': 'new.txt',
+            'file_size': 5,
+            'source_path': '/source',
+            'target_path': '/target',
+            'file_id': 'source-file-id',
+        }
+    ]
+    assert plan.processed_target_signatures == set()
+
+
+def test_build_directory_sync_plan_skips_rule_renamed_same_size_file() -> None:
+    """命中重命名规则且目标已改名时应跳过"""
+    source_file_map = {'1 再来一杯柠檬水.txt': {'file_size': 5, 'file_id': 'source-file-id'}}
+    target_file_map = {'1 有岸上.txt': {'file_size': 5, 'file_id': 'target-file-id'}}
+    rename_rules = [RenameRule(match_regex='再来一杯柠檬水', replace_string='有岸上')]
+
+    plan = build_directory_sync_plan(source_file_map, target_file_map, '/source', '/target', rename_rules=rename_rules)
+
+    assert plan.files_processed == 1
     assert plan.files_skipped == 1
     assert plan.files_to_transfer == []
-    assert plan.processed_target_signatures == {('old.txt', 5)}
+    assert plan.processed_target_signatures == {('1 有岸上.txt', 5)}
+
+
+def test_build_directory_sync_plan_skips_rule_renamed_changed_size_file() -> None:
+    """命中重命名规则时即便大小变化也不应重复保存"""
+    source_file_map = {'1 再来一杯柠檬水.txt': {'file_size': 8, 'file_id': 'source-file-id'}}
+    target_file_map = {'1 有岸上.txt': {'file_size': 5, 'file_id': 'target-file-id'}}
+    rename_rules = [RenameRule(match_regex='再来一杯柠檬水', replace_string='有岸上')]
+
+    plan = build_directory_sync_plan(source_file_map, target_file_map, '/source', '/target', rename_rules=rename_rules)
+
+    assert plan.files_processed == 1
+    assert plan.files_skipped == 1
+    assert plan.files_to_transfer == []
+    assert plan.processed_target_signatures == {('1 有岸上.txt', 5)}
 
 
 def test_build_directory_sync_plan_tracks_existing_folder() -> None:

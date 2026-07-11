@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import hashlib
 import json
 import logging
@@ -1013,7 +1014,46 @@ class QuestionService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def check_answer(question_type: str, user_answer: str | list[str], correct_data: dict) -> bool:
+    def _normalize_pair_mapping(value: Any) -> dict[str, str] | None:
+        """
+        归一化匹配题答案
+
+        :param value: 原始答案
+        :return:
+        """
+        if isinstance(value, dict):
+            if isinstance(value.get('pairs'), list):
+                return QuestionService._normalize_pair_mapping(value['pairs'])
+            return {
+                str(left).strip(): str(right).strip()
+                for left, right in value.items()
+                if str(left).strip() and str(right).strip()
+            }
+
+        if not isinstance(value, list):
+            return None
+
+        mapping: dict[str, str] = {}
+        for item in value:
+            if isinstance(item, dict):
+                left = item.get('left') or item.get('source') or item.get('from') or item.get('left_id')
+                right = item.get('right') or item.get('target') or item.get('to') or item.get('right_id')
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                left = item[0]
+                right = item[1]
+            else:
+                continue
+
+            left_key = str(left).strip()
+            right_key = str(right).strip()
+            if not left_key or not right_key:
+                continue
+            mapping[left_key] = right_key
+
+        return mapping
+
+    @staticmethod
+    def check_answer(question_type: str, user_answer: Any, correct_data: dict) -> bool:
         """
         判断答案是否正确
 
@@ -1048,6 +1088,13 @@ class QuestionService:
             user_text = str(user_answer).lower()
             matched = sum(1 for keyword in keywords if keyword.lower() in user_text)
             return matched >= len(keywords) * 0.6
+
+        if question_type in ['matching', 'connection']:
+            user_mapping = QuestionService._normalize_pair_mapping(user_answer)
+            correct_mapping = QuestionService._normalize_pair_mapping(correct_answer)
+            if user_mapping is None or correct_mapping is None:
+                return False
+            return user_mapping == correct_mapping
 
         return False
 

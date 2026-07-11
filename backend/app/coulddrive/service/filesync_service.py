@@ -422,6 +422,7 @@ class FileSyncService:
             'sync_method': sync_params['sync_method'],
             'recursion_speed': sync_params['recursion_speed'],
             'exclude_rules': sync_params['exclude_rules'],
+            'rename_rules': sync_params['rename_rules'],
             'max_depth': 100,
             'task_id': task_id,
             'db': db,
@@ -918,6 +919,7 @@ class FileSyncService:
         sync_method: str,
         recursion_speed: RecursionSpeed = RecursionSpeed.NORMAL,
         exclude_rules: list[ExclusionRuleDefinition] | None = None,
+        rename_rules: list[RenameRule] | None = None,
         max_depth: int = 100,
         task_id: int | None = None,
         db: AsyncSession | None = None,
@@ -934,6 +936,7 @@ class FileSyncService:
         :param sync_method: 同步方式（incremental/full/overwrite）
         :param recursion_speed: 递归速度
         :param exclude_rules: 排除规则
+        :param rename_rules: 重命名规则
         :param max_depth: 最大递归深度
         :param task_id: 任务 ID
         :param db: 数据库会话
@@ -978,6 +981,7 @@ class FileSyncService:
                     sync_method,
                     recursion_speed,
                     item_filter,
+                    rename_rules,
                     0,
                     max_depth,
                     stats,
@@ -1005,6 +1009,7 @@ class FileSyncService:
         sync_method: str,
         recursion_speed: RecursionSpeed,
         item_filter: ItemFilter | None,
+        rename_rules: list[RenameRule] | None,
         current_depth: int,
         max_depth: int,
         stats: dict[str, Any],
@@ -1024,6 +1029,7 @@ class FileSyncService:
         :param sync_method: 同步方式
         :param recursion_speed: 递归速度
         :param item_filter: 过滤器
+        :param rename_rules: 重命名规则
         :param current_depth: 当前递归深度
         :param max_depth: 最大递归深度
         :param stats: 同步统计信息字典
@@ -1045,6 +1051,7 @@ class FileSyncService:
                 sync_method,
                 recursion_speed,
                 item_filter,
+                rename_rules,
                 current_depth + 1,
                 max_depth,
                 stats,
@@ -1064,6 +1071,7 @@ class FileSyncService:
                 sync_method,
                 recursion_speed,
                 item_filter,
+                rename_rules,
                 current_depth + 1,
                 max_depth,
                 stats,
@@ -1130,6 +1138,7 @@ class FileSyncService:
         sync_method: str,
         recursion_speed: RecursionSpeed,
         item_filter: ItemFilter | None,
+        rename_rules: list[RenameRule] | None,
         current_depth: int,
         max_depth: int,
         stats: dict[str, Any],
@@ -1150,6 +1159,7 @@ class FileSyncService:
         :param sync_method: 同步方式
         :param recursion_speed: 递归速度
         :param item_filter: 过滤器
+        :param rename_rules: 重命名规则
         :param current_depth: 当前递归深度
         :param max_depth: 最大递归深度
         :param stats: 同步统计信息字典
@@ -1235,7 +1245,13 @@ class FileSyncService:
         if not guard_ok:
             return
 
-        sync_plan = build_directory_sync_plan(source_file_map, target_file_map, source_path, target_path)
+        sync_plan = build_directory_sync_plan(
+            source_file_map,
+            target_file_map,
+            source_path,
+            target_path,
+            rename_rules=rename_rules,
+        )
         stats['files_processed'] += sync_plan.files_processed
         stats['files_skipped'] += sync_plan.files_skipped
 
@@ -1250,6 +1266,7 @@ class FileSyncService:
                 sync_method,
                 recursion_speed,
                 item_filter,
+                rename_rules,
                 current_depth,
                 max_depth,
                 stats,

@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
+from backend.app.coulddrive.service.rule_template_service import MatchTarget
+from backend.app.coulddrive.service.rule_template_service import RenameRule
+from backend.app.coulddrive.service.utils_service import build_full_path
 from backend.app.coulddrive.service.utils_service import join_path
 
 
@@ -66,6 +69,7 @@ def build_directory_sync_plan(
     target_file_map: dict[str, dict[str, Any]],
     source_path: str,
     target_path: str,
+    rename_rules: list[RenameRule] | None = None,
 ) -> DirectorySyncPlan:
     """
     构建单目录同步计划
@@ -74,10 +78,10 @@ def build_directory_sync_plan(
     :param target_file_map: 目标文件映射
     :param source_path: 源目录路径
     :param target_path: 目标目录路径
+    :param rename_rules: 重命名规则
     :return:
     """
     plan = DirectorySyncPlan()
-    unmatched_target_files_by_size = _build_unmatched_target_files_by_size(target_file_map)
 
     for source_filename, source_file_info in source_file_map.items():
         if source_filename.endswith('/'):
@@ -93,7 +97,7 @@ def build_directory_sync_plan(
             source_path,
             target_path,
             target_file_map,
-            unmatched_target_files_by_size,
+            rename_rules,
         )
 
     return plan
@@ -158,27 +162,6 @@ def _build_folder_sync_plan(
         target_exists=source_filename in target_file_map,
     )
 
-
-def _build_unmatched_target_files_by_size(
-    target_file_map: dict[str, dict[str, Any]],
-) -> defaultdict[int, list[tuple[str, dict[str, Any]]]]:
-    """
-    按文件大小索引未匹配目标文件
-
-    :param target_file_map: 目标文件映射
-    :return:
-    """
-    unmatched_target_files_by_size: defaultdict[int, list[tuple[str, dict[str, Any]]]] = defaultdict(list)
-    for target_filename, target_file_info in target_file_map.items():
-        if target_filename.endswith('/'):
-            continue
-
-        file_size = target_file_info.get('file_size', 0)
-        unmatched_target_files_by_size[file_size].append((target_filename, target_file_info))
-
-    return unmatched_target_files_by_size
-
-
 def _append_file_sync_action(
     plan: DirectorySyncPlan,
     source_filename: str,
@@ -186,7 +169,7 @@ def _append_file_sync_action(
     source_path: str,
     target_path: str,
     target_file_map: dict[str, dict[str, Any]],
-    unmatched_target_files_by_size: defaultdict[int, list[tuple[str, dict[str, Any]]]],
+    rename_rules: list[RenameRule] | None,
 ) -> None:
     """
     追加文件同步动作
@@ -197,7 +180,7 @@ def _append_file_sync_action(
     :param source_path: 源目录路径
     :param target_path: 目标目录路径
     :param target_file_map: 目标文件映射
-    :param unmatched_target_files_by_size: 未匹配目标文件索引
+    :param rename_rules: 重命名规则
     :return:
     """
     plan.files_processed += 1
@@ -213,11 +196,17 @@ def _append_file_sync_action(
             source_path,
             target_path,
             target_file_info,
-            unmatched_target_files_by_size,
         )
         return
 
-    if _mark_same_size_target_as_processed(plan, source_size, unmatched_target_files_by_size):
+    if _mark_rule_renamed_target_as_processed(
+        plan,
+        source_filename,
+        source_path,
+        target_path,
+        target_file_map,
+        rename_rules,
+    ):
         return
 
     plan.files_to_transfer.append(
@@ -233,7 +222,6 @@ def _append_same_name_file_action(
     source_path: str,
     target_path: str,
     target_file_info: dict[str, Any],
-    unmatched_target_files_by_size: defaultdict[int, list[tuple[str, dict[str, Any]]]],
 ) -> None:
     """
     追加同名文件同步动作
@@ -245,7 +233,6 @@ def _append_same_name_file_action(
     :param source_path: 源目录路径
     :param target_path: 目标目录路径
     :param target_file_info: 目标文件信息
-    :param unmatched_target_files_by_size: 未匹配目标文件索引
     :return:
     """
     target_size = target_file_info.get('file_size', -1)
@@ -258,59 +245,55 @@ def _append_same_name_file_action(
         )
         plan.processed_target_signatures.add((source_filename, target_size))
 
-    _remove_target_file_from_size_index(source_filename, source_size, unmatched_target_files_by_size)
-
-
-def _mark_same_size_target_as_processed(
+def _mark_rule_renamed_target_as_processed(
     plan: DirectorySyncPlan,
-    source_size: int,
-    unmatched_target_files_by_size: defaultdict[int, list[tuple[str, dict[str, Any]]]],
+    source_filename: str,
+    source_path: str,
+    target_path: str,
+    target_file_map: dict[str, dict[str, Any]],
+    rename_rules: list[RenameRule] | None,
 ) -> bool:
     """
-    标记同大小目标文件已处理
+    标记命中重命名规则的目标文件已处理
 
     :param plan: 当前目录同步计划
-    :param source_size: 源文件大小
-    :param unmatched_target_files_by_size: 未匹配目标文件索引
+    :param source_filename: 源文件名
+    :param source_path: 源目录路径
+    :param target_path: 目标目录路径
+    :param target_file_map: 目标文件映射
+    :param rename_rules: 重命名规则
     :return:
     """
-    if source_size not in unmatched_target_files_by_size:
+    if not rename_rules:
         return False
 
-    target_files = unmatched_target_files_by_size[source_size]
-    for index, (target_filename, _) in enumerate(list(target_files)):
-        target_signature = (target_filename, source_size)
+    source_full_path = build_full_path(source_path, source_filename)
+    temp_item = SimpleNamespace(file_name=source_filename, file_path=source_full_path)
+
+    for rule in rename_rules:
+        generated_value = rule.generate_new_path(temp_item)
+        if not generated_value:
+            continue
+
+        renamed_target_name = source_filename
+        renamed_target_path = source_full_path
+        if rule.target_scope == MatchTarget.NAME:
+            renamed_target_name = generated_value
+            renamed_target_path = build_full_path(target_path, renamed_target_name)
+        elif rule.target_scope == MatchTarget.PATH:
+            renamed_target_path = generated_value
+            renamed_target_name = renamed_target_path.rstrip('/').split('/')[-1]
+
+        target_file_info = target_file_map.get(renamed_target_name)
+        if not target_file_info:
+            continue
+
+        target_signature = (renamed_target_name, target_file_info.get('file_size', 0))
         if target_signature in plan.processed_target_signatures:
             continue
 
         plan.files_skipped += 1
         plan.processed_target_signatures.add(target_signature)
-        target_files.pop(index)
-        if not target_files:
-            del unmatched_target_files_by_size[source_size]
         return True
 
     return False
-
-
-def _remove_target_file_from_size_index(
-    source_filename: str,
-    source_size: int,
-    unmatched_target_files_by_size: defaultdict[int, list[tuple[str, dict[str, Any]]]],
-) -> None:
-    """
-    从大小索引中移除已处理目标文件
-
-    :param source_filename: 源文件名
-    :param source_size: 源文件大小
-    :param unmatched_target_files_by_size: 未匹配目标文件索引
-    :return:
-    """
-    if source_size not in unmatched_target_files_by_size:
-        return
-
-    unmatched_target_files_by_size[source_size] = [
-        item for item in unmatched_target_files_by_size[source_size] if item[0] != source_filename
-    ]
-    if not unmatched_target_files_by_size[source_size]:
-        del unmatched_target_files_by_size[source_size]

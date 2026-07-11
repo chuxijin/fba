@@ -23,8 +23,7 @@ from bind_study_plan_roles import bind_study_plan_roles  # noqa: E402
 from backend.app.question_bank.service.user_account_service import user_account_service  # noqa: E402
 from backend.app.study_plan.schema.template import InstantiateStudyPlanTemplateParam  # noqa: E402
 from backend.app.study_plan.service.template_service import instantiate_template  # noqa: E402
-from backend.app.study_plan.utils.permission import is_user_in_whitelist  # noqa: E402
-from backend.core.conf import settings  # noqa: E402
+from backend.common.grayscale import check_grayscale  # noqa: E402
 from backend.database.db import async_db_session  # noqa: E402
 from backend.utils.timezone import timezone  # noqa: E402
 
@@ -438,9 +437,9 @@ async def main() -> int:
         plan_result = await ensure_plan(db, student_id, mentor_id, args.title, args.start)
 
     cache_error = await clear_user_cache([mentor_id, student_id])
-    whitelist_open = is_user_in_whitelist(student_id)
+    whitelist_open = await check_grayscale(student_id, 'study_plan')
     whitelist_tip = 'open'
-    if settings.STUDY_PLAN_WHITELIST and not whitelist_open:
+    if not whitelist_open:
         whitelist_tip = f'missing:{student_id}'
 
     print('[OK] study plan e2e data prepared')
