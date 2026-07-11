@@ -165,9 +165,6 @@ class Settings(BaseSettings):
     RBAC_ROLE_MENU_MODE: bool = True
     RBAC_ROLE_MENU_EXCLUDE: list[str] = []
 
-    # 学习规划灰度白名单：用户 ID 列表；空列表表示未启用灰度（全员放行）
-    STUDY_PLAN_WHITELIST: list[int] = []
-
     # Cookie
     COOKIE_REFRESH_TOKEN_KEY: str = 'fba_refresh_token'
     COOKIE_REFRESH_TOKEN_EXPIRE_SECONDS: int = 60 * 60 * 24 * 7  # 7 天
