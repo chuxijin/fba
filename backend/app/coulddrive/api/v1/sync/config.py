@@ -12,6 +12,7 @@ from backend.app.coulddrive.schema.filesync import (
     GetSyncConfigListParam,
     UpdateSyncConfigParam,
 )
+from backend.common.exception import errors
 from backend.common.pagination import DependsPagination, PageData, _CustomPageParams, paging_data
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -96,7 +97,7 @@ async def update_sync_config(
     """
     db_obj = await sync_config_dao.select_model(db, config_id)
     if not db_obj:
-        return response_base.fail(message=f'同步配置 {config_id} 不存在')
+        raise errors.NotFoundError(msg=f'同步配置 {config_id} 不存在')
 
     # 设置更新者ID
     obj.updated_by = request.user.id
@@ -124,6 +125,6 @@ async def delete_sync_config(
     """
     success = await sync_config_dao.delete(db, id=config_id)
     if not success:
-        return response_base.fail(message=f'同步配置 {config_id} 不存在或删除失败')
+        raise errors.NotFoundError(msg=f'同步配置 {config_id} 不存在或删除失败')
 
     return response_base.success(data={'message': '删除成功'})

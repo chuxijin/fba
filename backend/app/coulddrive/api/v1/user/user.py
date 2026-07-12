@@ -17,6 +17,7 @@ from backend.app.coulddrive.schema.user import (
     UpdateDriveAccountParam,
 )
 from backend.app.coulddrive.service.coulddrive_service import CouldDriveService
+from backend.common.exception import errors
 from backend.common.pagination import DependsPagination, PageData, _CustomPageParams, paging_list_data
 from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
@@ -135,8 +136,7 @@ async def delete_coulddrive_user(
     result = await drive_account_dao.delete(db, [user_id])
     if result > 0:
         return response_base.success(data='删除成功')
-    else:
-        return response_base.fail(msg='删除失败，用户不存在')
+    raise errors.NotFoundError(msg='删除失败，用户不存在')
 
 
 @router.put(
