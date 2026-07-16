@@ -579,15 +579,11 @@ class Settings(BaseSettings):
     ##################################################
     HALO_BASE_URL: str = ''
     HALO_PAT: str = ''
+    HALO_BASIC_USERNAME: str = ''
+    HALO_BASIC_PASSWORD: str = ''
+    HALO_DOCS_PROJECT_NAME: str = ''
+    HALO_DOCS_PROJECT_VERSION_NAME: str = ''
 
-    ##################################################
-    # [ App ] Halo 博客数据库（直接读取 Docsme 文档）
-    ##################################################
-    HALO_DB_HOST: str = '127.0.0.1'
-    HALO_DB_PORT: int = 3307
-    HALO_DB_USER: str = 'root'
-    HALO_DB_PASSWORD: str = ''
-    HALO_DB_NAME: str = 'halo'
     RESPONSE_ENCRYPT_ENABLED: bool = False
     RESPONSE_ENCRYPT_SECRET_KEY: str = ''  # AES 密钥，32 字符 hex 字符串（16 bytes）
     RESPONSE_ENCRYPT_INCLUDE: list[str] = []  # 加密路径前缀，为空则加密所有 API 路径

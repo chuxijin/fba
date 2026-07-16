@@ -4,7 +4,16 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from backend.app.halo.schema.halo import HaloCategoryItem, HaloPostDetail, HaloPostItem, HaloTagItem, DocTreeNode, DocDetail
+from backend.app.halo.schema.halo import (
+    DocDetail,
+    DocProjectItem,
+    DocProjectVersionItem,
+    DocTreeNode,
+    HaloCategoryItem,
+    HaloPostDetail,
+    HaloPostItem,
+    HaloTagItem,
+)
 from backend.app.halo.service.halo_service import halo_service
 from backend.common.pagination import PageData
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
@@ -68,6 +77,35 @@ async def get_halo_tags() -> ResponseSchemaModel[list[HaloTagItem]]:
     return response_base.success(data=data)
 
 
+@router.get('/docs/projects', summary='Docsme 项目列表', response_model=ResponseSchemaModel[list[DocProjectItem]])
+async def get_doc_projects() -> ResponseSchemaModel[list[DocProjectItem]]:
+    """
+    获取 Docsme 项目列表
+
+    :return:
+    """
+    data = await halo_service.list_doc_projects()
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/docs/projects/{project_name}/versions',
+    summary='Docsme 项目版本列表',
+    response_model=ResponseSchemaModel[list[DocProjectVersionItem]],
+)
+async def get_doc_project_versions(
+    project_name: Annotated[str, Path(description='Docsme 项目资源名称')],
+) -> ResponseSchemaModel[list[DocProjectVersionItem]]:
+    """
+    获取 Docsme 项目版本列表
+
+    :param project_name: Docsme 项目资源名称
+    :return:
+    """
+    data = await halo_service.list_doc_project_versions(project_name)
+    return response_base.success(data=data)
+
+
 @router.get('/docs/tree', summary='文档目录树', response_model=ResponseSchemaModel[list[DocTreeNode]])
 async def get_doc_tree() -> ResponseSchemaModel[list[DocTreeNode]]:
     """
@@ -91,4 +129,3 @@ async def get_doc_detail(name: Annotated[str, Path(description='文档 UUID')]) 
     if not data:
         return response_base.fail()
     return response_base.success(data=data)
-

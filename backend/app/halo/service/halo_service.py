@@ -4,11 +4,21 @@ from math import ceil
 import asyncio
 from typing import Any
 
+import httpx
+
 from fastapi_pagination.links.bases import create_links
 
-from backend.app.halo.schema.halo import HaloCategoryItem, HaloPostDetail, HaloPostItem, HaloTagItem, DocTreeNode, DocDetail
+from backend.app.halo.schema.halo import (
+    DocDetail,
+    DocProjectItem,
+    DocProjectVersionItem,
+    DocTreeNode,
+    HaloCategoryItem,
+    HaloPostDetail,
+    HaloPostItem,
+    HaloTagItem,
+)
 from backend.app.halo.service.halo_client import halo_client
-from backend.app.halo.service.halo_db import halo_db
 from backend.core.conf import settings
 
 
@@ -102,6 +112,145 @@ class HaloService:
             tags=hit.get('tags', []),
             view_count=0,
         )
+
+    @staticmethod
+    def _annotation(item: dict[str, Any], key: str) -> str:
+        """
+        读取 Halo 资源注解
+
+        :param item: Halo 资源对象
+        :param key: 注解键
+        :return:
+        """
+        annotations = item.get('metadata', {}).get('annotations', {})
+        if not isinstance(annotations, dict):
+            return ''
+        return str(annotations.get(key) or '')
+
+    @staticmethod
+    def _parent_name(parent: Any) -> str:
+        """
+        读取父节点资源名
+
+        :param parent: 父节点配置
+        :return:
+        """
+        if isinstance(parent, dict):
+            return str(parent.get('name') or '')
+        if parent:
+            return str(parent)
+        return ''
+
+    @staticmethod
+    def _doc_tree_item(item: dict[str, Any]) -> dict[str, Any]:
+        """
+        转换 Docsme 文档树节点
+
+        :param item: Docsme 文档树资源
+        :return:
+        """
+        metadata = item.get('metadata', {})
+        spec = item.get('spec', {})
+        status = item.get('status', {})
+        return {
+            'name': metadata.get('name', ''),
+            'title': spec.get('title', ''),
+            'slug': spec.get('slug', ''),
+            'type': spec.get('type', ''),
+            'parent': HaloService._parent_name(spec.get('parent')),
+            'priority': spec.get('priority', 0) or 0,
+            'doc_name': spec.get('docName', ''),
+            'project_version_name': spec.get('projectVersionName', ''),
+            'path': HaloService._annotation(item, 'doc.halo.run/tree-node-path'),
+            'permalink': status.get('permalink', ''),
+            'published': status.get('published', False),
+            'children': [],
+        }
+
+    @staticmethod
+    def _build_doc_tree(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        构建 Docsme 文档树
+
+        :param items: Docsme 文档树资源列表
+        :return:
+        """
+        nodes = [HaloService._doc_tree_item(item) for item in items]
+        by_name = {item['name']: item for item in nodes if item['name']}
+        roots: list[dict[str, Any]] = []
+
+        for node in nodes:
+            parent_name = node.get('parent')
+            if parent_name and parent_name in by_name:
+                by_name[parent_name]['children'].append(node)
+                continue
+            roots.append(node)
+
+        def sort_recursive(children: list[dict[str, Any]]) -> None:
+            children.sort(key=lambda child: int(child.get('priority') or 0))
+            for child in children:
+                sort_recursive(child.get('children', []))
+
+        sort_recursive(roots)
+        return roots
+
+    @staticmethod
+    async def _resolve_doc_project_version_name() -> str:
+        """解析默认 Docsme 项目版本名称"""
+        if settings.HALO_DOCS_PROJECT_VERSION_NAME:
+            return settings.HALO_DOCS_PROJECT_VERSION_NAME
+
+        projects = await halo_client.list_doc_projects()
+        if not projects:
+            return ''
+
+        project = None
+        if settings.HALO_DOCS_PROJECT_NAME:
+            project = next(
+                (
+                    item
+                    for item in projects
+                    if item.get('metadata', {}).get('name') == settings.HALO_DOCS_PROJECT_NAME
+                    or item.get('spec', {}).get('slug') == settings.HALO_DOCS_PROJECT_NAME
+                ),
+                None,
+            )
+        if project is None:
+            project = next((item for item in projects if item.get('spec', {}).get('slug') == 'gongkao'), None)
+        if project is None:
+            project = projects[0]
+
+        preferred_version_ref = project.get('spec', {}).get('preferredVersionRef')
+        if isinstance(preferred_version_ref, dict) and preferred_version_ref.get('name'):
+            return str(preferred_version_ref['name'])
+
+        project_name = project.get('metadata', {}).get('name', '')
+        if not project_name:
+            return ''
+        versions = await halo_client.list_doc_project_versions(project_name)
+        if not versions:
+            return ''
+        return str(versions[0].get('metadata', {}).get('name', ''))
+
+    @staticmethod
+    def _doc_tree_schema(nodes: list[dict[str, Any]]) -> list[DocTreeNode]:
+        """
+        转换文档树响应模型
+
+        :param nodes: 文档树节点
+        :return:
+        """
+        return [
+            DocTreeNode(
+                name=item['name'],
+                title=item['title'],
+                slug=item['slug'],
+                type=item['type'],
+                permalink=item['permalink'],
+                children=HaloService._doc_tree_schema(item.get('children', [])),
+            )
+            for item in nodes
+        ]
 
     @staticmethod
     async def list_posts(
@@ -215,6 +364,50 @@ class HaloService:
         ]
 
     @staticmethod
+    async def list_doc_projects() -> list[DocProjectItem]:
+        """
+        获取 Docsme 项目列表
+
+        :return:
+        """
+        items = await halo_client.list_doc_projects()
+        result: list[DocProjectItem] = []
+        for item in items:
+            spec = item.get('spec', {})
+            preferred_version_ref = spec.get('preferredVersionRef')
+            preferred_version_name = ''
+            if isinstance(preferred_version_ref, dict):
+                preferred_version_name = str(preferred_version_ref.get('name') or '')
+            result.append(
+                DocProjectItem(
+                    name=item.get('metadata', {}).get('name', ''),
+                    display_name=spec.get('displayName', ''),
+                    slug=spec.get('slug', ''),
+                    preferred_version_name=preferred_version_name,
+                )
+            )
+        return result
+
+    @staticmethod
+    async def list_doc_project_versions(project_name: str) -> list[DocProjectVersionItem]:
+        """
+        获取 Docsme 项目版本列表
+
+        :param project_name: 项目资源名称
+        :return:
+        """
+        items = await halo_client.list_doc_project_versions(project_name)
+        return [
+            DocProjectVersionItem(
+                name=item.get('metadata', {}).get('name', ''),
+                project_name=item.get('spec', {}).get('projectName', project_name),
+                slug=item.get('spec', {}).get('slug', ''),
+                publish=bool(item.get('spec', {}).get('publish', False)),
+            )
+            for item in items
+        ]
+
+    @staticmethod
     async def create_post_with_content(
         *,
         title: str,
@@ -303,23 +496,11 @@ class HaloService:
 
         :return: 树形结构节点列表
         """
-        nodes = await asyncio.to_thread(halo_db.fetch_all_doctrees)
-        tree = halo_db.build_tree(nodes)
-
-        def convert(nodes_list: list[dict[str, Any]]) -> list[DocTreeNode]:
-            return [
-                DocTreeNode(
-                    name=n['name'],
-                    title=n['title'],
-                    slug=n['slug'],
-                    type=n['type'],
-                    permalink=n['permalink'],
-                    children=convert(n.get('children', [])),
-                )
-                for n in nodes_list
-            ]
-
-        return convert(tree)
+        project_version_name = await HaloService._resolve_doc_project_version_name()
+        if not project_version_name:
+            return []
+        items = await halo_client.list_doc_tree_by_version(project_version_name)
+        return HaloService._doc_tree_schema(HaloService._build_doc_tree(items))
 
     @staticmethod
     async def get_doc(*, name: str) -> DocDetail | None:
@@ -329,15 +510,41 @@ class HaloService:
         :param name: Doc UUID
         :return: 文档详情
         """
-        detail = await asyncio.to_thread(halo_db.get_doc_detail, name)
-        if not detail:
+        tree: dict[str, Any] | None = None
+        doc: dict[str, Any] | None = None
+        try:
+            tree = await halo_client.get_doc_tree(name)
+            doc_name = tree.get('spec', {}).get('docName', '')
+            if doc_name:
+                doc = await halo_client.get_doc_resource(doc_name)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 404:
+                raise
+            doc = await halo_client.get_doc_resource(name)
+
+        if doc is None:
             return None
+
+        spec = doc.get('spec', {})
+        doc_name = doc.get('metadata', {}).get('name', '')
+        doc_tree_name = spec.get('docTreeName', '')
+        if tree is None and doc_tree_name:
+            tree = await halo_client.get_doc_tree(doc_tree_name)
+
+        content = await halo_client.get_doc_head_content(doc_name)
+        tree_spec = tree.get('spec', {}) if tree else {}
+        tree_status = tree.get('status', {}) if tree else {}
+
         return DocDetail(
-            name=detail['name'],
-            title=detail['title'],
-            permalink=detail['permalink'],
-            content=detail['content'],
-            updated_at=detail['updated_at'],
+            name=doc_name,
+            doc_tree_name=doc_tree_name,
+            doc_name=doc_name,
+            title=tree_spec.get('title', ''),
+            permalink=tree_status.get('permalink', ''),
+            content=content.get('content', ''),
+            raw=content.get('raw', ''),
+            raw_type=content.get('rawType', 'HTML'),
+            updated_at=spec.get('updatedAt') or doc.get('metadata', {}).get('creationTimestamp', ''),
         )
 
     @staticmethod

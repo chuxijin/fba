@@ -42,6 +42,24 @@ class HaloTagItem(SchemaBase):
     slug: str = Field(..., description='别名')
 
 
+class DocProjectItem(SchemaBase):
+    """Docsme 项目"""
+
+    name: str = Field(..., description='项目资源名称')
+    display_name: str = Field('', description='项目显示名称')
+    slug: str = Field('', description='项目别名')
+    preferred_version_name: str = Field('', description='首选版本资源名称')
+
+
+class DocProjectVersionItem(SchemaBase):
+    """Docsme 项目版本"""
+
+    name: str = Field(..., description='版本资源名称')
+    project_name: str = Field('', description='项目资源名称')
+    slug: str = Field('', description='版本别名')
+    publish: bool = Field(False, description='是否发布')
+
+
 class DocTreeNode(SchemaBase):
     """Docsme 文档树节点"""
 
@@ -57,7 +75,11 @@ class DocDetail(SchemaBase):
     """Docsme 文档详情（含 HTML 正文）"""
 
     name: str = Field(..., description='Doc UUID')
+    doc_tree_name: str = Field('', description='DocTree 节点 UUID')
+    doc_name: str = Field('', description='Doc 资源 UUID')
     title: str = Field(..., description='标题')
     permalink: str = Field('', description='前端路径')
     content: str = Field('', description='HTML 正文')
+    raw: str = Field('', description='原始正文')
+    raw_type: str = Field('HTML', description='原始正文类型')
     updated_at: str | None = Field(None, description='最后更新时间')

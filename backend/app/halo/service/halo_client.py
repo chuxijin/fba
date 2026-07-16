@@ -8,6 +8,7 @@ from backend.core.conf import settings
 
 HALO_PUBLIC_API = '/apis/api.content.halo.run/v1alpha1'
 HALO_EXTENSION_API = '/apis/content.halo.run/v1alpha1'
+HALO_DOCS_API = '/apis/api.uc.doc.halo.run/v1alpha1'
 HALO_TIMEOUT = 15
 
 
@@ -17,6 +18,8 @@ class HaloClient:
     def __init__(self) -> None:
         self._base_url = settings.HALO_BASE_URL.rstrip('/')
         self._pat = settings.HALO_PAT
+        self._basic_username = settings.HALO_BASIC_USERNAME
+        self._basic_password = settings.HALO_BASIC_PASSWORD
 
     def _auth_headers(self) -> dict[str, str]:
         """
@@ -25,6 +28,12 @@ class HaloClient:
         :return:
         """
         return {'Authorization': f'Bearer {self._pat}'}
+
+    def _basic_auth(self) -> httpx.BasicAuth | None:
+        """构建 Basic Auth 认证对象"""
+        if not self._basic_username or not self._basic_password:
+            return None
+        return httpx.BasicAuth(self._basic_username, self._basic_password)
 
     async def _get(self, path: str, *, auth: bool = False, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """
@@ -38,6 +47,24 @@ class HaloClient:
         headers = self._auth_headers() if auth else {}
         async with httpx.AsyncClient(timeout=HALO_TIMEOUT) as client:
             response = await client.get(f'{self._base_url}{path}', headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
+
+    async def _get_docsme(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        """
+        发送 Docsme GET 请求
+
+        :param path: Docsme API 路径
+        :param params: 查询参数
+        :return:
+        """
+        async with httpx.AsyncClient(timeout=HALO_TIMEOUT) as client:
+            response = await client.get(
+                f'{self._base_url}{HALO_DOCS_API}{path}',
+                auth=self._basic_auth(),
+                headers={'Accept': 'application/json'},
+                params=params,
+            )
             response.raise_for_status()
             return response.json()
 
@@ -250,6 +277,70 @@ class HaloClient:
         :return:
         """
         return await self._get(f'/apis/content.halo.run/v1alpha1/snapshots/{name}', auth=True)
+
+    async def list_doc_projects(self, page: int = 1, size: int = 100) -> list[dict[str, Any]]:
+        """
+        获取 Docsme 项目列表
+
+        :param page: 页码
+        :param size: 每页数量
+        :return:
+        """
+        data = await self._get_docsme('/projects', params={'page': page, 'size': size})
+        if isinstance(data, list):
+            return data
+        return data.get('items', [])
+
+    async def list_doc_project_versions(self, project_name: str) -> list[dict[str, Any]]:
+        """
+        获取 Docsme 项目版本列表
+
+        :param project_name: 项目资源名称
+        :return:
+        """
+        data = await self._get_docsme(f'/projects/{project_name}/versions')
+        if isinstance(data, list):
+            return data
+        return data.get('items', [])
+
+    async def list_doc_tree_by_version(self, project_version_name: str) -> list[dict[str, Any]]:
+        """
+        获取 Docsme 项目版本文档树
+
+        :param project_version_name: 项目版本资源名称
+        :return:
+        """
+        data = await self._get_docsme(f'/projectversions/{project_version_name}/tree')
+        if isinstance(data, list):
+            return data
+        return data.get('items', [])
+
+    async def get_doc_tree(self, name: str) -> dict[str, Any]:
+        """
+        获取 Docsme 文档树节点
+
+        :param name: DocTree 资源名称
+        :return:
+        """
+        return await self._get_docsme(f'/doctrees/{name}')
+
+    async def get_doc_resource(self, name: str) -> dict[str, Any]:
+        """
+        获取 Docsme 文档资源
+
+        :param name: Doc 资源名称
+        :return:
+        """
+        return await self._get_docsme(f'/docs/{name}')
+
+    async def get_doc_head_content(self, name: str) -> dict[str, Any]:
+        """
+        获取 Docsme 文档最新正文
+
+        :param name: Doc 资源名称
+        :return:
+        """
+        return await self._get_docsme(f'/docs/{name}/head-content')
 
 
 halo_client = HaloClient()
