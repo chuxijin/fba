@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from __future__ import annotations
+
 from collections.abc import Iterable
 
 from backend.app.mydrive.service.drives.baidu.client import BaiduRequest
