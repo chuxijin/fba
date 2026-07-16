@@ -9,9 +9,11 @@ from .chapter import QuestionChapter
 from .practice import PracticeSession, SessionQuestion, WrongQuestionBook
 from .progress import UserBankQuestionProgress
 from .question import (
+    MaterialAnchor,
     Question,
     QuestionAnalysis,
     QuestionFavorite,
+    QuestionInteractionAnnotation,
     QuestionMaterial,
     QuestionNote,
     QuestionPlacement,
@@ -30,6 +32,8 @@ __all__ = [
     'QuestionBankMount',
     'QuestionChapter',
     'Question',
+    'MaterialAnchor',
+    'QuestionInteractionAnnotation',
     'QuestionAnalysis',
     'QuestionStatistics',
     'QuestionNote',

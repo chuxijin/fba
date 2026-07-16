@@ -527,3 +527,110 @@ class QuestionMaterial(Base, UserMixin):
         back_populates='materials',
         lazy='noload',
     )
+
+
+class MaterialAnchor(Base, UserMixin):
+    """材料锚点表"""
+
+    __tablename__ = 'study_material_anchor'
+    __table_args__ = (
+        sa.UniqueConstraint('material_id', 'anchor_key', 'deleted', name='uq_material_anchor_key_deleted'),
+        sa.Index('idx_material_anchor_material', 'material_id'),
+        sa.Index('idx_material_anchor_type_status', 'anchor_type', 'status'),
+        sa.Index('idx_material_anchor_content_hash', 'content_hash'),
+        sa.Index('idx_material_anchor_asset_hash', 'asset_hash'),
+        sa.CheckConstraint(
+            "anchor_type IN ('text_range','image_region','table_cell','text_block','image_point')",
+            name='ck_material_anchor_type',
+        ),
+        sa.CheckConstraint("source IN ('manual','ocr','ai','import')", name='ck_material_anchor_source'),
+        sa.CheckConstraint('status IN (0,10,20)', name='ck_material_anchor_status'),
+        {'comment': '材料锚点表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    material_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question_material.id', ondelete='CASCADE'),
+        comment='材料 ID',
+    )
+    anchor_key: Mapped[str] = mapped_column(sa.String(128), comment='锚点业务键')
+    anchor_type: Mapped[str] = mapped_column(sa.String(32), comment='锚点类型')
+    text: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='锚点文本')
+    role: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='锚点语义角色')
+    block_id: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='材料分块 ID')
+    start_offset: Mapped[int | None] = mapped_column(sa.Integer, default=None, comment='文本起始偏移')
+    end_offset: Mapped[int | None] = mapped_column(sa.Integer, default=None, comment='文本结束偏移')
+    asset_url: Mapped[str | None] = mapped_column(sa.String(1024), default=None, comment='图片或资源地址')
+    asset_hash: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='资源哈希')
+    natural_width: Mapped[int | None] = mapped_column(sa.Integer, default=None, comment='资源原始宽度')
+    natural_height: Mapped[int | None] = mapped_column(sa.Integer, default=None, comment='资源原始高度')
+    bbox: Mapped[dict[str, Any] | None] = mapped_column(CompatibleJSONB, default=None, comment='归一化矩形区域')
+    polygon: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        CompatibleJSONB, default=None, comment='归一化多边形区域'
+    )
+    table_cell: Mapped[dict[str, Any] | None] = mapped_column(CompatibleJSONB, default=None, comment='表格单元格定位')
+    ocr_confidence: Mapped[Decimal | None] = mapped_column(
+        sa.Numeric(5, 4), default=None, comment='OCR 置信度'
+    )
+    source: Mapped[str] = mapped_column(sa.String(16), default='manual', comment='来源')
+    content_hash: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='材料内容哈希')
+    status: Mapped[int] = mapped_column(sa.SmallInteger, default=10, comment='状态: 0=待审核, 10=可用, 20=废弃')
+    extra_data: Mapped[dict[str, Any]] = mapped_column(CompatibleJSONB, default_factory=dict, comment='扩展数据')
+
+    material: Mapped[QuestionMaterial] = relationship(init=False, lazy='noload')
+
+
+class QuestionInteractionAnnotation(Base, UserMixin):
+    """题目交互标注表"""
+
+    __tablename__ = 'study_question_interaction_annotation'
+    __table_args__ = (
+        sa.UniqueConstraint(
+            'question_id',
+            'annotation_key',
+            'version_no',
+            'deleted',
+            name='uq_question_interaction_version_deleted',
+        ),
+        sa.Index('idx_question_interaction_question', 'question_id'),
+        sa.Index('idx_question_interaction_material', 'material_id'),
+        sa.Index('idx_question_interaction_type_status', 'interaction_type', 'status'),
+        sa.Index('idx_question_interaction_default', 'question_id', 'interaction_type', 'is_default'),
+        sa.CheckConstraint(
+            "selection_mode IN ('single','multiple','multi_role')",
+            name='ck_question_interaction_selection_mode',
+        ),
+        sa.CheckConstraint('status IN (0,10,20)', name='ck_question_interaction_status'),
+        {'comment': '题目交互标注表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    question_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question.id', ondelete='CASCADE'),
+        comment='题目 ID',
+    )
+    annotation_key: Mapped[str] = mapped_column(sa.String(128), comment='标注业务键')
+    interaction_type: Mapped[str] = mapped_column(sa.String(32), comment='交互类型')
+    instruction: Mapped[str] = mapped_column(UniversalText, comment='交互指令')
+    material_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_question_material.id', ondelete='CASCADE'),
+        default=None,
+        comment='材料 ID',
+    )
+    title: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='标注标题')
+    selection_mode: Mapped[str] = mapped_column(sa.String(16), default='single', comment='选择模式')
+    candidate_anchor_ids: Mapped[list[int]] = mapped_column(
+        CompatibleJSONB, default_factory=list, comment='候选锚点 ID'
+    )
+    answer_data: Mapped[dict[str, Any]] = mapped_column(CompatibleJSONB, default_factory=dict, comment='答案数据')
+    config: Mapped[dict[str, Any]] = mapped_column(CompatibleJSONB, default_factory=dict, comment='交互配置')
+    content_hash: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='材料内容哈希')
+    version_no: Mapped[int] = mapped_column(sa.SmallInteger, default=1, comment='版本号')
+    is_default: Mapped[bool] = mapped_column(default=True, comment='是否默认使用')
+    status: Mapped[int] = mapped_column(sa.SmallInteger, default=10, comment='状态: 0=待审核, 10=可用, 20=废弃')
+
+    question: Mapped[Question] = relationship(init=False, lazy='noload')
+    material: Mapped[QuestionMaterial | None] = relationship(init=False, lazy='noload')

@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_category import category_dao
+from backend.app.question_bank.crud.crud_material import material_dao
 from backend.app.question_bank.crud.crud_question_favorite import question_favorite_dao
 from backend.app.question_bank.crud.crud_question_note import question_note_dao
 from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
@@ -258,6 +259,7 @@ class QuestionSelectorService:
         kp_names: list[str],
         cat_ids: list[int] | None,
         chapter_scope_ids: list[int] | None,
+        apply_limit: bool = True,
     ) -> list[int]:
         if not ordered_ids:
             return []
@@ -294,7 +296,7 @@ class QuestionSelectorService:
 
         matched_ids = set((await db.execute(stmt)).scalars().all())
         filtered = [question_id for question_id in ordered_ids if question_id in matched_ids]
-        if params.limit is not None:
+        if apply_limit and params.limit is not None:
             filtered = filtered[: params.limit]
         return filtered
 
@@ -308,6 +310,7 @@ class QuestionSelectorService:
         kp_names: list[str],
         cat_ids: list[int] | None,
         chapter_scope_ids: list[int] | None,
+        apply_limit: bool = True,
     ) -> list[int]:
         stmt = (
             select(QuestionPlacement.question_id)
@@ -351,9 +354,145 @@ class QuestionSelectorService:
 
         rows = (await db.execute(stmt)).scalars().all()
         ordered_ids = list(dict.fromkeys(rows))
-        if params.limit is not None:
+        if apply_limit and params.limit is not None:
             ordered_ids = ordered_ids[: params.limit]
         return ordered_ids
+
+    @classmethod
+    async def _filter_sibling_candidates(
+        cls,
+        *,
+        db: AsyncSession,
+        candidate_ids: list[int],
+        params: QuestionCollectParam,
+        cat_ids: list[int] | None,
+        chapter_scope_ids: list[int] | None,
+    ) -> set[int]:
+        """
+        校验材料兄弟题是否合格（过审 + 落在当前挂载场景内）
+
+        :param db: 数据库会话
+        :param candidate_ids: 候选兄弟题 ID 列表
+        :param params: 筛题参数
+        :param cat_ids: 分类范围 ID
+        :param chapter_scope_ids: 章节范围 ID
+        :return:
+        """
+        if not candidate_ids:
+            return set()
+
+        stmt = select(Question.id).where(
+            Question.id.in_(candidate_ids),
+            Question.content_status == 10,
+        )
+
+        needs_bank_join = (
+            params.cat_id is not None
+            or bool((params.region or '').strip())
+            or params.year_start is not None
+            or params.year_end is not None
+        )
+        needs_placement_exists = (
+            any(
+                value is not None
+                for value in (params.bank_id, params.chapter_id, params.review_status, params.is_active)
+            )
+            or bool(params.bank_ids)
+            or needs_bank_join
+        )
+        if needs_placement_exists:
+            placement_stmt = (
+                select(1).select_from(QuestionPlacement).where(QuestionPlacement.question_id == Question.id)
+            )
+            placement_stmt = cls._apply_placement_filters(
+                stmt=placement_stmt,
+                params=params,
+                cat_ids=cat_ids,
+                needs_bank_join=needs_bank_join,
+                chapter_scope_ids=chapter_scope_ids,
+            )
+            stmt = stmt.where(placement_stmt.exists())
+
+        return set((await db.execute(stmt)).scalars().all())
+
+    @classmethod
+    async def _expand_and_group_by_material(
+        cls,
+        *,
+        db: AsyncSession,
+        ordered_ids: list[int],
+        params: QuestionCollectParam,
+        cat_ids: list[int] | None,
+        chapter_scope_ids: list[int] | None,
+    ) -> list[int]:
+        """
+        将挂载题集按材料展开为不可分割的题组并聚合排序
+
+        :param db: 数据库会话
+        :param ordered_ids: 已排序的命中题目 ID 列表
+        :param params: 筛题参数
+        :param cat_ids: 分类范围 ID
+        :param chapter_scope_ids: 章节范围 ID
+        :return:
+        """
+        if not ordered_ids:
+            return []
+
+        question_material_rows = await material_dao.get_material_ids_by_questions(db, ordered_ids)
+        if not question_material_rows:
+            if params.limit is not None:
+                return ordered_ids[: params.limit]
+            return ordered_ids
+
+        question_to_material: dict[int, int] = {}
+        material_ids: list[int] = []
+        seen_materials: set[int] = set()
+        for question_id, material_id in question_material_rows:
+            question_to_material.setdefault(question_id, material_id)
+            if material_id not in seen_materials:
+                seen_materials.add(material_id)
+                material_ids.append(material_id)
+
+        sibling_rows = await material_dao.get_sibling_relations(db, material_ids)
+        candidate_ids = list({question_id for _, question_id in sibling_rows})
+        valid_ids = await cls._filter_sibling_candidates(
+            db=db,
+            candidate_ids=candidate_ids,
+            params=params,
+            cat_ids=cat_ids,
+            chapter_scope_ids=chapter_scope_ids,
+        )
+
+        material_to_questions: dict[int, list[int]] = {}
+        for material_id, question_id in sibling_rows:
+            if question_id in valid_ids:
+                material_to_questions.setdefault(material_id, []).append(question_id)
+
+        placed: set[int] = set()
+        groups: list[list[int]] = []
+        for question_id in ordered_ids:
+            if question_id in placed:
+                continue
+            material_id = question_to_material.get(question_id)
+            if material_id is None:
+                groups.append([question_id])
+                placed.add(question_id)
+                continue
+            group = [qid for qid in material_to_questions.get(material_id, []) if qid not in placed]
+            if not group:
+                group = [question_id]
+            placed.update(group)
+            groups.append(group)
+
+        if params.limit is None:
+            return [question_id for group in groups for question_id in group]
+
+        result: list[int] = []
+        for group in groups:
+            if len(result) >= params.limit:
+                break
+            result.extend(group)
+        return result
 
     @classmethod
     async def _get_personal_source_ids(
@@ -417,6 +556,7 @@ class QuestionSelectorService:
                     kp_names=kp_names,
                     cat_ids=cat_ids,
                     chapter_scope_ids=chapter_scope_ids,
+                    apply_limit=False,
                 )
             else:
                 selected_ids = await cls._select_placement_question_ids(
@@ -426,7 +566,16 @@ class QuestionSelectorService:
                     kp_names=kp_names,
                     cat_ids=cat_ids,
                     chapter_scope_ids=chapter_scope_ids,
+                    apply_limit=False,
                 )
+
+            selected_ids = await cls._expand_and_group_by_material(
+                db=db,
+                ordered_ids=selected_ids,
+                params=params,
+                cat_ids=cat_ids,
+                chapter_scope_ids=chapter_scope_ids,
+            )
         else:
             if not isinstance(user_id, int) or user_id <= 0:
                 raise ValueError('个人题目来源必须提供有效的 user_id。')

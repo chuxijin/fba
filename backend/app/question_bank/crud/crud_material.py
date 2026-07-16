@@ -160,6 +160,54 @@ class CRUDMaterial(CRUDPlus[QuestionMaterial]):
         result = await db.execute(stmt)
         return result.scalar() or 0
 
+    async def get_material_ids_by_questions(
+        self,
+        db: AsyncSession,
+        question_ids: list[int],
+    ) -> list[tuple[int, int]]:
+        """
+        批量获取题目所属的材料
+
+        :param db: 数据库会话
+        :param question_ids: 题目 ID 列表
+        :return:
+        """
+        if not question_ids:
+            return []
+
+        rel = question_material_relation.c
+        stmt = (
+            select(rel.question_id, rel.material_id)
+            .where(rel.question_id.in_(question_ids))
+            .order_by(rel.question_id.asc(), rel.sort_order.asc(), rel.material_id.asc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [(row.question_id, row.material_id) for row in rows]
+
+    async def get_sibling_relations(
+        self,
+        db: AsyncSession,
+        material_ids: list[int],
+    ) -> list[tuple[int, int]]:
+        """
+        批量获取材料下全部兄弟题（按材料内排序）
+
+        :param db: 数据库会话
+        :param material_ids: 材料 ID 列表
+        :return:
+        """
+        if not material_ids:
+            return []
+
+        rel = question_material_relation.c
+        stmt = (
+            select(rel.material_id, rel.question_id)
+            .where(rel.material_id.in_(material_ids))
+            .order_by(rel.material_id.asc(), rel.sort_order.asc(), rel.question_id.asc())
+        )
+        rows = (await db.execute(stmt)).all()
+        return [(row.material_id, row.question_id) for row in rows]
+
     async def link_questions(
         self,
         db: AsyncSession,

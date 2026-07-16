@@ -27,7 +27,7 @@ from backend.app.question_bank.model import (
     QuestionStatistics,
 )
 from backend.app.question_bank.model.bank import QuestionBank
-from backend.app.question_bank.model.question import QuestionMaterial
+from backend.app.question_bank.model.question import QuestionMaterial, question_material_relation
 from backend.app.question_bank.schema.question import (
     QuestionCoreBase,
     UpdateQuestionStatisticsParam,
@@ -144,6 +144,23 @@ class CRUDQuestion(CRUDPlus[Question]):
         result = await db.execute(stmt)
         questions_map = {q.id: q for q in result.unique().scalars().all()}
         return [questions_map[qid] for qid in ids if qid in questions_map]
+
+    async def get_by_material_id(self, db: AsyncSession, material_id: int) -> Sequence[Question]:
+        """
+        获取材料关联题目
+
+        :param db: 数据库会话
+        :param material_id: 材料 ID
+        :return:
+        """
+        stmt = (
+            select(Question)
+            .join(question_material_relation, question_material_relation.c.question_id == Question.id)
+            .where(question_material_relation.c.material_id == material_id)
+            .order_by(question_material_relation.c.sort_order.asc(), Question.id.asc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
     async def get_select(
         self,

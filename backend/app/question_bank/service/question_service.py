@@ -1053,6 +1053,36 @@ class QuestionService:
         return mapping
 
     @staticmethod
+    def _normalize_anchor_answer(value: Any) -> str | list[str] | dict[str, str] | None:
+        """
+        归一化锚点答案
+
+        :param value: 原始答案
+        :return:
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, (str, int)):
+            normalized = str(value).strip()
+            return normalized or None
+
+        if isinstance(value, list):
+            normalized_list = [str(item).strip() for item in value if str(item).strip()]
+            return sorted(normalized_list)
+
+        if isinstance(value, dict):
+            normalized_dict: dict[str, str] = {}
+            for key, item in value.items():
+                normalized_key = str(key).strip()
+                normalized_value = str(item).strip()
+                if normalized_key and normalized_value:
+                    normalized_dict[normalized_key] = normalized_value
+            return normalized_dict
+
+        return None
+
+    @staticmethod
     def check_answer(question_type: str, user_answer: Any, correct_data: dict) -> bool:
         """
         判断答案是否正确
@@ -1095,6 +1125,13 @@ class QuestionService:
             if user_mapping is None or correct_mapping is None:
                 return False
             return user_mapping == correct_mapping
+
+        if question_type in ['numberLocate', 'evidenceLocate', 'regionLocate', 'anchorLocate']:
+            user_anchor_answer = QuestionService._normalize_anchor_answer(user_answer)
+            correct_anchor_answer = QuestionService._normalize_anchor_answer(correct_answer)
+            if user_anchor_answer is None or correct_anchor_answer is None:
+                return False
+            return user_anchor_answer == correct_anchor_answer
 
         return False
 
