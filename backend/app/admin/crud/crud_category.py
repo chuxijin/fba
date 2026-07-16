@@ -7,7 +7,7 @@ from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.admin.model.category import Category
+from backend.app.admin.model.category import Category, CategoryDocBinding
 from backend.app.admin.schema.category import CreateCategoryParam, UpdateCategoryParam
 
 
@@ -405,4 +405,113 @@ class CRUDCategory(CRUDPlus[Category]):
         return [dict(row) for row in result.mappings().all()]
 
 
+class CRUDCategoryDocBinding(CRUDPlus[CategoryDocBinding]):
+    """分类文档关联数据库操作类"""
+
+    async def get(self, db: AsyncSession, pk: int) -> CategoryDocBinding | None:
+        """
+        获取分类文档关联
+
+        :param db: 数据库会话
+        :param pk: 关联 ID
+        :return:
+        """
+        stmt = select(CategoryDocBinding).where(
+            CategoryDocBinding.id == pk,
+            CategoryDocBinding.deleted == 0,
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_existing(
+        self,
+        db: AsyncSession,
+        *,
+        category_id: int,
+        relation_type: str,
+        halo_tree_name: str,
+    ) -> CategoryDocBinding | None:
+        """
+        获取同分类同文档关联
+
+        :param db: 数据库会话
+        :param category_id: 分类 ID
+        :param relation_type: 关联类型
+        :param halo_tree_name: DocTree 节点资源名称
+        :return:
+        """
+        stmt = select(CategoryDocBinding).where(
+            CategoryDocBinding.category_id == category_id,
+            CategoryDocBinding.relation_type == relation_type,
+            CategoryDocBinding.halo_tree_name == halo_tree_name,
+            CategoryDocBinding.deleted == 0,
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_all(
+        self,
+        db: AsyncSession,
+        *,
+        category_id: int | None = None,
+        relation_type: str | None = None,
+        enabled: bool | None = None,
+    ) -> list[CategoryDocBinding]:
+        """
+        获取分类文档关联列表
+
+        :param db: 数据库会话
+        :param category_id: 分类 ID
+        :param relation_type: 关联类型
+        :param enabled: 是否启用
+        :return:
+        """
+        stmt = select(CategoryDocBinding).where(CategoryDocBinding.deleted == 0)
+        if category_id is not None:
+            stmt = stmt.where(CategoryDocBinding.category_id == category_id)
+        if relation_type:
+            stmt = stmt.where(CategoryDocBinding.relation_type == relation_type)
+        if enabled is not None:
+            stmt = stmt.where(CategoryDocBinding.enabled.is_(enabled))
+        stmt = stmt.order_by(CategoryDocBinding.sort_order, CategoryDocBinding.id)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def create(self, db: AsyncSession, data: dict[str, Any]) -> CategoryDocBinding:
+        """
+        创建分类文档关联
+
+        :param db: 数据库会话
+        :param data: 关联数据
+        :return:
+        """
+        binding = CategoryDocBinding(**data)
+        db.add(binding)
+        await db.flush()
+        await db.refresh(binding)
+        return binding
+
+    async def update(self, db: AsyncSession, pk: int, data: dict[str, Any]) -> int:
+        """
+        更新分类文档关联
+
+        :param db: 数据库会话
+        :param pk: 关联 ID
+        :param data: 更新数据
+        :return:
+        """
+        return await self.update_model(db, pk, data)
+
+    async def delete(self, db: AsyncSession, pk: int) -> int:
+        """
+        删除分类文档关联
+
+        :param db: 数据库会话
+        :param pk: 关联 ID
+        :return:
+        """
+        return await self.delete_model(db, pk)
+
+
 category_dao: CRUDCategory = CRUDCategory(Category)
+category_doc_binding_dao: CRUDCategoryDocBinding = CRUDCategoryDocBinding(CategoryDocBinding)

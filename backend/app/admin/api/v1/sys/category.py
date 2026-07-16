@@ -5,10 +5,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, Request
 
 from backend.app.admin.schema.category import (
+    CreateCategoryDocBindingParam,
     CreateCategoryParam,
     DeleteCategoryParam,
+    GetCategoryDocBindingDetail,
     GetCategoryDetail,
     GetCategoryTree,
+    UpdateCategoryDocBindingParam,
     UpdateCategoryParam,
 )
 from backend.app.admin.service.category_service import category_service
@@ -75,6 +78,161 @@ async def get_sys_category_type_options(
 ) -> ResponseSchemaModel[list[str]]:
     types = await category_service.get_all_types(db=db, app_code=app_code)
     return response_base.success(data=types)
+
+
+@router.get('/doc-bindings', summary='获取分类文档关联列表', dependencies=[DependsJwtAuth])
+async def get_sys_category_doc_bindings(
+    db: CurrentSession,
+    category_id: Annotated[int | None, Query(description='分类 ID', gt=0)] = None,
+    relation_type: Annotated[str | None, Query(description='关联类型')] = None,
+    enabled: Annotated[bool | None, Query(description='是否启用')] = None,
+) -> ResponseSchemaModel[list[GetCategoryDocBindingDetail]]:
+    """
+    获取分类文档关联列表
+
+    :param db: 数据库会话
+    :param category_id: 分类 ID
+    :param relation_type: 关联类型
+    :param enabled: 是否启用
+    :return:
+    """
+    data = await category_service.get_doc_bindings(
+        db=db,
+        category_id=category_id,
+        relation_type=relation_type,
+        enabled=enabled,
+    )
+    return response_base.success(data=data)
+
+
+@router.get('/doc-bindings/{binding_id}', summary='获取分类文档关联详情', dependencies=[DependsJwtAuth])
+async def get_sys_category_doc_binding(
+    db: CurrentSession,
+    binding_id: Annotated[int, Path(description='关联 ID')],
+) -> ResponseSchemaModel[GetCategoryDocBindingDetail]:
+    """
+    获取分类文档关联详情
+
+    :param db: 数据库会话
+    :param binding_id: 关联 ID
+    :return:
+    """
+    data = await category_service.get_doc_binding(db=db, binding_id=binding_id)
+    return response_base.success(data=data)
+
+
+@router.get('/{category_id}/doc-bindings', summary='获取指定分类文档关联列表', dependencies=[DependsJwtAuth])
+async def get_sys_category_doc_bindings_by_category(
+    db: CurrentSession,
+    category_id: Annotated[int, Path(description='分类 ID')],
+    relation_type: Annotated[str | None, Query(description='关联类型')] = None,
+    enabled: Annotated[bool | None, Query(description='是否启用')] = None,
+) -> ResponseSchemaModel[list[GetCategoryDocBindingDetail]]:
+    """
+    获取指定分类文档关联列表
+
+    :param db: 数据库会话
+    :param category_id: 分类 ID
+    :param relation_type: 关联类型
+    :param enabled: 是否启用
+    :return:
+    """
+    data = await category_service.get_doc_bindings(
+        db=db,
+        category_id=category_id,
+        relation_type=relation_type,
+        enabled=enabled,
+    )
+    return response_base.success(data=data)
+
+
+@router.post(
+    '/{category_id}/doc-bindings',
+    summary='创建分类文档关联',
+    dependencies=[
+        Depends(RequestPermission('sys:category:edit')),
+        DependsRBAC,
+    ],
+)
+async def create_sys_category_doc_binding(
+    request: Request,
+    db: CurrentSessionTransaction,
+    category_id: Annotated[int, Path(description='分类 ID')],
+    obj: CreateCategoryDocBindingParam,
+) -> ResponseSchemaModel[GetCategoryDocBindingDetail]:
+    """
+    创建分类文档关联
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param category_id: 分类 ID
+    :param obj: 创建参数
+    :return:
+    """
+    data = await category_service.create_doc_binding(
+        db=db,
+        category_id=category_id,
+        obj=obj,
+        created_by=request.user.id,
+    )
+    return response_base.success(data=data)
+
+
+@router.put(
+    '/doc-bindings/{binding_id}',
+    summary='更新分类文档关联',
+    dependencies=[
+        Depends(RequestPermission('sys:category:edit')),
+        DependsRBAC,
+    ],
+)
+async def update_sys_category_doc_binding(
+    request: Request,
+    db: CurrentSessionTransaction,
+    binding_id: Annotated[int, Path(description='关联 ID')],
+    obj: UpdateCategoryDocBindingParam,
+) -> ResponseSchemaModel[GetCategoryDocBindingDetail]:
+    """
+    更新分类文档关联
+
+    :param request: 请求对象
+    :param db: 数据库会话
+    :param binding_id: 关联 ID
+    :param obj: 更新参数
+    :return:
+    """
+    data = await category_service.update_doc_binding(
+        db=db,
+        binding_id=binding_id,
+        obj=obj,
+        updated_by=request.user.id,
+    )
+    return response_base.success(data=data)
+
+
+@router.delete(
+    '/doc-bindings/{binding_id}',
+    summary='删除分类文档关联',
+    dependencies=[
+        Depends(RequestPermission('sys:category:edit')),
+        DependsRBAC,
+    ],
+)
+async def delete_sys_category_doc_binding(
+    db: CurrentSessionTransaction,
+    binding_id: Annotated[int, Path(description='关联 ID')],
+) -> ResponseModel:
+    """
+    删除分类文档关联
+
+    :param db: 数据库会话
+    :param binding_id: 关联 ID
+    :return:
+    """
+    count = await category_service.delete_doc_binding(db=db, binding_id=binding_id)
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
 
 
 @router.get('/{pk}', summary='获取分类详情', dependencies=[DependsJwtAuth])

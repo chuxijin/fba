@@ -63,3 +63,42 @@ class Category(Base, UserMixin):
     # 扩展
     remark: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='备注')
     extra_data: Mapped[dict | None] = mapped_column(JSONB, default=None, comment='扩展数据')
+
+
+class CategoryDocBinding(Base, UserMixin):
+    """系统分类文档关联表"""
+
+    __tablename__ = 'sys__doc_binding'
+    __table_args__ = (
+        sa.UniqueConstraint(
+            'category_id',
+            'relation_type',
+            'halo_tree_name',
+            'deleted',
+            name='uq_sys_doc_binding_category_tree_deleted',
+        ),
+        sa.Index('idx_sys_doc_binding_category_enabled', 'category_id', 'enabled', 'sort_order'),
+        sa.Index('idx_sys_doc_binding_halo_tree', 'halo_tree_name'),
+        sa.Index('idx_sys_doc_binding_halo_doc', 'halo_doc_name'),
+        {'comment': '系统分类文档关联表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    category_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('sys_category.id', ondelete='CASCADE'),
+        comment='系统分类 ID',
+    )
+    halo_project_name: Mapped[str] = mapped_column(sa.String(64), comment='Docsme 项目资源名称')
+    halo_project_version_name: Mapped[str] = mapped_column(sa.String(64), comment='Docsme 项目版本资源名称')
+    halo_tree_name: Mapped[str] = mapped_column(sa.String(64), comment='DocTree 节点资源名称')
+    halo_doc_name: Mapped[str] = mapped_column(sa.String(64), comment='Doc 正文资源名称')
+    title: Mapped[str] = mapped_column(sa.String(255), comment='文档标题')
+    relation_type: Mapped[str] = mapped_column(sa.String(32), default='teaching', comment='关联类型')
+    category_code: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='分类编码快照')
+    category_path: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='分类路径快照')
+    halo_doc_path: Mapped[str | None] = mapped_column(sa.String(255), default=None, comment='Docsme 文档路径')
+    halo_permalink: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='Docsme 访问路径')
+    enabled: Mapped[bool] = mapped_column(default=True, comment='是否启用')
+    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='排序')
+    extra_data: Mapped[dict | None] = mapped_column(JSONB, default=None, comment='扩展数据')
