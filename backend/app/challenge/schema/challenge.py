@@ -8,12 +8,39 @@ from pydantic import Field
 
 from backend.common.schema import SchemaBase
 
-ChallengeStage = Literal['easy', 'normal', 'hard']
+ChallengeStage = Literal['stage_1', 'stage_2', 'stage_3', 'stage_4']
 ChallengeLevelStatus = Literal['draft', 'published', 'disabled']
 ChallengeMapLevelStatus = Literal['cleared', 'active', 'locked']
 ChallengeSourceType = Literal['fixed', 'pool', 'manual', 'generator']
-ChallengeQuestionType = Literal['single', 'multiple', 'judgement', 'fill', 'shortAnswer', 'matching', 'connection']
+ChallengeQuestionType = Literal[
+    'single',
+    'multiple',
+    'judgement',
+    'fill',
+    'shortAnswer',
+    'matching',
+    'connection',
+    'numberLocate',
+    'evidenceLocate',
+    'regionLocate',
+    'anchorLocate',
+]
 ChallengeCompletionMode = Literal['single_attempt', 'consecutive_attempts']
+
+
+class ChallengeAttemptRequirementParam(SchemaBase):
+    """单次达标要求参数"""
+
+    seq_no: int = Field(ge=1, le=100, description='连续达标序号')
+    title: str | None = Field(None, max_length=128, description='要求标题')
+    description: str | None = Field(None, max_length=255, description='要求描述')
+    min_accuracy_rate: Decimal | None = Field(
+        None,
+        ge=Decimal('0'),
+        le=Decimal('100'),
+        description='本次最低正确率',
+    )
+    max_total_time: int | None = Field(None, gt=0, le=86400, description='本次最高用时（秒）')
 
 
 class ChallengeCompletionRuleParam(SchemaBase):
@@ -28,6 +55,11 @@ class ChallengeCompletionRuleParam(SchemaBase):
         description='最低正确率，为空时使用关卡通关正确率',
     )
     max_total_time: int | None = Field(None, gt=0, le=86400, description='单次最高用时（秒）')
+    attempt_requirements: list[ChallengeAttemptRequirementParam] = Field(
+        default_factory=list,
+        max_length=100,
+        description='连续达标每次差异化要求',
+    )
 
 
 class ChallengeSectionParam(SchemaBase):
@@ -190,6 +222,8 @@ class GetChallengeAttemptResponse(SchemaBase):
     question_count: int = Field(description='题目数量')
     time_limit: int = Field(description='建议用时（秒）')
     completion_rule: ChallengeCompletionRuleParam = Field(description='通关规则')
+    current_attempt_index: int | None = Field(None, description='当前连续达标序号')
+    current_attempt_requirement: ChallengeAttemptRequirementParam | None = Field(None, description='当前单次要求')
     expires_in: int = Field(ge=0, description='临时题目剩余有效期（秒）')
     questions: list[ChallengeQuestionItem] = Field(default_factory=list, description='即时题目')
 
@@ -227,6 +261,8 @@ class SubmitChallengeAttemptResult(SchemaBase):
     qualified_attempts: int = Field(ge=0, description='当前连续达标次数')
     required_attempts: int = Field(ge=1, description='要求达标次数')
     completion_rule: ChallengeCompletionRuleParam = Field(description='通关规则')
+    current_attempt_index: int | None = Field(None, description='本次连续达标序号')
+    current_attempt_requirement: ChallengeAttemptRequirementParam | None = Field(None, description='本次单次要求')
     stars: int = Field(ge=0, le=3, description='本次星级')
     completed_count: int = Field(ge=0, description='完成题数')
     correct_count: int = Field(ge=0, description='答对题数')

@@ -17,7 +17,14 @@ from backend.app.challenge.model import (
     ChallengeLevelSection,
     UserChallengeProgress,
 )
-from backend.app.question_bank.model import Question, QuestionAnalysis, QuestionMaterial, QuestionPlacement
+from backend.app.question_bank.model import (
+    MaterialAnchor,
+    Question,
+    QuestionAnalysis,
+    QuestionInteractionAnnotation,
+    QuestionMaterial,
+    QuestionPlacement,
+)
 
 
 class CRUDChallengeLevel(CRUDPlus[ChallengeLevel]):
@@ -361,6 +368,81 @@ class CRUDUserChallengeProgress(CRUDPlus[UserChallengeProgress]):
 
 class CRUDChallengeQuestionSource:
     """闯关题源数据库操作类"""
+
+    @staticmethod
+    async def get_random_annotation_by_anchor_role(
+        *,
+        db: AsyncSession,
+        role: str,
+        bank_id: int | None = None,
+        material_ids: list[int] | None = None,
+        exclude_annotation_ids: list[int] | None = None,
+    ) -> tuple[QuestionInteractionAnnotation, QuestionMaterial] | None:
+        """
+        按题目标注中的锚点角色随机抽取题目材料
+
+        :param db: 数据库会话
+        :param role: 锚点语义角色
+        :param bank_id: 题库 ID
+        :param material_ids: 材料 ID 列表
+        :param exclude_annotation_ids: 排除标注 ID
+        :return:
+        """
+        stmt = (
+            select(QuestionInteractionAnnotation, QuestionMaterial)
+            .join(QuestionMaterial, QuestionMaterial.id == QuestionInteractionAnnotation.material_id)
+            .where(
+                QuestionInteractionAnnotation.interaction_type == 'anchorLocate',
+                QuestionInteractionAnnotation.status == 10,
+                QuestionInteractionAnnotation.deleted == 0,
+                QuestionInteractionAnnotation.material_id.is_not(None),
+                QuestionMaterial.is_active.is_(True),
+                QuestionMaterial.deleted == 0,
+            )
+        )
+        if bank_id is not None:
+            stmt = stmt.where(QuestionMaterial.bank_id == bank_id)
+        if material_ids:
+            stmt = stmt.where(QuestionInteractionAnnotation.material_id.in_(material_ids))
+        if exclude_annotation_ids:
+            stmt = stmt.where(QuestionInteractionAnnotation.id.not_in(exclude_annotation_ids))
+
+        result = await db.execute(stmt.order_by(sa.func.random()))
+        for annotation, material in result.all():
+            config = annotation.config if isinstance(annotation.config, dict) else {}
+            anchor_roles = config.get('anchor_roles')
+            if not isinstance(anchor_roles, dict):
+                continue
+            if any(str(item).strip() == role for item in anchor_roles.values()):
+                return annotation, material
+        return None
+
+    @staticmethod
+    async def get_material_anchor_candidates(
+        *,
+        db: AsyncSession,
+        material_id: int,
+        roles: list[str],
+    ) -> Sequence[MaterialAnchor]:
+        """
+        获取材料内可用候选锚点
+
+        :param db: 数据库会话
+        :param material_id: 材料 ID
+        :param roles: 锚点语义角色列表
+        :return:
+        """
+        stmt = select(MaterialAnchor).where(
+            MaterialAnchor.material_id == material_id,
+            MaterialAnchor.status == 10,
+            MaterialAnchor.deleted == 0,
+        )
+        if roles:
+            stmt = stmt.where(MaterialAnchor.role.in_(roles))
+
+        stmt = stmt.order_by(MaterialAnchor.id.asc())
+        result = await db.execute(stmt)
+        return result.scalars().all()
 
     @staticmethod
     async def get_pool_questions(

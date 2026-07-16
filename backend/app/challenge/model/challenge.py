@@ -24,7 +24,10 @@ class ChallengeLevel(Base):
         sa.UniqueConstraint('challenge_key', 'stage', 'level_no', name='uq_challenge_level_stage_no'),
         sa.UniqueConstraint('challenge_key', 'global_no', name='uq_challenge_level_global_no'),
         sa.Index('idx_challenge_level_key_status_sort', 'challenge_key', 'status', 'sort_order'),
-        sa.CheckConstraint("stage IN ('easy','normal','hard')", name='ck_challenge_level_stage'),
+        sa.CheckConstraint(
+            "stage IN ('stage_1','stage_2','stage_3','stage_4')",
+            name='ck_challenge_level_stage',
+        ),
         sa.CheckConstraint("status IN ('draft','published','disabled')", name='ck_challenge_level_status'),
         sa.CheckConstraint('level_no > 0 AND global_no > 0', name='ck_challenge_level_number'),
         sa.CheckConstraint('question_count > 0', name='ck_challenge_level_question_count'),
@@ -40,7 +43,7 @@ class ChallengeLevel(Base):
 
     id: Mapped[id_key] = mapped_column(init=False)
     challenge_key: Mapped[str] = mapped_column(sa.String(64), comment='闯关标识')
-    stage: Mapped[str] = mapped_column(sa.String(16), comment='难度阶段: easy/normal/hard')
+    stage: Mapped[str] = mapped_column(sa.String(16), comment='闯关阶段: stage_1/stage_2/stage_3/stage_4')
     level_no: Mapped[int] = mapped_column(sa.SmallInteger, comment='阶段内关卡号')
     global_no: Mapped[int] = mapped_column(sa.SmallInteger, comment='全局关卡序号')
     title: Mapped[str] = mapped_column(sa.String(128), comment='关卡名称')

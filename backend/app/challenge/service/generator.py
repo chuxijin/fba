@@ -34,6 +34,11 @@ DATA_ANALYSIS_CONCEPTS = [
         'definition': '两个时期数值相减得到的增减量',
     },
     {
+        'id': 'change_rate',
+        'name': '变化幅度',
+        'definition': '变化量与比较基准的比值，表示相对变化程度',
+    },
+    {
         'id': 'growth_rate',
         'name': '增长率',
         'definition': '增长量与基期值的比值',
@@ -112,11 +117,12 @@ def _generate_growth_rate(stage: str, params: dict[str, Any]) -> ChallengeGenera
     :return:
     """
     ranges = {
-        'easy': (80, 260, 5, 30),
-        'normal': (180, 900, 8, 45),
-        'hard': (500, 2800, 12, 65),
+        'stage_1': (80, 260, 5, 30),
+        'stage_2': (180, 900, 8, 45),
+        'stage_3': (500, 1800, 10, 55),
+        'stage_4': (800, 2800, 12, 65),
     }
-    base_min, base_max, rate_min, rate_max = ranges.get(stage, ranges['normal'])
+    base_min, base_max, rate_min, rate_max = ranges.get(stage, ranges['stage_2'])
     base = Decimal(_random.randint(base_min, base_max))
     rate = Decimal(_random.randint(rate_min, rate_max))
     current = (base * (Decimal('1') + rate / Decimal('100'))).quantize(Decimal('0.1'))
@@ -127,7 +133,9 @@ def _generate_growth_rate(stage: str, params: dict[str, Any]) -> ChallengeGenera
         correct_value=rate,
         analysis='增长率 =（现期量 - 基期量）÷ 基期量。',
         material=f'某指标基期为 {base.normalize()}，现期为 {current.normalize()}。',
-        difficulty=Decimal({'easy': '1.5', 'normal': '2.8', 'hard': '4.1'}.get(stage, '2.8')),
+        difficulty=Decimal(
+            {'stage_1': '1.5', 'stage_2': '2.8', 'stage_3': '3.6', 'stage_4': '4.1'}.get(stage, '2.8')
+        ),
         suffix='%',
     )
 
@@ -150,7 +158,9 @@ def _generate_base_value(stage: str, params: dict[str, Any]) -> ChallengeGenerat
         correct_value=base,
         analysis='基期量 = 现期量 ÷（1 + 增长率）。',
         material=f'某指标现期为 {current.normalize()}，同比增长 {rate.normalize()}%。',
-        difficulty=Decimal({'easy': '1.8', 'normal': '3.0', 'hard': '4.3'}.get(stage, '3.0')),
+        difficulty=Decimal(
+            {'stage_1': '1.8', 'stage_2': '3.0', 'stage_3': '3.8', 'stage_4': '4.3'}.get(stage, '3.0')
+        ),
     )
 
 
@@ -173,7 +183,9 @@ def _generate_growth_amount(stage: str, params: dict[str, Any]) -> ChallengeGene
         correct_value=amount,
         analysis='增长量 = 现期量 - 基期量，也可用基期量 × 增长率。',
         material=f'某指标基期为 {base.normalize()}，现期为 {current.normalize()}。',
-        difficulty=Decimal({'easy': '1.6', 'normal': '2.7', 'hard': '4.0'}.get(stage, '2.7')),
+        difficulty=Decimal(
+            {'stage_1': '1.6', 'stage_2': '2.7', 'stage_3': '3.6', 'stage_4': '4.0'}.get(stage, '2.7')
+        ),
     )
 
 
@@ -195,7 +207,9 @@ def _generate_proportion(stage: str, params: dict[str, Any]) -> ChallengeGenerat
         correct_value=proportion,
         analysis='比重 = 部分量 ÷ 总体量。',
         material=f'某总体量为 {total.normalize()}，其中某部分为 {part.normalize()}。',
-        difficulty=Decimal({'easy': '1.7', 'normal': '3.1', 'hard': '4.2'}.get(stage, '3.1')),
+        difficulty=Decimal(
+            {'stage_1': '1.7', 'stage_2': '3.1', 'stage_3': '3.8', 'stage_4': '4.2'}.get(stage, '3.1')
+        ),
         suffix='%',
     )
 
@@ -213,24 +227,28 @@ def _format_decimal(value: Decimal) -> str:
     return text.rstrip('0').rstrip('.')
 
 
-def _concept_definition_lines() -> list[str]:
-    """构建资料分析概念定义行"""
-    return [
-        f"{item['name']}：{item['definition']}"
-        for item in DATA_ANALYSIS_CONCEPTS
-    ]
-
-
-def _build_concept_options(correct_concept_id: str) -> tuple[list[dict[str, str]], str]:
+def _build_concept_options(
+    correct_concept_id: str,
+    concepts: list[dict[str, str]] | None = None,
+) -> tuple[list[dict[str, str]], str]:
     """
     构建概念识别选项
 
     :param correct_concept_id: 正确概念 ID
+    :param concepts: 可选概念范围
     :return:
     """
-    correct_concept = next(item for item in DATA_ANALYSIS_CONCEPTS if item['id'] == correct_concept_id)
-    distractors = [item for item in DATA_ANALYSIS_CONCEPTS if item['id'] != correct_concept_id]
-    selected_concepts = [correct_concept, *_random.sample(distractors, 3)]
+    concept_pool = concepts if concepts else DATA_ANALYSIS_CONCEPTS
+    correct_concept = next(item for item in concept_pool if item['id'] == correct_concept_id)
+    distractors = [item for item in concept_pool if item['id'] != correct_concept_id]
+    selected_concepts = [correct_concept, *_random.sample(distractors, min(3, len(distractors)))]
+    if len(selected_concepts) < 4:
+        fallback_distractors = [
+            item
+            for item in DATA_ANALYSIS_CONCEPTS
+            if item['id'] not in {concept['id'] for concept in selected_concepts}
+        ]
+        selected_concepts.extend(_random.sample(fallback_distractors, 4 - len(selected_concepts)))
     _random.shuffle(selected_concepts)
 
     option_codes = ['A', 'B', 'C', 'D']
@@ -264,10 +282,14 @@ def _generate_concept_identification(stage: str, params: dict[str, Any]) -> Chal
     annual_growth_amount = Decimal(_random.randint(12, 68))
     current_value = base_value + annual_growth_amount
     annual_growth_rate = (annual_growth_amount / base_value * Decimal('100')).quantize(Decimal('0.1'))
+    raw_concept_ids = params.get('concept_ids')
+    concept_ids = [str(item) for item in raw_concept_ids] if isinstance(raw_concept_ids, list) else []
+    allowed_concepts = [item for item in DATA_ANALYSIS_CONCEPTS if item['id'] in concept_ids]
+    allowed_concept_ids = {item['id'] for item in allowed_concepts}
 
     previous_month_value = Decimal(_random.randint(20, 90))
     monthly_change = Decimal(_random.randint(3, 18))
-    if stage != 'easy' and _random.choice([True, False]):
+    if stage != 'stage_1' and _random.choice([True, False]):
         monthly_change = -monthly_change
     current_month_value = previous_month_value + monthly_change
     if current_month_value <= 0:
@@ -276,71 +298,170 @@ def _generate_concept_identification(stage: str, params: dict[str, Any]) -> Chal
 
     change_action = '增加' if monthly_change >= 0 else '减少'
     change_text = _format_decimal(abs(monthly_change))
-
-    passage = (
-        f'{current_year} 年上半年，{subject}为 {_format_decimal(current_value)}{unit}。\n'
-        f'{base_year} 年同期为 {_format_decimal(base_value)}{unit}。\n'
-        f'比 {base_year} 年同期增加 {_format_decimal(annual_growth_amount)}{unit}，'
-        f'增长率为 {_format_decimal(annual_growth_rate)}%。\n'
-        f'{current_year} 年 {current_month} 月该指标为 {_format_decimal(current_month_value)}{unit}。\n'
-        f'比 {previous_month} 月{change_action} {change_text}{unit}。'
-    )
+    monthly_change_rate = (abs(monthly_change) / previous_month_value * Decimal('100')).quantize(Decimal('0.1'))
 
     target_items = [
         {
             'concept_id': 'base_value',
-            'content': f'{base_year} 年同期为 {_format_decimal(base_value)}{unit}',
+            'variants': [
+                {
+                    'content': f'{base_year} 年同期为 {_format_decimal(base_value)}{unit}',
+                    'passage_line': f'{base_year} 年同期为 {_format_decimal(base_value)}{unit}。',
+                },
+                {
+                    'content': f'用于比较的基础数值为 {_format_decimal(base_value)}{unit}',
+                    'passage_line': f'用于比较的基础数值为 {_format_decimal(base_value)}{unit}。',
+                },
+            ],
         },
         {
             'concept_id': 'current_value',
-            'content': f'{current_year} 年上半年为 {_format_decimal(current_value)}{unit}',
+            'variants': [
+                {
+                    'content': f'{current_year} 年上半年为 {_format_decimal(current_value)}{unit}',
+                    'passage_line': f'{current_year} 年上半年，{subject}为 {_format_decimal(current_value)}{unit}。',
+                },
+                {
+                    'content': f'报告期内达到 {_format_decimal(current_value)}{unit}',
+                    'passage_line': f'报告期内，{subject}达到 {_format_decimal(current_value)}{unit}。',
+                },
+            ],
         },
         {
             'concept_id': 'growth_amount',
-            'content': f'比 {base_year} 年同期增加 {_format_decimal(annual_growth_amount)}{unit}',
+            'variants': [
+                {
+                    'content': f'比 {base_year} 年同期增加 {_format_decimal(annual_growth_amount)}{unit}',
+                    'passage_line': f'比 {base_year} 年同期增加 {_format_decimal(annual_growth_amount)}{unit}。',
+                },
+                {
+                    'content': f'现期相较基础数值多出 {_format_decimal(annual_growth_amount)}{unit}',
+                    'passage_line': f'现期相较基础数值多出 {_format_decimal(annual_growth_amount)}{unit}。',
+                },
+            ],
         },
         {
             'concept_id': 'change_amount',
-            'content': f'比 {previous_month} 月{change_action} {change_text}{unit}',
+            'variants': [
+                {
+                    'content': f'比 {previous_month} 月{change_action} {change_text}{unit}',
+                    'passage_line': (
+                        f'{current_year} 年 {current_month} 月该指标为 {_format_decimal(current_month_value)}{unit}，'
+                        f'比 {previous_month} 月{change_action} {change_text}{unit}。'
+                    ),
+                },
+                {
+                    'content': f'相邻统计期之间相差 {change_text}{unit}',
+                    'passage_line': f'相邻统计期之间相差 {change_text}{unit}。',
+                },
+            ],
+        },
+        {
+            'concept_id': 'change_rate',
+            'variants': [
+                {
+                    'content': f'变化幅度为 {_format_decimal(monthly_change_rate)}%',
+                    'passage_line': f'变化幅度为 {_format_decimal(monthly_change_rate)}%。',
+                },
+                {
+                    'content': f'{change_action}幅度为 {_format_decimal(monthly_change_rate)}%',
+                    'passage_line': f'相较上一统计期{change_action}幅度为 {_format_decimal(monthly_change_rate)}%。',
+                },
+            ],
         },
         {
             'concept_id': 'growth_rate',
-            'content': f'增长率为 {_format_decimal(annual_growth_rate)}%',
+            'variants': [
+                {
+                    'content': f'增长率为 {_format_decimal(annual_growth_rate)}%',
+                    'passage_line': f'增长率为 {_format_decimal(annual_growth_rate)}%。',
+                },
+                {
+                    'content': f'增长量占基础数值的 {_format_decimal(annual_growth_rate)}%',
+                    'passage_line': f'增长量占基础数值的 {_format_decimal(annual_growth_rate)}%。',
+                },
+            ],
         },
         {
             'concept_id': 'yoy',
-            'content': f'比 {base_year} 年同期',
+            'variants': [
+                {
+                    'content': f'比 {base_year} 年同期',
+                    'passage_line': f'统计口径为比 {base_year} 年同期。',
+                },
+                {
+                    'content': '与上一年同一时期相比',
+                    'passage_line': '统计口径为与上一年同一时期相比。',
+                },
+            ],
         },
         {
             'concept_id': 'mom',
-            'content': f'比 {previous_month} 月',
+            'variants': [
+                {
+                    'content': f'比 {previous_month} 月',
+                    'passage_line': f'统计口径为比 {previous_month} 月。',
+                },
+                {
+                    'content': '与上一统计周期相比',
+                    'passage_line': '统计口径为与上一统计周期相比。',
+                },
+            ],
         },
     ]
+    if allowed_concepts:
+        target_items = [item for item in target_items if item['concept_id'] in allowed_concept_ids]
+        concept_order = {concept_id: index for index, concept_id in enumerate(concept_ids)}
+        target_items.sort(key=lambda item: concept_order.get(str(item['concept_id']), len(concept_order)))
+    if not target_items:
+        raise errors.RequestError(msg='概念识别题生成参数 concept_ids 无可用概念')
+
     question_index = params.get('question_index')
     if isinstance(question_index, int):
         target_item = target_items[question_index % len(target_items)]
+        variant_index = question_index // len(target_items)
     else:
         target_item = _random.choice(target_items)
-    options, correct_option_code = _build_concept_options(str(target_item['concept_id']))
+        variant_index = _random.randint(0, 1)
+
+    def get_variant(item: dict[str, Any]) -> dict[str, str]:
+        """
+        获取概念题干变体
+
+        :param item: 概念题干配置
+        :return:
+        """
+        variants = item['variants']
+        return variants[variant_index % len(variants)]
+
+    passage_items = target_items if allowed_concepts else target_items[:5]
+    passage = '\n'.join(get_variant(item)['passage_line'] for item in passage_items)
+    target_variant = get_variant(target_item)
+    options, correct_option_code = _build_concept_options(
+        str(target_item['concept_id']),
+        allowed_concepts or None,
+    )
     correct_concept = next(item for item in DATA_ANALYSIS_CONCEPTS if item['id'] == target_item['concept_id'])
-    material = '\n'.join([
-        '资料：',
+    stem = '\n'.join([
         passage,
-        '概念定义：',
-        *_concept_definition_lines(),
+        f"其中“{target_variant['content']}”属于什么概念？",
     ])
 
     return {
         'type': 'single',
-        'stem': f"题干中的“{target_item['content']}”属于什么概念？",
-        'material': material,
+        'stem': stem,
+        'material': None,
         'options': options,
-        'difficulty': str(Decimal({'easy': '1.0', 'normal': '1.5', 'hard': '2.0'}.get(stage, '1.0'))),
+        'difficulty': str(
+            Decimal(
+                {'stage_1': '1.0', 'stage_2': '1.5', 'stage_3': '1.8', 'stage_4': '2.0'}.get(stage, '1.0')
+            )
+        ),
         'full_score': '1',
         'answer_data': {
             'correct': correct_option_code,
         },
-        'analysis': f"“{target_item['content']}”对应{correct_concept['name']}，{correct_concept['definition']}。",
+        'analysis': f"“{target_variant['content']}”对应{correct_concept['name']}，{correct_concept['definition']}。",
     }
 
 

@@ -65,7 +65,7 @@ def build_level_model(
     return SimpleNamespace(
         id=1,
         challenge_key='data_analysis',
-        stage='easy',
+        stage='stage_1',
         level_no=1,
         global_no=1,
         title='第 1 关',
@@ -110,7 +110,7 @@ def test_validate_level_config_rejects_question_count_mismatch() -> None:
     """启用分组题量与关卡题量不一致时应拒绝"""
     obj = ChallengeLevelParam(
         challenge_key='data_analysis',
-        stage='easy',
+        stage='stage_1',
         level_no=1,
         global_no=1,
         title='第 1 关',
@@ -305,11 +305,49 @@ def build_consecutive_rule_snapshot(required_attempts: int = 5) -> dict[str, obj
     }
 
 
+def build_varying_consecutive_rule_snapshot() -> dict[str, object]:
+    """构建差异化连续达标通关规则快照"""
+    return {
+        'pass_rate': '75',
+        'star_two_rate': '100',
+        'star_three_rate': '100',
+        'required_section_pass': False,
+        'completion_rule': {
+            'mode': 'consecutive_attempts',
+            'required_attempts': 5,
+            'min_accuracy_rate': '75',
+            'max_total_time': 120,
+            'attempt_requirements': [
+                {
+                    'seq_no': 1,
+                    'title': '第一次',
+                    'min_accuracy_rate': '75',
+                    'max_total_time': 120,
+                },
+                {
+                    'seq_no': 2,
+                    'title': '第二次',
+                    'min_accuracy_rate': '100',
+                    'max_total_time': 120,
+                },
+            ],
+        },
+        'current_attempt_index': 2,
+        'current_attempt_requirement': {
+            'seq_no': 2,
+            'title': '第二次',
+            'min_accuracy_rate': '100',
+            'max_total_time': 120,
+        },
+        'sections': [],
+    }
+
+
 def test_validate_level_config_rejects_invalid_consecutive_rule() -> None:
     """连续达标模式要求次数不能小于 2"""
     obj = ChallengeLevelParam(
         challenge_key='data_analysis',
-        stage='easy',
+        stage='stage_1',
         level_no=1,
         global_no=1,
         title='第 1 关',
@@ -330,6 +368,111 @@ def test_validate_level_config_rejects_invalid_consecutive_rule() -> None:
 
     with pytest.raises(errors.RequestError, match='连续达标模式的要求达标次数不能小于 2'):
         challenge_service._validate_level_config(obj)
+
+
+def test_submit_attempt_uses_current_varying_requirement(monkeypatch) -> None:
+    """连续达标应按当前序号使用差异化要求"""
+    runtime = {
+        'questions': [
+            {
+                'seq_no': 1,
+                'section_seq': 1,
+                'type': 'single',
+                'answer_data': {'correct': 'A'},
+                'analysis': '解析 1',
+            },
+            {
+                'seq_no': 2,
+                'section_seq': 1,
+                'type': 'single',
+                'answer_data': {'correct': 'B'},
+                'analysis': '解析 2',
+            },
+            {
+                'seq_no': 3,
+                'section_seq': 1,
+                'type': 'single',
+                'answer_data': {'correct': 'C'},
+                'analysis': '解析 3',
+            },
+            {
+                'seq_no': 4,
+                'section_seq': 1,
+                'type': 'single',
+                'answer_data': {'correct': 'D'},
+                'analysis': '解析 4',
+            },
+        ]
+    }
+    attempt = SimpleNamespace(
+        id=604,
+        attempt_key='attempt-key-varying',
+        user_id=9,
+        level_id=88,
+        status='in_progress',
+        rule_snapshot=build_varying_consecutive_rule_snapshot(),
+    )
+    current_level = SimpleNamespace(id=88, challenge_key='data_analysis', global_no=7)
+    next_level = SimpleNamespace(id=89)
+    updates: list[dict[str, object]] = []
+
+    async def fake_get_by_key(_db, _attempt_key, *, for_update=False):
+        return attempt
+
+    async def fake_update(_db, _attempt_id, data):
+        updates.append(data.copy())
+        return 1
+
+    async def fake_get_recent_completed(_db, _user_id, _level_id, _limit):
+        raise AssertionError('当前差异化要求未达标时不应查询连续记录')
+
+    async def fake_load_runtime(_attempt_key):
+        return runtime, 600
+
+    async def fake_update_progress(**kwargs):
+        return SimpleNamespace(passed=kwargs['passed'])
+
+    async def fake_get_level(_db, _level_id):
+        return current_level
+
+    async def fake_get_next_level(_db, _challenge_key, _global_no):
+        return next_level
+
+    async def fake_delete(_key):
+        return None
+
+    monkeypatch.setattr(challenge_service_module.challenge_attempt_dao, 'get_by_key', fake_get_by_key)
+    monkeypatch.setattr(challenge_service_module.challenge_attempt_dao, 'update', fake_update)
+    monkeypatch.setattr(challenge_service_module.challenge_attempt_dao, 'get_recent_completed', fake_get_recent_completed)
+    monkeypatch.setattr(challenge_service_module.challenge_level_dao, 'get', fake_get_level)
+    monkeypatch.setattr(challenge_service_module.challenge_level_dao, 'get_by_global_no', fake_get_next_level)
+    monkeypatch.setattr(challenge_service, '_load_runtime', fake_load_runtime)
+    monkeypatch.setattr(challenge_service, '_update_progress', fake_update_progress)
+    monkeypatch.setattr(challenge_service_module.redis_client, 'delete', fake_delete)
+
+    result = run(
+        challenge_service.submit_attempt(
+            db=None,
+            user_id=9,
+            attempt_key='attempt-key-varying',
+            obj=SubmitChallengeAttemptParam(
+                answers=[
+                    ChallengeAnswerItem(seq_no=1, user_answer='A', answer_time=10),
+                    ChallengeAnswerItem(seq_no=2, user_answer='B', answer_time=10),
+                    ChallengeAnswerItem(seq_no=3, user_answer='C', answer_time=10),
+                    ChallengeAnswerItem(seq_no=4, user_answer='A', answer_time=10),
+                ],
+                total_time=40,
+            ),
+        )
+    )
+
+    assert result.current_attempt_qualified is False
+    assert result.current_attempt_index == 2
+    assert result.current_attempt_requirement is not None
+    assert result.current_attempt_requirement.min_accuracy_rate == Decimal('100')
+    assert result.qualified_attempts == 0
+    assert updates[0]['passed'] is False
 
 
 def test_submit_attempt_keeps_locked_before_required_consecutive_attempts(monkeypatch) -> None:
@@ -718,7 +861,7 @@ def test_generate_data_analysis_concept_identification_question() -> None:
     """资料分析概念识别生成器应生成单选题"""
     question = generate_challenge_question(
         generator_key='data_analysis_concept_matching_v1',
-        stage='easy',
+        stage='stage_1',
         params={
             'unit': '亿元',
             'subject': '全市文旅收入',
@@ -730,13 +873,14 @@ def test_generate_data_analysis_concept_identification_question() -> None:
     correct_answer = question['answer_data']['correct']
     option_codes = {item['option_code'] for item in question['options']}
     option_contents = {item['content'] for item in question['options']}
-    concept_names = {'基期值', '现期值', '增长量', '变化量', '增长率', '同比', '环比'}
+    concept_names = {'基期值', '现期值', '增长量', '变化量', '变化幅度', '增长率', '同比', '环比'}
 
     assert question['type'] == 'single'
     assert '属于什么概念' in question['stem']
-    assert '资料：' in question['material']
-    assert '概念定义：' in question['material']
-    assert '概念提示' not in question['material']
+    assert question['material'] is None
+    assert '资料：' not in question['stem']
+    assert '概念定义：' not in question['stem']
+    assert '概念提示' not in question['stem']
     assert len(question['options']) == 4
     assert correct_answer in option_codes
     assert option_contents <= concept_names
@@ -747,8 +891,66 @@ def test_generate_data_analysis_concept_identification_alias_question() -> None:
     """概念识别新生成器标识应可用"""
     question = generate_challenge_question(
         generator_key='data_analysis_concept_identification_v1',
-        stage='easy',
+        stage='stage_1',
     )
 
     assert question['type'] == 'single'
     assert '属于什么概念' in question['stem']
+
+
+def test_generate_data_analysis_concept_identification_can_limit_concepts() -> None:
+    """概念识别生成器应支持限定四个基础概念"""
+    concept_ids = ['base_value', 'current_value', 'growth_rate', 'growth_amount']
+    question = generate_challenge_question(
+        generator_key='data_analysis_concept_identification_v1',
+        stage='stage_1',
+        params={
+            'concept_ids': concept_ids,
+            'question_index': 2,
+        },
+    )
+
+    option_contents = {item['content'] for item in question['options']}
+
+    assert question['type'] == 'single'
+    assert len(question['options']) == 4
+    assert option_contents == {'基期值', '现期值', '增长率', '增长量'}
+    assert question['material'] is None
+    assert '变化量：' not in question['stem']
+    assert '同比：' not in question['stem']
+    assert '环比：' not in question['stem']
+
+
+def test_generate_data_analysis_second_level_concepts_are_balanced() -> None:
+    """第二关概念识别应平均覆盖比较口径与变化表达"""
+    concept_ids = ['yoy', 'mom', 'change_amount', 'change_rate']
+    answer_names: list[str] = []
+    stems: list[str] = []
+
+    for question_index in range(8):
+        question = generate_challenge_question(
+            generator_key='data_analysis_concept_identification_v1',
+        stage='stage_1',
+            params={
+                'concept_ids': concept_ids,
+                'question_index': question_index,
+                'question_count': 8,
+            },
+        )
+        correct_code = question['answer_data']['correct']
+        correct_option = next(item for item in question['options'] if item['option_code'] == correct_code)
+        answer_names.append(correct_option['content'])
+        stems.append(question['stem'])
+
+        option_contents = {item['content'] for item in question['options']}
+        assert option_contents == {'同比', '环比', '变化量', '变化幅度'}
+        assert '基期值' not in question['stem']
+        assert '现期值' not in question['stem']
+        assert '增长率' not in question['stem']
+        assert '增长量' not in question['stem']
+
+    assert answer_names.count('同比') == 2
+    assert answer_names.count('环比') == 2
+    assert answer_names.count('变化量') == 2
+    assert answer_names.count('变化幅度') == 2
+    assert len(set(stems)) == 8

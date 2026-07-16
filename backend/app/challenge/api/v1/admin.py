@@ -126,4 +126,3 @@ async def publish_challenge_level(
     """
     data = await challenge_service.publish_level(db=db, level_id=level_id, user_id=request.user.id)
     return response_base.success(data=data)
-
