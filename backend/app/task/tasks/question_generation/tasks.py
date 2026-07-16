@@ -67,7 +67,7 @@ def _build_snapshot(state: QuestionGenerationState) -> dict[str, Any]:
     }
 
 
-@celery_app.task(name='question_generation_run_task')
+@celery_app.task(name='question_generation:run_task')
 async def run_question_generation_task(task_id: int) -> dict[str, Any]:
     """
     执行 AI 出题任务

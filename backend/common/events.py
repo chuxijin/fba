@@ -35,7 +35,7 @@ async def publish(event_name: str, **payload: Any) -> None:
     from backend.app.task.celery import celery_app
 
     celery_app.send_task(
-        'dispatch_domain_event',
+        'common:dispatch_domain_event',
         kwargs={'event': event_name, 'payload': payload},
     )
 

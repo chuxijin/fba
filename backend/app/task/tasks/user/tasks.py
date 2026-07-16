@@ -17,12 +17,17 @@ from backend.database.db import async_db_session
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='refresh_all_valid_drive_users', bind=True)
+@celery_app.task(name='user:refresh_all_valid_drive_users', bind=True)
 async def refresh_all_valid_drive_users(self) -> dict[str, Any]:
     """刷新所有有效的网盘用户信息"""
     result = await _refresh_all_valid_drive_users(self)
     logger.info(f'用户信息刷新完成: 检查{result["checked_users"]}个，刷新{result["refreshed_users"]}个')
-    return result
+    return {
+        'checked_users': result['checked_users'],
+        'refreshed_users': result['refreshed_users'],
+        'failed_users': result['failed_users'],
+        'skipped_users': result['skipped_users'],
+    }
 
 
 async def _refresh_all_valid_drive_users(task) -> dict[str, Any]:
@@ -143,7 +148,7 @@ async def _refresh_all_valid_drive_users(task) -> dict[str, Any]:
     return result
 
 
-@celery_app.task(name='check_expired_user_roles')
+@celery_app.task(name='user:check_expired_user_roles')
 async def check_expired_user_roles() -> int:
     """检查并处理过期的用户角色"""
     from backend.app.admin.service.user_role_expiry_service import user_role_expiry_service
@@ -151,7 +156,7 @@ async def check_expired_user_roles() -> int:
     return await user_role_expiry_service.check_and_expire_roles()
 
 
-@celery_app.task(name='check_expired_memberships')
+@celery_app.task(name='user:check_expired_memberships')
 async def check_expired_memberships() -> int:
     """批量将已过期的 active 订阅标记为 expired"""
     from backend.app.access.service.subscription_service import subscription_service

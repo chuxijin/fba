@@ -202,7 +202,7 @@ async def _purge_job_files(job: RenderBookJob) -> dict[str, int]:
     return stats
 
 
-@celery_app.task(name='cleanup_expired_render_books')
+@celery_app.task(name='render_book:cleanup_expired_render_books')
 async def cleanup_expired_render_books() -> dict[str, Any]:
     """清理 90 天以前的题本任务（OSS 对象 + 本地文件 + 数据库记录）"""
     threshold = timezone.now() - timedelta(days=EXPIRE_DAYS)
@@ -264,4 +264,15 @@ async def cleanup_expired_render_books() -> dict[str, Any]:
         summary['error'] = f'[{type(exc).__name__}] {exc!r}'
         logger.error(f'清理过期题本任务整体失败: {summary["error"]}')
 
-    return summary
+    return {
+        'success': summary['success'],
+        'threshold': summary['threshold'],
+        'scanned_jobs': summary['scanned_jobs'],
+        'deleted_jobs': summary['deleted_jobs'],
+        'oss_deleted': summary['oss_deleted'],
+        'oss_failed': summary['oss_failed'],
+        'local_deleted': summary['local_deleted'],
+        'local_failed': summary['local_failed'],
+        'error_count': len(summary['errors']),
+        **({'error': summary['error']} if 'error' in summary else {}),
+    }

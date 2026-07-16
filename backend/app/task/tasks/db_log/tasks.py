@@ -16,7 +16,7 @@ from backend.utils.timezone import timezone
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='delete_db_opera_log')
+@celery_app.task(name='db_log:delete_db_opera_log')
 async def delete_db_opera_log() -> str:
     """自动删除数据库操作日志"""
     async with async_db_session.begin() as db:
@@ -24,7 +24,7 @@ async def delete_db_opera_log() -> str:
         return 'Success'
 
 
-@celery_app.task(name='delete_db_login_log')
+@celery_app.task(name='db_log:delete_db_login_log')
 async def delete_db_login_log() -> str:
     """自动删除数据库登录日志"""
     async with async_db_session.begin() as db:
@@ -32,7 +32,7 @@ async def delete_db_login_log() -> str:
         return 'Success'
 
 
-@celery_app.task(name='delete_filesync_data_older_than_30_days')
+@celery_app.task(name='db_log:delete_filesync_data_older_than_30_days')
 async def delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
     """删除30天以外的文件同步数据（包括任务和任务项）"""
     try:
@@ -47,7 +47,7 @@ async def delete_filesync_data_older_than_30_days() -> Dict[str, Any]:
         return {'success': False, 'error': str(e), 'deleted_count': 0, 'message': f'删除失败: {str(e)}'}
 
 
-@celery_app.task(name='delete_celery_task_results')
+@celery_app.task(name='db_log:delete_celery_task_results')
 async def delete_celery_task_results() -> Dict[str, Any]:
     """
     删除 30 天以外的 Celery 任务结果

@@ -80,6 +80,8 @@ def setup_logging() -> None:
     # 设置根日志处理器和级别
     logging.root.handlers = [InterceptHandler()]
     logging.root.setLevel(settings.LOG_STD_LEVEL)
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    logging.getLogger('httpcore').setLevel(logging.WARNING)
 
     for name in logging.root.manager.loggerDict.keys():
         # 清空所有默认日志处理器

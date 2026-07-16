@@ -11,7 +11,7 @@ from backend.common.events import dispatch_locally
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='dispatch_domain_event')
+@celery_app.task(name='common:dispatch_domain_event')
 async def dispatch_domain_event(event: str, payload: dict) -> dict:
     """
     分发领域事件到所有订阅者

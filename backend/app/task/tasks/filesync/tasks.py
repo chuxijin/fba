@@ -27,7 +27,7 @@ FILESYNC_EXEC_LOCK_PREFIX = 'filesync:exec_lock:'
 FILESYNC_EXEC_LOCK_TTL = 600  # 锁过期时间 10 分钟，防止异常退出后死锁
 
 
-@celery_app.task(name='check_and_execute_filesync_cron_tasks')
+@celery_app.task(name='filesync:check_and_execute_cron_tasks')
 async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
     """
     检查并执行文件同步定时任务
@@ -124,10 +124,10 @@ async def check_and_execute_filesync_cron_tasks() -> Dict[str, Any]:
     # 合并相同状态和原因的配置
     result['execution_details'] = _merge_execution_details(temp_details)
 
-    return result
+    return _compact_filesync_result(result)
 
 
-@celery_app.task(name='execute_filesync_task_by_config_id', bind=True)
+@celery_app.task(name='filesync:execute_task_by_config_id', bind=True)
 async def execute_filesync_task_by_config_id(self, config_id: int) -> Dict[str, Any]:
     """
     根据配置ID执行单个文件同步任务
@@ -179,7 +179,7 @@ async def execute_filesync_task_by_config_id(self, config_id: int) -> Dict[str, 
                     error=result.get('error'),
                 )
 
-                return result
+                return _compact_filesync_result(result)
 
         finally:
             # 无论成功或失败，释放 Redis 锁
@@ -197,7 +197,29 @@ async def execute_filesync_task_by_config_id(self, config_id: int) -> Dict[str, 
         return {'success': False, 'error': error_msg, 'config_id': config_id}
 
 
-@celery_app.task(name='get_filesync_configs_with_cron')
+def _compact_filesync_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    压缩文件同步任务返回，避免 Celery 成功日志输出明细。
+
+    :param result: 原始文件同步结果
+    :return:
+    """
+    compact_result = {
+        key: value
+        for key, value in result.items()
+        if key not in {'execution_details', 'stats'}
+    }
+    stats = result.get('stats')
+    if isinstance(stats, dict):
+        compact_result['stats'] = {
+            key: value
+            for key, value in stats.items()
+            if key not in {'pending_task_items', 'transferred_files_info'}
+        }
+    return compact_result
+
+
+@celery_app.task(name='filesync:get_configs_with_cron')
 async def get_filesync_configs_with_cron() -> List[Dict[str, Any]]:
     """
     获取所有设置了cron表达式的同步配置

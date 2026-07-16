@@ -14,7 +14,7 @@ from backend.utils.timezone import timezone
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='check_forgotten_mastery')
+@celery_app.task(name='qbank:check_forgotten_mastery')
 async def check_forgotten_mastery() -> dict:
     """
     检查并标记遗忘的题目（每天凌晨 3:00 执行）

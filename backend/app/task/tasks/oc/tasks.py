@@ -8,7 +8,7 @@ from backend.utils.dynamic_config import load_crawler_config
 from backend.core.conf import settings
 
 
-@celery_app.task(name='crawl_jobs_task', bind=True)
+@celery_app.task(name='oc:crawl_jobs_task', bind=True)
 async def crawl_jobs_task(self, job_type: str = 'campus') -> str:
     """
     爬取岗位数据定时任务
@@ -57,7 +57,7 @@ async def crawl_jobs_task(self, job_type: str = 'campus') -> str:
         return success_msg
 
 
-@celery_app.task(name='crawl_all_jobs_task', bind=True)
+@celery_app.task(name='oc:crawl_all_jobs_task', bind=True)
 async def crawl_all_jobs_task(self) -> str:
     """爬取所有类型的岗位数据（校招+实习）"""
     campus_result = await crawl_jobs_task('campus')

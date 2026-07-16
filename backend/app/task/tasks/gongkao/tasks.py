@@ -116,7 +116,7 @@ def strip_html_tags(content: str) -> str:
     return text.strip()
 
 
-@celery_app.task(name='sync_daily_news_to_shizhen', bind=True)
+@celery_app.task(name='gongkao:sync_daily_news_to_shizhen', bind=True)
 async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
     """同步每日新闻联播文字稿到时政内容"""
     today = timezone.now().date()
@@ -198,7 +198,7 @@ async def sync_daily_news_to_shizhen(self) -> dict[str, Any]:
     return result
 
 
-@celery_app.task(name='update_hanyu_frequency')
+@celery_app.task(name='gongkao:update_hanyu_frequency')
 async def update_hanyu_frequency() -> dict[str, Any]:
     """更新汉语词汇相关题目 ID 列表"""
     result: dict[str, Any] = {

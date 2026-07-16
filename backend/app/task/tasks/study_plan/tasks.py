@@ -12,7 +12,7 @@ from backend.utils.timezone import timezone
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='sweep_expired_study_plan_items')
+@celery_app.task(name='study_plan:sweep_expired_study_plan_items')
 async def sweep_expired_study_plan_items() -> dict:
     """
     扫描所有学员的过期未完成计划项并标记为 skipped（每天 0:30 执行）

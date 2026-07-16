@@ -15,7 +15,7 @@ from backend.utils.timezone import timezone
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='check_and_refresh_expiring_resources')
+@celery_app.task(name='resource:check_and_refresh_expiring_resources')
 async def check_and_refresh_expiring_resources() -> Dict[str, Any]:
     """
     检查即将过期的资源并重新分享
@@ -37,7 +37,7 @@ async def check_and_refresh_expiring_resources() -> Dict[str, Any]:
             )
 
             logger.info(f'资源过期检查完成: 检查{result["checked_resources"]}个，刷新{result["refreshed_resources"]}个')
-            return result
+            return _compact_resource_result(result)
 
     except Exception as e:
         logger.error(f'资源过期检查失败: {str(e)}')
@@ -51,7 +51,7 @@ async def check_and_refresh_expiring_resources() -> Dict[str, Any]:
         }
 
 
-@celery_app.task(name='refresh_resources_with_update_mode')
+@celery_app.task(name='resource:refresh_resources_with_update_mode')
 async def refresh_resources_with_update_mode() -> Dict[str, Any]:
     """
     刷新临时处理模式为 3（定时更新）的资源分享信息
@@ -110,10 +110,10 @@ async def refresh_resources_with_update_mode() -> Dict[str, Any]:
         logger.error(f'刷新更新模式资源时发生错误: {str(e)}')
         summary['error'] = str(e)
 
-    return summary
+    return _compact_resource_result(summary)
 
 
-@celery_app.task(name='refresh_category_mode2_to_permanent')
+@celery_app.task(name='resource:refresh_category_mode2_to_permanent')
 async def refresh_category_mode2_to_permanent(category_id: int) -> Dict[str, Any]:
     """
     将指定分类下临时处理模式为 2 的资源刷新为永久分享链接
@@ -125,7 +125,8 @@ async def refresh_category_mode2_to_permanent(category_id: int) -> Dict[str, Any
         async with async_db_session() as db:
             from backend.app.coulddrive.service.resource_service import resource_service
 
-            return await resource_service.refresh_to_permanent(db=db, category_id=category_id)
+            result = await resource_service.refresh_to_permanent(db=db, category_id=category_id)
+            return _compact_resource_result(result)
 
     except Exception as e:
         logger.error(f'按分类刷新永久链接失败: {str(e)}')
@@ -140,7 +141,7 @@ async def refresh_category_mode2_to_permanent(category_id: int) -> Dict[str, Any
         }
 
 
-@celery_app.task(name='get_expiring_resources')
+@celery_app.task(name='resource:get_expiring_resources')
 async def get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
     """
     获取即将过期的资源列表
@@ -181,7 +182,7 @@ async def get_expiring_resources(hours: int = 24) -> List[Dict[str, Any]]:
         return []
 
 
-@celery_app.task(name='cleanup_expired_local_shares')
+@celery_app.task(name='resource:cleanup_expired_local_shares')
 async def cleanup_expired_local_shares() -> Dict[str, Any]:
     """
     清理本地失效分享
@@ -196,7 +197,7 @@ async def cleanup_expired_local_shares() -> Dict[str, Any]:
 
         result = await share_cleanup_service.cleanup_expired_local_shares()
         logger.info(f'本地分享清理完成: 检查{result["checked_accounts"]}个账户，清理{result["cleaned_shares"]}个分享')
-        return result
+        return _compact_resource_result(result)
 
     except Exception as e:
         logger.error(f'本地分享清理失败: {str(e)}')
@@ -209,7 +210,7 @@ async def cleanup_expired_local_shares() -> Dict[str, Any]:
         }
 
 
-@celery_app.task(name='sync_resource_hot_scores')
+@celery_app.task(name='resource:sync_resource_hot_scores')
 async def sync_resource_hot_scores() -> Dict[str, Any]:
     """
     同步资源热度评分到数据库（离线快照）
@@ -234,3 +235,17 @@ async def sync_resource_hot_scores() -> Dict[str, Any]:
             'status': 'error',
             'error': str(e),
         }
+
+
+def _compact_resource_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    压缩资源任务成功返回，避免 Celery 日志输出明细列表。
+
+    :param result: 原始资源任务结果
+    :return:
+    """
+    return {
+        key: value
+        for key, value in result.items()
+        if key not in {'cleanup_details', 'details', 'refresh_details'}
+    }

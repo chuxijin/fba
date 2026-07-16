@@ -15,7 +15,7 @@ from backend.utils.timezone import timezone
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='release_expired_quest_claims')
+@celery_app.task(name='quest:release_expired_quest_claims')
 async def release_expired_quest_claims() -> dict:
     """释放领取超时的悬赏任务记录, 回退名额"""
     try:

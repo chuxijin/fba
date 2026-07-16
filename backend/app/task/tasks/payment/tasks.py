@@ -11,7 +11,7 @@ from backend.database.db import async_db_session
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='close_timeout_pending_pay_orders')
+@celery_app.task(name='payment:close_timeout_pending_pay_orders')
 async def close_timeout_pending_pay_orders() -> dict[str, Any]:
     """批量关闭超时未支付的业务订单"""
     async with async_db_session() as db:
@@ -24,4 +24,10 @@ async def close_timeout_pending_pay_orders() -> dict[str, Any]:
         f'skipped={summary["skipped_count"]} '
         f'failed={summary["failed_count"]}'
     )
-    return summary
+    return {
+        'timeout_minutes': summary['timeout_minutes'],
+        'scanned_count': summary['scanned_count'],
+        'closed_count': summary['closed_count'],
+        'skipped_count': summary['skipped_count'],
+        'failed_count': summary['failed_count'],
+    }

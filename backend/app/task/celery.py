@@ -1,10 +1,11 @@
 import os
 import urllib.parse
+import logging
 
 import celery
 import celery_aio_pool
 
-from celery.signals import worker_process_init
+from celery.signals import after_setup_logger, after_setup_task_logger, task_prerun, worker_init, worker_process_init
 from opentelemetry.instrumentation.celery import CeleryInstrumentor
 
 from backend.app.task.tasks.beat import get_local_beat_schedule
@@ -16,9 +17,22 @@ from backend.core.path_conf import BASE_PATH
 _celery_otel_initialized = False
 
 
+def suppress_worker_http_logs(*args, **kwargs) -> None:
+    """降低 Celery Worker 的 HTTP 客户端成功请求日志。"""
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    logging.getLogger('httpcore').setLevel(logging.WARNING)
+
+
+worker_init.connect(suppress_worker_http_logs, weak=False)
+after_setup_logger.connect(suppress_worker_http_logs, weak=False)
+after_setup_task_logger.connect(suppress_worker_http_logs, weak=False)
+task_prerun.connect(suppress_worker_http_logs, weak=False)
+
+
 @worker_process_init.connect(weak=False)
 def init_celery_tracing(*args, **kwargs) -> None:
     """初始化 Celery 追踪"""
+    suppress_worker_http_logs()
     global _celery_otel_initialized
 
     if not settings.GRAFANA_METRICS_ENABLE or _celery_otel_initialized:

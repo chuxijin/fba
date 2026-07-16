@@ -29,7 +29,7 @@ from backend.utils.timezone import timezone
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name='update_daily_user_ranks')
+@celery_app.task(name='qbank:update_daily_user_ranks')
 async def update_daily_user_ranks() -> dict:
     """
     更新每日用户排名（每天0:05执行）
@@ -115,7 +115,7 @@ async def _update_daily_user_ranks() -> dict:
         }
 
 
-@celery_app.task(name='simulate_bot_activity')
+@celery_app.task(name='qbank:simulate_bot_activity')
 async def simulate_bot_activity() -> dict:
     """
     模拟机器人每日活动（每天凌晨 2:00 执行）
@@ -324,7 +324,7 @@ async def process_record_side_effects_async(
     }
 
 
-@celery_app.task(name='qbank_process_record_side_effects')
+@celery_app.task(name='qbank:process_record_side_effects')
 async def process_record_side_effects(
     user_id: int,
     session_id: int,
