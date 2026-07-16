@@ -268,10 +268,10 @@ class QbankImageMirror:
         """Invalidate storage dynamic config cache for script process."""
         cache_prefix = settings.CACHE_CONFIG_REDIS_PREFIX
         if settings.CACHE_LOCAL_ENABLED:
-            local_cache_manager.delete_prefix(cache_prefix)
+            local_cache_manager.delete_by_prefix(cache_prefix)
 
         try:
-            await redis_client.delete_prefix(cache_prefix)
+            await redis_client.delete_by_prefix(cache_prefix)
         except Exception as exc:
             log.warning(f'clear config cache failed, continue with existing cache: {exc!s}')
 
@@ -329,6 +329,25 @@ class QbankImageMirror:
         if isinstance(question_id, int) and question_id > 0:
             return f'q_{question_id}'
         return 'content'
+
+    @staticmethod
+    def _build_cache_key(
+        *,
+        source_url: str,
+        safe_bank: str,
+        safe_scope: str,
+        safe_field: str,
+    ) -> str:
+        """
+        Build cache key scoped by target object path.
+
+        :param source_url: source url
+        :param safe_bank: normalized bank segment
+        :param safe_scope: normalized scope segment
+        :param safe_field: normalized field segment
+        :return:
+        """
+        return f'{safe_bank}/{safe_scope}/{safe_field}|{source_url}'
 
     async def _download_binary(self, client: httpx.AsyncClient, url: str) -> tuple[bytes, str | None]:
         """
@@ -430,7 +449,17 @@ class QbankImageMirror:
         :param image_index: image index in the html field
         :return:
         """
-        cached = self.cache.get(source_url)
+        safe_bank = self._sanitize_segment(bank_code, default='bank')
+        safe_scope = self._sanitize_segment(scope_segment, default='content')
+        safe_field = self._sanitize_segment(field_name, default='content', lowercase=True)
+        cache_key = self._build_cache_key(
+            source_url=source_url,
+            safe_bank=safe_bank,
+            safe_scope=safe_scope,
+            safe_field=safe_field,
+        )
+
+        cached = self.cache.get(cache_key)
         if cached and cached.get('url') and cached.get('object_key'):
             self.stats.cache_hit += 1
             return str(cached['url']), True
@@ -439,18 +468,18 @@ class QbankImageMirror:
         image_hash = hashlib.sha256(source_url.encode('utf-8')).hexdigest()[:10]
         extension = self._guess_extension(source_url, content_type)
 
-        safe_bank = self._sanitize_segment(bank_code, default='bank')
-        safe_scope = self._sanitize_segment(scope_segment, default='content')
-        safe_field = self._sanitize_segment(field_name, default='content', lowercase=True)
-
         filename = f'{safe_field}_{image_index:02d}_{image_hash}{extension}'
         target_path = f'qbank/{safe_bank}/{safe_scope}/{safe_field}'
         url, object_key = await self._upload_binary(binary=binary, filename=filename, path=target_path)
 
         self.stats.uploaded_images += 1
-        self.cache[source_url] = {
+        self.cache[cache_key] = {
             'url': url,
             'object_key': object_key,
+            'source_url': source_url,
+            'bank_code': safe_bank,
+            'scope_segment': safe_scope,
+            'field_name': safe_field,
             'updated_at': timezone.now().isoformat(),
         }
         self._cache_dirty = True
@@ -510,13 +539,16 @@ class QbankImageMirror:
 
                 self.stats.scanned_images += 1
                 try:
-                    mirrored_url, from_cache = await self.mirror_one(
-                        client=client,
-                        source_url=source_url,
-                        bank_code=bank_code,
-                        scope_segment=resolved_scope,
-                        field_name=field_name,
-                        image_index=image_index,
+                    mirrored_url, from_cache = await asyncio.wait_for(
+                        self.mirror_one(
+                            client=client,
+                            source_url=source_url,
+                            bank_code=bank_code,
+                            scope_segment=resolved_scope,
+                            field_name=field_name,
+                            image_index=image_index,
+                        ),
+                        timeout=max(8.0, self.request_timeout + 5.0),
                     )
                 except Exception as exc:
                     self.stats.failed_images += 1

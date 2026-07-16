@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -161,46 +161,71 @@ class PomodoroTaskService:
         :param target_date: 目标日期
         :return:
         """
-        schedule_date = target_date or timezone.now().date()
         templates = await pomodoro_task_dao.get_repeat_templates(db, user_id)
-        created_ids: list[int] = []
-
-        for template in templates:
-            if not PomodoroTaskService._should_generate(template=template, target_date=schedule_date):
-                continue
-
-            existing = await pomodoro_task_dao.get_existing_schedule(
-                db,
-                user_id=user_id,
-                source_task_id=template.id,
-                schedule_date=schedule_date,
+        if not templates:
+            return GetPomodoroRepeatTaskGenerateResult(
+                target_date=target_date or timezone.now().date(),
+                created_count=0,
+                task_ids=[],
             )
-            if existing:
-                continue
 
-            repeat_key = f'{template.id}:{schedule_date.isoformat()}'
-            task = await pomodoro_task_dao.create_model(
-                db,
-                CreatePomodoroTaskInternal(
+        today = timezone.now().date()
+        if target_date is not None:
+            target_dates = [target_date]
+        else:
+            latest_date = await pomodoro_task_dao.get_latest_schedule_date(db, user_id)
+            if latest_date is None:
+                target_dates = [today]
+            elif latest_date >= today:
+                target_dates = []
+            else:
+                start_date = max(latest_date + timedelta(days=1), today - timedelta(days=30))
+                target_dates = []
+                current_date = start_date
+                while current_date <= today:
+                    target_dates.append(current_date)
+                    current_date += timedelta(days=1)
+
+        created_ids: list[int] = []
+        for schedule_date in target_dates:
+            for template in templates:
+                if not PomodoroTaskService._should_generate(template=template, target_date=schedule_date):
+                    continue
+
+                existing = await pomodoro_task_dao.get_existing_schedule(
+                    db,
                     user_id=user_id,
-                    title=template.title,
-                    description=template.description,
-                    priority=template.priority,
-                    estimated_minutes=template.estimated_minutes,
-                    due_at=PomodoroTaskService._build_repeat_due_at(template=template, target_date=schedule_date),
-                    repeat_type=PomodoroRepeatType.none,
                     source_task_id=template.id,
                     schedule_date=schedule_date,
-                    repeat_key=repeat_key,
-                ),
-                commit=False,
-            )
-            await db.flush()
-            created_ids.append(task.id)
+                )
+                if existing:
+                    continue
 
-        await db.flush()
+                repeat_key = f'{template.id}:{schedule_date.isoformat()}'
+                task = await pomodoro_task_dao.create_model(
+                    db,
+                    CreatePomodoroTaskInternal(
+                        user_id=user_id,
+                        title=template.title,
+                        description=template.description,
+                        priority=template.priority,
+                        estimated_minutes=template.estimated_minutes,
+                        due_at=PomodoroTaskService._build_repeat_due_at(template=template, target_date=schedule_date),
+                        repeat_type=PomodoroRepeatType.none,
+                        source_task_id=template.id,
+                        schedule_date=schedule_date,
+                        repeat_key=repeat_key,
+                    ),
+                    commit=False,
+                )
+                await db.flush()
+                created_ids.append(task.id)
+
+        if created_ids:
+            await db.flush()
+
         return GetPomodoroRepeatTaskGenerateResult(
-            target_date=schedule_date,
+            target_date=target_dates[-1] if target_dates else (target_date or today),
             created_count=len(created_ids),
             task_ids=created_ids,
         )

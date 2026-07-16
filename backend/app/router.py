@@ -12,6 +12,7 @@ from backend.app.growth.api import v1 as growth_v1
 from backend.app.halo.api.router import v1 as halo_v1
 from backend.app.invite.api.router import v1 as invite_v1
 from backend.app.mcp.api.router import v1 as mcp_v1
+from backend.app.mydrive.api.router import v1 as mydrive_v1
 from backend.app.payment.api.router import v1 as payment_v1
 from backend.app.pomodoro.api.router import v1 as pomodoro_v1
 from backend.app.quest.api.router import v1 as quest_v1
@@ -31,6 +32,7 @@ router.include_router(admin_v1)
 router.include_router(task_v1)
 router.include_router(coulddrive_v1)
 router.include_router(mcp_v1)
+router.include_router(mydrive_v1)
 router.include_router(social_v1)
 router.include_router(question_bank_v1)
 router.include_router(question_generation_v1)

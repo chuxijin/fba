@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from datetime import date
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -101,6 +101,25 @@ class CRUDPomodoroTask(CRUDPlus[PomodoroTask]):
             source_task_id__eq=source_task_id,
             schedule_date__eq=schedule_date,
         )
+
+    async def get_latest_schedule_date(
+        self,
+        db: AsyncSession,
+        user_id: int,
+    ) -> date | None:
+        """
+        获取用户已生成的重复任务的最大计划日期
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = select(func.max(PomodoroTask.schedule_date)).where(
+            PomodoroTask.user_id == user_id,
+            PomodoroTask.source_task_id.is_not(None),
+        )
+        result = await db.execute(stmt)
+        return result.scalar()
 
 
 pomodoro_task_dao: CRUDPomodoroTask = CRUDPomodoroTask(PomodoroTask)

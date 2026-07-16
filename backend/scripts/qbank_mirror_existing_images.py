@@ -2,19 +2,86 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import argparse
 import asyncio
+import builtins
+import os
 import sys
 
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+DEFAULT_ENV_FILE = PROJECT_ROOT / 'backend' / '.env.prod'
+
+
+def resolve_script_env_file() -> Path:
+    """Resolve script env file before backend settings import."""
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--env-file', default=os.environ.get('FBA_SCRIPT_ENV_FILE', str(DEFAULT_ENV_FILE)))
+    args, _unknown = parser.parse_known_args()
+    env_file = Path(str(args.env_file)).expanduser()
+    if env_file.is_absolute():
+        return env_file
+    return PROJECT_ROOT / env_file
+
+
+def normalize_env_value(raw_value: str) -> str:
+    """
+    Normalize dotenv value.
+
+    :param raw_value: raw dotenv value
+    :return:
+    """
+    value = raw_value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        return value[1:-1]
+    if ' #' in value:
+        value = value.split(' #', 1)[0].strip()
+    return value
+
+
+def load_script_env_file(env_file: Path) -> Path:
+    """
+    Load dotenv file into process environment before settings import.
+
+    :param env_file: dotenv path
+    :return:
+    """
+    if not env_file.exists():
+        raise FileNotFoundError(f'env file not found: {env_file}')
+
+    for line in env_file.read_text(encoding='utf-8').splitlines():
+        text_line = line.strip()
+        if not text_line or text_line.startswith('#'):
+            continue
+        if '=' not in text_line:
+            continue
+
+        key, raw_value = text_line.split('=', 1)
+        env_key = key.strip()
+        if not env_key:
+            continue
+        os.environ[env_key] = normalize_env_value(raw_value)
+
+    os.environ['FBA_SCRIPT_ENV_FILE'] = str(env_file)
+    return env_file
+
+
+SCRIPT_ENV_FILE = load_script_env_file(resolve_script_env_file())
+
+
+def print(*args, **kwargs) -> None:
+    """Print with flush enabled for long-running production scripts."""
+    kwargs.setdefault('flush', True)
+    builtins.print(*args, **kwargs)
 
 from backend.app.question_bank.model import (
     Question,
@@ -24,6 +91,7 @@ from backend.app.question_bank.model import (
     QuestionPlacement,
 )
 from backend.app.question_bank.service.question_service import QuestionService
+from backend.core.conf import settings
 from backend.database.db import async_db_session
 from backend.scripts.qbank_image_mirror import QbankImageMirror
 
@@ -62,6 +130,62 @@ class MirrorRunStats:
         self.option_question_updated += other.option_question_updated
         self.material_total += other.material_total
         self.material_updated += other.material_updated
+
+
+@dataclass
+class RuntimeOptions:
+    """Script runtime options."""
+
+    keyword: str | None
+    selection: str | None
+    dry_run: bool | None
+    list_only: bool
+    max_questions: int | None
+    batch_size: int | None
+    timeout_seconds: float | None
+    bank_timeout_seconds: float | None
+    safe_interval_seconds: float | None
+    sample_limit: int | None
+
+
+def parse_runtime_options() -> RuntimeOptions:
+    """Parse script runtime options."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--env-file', default=str(SCRIPT_ENV_FILE))
+    parser.add_argument('--keyword')
+    parser.add_argument('--selection')
+    parser.add_argument('--list-only', action='store_true')
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--max-questions', type=int)
+    parser.add_argument('--batch-size', type=int)
+    parser.add_argument('--timeout-seconds', type=float)
+    parser.add_argument('--bank-timeout-seconds', type=float)
+    parser.add_argument('--safe-interval-seconds', type=float)
+    parser.add_argument('--sample-limit', type=int)
+    args = parser.parse_args()
+
+    if args.dry_run and args.execute:
+        raise ValueError('不能同时指定 --dry-run 和 --execute')
+
+    dry_run: bool | None = None
+    if args.dry_run:
+        dry_run = True
+    if args.execute:
+        dry_run = False
+
+    return RuntimeOptions(
+        keyword=args.keyword,
+        selection=args.selection,
+        dry_run=dry_run,
+        list_only=bool(args.list_only),
+        max_questions=args.max_questions,
+        batch_size=args.batch_size,
+        timeout_seconds=args.timeout_seconds,
+        bank_timeout_seconds=args.bank_timeout_seconds,
+        safe_interval_seconds=args.safe_interval_seconds,
+        sample_limit=args.sample_limit,
+    )
 
 
 def ask(prompt: str, default: str | None = None) -> str:
@@ -161,9 +285,51 @@ def split_chunks(values: list[int], chunk_size: int) -> list[list[int]]:
     return [values[index : index + chunk_size] for index in range(0, len(values), chunk_size)]
 
 
-async def choose_bank_targets() -> list[BankTarget]:
-    """Choose bank targets from database."""
-    keyword = ask('输入题库 code 关键字（支持模糊）', 'PAPER_')
+async def print_database_identity() -> None:
+    """Print current database identity for production safety."""
+    async with async_db_session() as db:
+        result = await db.execute(
+            text(
+                """
+                SELECT
+                    current_database() AS database_name,
+                    current_user AS database_user,
+                    inet_server_addr()::text AS server_addr,
+                    inet_server_port() AS server_port,
+                    current_schema() AS schema_name
+                """
+            )
+        )
+        row = result.mappings().one()
+
+    print(
+        '[DB_CFG]'
+        f' env_file={SCRIPT_ENV_FILE}'
+        f' environment={settings.ENVIRONMENT}'
+        f' host={settings.DATABASE_HOST}'
+        f' port={settings.DATABASE_PORT}'
+        f' database={settings.DATABASE_SCHEMA}'
+        f' user={settings.DATABASE_USER}'
+    )
+    print(
+        '[DB_ID]'
+        f' current_database={row["database_name"]}'
+        f' current_user={row["database_user"]}'
+        f' server={row["server_addr"]}:{row["server_port"]}'
+        f' schema={row["schema_name"]}'
+    )
+
+
+async def choose_bank_targets(keyword: str | None = None, selection: str | None = None) -> list[BankTarget]:
+    """
+    Choose bank targets from database.
+
+    :param keyword: optional code keyword
+    :param selection: optional index selection
+    :return:
+    """
+    if keyword is None:
+        keyword = ask('输入题库 code 关键字（支持模糊）', 'PAPER_')
     code_like = f'%{keyword}%'
     async with async_db_session() as db:
         stmt = (
@@ -195,28 +361,40 @@ async def choose_bank_targets() -> list[BankTarget]:
         print('未找到匹配题库')
         return []
 
-    print(f'\n匹配题库 {len(banks)} 个（最多显示前 120 个）:')
-    show_count = min(120, len(banks))
-    for index in range(show_count):
-        bank = banks[index]
-        print(f'{index + 1:>3}. code={bank.bank_code} questions={bank.question_count} name={bank.bank_name}')
-    if len(banks) > show_count:
-        print(f'... 其余 {len(banks) - show_count} 个未显示，可先缩小关键字后再选')
+    if selection is None:
+        print(f'\n匹配题库 {len(banks)} 个（最多显示前 120 个）:')
+        show_count = min(120, len(banks))
+        for index in range(show_count):
+            bank = banks[index]
+            print(f'{index + 1:>3}. code={bank.bank_code} questions={bank.question_count} name={bank.bank_name}')
+        if len(banks) > show_count:
+            print(f'... 其余 {len(banks) - show_count} 个未显示，可先缩小关键字后再选')
+    else:
+        print(f'[TARGETS] matched={len(banks)} selection={selection}')
 
     while True:
-        raw = ask('输入序号（支持 1,3,8-10；all=全部）', '1')
+        raw = selection
+        if raw is None:
+            raw = ask('输入序号（支持 1,3,8-10；all=全部）', '1')
         try:
             indices = parse_index_input(raw, len(banks))
         except Exception:
+            if selection is not None:
+                raise
             print('序号格式错误，请重试')
             continue
         if not indices:
+            if selection is not None:
+                raise ValueError('请至少选择一个题库')
             print('请至少选择一个题库')
             continue
         selected = [banks[index - 1] for index in indices]
-        print('已选择:')
-        for bank in selected:
+        print(f'已选择 {len(selected)} 个题库:')
+        show_selected_count = len(selected) if selection is None else min(10, len(selected))
+        for bank in selected[:show_selected_count]:
             print(f'  - {bank.bank_code} ({bank.bank_name})')
+        if selection is not None and len(selected) > show_selected_count:
+            print(f'  ... 其余 {len(selected) - show_selected_count} 个已省略')
         return selected
 
 
@@ -426,29 +604,60 @@ async def process_bank(
 
 async def run() -> int:
     """Program entry."""
-    targets = await choose_bank_targets()
+    runtime_options = parse_runtime_options()
+    await print_database_identity()
+
+    targets = await choose_bank_targets(keyword=runtime_options.keyword, selection=runtime_options.selection)
     if not targets:
         return 0
 
-    dry_run = ask_yes_no('是否 DryRun（仅演练不提交）', True)
-    max_questions = ask_int('每个题库最多处理题目数（0=不限）', 0)
-    batch_size = ask_int('题目处理批次大小（建议 20-100）', 50)
-    timeout_raw = ask('图片下载超时秒数', '20')
-    try:
-        timeout_seconds = float(timeout_raw)
-    except ValueError:
-        timeout_seconds = 20.0
-    safe_interval_raw = ask('图片请求安全间隔秒数（建议 2-5）', '2.5')
-    try:
-        safe_interval_seconds = float(safe_interval_raw)
-    except ValueError:
-        safe_interval_seconds = 2.5
-    sample_limit = ask_int('输出前后 URL 对照样本条数（0=不输出）', 5)
+    if runtime_options.list_only:
+        print(f'[LIST_ONLY] selected={len(targets)}')
+        return 0
+
+    if runtime_options.dry_run is None:
+        dry_run = ask_yes_no('是否 DryRun（仅演练不提交）', True)
+    else:
+        dry_run = runtime_options.dry_run
+
+    if runtime_options.max_questions is None:
+        max_questions = ask_int('每个题库最多处理题目数（0=不限）', 0)
+    else:
+        max_questions = runtime_options.max_questions
+
+    if runtime_options.batch_size is None:
+        batch_size = ask_int('题目处理批次大小（建议 20-100）', 50)
+    else:
+        batch_size = runtime_options.batch_size
+
+    if runtime_options.timeout_seconds is None:
+        timeout_raw = ask('图片下载超时秒数', '20')
+        try:
+            timeout_seconds = float(timeout_raw)
+        except ValueError:
+            timeout_seconds = 20.0
+    else:
+        timeout_seconds = runtime_options.timeout_seconds
+
+    if runtime_options.safe_interval_seconds is None:
+        safe_interval_raw = ask('图片请求安全间隔秒数（建议 2-5）', '2.5')
+        try:
+            safe_interval_seconds = float(safe_interval_raw)
+        except ValueError:
+            safe_interval_seconds = 2.5
+    else:
+        safe_interval_seconds = runtime_options.safe_interval_seconds
+
+    if runtime_options.sample_limit is None:
+        sample_limit = ask_int('输出前后 URL 对照样本条数（0=不输出）', 5)
+    else:
+        sample_limit = runtime_options.sample_limit
 
     run_args = SimpleNamespace(
         dry_run=dry_run,
         max_questions=max(0, max_questions),
         batch_size=max(1, batch_size),
+        bank_timeout_seconds=max(0.0, runtime_options.bank_timeout_seconds or 0.0),
     )
 
     mirror = QbankImageMirror(
@@ -466,7 +675,32 @@ async def run() -> int:
     for index, target in enumerate(targets, start=1):
         print(f'\n[RUN] {index}/{len(targets)} code={target.bank_code}')
         async with async_db_session() as db:
-            bank_stats = await process_bank(db=db, mirror=mirror, target=target, args=run_args)
+            try:
+                if run_args.bank_timeout_seconds > 0:
+                    bank_stats = await asyncio.wait_for(
+                        process_bank(db=db, mirror=mirror, target=target, args=run_args),
+                        timeout=run_args.bank_timeout_seconds,
+                    )
+                else:
+                    bank_stats = await process_bank(db=db, mirror=mirror, target=target, args=run_args)
+            except asyncio.TimeoutError:
+                await db.rollback()
+                print(
+                    '[BANK_TIMEOUT]'
+                    f' code={target.bank_code}'
+                    f' timeout_seconds={run_args.bank_timeout_seconds}'
+                    ' action=rollback_and_continue'
+                )
+                continue
+            except Exception as exc:
+                await db.rollback()
+                print(
+                    '[BANK_ERROR]'
+                    f' code={target.bank_code}'
+                    f' error={exc!s}'
+                    ' action=rollback_and_continue'
+                )
+                continue
         total_stats.add(bank_stats)
 
     mirror.save_cache()
