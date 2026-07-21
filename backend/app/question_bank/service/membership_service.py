@@ -112,6 +112,8 @@ class MembershipService:
             bank = await bank_dao.get(db, bank_id)
         if not bank:
             raise errors.NotFoundError(msg='刷题内容不存在')
+        if bank.owner_id == user_id:
+            return
 
         await cls._decide_resource(
             db=db,

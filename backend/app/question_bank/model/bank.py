@@ -33,6 +33,12 @@ class QuestionBank(Base, UserMixin):
     cat_id: Mapped[int] = mapped_column(sa.BigInteger, comment='分类 ID')
     name: Mapped[str] = mapped_column(sa.String(128), comment='内容名称')
     code: Mapped[str] = mapped_column(sa.String(32), comment='业务编码')
+    owner_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
+        default=None,
+        comment='所属用户 ID（NULL 表示公共题库）',
+    )
     desc: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='描述')
     year: Mapped[int | None] = mapped_column(
         sa.SmallInteger,
