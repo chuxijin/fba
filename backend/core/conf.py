@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     TOKEN_REFRESH_REDIS_PREFIX: str = 'fba:refresh_token'
     TOKEN_INVALID_REASON_REDIS_PREFIX: str = 'fba:token_invalid_reason'
     TOKEN_REFRESH_INVALID_REASON_REDIS_PREFIX: str = 'fba:refresh_token_invalid_reason'
+    TOKEN_REQUEST_UNDERLYING_SECURITY: bool = True
     TOKEN_REQUEST_PATH_EXCLUDE: list[str] = [  # JWT / RBAC 路由白名单
         f'{FASTAPI_API_V1_PATH}/auth/login',
         f'{FASTAPI_API_V1_PATH}/auth/refresh',
@@ -629,6 +630,21 @@ class Settings(BaseSettings):
     CHAOJI_KAOYAN_AGENT_KEY: str = ''
     CHAOJI_KAOYAN_ORDER_TYPE: int = 6
     CHAOJI_KAOYAN_REQUEST_TIMEOUT: int = 20
+
+    ##################################################
+    # [ Plugin ] ai
+    ##################################################
+    # 动态配置
+    AI_EXA_API_KEY: str = ''
+    AI_TAVILY_API_KEY: str = ''
+
+    # 基础配置（in plugin.toml）
+    AI_CODE_MODE_DYNAMIC_CATALOG: bool = False
+    AI_CODE_MODE_MAX_RETRIES: int = 3
+    AI_CODE_MODE_TOOLS: list[str] = []
+    AI_CONTEXT_WARNING_THRESHOLD: float = 0.8
+    AI_HTTP_MAX_RETRIES: int = 5
+    AI_MCP_MAX_RETRIES: int = 1
 
     @model_validator(mode='before')
     @classmethod

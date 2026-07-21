@@ -99,3 +99,4 @@ backend/scripts/quality.sh
 superpowers/
 .codegraph/
 backend/output/
+.pi/

@@ -7,12 +7,12 @@ from backend.plugin.core import check_plugin_installed
 from backend.utils.serializers import select_list_serialize
 
 
-def _to_bool(value: str) -> bool:
+def str_to_bool(value: str) -> bool:
     """将字符串转换为布尔值"""
     return value == 'true'
 
 
-async def _load_config(
+async def load_config(
     db: AsyncSession,
     config_type_attr: str,
     mapping: dict[str, Callable[[str], object]],
@@ -66,9 +66,9 @@ async def load_user_security_config(db: AsyncSession) -> None:
         'USER_PASSWORD_HISTORY_CHECK_COUNT': int,
         'USER_PASSWORD_MIN_LENGTH': int,
         'USER_PASSWORD_MAX_LENGTH': int,
-        'USER_PASSWORD_REQUIRE_SPECIAL_CHAR': _to_bool,
+        'USER_PASSWORD_REQUIRE_SPECIAL_CHAR': str_to_bool,
     }
-    await _load_config(db, 'user_security', mapping, 'USER_SECURITY_CONFIG_STATUS')
+    await load_config(db, 'user_security', mapping, 'USER_SECURITY_CONFIG_STATUS')
 
 
 async def load_login_config(db: AsyncSession) -> None:
@@ -79,9 +79,9 @@ async def load_login_config(db: AsyncSession) -> None:
     :return:
     """
     mapping = {
-        'LOGIN_CAPTCHA_ENABLED': _to_bool,
+        'LOGIN_CAPTCHA_ENABLED': str_to_bool,
     }
-    await _load_config(db, 'login', mapping, 'LOGIN_CONFIG_STATUS')
+    await load_config(db, 'login', mapping, 'LOGIN_CONFIG_STATUS')
 
 
 async def load_email_config(db: AsyncSession) -> None:
@@ -94,11 +94,11 @@ async def load_email_config(db: AsyncSession) -> None:
     mapping = {
         'EMAIL_HOST': str,
         'EMAIL_PORT': int,
-        'EMAIL_SSL': _to_bool,
+        'EMAIL_SSL': str_to_bool,
         'EMAIL_USERNAME': str,
         'EMAIL_PASSWORD': str,
     }
-    await _load_config(db, 'email', mapping, 'EMAIL_CONFIG_STATUS')
+    await load_config(db, 'email', mapping, 'EMAIL_CONFIG_STATUS')
 
 
 async def load_storage_config(db: AsyncSession) -> None:
@@ -111,11 +111,11 @@ async def load_storage_config(db: AsyncSession) -> None:
     mapping = {
         'STORAGE_PROVIDER': str,
         'STORAGE_KEY_PREFIX': str,
-        'STORAGE_USE_SIGNED_URL': _to_bool,
+        'STORAGE_USE_SIGNED_URL': str_to_bool,
         'STORAGE_SIGNED_URL_EXPIRE_SECONDS': int,
         'STORAGE_OBJECT_EXPIRE_DAYS': int,
     }
-    await _load_config(db, 'storage', mapping, 'STORAGE_CONFIG_STATUS')
+    await load_config(db, 'storage', mapping, 'STORAGE_CONFIG_STATUS')
 
 
 async def load_crawler_config(db: AsyncSession) -> None:
@@ -128,7 +128,7 @@ async def load_crawler_config(db: AsyncSession) -> None:
     mapping = {
         'CRAWLER_COOKIE': str,
     }
-    await _load_config(db, 'crawler', mapping, 'CRAWLER_CONFIG_STATUS')
+    await load_config(db, 'crawler', mapping, 'CRAWLER_CONFIG_STATUS')
 
 
 async def load_ai_config(db: AsyncSession) -> None:
@@ -142,4 +142,4 @@ async def load_ai_config(db: AsyncSession) -> None:
         'AI_EXA_API_KEY': str,
         'AI_TAVILY_API_KEY': str,
     }
-    await _load_config(db, 'ai', mapping, 'AI_CONFIG_STATUS')
+    await load_config(db, 'ai', mapping, 'AI_CONFIG_STATUS')
