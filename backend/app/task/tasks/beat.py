@@ -64,10 +64,6 @@ def get_local_beat_schedule() -> dict[str, dict[str, Any]]:
             'task': 'payment:close_timeout_pending_pay_orders',
             'schedule': TzAwareCrontab('*/5'),
         },
-        '排行榜机器人模拟': {
-            'task': 'qbank:simulate_bot_activity',
-            'schedule': TzAwareCrontab('0', '*/2'),
-        },
         '释放过期悬赏领取': {
             'task': 'quest:release_expired_quest_claims',
             'schedule': TzAwareCrontab('*/5'),
