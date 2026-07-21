@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import asyncio
 from typing import Any
 
 import httpx
@@ -9,7 +10,9 @@ from backend.core.conf import settings
 HALO_PUBLIC_API = '/apis/api.content.halo.run/v1alpha1'
 HALO_EXTENSION_API = '/apis/content.halo.run/v1alpha1'
 HALO_DOCS_API = '/apis/api.uc.doc.halo.run/v1alpha1'
-HALO_TIMEOUT = 15
+HALO_TIMEOUT = 30
+HALO_CONNECT_TIMEOUT = 10
+HALO_RETRY_COUNT = 2
 
 
 class HaloClient:
@@ -58,15 +61,40 @@ class HaloClient:
         :param params: 查询参数
         :return:
         """
-        async with httpx.AsyncClient(timeout=HALO_TIMEOUT) as client:
-            response = await client.get(
-                f'{self._base_url}{HALO_DOCS_API}{path}',
-                auth=self._basic_auth(),
-                headers={'Accept': 'application/json'},
-                params=params,
-            )
+        timeout = httpx.Timeout(HALO_TIMEOUT, connect=HALO_CONNECT_TIMEOUT)
+        last_error: httpx.TimeoutException | None = None
+        for attempt in range(HALO_RETRY_COUNT):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.get(
+                        f'{self._base_url}{HALO_DOCS_API}{path}',
+                        auth=self._basic_auth(),
+                        headers={'Accept': 'application/json'},
+                        params=params,
+                    )
+                    response.raise_for_status()
+                    return response.json()
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                if attempt + 1 < HALO_RETRY_COUNT:
+                    await asyncio.sleep(0.2)
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError('Docsme 请求失败')
+
+    async def get_public_html(self, url: str) -> str:
+        """
+        获取 Halo Docsme 发布页面 HTML
+
+        :param url: 发布页面地址
+        :return:
+        """
+        timeout = httpx.Timeout(HALO_TIMEOUT, connect=HALO_CONNECT_TIMEOUT)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(url, headers={'Accept': 'text/html'})
             response.raise_for_status()
-            return response.json()
+            return response.text
 
     async def _post(self, path: str, *, json_data: dict[str, Any]) -> dict[str, Any]:
         """

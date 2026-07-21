@@ -6,6 +6,7 @@ from fastapi import APIRouter, Path, Query
 
 from backend.app.halo.schema.halo import (
     DocDetail,
+    DocPreview,
     DocProjectItem,
     DocProjectVersionItem,
     DocTreeNode,
@@ -107,13 +108,30 @@ async def get_doc_project_versions(
 
 
 @router.get('/docs/tree', summary='文档目录树', response_model=ResponseSchemaModel[list[DocTreeNode]])
-async def get_doc_tree() -> ResponseSchemaModel[list[DocTreeNode]]:
+async def get_doc_tree(
+    project_version_name: Annotated[str | None, Query(description='项目版本资源名称')] = None,
+) -> ResponseSchemaModel[list[DocTreeNode]]:
     """
     获取 Docsme 文档目录树
 
+    :param project_version_name: 项目版本资源名称
     :return:
     """
-    data = await halo_service.list_doc_tree()
+    data = await halo_service.list_doc_tree(project_version_name=project_version_name)
+    return response_base.success(data=data)
+
+
+@router.get('/docs/{name}/preview', summary='文档发布页面预览', response_model=ResponseSchemaModel[DocPreview])
+async def get_doc_preview(name: Annotated[str, Path(description='文档 UUID')]) -> ResponseSchemaModel[DocPreview]:
+    """
+    获取 Docsme 发布页面用于预览
+
+    :param name: DocTree 或 Doc 资源名称
+    :return:
+    """
+    data = await halo_service.get_doc_preview(name=name)
+    if not data:
+        return response_base.fail()
     return response_base.success(data=data)
 
 

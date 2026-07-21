@@ -68,6 +68,9 @@ class DocTreeNode(SchemaBase):
     slug: str = Field(..., description='别名')
     type: str = Field(..., description='节点类型: TREE（目录）或 DOC（文档）')
     permalink: str = Field('', description='前端路径')
+    doc_name: str = Field('', description='Doc 正文资源名称')
+    project_version_name: str = Field('', description='项目版本资源名称')
+    path: str = Field('', description='文档树路径')
     children: list['DocTreeNode'] = Field(default_factory=list, description='子节点')
 
 
@@ -79,7 +82,17 @@ class DocDetail(SchemaBase):
     doc_name: str = Field('', description='Doc 资源 UUID')
     title: str = Field(..., description='标题')
     permalink: str = Field('', description='前端路径')
+    url: str = Field('', description='完整访问地址')
     content: str = Field('', description='HTML 正文')
     raw: str = Field('', description='原始正文')
     raw_type: str = Field('HTML', description='原始正文类型')
     updated_at: str | None = Field(None, description='最后更新时间')
+
+
+class DocPreview(SchemaBase):
+    """Docsme 文档预览页面"""
+
+    name: str = Field(..., description='Doc UUID')
+    title: str = Field(..., description='标题')
+    url: str = Field('', description='发布页面地址')
+    html: str = Field('', description='发布页面 HTML')

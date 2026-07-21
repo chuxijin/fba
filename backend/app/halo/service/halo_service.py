@@ -10,6 +10,7 @@ from fastapi_pagination.links.bases import create_links
 
 from backend.app.halo.schema.halo import (
     DocDetail,
+    DocPreview,
     DocProjectItem,
     DocProjectVersionItem,
     DocTreeNode,
@@ -38,6 +39,20 @@ class HaloService:
         if cover.startswith('http'):
             return cover
         return f'{settings.HALO_BASE_URL.rstrip("/")}{cover}'
+
+    @staticmethod
+    def _full_url(path: str) -> str:
+        """
+        将 Halo 相对访问路径拼接为完整 URL
+
+        :param path: Halo 访问路径
+        :return:
+        """
+        if not path:
+            return ''
+        if path.startswith('http'):
+            return path
+        return f'{settings.HALO_BASE_URL.rstrip("/")}/{path.lstrip("/")}'
 
     @staticmethod
     def _parse_post_item(item: dict[str, Any]) -> HaloPostItem:
@@ -247,6 +262,9 @@ class HaloService:
                 slug=item['slug'],
                 type=item['type'],
                 permalink=item['permalink'],
+                doc_name=item.get('doc_name', ''),
+                project_version_name=item.get('project_version_name', ''),
+                path=item.get('path', ''),
                 children=HaloService._doc_tree_schema(item.get('children', [])),
             )
             for item in nodes
@@ -490,16 +508,17 @@ class HaloService:
         return post
 
     @staticmethod
-    async def list_doc_tree() -> list[DocTreeNode]:
+    async def list_doc_tree(*, project_version_name: str | None = None) -> list[DocTreeNode]:
         """
         获取 Docsme 文档目录树
 
+        :param project_version_name: 项目版本资源名称
         :return: 树形结构节点列表
         """
-        project_version_name = await HaloService._resolve_doc_project_version_name()
-        if not project_version_name:
+        version_name = project_version_name or await HaloService._resolve_doc_project_version_name()
+        if not version_name:
             return []
-        items = await halo_client.list_doc_tree_by_version(project_version_name)
+        items = await halo_client.list_doc_tree_by_version(version_name)
         return HaloService._doc_tree_schema(HaloService._build_doc_tree(items))
 
     @staticmethod
@@ -541,10 +560,31 @@ class HaloService:
             doc_name=doc_name,
             title=tree_spec.get('title', ''),
             permalink=tree_status.get('permalink', ''),
+            url=HaloService._full_url(tree_status.get('permalink', '')),
             content=content.get('content', ''),
             raw=content.get('raw', ''),
             raw_type=content.get('rawType', 'HTML'),
             updated_at=spec.get('updatedAt') or doc.get('metadata', {}).get('creationTimestamp', ''),
+        )
+
+    @staticmethod
+    async def get_doc_preview(*, name: str) -> DocPreview | None:
+        """
+        获取 Docsme 发布页面用于预览
+
+        :param name: DocTree 或 Doc 资源名称
+        :return:
+        """
+        detail = await HaloService.get_doc(name=name)
+        if detail is None or not detail.url:
+            return None
+
+        html = await halo_client.get_public_html(detail.url)
+        return DocPreview(
+            name=detail.name,
+            title=detail.title,
+            url=detail.url,
+            html=html,
         )
 
     @staticmethod
