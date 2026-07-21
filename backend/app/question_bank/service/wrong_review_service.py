@@ -2,17 +2,20 @@
 # -*- coding: utf-8 -*-
 import asyncio
 
+from typing import Any
+
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank.cache.kp_cache import reason_tag_cache
+from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.app.question_bank.crud.crud_wrong_review import (
     custom_question_dao,
     reason_tag_dao,
     review_dao,
 )
-from backend.app.question_bank.crud.crud_wrong_question import wrong_question_dao
 from backend.common.exception import errors
+from backend.utils.timezone import timezone
 
 
 def parse_reasons(reasons: dict | list | None) -> dict:
@@ -165,6 +168,158 @@ class WrongReviewService:
                 kwargs['reasons'] = {'tags': [], 'knowledge_points': knowledge_points}
 
         return await custom_question_dao.create(db, user_id=user_id, **kwargs)
+
+    @staticmethod
+    async def start_custom_question_practice(
+        *, db: AsyncSession, custom_id: int, user_id: int
+    ) -> tuple[Any, int, int]:
+        """
+        将自定义错题接入标准练习会话
+
+        :param db: 数据库会话
+        :param custom_id: 自定义错题 ID
+        :param user_id: 用户 ID
+        :return:
+        """
+        from sqlalchemy import select
+
+        from backend.app.question_bank.crud.crud_question import question_placement_dao
+        from backend.app.question_bank.model.bank import QuestionBank
+        from backend.app.question_bank.schema.practice import CreateSessionFromIdsParam
+        from backend.app.question_bank.schema.question import (
+            CreateQuestionParam,
+            QuestionCoreBase,
+            UpsertQuestionAnalysisItem,
+            UpsertQuestionOptionItem,
+            UpsertQuestionPlacementItem,
+        )
+        from backend.app.question_bank.service.question_service import question_service
+        from backend.app.question_bank.service.session_service import session_service
+
+        custom_question = await WrongReviewService.get_custom_question(db=db, custom_id=custom_id, user_id=user_id)
+        question_id = custom_question.question_id
+        bank: QuestionBank | None = None
+        placement_id: int | None = None
+
+        if question_id:
+            wrong_book = await wrong_question_dao.get_by_user_and_question(db, user_id, question_id)
+            if not wrong_book:
+                raise errors.RequestError(msg='关联题目缺少错题记录，无法开始练习')
+            placement_id = wrong_book.placement_id
+            if not placement_id:
+                raise errors.RequestError(msg='关联题目缺少练习挂载，无法开始练习')
+            placements = await question_placement_dao.list_by_question_ids(db, question_ids=[question_id])
+            placement = next((item for item in placements if item.id == placement_id), None)
+            if placement is None:
+                raise errors.RequestError(msg='关联题目的练习挂载不存在')
+            session = await session_service.create_session_from_ids(
+                db=db,
+                user_id=user_id,
+                obj=CreateSessionFromIdsParam(
+                    session_type='wrong',
+                    question_ids=[question_id],
+                    bank_id=placement.bank_id,
+                    practice_name='自定义错题练习',
+                ),
+            )
+            return session, question_id, wrong_book.id
+
+        stem = str(custom_question.stem or '').strip()
+        if not stem and custom_question.images:
+            image_html = ''.join(f'<img src="{url}" />' for url in custom_question.images if url)
+            stem = image_html
+        if not stem:
+            raise errors.RequestError(msg='题干为空，请先补充题目内容再开始练习')
+
+        category_id = custom_question.category_id
+        if not category_id:
+            raise errors.RequestError(msg='自定义错题缺少分类，无法开始练习')
+
+        bank = (
+            await db.execute(
+                select(QuestionBank).where(
+                    QuestionBank.owner_id == user_id,
+                    QuestionBank.cat_id == category_id,
+                    QuestionBank.code == f'custom-{user_id}-{category_id}',
+                )
+            )
+        ).scalars().first()
+        if not bank:
+            bank = QuestionBank(
+                owner_id=user_id,
+                cat_id=category_id,
+                name='我的错题练习',
+                code=f'custom-{user_id}-{category_id}',
+                desc='用户自定义错题的练习题库',
+                scene_mask=1,
+                status=1,
+                created_by=user_id,
+            )
+            db.add(bank)
+            await db.flush()
+
+        raw_options = custom_question.options if isinstance(custom_question.options, list) else []
+        options = [
+            UpsertQuestionOptionItem(
+                option_code=str(item.get('option_code') or '').upper(),
+                content=str(item.get('content') or ''),
+                sort_order=index,
+            )
+            for index, item in enumerate(raw_options)
+            if (
+                isinstance(item, dict)
+                and str(item.get('option_code') or '').strip()
+                and str(item.get('content') or '').strip()
+            )
+        ]
+        correct_answer = str(custom_question.answer or '').strip()
+        analysis = str(custom_question.explanation or '').strip() or '暂无解析'
+        question = await question_service.create(
+            db=db,
+            user_id=user_id,
+            obj=CreateQuestionParam(
+                core=QuestionCoreBase(
+                    type='single',
+                    stem=stem,
+                    knowledge_point=parse_reasons(custom_question.reasons).get('knowledge_points') or None,
+                ),
+                options=options,
+                placements=[UpsertQuestionPlacementItem(bank_id=bank.id, sort_order=0)],
+                analyses=[
+                    UpsertQuestionAnalysisItem(
+                        answer_data={'correct': correct_answer},
+                        content=analysis,
+                        is_default=True,
+                    )
+                ],
+            ),
+        )
+        custom_question.question_id = question.id
+        await db.flush()
+
+        placements = await question_placement_dao.list_by_question_ids(db, question_ids=[question.id], bank_id=bank.id)
+        placement = placements[0] if placements else None
+        if not placement:
+            raise errors.ServerError(msg='自定义错题的练习挂载创建失败')
+
+        wrong_book = await wrong_question_dao.create(
+            db=db,
+            user_id=user_id,
+            question_id=question.id,
+            placement_id=placement.id,
+            wrong_time=timezone.now(),
+        )
+        session = await session_service.create_session_from_ids(
+            db=db,
+            user_id=user_id,
+            obj=CreateSessionFromIdsParam(
+                session_type='wrong',
+                question_ids=[question.id],
+                bank_id=bank.id,
+                practice_name='自定义错题练习',
+            ),
+        )
+        return session, question.id, wrong_book.id
 
     @staticmethod
     async def update_custom_question(*, db: AsyncSession, custom_id: int, user_id: int, data: dict) -> int:

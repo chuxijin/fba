@@ -12,14 +12,18 @@ from backend.app.question_bank.schema.wrong_review import (
     GetCustomQuestionDetail,
     GetCustomQuestionListItem,
     GetReasonTagItem,
+    GetReviewDashboard,
     GetReviewDetail,
     GetReviewListItem,
+    RecognizeCustomQuestionParam,
+    RecognizeCustomQuestionResult,
     ReviewQueryParam,
-    UpdateCustomQuestionParam,
-    GetReviewDashboard,
-    TodayPendingItem,
     ReviewedQuestionItem,
+    StartCustomQuestionPracticeResult,
+    TodayPendingItem,
+    UpdateCustomQuestionParam,
 )
+from backend.app.question_bank.service.wrong_review_recognition_service import wrong_review_recognition_service
 from backend.app.question_bank.service.wrong_review_service import wrong_review_service
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
@@ -168,6 +172,50 @@ async def delete_tag(
 
 
 # ───────────────── 自定义错题 ─────────────────
+
+
+@router.post(
+    '/recognize',
+    summary='识别错题图片并生成编辑草稿',
+    name='qbank_wrong_review_recognize',
+    dependencies=[DependsJwtAuth],
+)
+async def recognize_custom_question(
+    db: CurrentSessionTransaction,
+    obj: RecognizeCustomQuestionParam,
+) -> ResponseSchemaModel[RecognizeCustomQuestionResult]:
+    """识别本地错题截图中的选择题结构"""
+    data = await wrong_review_recognition_service.recognize(
+        db=db,
+        images=obj.images,
+    )
+    return response_base.success(data=data)
+
+
+@router.post(
+    '/custom/{pk}/practice',
+    summary='开始自定义错题练习',
+    name='qbank_wrong_review_custom_practice',
+    dependencies=[DependsJwtAuth],
+)
+async def start_custom_question_practice(
+    request: Request,
+    db: CurrentSessionTransaction,
+    pk: Annotated[int, Path(description='自定义错题 ID')],
+) -> ResponseSchemaModel[StartCustomQuestionPracticeResult]:
+    """将自定义错题转换为标准练习会话"""
+    session, question_id, wrong_book_id = await wrong_review_service.start_custom_question_practice(
+        db=db,
+        custom_id=pk,
+        user_id=request.user.id,
+    )
+    return response_base.success(
+        data=StartCustomQuestionPracticeResult(
+            session_key=session.session_key,
+            question_id=question_id,
+            wrong_book_id=wrong_book_id,
+        )
+    )
 
 
 @router.get(

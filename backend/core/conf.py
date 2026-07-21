@@ -448,6 +448,11 @@ class Settings(BaseSettings):
     OCR_LLAMA_LANGUAGES: str = 'ch_sim,en'
     OCR_LLAMA_COST_OPTIMIZER_ENABLED: bool = True
 
+    # [ App ] 错题复盘图片识别
+    WRONG_REVIEW_VISION_PROVIDER_ID: int = 4
+    WRONG_REVIEW_VISION_MODEL_ID: str = 'gpt-5.4'
+    WRONG_REVIEW_VISION_MAX_IMAGE_BYTES: int = 10 * 1024 * 1024
+
     BAIDU_OCR_API_KEY: str = ''
     BAIDU_OCR_SECRET_KEY: str = ''
     BAIDU_OCR_HANDWRITING_URL: str = 'https://aip.baidubce.com/rest/2.0/ocr/v1/handwriting'

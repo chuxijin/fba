@@ -6,7 +6,6 @@ from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
 
-
 # ───────────────── 错因标签 ─────────────────
 
 
@@ -67,6 +66,48 @@ class UpdateCustomQuestionParam(SchemaBase):
     )
     summary: str | None = Field(None, description='一句话复盘')
     duration_seconds: int | None = Field(None, ge=0, description='做题用时（秒）')
+
+
+class RecognizeCustomQuestionParam(SchemaBase):
+    """识别自定义错题图片"""
+
+    images: list[str] = Field(min_length=1, max_length=1, description='本地题图 Base64 Data URL 数组')
+
+
+class RecognizedQuestionOption(SchemaBase):
+    """识别题目选项"""
+
+    option_code: str = Field(description='选项编码')
+    content: str = Field(description='选项富文本内容')
+
+
+class RecognizedQuestionAsset(SchemaBase):
+    """识别题目图片素材"""
+
+    url: str = Field(description='裁切图 URL')
+    placement: str = Field(description='图片归属: stem 或 option:A-F')
+    source_image_index: int = Field(ge=0, description='原图索引')
+    description: str | None = Field(None, description='图片说明')
+
+
+class RecognizeCustomQuestionResult(SchemaBase):
+    """自定义错题识别草稿"""
+
+    images: list[str] = Field(default_factory=list, description='保留字段，识别不保存原题图片')
+    stem: str = Field(default='', description='题干富文本')
+    options: list[RecognizedQuestionOption] = Field(default_factory=list, description='选项列表')
+    answer: str = Field(default='', description='参考答案')
+    explanation: str = Field(default='', description='题目解析')
+    assets: list[RecognizedQuestionAsset] = Field(default_factory=list, description='裁切图片素材')
+    warnings: list[str] = Field(default_factory=list, description='识别警告')
+
+
+class StartCustomQuestionPracticeResult(SchemaBase):
+    """自定义错题练习会话"""
+
+    session_key: str = Field(description='练习会话 Key')
+    question_id: int = Field(description='标准题目 ID')
+    wrong_book_id: int = Field(description='错题本记录 ID')
 
 
 class GetCustomQuestionDetail(SchemaBase):
