@@ -3,8 +3,11 @@
 from datetime import timedelta
 from typing import Any
 
+from fastapi_pagination.ext.sqlalchemy import apaginate
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.model import Category
 from backend.app.mydrive.crud.crud_account import mydrive_account_dao
 from backend.app.mydrive.crud.crud_resource import (
     mydrive_resource_dao,
@@ -13,6 +16,10 @@ from backend.app.mydrive.crud.crud_resource import (
 )
 from backend.app.mydrive.model.resource import MyDriveResource, MyDriveResourceShare, MyDriveResourceViewHistory
 from backend.app.mydrive.model.space import MyDriveSpace
+from backend.app.mydrive.schema.public_resource import (
+    MyDrivePublicResourceDetail,
+    MyDrivePublicResourceListItem,
+)
 from backend.app.mydrive.schema.resource import (
     CreateMyDriveResourceParam,
     GetMyDriveResourceListParam,
@@ -599,6 +606,146 @@ class MyDriveResourceService:
             'is_directory': file.is_directory,
             'size': file.size,
         }
+
+
+    @staticmethod
+    def _build_public_item(
+        resource: MyDriveResource,
+        category_name_map: dict[int, str] | None = None,
+    ) -> MyDrivePublicResourceListItem:
+        """
+        构建公开资源列表项。
+
+        :param resource: 资源对象
+        :param category_name_map: 分类名称映射
+        :return:
+        """
+        return MyDrivePublicResourceListItem(
+            id=resource.id,
+            category_id=resource.category_id,
+            category_name=(category_name_map or {}).get(resource.category_id),
+            title=resource.title,
+            description=resource.description,
+            org_name=resource.org_name,
+            resource_type=resource.resource_type,
+            hot=resource.hot,
+            created_time=resource.created_time,
+        )
+
+    @staticmethod
+    async def _get_category_name_map(db: AsyncSession, resources: list[MyDriveResource]) -> dict[int, str]:
+        """
+        获取资源分类名称映射。
+
+        :param db: 数据库会话
+        :param resources: 资源列表
+        :return:
+        """
+        category_ids = sorted({resource.category_id for resource in resources})
+        if not category_ids:
+            return {}
+        stmt = select(Category.id, Category.name).where(Category.id.in_(category_ids), Category.deleted == 0)
+        rows = (await db.execute(stmt)).all()
+        return {int(category_id): name for category_id, name in rows}
+
+    @staticmethod
+    async def get_public_list(
+        db: AsyncSession,
+        params: GetMyDriveResourceListParam,
+    ) -> dict[str, Any]:
+        """
+        获取公开资源列表。
+
+        :param db: 数据库会话
+        :param params: 查询参数
+        :return:
+        """
+        stmt = await mydrive_resource_dao.get_public_select(params)
+        paginated_data = await apaginate(db, stmt)
+        resources = list(paginated_data.items)
+        category_name_map = await MyDriveResourceService._get_category_name_map(db, resources)
+        items = [MyDriveResourceService._build_public_item(resource, category_name_map) for resource in resources]
+        page_data = paginated_data.model_dump()
+        page_data['items'] = items
+        return page_data
+
+    @staticmethod
+    async def get_public_hot_list(
+        db: AsyncSession,
+        *,
+        category_id: int | None = None,
+        resource_types: list[str] | None = None,
+        limit: int = 20,
+    ) -> list[MyDrivePublicResourceListItem]:
+        """
+        获取公开热门资源列表。
+
+        :param db: 数据库会话
+        :param category_id: 分类 ID
+        :param resource_types: 资源类型列表
+        :param limit: 数量限制
+        :return:
+        """
+        resources = await mydrive_resource_dao.get_public_hot_list(
+            db, category_id=category_id, resource_types=resource_types, limit=limit
+        )
+        category_name_map = await MyDriveResourceService._get_category_name_map(db, resources)
+        return [MyDriveResourceService._build_public_item(resource, category_name_map) for resource in resources]
+
+    @staticmethod
+    async def get_public_detail(db: AsyncSession, pk: int) -> MyDrivePublicResourceDetail:
+        """
+        获取公开资源详情。
+
+        :param db: 数据库会话
+        :param pk: 资源 ID
+        :return:
+        """
+        resource = await mydrive_resource_dao.get_public(db, pk)
+        if resource is None:
+            raise errors.NotFoundError(msg='资源不存在')
+        share = resource.share
+        if share is None:
+            raise errors.NotFoundError(msg='资源分享信息不存在')
+        category_name_map = await MyDriveResourceService._get_category_name_map(db, [resource])
+        return MyDrivePublicResourceDetail(
+            id=resource.id,
+            category_id=resource.category_id,
+            category_name=category_name_map.get(resource.category_id),
+            title=resource.title,
+            description=resource.description,
+            org_name=resource.org_name,
+            resource_type=resource.resource_type,
+            hot=resource.hot,
+            created_time=resource.created_time,
+            images=resource.images,
+            updated_time=resource.updated_time,
+            file_size=share.file_size if share else None,
+            provider=share.provider,
+            share_url=share.share_url,
+        )
+
+    @staticmethod
+    async def record_public_view(db: AsyncSession, pk: int) -> dict[str, int]:
+        """
+        记录公开资源浏览。
+
+        :param db: 数据库会话
+        :param pk: 资源 ID
+        :return:
+        """
+        resource = await mydrive_resource_dao.get_public(db, pk)
+        if resource is None:
+            raise errors.NotFoundError(msg='资源不存在')
+        count = await mydrive_resource_dao.public_increment_view(db, pk, 1)
+        if count == 0:
+            raise errors.NotFoundError(msg='资源不存在')
+        resource = await mydrive_resource_dao.get_public(db, pk)
+        if resource is None:
+            raise errors.NotFoundError(msg='资源不存在')
+        db.add(MyDriveResourceViewHistory(resource_id=resource.id, view_count=resource.view_count, record_time=timezone.now()))
+        await db.flush()
+        return {'view_count': resource.view_count}
 
 
 mydrive_resource_service: MyDriveResourceService = MyDriveResourceService()

@@ -516,6 +516,77 @@ class MyDriveSpaceService:
         return transferred_files
 
     @staticmethod
+    async def save_share_files(
+        db: AsyncSession,
+        *,
+        owner_id: int,
+        target_space_id: int,
+        account_id: int,
+        provider: str,
+        source_key: str,
+        source_ref: dict[str, Any],
+        root_id: str | None,
+        root_path: str,
+        files: list[MyDriveFileReference],
+        target: MyDriveFileReference | None,
+    ) -> list[FileObject]:
+        """
+        将临时分享文件保存到个人文件空间。
+
+        :param db: 数据库会话
+        :param owner_id: 所属用户 ID
+        :param target_space_id: 目标个人文件空间 ID
+        :param account_id: 目标网盘账户 ID
+        :param provider: 网盘驱动标识
+        :param source_key: 分享来源标识
+        :param source_ref: 分享来源信息
+        :param root_id: 分享根目录 ID
+        :param root_path: 分享根目录路径
+        :param files: 待保存文件
+        :param target: 目标目录
+        :return:
+        """
+        target_space = await MyDriveSpaceService.get(db, pk=target_space_id, owner_id=owner_id)
+        if target_space.space_type != SpaceType.PERSONAL.value:
+            raise errors.ForbiddenError(msg='仅支持保存到个人文件空间')
+        if target_space.account_id != account_id or target_space.provider != provider:
+            raise errors.ForbiddenError(msg='保存分享必须使用当前个人空间的同 Provider 账户')
+
+        values = MyDriveSpaceService._normalize_space_values(
+            CreateMyDriveSpaceParam(
+                account_id=account_id,
+                name='temporary-share',
+                provider=provider,
+                root_id=root_id,
+                root_path=root_path,
+                source_key=source_key,
+                source_ref=source_ref,
+                space_type=SpaceType.SHARE_LINK.value,
+            ),
+            await MyDriveSpaceService._validate_account(db, owner_id, account_id, SpaceType.SHARE_LINK.value),
+        )
+        source_space = MyDriveSpace(owner_id=owner_id, **values)
+        source = await create_file_space(db, source_space)
+        destination = await create_file_space(db, target_space)
+        try:
+            if not isinstance(source, TransferSource):
+                raise errors.ForbiddenError(msg='当前分享不支持保存')
+            if not isinstance(destination, WritableFileSpace):
+                raise errors.ForbiddenError(msg='当前个人空间不支持写入')
+            source_files = await MyDriveSpaceService._resolve_files(source, files)
+            target_directory = await MyDriveSpaceService._resolve_file(destination, target) if target else None
+            saved_files = await transfer_files(source, source_files, destination, target_directory)
+            saved_files = [MyDriveSpaceService._to_virtual_file(destination, file) for file in saved_files]
+        except (CapabilityNotSupportedError, MyDriveError, ValueError) as exc:
+            raise errors.ForbiddenError(msg=str(exc)) from exc
+        finally:
+            await source.aclose()
+            await destination.aclose()
+        target_path = MyDriveSpaceService._get_directory_path(target)
+        await MyDriveSpaceService._invalidate_list_cache(target_space_id, directories={'/', target_path})
+        return saved_files
+
+    @staticmethod
     async def invalidate_space_cache(pk: int) -> None:
         """清除文件空间全部目录缓存。"""
         await MyDriveSpaceService._invalidate_list_cache(pk, directories={'/'}, trees={'/'})
@@ -1056,7 +1127,11 @@ class MyDriveSpaceService:
         if space_type == SpaceType.PERSONAL:
             if account is None:
                 raise errors.ForbiddenError(msg='个人文件空间必须关联网盘账户')
-            values['source_key'] = f'account:{account.id}'
+            values['source_key'] = MyDriveSpaceService._build_personal_source_key(
+                account_id=account.id,
+                root_id=values.get('root_id'),
+                root_path=values['root_path'],
+            )
             values['source_ref'] = {}
         elif space_type == SpaceType.SHARE_LINK:
             values['source_ref'] = MyDriveSpaceService._normalize_share_source_ref(obj.provider, obj.source_key, obj.source_ref)
@@ -1076,14 +1151,30 @@ class MyDriveSpaceService:
         return values
 
     @staticmethod
+    def _build_personal_source_key(*, account_id: int, root_id: str | None, root_path: str) -> str:
+        """构建个人空间来源唯一标识。"""
+        normalized_root_id = str(root_id or '').strip()
+        normalized_root_path = MyDriveSpaceService._normalize_file_path(root_path)
+        if not normalized_root_id and normalized_root_path == '/':
+            return f'account:{account_id}'
+        if normalized_root_id:
+            return f'account:{account_id}:root_id:{normalized_root_id}'
+        return f'account:{account_id}:root_path:{normalized_root_path}'
+
+    @staticmethod
     def _normalize_share_source_ref(provider: str, source_key: str, source_ref: dict[str, Any]) -> dict[str, Any]:
         """规范化分享链接来源参数。"""
         normalized_ref = dict(source_ref)
         if provider == 'quark':
             try:
-                normalized_ref['share_id'] = QuarkRequest.normalize_share_id(
-                    str(normalized_ref.get('share_id') or source_key)
-                )
+                share_value = str(normalized_ref.get('share_id') or source_key).strip()
+                parsed_url = urlsplit(share_value)
+                query_params = dict(parse_qsl(parsed_url.query, keep_blank_values=True))
+                normalized_ref['share_id'] = QuarkRequest.normalize_share_id(share_value)
+                if not str(normalized_ref.get('passcode') or '').strip():
+                    normalized_ref['passcode'] = str(
+                        query_params.get('pwd') or query_params.get('passcode') or ''
+                    ).strip()
             except QuarkRequestError as exc:
                 raise errors.ForbiddenError(msg=str(exc)) from exc
             return normalized_ref

@@ -170,6 +170,25 @@ def test_normalize_personal_space_uses_account_source_and_capabilities() -> None
     ]
 
 
+def test_normalize_personal_space_distinguishes_root_directory() -> None:
+    """个人空间应允许同账号挂载不同根目录。"""
+    account = SimpleNamespace(id=12, provider='quark')
+    obj = CreateMyDriveSpaceParam(
+        provider='quark',
+        space_type='personal',
+        name='夸克课程目录',
+        source_key='untrusted-source',
+        account_id=12,
+        root_id='folder-1',
+        root_path='/课程',
+    )
+
+    values = MyDriveSpaceService._normalize_space_values(obj, account)
+
+    assert values['source_key'] == 'account:12:root_id:folder-1'
+    assert values['source_ref'] == {}
+
+
 def test_normalize_thunder_personal_space_does_not_declare_share_capability() -> None:
     """迅雷个人空间不应声明尚未实现的分享能力。"""
     account = SimpleNamespace(id=12, provider='thunder')
@@ -311,6 +330,23 @@ def test_virtual_file_hides_mount_root_path() -> None:
 
     file = MyDriveSpaceService._to_virtual_file(file_space, remote_file)
 
+    assert file.path == '/course.pdf'
+
+
+def test_virtual_file_converts_transferred_file_path() -> None:
+    """转存返回文件应转换为挂载内虚拟路径。"""
+    file_space = FakeFileSpace([], root_path='/课程')
+    remote_file = FileObject(
+        space=file_space.locator,
+        file_id='file-1',
+        name='course.pdf',
+        path='/课程/course.pdf',
+        parent_id='folder-1',
+    )
+
+    file = MyDriveSpaceService._to_virtual_file(file_space, remote_file)
+
+    assert file.file_id == 'file-1'
     assert file.path == '/course.pdf'
 
 

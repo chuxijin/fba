@@ -72,6 +72,19 @@ class TransferMyDriveFilesParam(SchemaBase):
     target_space_id: int = Field(gt=0, description='目标个人文件空间 ID')
 
 
+class SaveMyDriveShareFilesParam(SchemaBase):
+    """保存分享文件参数"""
+
+    account_id: int = Field(gt=0, description='目标网盘账户 ID')
+    provider: str = Field(min_length=1, max_length=64, description='网盘驱动标识')
+    source_key: str = Field(min_length=1, max_length=512, description='分享来源标识')
+    source_ref: dict[str, Any] = Field(default_factory=dict, description='分享来源信息')
+    root_id: str | None = Field(default=None, max_length=512, description='分享根目录 ID')
+    root_path: str = Field(default='/', max_length=1024, description='分享根目录路径')
+    files: list[MyDriveFileReference] = Field(min_length=1, description='待保存文件')
+    target: MyDriveFileReference | None = Field(default=None, description='目标目录')
+
+
 class CreateMyDriveShareParam(SchemaBase):
     """创建分享参数"""
 

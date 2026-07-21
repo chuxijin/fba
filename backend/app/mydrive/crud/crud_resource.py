@@ -72,7 +72,6 @@ class CRUDMyDriveResource(CRUDPlus[MyDriveResource]):
                     self.model.title.ilike(keyword),
                     self.model.description.ilike(keyword),
                     self.model.org_name.ilike(keyword),
-                    self.model.content.ilike(keyword),
                     MyDriveResourceShare.share_title.ilike(keyword),
                     MyDriveResourceShare.file_name.ilike(keyword),
                 )
@@ -154,6 +153,142 @@ class CRUDMyDriveResource(CRUDPlus[MyDriveResource]):
             'total_searches': int(row.get('total_searches') or 0),
             'total_views': int(row.get('total_views') or 0),
         }
+
+    async def get_public_select(self, params: GetMyDriveResourceListParam) -> Select:
+        """
+        获取公开资源查询语句（不限 owner_id）。
+
+        :param params: 查询参数
+        :return:
+        """
+        stmt = (
+            select(self.model)
+            .outerjoin(MyDriveResourceShare, MyDriveResourceShare.resource_id == self.model.id)
+            .where(
+                self.model.deleted == 0,
+                self.model.status == 'enabled',
+                self.model.audit_status == 'approved',
+                MyDriveResourceShare.deleted == 0,
+                MyDriveResourceShare.share_status == 'active',
+                MyDriveResourceShare.share_url != '',
+            )
+            .options(selectinload(self.model.share))
+        )
+        filters = []
+        if params.category_id is not None:
+            filters.append(self.model.category_id == params.category_id)
+        if params.resource_type:
+            filters.append(self.model.resource_type == params.resource_type)
+        if params.keyword:
+            keyword = f'%{params.keyword}%'
+            filters.append(
+                or_(
+                    self.model.title.ilike(keyword),
+                    self.model.description.ilike(keyword),
+                    self.model.org_name.ilike(keyword),
+                    MyDriveResourceShare.share_title.ilike(keyword),
+                    MyDriveResourceShare.file_name.ilike(keyword),
+                )
+            )
+        if filters:
+            stmt = stmt.where(and_(*filters))
+        sort_column = {
+            'hot': self.model.hot,
+            'sort': self.model.sort,
+            'view_count': self.model.view_count,
+            'search_count': self.model.search_count,
+        }.get(params.sort_by, self.model.created_time)
+        if params.sort_order == 'asc':
+            return stmt.order_by(sort_column, desc(self.model.id))
+        return stmt.order_by(desc(sort_column), desc(self.model.id))
+
+    async def get_public_hot_list(
+        self,
+        db: AsyncSession,
+        *,
+        category_id: int | None = None,
+        resource_types: list[str] | None = None,
+        limit: int = 20,
+    ) -> list[MyDriveResource]:
+        """
+        获取公开热门资源列表。
+
+        :param db: 数据库会话
+        :param category_id: 分类 ID
+        :param resource_types: 资源类型列表
+        :param limit: 数量限制
+        :return:
+        """
+        stmt = (
+            select(self.model)
+            .outerjoin(MyDriveResourceShare, MyDriveResourceShare.resource_id == self.model.id)
+            .where(
+                self.model.deleted == 0,
+                self.model.status == 'enabled',
+                self.model.audit_status == 'approved',
+                MyDriveResourceShare.deleted == 0,
+                MyDriveResourceShare.share_status == 'active',
+                MyDriveResourceShare.share_url != '',
+            )
+            .options(selectinload(self.model.share))
+        )
+        filters = []
+        if category_id is not None:
+            filters.append(self.model.category_id == category_id)
+        if resource_types:
+            filters.append(self.model.resource_type.in_(resource_types))
+        if filters:
+            stmt = stmt.where(and_(*filters))
+        return list((await db.execute(stmt.order_by(desc(self.model.hot), desc(self.model.id)).limit(limit))).scalars().all())
+
+    async def get_public(self, db: AsyncSession, pk: int) -> MyDriveResource | None:
+        """
+        获取公开资源（不限 owner_id）。
+
+        :param db: 数据库会话
+        :param pk: 资源 ID
+        :return:
+        """
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.id == pk,
+                self.model.deleted == 0,
+                self.model.status == 'enabled',
+                self.model.audit_status == 'approved',
+                MyDriveResourceShare.deleted == 0,
+                MyDriveResourceShare.share_status == 'active',
+                MyDriveResourceShare.share_url != '',
+            )
+            .outerjoin(MyDriveResourceShare, MyDriveResourceShare.resource_id == self.model.id)
+            .options(selectinload(self.model.share))
+        )
+        return (await db.execute(stmt)).scalars().first()
+
+    async def public_increment_view(self, db: AsyncSession, pk: int, increment: int) -> int:
+        """
+        增加公开资源浏览量。
+
+        :param db: 数据库会话
+        :param pk: 资源 ID
+        :param increment: 增量
+        :return:
+        """
+        stmt = (
+            update(self.model)
+            .where(
+                self.model.id == pk,
+                self.model.deleted == 0,
+                self.model.status == 'enabled',
+                self.model.audit_status == 'approved',
+            )
+            .values(
+                view_count=self.model.view_count + increment,
+                hot=self.model.hot + increment,
+                last_viewed_at=datetime.now(),
+            )
+        )
+        return (await db.execute(stmt)).rowcount
 
     async def list_by_temp_policy(self, db: AsyncSession, temp_policy: int) -> list[MyDriveResource]:
         """

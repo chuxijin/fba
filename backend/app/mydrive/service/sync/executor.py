@@ -16,6 +16,10 @@ from backend.app.mydrive.crud.crud_sync import (
 )
 from backend.app.mydrive.model.space import MyDriveSpace
 from backend.app.mydrive.model.sync import MyDriveSyncTaskItem
+from backend.app.mydrive.service.drives.baidu.client import BaiduRequestError
+from backend.app.mydrive.service.drives.quark.client import QuarkRequestError
+from backend.app.mydrive.service.drives.thunder.client import ThunderRequestError
+from backend.app.mydrive.service.filesystem.exceptions import MyDriveError
 from backend.app.mydrive.service.filesystem.factory import create_file_space
 from backend.app.mydrive.service.filesystem.models import FileObject, SpaceType
 from backend.app.mydrive.service.filesystem.spaces import FileSpace, ShareableFileSpace, TransferSource, WritableFileSpace
@@ -122,6 +126,10 @@ class MyDriveSyncExecutor:
         except errors.ForbiddenError as exc:
             await self._finish_task(db, task_id, 'failed', exc.msg)
             return {'success': False, 'task_id': task_id, 'error': exc.msg}
+        except (MyDriveError, BaiduRequestError, QuarkRequestError, ThunderRequestError) as exc:
+            error_message = str(exc)
+            await self._finish_task(db, task_id, 'failed', error_message)
+            return {'success': False, 'task_id': task_id, 'error': error_message}
         except Exception as exc:
             log.exception('MyDrive 同步任务 {} 执行失败: {}', task_id, exc)
             await self._finish_task(db, task_id, 'failed', str(exc))

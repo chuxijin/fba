@@ -14,6 +14,7 @@ from backend.app.mydrive.schema.file import (
     GetMyDriveShareList,
     OperateMyDriveFilesParam,
     RenameMyDriveFileParam,
+    SaveMyDriveShareFilesParam,
     TransferMyDriveFilesParam,
 )
 from backend.app.mydrive.schema.space import (
@@ -200,6 +201,30 @@ async def transfer_mydrive_files(
         owner_id=request.user.id,
         files=obj.files,
         target_space_id=obj.target_space_id,
+    )
+    return response_base.success(data=files)
+
+
+@router.post('/{pk}/save-share', summary='保存分享文件', dependencies=[DependsJwtAuth])
+async def save_mydrive_share_files(
+    request: Request,
+    db: CurrentSessionTransaction,
+    pk: Annotated[int, Path(description='目标个人文件空间 ID')],
+    obj: SaveMyDriveShareFilesParam,
+) -> ResponseSchemaModel[list[GetMyDriveFileDetail]]:
+    """将分享文件保存到当前个人文件空间。"""
+    files = await mydrive_space_service.save_share_files(
+        db,
+        owner_id=request.user.id,
+        target_space_id=pk,
+        account_id=obj.account_id,
+        provider=obj.provider,
+        source_key=obj.source_key,
+        source_ref=obj.source_ref,
+        root_id=obj.root_id,
+        root_path=obj.root_path,
+        files=obj.files,
+        target=obj.target,
     )
     return response_base.success(data=files)
 

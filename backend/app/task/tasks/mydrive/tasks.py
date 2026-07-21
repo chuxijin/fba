@@ -15,6 +15,10 @@ from backend.utils.timezone import timezone
 MYDRIVE_CRON_WINDOW_MINUTES = 5
 
 
+class MyDriveSyncTaskExecutionError(Exception):
+    """MyDrive 同步任务执行失败。"""
+
+
 @celery_app.task(name='mydrive:execute_sync_task')
 async def execute_mydrive_sync_task(task_id: int) -> dict[str, Any]:
     """
@@ -25,7 +29,11 @@ async def execute_mydrive_sync_task(task_id: int) -> dict[str, Any]:
     """
     async with async_db_session.begin() as db:
         result = await mydrive_sync_executor.execute(db, task_id)
-        return _compact_success_result(result)
+
+    if not result.get('success') and not result.get('cancelled'):
+        raise MyDriveSyncTaskExecutionError(_build_sync_failure_message(result))
+
+    return _compact_success_result(result)
 
 
 @celery_app.task(name='mydrive:check_and_execute_cron_tasks')
@@ -123,6 +131,16 @@ def _compact_success_result(result: dict[str, Any]) -> dict[str, Any]:
         for key, value in result.items()
         if key not in {'details', 'items', 'records'}
     }
+
+
+def _build_sync_failure_message(result: dict[str, Any]) -> str:
+    """
+    构建 MyDrive 同步失败信息。
+
+    :param result: 同步执行结果
+    :return:
+    """
+    return f'MyDrive 同步任务 {result.get("task_id")} 执行失败: {result.get("error") or "未知错误"}'
 
 
 def _should_execute_now(cron_expr: str, last_synced_at: datetime | None, current_time: datetime) -> bool:

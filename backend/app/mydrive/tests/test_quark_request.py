@@ -4,7 +4,7 @@ import asyncio
 
 import httpx
 
-from backend.app.mydrive.service.filesystem.exceptions import ShareExpiredError
+from backend.app.mydrive.service.filesystem.exceptions import ShareExpiredError, TransferBatchLimitError
 from backend.app.mydrive.service.drives.quark.client import QuarkRequest
 
 
@@ -104,6 +104,27 @@ def test_quark_share_token_maps_expired_code_to_domain_error() -> None:
         assert str(exc) == '分享地址已过期'
     else:
         raise AssertionError('预期抛出夸克分享过期异常')
+    finally:
+        asyncio.run(client.aclose())
+
+
+def test_quark_transfer_task_maps_batch_limit_code_to_domain_error() -> None:
+    """夸克转存数量限制应映射为 MyDrive 领域异常。"""
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        """返回转存任务数量限制替身响应。"""
+        if request.url.path.endswith('/share/sharepage/save'):
+            return httpx.Response(200, json={'code': 0, 'data': {'task_id': 'task-1'}})
+        return httpx.Response(200, json={'code': 41035, 'message': '单次转存文件个数超出用户等级限制'})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handle_request))
+    request = QuarkRequest('cookie=value', client=client)
+
+    try:
+        asyncio.run(request.save_share_files('share-1', 'token', '0', ['file-1'], ['token-1'], '0'))
+    except TransferBatchLimitError as exc:
+        assert str(exc) == '单次转存文件个数超出用户等级限制'
+    else:
+        raise AssertionError('预期抛出夸克转存数量限制异常')
     finally:
         asyncio.run(client.aclose())
 

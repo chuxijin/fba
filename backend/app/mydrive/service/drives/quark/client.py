@@ -13,6 +13,7 @@ from backend.app.mydrive.service.filesystem.exceptions import (
     AccountAuthExpiredError,
     ShareAccessDeniedError,
     ShareExpiredError,
+    TransferBatchLimitError,
 )
 from backend.app.mydrive.service.filesystem.models import ShareLink
 from backend.common.log import log
@@ -27,6 +28,7 @@ class QuarkRequestError(Exception):
 
 QUARK_SEMANTIC_ERRORS: dict[int | str, type[Exception]] = {
     41019: ShareExpiredError,
+    41035: TransferBatchLimitError,
     401: AccountAuthExpiredError,
     403: ShareAccessDeniedError,
 }
@@ -688,6 +690,15 @@ def _build_quark_error(message: str, error_code: int | str | None) -> Exception:
     :return:
     """
     error_type = QUARK_SEMANTIC_ERRORS.get(error_code)
+    if error_type is None:
+        error_type = QUARK_SEMANTIC_ERRORS.get(_normalize_quark_error_code(error_code))
     if error_type is not None:
         return error_type(message)
     return QuarkRequestError(message, error_code=error_code)
+
+
+def _normalize_quark_error_code(error_code: int | str | None) -> int | str | None:
+    """规范化夸克错误码。"""
+    if isinstance(error_code, str) and error_code.isdigit():
+        return int(error_code)
+    return error_code

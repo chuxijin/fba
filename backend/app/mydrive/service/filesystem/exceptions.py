@@ -23,6 +23,10 @@ class InvalidTransferError(MyDriveError):
     """无效的文件转存。"""
 
 
+class TransferBatchLimitError(MyDriveError):
+    """单次转存文件数量超限。"""
+
+
 class ShareExpiredError(MyDriveError):
     """分享链接已过期。"""
 

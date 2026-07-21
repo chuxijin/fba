@@ -5,7 +5,7 @@ from collections.abc import Iterable
 
 import pytest
 
-from backend.app.mydrive.service.filesystem.exceptions import InvalidTransferError
+from backend.app.mydrive.service.filesystem.exceptions import InvalidTransferError, TransferBatchLimitError
 from backend.app.mydrive.service.filesystem.models import FileObject, SpaceLocator, SpaceType
 from backend.app.mydrive.service.filesystem.spaces import TransferSource, WritableFileSpace
 from backend.app.mydrive.service.transfer_service import transfer_files
@@ -17,6 +17,7 @@ class FakeLinkSpace(TransferSource):
     def __init__(self) -> None:
         """初始化链接文件空间。"""
         self._locator = SpaceLocator(provider='baidu', space_type=SpaceType.SHARE_LINK, source_id='share-1')
+        self.transfer_batch_sizes: list[int] = []
 
     @property
     def locator(self) -> SpaceLocator:
@@ -41,14 +42,22 @@ class FakeLinkSpace(TransferSource):
         """
         return None
 
-    async def transfer_to(self, files: Iterable[FileObject], target: WritableFileSpace) -> list[FileObject]:
+    async def transfer_to(
+        self,
+        files: Iterable[FileObject],
+        target: WritableFileSpace,
+        target_directory: FileObject | None = None,
+    ) -> list[FileObject]:
         """
         转存链接文件。
 
         :param files: 待转存文件
         :param target: 目标空间
+        :param target_directory: 目标目录
         :return: 目标文件列表
         """
+        file_list = list(files)
+        self.transfer_batch_sizes.append(len(file_list))
         return [
             FileObject(
                 space=target.locator,
@@ -56,7 +65,7 @@ class FakeLinkSpace(TransferSource):
                 name=file.name,
                 path=f'/{file.name}',
             )
-            for file in files
+            for file in file_list
         ]
 
 
@@ -141,6 +150,38 @@ class FakePersonalSpace(WritableFileSpace):
         """
 
 
+class FakeBatchLimitedLinkSpace(FakeLinkSpace):
+    """限制单次转存数量的链接文件空间。"""
+
+    async def transfer_to(
+        self,
+        files: Iterable[FileObject],
+        target: WritableFileSpace,
+        target_directory: FileObject | None = None,
+    ) -> list[FileObject]:
+        """
+        模拟网盘单次转存数量限制。
+
+        :param files: 待转存文件
+        :param target: 目标空间
+        :param target_directory: 目标目录
+        :return:
+        """
+        file_list = list(files)
+        self.transfer_batch_sizes.append(len(file_list))
+        if len(file_list) > 5:
+            raise TransferBatchLimitError('单次转存文件个数超出用户等级限制')
+        return [
+            FileObject(
+                space=target.locator,
+                file_id=f'target-{file.file_id}',
+                name=file.name,
+                path=f'/{file.name}',
+            )
+            for file in file_list
+        ]
+
+
 def test_transfer_files_allows_share_link_to_personal_space() -> None:
     """链接文件应能单向转存至个人空间。"""
     source = FakeLinkSpace()
@@ -162,6 +203,46 @@ def test_transfer_files_allows_share_link_to_openlist_space() -> None:
     transferred_files = asyncio.run(transfer_files(source, [source_file], target))
 
     assert transferred_files[0].space == target.locator
+
+
+def test_transfer_files_chunks_share_link_requests_by_ten() -> None:
+    """转存文件超过 10 个时应分批提交。"""
+    source = FakeLinkSpace()
+    target = FakePersonalSpace()
+    source_files = [
+        FileObject(
+            space=source.locator,
+            file_id=f'source-file-{index}',
+            name=f'course-{index}.pdf',
+            path=f'/course-{index}.pdf',
+        )
+        for index in range(12)
+    ]
+
+    transferred_files = asyncio.run(transfer_files(source, source_files, target))
+
+    assert source.transfer_batch_sizes == [10, 2]
+    assert len(transferred_files) == 12
+
+
+def test_transfer_files_retries_smaller_batches_when_provider_limit_is_lower_than_ten() -> None:
+    """平台限制低于 10 个时应继续拆小当前批次。"""
+    source = FakeBatchLimitedLinkSpace()
+    target = FakePersonalSpace()
+    source_files = [
+        FileObject(
+            space=source.locator,
+            file_id=f'source-file-{index}',
+            name=f'course-{index}.pdf',
+            path=f'/course-{index}.pdf',
+        )
+        for index in range(12)
+    ]
+
+    transferred_files = asyncio.run(transfer_files(source, source_files, target))
+
+    assert source.transfer_batch_sizes == [10, 5, 5, 2]
+    assert len(transferred_files) == 12
 
 
 def test_transfer_files_rejects_personal_space_as_source() -> None:
