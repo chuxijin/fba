@@ -20,6 +20,7 @@ class RenderBookJob(Base):
         sa.Index('idx_render_book_job_status_created', 'status', 'created_time'),
         sa.Index('idx_render_book_job_user_created', 'user_id', 'created_time'),
         sa.Index('idx_render_book_job_template', 'template_key'),
+        sa.Index('idx_render_book_job_template_version', 'template_key', 'template_version'),
         sa.UniqueConstraint('job_id', name='uq_render_book_job_job_id'),
         sa.CheckConstraint("mode IN ('preview','final')", name='ck_render_book_job_mode'),
         sa.CheckConstraint(
@@ -41,6 +42,8 @@ class RenderBookJob(Base):
     job_id: Mapped[str] = mapped_column(sa.String(64), index=True, comment='外部任务 ID')
     template_key: Mapped[str] = mapped_column(sa.String(100), comment='模板键')
     title: Mapped[str] = mapped_column(sa.String(200), comment='题本标题')
+    template_version: Mapped[str] = mapped_column(sa.String(32), default='1.0.0', comment='模板版本')
+    template_digest: Mapped[str] = mapped_column(sa.String(64), default='', comment='模板内容摘要')
     user_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='业务用户 ID')
     mode: Mapped[str] = mapped_column(sa.String(16), default='final', comment='任务模式')
     status: Mapped[str] = mapped_column(sa.String(16), default='accepted', comment='任务状态')

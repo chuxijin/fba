@@ -1,6 +1,6 @@
 [plugin]
 summary = '题本渲染'
-version = '0.1.0'
+version = '0.2.0'
 description = '用于创建题本渲染任务并对接外部 LaTeX 渲染执行器。'
 author = 'Codex'
 tags = ['other', 'task']

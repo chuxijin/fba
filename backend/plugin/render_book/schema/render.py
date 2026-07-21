@@ -58,11 +58,15 @@ class RenderFieldSpec(BaseModel):
 
 class RenderTemplateSummary(BaseModel):
     key: str
+    version: str = '1.0.0'
+    digest: str = ''
     name: str
     description: str
     scene: str
     subject: str | None = None
     estimated_latency: Literal['fast', 'medium', 'slow'] = 'medium'
+    default_variant: RenderVariant = 'questions_only'
+    supported_variants: list[RenderVariant] = Field(default_factory=lambda: ['questions_only'])
 
 
 class RenderTemplateDetail(RenderTemplateSummary):
@@ -73,6 +77,19 @@ class RenderTemplateDetail(RenderTemplateSummary):
     notes: list[str] = Field(default_factory=list)
 
 
+class RenderTemplateManifest(BaseModel):
+    key: str
+    version: str
+    digest: str = ''
+    name: str
+    description: str = ''
+    enabled: bool = True
+    entrypoint: str = 'main.tex.j2'
+    default_variant: RenderVariant = 'questions_only'
+    supported_variants: list[RenderVariant] = Field(default_factory=lambda: ['questions_only'])
+    variant_entrypoints: dict[str, str] = Field(default_factory=dict)
+
+
 class RenderValidationIssue(BaseModel):
     field: str
     level: IssueLevel
@@ -81,6 +98,7 @@ class RenderValidationIssue(BaseModel):
 
 class RenderJobCreate(BaseModel):
     template_key: str = Field(..., min_length=1, max_length=100)
+    template_version: str | None = Field(default=None, min_length=5, max_length=32, description='模板版本')
     book_kind: BookKind | None = Field(default=None, description='题本类型')
     content_mode: RenderContentMode | None = Field(default=None, description='导出内容模式')
     answer_layout: RenderAnswerLayout | None = Field(default=None, description='解析排版结构')
@@ -168,6 +186,8 @@ class RenderJobRead(BaseModel):
     status: JobStatus
     mode: JobMode
     template_key: str
+    template_version: str = '1.0.0'
+    template_digest: str = ''
     title: str
     subtitle: str | None = None
     subject: str | None = None

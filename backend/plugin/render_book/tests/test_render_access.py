@@ -73,6 +73,8 @@ def test_job_to_read_fills_legacy_metadata_user_id() -> None:
     result = render_service._job_to_read(job)
 
     assert result.metadata['user_id'] == 11
+    assert result.template_version == '1.0.0'
+    assert len(result.template_digest) == 64
 
 
 def test_ensure_render_payload_access_skips_membership_checks(monkeypatch) -> None:

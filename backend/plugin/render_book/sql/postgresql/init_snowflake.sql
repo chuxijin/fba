@@ -3,6 +3,8 @@ CREATE TABLE IF NOT EXISTS render_book_job (
     job_id VARCHAR(64) NOT NULL,
     user_id BIGINT DEFAULT NULL,
     template_key VARCHAR(100) NOT NULL,
+    template_version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
+    template_digest VARCHAR(64) NOT NULL DEFAULT '',
     mode VARCHAR(16) NOT NULL DEFAULT 'final',
     status VARCHAR(16) NOT NULL DEFAULT 'accepted',
     title VARCHAR(200) NOT NULL,
@@ -37,6 +39,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_render_book_job_job_id ON render_book_job(j
 CREATE INDEX IF NOT EXISTS idx_render_book_job_status_created ON render_book_job(status, created_time);
 CREATE INDEX IF NOT EXISTS idx_render_book_job_user_created ON render_book_job(user_id, created_time);
 CREATE INDEX IF NOT EXISTS idx_render_book_job_template ON render_book_job(template_key);
+CREATE INDEX IF NOT EXISTS idx_render_book_job_template_version ON render_book_job(template_key, template_version);
 
 CREATE TABLE IF NOT EXISTS render_book_job_file (
     id BIGINT PRIMARY KEY,

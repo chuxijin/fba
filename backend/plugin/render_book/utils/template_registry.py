@@ -6,6 +6,7 @@ from backend.plugin.render_book.schema.render import (
     RenderOptions,
     RenderTemplateDetail,
 )
+from backend.plugin.render_book.utils.template_catalog import get_latest_template_manifests
 
 
 def get_template_registry() -> dict[str, RenderTemplateDetail]:
@@ -88,7 +89,7 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
         RenderFieldSpec(key='question_count', label='题量', field_type='integer', required=False, default=100),
     ]
 
-    return {
+    registry = {
         'exam_paper': RenderTemplateDetail(
             key='exam_paper',
             name='真题套卷',
@@ -277,3 +278,25 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
             notes=['包含成语、词语的拼音、基本释义、例句、出处与近反义词。'],
         ),
     }
+
+    manifests = get_latest_template_manifests()
+    for template_key, manifest in manifests.items():
+        template = registry.get(template_key)
+        manifest_values = {
+            'key': manifest.key,
+            'version': manifest.version,
+            'digest': manifest.digest,
+            'name': manifest.name,
+            'description': manifest.description,
+            'default_variant': manifest.default_variant,
+            'supported_variants': manifest.supported_variants,
+        }
+        if template is None:
+            registry[template_key] = RenderTemplateDetail(
+                **manifest_values,
+                scene='通用模板',
+            )
+            continue
+        registry[template_key] = template.model_copy(update=manifest_values)
+
+    return {template_key: registry[template_key] for template_key in manifests}

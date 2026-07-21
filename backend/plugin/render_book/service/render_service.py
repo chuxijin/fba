@@ -43,11 +43,12 @@ from backend.plugin.render_book.schema.render import (
 )
 from backend.plugin.render_book.service.payload_service import render_payload_service
 from backend.plugin.render_book.service.quota_service import render_book_quota_service
-from backend.plugin.render_book.utils import get_template_registry
+from backend.plugin.render_book.utils import get_template_catalog, get_template_registry, resolve_template_manifest
 
 
 class RenderService:
     def __init__(self) -> None:
+        self._template_catalog = get_template_catalog()
         self._template_registry = get_template_registry()
 
     @property
@@ -66,11 +67,20 @@ class RenderService:
     async def validate_job(self, payload: RenderJobCreate) -> RenderJobValidationResult:
         issues: list[RenderValidationIssue] = []
         template = self._template_registry.get(payload.template_key)
+        manifest = resolve_template_manifest(
+            self._template_catalog,
+            payload.template_key,
+            payload.template_version,
+        )
         normalized_title = payload.title.strip()
 
-        if template is None:
+        if template is None or manifest is None:
             issues.append(
-                RenderValidationIssue(field='template_key', level='error', message='模板不存在，请选择有效模板。')
+                RenderValidationIssue(
+                    field='template_version' if template is not None else 'template_key',
+                    level='error',
+                    message='模板或指定版本不存在，请选择已发布的有效模板。',
+                )
             )
         if not normalized_title:
             issues.append(RenderValidationIssue(field='title', level='error', message='题本标题不能为空。'))
@@ -185,8 +195,10 @@ class RenderService:
             )
 
         summary = None
-        if template is not None:
-            summary = RenderTemplateSummary.model_validate(template.model_dump())
+        if template is not None and manifest is not None:
+            summary = RenderTemplateSummary.model_validate(
+                template.model_copy(update={'version': manifest.version}).model_dump()
+            )
 
         has_error = any(issue.level == 'error' for issue in issues)
         return RenderJobValidationResult(
@@ -249,6 +261,8 @@ class RenderService:
 
             executor_result = await self._call_render_executor(
                 template_key=job.template_key,
+                template_version=job.template_version,
+                template_digest=job.template_digest,
                 job_id=job.job_id,
                 render_variant=render_variant,
                 context=document_payload.model_dump(mode='json'),
@@ -368,6 +382,13 @@ class RenderService:
             raise ValueError('；'.join(errors))
 
         template = await self.get_template(payload.template_key)
+        manifest = resolve_template_manifest(
+            self._template_catalog,
+            payload.template_key,
+            payload.template_version,
+        )
+        if manifest is None:
+            raise ValueError('模板或指定版本不存在，请选择已发布的有效模板。')
         now = datetime.now(timezone.utc)
         job_id = uuid4().hex
         job_dir = self.jobs_root / job_id
@@ -393,6 +414,8 @@ class RenderService:
             status='accepted',
             mode=payload.mode,
             template_key=payload.template_key,
+            template_version=manifest.version,
+            template_digest=manifest.digest,
             title=validation.normalized_title,
             subtitle=payload.subtitle,
             subject=payload.subject or (template.subject if template else None),
@@ -409,6 +432,8 @@ class RenderService:
                 **payload.metadata,
                 'executor_mode': settings.RENDER_BOOK_EXECUTOR_MODE,
                 'executor_url': settings.RENDER_BOOK_EXECUTOR_URL,
+                'template_version': manifest.version,
+                'template_digest': manifest.digest,
             },
             payload_path=str(payload_path) if payload_path else None,
             question_count=question_count,
@@ -709,6 +734,18 @@ class RenderService:
         if not render_variants:
             raise errors.RequestError(msg='当前任务缺少 render_variants，无法执行渲染。')
 
+        template_manifest = resolve_template_manifest(
+            self._template_catalog,
+            job.template_key,
+            job.template_version,
+        )
+        if template_manifest is None:
+            raise errors.RequestError(msg='当前任务关联的模板版本不存在，无法执行渲染。')
+        template_digest = job.template_digest or template_manifest.digest
+        if not job.template_digest:
+            job.template_digest = template_digest
+            await db.flush()
+
         quota_user_id = self._coerce_positive_int(job.user_id) or self._coerce_positive_int(
             (job.metadata_json or {}).get('user_id')
         )
@@ -728,6 +765,8 @@ class RenderService:
             for variant in render_variants:
                 executor_result = await self._call_render_executor(
                     template_key=job.template_key,
+                    template_version=job.template_version,
+                    template_digest=template_digest,
                     job_id=job.job_id,
                     render_variant=variant,
                     context=payload_context,
@@ -830,6 +869,8 @@ class RenderService:
                 'job_id': record.job_id,
                 'user_id': self._coerce_positive_int(record.metadata.get('user_id')),
                 'template_key': record.template_key,
+                'template_version': record.template_version,
+                'template_digest': record.template_digest,
                 'mode': record.mode,
                 'status': record.status,
                 'title': record.title,
@@ -877,6 +918,8 @@ class RenderService:
         self,
         *,
         template_key: str,
+        template_version: str,
+        template_digest: str,
         job_id: str,
         render_variant: str,
         context: dict,
@@ -885,6 +928,8 @@ class RenderService:
         timeout_seconds = self._executor_timeout_seconds()
         request_payload = {
             'template_key': template_key,
+            'template_version': template_version,
+            'template_digest': template_digest,
             'job_id': job_id,
             'render_variant': render_variant,
             'compile_pdf': True,
@@ -901,7 +946,10 @@ class RenderService:
                 if detail:
                     raise ValueError(f'渲染执行器返回错误: {detail}') from exc
                 raise
-            return response.json()
+            result = response.json()
+            if result.get('template_digest') != template_digest:
+                raise ValueError('渲染执行器模板摘要与任务记录不一致，请同步模板发布产物。')
+            return result
 
     async def _download_executor_artifact(
         self,
@@ -1006,12 +1054,24 @@ class RenderService:
         metadata = dict(job.metadata_json or {})
         if metadata.get('user_id') is None and job.user_id is not None:
             metadata['user_id'] = job.user_id
+        template_version = getattr(job, 'template_version', '1.0.0')
+        template_digest = getattr(job, 'template_digest', '')
+        if not template_digest:
+            template_manifest = resolve_template_manifest(
+                self._template_catalog,
+                job.template_key,
+                template_version,
+            )
+            if template_manifest is not None:
+                template_digest = template_manifest.digest
 
         return RenderJobRead(
             job_id=job.job_id,
             status=job.status,
             mode=job.mode,
             template_key=job.template_key,
+            template_version=template_version,
+            template_digest=template_digest,
             title=job.title,
             subtitle=job.subtitle,
             subject=job.subject,
