@@ -134,5 +134,14 @@ class GetCurrentUserInfoWithRelationDetail(GetUserInfoWithRelationDetail):
             data['dept'] = dept['name']
         roles = data['roles']
         if roles:
-            data['roles'] = [role['name'] for role in roles]
+            data['roles'] = [cls._role_name(role) for role in roles]
         return data
+
+    @staticmethod
+    def _role_name(role: Any) -> str:
+        """获取角色名称"""
+        if isinstance(role, str):
+            return role
+        if isinstance(role, dict):
+            return str(role.get('name') or '')
+        return str(getattr(role, 'name', '') or '')

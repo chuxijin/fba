@@ -4,7 +4,7 @@ import asyncio
 
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank.cache.kp_cache import reason_tag_cache
@@ -245,6 +245,12 @@ class WrongReviewService:
             )
         ).scalars().first()
         if not bank:
+            bank_id = await db.scalar(
+                select(func.nextval(func.pg_get_serial_sequence(QuestionBank.__tablename__, 'id')))
+            )
+            if bank_id is None:
+                raise errors.ServerError(msg='创建自定义错题题库失败')
+
             bank = QuestionBank(
                 owner_id=user_id,
                 cat_id=category_id,
@@ -252,9 +258,11 @@ class WrongReviewService:
                 code=f'custom-{user_id}-{category_id}',
                 desc='用户自定义错题的练习题库',
                 scene_mask=1,
+                chapter_source_bank_id=int(bank_id),
                 status=1,
                 created_by=user_id,
             )
+            bank.id = int(bank_id)
             db.add(bank)
             await db.flush()
 
