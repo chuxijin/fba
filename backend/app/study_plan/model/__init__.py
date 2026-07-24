@@ -2,11 +2,6 @@
 # -*- coding: utf-8 -*-
 """学习规划模型导出"""
 
-from backend.app.study_plan.model.item import StudyPlanItem
-from backend.app.study_plan.model.mentor import StudyMentorStudent
-from backend.app.study_plan.model.plan import StudyPlan
-from backend.app.study_plan.model.record import StudyPlanRecord
-from backend.app.study_plan.model.template import StudyPlanTemplate, StudyPlanTemplateItem
 from backend.app.study_plan.model.ability_profile import (
     StudyAbilityAttempt,
     StudyAbilityAttemptCategory,
@@ -14,6 +9,12 @@ from backend.app.study_plan.model.ability_profile import (
     StudyAbilityCategoryBinding,
     StudyUserCategoryProfile,
 )
+from backend.app.study_plan.model.item import StudyPlanItem
+from backend.app.study_plan.model.mentor import StudyMentorStudent
+from backend.app.study_plan.model.plan import StudyPlan
+from backend.app.study_plan.model.record import StudyPlanRecord
+from backend.app.study_plan.model.spatial_cube import StudySpatialCubePattern
+from backend.app.study_plan.model.template import StudyPlanTemplate, StudyPlanTemplateItem
 
 __all__ = [
     'StudyAbilityAttempt',
@@ -26,5 +27,6 @@ __all__ = [
     'StudyPlanRecord',
     'StudyPlanTemplate',
     'StudyPlanTemplateItem',
+    'StudySpatialCubePattern',
     'StudyUserCategoryProfile',
 ]

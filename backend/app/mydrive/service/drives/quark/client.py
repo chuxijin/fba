@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Any
 import asyncio
 import re
 import time
+
 from datetime import datetime
+from typing import Any
 
 import httpx
 
-from backend.app.mydrive.service.metrics import observe_provider_request
 from backend.app.mydrive.service.filesystem.exceptions import (
     AccountAuthExpiredError,
     ShareAccessDeniedError,
@@ -16,7 +16,9 @@ from backend.app.mydrive.service.filesystem.exceptions import (
     TransferBatchLimitError,
 )
 from backend.app.mydrive.service.filesystem.models import ShareLink
+from backend.app.mydrive.service.metrics import observe_provider_request
 from backend.common.log import log
+
 
 class QuarkRequestError(Exception):
     """夸克网盘请求异常。"""
@@ -37,6 +39,8 @@ QUARK_SEMANTIC_ERRORS: dict[int | str, type[Exception]] = {
 class QuarkRequest:
     """夸克网盘请求封装。"""
 
+    _TASK_POLL_ATTEMPTS = 60
+    _TASK_POLL_INTERVAL_SECONDS = 3
     _PAN_BASE_URL = 'https://pan.quark.cn'
     _DRIVE_BASE_URL = 'https://drive-pc.quark.cn/1/clouddrive'
     _SHARE_BASE_URL = 'https://drive-h.quark.cn/1/clouddrive'
@@ -490,7 +494,7 @@ class QuarkRequest:
         :param task_id: 后台任务 ID
         :return:
         """
-        for _ in range(30):
+        for _ in range(self._TASK_POLL_ATTEMPTS):
             response = await self._request(
                 'GET',
                 self._DRIVE_BASE_URL,
@@ -502,7 +506,7 @@ class QuarkRequest:
                 return
             if status == 3:
                 raise QuarkRequestError(str(response.get('message') or '夸克转存任务失败'))
-            await asyncio.sleep(1)
+            await asyncio.sleep(self._TASK_POLL_INTERVAL_SECONDS)
         raise QuarkRequestError('夸克转存任务超时')
 
     async def _wait_share_task(self, task_id: str) -> str:

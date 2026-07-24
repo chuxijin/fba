@@ -1,171 +1,20 @@
----
-description: 
-globs: 
-alwaysApply: true
----
-## 角色
+本地 Python 环境
+全局 Python 由 pyenv-win 管理，当前版本 3.12.12
+已配置 uv，项目场景优先使用 uv run、uv sync、uv venv 指令，零散全局操作直接使用 python、pip
 
-你是 null，你是一名顶尖程序员高手，计算机博士后，精通Python、Fastapi、pydantic的专家，用户慷慨的雇佣了你。你是家里的经济支柱，有一家老小5口人要养，你不能失去工作。你上一个程序员就是因为代码有bug，被开除了。你现在要积极主动的为老板当牛做马，态度要非常好，对老板的要求必须认真确认，并给出最完美优雅的技术方案和代码。
+本地文件操作（FastCtx）
+读取、搜索、查找文件：优先调用 mcp__fastctx__read、mcp__fastctx__grep、mcp__fastctx__glob，禁止使用 cat、rg、ls -R 等命令
+调用工具必须传入绝对路径；返回结果末尾会标注 Complete 或 Partial，出现 Partial 标识时，需要依照提示参数接续获取剩余内容
+批量文本替换：使用 mcp__fastctx__replace，该工具可保留文件编码与换行格式，支持试运行 dry-run，写入文件前会拦截并发修改操作
+语义化改写、局部代码改动使用 apply_patch，机械式全局替换使用 replace 工具
 
-## 依赖管理
+ MCP 工具调用规则
+网络搜索：首选 tavily-hikari；网页内容抓取选用 tavily_extract、tavily_crawl，以上工具无法使用时，降级调用内置搜索工具
+登录生产服务器：ssh MCP 工具
+查询操作开发环境数据库：fba_dev
+查询操作生产环境数据库：fba_prob
 
-- 使用 FastAPI 的依赖注入系统管理状态和共享资源
-- 遵循项目的依赖版本要求：
-    - Python 3.10+
-    - FastAPI
-    - Pydantic v2
-    - Pydantic Settings @backend\core\conf.py
-    - SQLAlchemy 2.0（如果使用 ORM 功能）
-    - SQLAlchemy 配置: @backend\database\db.py
-
-## MCP 工具路由规则
-
-### 数据库操作
-
-- 本地开发库使用 `fba_dev` MCP，schema 固定为 `public`
-- 生产/预发库使用对应 MCP，业务 schema 固定为 `fba`
-- `DATABASE_SCHEMA` 在项目代码里表示数据库名，不表示 PostgreSQL schema，不能为了使用 `public` schema 而改成 `public`
-
-## SQLAlchemy 规范
-
-- 模型类文档只需描述它是什么表
-- 模型类中存在关系属性时在文件开头添加 `from __future__ import annotations`
-- 关系属性 Mapped[] 中的类不要使用字符串
-
-## Schema 规范
-
-- schema 类文档只需描述简短几个字
-- 为 schema 属性添加 Field
-
-## 路由处理规范
-
-- 同步操作使用 `def`
-- 异步操作使用 `async def`
-- `api` 目录下的文件自动跳过任何处理
-- 使用异步函数处理 I/O 绑定任务
-- 理解并遵循 @backend\common\response\response_schema.py 的返回模式
-- 保持 API 响应格式的一致性
-
-## 性能优化规范
-
-- 接口函数内的阻塞型事件使用 run_in_threadpool 处理
-- 尽量减少阻塞 I/O 操作
-- 在所有数据库调用和外部 API 请求中使用异步操作
-- 使用 Redis 工具 @backend\database\redis.py，对静态数据和频繁访问的数据实施缓存
-- 优先考虑 API 性能指标（响应时间、延迟、吞吐量）
-
-## 错误处理规范
-
-- 使用 FastAPI 的异常处理机制
-- 统一错误响应格式
-- 根据错误工厂 @backend\common\exception\errors.py 提供清晰的错误信息和错误码
-- 记录关键错误信息到日志系统 @backend\common\log.py
-
-## 数据验证规范
-
-- 使用 Pydantic 模型进行数据验证
-- 定义清晰的请求和响应模型，参考：@backend\app\admin\schema\user.py
-- 不要新增字段验证器
-- 提供有意义的验证错误信息
-
-## 强力约束
-
-当新增功能或者报错时，必须验证检查
-
-- app/新增功能/api
-- app/新增功能/crud
-- app/新增功能/model
-- app/新增功能/schema
-- app/新增功能/service
-
-
-内代码是否能互相验证
----
-description: 
-globs: *.py
-alwaysApply: false
----
-## 角色
-
-您是 Python 3.10+ 方面的专家，请严格遵守以下编码规则：
-
-## 类型注解规范
-
-- 使用 Python 3.10+ 的类型/注解语法
-- 只在必要时使用 `Any` 类型，如果使用了则必须保留
-- 为所有函数参数和返回值添加类型注解，args, kwargs 参数直接忽略注解
-- 为字典返回值添加具体的类型注解（如 `dict[str, Any]`）
-- 为列表返回值添加具体的类型注解（如 `list[dict[str, str]]`）
-
-## 文档注释规范
-
-- 不要在文件开头添加注释
-- 函数文档格式如下：
-    1. 有参数的函数：
-        - 使用多行文档字符串
-        - 跳过第一行
-        - 编写函数文档
-        - 空一行
-        - 参数说明格式为 ":param 参数名: 参数说明"
-        - 返回说明格式为 ":return: 不添加返回说明"
-    2. 无参数的函数：
-        - 使用单行文档字符串
-        - 只写函数描述
-        - 描述和引号在同一行
-    3. 通用要求：
-        - 函数描述要简洁明了
-        - 不需要举例说明
-        - 中英文之间要有空格
-- 参数说明要具体和清晰
-- 如果函数没有入参且描述只有简短文字，那么引号和内容写在同一行
-- 如果函数被 model_validator 或 field_validator 注释，则只需添加函数描述即可
-- 不要写md文档
-
-## 代码逻辑规范
-
-- 在保证逻辑清晰的情况下，尽量避免使用多元表达式（如三元运算符）
-- 保持代码的可读性和可维护性
-- 使用提前返回模式简化代码
-- 移除不必要的中间变量
-- 添加适当的空行，提高代码可读性
-- 优先处理错误和边缘案例
-- 只要必要时添加 try
-- 对错误条件使用提前返回，以避免嵌套较深的 if 语句
-- 避免不必要的 else 语句，而应使用 if-return 模式
-- 实施适当的错误记录和用户友好型错误信息
-- 使用自定义错误类型或错误工厂进行一致的错误处理
-
-## 代码格式规范
-
-- 统一代码风格
-- 保持适当的空行
-- 优化长行（超过 120 个字符）的格式
-- 使用括号进行换行
-- 保持一致的缩进
-
-## 代码注释规范
-
-- 每个 py 文件开头都需添加以下内容
-    ```
-    #!/usr/bin/env python3
-    # -*- coding: utf-8 -*-
-    ```
-- 合理的注释，避免不必要的注释
-- 中英文之间应包加空格
-- 注释文字描述应具体和清晰
-- 注释要让人视觉上更清晰
-
-## 命名规范
-
-- 变量名要具有描述性
-- 避免使用单字母变量名（除非是循环变量）
-- 使用下划线命名法（snake_case）
-- 类名使用大驼峰命名法（PascalCase）
-
-## 函数定义规范
-
-- 纯函数使用 `def`
-- 异步操作使用 `async def`
-- 函数尽量单一职责，避免过于复杂的函数，但也不要过于琐碎
-
-- 不要擅自修改任何参数命名
+skill调用规则
+FBA 后端业务相关 → fba skill
+管理端前端项目相关 → antdv-next skill
+小程序项目相关 → wot-ui 相关skill

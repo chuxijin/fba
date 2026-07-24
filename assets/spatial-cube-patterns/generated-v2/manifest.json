@@ -1,0 +1,1243 @@
+{
+  "version": "generated-v2",
+  "canvas": {
+    "height": 256,
+    "width": 256
+  },
+  "rotation_deduplicated": true,
+  "assets": [
+    {
+      "code": "digit-0",
+      "name": "数字 0",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 0,
+      "svg_file": "svg/digit-0.svg",
+      "webp_file": "webp/digit-0.webp"
+    },
+    {
+      "code": "digit-1",
+      "name": "数字 1",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 1,
+      "svg_file": "svg/digit-1.svg",
+      "webp_file": "webp/digit-1.webp"
+    },
+    {
+      "code": "digit-2",
+      "name": "数字 2",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 2,
+      "svg_file": "svg/digit-2.svg",
+      "webp_file": "webp/digit-2.webp"
+    },
+    {
+      "code": "digit-3",
+      "name": "数字 3",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 3,
+      "svg_file": "svg/digit-3.svg",
+      "webp_file": "webp/digit-3.webp"
+    },
+    {
+      "code": "digit-4",
+      "name": "数字 4",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 4,
+      "svg_file": "svg/digit-4.svg",
+      "webp_file": "webp/digit-4.webp"
+    },
+    {
+      "code": "digit-5",
+      "name": "数字 5",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 5,
+      "svg_file": "svg/digit-5.svg",
+      "webp_file": "webp/digit-5.webp"
+    },
+    {
+      "code": "digit-6",
+      "name": "数字 6",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 6,
+      "svg_file": "svg/digit-6.svg",
+      "webp_file": "webp/digit-6.webp"
+    },
+    {
+      "code": "digit-7",
+      "name": "数字 7",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 7,
+      "svg_file": "svg/digit-7.svg",
+      "webp_file": "webp/digit-7.webp"
+    },
+    {
+      "code": "digit-8",
+      "name": "数字 8",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 8,
+      "svg_file": "svg/digit-8.svg",
+      "webp_file": "webp/digit-8.webp"
+    },
+    {
+      "code": "digit-9",
+      "name": "数字 9",
+      "category": "digit",
+      "rotation_period": 360,
+      "sort": 9,
+      "svg_file": "svg/digit-9.svg",
+      "webp_file": "webp/digit-9.webp"
+    },
+    {
+      "code": "latin-upper-a",
+      "name": "大写 A",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 10,
+      "svg_file": "svg/latin-upper-a.svg",
+      "webp_file": "webp/latin-upper-a.webp"
+    },
+    {
+      "code": "latin-upper-b",
+      "name": "大写 B",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 11,
+      "svg_file": "svg/latin-upper-b.svg",
+      "webp_file": "webp/latin-upper-b.webp"
+    },
+    {
+      "code": "latin-upper-c",
+      "name": "大写 C",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 12,
+      "svg_file": "svg/latin-upper-c.svg",
+      "webp_file": "webp/latin-upper-c.webp"
+    },
+    {
+      "code": "latin-upper-d",
+      "name": "大写 D",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 13,
+      "svg_file": "svg/latin-upper-d.svg",
+      "webp_file": "webp/latin-upper-d.webp"
+    },
+    {
+      "code": "latin-upper-e",
+      "name": "大写 E",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 14,
+      "svg_file": "svg/latin-upper-e.svg",
+      "webp_file": "webp/latin-upper-e.webp"
+    },
+    {
+      "code": "latin-upper-f",
+      "name": "大写 F",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 15,
+      "svg_file": "svg/latin-upper-f.svg",
+      "webp_file": "webp/latin-upper-f.webp"
+    },
+    {
+      "code": "latin-upper-g",
+      "name": "大写 G",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 16,
+      "svg_file": "svg/latin-upper-g.svg",
+      "webp_file": "webp/latin-upper-g.webp"
+    },
+    {
+      "code": "latin-upper-h",
+      "name": "大写 H",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 17,
+      "svg_file": "svg/latin-upper-h.svg",
+      "webp_file": "webp/latin-upper-h.webp"
+    },
+    {
+      "code": "latin-upper-i",
+      "name": "大写 I",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 18,
+      "svg_file": "svg/latin-upper-i.svg",
+      "webp_file": "webp/latin-upper-i.webp"
+    },
+    {
+      "code": "latin-upper-j",
+      "name": "大写 J",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 19,
+      "svg_file": "svg/latin-upper-j.svg",
+      "webp_file": "webp/latin-upper-j.webp"
+    },
+    {
+      "code": "latin-upper-k",
+      "name": "大写 K",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 20,
+      "svg_file": "svg/latin-upper-k.svg",
+      "webp_file": "webp/latin-upper-k.webp"
+    },
+    {
+      "code": "latin-upper-l",
+      "name": "大写 L",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 21,
+      "svg_file": "svg/latin-upper-l.svg",
+      "webp_file": "webp/latin-upper-l.webp"
+    },
+    {
+      "code": "latin-upper-m",
+      "name": "大写 M",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 22,
+      "svg_file": "svg/latin-upper-m.svg",
+      "webp_file": "webp/latin-upper-m.webp"
+    },
+    {
+      "code": "latin-upper-n",
+      "name": "大写 N",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 23,
+      "svg_file": "svg/latin-upper-n.svg",
+      "webp_file": "webp/latin-upper-n.webp"
+    },
+    {
+      "code": "latin-upper-o",
+      "name": "大写 O",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 24,
+      "svg_file": "svg/latin-upper-o.svg",
+      "webp_file": "webp/latin-upper-o.webp"
+    },
+    {
+      "code": "latin-upper-p",
+      "name": "大写 P",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 25,
+      "svg_file": "svg/latin-upper-p.svg",
+      "webp_file": "webp/latin-upper-p.webp"
+    },
+    {
+      "code": "latin-upper-q",
+      "name": "大写 Q",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 26,
+      "svg_file": "svg/latin-upper-q.svg",
+      "webp_file": "webp/latin-upper-q.webp"
+    },
+    {
+      "code": "latin-upper-r",
+      "name": "大写 R",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 27,
+      "svg_file": "svg/latin-upper-r.svg",
+      "webp_file": "webp/latin-upper-r.webp"
+    },
+    {
+      "code": "latin-upper-s",
+      "name": "大写 S",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 28,
+      "svg_file": "svg/latin-upper-s.svg",
+      "webp_file": "webp/latin-upper-s.webp"
+    },
+    {
+      "code": "latin-upper-t",
+      "name": "大写 T",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 29,
+      "svg_file": "svg/latin-upper-t.svg",
+      "webp_file": "webp/latin-upper-t.webp"
+    },
+    {
+      "code": "latin-upper-u",
+      "name": "大写 U",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 30,
+      "svg_file": "svg/latin-upper-u.svg",
+      "webp_file": "webp/latin-upper-u.webp"
+    },
+    {
+      "code": "latin-upper-v",
+      "name": "大写 V",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 31,
+      "svg_file": "svg/latin-upper-v.svg",
+      "webp_file": "webp/latin-upper-v.webp"
+    },
+    {
+      "code": "latin-upper-w",
+      "name": "大写 W",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 32,
+      "svg_file": "svg/latin-upper-w.svg",
+      "webp_file": "webp/latin-upper-w.webp"
+    },
+    {
+      "code": "latin-upper-x",
+      "name": "大写 X",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 33,
+      "svg_file": "svg/latin-upper-x.svg",
+      "webp_file": "webp/latin-upper-x.webp"
+    },
+    {
+      "code": "latin-upper-y",
+      "name": "大写 Y",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 34,
+      "svg_file": "svg/latin-upper-y.svg",
+      "webp_file": "webp/latin-upper-y.webp"
+    },
+    {
+      "code": "latin-upper-z",
+      "name": "大写 Z",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 35,
+      "svg_file": "svg/latin-upper-z.svg",
+      "webp_file": "webp/latin-upper-z.webp"
+    },
+    {
+      "code": "latin-lower-a",
+      "name": "小写 a",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 36,
+      "svg_file": "svg/latin-lower-a.svg",
+      "webp_file": "webp/latin-lower-a.webp"
+    },
+    {
+      "code": "latin-lower-b",
+      "name": "小写 b",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 37,
+      "svg_file": "svg/latin-lower-b.svg",
+      "webp_file": "webp/latin-lower-b.webp"
+    },
+    {
+      "code": "latin-lower-c",
+      "name": "小写 c",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 38,
+      "svg_file": "svg/latin-lower-c.svg",
+      "webp_file": "webp/latin-lower-c.webp"
+    },
+    {
+      "code": "latin-lower-d",
+      "name": "小写 d",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 39,
+      "svg_file": "svg/latin-lower-d.svg",
+      "webp_file": "webp/latin-lower-d.webp"
+    },
+    {
+      "code": "latin-lower-e",
+      "name": "小写 e",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 40,
+      "svg_file": "svg/latin-lower-e.svg",
+      "webp_file": "webp/latin-lower-e.webp"
+    },
+    {
+      "code": "latin-lower-f",
+      "name": "小写 f",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 41,
+      "svg_file": "svg/latin-lower-f.svg",
+      "webp_file": "webp/latin-lower-f.webp"
+    },
+    {
+      "code": "latin-lower-g",
+      "name": "小写 g",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 42,
+      "svg_file": "svg/latin-lower-g.svg",
+      "webp_file": "webp/latin-lower-g.webp"
+    },
+    {
+      "code": "latin-lower-h",
+      "name": "小写 h",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 43,
+      "svg_file": "svg/latin-lower-h.svg",
+      "webp_file": "webp/latin-lower-h.webp"
+    },
+    {
+      "code": "latin-lower-i",
+      "name": "小写 i",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 44,
+      "svg_file": "svg/latin-lower-i.svg",
+      "webp_file": "webp/latin-lower-i.webp"
+    },
+    {
+      "code": "latin-lower-j",
+      "name": "小写 j",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 45,
+      "svg_file": "svg/latin-lower-j.svg",
+      "webp_file": "webp/latin-lower-j.webp"
+    },
+    {
+      "code": "latin-lower-k",
+      "name": "小写 k",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 46,
+      "svg_file": "svg/latin-lower-k.svg",
+      "webp_file": "webp/latin-lower-k.webp"
+    },
+    {
+      "code": "latin-lower-l",
+      "name": "小写 l",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 47,
+      "svg_file": "svg/latin-lower-l.svg",
+      "webp_file": "webp/latin-lower-l.webp"
+    },
+    {
+      "code": "latin-lower-m",
+      "name": "小写 m",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 48,
+      "svg_file": "svg/latin-lower-m.svg",
+      "webp_file": "webp/latin-lower-m.webp"
+    },
+    {
+      "code": "latin-lower-n",
+      "name": "小写 n",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 49,
+      "svg_file": "svg/latin-lower-n.svg",
+      "webp_file": "webp/latin-lower-n.webp"
+    },
+    {
+      "code": "latin-lower-o",
+      "name": "小写 o",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 50,
+      "svg_file": "svg/latin-lower-o.svg",
+      "webp_file": "webp/latin-lower-o.webp"
+    },
+    {
+      "code": "latin-lower-p",
+      "name": "小写 p",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 51,
+      "svg_file": "svg/latin-lower-p.svg",
+      "webp_file": "webp/latin-lower-p.webp"
+    },
+    {
+      "code": "latin-lower-q",
+      "name": "小写 q",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 52,
+      "svg_file": "svg/latin-lower-q.svg",
+      "webp_file": "webp/latin-lower-q.webp"
+    },
+    {
+      "code": "latin-lower-r",
+      "name": "小写 r",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 53,
+      "svg_file": "svg/latin-lower-r.svg",
+      "webp_file": "webp/latin-lower-r.webp"
+    },
+    {
+      "code": "latin-lower-s",
+      "name": "小写 s",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 54,
+      "svg_file": "svg/latin-lower-s.svg",
+      "webp_file": "webp/latin-lower-s.webp"
+    },
+    {
+      "code": "latin-lower-t",
+      "name": "小写 t",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 55,
+      "svg_file": "svg/latin-lower-t.svg",
+      "webp_file": "webp/latin-lower-t.webp"
+    },
+    {
+      "code": "latin-lower-u",
+      "name": "小写 u",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 56,
+      "svg_file": "svg/latin-lower-u.svg",
+      "webp_file": "webp/latin-lower-u.webp"
+    },
+    {
+      "code": "latin-lower-v",
+      "name": "小写 v",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 57,
+      "svg_file": "svg/latin-lower-v.svg",
+      "webp_file": "webp/latin-lower-v.webp"
+    },
+    {
+      "code": "latin-lower-w",
+      "name": "小写 w",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 58,
+      "svg_file": "svg/latin-lower-w.svg",
+      "webp_file": "webp/latin-lower-w.webp"
+    },
+    {
+      "code": "latin-lower-x",
+      "name": "小写 x",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 59,
+      "svg_file": "svg/latin-lower-x.svg",
+      "webp_file": "webp/latin-lower-x.webp"
+    },
+    {
+      "code": "latin-lower-y",
+      "name": "小写 y",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 60,
+      "svg_file": "svg/latin-lower-y.svg",
+      "webp_file": "webp/latin-lower-y.webp"
+    },
+    {
+      "code": "latin-lower-z",
+      "name": "小写 z",
+      "category": "letter",
+      "rotation_period": 360,
+      "sort": 61,
+      "svg_file": "svg/latin-lower-z.svg",
+      "webp_file": "webp/latin-lower-z.webp"
+    },
+    {
+      "code": "shape-horizontal",
+      "name": "横线",
+      "category": "shape",
+      "rotation_period": 180,
+      "sort": 62,
+      "svg_file": "svg/shape-horizontal.svg",
+      "webp_file": "webp/shape-horizontal.webp"
+    },
+    {
+      "code": "shape-diagonal",
+      "name": "斜线",
+      "category": "shape",
+      "rotation_period": 180,
+      "sort": 63,
+      "svg_file": "svg/shape-diagonal.svg",
+      "webp_file": "webp/shape-diagonal.webp"
+    },
+    {
+      "code": "shape-cross",
+      "name": "叉",
+      "category": "shape",
+      "rotation_period": 90,
+      "sort": 64,
+      "svg_file": "svg/shape-cross.svg",
+      "webp_file": "webp/shape-cross.webp"
+    },
+    {
+      "code": "shape-circle",
+      "name": "圆",
+      "category": "shape",
+      "rotation_period": 90,
+      "sort": 65,
+      "svg_file": "svg/shape-circle.svg",
+      "webp_file": "webp/shape-circle.webp"
+    },
+    {
+      "code": "shape-square",
+      "name": "正方形",
+      "category": "shape",
+      "rotation_period": 90,
+      "sort": 66,
+      "svg_file": "svg/shape-square.svg",
+      "webp_file": "webp/shape-square.webp"
+    },
+    {
+      "code": "shape-triangle",
+      "name": "三角形",
+      "category": "shape",
+      "rotation_period": 360,
+      "sort": 67,
+      "svg_file": "svg/shape-triangle.svg",
+      "webp_file": "webp/shape-triangle.webp"
+    },
+    {
+      "code": "radial-01",
+      "name": "米字组合 01",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 68,
+      "svg_file": "svg/radial-01.svg",
+      "webp_file": "webp/radial-01.webp"
+    },
+    {
+      "code": "radial-02",
+      "name": "米字组合 02",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 69,
+      "svg_file": "svg/radial-02.svg",
+      "webp_file": "webp/radial-02.webp"
+    },
+    {
+      "code": "radial-03",
+      "name": "米字组合 03",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 70,
+      "svg_file": "svg/radial-03.svg",
+      "webp_file": "webp/radial-03.webp"
+    },
+    {
+      "code": "radial-05",
+      "name": "米字组合 05",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 71,
+      "svg_file": "svg/radial-05.svg",
+      "webp_file": "webp/radial-05.webp"
+    },
+    {
+      "code": "radial-06",
+      "name": "米字组合 06",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 72,
+      "svg_file": "svg/radial-06.svg",
+      "webp_file": "webp/radial-06.webp"
+    },
+    {
+      "code": "radial-07",
+      "name": "米字组合 07",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 73,
+      "svg_file": "svg/radial-07.svg",
+      "webp_file": "webp/radial-07.webp"
+    },
+    {
+      "code": "radial-09",
+      "name": "米字组合 09",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 74,
+      "svg_file": "svg/radial-09.svg",
+      "webp_file": "webp/radial-09.webp"
+    },
+    {
+      "code": "radial-0a",
+      "name": "米字组合 0A",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 75,
+      "svg_file": "svg/radial-0a.svg",
+      "webp_file": "webp/radial-0a.webp"
+    },
+    {
+      "code": "radial-0b",
+      "name": "米字组合 0B",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 76,
+      "svg_file": "svg/radial-0b.svg",
+      "webp_file": "webp/radial-0b.webp"
+    },
+    {
+      "code": "radial-0d",
+      "name": "米字组合 0D",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 77,
+      "svg_file": "svg/radial-0d.svg",
+      "webp_file": "webp/radial-0d.webp"
+    },
+    {
+      "code": "radial-0e",
+      "name": "米字组合 0E",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 78,
+      "svg_file": "svg/radial-0e.svg",
+      "webp_file": "webp/radial-0e.webp"
+    },
+    {
+      "code": "radial-0f",
+      "name": "米字组合 0F",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 79,
+      "svg_file": "svg/radial-0f.svg",
+      "webp_file": "webp/radial-0f.webp"
+    },
+    {
+      "code": "radial-11",
+      "name": "米字组合 11",
+      "category": "radial",
+      "rotation_period": 180,
+      "sort": 80,
+      "svg_file": "svg/radial-11.svg",
+      "webp_file": "webp/radial-11.webp"
+    },
+    {
+      "code": "radial-12",
+      "name": "米字组合 12",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 81,
+      "svg_file": "svg/radial-12.svg",
+      "webp_file": "webp/radial-12.webp"
+    },
+    {
+      "code": "radial-13",
+      "name": "米字组合 13",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 82,
+      "svg_file": "svg/radial-13.svg",
+      "webp_file": "webp/radial-13.webp"
+    },
+    {
+      "code": "radial-15",
+      "name": "米字组合 15",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 83,
+      "svg_file": "svg/radial-15.svg",
+      "webp_file": "webp/radial-15.webp"
+    },
+    {
+      "code": "radial-16",
+      "name": "米字组合 16",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 84,
+      "svg_file": "svg/radial-16.svg",
+      "webp_file": "webp/radial-16.webp"
+    },
+    {
+      "code": "radial-17",
+      "name": "米字组合 17",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 85,
+      "svg_file": "svg/radial-17.svg",
+      "webp_file": "webp/radial-17.webp"
+    },
+    {
+      "code": "radial-19",
+      "name": "米字组合 19",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 86,
+      "svg_file": "svg/radial-19.svg",
+      "webp_file": "webp/radial-19.webp"
+    },
+    {
+      "code": "radial-1a",
+      "name": "米字组合 1A",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 87,
+      "svg_file": "svg/radial-1a.svg",
+      "webp_file": "webp/radial-1a.webp"
+    },
+    {
+      "code": "radial-1b",
+      "name": "米字组合 1B",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 88,
+      "svg_file": "svg/radial-1b.svg",
+      "webp_file": "webp/radial-1b.webp"
+    },
+    {
+      "code": "radial-1d",
+      "name": "米字组合 1D",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 89,
+      "svg_file": "svg/radial-1d.svg",
+      "webp_file": "webp/radial-1d.webp"
+    },
+    {
+      "code": "radial-1e",
+      "name": "米字组合 1E",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 90,
+      "svg_file": "svg/radial-1e.svg",
+      "webp_file": "webp/radial-1e.webp"
+    },
+    {
+      "code": "radial-1f",
+      "name": "米字组合 1F",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 91,
+      "svg_file": "svg/radial-1f.svg",
+      "webp_file": "webp/radial-1f.webp"
+    },
+    {
+      "code": "radial-22",
+      "name": "米字组合 22",
+      "category": "radial",
+      "rotation_period": 180,
+      "sort": 92,
+      "svg_file": "svg/radial-22.svg",
+      "webp_file": "webp/radial-22.webp"
+    },
+    {
+      "code": "radial-23",
+      "name": "米字组合 23",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 93,
+      "svg_file": "svg/radial-23.svg",
+      "webp_file": "webp/radial-23.webp"
+    },
+    {
+      "code": "radial-25",
+      "name": "米字组合 25",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 94,
+      "svg_file": "svg/radial-25.svg",
+      "webp_file": "webp/radial-25.webp"
+    },
+    {
+      "code": "radial-26",
+      "name": "米字组合 26",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 95,
+      "svg_file": "svg/radial-26.svg",
+      "webp_file": "webp/radial-26.webp"
+    },
+    {
+      "code": "radial-27",
+      "name": "米字组合 27",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 96,
+      "svg_file": "svg/radial-27.svg",
+      "webp_file": "webp/radial-27.webp"
+    },
+    {
+      "code": "radial-29",
+      "name": "米字组合 29",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 97,
+      "svg_file": "svg/radial-29.svg",
+      "webp_file": "webp/radial-29.webp"
+    },
+    {
+      "code": "radial-2a",
+      "name": "米字组合 2A",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 98,
+      "svg_file": "svg/radial-2a.svg",
+      "webp_file": "webp/radial-2a.webp"
+    },
+    {
+      "code": "radial-2b",
+      "name": "米字组合 2B",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 99,
+      "svg_file": "svg/radial-2b.svg",
+      "webp_file": "webp/radial-2b.webp"
+    },
+    {
+      "code": "radial-2d",
+      "name": "米字组合 2D",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 100,
+      "svg_file": "svg/radial-2d.svg",
+      "webp_file": "webp/radial-2d.webp"
+    },
+    {
+      "code": "radial-2e",
+      "name": "米字组合 2E",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 101,
+      "svg_file": "svg/radial-2e.svg",
+      "webp_file": "webp/radial-2e.webp"
+    },
+    {
+      "code": "radial-2f",
+      "name": "米字组合 2F",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 102,
+      "svg_file": "svg/radial-2f.svg",
+      "webp_file": "webp/radial-2f.webp"
+    },
+    {
+      "code": "radial-33",
+      "name": "米字组合 33",
+      "category": "radial",
+      "rotation_period": 180,
+      "sort": 103,
+      "svg_file": "svg/radial-33.svg",
+      "webp_file": "webp/radial-33.webp"
+    },
+    {
+      "code": "radial-35",
+      "name": "米字组合 35",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 104,
+      "svg_file": "svg/radial-35.svg",
+      "webp_file": "webp/radial-35.webp"
+    },
+    {
+      "code": "radial-36",
+      "name": "米字组合 36",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 105,
+      "svg_file": "svg/radial-36.svg",
+      "webp_file": "webp/radial-36.webp"
+    },
+    {
+      "code": "radial-37",
+      "name": "米字组合 37",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 106,
+      "svg_file": "svg/radial-37.svg",
+      "webp_file": "webp/radial-37.webp"
+    },
+    {
+      "code": "radial-39",
+      "name": "米字组合 39",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 107,
+      "svg_file": "svg/radial-39.svg",
+      "webp_file": "webp/radial-39.webp"
+    },
+    {
+      "code": "radial-3a",
+      "name": "米字组合 3A",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 108,
+      "svg_file": "svg/radial-3a.svg",
+      "webp_file": "webp/radial-3a.webp"
+    },
+    {
+      "code": "radial-3b",
+      "name": "米字组合 3B",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 109,
+      "svg_file": "svg/radial-3b.svg",
+      "webp_file": "webp/radial-3b.webp"
+    },
+    {
+      "code": "radial-3d",
+      "name": "米字组合 3D",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 110,
+      "svg_file": "svg/radial-3d.svg",
+      "webp_file": "webp/radial-3d.webp"
+    },
+    {
+      "code": "radial-3e",
+      "name": "米字组合 3E",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 111,
+      "svg_file": "svg/radial-3e.svg",
+      "webp_file": "webp/radial-3e.webp"
+    },
+    {
+      "code": "radial-3f",
+      "name": "米字组合 3F",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 112,
+      "svg_file": "svg/radial-3f.svg",
+      "webp_file": "webp/radial-3f.webp"
+    },
+    {
+      "code": "radial-55",
+      "name": "米字组合 55",
+      "category": "radial",
+      "rotation_period": 90,
+      "sort": 113,
+      "svg_file": "svg/radial-55.svg",
+      "webp_file": "webp/radial-55.webp"
+    },
+    {
+      "code": "radial-56",
+      "name": "米字组合 56",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 114,
+      "svg_file": "svg/radial-56.svg",
+      "webp_file": "webp/radial-56.webp"
+    },
+    {
+      "code": "radial-57",
+      "name": "米字组合 57",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 115,
+      "svg_file": "svg/radial-57.svg",
+      "webp_file": "webp/radial-57.webp"
+    },
+    {
+      "code": "radial-5a",
+      "name": "米字组合 5A",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 116,
+      "svg_file": "svg/radial-5a.svg",
+      "webp_file": "webp/radial-5a.webp"
+    },
+    {
+      "code": "radial-5b",
+      "name": "米字组合 5B",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 117,
+      "svg_file": "svg/radial-5b.svg",
+      "webp_file": "webp/radial-5b.webp"
+    },
+    {
+      "code": "radial-5e",
+      "name": "米字组合 5E",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 118,
+      "svg_file": "svg/radial-5e.svg",
+      "webp_file": "webp/radial-5e.webp"
+    },
+    {
+      "code": "radial-5f",
+      "name": "米字组合 5F",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 119,
+      "svg_file": "svg/radial-5f.svg",
+      "webp_file": "webp/radial-5f.webp"
+    },
+    {
+      "code": "radial-66",
+      "name": "米字组合 66",
+      "category": "radial",
+      "rotation_period": 180,
+      "sort": 120,
+      "svg_file": "svg/radial-66.svg",
+      "webp_file": "webp/radial-66.webp"
+    },
+    {
+      "code": "radial-67",
+      "name": "米字组合 67",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 121,
+      "svg_file": "svg/radial-67.svg",
+      "webp_file": "webp/radial-67.webp"
+    },
+    {
+      "code": "radial-6a",
+      "name": "米字组合 6A",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 122,
+      "svg_file": "svg/radial-6a.svg",
+      "webp_file": "webp/radial-6a.webp"
+    },
+    {
+      "code": "radial-6b",
+      "name": "米字组合 6B",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 123,
+      "svg_file": "svg/radial-6b.svg",
+      "webp_file": "webp/radial-6b.webp"
+    },
+    {
+      "code": "radial-6e",
+      "name": "米字组合 6E",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 124,
+      "svg_file": "svg/radial-6e.svg",
+      "webp_file": "webp/radial-6e.webp"
+    },
+    {
+      "code": "radial-6f",
+      "name": "米字组合 6F",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 125,
+      "svg_file": "svg/radial-6f.svg",
+      "webp_file": "webp/radial-6f.webp"
+    },
+    {
+      "code": "radial-77",
+      "name": "米字组合 77",
+      "category": "radial",
+      "rotation_period": 180,
+      "sort": 126,
+      "svg_file": "svg/radial-77.svg",
+      "webp_file": "webp/radial-77.webp"
+    },
+    {
+      "code": "radial-7a",
+      "name": "米字组合 7A",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 127,
+      "svg_file": "svg/radial-7a.svg",
+      "webp_file": "webp/radial-7a.webp"
+    },
+    {
+      "code": "radial-7b",
+      "name": "米字组合 7B",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 128,
+      "svg_file": "svg/radial-7b.svg",
+      "webp_file": "webp/radial-7b.webp"
+    },
+    {
+      "code": "radial-7e",
+      "name": "米字组合 7E",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 129,
+      "svg_file": "svg/radial-7e.svg",
+      "webp_file": "webp/radial-7e.webp"
+    },
+    {
+      "code": "radial-7f",
+      "name": "米字组合 7F",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 130,
+      "svg_file": "svg/radial-7f.svg",
+      "webp_file": "webp/radial-7f.webp"
+    },
+    {
+      "code": "radial-aa",
+      "name": "米字组合 AA",
+      "category": "radial",
+      "rotation_period": 90,
+      "sort": 131,
+      "svg_file": "svg/radial-aa.svg",
+      "webp_file": "webp/radial-aa.webp"
+    },
+    {
+      "code": "radial-ab",
+      "name": "米字组合 AB",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 132,
+      "svg_file": "svg/radial-ab.svg",
+      "webp_file": "webp/radial-ab.webp"
+    },
+    {
+      "code": "radial-af",
+      "name": "米字组合 AF",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 133,
+      "svg_file": "svg/radial-af.svg",
+      "webp_file": "webp/radial-af.webp"
+    },
+    {
+      "code": "radial-bb",
+      "name": "米字组合 BB",
+      "category": "radial",
+      "rotation_period": 180,
+      "sort": 134,
+      "svg_file": "svg/radial-bb.svg",
+      "webp_file": "webp/radial-bb.webp"
+    },
+    {
+      "code": "radial-bf",
+      "name": "米字组合 BF",
+      "category": "radial",
+      "rotation_period": 360,
+      "sort": 135,
+      "svg_file": "svg/radial-bf.svg",
+      "webp_file": "webp/radial-bf.webp"
+    },
+    {
+      "code": "radial-ff",
+      "name": "米字组合 FF",
+      "category": "radial",
+      "rotation_period": 90,
+      "sort": 136,
+      "svg_file": "svg/radial-ff.svg",
+      "webp_file": "webp/radial-ff.webp"
+    }
+  ]
+}

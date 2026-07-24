@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 import asyncio
 
-import httpx
+from unittest.mock import AsyncMock, call
 
+import httpx
+import pytest
+
+from backend.app.mydrive.service.drives.quark.client import QuarkRequest, QuarkRequestError
 from backend.app.mydrive.service.filesystem.exceptions import ShareExpiredError, TransferBatchLimitError
-from backend.app.mydrive.service.drives.quark.client import QuarkRequest
 
 
 def test_quark_request_parses_cookie_when_creating_client() -> None:
@@ -127,6 +130,30 @@ def test_quark_transfer_task_maps_batch_limit_code_to_domain_error() -> None:
         raise AssertionError('预期抛出夸克转存数量限制异常')
     finally:
         asyncio.run(client.aclose())
+
+
+def test_quark_transfer_task_waits_sixty_times_at_three_second_intervals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    夸克转存任务应按三秒间隔轮询六十次。
+
+    :param monkeypatch: pytest monkeypatch
+    :return:
+    """
+    client = httpx.AsyncClient()
+    request = QuarkRequest('cookie=value', client=client)
+    request_mock = AsyncMock(return_value={'data': {'status': 1}})
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(request, '_request', request_mock)
+    monkeypatch.setattr(asyncio, 'sleep', sleep_mock)
+
+    with pytest.raises(QuarkRequestError, match='夸克转存任务超时'):
+        asyncio.run(request._wait_task('task-1'))
+
+    assert request_mock.await_count == 60
+    assert sleep_mock.await_args_list == [call(3)] * 60
+    asyncio.run(client.aclose())
 
 
 def test_quark_request_normalizes_share_url_to_share_id() -> None:

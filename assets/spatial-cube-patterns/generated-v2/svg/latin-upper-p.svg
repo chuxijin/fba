@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" version="1.1" width="256" height="256" viewBox="0 0 256 256">
+<defs>
+<path id="font_1_49" d="M.22599793 .2599945H.41299439C.5469971 .2599945 .6329956 .35499574 .6329956 .5029907 .6329956 .6489868 .5499878 .72898867 .397995 .72898867H.07598877V0H.22599793V.2599945M.22599793 .3849945V.60398867H.3659973C.44599916 .60398867 .48298646 .56900027 .48298646 .49499513 .48298646 .41999818 .44599916 .3849945 .3659973 .3849945H.22599793Z"/>
+</defs>
+<use data-text="P" xlink:href="#font_1_49" transform="matrix(176,0,0,-176,65.5,192.5)" fill="#0f172a"/>
+</svg>

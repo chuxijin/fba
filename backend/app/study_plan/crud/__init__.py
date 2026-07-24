@@ -13,6 +13,7 @@ from backend.app.study_plan.crud.crud_item import study_plan_item_dao
 from backend.app.study_plan.crud.crud_mentor import study_mentor_student_dao
 from backend.app.study_plan.crud.crud_plan import study_plan_dao
 from backend.app.study_plan.crud.crud_record import study_plan_record_dao
+from backend.app.study_plan.crud.crud_spatial_cube import study_spatial_cube_pattern_dao
 from backend.app.study_plan.crud.crud_template import (
     study_plan_template_dao,
     study_plan_template_item_dao,
@@ -29,5 +30,6 @@ __all__ = [
     'study_plan_record_dao',
     'study_plan_template_dao',
     'study_plan_template_item_dao',
+    'study_spatial_cube_pattern_dao',
     'study_user_category_profile_dao',
 ]
