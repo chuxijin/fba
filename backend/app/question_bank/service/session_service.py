@@ -52,13 +52,12 @@ from backend.app.question_bank.service.ai_evaluation_service import (
     practice_ai_evaluation_service,
 )
 from backend.app.question_bank.service.bank_mount_service import COLLECTION_BANK_TYPE, bank_mount_service
-from backend.app.question_bank.service.check_in_service import check_in_service
 from backend.app.question_bank.service.category_filter_service import category_filter_service
+from backend.app.question_bank.service.check_in_service import check_in_service
+from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
 from backend.app.question_bank.service.question_selector_service import question_selector_service
 from backend.app.question_bank.service.question_service import question_service
-from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
 from backend.common.exception import errors
-from backend.common.events import publish
 from backend.utils.timezone import timezone
 
 log = logging.getLogger(__name__)
@@ -1290,6 +1289,41 @@ class SessionService:
 
         return await session_question_dao.get_records_by_session(db=db, session_id=session_id)
 
+    @staticmethod
+    def _build_completed_submit_result(session: PracticeSession) -> SubmitPracticeSessionResult:
+        """基于已完成会话构建幂等提交结果"""
+        return SubmitPracticeSessionResult(
+            completed_count=session.completed_count,
+            correct_count=session.correct_count,
+            wrong_count=session.wrong_count,
+            accuracy_rate=session.accuracy_rate,
+            score=session.score,
+            total_score=session.total_score,
+            reward_exp=0,
+        )
+
+    @staticmethod
+    async def _lock_session_for_submit(*, db: AsyncSession, session_id: int) -> PracticeSession:
+        """
+        锁定并刷新待提交会话
+
+        :param db: 数据库会话
+        :param session_id: 会话 ID
+        :return:
+        """
+        stmt = (
+            select(PracticeSession)
+            .where(PracticeSession.id == session_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        session = (await db.execute(stmt)).scalars().first()
+        if not session:
+            raise errors.NotFoundError(msg='会话不存在')
+        if session.status not in {'in_progress', 'completed'}:
+            raise errors.ForbiddenError(msg='会话状态异常，无法提交')
+        return session
+
     # ------------------------------------------------------------------
     #  提交会话（判题 + 统计 + 错题本 一次事务）
     # ------------------------------------------------------------------
@@ -1354,21 +1388,21 @@ class SessionService:
         session_id: int,
         user_id: int,
         obj: SubmitPracticeSessionParam,
-    ) -> SubmitPracticeSessionResult:
+    ) -> tuple[SubmitPracticeSessionResult, bool]:
         """
         提交练习会话并统一判题
 
-        流程：锁会话行 → 判题 → 更新记录 → 更新全站统计 → 写错题本 → 标记完成
+        流程：读取会话和判题数据 → AI 判分 → 锁会话行 → 批量落库 → 标记完成
 
         :param db: 数据库会话
         :param session_id: 会话 ID
         :param user_id: 用户 ID
         :param obj: 提交参数
-        :return:
+        :return: 提交结果与本次是否首次完成
         """
-        # 1. 加锁查询会话，防并发重复提交
-        lock_stmt = select(PracticeSession).where(PracticeSession.id == session_id).with_for_update()
-        result = await db.execute(lock_stmt)
+        # 1. 先读取会话；耗时的 AI 判分完成后再加锁，缩短行锁持有时间。
+        session_stmt = select(PracticeSession).where(PracticeSession.id == session_id)
+        result = await db.execute(session_stmt)
         session = result.scalars().first()
 
         if not session:
@@ -1377,15 +1411,7 @@ class SessionService:
             raise errors.ForbiddenError(msg='无权操作此会话')
         if session.status == 'completed':
             # 幂等：已提交直接返回上次结果
-            return SubmitPracticeSessionResult(
-                completed_count=session.completed_count,
-                correct_count=session.correct_count,
-                wrong_count=session.wrong_count,
-                accuracy_rate=session.accuracy_rate,
-                score=session.score,
-                total_score=session.total_score,
-                reward_exp=0,
-            )
+            return SessionService._build_completed_submit_result(session), False
         if session.status != 'in_progress':
             raise errors.ForbiddenError(msg='会话状态异常，无法提交')
 
@@ -1408,6 +1434,10 @@ class SessionService:
             raise errors.NotFoundError(msg='没有答题记录可提交')
 
         if practice_mode == SessionService.PRACTICE_MODE_MEMORIZE:
+            session = await SessionService._lock_session_for_submit(db=db, session_id=session_id)
+            if session.status == 'completed':
+                return SessionService._build_completed_submit_result(session), False
+
             await user_bank_progress_dao.upsert_by_record_ids(
                 db=db,
                 record_ids=[int(record.id) for record in records],
@@ -1422,14 +1452,17 @@ class SessionService:
                 wrong_count=0,
                 total_time=obj.total_time,
             )
-            return SubmitPracticeSessionResult(
-                completed_count=completed_count,
-                correct_count=0,
-                wrong_count=0,
-                accuracy_rate=Decimal('0'),
-                score=None,
-                total_score=None,
-                reward_exp=0,
+            return (
+                SubmitPracticeSessionResult(
+                    completed_count=completed_count,
+                    correct_count=0,
+                    wrong_count=0,
+                    accuracy_rate=Decimal('0'),
+                    score=None,
+                    total_score=None,
+                    reward_exp=0,
+                ),
+                True,
             )
 
         pre_submit_unjudged_qids = {record.question_id for record in records if record.is_correct is None}
@@ -1614,7 +1647,12 @@ class SessionService:
                             'set_last_practice_time': submit_time,
                         })
 
-        # 4. 批量落库
+        # 4. 写入前锁定并刷新会话，防止并发重复提交。
+        session = await SessionService._lock_session_for_submit(db=db, session_id=session_id)
+        if session.status == 'completed':
+            return SessionService._build_completed_submit_result(session), False
+
+        # 5. 批量落库
         if judged_record_rows:
             judged_records = await session_question_dao.batch_upsert_answer(db=db, records=judged_record_rows)
             await user_bank_progress_dao.upsert_by_record_ids(
@@ -1631,34 +1669,20 @@ class SessionService:
         if wrong_update_rows:
             await wrong_question_dao.batch_update(db=db, rows=wrong_update_rows)
 
-        # 4b. 更新掌握状态
+        # 5b. 批量更新掌握状态
         from backend.app.question_bank.service.mastery_service import mastery_service
 
-        for record in records:
-            question = question_map.get(record.question_id)
-            if not question:
-                continue
-            sq = sq_map.get(record.question_id)
-            is_correct = record.is_correct
-            if is_correct is not None:
-                if is_correct:
-                    await mastery_service.on_correct(
-                        db=db,
-                        user_id=user_id,
-                        question_id=record.question_id,
-                        mastery_threshold=mastery_threshold,
-                    )
-                else:
-                    await mastery_service.on_wrong(
-                        db=db,
-                        user_id=user_id,
-                        question_id=record.question_id,
-                    )
+        await mastery_service.apply_answer_batch(
+            db=db,
+            user_id=user_id,
+            answers=[(int(row['question_id']), bool(row['is_correct'])) for row in judged_record_rows],
+            mastery_threshold=mastery_threshold,
+        )
 
         completed_count = len(records)
         wrong_count = completed_count - correct_count
 
-        # 5. 标记会话完成
+        # 6. 标记会话完成
         await practice_session_dao.mark_completed(
             db=db,
             session_id=session_id,
@@ -1671,7 +1695,7 @@ class SessionService:
             total_score=total_score if total_score > 0 else None,
         )
 
-        # 6. 增量更新用户统计快照（只统计提交前尚未判题的记录，避免与异步任务重复）
+        # 7. 增量更新用户统计快照（只统计提交前尚未判题的记录，避免与异步任务重复）
         # 刷题模式：每题 Celery process_record_side_effects 已增量过 → 提交前已判 → 跳过
         # 考试模式 / 主观题手动未批改：提交前仍未判 → 此刻首次判 → 增量
         if pre_submit_unjudged_qids:
@@ -1716,31 +1740,28 @@ class SessionService:
             bool(check_in_result),
         )
 
-        await publish(
-            'study.session_completed',
-            user_id=user_id,
-            session_id=session_id,
-            completed_count=completed_count,
-            correct_count=correct_count,
-        )
-
-        return SubmitPracticeSessionResult(
-            completed_count=completed_count,
-            correct_count=correct_count,
-            wrong_count=wrong_count,
-            accuracy_rate=(
-                Decimal(str(round(correct_count / completed_count * 100, 2))) if completed_count > 0 else Decimal('0')
+        return (
+            SubmitPracticeSessionResult(
+                completed_count=completed_count,
+                correct_count=correct_count,
+                wrong_count=wrong_count,
+                accuracy_rate=(
+                    Decimal(str(round(correct_count / completed_count * 100, 2)))
+                    if completed_count > 0
+                    else Decimal('0')
+                ),
+                score=earned_score if earned_score > 0 else None,
+                total_score=total_score if total_score > 0 else None,
+                reward_exp=reward_exp,
+                practice_reward_exp=practice_reward_exp,
+                check_in_reward_exp=check_in_reward_exp,
+                is_auto_checked_in=bool(check_in_result),
+                check_in_streak=check_in_result.check_in_streak if check_in_result else None,
+                tier_grade=latest_progress.get('tier_grade'),
+                exp=latest_progress.get('exp'),
+                available_exp=latest_progress.get('available_exp'),
             ),
-            score=earned_score if earned_score > 0 else None,
-            total_score=total_score if total_score > 0 else None,
-            reward_exp=reward_exp,
-            practice_reward_exp=practice_reward_exp,
-            check_in_reward_exp=check_in_reward_exp,
-            is_auto_checked_in=bool(check_in_result),
-            check_in_streak=check_in_result.check_in_streak if check_in_result else None,
-            tier_grade=latest_progress.get('tier_grade'),
-            exp=latest_progress.get('exp'),
-            available_exp=latest_progress.get('available_exp'),
+            True,
         )
 
     # ------------------------------------------------------------------

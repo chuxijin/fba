@@ -21,10 +21,11 @@ from backend.app.question_bank.schema.practice import (
 )
 from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank.service.session_service import session_service
+from backend.common.events import publish
+from backend.common.exception import errors
 from backend.common.pagination import DependsPagination, PageData, paging_data
 from backend.common.response.response_code import CustomResponse
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.exception import errors
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
@@ -258,45 +259,57 @@ async def get_session(
 )
 async def submit_session(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSession,
     session_key: Annotated[str, Path(description='会话 Key')],
     obj: SubmitPracticeSessionParam,
 ) -> ResponseSchemaModel[SubmitPracticeSessionResult]:
     """提交练习会话"""
-    sid = await _resolve_session_id(db, session_key, request.user.id)
-    result = await session_service.submit_session(
-        db=db,
-        session_id=sid,
-        user_id=request.user.id,
-        obj=obj,
-    )
+    async with db.begin():
+        sid = await _resolve_session_id(db, session_key, request.user.id)
+        result, completed_now = await session_service.submit_session(
+            db=db,
+            session_id=sid,
+            user_id=request.user.id,
+            obj=obj,
+        )
+
+    if completed_now:
+        await publish(
+            'study.session_completed',
+            user_id=request.user.id,
+            session_id=sid,
+            completed_count=result.completed_count,
+            correct_count=result.correct_count,
+        )
 
     from backend.app.study_plan.service.session_hook import handle_session_completed
 
-    await handle_session_completed(
-        db,
-        session_key=session_key,
-        user_id=request.user.id,
-        correct_count=result.correct_count,
-        total_count=result.completed_count,
-    )
-
-    from backend.app.study_plan.service.ability_profile import sync_question_bank_session_profile
-
-    try:
-        async with db.begin_nested():
-            await sync_question_bank_session_profile(
+    if completed_now:
+        async with db.begin():
+            await handle_session_completed(
                 db,
+                session_key=session_key,
                 user_id=request.user.id,
-                session_id=sid,
+                correct_count=result.correct_count,
+                total_count=result.completed_count,
             )
-    except SQLAlchemyError as exc:
-        logger.warning(
-            'sync_question_bank_session_profile_failed | user_id={} session_key={} error={}',
-            request.user.id,
-            session_key,
-            exc,
-        )
+
+            from backend.app.study_plan.service.ability_profile import sync_question_bank_session_profile
+
+            try:
+                async with db.begin_nested():
+                    await sync_question_bank_session_profile(
+                        db,
+                        user_id=request.user.id,
+                        session_id=sid,
+                    )
+            except SQLAlchemyError as exc:
+                logger.warning(
+                    'sync_question_bank_session_profile_failed | user_id={} session_key={} error={}',
+                    request.user.id,
+                    session_key,
+                    exc,
+                )
 
     return response_base.success(data=result)
 

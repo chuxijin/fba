@@ -1036,6 +1036,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         lock_stmt = select(QuestionStatistics).where(QuestionStatistics.question_id.in_(question_ids)).with_for_update()
         rows = (await db.execute(lock_stmt)).scalars().all()
         stats_map = {row.question_id: row for row in rows}
+        median_time_map = await self.get_median_answer_time_map(db, question_ids)
         current_time = timezone.now().replace(tzinfo=None)
         payloads: list[dict[str, Any]] = []
 
@@ -1102,7 +1103,7 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
                     )
 
             # 中位数 + 难度计算
-            median_time = await self.get_median_answer_time(db, question_id)
+            median_time = median_time_map.get(question_id)
             computed_difficulty = compute_difficulty(
                 valid_attempts=new_valid_attempt,
                 valid_correct=new_valid_correct,
@@ -1186,6 +1187,39 @@ class CRUDQuestionStatistics(CRUDPlus[QuestionStatistics]):
         if result is None:
             return None
         return Decimal(str(result)).quantize(Decimal('0.01'))
+
+    async def get_median_answer_time_map(
+        self,
+        db: AsyncSession,
+        question_ids: list[int],
+    ) -> dict[int, Decimal]:
+        """
+        批量查询题目有效答题时间中位数
+
+        :param db: 数据库会话
+        :param question_ids: 题目 ID 列表
+        :return:
+        """
+        if not question_ids:
+            return {}
+
+        median_expr = func.percentile_cont(0.5).within_group(SessionQuestion.answer_time)
+        stmt = (
+            select(SessionQuestion.question_id, median_expr)
+            .where(
+                SessionQuestion.question_id.in_(question_ids),
+                SessionQuestion.user_answer.isnot(None),
+                SessionQuestion.is_correct.isnot(None),
+                SessionQuestion.answer_time >= INVALID_TIME_THRESHOLD,
+            )
+            .group_by(SessionQuestion.question_id)
+        )
+        rows = (await db.execute(stmt)).all()
+        return {
+            int(question_id): Decimal(str(median_time)).quantize(Decimal('0.01'))
+            for question_id, median_time in rows
+            if median_time is not None
+        }
 
     async def update_difficulty(self, db: AsyncSession, question_id: int) -> None:
         """

@@ -60,6 +60,31 @@ class MasteryService:
         return await mastery_dao.on_wrong(db, user_id, question_id, custom_question_id)
 
     @staticmethod
+    async def apply_answer_batch(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        answers: list[tuple[int, bool]],
+        mastery_threshold: int = 3,
+    ) -> list[WrongMasteryStatus]:
+        """
+        批量应用题目判题结果
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param answers: 题目 ID 与判题结果
+        :param mastery_threshold: 掌握阈值
+        :return:
+        """
+        rows = await mastery_dao.apply_answer_batch(
+            db,
+            user_id=user_id,
+            answers=answers,
+            mastery_threshold=mastery_threshold,
+        )
+        return list(rows)
+
+    @staticmethod
     async def on_review(
         *,
         db: AsyncSession,

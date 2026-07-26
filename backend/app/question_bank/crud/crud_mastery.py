@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from collections.abc import Sequence
 from datetime import datetime, timedelta
-from typing import Sequence
 
 import sqlalchemy as sa
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank.model.mastery import WrongMasteryStatus
-from sqlalchemy_crud_plus import CRUDPlus
 from backend.utils.timezone import timezone
 
 # 基础间隔（固定 1 天）
@@ -166,6 +166,77 @@ class CRUDMastery(CRUDPlus[WrongMasteryStatus]):
 
         await db.flush()
         return mastery
+
+    async def apply_answer_batch(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        answers: list[tuple[int, bool]],
+        mastery_threshold: int = 3,
+    ) -> Sequence[WrongMasteryStatus]:
+        """
+        批量应用题目判题结果
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param answers: 题目 ID 与判题结果
+        :param mastery_threshold: 掌握阈值
+        :return:
+        """
+        if not answers:
+            return []
+
+        normalized_answers = list(dict(answers).items())
+        question_ids = [question_id for question_id, _ in normalized_answers]
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.user_id == user_id,
+                self.model.question_id.in_(question_ids),
+                self.model.deleted == 0,
+            )
+            .with_for_update()
+        )
+        existing_rows = list((await db.execute(stmt)).scalars().all())
+        mastery_map = {row.question_id: row for row in existing_rows}
+        now = timezone.now()
+        result: list[WrongMasteryStatus] = []
+
+        for question_id, is_correct in normalized_answers:
+            mastery = mastery_map.get(question_id)
+            if mastery is None:
+                mastery = WrongMasteryStatus(
+                    user_id=user_id,
+                    question_id=question_id,
+                    custom_question_id=None,
+                    created_by=user_id,
+                    status='learning',
+                    correct_streak=0,
+                    review_count=0,
+                    last_practice_time=now,
+                    next_review_time=now + timedelta(days=BASE_INTERVAL_DAYS),
+                )
+                db.add(mastery)
+                mastery_map[question_id] = mastery
+
+            mastery.last_practice_time = now
+            if is_correct:
+                mastery.correct_streak += 1
+                mastery.next_review_time = now + timedelta(days=BASE_INTERVAL_DAYS * (2**mastery.correct_streak))
+                if mastery.correct_streak >= mastery_threshold:
+                    mastery.status = 'mastered'
+                    if mastery.mastered_time is None:
+                        mastery.mastered_time = now
+            else:
+                mastery.correct_streak = 0
+                mastery.status = 'learning'
+                mastery.next_review_time = now + timedelta(days=BASE_INTERVAL_DAYS)
+
+            result.append(mastery)
+
+        await db.flush()
+        return result
 
     async def mark_as_mastered(
         self,
