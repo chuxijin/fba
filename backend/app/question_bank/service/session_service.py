@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import asyncio
 import hashlib
 import json
 import logging
@@ -560,10 +559,11 @@ class SessionService:
         cs_total_start = perf_counter()
 
         t0 = perf_counter()
-        # Cut Y4: bank_scope 和 chapter_scope 两段 SQL 完全独立, 并行省墙时间
-        bank_scope_ids, chapter_scope_ids = await asyncio.gather(
-            cls._resolve_placement_bank_scope(db=db, bank_id=obj.bank_id),
-            question_selector_service.resolve_chapter_scope_ids(db=db, chapter_id=obj.chapter_id),
+        # AsyncSession 不能被多个 asyncio task 并发使用。
+        bank_scope_ids = await cls._resolve_placement_bank_scope(db=db, bank_id=obj.bank_id)
+        chapter_scope_ids = await question_selector_service.resolve_chapter_scope_ids(
+            db=db,
+            chapter_id=obj.chapter_id,
         )
         cs_timings.append(('cs_resolve_bank_and_chapter_scope', perf_counter() - t0))
 

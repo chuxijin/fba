@@ -4,7 +4,7 @@ import logging
 
 from typing import Annotated
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Request, UploadFile
 
 from backend.app.question_bank.crud.crud_user import user_account_dao
 from backend.common.dataclasses import UploadUrl
@@ -21,6 +21,7 @@ router = APIRouter()
 
 @router.post('/avatar', summary='上传头像', name='qbank_upload_avatar', dependencies=[DependsJwtAuth])
 async def upload_avatar(
+    request: Request,
     db: CurrentSessionTransaction,
     file: Annotated[UploadFile, File()],
 ) -> ResponseSchemaModel[UploadUrl]:

@@ -13,8 +13,8 @@ collections_cache: RedisCache[list[dict[str, Any]]] = RedisCache(
 )
 
 
-solution_static_cache: RedisCache[dict[str, Any]] = RedisCache(
-    prefix='qbank:solution:static',
+solution_content_cache: RedisCache[dict[str, Any]] = RedisCache(
+    prefix='qbank:solution:content:v1',
     ttl=86400,
     serializer=JsonSerializer(),
 )

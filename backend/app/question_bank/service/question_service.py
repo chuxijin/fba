@@ -40,7 +40,7 @@ from backend.app.question_bank.schema.question import (
     UpsertQuestionOptionItem,
     UpsertQuestionPlacementItem,
 )
-from backend.app.question_bank.cache.question_cache import collections_cache, solution_static_cache
+from backend.app.question_bank.cache.question_cache import collections_cache, solution_content_cache
 from backend.app.question_bank.service.knowledge_point_service import knowledge_point_service
 from backend.common.exception import errors
 from backend.utils.answer_parser import extract_option_codes, split_answer_text
@@ -207,6 +207,15 @@ class QuestionService:
             'is_correct': is_correct,
             'correct_rate': stats.correct_rate if stats else Decimal('0'),
             'option_select_stats': stats.option_select_stats if stats else {},
+        }
+
+    @staticmethod
+    def build_solution_content_payload(*, analysis: QuestionAnalysis) -> dict[str, Any]:
+        """构建可长期缓存的答案解析内容"""
+        answer_data = analysis.answer_data or {}
+        return {
+            'correct_answer': answer_data.get('correct', ''),
+            'analysis': analysis.content or '',
         }
 
     @staticmethod
@@ -408,7 +417,7 @@ class QuestionService:
 
         data = QuestionService.serialize_question(
             question=question,
-            include_analysis=True,
+            include_analysis=False,
             include_materials=True,
         )
 
@@ -867,6 +876,8 @@ class QuestionService:
             count = max(count, 1)
 
         log.info('Question updated: id=%d user=%d', pk, user_id)
+        if count > 0:
+            await solution_content_cache.invalidate(pk)
         return count
 
     @staticmethod
@@ -898,6 +909,9 @@ class QuestionService:
                 )
 
         count = await question_dao.delete(db, obj.ids)
+        if count > 0:
+            for question_id in obj.ids:
+                await solution_content_cache.invalidate(question_id)
         log.info('Questions deleted: ids=%s count=%d', obj.ids, count)
         return count
 
@@ -938,25 +952,23 @@ class QuestionService:
         :param user_answer: 用户答案
         :return:
         """
-        # 静态部分（correct_answer / analysis / correct_rate / option_select_stats / full_score 等）
-        # 与 user_answer 无关，按 question_id 强缓存。is_correct 由 user_answer 在外层动态比对。
-        static_payload: dict[str, Any] | None = None
+        # 答案和解析内容按 question_id 长缓存；实时统计不进入长缓存。
+        content_payload: dict[str, Any] | None = None
         question_type: str | None = None
         answer_data: Any = None
 
-        cached_obj = await solution_static_cache.get(question_id)
+        cached_obj = await solution_content_cache.get(question_id)
         if cached_obj:
-            static_payload = cached_obj.get('static')
+            content_payload = cached_obj.get('content')
             question_type = cached_obj.get('question_type')
             answer_data = cached_obj.get('answer_data')
 
-        if static_payload is None:
+        if content_payload is None:
             stmt = (
                 select(Question)
                 .where(Question.id == question_id)
                 .options(
                     selectinload(Question.analyses),
-                    selectinload(Question.statistics),
                 )
             )
             result = await db.execute(stmt)
@@ -968,24 +980,26 @@ class QuestionService:
             if not analysis:
                 raise errors.NotFoundError(msg='Question analysis not found')
 
-            static_payload = QuestionService.build_solution_payload(
-                question=question,
-                analysis=analysis,
-                is_correct=None,
-            )
+            content_payload = QuestionService.build_solution_content_payload(analysis=analysis)
             question_type = question.type
             answer_data = analysis.answer_data
 
-            await solution_static_cache.set(
+            await solution_content_cache.set(
                 question_id,
                 value={
-                    'static': static_payload,
+                    'content': content_payload,
                     'question_type': question_type,
                     'answer_data': answer_data,
                 },
             )
 
-        payload = dict(static_payload)
+        statistics = await question_statistics_dao.get_by_question_id(db, question_id)
+        payload = {
+            **content_payload,
+            'is_correct': None,
+            'correct_rate': statistics.correct_rate if statistics else Decimal('0'),
+            'option_select_stats': statistics.option_select_stats if statistics else {},
+        }
         if user_answer is not None and question_type and answer_data is not None:
             try:
                 parsed_answer = json.loads(user_answer)
