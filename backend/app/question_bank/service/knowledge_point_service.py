@@ -71,12 +71,11 @@ class KnowledgePointService:
 
         leaf_codes: list[str] = []
         leaf_names: list[str] = []
+        parent_ids = {node.parent_id for node in all_nodes if node.parent_id is not None}
         for c in all_nodes:
-            has_child = any(cc.parent_id == c.id for cc in all_nodes)
             # 叶子节点且不能是当前分类本身
-            if not has_child and c.id != category_id:
-                if c.code:
-                    leaf_codes.append(c.code)
+            if c.id not in parent_ids and c.id != category_id:
+                leaf_codes.append(c.code or c.name)
                 leaf_names.append(c.name)
 
         return (
@@ -215,29 +214,34 @@ class KnowledgePointService:
         :param parent_id: 父分类 ID
         :return: 知识点子节点列表
         """
-        nodes: list[KpChildNode] = []
-        direct_children = [c for c in children if c.parent_id == parent_id]
-        direct_children.sort(key=lambda c: getattr(c, 'sort_order', 0) or 0)
+        children_by_parent: dict[int, list[Any]] = {}
+        for child in children:
+            if child.parent_id is not None:
+                children_by_parent.setdefault(child.parent_id, []).append(child)
+        for direct_children in children_by_parent.values():
+            direct_children.sort(key=lambda child: getattr(child, 'sort_order', 0) or 0)
 
-        for child in direct_children:
-            sub_nodes = KnowledgePointService._build_kp_tree(children, count_map, child.id)
-            if sub_nodes:
-                child_count = sum(n.question_count for n in sub_nodes)
-            else:
-                # 叶子节点：优先用 code 匹配，兼容无 code 的旧数据
-                child_code = getattr(child, 'code', None)
-                child_count = count_map.get(child_code, 0) if child_code else count_map.get(child.name, 0)
+        def build_nodes(current_parent_id: int) -> list[KpChildNode]:
+            nodes: list[KpChildNode] = []
+            for child in children_by_parent.get(current_parent_id, []):
+                sub_nodes = build_nodes(child.id)
+                if sub_nodes:
+                    child_count = sum(node.question_count for node in sub_nodes)
+                else:
+                    child_code = getattr(child, 'code', None)
+                    child_count = count_map.get(child_code, 0) if child_code else count_map.get(child.name, 0)
 
-            nodes.append(
-                KpChildNode(
-                    id=child.id,
-                    name=child.name,
-                    question_count=child_count,
-                    children=sub_nodes,
+                nodes.append(
+                    KpChildNode(
+                        id=child.id,
+                        name=child.name,
+                        question_count=child_count,
+                        children=sub_nodes,
+                    )
                 )
-            )
+            return nodes
 
-        return nodes
+        return build_nodes(parent_id)
 
     @staticmethod
     async def get_detail(*, db: AsyncSession, category_id: int) -> GetKpDetailResponse:

@@ -407,6 +407,7 @@ class SessionService:
             question_types=obj.question_types,
             content_status=10,
             is_active=True if source_type == 'placement' else None,
+            limit=obj.limit if not obj.shuffle else None,
         )
 
     @staticmethod

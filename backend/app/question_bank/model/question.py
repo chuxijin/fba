@@ -96,6 +96,12 @@ class Question(Base, UserMixin):
         sa.Index('idx_question_type_status', 'type', 'content_status'),
         sa.Index('idx_question_difficulty', 'difficulty'),
         sa.Index('idx_question_status_created', 'content_status', 'created_time'),
+        sa.Index(
+            'idx_question_knowledge_point_gin',
+            'knowledge_point',
+            postgresql_ops={'knowledge_point': 'jsonb_path_ops'},
+            postgresql_using='gin',
+        ).ddl_if(dialect='postgresql'),
         {'comment': '题目表'},
     )
 

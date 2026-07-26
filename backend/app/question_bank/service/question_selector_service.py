@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from collections import deque
 from typing import Any
 
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -153,9 +154,9 @@ class QuestionSelectorService:
             children_map.setdefault(row.parent_id, []).append(row.id)
 
         scope_ids: list[int] = []
-        pending_ids = [chapter_id]
+        pending_ids = deque([chapter_id])
         while pending_ids:
-            current_id = pending_ids.pop(0)
+            current_id = pending_ids.popleft()
             scope_ids.append(current_id)
             pending_ids.extend(children_map.get(current_id, []))
 
@@ -312,15 +313,44 @@ class QuestionSelectorService:
         chapter_scope_ids: list[int] | None,
         apply_limit: bool = True,
     ) -> list[int]:
-        stmt = (
-            select(QuestionPlacement.question_id)
+        if params.chapter_id is not None:
+            sort_columns = (
+                QuestionPlacement.sort_order.asc(),
+                QuestionPlacement.question_id.asc(),
+            )
+        elif params.bank_id is not None:
+            sort_columns = (
+                QuestionPlacement.chapter_id.asc(),
+                QuestionPlacement.sort_order.asc(),
+                QuestionPlacement.question_id.asc(),
+            )
+        else:
+            sort_columns = (
+                QuestionPlacement.bank_id.asc(),
+                QuestionPlacement.chapter_id.asc(),
+                QuestionPlacement.sort_order.asc(),
+                QuestionPlacement.question_id.asc(),
+            )
+
+        base_stmt = (
+            select(
+                QuestionPlacement.question_id.label('question_id'),
+                QuestionPlacement.bank_id.label('bank_id'),
+                QuestionPlacement.chapter_id.label('chapter_id'),
+                QuestionPlacement.sort_order.label('sort_order'),
+            )
             .select_from(QuestionPlacement)
             .join(
                 Question,
                 Question.id == QuestionPlacement.question_id,
             )
         )
-        stmt = cls._apply_question_filters(stmt=stmt, params=params, kp_ids=kp_ids, kp_names=kp_names)
+        base_stmt = cls._apply_question_filters(
+            stmt=base_stmt,
+            params=params,
+            kp_ids=kp_ids,
+            kp_names=kp_names,
+        )
 
         needs_bank_join = (
             params.cat_id is not None
@@ -328,32 +358,42 @@ class QuestionSelectorService:
             or params.year_start is not None
             or params.year_end is not None
         )
-        stmt = cls._apply_placement_filters(
-            stmt=stmt,
+        base_stmt = cls._apply_placement_filters(
+            stmt=base_stmt,
             params=params,
             cat_ids=cat_ids,
             needs_bank_join=needs_bank_join,
             chapter_scope_ids=chapter_scope_ids,
         )
 
-        if params.chapter_id is not None:
-            stmt = stmt.order_by(QuestionPlacement.sort_order.asc(), QuestionPlacement.question_id.asc())
-        elif params.bank_id is not None:
-            stmt = stmt.order_by(
-                QuestionPlacement.chapter_id.asc(),
-                QuestionPlacement.sort_order.asc(),
-                QuestionPlacement.question_id.asc(),
-            )
+        single_bank_scope = params.bank_id is not None or (
+            params.bank_ids is not None and len(set(params.bank_ids)) == 1
+        )
+        if single_bank_scope or params.chapter_id is not None:
+            stmt = base_stmt.order_by(*sort_columns)
         else:
-            stmt = stmt.order_by(
-                QuestionPlacement.bank_id.asc(),
-                QuestionPlacement.chapter_id.asc(),
-                QuestionPlacement.sort_order.asc(),
-                QuestionPlacement.question_id.asc(),
+            ranked_stmt = base_stmt.add_columns(
+                func
+                .row_number()
+                .over(
+                    partition_by=QuestionPlacement.question_id,
+                    order_by=sort_columns,
+                )
+                .label('row_number')
             )
+            ranked = ranked_stmt.subquery()
+            order_columns = (
+                ranked.c.bank_id.asc(),
+                ranked.c.chapter_id.asc(),
+                ranked.c.sort_order.asc(),
+                ranked.c.question_id.asc(),
+            )
+            stmt = select(ranked.c.question_id).where(ranked.c.row_number == 1).order_by(*order_columns)
 
-        rows = (await db.execute(stmt)).scalars().all()
-        ordered_ids = list(dict.fromkeys(rows))
+        if params.limit is not None:
+            stmt = stmt.limit(params.limit)
+
+        ordered_ids = list((await db.execute(stmt)).scalars().all())
         if apply_limit and params.limit is not None:
             ordered_ids = ordered_ids[: params.limit]
         return ordered_ids

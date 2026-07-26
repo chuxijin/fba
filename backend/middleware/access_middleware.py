@@ -2,6 +2,7 @@ import time
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.routing import Match
 
 from backend.common.context import ctx
 from backend.common.log import log
@@ -17,6 +18,22 @@ from backend.common.response.response_code import StandardResponseCode
 from backend.core.conf import settings
 from backend.utils.timezone import timezone
 from backend.utils.trace_id import get_request_trace_id
+
+
+def resolve_request_path_template(request: Request) -> str:
+    """将实际请求路径解析为低基数路由模板"""
+    route = request.scope.get('route')
+    route_path = getattr(route, 'path', None)
+    if route_path:
+        return str(route_path)
+
+    for app_route in request.app.routes:
+        match, _ = app_route.matches(request.scope)
+        if match is Match.FULL:
+            matched_path = getattr(app_route, 'path', None)
+            if matched_path:
+                return str(matched_path)
+    return '__unmatched__'
 
 
 class AccessMiddleware(BaseHTTPMiddleware):
@@ -43,27 +60,28 @@ class AccessMiddleware(BaseHTTPMiddleware):
             log.debug(f'--> 请求开始[{path if not request.url.query else request.url.path + "?" + request.url.query}]')
 
         should_record_metrics = settings.GRAFANA_METRICS_ENABLE and path.startswith(settings.FASTAPI_API_V1_PATH)
+        metrics_path = resolve_request_path_template(request) if should_record_metrics else path
         if should_record_metrics:
-            inc_fastapi_request_in_progress(method=method, path=path)
-            inc_fastapi_request(method=method, path=path)
+            inc_fastapi_request_in_progress(method=method, path=metrics_path)
+            inc_fastapi_request(method=method, path=metrics_path)
 
         try:
             response = await call_next(request)
         except Exception as e:
             elapsed = round((time.perf_counter() - perf_time) * 1000, 3)
             if should_record_metrics:
-                inc_fastapi_exception(method=method, path=path, exception_type=type(e).__name__)
+                inc_fastapi_exception(method=method, path=metrics_path, exception_type=type(e).__name__)
                 error_status_code = getattr(e, 'code', StandardResponseCode.HTTP_500)
                 observe_fastapi_request_cost_time(
                     method=method,
-                    path=path,
+                    path=metrics_path,
                     elapsed=elapsed,
                     trace_id=get_request_trace_id(),
                     status_code=error_status_code,
                 )
                 inc_fastapi_response(
                     method=method,
-                    path=path,
+                    path=metrics_path,
                     status_code=error_status_code,
                 )
             raise
@@ -86,21 +104,21 @@ class AccessMiddleware(BaseHTTPMiddleware):
                         exception_code = exception.get('code')
                         break
                 if exception_type is not None:
-                    inc_fastapi_exception(method=method, path=path, exception_type=exception_type)
+                    inc_fastapi_exception(method=method, path=metrics_path, exception_type=exception_type)
                 observe_fastapi_request_cost_time(
                     method=method,
-                    path=path,
+                    path=metrics_path,
                     elapsed=elapsed,
                     trace_id=get_request_trace_id(),
                     status_code=exception_code or response.status_code,
                 )
                 inc_fastapi_response(
                     method=method,
-                    path=path,
+                    path=metrics_path,
                     status_code=exception_code or response.status_code,
                 )
         finally:
             if should_record_metrics:
-                dec_fastapi_request_in_progress(method=method, path=path)
+                dec_fastapi_request_in_progress(method=method, path=metrics_path)
 
         return response

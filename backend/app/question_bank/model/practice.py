@@ -147,6 +147,12 @@ class SessionQuestion(Base):
         sa.Index('idx_session_question_placement', 'placement_id'),
         sa.Index('idx_session_question_user_time', 'user_id', 'created_time'),
         sa.Index('idx_session_question_question_correct', 'question_id', 'is_correct'),
+        sa.Index(
+            'idx_session_question_valid_answer_time',
+            'question_id',
+            'answer_time',
+            postgresql_where=sa.text('user_answer IS NOT NULL AND is_correct IS NOT NULL AND answer_time >= 3'),
+        ).ddl_if(dialect='postgresql'),
         sa.CheckConstraint('seq_no > 0', name='ck_session_question_seq'),
         sa.CheckConstraint(
             "question_type IN ('single','multiple','judgement','fill','shortAnswer')",
