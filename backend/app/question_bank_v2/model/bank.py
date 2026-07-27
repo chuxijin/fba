@@ -277,6 +277,7 @@ class QbBankItem(Base, UserMixin):
         sa.CheckConstraint('score >= 0', name='ck_qbv2_bitem_score'),
         sa.CheckConstraint('sort_order >= 0', name='ck_qbv2_bitem_sort'),
         sa.Index('ix_qbv2_bitem_order', 'bank_revision_id', 'section_id', 'is_active', 'sort_order'),
+        sa.Index('ix_qbv2_bitem_delivery', 'bank_revision_id', 'is_active', 'id'),
         sa.Index('ix_qbv2_bitem_question', 'question_id', 'question_revision_id'),
         {'comment': '题库版本题目编排表'},
     )

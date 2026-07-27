@@ -88,6 +88,7 @@ class AccessDecisionEngine:
             reason_code=decision.reason_code,
             matched_grant=decision.matched_grant,
             context={
+                'allow_trial': ctx.allow_trial,
                 'consume_trial': ctx.consume_trial,
                 'audience_attrs': ctx.audience_attrs,
                 'explanation': [node.model_dump() for node in decision.explanation],

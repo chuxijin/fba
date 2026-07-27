@@ -35,6 +35,10 @@ class QuotaTrialEvaluator(BaseEvaluator):
         :param explanation: 决策路径累计
         :return:
         """
+        if not ctx.allow_trial:
+            self._log_pass(explanation, self.name, '当前业务不允许使用试看配额')
+            return None
+
         trial_rules = [rule for rule in rules if rule.grant_mode == GrantMode.TRIAL]
         if not trial_rules:
             self._log_pass(explanation, self.name, '无试看规则')

@@ -16,6 +16,7 @@ class AccessContext(SchemaBase):
     resource_type: str = Field(description='资源类型')
     resource_id: int = Field(description='资源 ID')
     action: str = Field(default='access', description='动作')
+    allow_trial: bool = Field(default=True, description='是否允许使用试看配额作为准入方式')
     consume_trial: bool = Field(default=True, description='是否允许扣减试看额度')
     scope_key: str = Field(default='global', description='配额范围键')
     source_ref: str | None = Field(default=None, description='来源引用，用于扣减幂等')
