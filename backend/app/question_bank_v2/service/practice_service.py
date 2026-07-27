@@ -36,6 +36,7 @@ from backend.app.question_bank_v2.schema.practice import (
 )
 from backend.app.question_bank_v2.service.access_service import bank_access_service
 from backend.app.question_bank_v2.service.grading_service import practice_grading_service
+from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
@@ -286,6 +287,11 @@ class PracticeService:
                 'grading_result': grade.details,
                 'submitted_time': now,
             },
+        )
+        await review_schedule_service.apply_attempt(
+            db=db,
+            attempt=attempt,
+            session_item=session_item,
         )
 
         if not was_answered:

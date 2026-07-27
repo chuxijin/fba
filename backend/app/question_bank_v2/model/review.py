@@ -50,9 +50,13 @@ class QbWrongQuestionState(Base, UserMixin):
             'source_bank_item_id IS NULL OR last_question_revision_id IS NOT NULL',
             name='ck_qbv2_wrong_bank_revision',
         ),
+        sa.CheckConstraint(
+            "entry_source IN ('attempt','manual','ocr','import')",
+            name='ck_qbv2_wrong_entry_source',
+        ),
         sa.CheckConstraint("status IN ('active','resolved','suspended')", name='ck_qbv2_wrong_status'),
         sa.CheckConstraint('wrong_count >= 0 AND correct_streak >= 0', name='ck_qbv2_wrong_counts'),
-        sa.Index('ix_qbv2_wrong_user_status', 'user_id', 'status', 'is_pinned', 'last_wrong_time'),
+        sa.Index('ix_qbv2_wrong_user_status', 'user_id', 'status', 'is_pinned', 'last_wrong_time', 'id'),
         sa.Index('ix_qbv2_wrong_question', 'question_id', 'status'),
         sa.Index('ix_qbv2_wrong_source_bank_item', 'source_bank_item_id'),
         {'comment': '用户错题本当前状态表'},
@@ -83,6 +87,16 @@ class QbWrongQuestionState(Base, UserMixin):
         sa.BigInteger,
         default=None,
         comment='最近触发时的题库上下文',
+    )
+    entry_source: Mapped[str] = mapped_column(
+        sa.String(16),
+        default='attempt',
+        comment='首次进入错题本的来源: attempt/manual/ocr/import',
+    )
+    entry_metadata: Mapped[dict[str, Any]] = mapped_column(
+        CompatibleJSONB,
+        default_factory=dict,
+        comment='外部来源、OCR 置信度和采集上下文',
     )
     status: Mapped[str] = mapped_column(sa.String(16), default='active', comment='active/resolved/suspended')
     wrong_count: Mapped[int] = mapped_column(sa.Integer, default=1, comment='累计错误次数')
@@ -189,9 +203,20 @@ class QbQuestionReview(Base, UserMixin):
         ),
         sa.CheckConstraint('duration_ms >= 0', name='ck_qbv2_review_duration'),
         sa.CheckConstraint(
+            "event_type IN ('capture','review')",
+            name='ck_qbv2_review_event_type',
+        ),
+        sa.CheckConstraint(
+            "(event_type = 'capture' AND rating IS NULL AND rating_source IS NULL) "
+            "OR (event_type = 'review' AND rating BETWEEN 1 AND 4 "
+            "AND rating_source IN ('user','auto'))",
+            name='ck_qbv2_review_rating',
+        ),
+        sa.CheckConstraint(
             "outcome IN ('continue','mastered','reopened')",
             name='ck_qbv2_review_outcome',
         ),
+        sa.UniqueConstraint('user_id', 'idempotency_key', 'deleted', name='uq_qbv2_review_idempotency'),
         sa.Index('ix_qbv2_review_user_time', 'user_id', 'reviewed_time'),
         sa.Index('ix_qbv2_review_question_time', 'question_id', 'reviewed_time'),
         sa.Index('ix_qbv2_review_wrong_state', 'wrong_state_id', 'reviewed_time'),
@@ -207,6 +232,7 @@ class QbQuestionReview(Base, UserMixin):
     question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='稳定题目 ID')
     question_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='本次复盘看到的题目版本 ID')
     wrong_state_id: Mapped[int] = mapped_column(sa.BigInteger, comment='错题当前状态 ID')
+    idempotency_key: Mapped[str] = mapped_column(sa.String(128), comment='客户端复盘提交幂等键')
     source_attempt_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         default=None,
@@ -217,6 +243,17 @@ class QbQuestionReview(Base, UserMixin):
         default=None,
         comment='本次复盘题库上下文',
     )
+    event_type: Mapped[str] = mapped_column(sa.String(16), default='review', comment='capture/review')
+    rating: Mapped[int | None] = mapped_column(
+        sa.SmallInteger,
+        default=None,
+        comment='FSRS 评分: 1 Again, 2 Hard, 3 Good, 4 Easy',
+    )
+    rating_source: Mapped[str | None] = mapped_column(
+        sa.String(16),
+        default=None,
+        comment='评分来源: user/auto',
+    )
     duration_ms: Mapped[int] = mapped_column(sa.BigInteger, default=0, comment='复盘用时毫秒')
     summary: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='学习者复盘总结')
     outcome: Mapped[str] = mapped_column(sa.String(16), default='continue', comment='复盘后的错题状态意图')
@@ -225,6 +262,18 @@ class QbQuestionReview(Base, UserMixin):
         default_factory=dict,
         comment='防错策略等可扩展结构化内容',
     )
+    algorithm_name: Mapped[str | None] = mapped_column(
+        sa.String(32),
+        default=None,
+        comment='本次调度算法名称',
+    )
+    algorithm_version: Mapped[str | None] = mapped_column(
+        sa.String(32),
+        default=None,
+        comment='本次调度算法版本',
+    )
+    due_before: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='复盘前到期时间')
+    due_after: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='复盘后到期时间')
     reviewed_time: Mapped[datetime] = mapped_column(
         TimeZone,
         default_factory=timezone.now,

@@ -1,9 +1,11 @@
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.model.category import Category
 from backend.app.question_bank_v2.crud.crud_preference import practice_preference_dao
-from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint
+from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbKnowledgeSystem
 from backend.app.question_bank_v2.schema.preference import GetPracticePreferenceDetail, UpdatePracticePreferenceParam
 from backend.common.exception import errors
 
@@ -29,13 +31,24 @@ class PreferenceService:
         knowledge_point_id = data.get('current_knowledge_point_id')
         if knowledge_point_id is not None:
             result = await db.execute(
-                select(QbKnowledgePoint.id).where(
+                select(QbKnowledgePoint.id)
+                .join(QbKnowledgeSystem, QbKnowledgeSystem.id == QbKnowledgePoint.system_id)
+                .where(
                     QbKnowledgePoint.id == knowledge_point_id,
                     QbKnowledgePoint.deleted == 0,
+                    QbKnowledgeSystem.status == 'active',
+                    QbKnowledgeSystem.deleted == 0,
                 )
             )
             if result.scalar_one_or_none() is None:
                 raise errors.NotFoundError(msg='当前知识点不存在')
+
+        reminder_timezone = data.get('review_reminder_timezone')
+        if reminder_timezone is not None:
+            try:
+                ZoneInfo(reminder_timezone)
+            except ZoneInfoNotFoundError as exc:
+                raise errors.RequestError(msg='提醒时区不是有效的 IANA 时区') from exc
 
     @staticmethod
     async def get(*, db: AsyncSession, user_id: int) -> GetPracticePreferenceDetail:

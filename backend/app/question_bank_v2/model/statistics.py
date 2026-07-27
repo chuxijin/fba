@@ -107,7 +107,16 @@ class QbUserQuestionMastery(Base):
             name='ck_qbv2_mastery_count',
         ),
         sa.CheckConstraint('correct_count <= attempt_count', name='ck_qbv2_mastery_correct'),
-        sa.Index('ix_qbv2_mastery_due', 'user_id', 'state', 'next_review_time'),
+        sa.Index('ix_qbv2_mastery_due', 'user_id', 'state', 'next_review_time', 'id'),
+        sa.Index(
+            'ix_qbv2_mastery_push_due',
+            'next_review_time',
+            'user_id',
+            'id',
+            postgresql_where=sa.text(
+                "deleted = 0 AND next_review_time IS NOT NULL AND state IN ('learning','review')"
+            ),
+        ).ddl_if(dialect='postgresql'),
         sa.Index('ix_qbv2_mastery_question', 'question_id', 'state'),
         {'comment': '用户题目掌握状态表'},
     )

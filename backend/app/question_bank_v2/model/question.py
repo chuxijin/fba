@@ -311,7 +311,21 @@ class QbQuestionExternalRef(Base, UserMixin):
 
     __tablename__ = 'qbank_v2_question_external_ref'
     __table_args__ = (
-        sa.UniqueConstraint('source_system', 'external_key', 'deleted', name='uq_qbv2_qref_source_key'),
+        sa.Index(
+            'uq_qbv2_qref_system_source_key',
+            'source_system',
+            'external_key',
+            unique=True,
+            postgresql_where=sa.text('owner_id IS NULL AND deleted = 0'),
+        ).ddl_if(dialect='postgresql'),
+        sa.Index(
+            'uq_qbv2_qref_user_source_key',
+            'owner_id',
+            'source_system',
+            'external_key',
+            unique=True,
+            postgresql_where=sa.text('owner_id IS NOT NULL AND deleted = 0'),
+        ).ddl_if(dialect='postgresql'),
         sa.Index('ix_qbv2_qref_question', 'question_id'),
         {'comment': '题目外部来源映射表'},
     )
@@ -324,6 +338,12 @@ class QbQuestionExternalRef(Base, UserMixin):
     )
     source_system: Mapped[str] = mapped_column(sa.String(64), comment='来源系统')
     external_key: Mapped[str] = mapped_column(sa.String(255), comment='来源唯一键')
+    owner_id: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('sys_user.id', ondelete='CASCADE'),
+        default=None,
+        comment='用户私有来源所有者；系统来源为空',
+    )
     source_url: Mapped[str | None] = mapped_column(sa.String(1024), default=None, comment='来源地址')
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         'metadata',

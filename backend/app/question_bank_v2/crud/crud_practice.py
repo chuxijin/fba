@@ -131,6 +131,14 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
 class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
     """练习会话题目数据库操作类"""
 
+    async def get(self, db: AsyncSession, pk: int) -> QbPracticeSessionItem | None:
+        """获取一条会话投递题目"""
+        stmt = select(QbPracticeSessionItem).where(
+            QbPracticeSessionItem.id == pk,
+            QbPracticeSessionItem.deleted == 0,
+        )
+        return (await db.execute(stmt)).scalars().first()
+
     async def get_candidates(
         self,
         db: AsyncSession,
@@ -296,6 +304,24 @@ class CRUDPracticeSessionResponse(CRUDPlus[QbPracticeSessionResponse]):
 
 class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
     """不可变题目提交事实数据库操作类"""
+
+    async def get(
+        self,
+        db: AsyncSession,
+        pk: int,
+        *,
+        user_id: int,
+        question_id: int | None = None,
+    ) -> QbQuestionAttempt | None:
+        """获取当前用户的一次不可变题目提交事实"""
+        stmt = select(QbQuestionAttempt).where(
+            QbQuestionAttempt.id == pk,
+            QbQuestionAttempt.user_id == user_id,
+            QbQuestionAttempt.deleted == 0,
+        )
+        if question_id is not None:
+            stmt = stmt.where(QbQuestionAttempt.question_id == question_id)
+        return (await db.execute(stmt)).scalars().first()
 
     async def get_next_attempt_no(self, db: AsyncSession, session_item_id: int) -> int:
         """获取会话题目的下一提交序号"""

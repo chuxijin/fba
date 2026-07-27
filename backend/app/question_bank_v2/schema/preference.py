@@ -1,3 +1,4 @@
+from datetime import time
 from typing import Literal
 
 from pydantic import ConfigDict, Field
@@ -35,6 +36,10 @@ class UpdatePracticePreferenceParam(SchemaBase):
     theme_mode: ThemeMode | None = Field(None, description='主题模式')
     random_practice_count: int | None = Field(None, ge=10, le=100, description='默认随机练习题数')
     random_practice_year_range: RandomPracticeYearRange | None = Field(None, description='随机练习年份范围')
+    review_reminder_enabled: bool | None = Field(None, description='是否启用错题复习提醒')
+    review_reminder_time: time | None = Field(None, description='用户本地每日提醒时间')
+    review_reminder_timezone: str | None = Field(None, min_length=1, max_length=64, description='IANA 提醒时区')
+    review_daily_limit: int | None = Field(None, ge=1, le=200, description='单日复习题数上限')
     custom_tabs: CategoryCustomTabs | None = Field(None, description='按分类范围隔离的自定义导航标签')
 
 
@@ -50,4 +55,8 @@ class GetPracticePreferenceDetail(SchemaBase):
     theme_mode: ThemeMode = Field(default='light', description='主题模式')
     random_practice_count: int = Field(default=20, description='默认随机练习题数')
     random_practice_year_range: RandomPracticeYearRange = Field(default='unlimited', description='随机练习年份范围')
+    review_reminder_enabled: bool = Field(default=False, description='是否启用错题复习提醒')
+    review_reminder_time: time = Field(default=time(20, 0), description='用户本地每日提醒时间')
+    review_reminder_timezone: str = Field(default='Asia/Shanghai', description='IANA 提醒时区')
+    review_daily_limit: int = Field(default=30, description='单日复习题数上限')
     custom_tabs: CategoryCustomTabs = Field(default_factory=dict, description='按分类范围隔离的自定义导航标签')

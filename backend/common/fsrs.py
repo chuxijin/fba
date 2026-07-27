@@ -7,6 +7,8 @@ from pydantic import Field
 from backend.common.schema import SchemaBase
 from backend.utils.timezone import timezone
 
+NEW_CARD_STATE = Card().state.value
+
 
 @runtime_checkable
 class FSRSRecord(Protocol):
@@ -131,7 +133,7 @@ class FSRSEngine:
         :return:
         """
         return {
-            'state': Card().state.value,
+            'state': NEW_CARD_STATE,
             'step': 0,
             'due': now,
         }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import time
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
@@ -36,6 +37,7 @@ class QbUserPracticePreference(Base, UserMixin):
         ),
         sa.CheckConstraint('mastery_threshold BETWEEN 1 AND 20', name='ck_qbv2_preference_mastery'),
         sa.CheckConstraint('random_practice_count BETWEEN 10 AND 100', name='ck_qbv2_preference_count'),
+        sa.CheckConstraint('review_daily_limit BETWEEN 1 AND 200', name='ck_qbv2_preference_review_limit'),
         sa.Index('ix_qbv2_preference_category', 'current_category_id'),
         {'comment': '用户题库学习偏好表'},
     )
@@ -66,6 +68,22 @@ class QbUserPracticePreference(Base, UserMixin):
         sa.String(24),
         default='unlimited',
         comment='随机练习年份范围',
+    )
+    review_reminder_enabled: Mapped[bool] = mapped_column(default=False, comment='是否启用错题复习提醒')
+    review_reminder_time: Mapped[time] = mapped_column(
+        sa.Time,
+        default=time(20, 0),
+        comment='用户本地每日提醒时间',
+    )
+    review_reminder_timezone: Mapped[str] = mapped_column(
+        sa.String(64),
+        default='Asia/Shanghai',
+        comment='IANA 提醒时区',
+    )
+    review_daily_limit: Mapped[int] = mapped_column(
+        sa.SmallInteger,
+        default=30,
+        comment='单日复习题数上限',
     )
     custom_tabs: Mapped[dict[str, list[dict[str, Any]]]] = mapped_column(
         CompatibleJSONB,

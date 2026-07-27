@@ -113,6 +113,9 @@ def test_missing_preference_returns_stable_defaults(monkeypatch: MonkeyPatch) ->
     assert result.practice_mode == 'practice'
     assert result.mastery_threshold == 3
     assert result.random_practice_count == 20
+    assert result.review_reminder_enabled is False
+    assert result.review_reminder_timezone == 'Asia/Shanghai'
+    assert result.review_daily_limit == 30
     assert result.custom_tabs == {}
 
 
@@ -137,12 +140,16 @@ def test_v2_openapi_routes_and_names_are_unique() -> None:
     paths = {path: operations for path, operations in spec['paths'].items() if '/qbank-v2/' in path}
     operation_ids = [operation['operationId'] for operations in paths.values() for operation in operations.values()]
 
-    assert len(paths) == 28
-    assert len(operation_ids) == 40
+    assert len(paths) == 34
+    assert len(operation_ids) == 47
     assert '/api/v1/qbank-v2/sessions' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/response' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/submit' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/solution' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/submit' in paths
+    assert '/api/v1/qbank-v2/wrong-questions' in paths
+    assert '/api/v1/qbank-v2/wrong-questions/due' in paths
+    assert '/api/v1/qbank-v2/wrong-questions/external' in paths
+    assert '/api/v1/qbank-v2/wrong-questions/{wrong_state_id}/reviews' in paths
     assert len(operation_ids) == len(set(operation_ids))
