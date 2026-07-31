@@ -3,27 +3,29 @@ import json
 
 from typing import Any
 
+from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank_v2.crud.crud_knowledge import question_knowledge_point_dao
+from backend.app.question_bank_v2.crud.crud_material import question_interaction_dao, question_material_dao
 from backend.app.question_bank_v2.crud.crud_question import (
     question_answer_dao,
     question_dao,
     question_explanation_dao,
-    question_revision_dao,
 )
+from backend.app.question_bank_v2.schema.knowledge import GetKnowledgePointAssignmentDetail
+from backend.app.question_bank_v2.schema.material import GetQuestionMaterialDetail
 from backend.app.question_bank_v2.schema.question import (
     CreateQuestionParam,
-    CreateQuestionRevisionParam,
     GetQuestionAnswerDetail,
     GetQuestionDetail,
     GetQuestionExplanationDetail,
     GetQuestionListItem,
-    GetQuestionRevisionDetail,
     UpdateQuestionParam,
-    UpdateQuestionRevisionParam,
 )
+from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
+from backend.app.question_bank_v2.service.material_service import material_service
 from backend.common.exception import errors
-from backend.utils.timezone import timezone
 
 
 class QuestionService:
@@ -52,49 +54,32 @@ class QuestionService:
             raise errors.RequestError(msg='仅选择题允许配置选项')
 
     @staticmethod
-    async def _build_revision(*, db: AsyncSession, revision: Any) -> GetQuestionRevisionDetail:
-        """组装题目版本、答案和解析详情"""
-        answer = await question_answer_dao.get_by_revision(db, revision.id)
-        explanations = await question_explanation_dao.get_all(db, revision.id)
-        return GetQuestionRevisionDetail(
-            id=revision.id,
-            question_id=revision.question_id,
-            revision_no=revision.revision_no,
-            stem=revision.stem,
-            content_format=revision.content_format,
-            question_type=revision.question_type,
-            options=revision.option_data,
-            default_score=revision.default_score,
-            difficulty=revision.difficulty,
-            language=revision.language,
-            content_hash=revision.content_hash,
-            status=revision.status,
-            answer=GetQuestionAnswerDetail.model_validate(answer) if answer is not None else None,
-            explanations=[GetQuestionExplanationDetail.model_validate(item) for item in explanations],
-            published_by=revision.published_by,
-            published_time=revision.published_time,
-            created_by=revision.created_by,
-            updated_by=revision.updated_by,
-            created_time=revision.created_time,
-            updated_time=revision.updated_time,
-        )
-
-    @staticmethod
-    async def _build_detail(*, db: AsyncSession, question: Any, revision_id: int | None = None) -> GetQuestionDetail:
-        """组装题目稳定身份和指定版本详情"""
-        if revision_id is not None:
-            revision = await question_revision_dao.get(db, revision_id, question_id=question.id)
-        else:
-            revision = await question_revision_dao.get_latest(db, question.id)
+    async def _build_detail(*, db: AsyncSession, question: Any) -> GetQuestionDetail:
+        """组装题目聚合详情"""
+        answer = await question_answer_dao.get_by_question(db, question.id)
+        explanations = await question_explanation_dao.get_all(db, question.id)
+        knowledge_points = await question_knowledge_point_dao.get_all(db, question.id)
+        materials = await question_material_dao.get_all(db, question.id)
+        interactions = await question_interaction_dao.get_all(db, question_ids=[question.id])
         return GetQuestionDetail(
             id=question.id,
             code=question.code,
             owner_id=question.owner_id,
-            current_revision_id=question.current_revision_id,
             visibility=question.visibility,
             origin_type=question.origin_type,
             status=question.status,
-            revision=await QuestionService._build_revision(db=db, revision=revision) if revision is not None else None,
+            stem=question.stem,
+            content_format=question.content_format,
+            question_type=question.question_type,
+            options=question.option_data,
+            default_score=question.default_score,
+            difficulty=question.difficulty,
+            content_hash=question.content_hash,
+            answer=GetQuestionAnswerDetail.model_validate(answer) if answer is not None else None,
+            explanations=[GetQuestionExplanationDetail.model_validate(item) for item in explanations],
+            knowledge_points=[GetKnowledgePointAssignmentDetail(**item) for item in knowledge_points],
+            materials=[GetQuestionMaterialDetail(**item) for item in materials],
+            interactions=interactions,
             created_by=question.created_by,
             updated_by=question.updated_by,
             created_time=question.created_time,
@@ -102,44 +87,79 @@ class QuestionService:
         )
 
     @staticmethod
-    def _content_hash(revision: GetQuestionRevisionDetail) -> str:
-        """计算题目版本完整权威内容哈希"""
+    def _content_hash(
+        *,
+        stem: str,
+        content_format: str,
+        question_type: str,
+        options: list[dict[str, Any]],
+        default_score: Any,
+        answer: Any,
+        explanations: list[Any],
+        knowledge_points: list[Any],
+        materials: list[Any],
+        interactions: list[Any],
+    ) -> str:
+        """计算题目完整权威内容哈希"""
         payload = {
-            'stem': revision.stem,
-            'content_format': revision.content_format,
-            'question_type': revision.question_type,
-            'options': [item.model_dump(mode='json') for item in revision.options],
-            'default_score': str(revision.default_score),
-            'difficulty': str(revision.difficulty) if revision.difficulty is not None else None,
-            'language': revision.language,
-            'answer': revision.answer.model_dump(mode='json', exclude={'id', 'question_revision_id'})
-            if revision.answer
+            'stem': stem,
+            'content_format': content_format,
+            'question_type': question_type,
+            'options': options,
+            'default_score': str(default_score),
+            'answer': answer.model_dump(mode='json', exclude={'id', 'question_id'})
+            if answer
             else None,
             'explanations': [
                 item.model_dump(
                     mode='json',
-                    exclude={'id', 'question_revision_id', 'status'},
+                    exclude={'id', 'question_id', 'status'},
                 )
-                for item in revision.explanations
+                for item in explanations
+            ],
+            'knowledge_points': [
+                item.model_dump(mode='json', exclude={'id', 'question_id', 'knowledge_point_name'})
+                for item in knowledge_points
+            ],
+            'materials': [
+                item.model_dump(
+                    mode='json',
+                    include={
+                        'material_id',
+                        'material_revision_id',
+                        'role',
+                        'sort_order',
+                        'display_config',
+                        'content_hash',
+                    },
+                )
+                for item in materials
+            ],
+            'interactions': [
+                item.model_dump(
+                    mode='json',
+                    exclude={'id', 'question_id'},
+                )
+                for item in interactions
+                if item.status == 'active'
             ],
         }
         raw = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(',', ':'))
         return hashlib.sha256(raw.encode()).hexdigest()
 
     @staticmethod
-    async def get(*, db: AsyncSession, pk: int, revision_id: int | None = None) -> GetQuestionDetail:
+    async def get(*, db: AsyncSession, pk: int) -> GetQuestionDetail:
         """获取题目管理详情"""
         question = await question_dao.get(db, pk)
         if question is None:
             raise errors.NotFoundError(msg='题目不存在')
-        return await QuestionService._build_detail(db=db, question=question, revision_id=revision_id)
+        return await QuestionService._build_detail(db=db, question=question)
 
     @staticmethod
     async def get_list(
         *,
         db: AsyncSession,
         question_type: str | None = None,
-        revision_status: str | None = None,
         keyword: str | None = None,
         offset: int = 0,
         limit: int = 100,
@@ -148,7 +168,6 @@ class QuestionService:
         rows = await question_dao.get_list(
             db,
             question_type=question_type,
-            revision_status=revision_status,
             keyword=keyword,
             offset=offset,
             limit=limit,
@@ -156,41 +175,30 @@ class QuestionService:
         return [GetQuestionListItem(**row) for row in rows]
 
     @staticmethod
-    async def _create_revision(
+    def get_list_select(
         *,
-        db: AsyncSession,
-        question_id: int,
-        revision_no: int,
-        obj: CreateQuestionRevisionParam,
-        user_id: int,
-    ) -> Any:
-        """创建题目版本及其权威答案和解析"""
+        bank_id: int | None = None,
+        question_type: str | None = None,
+        keyword: str | None = None,
+    ) -> Select:
+        """构建题目管理列表分页查询，交给 API 层 paging_data 处理"""
+        return question_dao.get_list_select(bank_id=bank_id, question_type=question_type, keyword=keyword)
+
+    @staticmethod
+    async def create(*, db: AsyncSession, obj: CreateQuestionParam, created_by: int) -> GetQuestionDetail:
+        """创建题目"""
+        if await question_dao.get_by_code(db, obj.code):
+            raise errors.ConflictError(msg='题目编码已存在')
         QuestionService._validate_answer(
             question_type=obj.question_type,
             options=[item.model_dump() for item in obj.options],
             answer_data=obj.answer.answer_data,
         )
-        revision = await question_revision_dao.create(
-            db,
-            question_id=question_id,
-            revision_no=revision_no,
-            obj=obj,
-            created_by=user_id,
+        await knowledge_service.ensure_point_ids(
+            db=db,
+            point_ids=[item.knowledge_point_id for item in obj.knowledge_points],
         )
-        await question_answer_dao.upsert(db, revision_id=revision.id, obj=obj.answer, user_id=user_id)
-        await question_explanation_dao.replace(
-            db,
-            revision_id=revision.id,
-            items=obj.explanations,
-            user_id=user_id,
-        )
-        return revision
-
-    @staticmethod
-    async def create(*, db: AsyncSession, obj: CreateQuestionParam, created_by: int) -> GetQuestionDetail:
-        """创建题目及首个草稿版本"""
-        if await question_dao.get_by_code(db, obj.code):
-            raise errors.ConflictError(msg='题目编码已存在')
+        await material_service.ensure_references(db=db, items=obj.materials)
         owner_id = created_by if obj.visibility == 'private' or obj.origin_type == 'user_created' else None
         question = await question_dao.create(
             db,
@@ -199,21 +207,42 @@ class QuestionService:
             visibility=obj.visibility,
             origin_type=obj.origin_type,
             status=obj.status,
+            stem=obj.stem,
+            content_format=obj.content_format,
+            question_type=obj.question_type,
+            option_data=[item.model_dump() for item in obj.options],
+            default_score=obj.default_score,
+            difficulty=None,
+            content_hash=None,
             created_by=created_by,
         )
-        revision = await QuestionService._create_revision(
-            db=db,
+        await question_answer_dao.upsert(db, question_id=question.id, obj=obj.answer, user_id=created_by)
+        await question_explanation_dao.replace(
+            db,
             question_id=question.id,
-            revision_no=1,
-            obj=obj.revision,
+            items=obj.explanations,
             user_id=created_by,
         )
-        return await QuestionService._build_detail(db=db, question=question, revision_id=revision.id)
+        await question_knowledge_point_dao.replace(
+            db,
+            question_id=question.id,
+            items=obj.knowledge_points,
+            user_id=created_by,
+        )
+        await question_material_dao.replace(
+            db,
+            question_id=question.id,
+            items=obj.materials,
+            user_id=created_by,
+        )
+        return await QuestionService._build_detail(db=db, question=question)
 
     @staticmethod
-    async def update(*, db: AsyncSession, pk: int, obj: UpdateQuestionParam, updated_by: int) -> GetQuestionDetail:
-        """更新题目稳定身份"""
-        question = await question_dao.get(db, pk)
+    async def update(  # noqa: C901
+        *, db: AsyncSession, pk: int, obj: UpdateQuestionParam, updated_by: int
+    ) -> GetQuestionDetail:
+        """更新题目"""
+        question = await question_dao.get(db, pk, for_update=True)
         if question is None:
             raise errors.NotFoundError(msg='题目不存在')
         data = obj.model_dump(exclude_unset=True)
@@ -225,151 +254,54 @@ class QuestionService:
             data['owner_id'] = updated_by
         elif data.get('visibility') in {'public', 'internal'} and question.origin_type != 'user_created':
             data['owner_id'] = None
+        option_data = data.pop('options', None)
+        if option_data is not None:
+            data['option_data'] = [item.model_dump() for item in option_data]
+        answer = obj.answer or await question_answer_dao.get_by_question(db, pk)
+        if answer is None:
+            raise errors.ConflictError(msg='题目缺少权威答案')
+        QuestionService._validate_answer(
+            question_type=obj.question_type or question.question_type,
+            options=data.get('option_data', question.option_data),
+            answer_data=answer.answer_data,
+        )
+        data.pop('answer', None)
+        data.pop('explanations', None)
+        data.pop('knowledge_points', None)
+        data.pop('materials', None)
         if data:
             data['updated_by'] = updated_by
             await question_dao.update(db, pk, data)
-        question = await question_dao.get(db, pk)
-        return await QuestionService._build_detail(db=db, question=question)
-
-    @staticmethod
-    async def get_revisions(*, db: AsyncSession, question_id: int) -> list[GetQuestionRevisionDetail]:
-        """获取题目全部版本"""
-        if await question_dao.get(db, question_id) is None:
-            raise errors.NotFoundError(msg='题目不存在')
-        revisions = await question_revision_dao.get_all(db, question_id)
-        return [await QuestionService._build_revision(db=db, revision=item) for item in revisions]
-
-    @staticmethod
-    async def create_revision(
-        *,
-        db: AsyncSession,
-        question_id: int,
-        obj: CreateQuestionRevisionParam,
-        created_by: int,
-    ) -> GetQuestionRevisionDetail:
-        """创建题目草稿版本"""
-        question = await question_dao.get(db, question_id, for_update=True)
-        if question is None:
-            raise errors.NotFoundError(msg='题目不存在')
-        revision_no = await question_revision_dao.get_next_revision_no(db, question_id)
-        revision = await QuestionService._create_revision(
-            db=db,
-            question_id=question_id,
-            revision_no=revision_no,
-            obj=obj,
-            user_id=created_by,
-        )
-        return await QuestionService._build_revision(db=db, revision=revision)
-
-    @staticmethod
-    async def update_revision(
-        *,
-        db: AsyncSession,
-        question_id: int,
-        revision_id: int,
-        obj: UpdateQuestionRevisionParam,
-        updated_by: int,
-    ) -> GetQuestionRevisionDetail:
-        """更新题目草稿版本及答案解析"""
-        revision = await question_revision_dao.get(db, revision_id, question_id=question_id, for_update=True)
-        if revision is None:
-            raise errors.NotFoundError(msg='题目版本不存在')
-        if revision.status != 'draft':
-            raise errors.ConflictError(msg='已发布或已退役题目版本不可修改')
-        data = obj.model_dump(exclude_unset=True, exclude={'answer', 'explanations', 'options'})
-        if 'options' in obj.model_fields_set:
-            data['option_data'] = [item.model_dump() for item in (obj.options or [])]
-        if data:
-            data['updated_by'] = updated_by
-            await question_revision_dao.update(db, revision_id, data)
         if obj.answer is not None:
-            await question_answer_dao.upsert(db, revision_id=revision_id, obj=obj.answer, user_id=updated_by)
+            await question_answer_dao.upsert(db, question_id=pk, obj=obj.answer, user_id=updated_by)
         if obj.explanations is not None:
             await question_explanation_dao.replace(
                 db,
-                revision_id=revision_id,
+                question_id=pk,
                 items=obj.explanations,
                 user_id=updated_by,
             )
-        revision = await question_revision_dao.get(db, revision_id, question_id=question_id)
-        detail = await QuestionService._build_revision(db=db, revision=revision)
-        if detail.answer is not None:
-            QuestionService._validate_answer(
-                question_type=detail.question_type,
-                options=[item.model_dump() for item in detail.options],
-                answer_data=detail.answer.answer_data,
+        if obj.knowledge_points is not None:
+            await knowledge_service.ensure_point_ids(
+                db=db,
+                point_ids=[item.knowledge_point_id for item in obj.knowledge_points],
             )
-        return detail
-
-    @staticmethod
-    async def publish_revision(
-        *,
-        db: AsyncSession,
-        question_id: int,
-        revision_id: int,
-        published_by: int,
-    ) -> GetQuestionRevisionDetail:
-        """发布题目版本并原子切换当前版本"""
-        question = await question_dao.get(db, question_id, for_update=True)
-        if question is None:
-            raise errors.NotFoundError(msg='题目不存在')
-        revision = await question_revision_dao.get(db, revision_id, question_id=question_id, for_update=True)
-        if revision is None:
-            raise errors.NotFoundError(msg='题目版本不存在')
-        if revision.status != 'draft':
-            raise errors.ConflictError(msg='仅草稿题目版本可以发布')
-        detail = await QuestionService._build_revision(db=db, revision=revision)
-        if detail.answer is None:
-            raise errors.ConflictError(msg='题目缺少权威答案，不能发布')
-        if sum(item.is_default for item in detail.explanations) != 1:
-            raise errors.ConflictError(msg='题目必须且只能有一个默认解析')
-        QuestionService._validate_answer(
-            question_type=detail.question_type,
-            options=[item.model_dump() for item in detail.options],
-            answer_data=detail.answer.answer_data,
-        )
-
-        now = timezone.now()
-        content_hash = QuestionService._content_hash(detail)
-        if question.current_revision_id is not None and question.current_revision_id != revision_id:
-            await question_revision_dao.update_model_by_column(
+            await question_knowledge_point_dao.replace(
                 db,
-                {'status': 'retired', 'updated_by': published_by},
-                id=question.current_revision_id,
-                question_id=question_id,
-                deleted=0,
-                status='published',
+                question_id=pk,
+                items=obj.knowledge_points,
+                user_id=updated_by,
             )
-        await question_revision_dao.update_model_by_column(
-            db,
-            {
-                'status': 'published',
-                'content_hash': content_hash,
-                'published_by': published_by,
-                'published_time': now,
-                'updated_by': published_by,
-            },
-            id=revision_id,
-            question_id=question_id,
-            deleted=0,
-            status='draft',
-        )
-        for explanation in detail.explanations:
-            await question_explanation_dao.update_model_by_column(
+        if obj.materials is not None:
+            await material_service.ensure_references(db=db, items=obj.materials)
+            await question_material_dao.replace(
                 db,
-                {'status': 'published', 'updated_by': published_by},
-                id=explanation.id,
-                question_revision_id=revision_id,
-                deleted=0,
-                status='draft',
+                question_id=pk,
+                items=obj.materials,
+                user_id=updated_by,
             )
-        await question_dao.update(
-            db,
-            question_id,
-            {'current_revision_id': revision_id, 'updated_by': published_by},
-        )
-        revision = await question_revision_dao.get(db, revision_id, question_id=question_id)
-        return await QuestionService._build_revision(db=db, revision=revision)
+        question = await question_dao.get(db, pk)
+        return await QuestionService._build_detail(db=db, question=question)
 
 
 question_service: QuestionService = QuestionService()
