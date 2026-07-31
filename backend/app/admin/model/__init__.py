@@ -12,6 +12,8 @@ from backend.app.admin.model.m2m import role_data_scope as role_data_scope
 from backend.app.admin.model.m2m import role_menu as role_menu
 from backend.app.admin.model.m2m import user_role as user_role
 from backend.app.admin.model.menu import Menu as Menu
+from backend.app.admin.model.message import Message as Message
+from backend.app.admin.model.message import MessageRead as MessageRead
 from backend.app.admin.model.opera_log import OperaLog as OperaLog
 from backend.app.admin.model.role import Role as Role
 from backend.app.admin.model.user import User as User
