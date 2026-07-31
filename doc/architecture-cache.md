@@ -106,11 +106,17 @@ class RedisCache[T]:
         local: bool = False,          # L1 opt-in（共享数据建议开）
         invalidate_pubsub: bool = False,  # 跨进程 L1 一致性
         single_flight: bool = True,   # 单飞防雪崩，默认开启
+        ttl_jitter: float = 0.1,      # 默认 ±10% TTL 抖动
     ): ...
 
     async def get(self, *key_parts) -> T | None: ...
     async def set(self, *key_parts, value: T) -> None: ...
-    async def get_or_set(self, *key_parts, factory: Callable[[], Awaitable[T | None]]) -> T | None: ...
+    async def get_or_set(
+        self,
+        *key_parts,
+        factory: Callable[[], Awaitable[T | None]],
+        should_cache: Callable[[T], bool] | None = None,
+    ) -> T | None: ...
     async def invalidate(self, *key_parts) -> None: ...
     async def invalidate_prefix(self, *prefix_parts) -> None: ...
 ```
@@ -174,11 +180,22 @@ results = await asyncio.gather(*(
 
 需要每次重算时显式关闭：`single_flight=False`。
 
-### 4.6 失效语义
+### 4.6 生产保护
+
+- 每个 `RedisCache` 的 TTL 同时约束 Redis 和 L1，不再受全局 L1 TTL 放大。
+- Redis 命中回填 L1 时使用 Redis 剩余 TTL，不会重新延长缓存生命周期。
+- TTL 默认加入 ±10% 随机抖动，降低热点缓存同时过期造成的回源尖峰。
+- 动态 key 片段会进行 URL 转义，避免 `('a:b', 'c')` 与 `('a', 'b:c')` 碰撞。
+- Redis 内容反序列化失败时自动删除损坏 key，随后回源数据库。
+- `should_cache` 可避免缓存草稿、处理中任务等非稳定状态。
+- prefix 应包含 schema 版本，例如 `qbank-v2:catalog:public:v1`；响应结构不兼容时升级版本。
+
+### 4.7 失效语义
 
 - **`atomic`**：失败永不抛错，仅 `log.warning`。缓存挂了不影响业务。
 - **写后失效**：先执行业务写入，成功后清缓存。
 - **失效拓扑显式**：service 层显式调用 `await xxx_cache.invalidate(...)`，不引入隐式声明式 graph。
+- **事务边界**：写操作应在数据库写成功后失效；TTL 始终作为遗漏和事务竞争的最终兜底。
 
 ---
 
@@ -281,4 +298,19 @@ L1 命中率 = 共享度 / 进程数。全用户共享数据 L1 接近 100%，�
 - 单 key / prefix 失效
 - Redis 故障降级（get/set 抛错业务无感）
 
-13 个用例，纯 stdlib 不依赖 pytest-asyncio，任何环境可跑。
+测试还覆盖 per-entry L1 TTL、key 转义、条件缓存、损坏缓存清理和跨节点失效参数。
+
+---
+
+## 十、question_bank_v2 接入
+
+当前优先缓存公共、版本化且低频变化的数据：
+
+| 数据 | Prefix | TTL | L1 | 规则 |
+|---|---|---:|---|---|
+| 公开合集目录 | `qbank-v2:catalog:public:v1` | 600s | 开启 | 合集、挂载、题库分类或发布变化时失效 |
+| 纯知识点树 | `qbank-v2:knowledge:points-tree:v1` | 1800s | 开启 | 按知识体系 ID 隔离 |
+| 题库版本轻量章节大纲 | `qbank-v2:composition:v2` | 3600s | 关闭 | 仅缓存 published / retired；题项游标分页读取 |
+| 材料内容 Blocks | `qbank-v2:material:blocks:v1` | 86400s | 关闭 | 仅缓存 published / retired |
+
+练习会话、到期错题、会话收藏和笔记等实时用户数据暂不缓存。用户统计后续需要接入时使用 `user_id` 作为第一个 key part、`local=False`、30～60 秒 TTL，并在对应写操作后按用户前缀失效。
