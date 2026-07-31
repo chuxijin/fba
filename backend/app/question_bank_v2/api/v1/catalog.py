@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Request
+from fastapi import APIRouter, Depends, Path, Query, Request
 
 from backend.app.question_bank_v2.schema.catalog import (
     CreateCollectionBankMountParam,
@@ -12,6 +12,14 @@ from backend.app.question_bank_v2.schema.catalog import (
     UpdateCollectionParam,
 )
 from backend.app.question_bank_v2.service.catalog_service import catalog_service
+from backend.common.pagination import (
+    CursorPageData,
+    DependsCursorPagination,
+    DependsPagination,
+    PageData,
+    cursor_paging_data,
+    paging_data,
+)
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
@@ -24,9 +32,10 @@ router = APIRouter()
 @router.get('/catalog', summary='获取公开题库合集目录', name='qbank_v2_get_collection_catalog')
 async def get_collection_catalog(
     db: CurrentSession,
+    cat_id: Annotated[int | None, Query(gt=0, description='按题库主分类过滤')] = None,
 ) -> ResponseSchemaModel[list[GetCollectionCatalogItem]]:
     """以两次数据库查询获取公开合集树及其题库"""
-    data = await catalog_service.get_public_catalog(db=db)
+    data = await catalog_service.get_public_catalog(db=db, cat_id=cat_id)
     return response_base.success(data=data)
 
 
@@ -34,19 +43,29 @@ async def get_collection_catalog(
     '',
     summary='获取全部题库合集',
     name='qbank_v2_get_collections',
-    dependencies=[DependsJwtAuth, Depends(RequestPermission('question_bank:bank:update')), DependsRBAC],
+    dependencies=[
+        DependsJwtAuth,
+        Depends(RequestPermission('question_bank:bank:update')),
+        DependsRBAC,
+        DependsPagination,
+    ],
 )
-async def get_collections(db: CurrentSession) -> ResponseSchemaModel[list[GetCollectionDetail]]:
-    """获取管理端题库合集列表"""
-    data = await catalog_service.get_all(db=db)
-    return response_base.success(data=data)
+async def get_collections(db: CurrentSession) -> ResponseSchemaModel[PageData[GetCollectionDetail]]:
+    """获取管理端题库合集列表（分页）"""
+    stmt = catalog_service.get_select()
+    page_data = await paging_data(db, stmt, GetCollectionDetail)
+    return response_base.success(data=page_data)
 
 
 @router.get(
     '/{pk}',
     summary='获取题库合集详情',
     name='qbank_v2_get_collection',
-    dependencies=[DependsJwtAuth, Depends(RequestPermission('question_bank:bank:update')), DependsRBAC],
+    dependencies=[
+        DependsJwtAuth,
+        Depends(RequestPermission('question_bank:bank:update')),
+        DependsRBAC,
+    ],
 )
 async def get_collection(
     db: CurrentSession,
@@ -94,15 +113,20 @@ async def update_collection(
     '/{pk}/banks',
     summary='获取合集题库挂载',
     name='qbank_v2_get_collection_banks',
-    dependencies=[DependsJwtAuth, Depends(RequestPermission('question_bank:bank:update')), DependsRBAC],
+    dependencies=[
+        DependsJwtAuth,
+        Depends(RequestPermission('question_bank:bank:update')),
+        DependsRBAC,
+        DependsCursorPagination,
+    ],
 )
 async def get_collection_banks(
     db: CurrentSession,
     pk: Annotated[int, Path(gt=0, description='合集 ID')],
-) -> ResponseSchemaModel[list[GetCollectionBankMountDetail]]:
-    """获取管理端合集题库挂载列表"""
-    data = await catalog_service.get_mounts(db=db, collection_id=pk)
-    return response_base.success(data=data)
+) -> ResponseSchemaModel[CursorPageData[GetCollectionBankMountDetail]]:
+    """游标分页获取管理端合集题库挂载列表"""
+    stmt = await catalog_service.get_mounts_select(db=db, collection_id=pk)
+    return response_base.success(data=await cursor_paging_data(db, stmt, GetCollectionBankMountDetail))
 
 
 @router.post(
