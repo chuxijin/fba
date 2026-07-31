@@ -852,11 +852,15 @@ class RenderPayloadService:
         )
 
     @classmethod
-    async def build_payload(cls, *, db: AsyncSession, payload: RenderJobCreate) -> RenderDocumentPayload:
+    async def build_payload(cls, *, db: AsyncSession, payload: RenderJobCreate) -> RenderDocumentPayload:  # noqa: C901
         if payload.template_key == 'basic_calculation':
             return cls._build_basic_calculation_payload(payload)
         if payload.template_key == 'hanyu':
             return await cls._build_hanyu_payload(db=db, payload=payload)
+        if payload.metadata.get('qbank_version') == 'v2':
+            from backend.plugin.render_book.service.v2_payload_service import v2_render_payload_service
+
+            return await v2_render_payload_service.build_payload(db=db, payload=payload)
 
         questions = await cls._load_questions(db=db, payload=payload)
         if not questions:

@@ -1,8 +1,16 @@
+from dataclasses import dataclass
+from time import monotonic
 from typing import Any
 
 import cachebox
 
 from backend.core.conf import settings
+
+
+@dataclass(slots=True)
+class _LocalCacheEntry:
+    value: Any
+    expires_at: float
 
 
 class LocalCacheManager:
@@ -17,13 +25,19 @@ class LocalCacheManager:
     def get(self, key: str) -> Any:
         """获取缓存"""
         try:
-            return self.hot_cache[key]
+            value = self.hot_cache[key]
         except KeyError:
             return None
+        if isinstance(value, _LocalCacheEntry):
+            if value.expires_at <= monotonic():
+                self.delete(key)
+                return None
+            return value.value
+        return value
 
-    def set(self, key: str, value: Any) -> None:
-        """设置缓存"""
-        self.hot_cache[key] = value
+    def set(self, key: str, value: Any, *, ttl: float | None = None) -> None:
+        """设置缓存，可选 TTL 用于短于全局 TTL 的业务缓存。"""
+        self.hot_cache[key] = _LocalCacheEntry(value, monotonic() + ttl) if ttl is not None else value
 
     def delete(self, key: str) -> bool:
         """删除缓存"""
