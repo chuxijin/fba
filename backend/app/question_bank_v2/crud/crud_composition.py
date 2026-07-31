@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank_v2.model.bank import QbBankItem, QbBankSection
-from backend.app.question_bank_v2.model.question import QbQuestionRevision
+from backend.app.question_bank_v2.model.question import QbQuestion
 
 
 class CRUDBankSection(CRUDPlus[QbBankSection]):
@@ -71,23 +71,22 @@ class CRUDBankItem(CRUDPlus[QbBankItem]):
                 QbBankItem.bank_revision_id,
                 QbBankItem.item_key,
                 QbBankItem.question_id,
-                QbBankItem.question_revision_id,
                 QbBankItem.section_id,
+                QbBankItem.exam_year,
                 QbBankItem.score,
                 QbBankItem.sort_order,
                 QbBankItem.is_required,
                 QbBankItem.is_active,
                 QbBankItem.settings,
-                QbQuestionRevision.question_type,
-                QbQuestionRevision.stem,
+                QbQuestion.question_type,
+                QbQuestion.stem,
                 QbBankItem.created_time,
             )
             .join(
-                QbQuestionRevision,
+                QbQuestion,
                 and_(
-                    QbQuestionRevision.id == QbBankItem.question_revision_id,
-                    QbQuestionRevision.question_id == QbBankItem.question_id,
-                    QbQuestionRevision.deleted == 0,
+                    QbQuestion.id == QbBankItem.question_id,
+                    QbQuestion.deleted == 0,
                 ),
             )
             .where(QbBankItem.bank_revision_id == revision_id, QbBankItem.deleted == 0)
@@ -95,6 +94,36 @@ class CRUDBankItem(CRUDPlus[QbBankItem]):
         )
         result = await db.execute(stmt)
         return [dict(row) for row in result.mappings().all()]
+
+    def get_list_select(self, *, revision_id: int, section_id: int | None = None) -> Any:
+        """构建题库版本题项游标分页查询"""
+        stmt = (
+            select(
+                QbBankItem.id,
+                QbBankItem.bank_revision_id,
+                QbBankItem.item_key,
+                QbBankItem.question_id,
+                QbBankItem.section_id,
+                QbBankItem.exam_year,
+                QbBankItem.score,
+                QbBankItem.sort_order,
+                QbBankItem.is_required,
+                QbBankItem.is_active,
+                QbBankItem.settings,
+                QbQuestion.question_type,
+                QbQuestion.stem,
+                QbBankItem.created_time,
+            )
+            .join(QbQuestion, and_(QbQuestion.id == QbBankItem.question_id, QbQuestion.deleted == 0))
+            .where(QbBankItem.bank_revision_id == revision_id, QbBankItem.deleted == 0)
+        )
+        if section_id is not None:
+            stmt = stmt.where(QbBankItem.section_id == section_id)
+        return stmt.order_by(
+            QbBankItem.section_id.asc().nullsfirst(),
+            QbBankItem.sort_order,
+            QbBankItem.id,
+        )
 
     async def get_by_item_key(self, db: AsyncSession, revision_id: int, item_key: str) -> QbBankItem | None:
         """通过版本内业务键获取题目编排"""

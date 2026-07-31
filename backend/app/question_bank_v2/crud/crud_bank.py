@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, and_, exists, func, select
+from sqlalchemy import Select, and_, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -123,6 +123,140 @@ class CRUDBank(CRUDPlus[QbBank]):
         result = await db.execute(stmt)
         return [dict(row) for row in result.mappings().all()]
 
+    def get_public_list_stmt(
+        self,
+        *,
+        category_ids: list[int] | None = None,
+        bank_kind: str | None = None,
+        keyword: str | None = None,
+    ) -> Select:
+        """构建题库列表 Select 表达句，供给 paging_data 分页使用"""
+        primary_link = QbBankCategory.__table__.alias('primary_bank_category')
+        primary_category = Category.__table__.alias('primary_category')
+        stmt = (
+            select(
+                QbBank.id,
+                QbBank.code,
+                QbBank.visibility,
+                QbBank.status,
+                QbBankRevision.id.label('revision_id'),
+                QbBankRevision.revision_no,
+                func.coalesce(QbBankRevision.name, QbBank.code).label('name'),
+                QbBankRevision.bank_kind,
+                QbBankRevision.description,
+                QbBankRevision.cover_url,
+                QbBankRevision.duration_minutes,
+                QbBankRevision.pass_score,
+                func.coalesce(QbBankRevision.question_count, 0).label('question_count'),
+                func.coalesce(QbBankRevision.total_score, 0).label('total_score'),
+                QbBankRevision.published_time,
+                primary_link.c.category_id.label('primary_category_id'),
+                primary_category.c.name.label('primary_category_name'),
+            )
+            .join(
+                QbBankRevision,
+                and_(
+                    QbBankRevision.bank_id == QbBank.id,
+                    QbBankRevision.id == QbBank.current_revision_id,
+                    QbBankRevision.deleted == 0,
+                    QbBankRevision.status == 'published',
+                ),
+            )
+            .outerjoin(
+                primary_link,
+                and_(
+                    primary_link.c.bank_id == QbBank.id,
+                    primary_link.c.is_primary.is_(True),
+                    primary_link.c.deleted == 0,
+                ),
+            )
+            .outerjoin(
+                primary_category,
+                and_(
+                    primary_category.c.id == primary_link.c.category_id,
+                    primary_category.c.deleted == 0,
+                ),
+            )
+            .where(
+                QbBank.deleted == 0,
+                QbBank.visibility == 'public',
+                QbBank.status == 'active',
+            )
+        )
+        if category_ids:
+            category_match = exists(
+                select(QbBankCategory.id).where(
+                    QbBankCategory.bank_id == QbBank.id,
+                    QbBankCategory.category_id.in_(category_ids),
+                    QbBankCategory.deleted == 0,
+                )
+            )
+            stmt = stmt.where(category_match)
+        if bank_kind is not None:
+            stmt = stmt.where(QbBankRevision.bank_kind == bank_kind)
+        if keyword:
+            kw = keyword.strip()
+            conds = [
+                QbBankRevision.name.ilike(f'%{kw}%'),
+                QbBank.code.ilike(f'%{kw}%'),
+            ]
+            if kw.isdigit():
+                conds.append(QbBank.id == int(kw))
+            stmt = stmt.where(or_(*conds))
+
+        return stmt.order_by(QbBankRevision.published_time.desc(), QbBank.id.desc())
+
+    def get_admin_list_stmt(self, *, bank_kind: str | None = None, keyword: str | None = None) -> Select:
+        """构建管理端题库列表，包含草稿和非公开题库。"""
+        latest_revision_no = (
+            select(func.max(QbBankRevision.revision_no))
+            .where(QbBankRevision.bank_id == QbBank.id, QbBankRevision.deleted == 0)
+            .correlate(QbBank)
+            .scalar_subquery()
+        )
+        stmt = (
+            select(
+                QbBank.id,
+                QbBank.code,
+                QbBank.visibility,
+                QbBank.status,
+                QbBankRevision.id.label('revision_id'),
+                QbBankRevision.revision_no,
+                QbBankRevision.name,
+                QbBankRevision.bank_kind,
+                QbBankRevision.description,
+                QbBankRevision.cover_url,
+                QbBankRevision.duration_minutes,
+                QbBankRevision.pass_score,
+                func.coalesce(QbBankRevision.question_count, 0).label('question_count'),
+                func.coalesce(QbBankRevision.total_score, 0).label('total_score'),
+                QbBank.current_revision_id,
+                QbBankRevision.status.label('revision_status'),
+                QbBank.created_time,
+                QbBank.updated_time,
+                literal(None).label('primary_category_id'),
+                literal(None).label('primary_category_name'),
+            )
+            .join(
+                QbBankRevision,
+                and_(
+                    QbBankRevision.bank_id == QbBank.id,
+                    QbBankRevision.revision_no == latest_revision_no,
+                    QbBankRevision.deleted == 0,
+                ),
+            )
+            .where(QbBank.deleted == 0)
+        )
+        if bank_kind is not None:
+            stmt = stmt.where(QbBankRevision.bank_kind == bank_kind)
+        if keyword:
+            kw = keyword.strip()
+            conditions = [QbBank.code.ilike(f'%{kw}%'), QbBankRevision.name.ilike(f'%{kw}%')]
+            if kw.isdigit():
+                conditions.append(QbBank.id == int(kw))
+            stmt = stmt.where(or_(*conditions))
+        return stmt.order_by(QbBank.updated_time.desc(), QbBank.id.desc())
+
     async def create_bank(
         self,
         db: AsyncSession,
@@ -179,6 +313,14 @@ class CRUDBankRevision(CRUDPlus[QbBankRevision]):
         )
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    def get_list_select(self, *, bank_id: int) -> Select:
+        """构建题库版本游标分页查询"""
+        return (
+            select(QbBankRevision)
+            .where(QbBankRevision.bank_id == bank_id, QbBankRevision.deleted == 0)
+            .order_by(QbBankRevision.revision_no.desc(), QbBankRevision.id.desc())
+        )
 
     async def get_next_revision_no(self, db: AsyncSession, bank_id: int) -> int:
         """获取下一个题库版本号"""
