@@ -14,7 +14,7 @@ from .common import BankKind, CompatibleJSONB, ContentStatus
 
 if TYPE_CHECKING:
     from .catalog import QbBankCategory, QbCollectionBank
-    from .question import QbQuestionRevision
+    from .question import QbQuestion
 
 
 class QbBank(Base, UserMixin):
@@ -250,17 +250,13 @@ class QbBankItem(Base, UserMixin):
     __table_args__ = (
         sa.UniqueConstraint('bank_revision_id', 'item_key', 'deleted', name='uq_qbv2_bitem_key'),
         sa.UniqueConstraint('bank_revision_id', 'question_id', 'deleted', name='uq_qbv2_bitem_question'),
-        sa.UniqueConstraint(
-            'question_id',
-            'question_revision_id',
-            'id',
-            name='uq_qbv2_bitem_question_revision_id',
-        ),
-        sa.UniqueConstraint(
-            'bank_revision_id',
-            'question_id',
-            'id',
-            name='uq_qbv2_bitem_revision_question_id',
+        sa.UniqueConstraint('question_id', 'id', name='uq_qbv2_bitem_question_id'),
+        sa.UniqueConstraint('bank_revision_id', 'question_id', 'id', name='uq_qbv2_bitem_revision_question_id'),
+        sa.ForeignKeyConstraint(
+            ['question_id'],
+            ['qbank_v2_question.id'],
+            name='fk_qbv2_bitem_question',
+            ondelete='RESTRICT',
         ),
         sa.ForeignKeyConstraint(
             ['bank_revision_id', 'section_id'],
@@ -268,17 +264,12 @@ class QbBankItem(Base, UserMixin):
             name='fk_qbv2_bitem_section_same_revision',
             ondelete='RESTRICT',
         ),
-        sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_bitem_question_revision',
-            ondelete='RESTRICT',
-        ),
         sa.CheckConstraint('score >= 0', name='ck_qbv2_bitem_score'),
         sa.CheckConstraint('sort_order >= 0', name='ck_qbv2_bitem_sort'),
         sa.Index('ix_qbv2_bitem_order', 'bank_revision_id', 'section_id', 'is_active', 'sort_order'),
         sa.Index('ix_qbv2_bitem_delivery', 'bank_revision_id', 'is_active', 'id'),
-        sa.Index('ix_qbv2_bitem_question', 'question_id', 'question_revision_id'),
+        sa.Index('ix_qbv2_bitem_year_delivery', 'bank_revision_id', 'exam_year', 'is_active', 'id'),
+        sa.Index('ix_qbv2_bitem_question', 'question_id'),
         {'comment': '题库版本题目编排表'},
     )
 
@@ -290,8 +281,8 @@ class QbBankItem(Base, UserMixin):
     )
     item_key: Mapped[str] = mapped_column(sa.String(64), comment='版本内稳定题号或业务键')
     question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='题目身份 ID')
-    question_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='固定题目版本 ID')
     section_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='同题库版本内章节 ID')
+    exam_year: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='试题年份；非真题可为空')
     score: Mapped[Decimal] = mapped_column(sa.Numeric(8, 2), default=Decimal('1.00'), comment='本题分值')
     sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='题目顺序')
     is_required: Mapped[bool] = mapped_column(default=True, comment='是否必答')
@@ -316,8 +307,8 @@ class QbBankItem(Base, UserMixin):
         overlaps='bank_revision,items',
         lazy='noload',
     )
-    question_revision: Mapped[QbQuestionRevision] = relationship(
+    question: Mapped[QbQuestion] = relationship(
         init=False,
-        foreign_keys=[question_id, question_revision_id],
+        foreign_keys=[question_id],
         lazy='noload',
     )

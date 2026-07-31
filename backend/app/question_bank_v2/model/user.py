@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 from datetime import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import sqlalchemy as sa
 
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.common.model import Base, UserMixin, id_key
 
 from .common import CompatibleJSONB
-
-if TYPE_CHECKING:
-    from backend.app.admin.model.category import Category
-
-    from .knowledge import QbKnowledgePoint
 
 
 class QbUserPracticePreference(Base, UserMixin):
@@ -50,13 +45,11 @@ class QbUserPracticePreference(Base, UserMixin):
     )
     current_category_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('sys_category.id', ondelete='SET NULL'),
         default=None,
         comment='当前题库业务分类 ID',
     )
     current_knowledge_point_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('qbank_v2_knowledge_point.id', ondelete='SET NULL'),
         default=None,
         comment='当前知识点导航根节点 ID',
     )
@@ -89,15 +82,4 @@ class QbUserPracticePreference(Base, UserMixin):
         CompatibleJSONB,
         default_factory=dict,
         comment='按分类范围隔离的用户自定义导航标签',
-    )
-
-    current_category: Mapped[Category | None] = relationship(
-        init=False,
-        foreign_keys=[current_category_id],
-        lazy='noload',
-    )
-    current_knowledge_point: Mapped[QbKnowledgePoint | None] = relationship(
-        init=False,
-        foreign_keys=[current_knowledge_point_id],
-        lazy='noload',
     )

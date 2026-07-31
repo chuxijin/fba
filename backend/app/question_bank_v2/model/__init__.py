@@ -5,7 +5,7 @@ from .asset import (
     QbAssetLocation,
     QbMaterialRevisionAsset,
     QbQuestionAttemptAsset,
-    QbQuestionRevisionAsset,
+    QbQuestionAsset,
 )
 from .bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from .catalog import QbBankCategory, QbCollection, QbCollectionBank
@@ -25,8 +25,6 @@ from .question import (
     QbQuestionAnswer,
     QbQuestionEmbedding,
     QbQuestionExplanation,
-    QbQuestionExternalRef,
-    QbQuestionRevision,
 )
 from .review import (
     QbQuestionReview,
@@ -36,7 +34,7 @@ from .review import (
     QbWrongQuestionState,
 )
 from .statistics import (
-    QbQuestionRevisionStatistics,
+    QbQuestionStatistics,
     QbUserBankItemProgress,
     QbUserDailyStatistics,
     QbUserPracticeStatistics,
@@ -46,7 +44,6 @@ from .user import QbUserPracticePreference
 from .user_content import (
     QbFavoriteFolder,
     QbQuestionFavorite,
-    QbQuestionFeedback,
     QbQuestionNote,
     QbQuestionNoteVote,
 )
@@ -78,9 +75,7 @@ __all__ = [
     'QbQuestionAttemptAsset',
     'QbQuestionEmbedding',
     'QbQuestionExplanation',
-    'QbQuestionExternalRef',
     'QbQuestionFavorite',
-    'QbQuestionFeedback',
     'QbQuestionInteraction',
     'QbQuestionInteractionCandidate',
     'QbQuestionKnowledgePoint',
@@ -90,9 +85,8 @@ __all__ = [
     'QbQuestionReview',
     'QbQuestionReviewKnowledgePoint',
     'QbQuestionReviewTag',
-    'QbQuestionRevision',
-    'QbQuestionRevisionAsset',
-    'QbQuestionRevisionStatistics',
+    'QbQuestionAsset',
+    'QbQuestionStatistics',
     'QbReviewTag',
     'QbUserBankItemProgress',
     'QbUserDailyStatistics',

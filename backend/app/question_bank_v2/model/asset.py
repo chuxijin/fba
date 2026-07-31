@@ -14,7 +14,7 @@ from .common import CompatibleJSONB
 if TYPE_CHECKING:
     from .material import QbMaterialRevision
     from .practice import QbQuestionAttempt
-    from .question import QbQuestionRevision
+    from .question import QbQuestion
 
 
 class QbAsset(Base, UserMixin):
@@ -119,39 +119,39 @@ class QbAssetLocation(Base, UserMixin):
     asset: Mapped[QbAsset] = relationship(init=False, back_populates='locations', lazy='noload')
 
 
-class QbQuestionRevisionAsset(Base, UserMixin):
-    """Named asset placement in an immutable question revision."""
+class QbQuestionAsset(Base, UserMixin):
+    """Named asset placement in a question."""
 
-    __tablename__ = 'qbank_v2_question_revision_asset'
+    __tablename__ = 'qbank_v2_question_asset'
     __table_args__ = (
         sa.UniqueConstraint(
-            'question_revision_id',
+            'question_id',
             'link_key',
             'deleted',
-            name='uq_qbv2_qrev_asset_key',
+            name='uq_qbv2_question_asset_key',
         ),
         sa.CheckConstraint('sort_order >= 0', name='ck_qbv2_qrev_asset_sort'),
         sa.CheckConstraint(
             "role IN ('stem','option','explanation','attachment','ocr_source','other')",
             name='ck_qbv2_qrev_asset_role',
         ),
-        sa.Index('ix_qbv2_qrev_asset_order', 'question_revision_id', 'role', 'sort_order'),
+        sa.Index('ix_qbv2_question_asset_order', 'question_id', 'role', 'sort_order'),
         sa.Index('ix_qbv2_qrev_asset_reverse', 'asset_id'),
-        {'comment': '题目版本资产关联表'},
+        {'comment': '题目资产关联表'},
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
-    question_revision_id: Mapped[int] = mapped_column(
+    question_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('qbank_v2_question_revision.id', ondelete='RESTRICT'),
-        comment='题目版本 ID',
+        sa.ForeignKey('qbank_v2_question.id', ondelete='RESTRICT'),
+        comment='题目 ID',
     )
     asset_id: Mapped[int] = mapped_column(
         sa.BigInteger,
         sa.ForeignKey('qbank_v2_asset.id', ondelete='RESTRICT'),
         comment='资产 ID',
     )
-    link_key: Mapped[str] = mapped_column(sa.String(64), comment='版本内稳定引用键')
+    link_key: Mapped[str] = mapped_column(sa.String(64), comment='题目内稳定引用键')
     role: Mapped[str] = mapped_column(sa.String(16), default='other', comment='资产用途')
     locator: Mapped[dict[str, Any]] = mapped_column(
         CompatibleJSONB,
@@ -159,9 +159,9 @@ class QbQuestionRevisionAsset(Base, UserMixin):
         comment='选项、解析段落或内容块定位',
     )
     alt_text: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='无障碍替代文本')
-    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='同用途展示顺序')
+    sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='同用途展示���序')
 
-    question_revision: Mapped[QbQuestionRevision] = relationship(
+    question: Mapped[QbQuestion] = relationship(
         init=False,
         back_populates='assets',
         lazy='noload',

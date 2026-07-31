@@ -16,7 +16,7 @@ from .common import CompatibleJSONB
 if TYPE_CHECKING:
     from .asset import QbQuestionAttemptAsset
     from .evaluation import QbEvaluationRun
-    from .question import QbQuestionRevision
+    from .question import QbQuestion
 
 
 class QbPracticeSession(Base):
@@ -43,6 +43,13 @@ class QbPracticeSession(Base):
         sa.CheckConstraint('correct_items >= 0 AND correct_items <= answered_items', name='ck_qbv2_session_correct'),
         sa.CheckConstraint('score >= 0', name='ck_qbv2_session_score'),
         sa.Index('ix_qbv2_session_user_status', 'user_id', 'status', 'created_time'),
+        sa.Index(
+            'ix_qbv2_session_user_created',
+            'user_id',
+            sa.desc('created_time'),
+            sa.desc('id'),
+            postgresql_where=sa.text('deleted = 0'),
+        ).ddl_if(dialect='postgresql'),
         sa.Index('ix_qbv2_session_bank_revision', 'bank_revision_id', 'status'),
         sa.Index('ix_qbv2_session_user_source', 'user_id', 'source_type', 'created_time'),
         {'comment': '练习与考试会话表'},
@@ -119,21 +126,20 @@ class QbPracticeSessionItem(Base):
         sa.UniqueConstraint('session_id', 'question_id', 'deleted', name='uq_qbv2_sitem_question'),
         sa.UniqueConstraint('session_id', 'id', name='uq_qbv2_sitem_session_id'),
         sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_sitem_question_revision',
+            ['question_id'],
+            ['qbank_v2_question.id'],
+            name='fk_qbv2_sitem_question',
             ondelete='RESTRICT',
         ),
         sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id', 'bank_item_id'],
-            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.question_revision_id', 'qbank_v2_bank_item.id'],
+            ['question_id', 'bank_item_id'],
+            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.id'],
             name='fk_qbv2_sitem_bank_item_context',
             ondelete='RESTRICT',
         ),
         sa.CheckConstraint('position >= 0', name='ck_qbv2_sitem_position'),
         sa.CheckConstraint('max_score >= 0', name='ck_qbv2_sitem_max_score'),
         sa.Index('ix_qbv2_sitem_delivery_order', 'session_id', 'position'),
-        sa.Index('ix_qbv2_sitem_revision', 'question_revision_id'),
         {'comment': '会话投递题目表'},
     )
 
@@ -144,7 +150,6 @@ class QbPracticeSessionItem(Base):
         comment='练习会话 ID',
     )
     question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='题目身份 ID')
-    question_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='投递时固定的题目版本 ID')
     position: Mapped[int] = mapped_column(sa.Integer, comment='投递顺序，从 0 开始')
     bank_item_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
@@ -159,9 +164,9 @@ class QbPracticeSessionItem(Base):
     )
 
     session: Mapped[QbPracticeSession] = relationship(init=False, back_populates='items', lazy='noload')
-    question_revision: Mapped[QbQuestionRevision] = relationship(
+    question: Mapped[QbQuestion] = relationship(
         init=False,
-        foreign_keys=[question_id, question_revision_id],
+        foreign_keys=[question_id],
         lazy='noload',
     )
     response: Mapped[QbPracticeSessionResponse | None] = relationship(
@@ -245,9 +250,9 @@ class QbQuestionAttempt(Base):
         sa.UniqueConstraint('user_id', 'id', name='uq_qbv2_attempt_user_id'),
         sa.UniqueConstraint('user_id', 'question_id', 'id', name='uq_qbv2_attempt_user_question_id'),
         sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_attempt_question_revision',
+            ['question_id'],
+            ['qbank_v2_question.id'],
+            name='fk_qbv2_attempt_question',
             ondelete='RESTRICT',
         ),
         sa.ForeignKeyConstraint(
@@ -279,7 +284,6 @@ class QbQuestionAttempt(Base):
             name='ck_qbv2_attempt_grading_method',
         ),
         sa.Index('ix_qbv2_attempt_user_question_time', 'user_id', 'question_id', 'submitted_time'),
-        sa.Index('ix_qbv2_attempt_revision_time', 'question_revision_id', 'submitted_time'),
         sa.Index('ix_qbv2_attempt_session', 'session_id', 'session_item_id'),
         {'comment': '题目作答事实表'},
     )
@@ -291,8 +295,12 @@ class QbQuestionAttempt(Base):
         comment='答题用户 ID',
     )
     question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='题目身份 ID')
-    question_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='实际作答的题目版本 ID')
     response_data: Mapped[Any] = mapped_column(CompatibleJSONB, comment='用户提交的结构化答案快照')
+    content_hash: Mapped[str | None] = mapped_column(
+        sa.String(64),
+        default=None,
+        comment='作答时的题目内容哈希，用于审计',
+    )
     session_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         default=None,
@@ -334,9 +342,9 @@ class QbQuestionAttempt(Base):
         overlaps='attempts,session',
         lazy='noload',
     )
-    question_revision: Mapped[QbQuestionRevision] = relationship(
+    question: Mapped[QbQuestion] = relationship(
         init=False,
-        foreign_keys=[question_id, question_revision_id],
+        foreign_keys=[question_id],
         lazy='noload',
     )
     evaluation_runs: Mapped[list[QbEvaluationRun]] = relationship(

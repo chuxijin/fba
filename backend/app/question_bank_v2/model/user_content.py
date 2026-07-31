@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 
@@ -10,9 +9,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.common.model import Base, TimeZone, UniversalText, UserMixin, id_key
 
 from .common import CompatibleJSONB
-
-if TYPE_CHECKING:
-    from .question import QbQuestionRevision
 
 
 class QbFavoriteFolder(Base, UserMixin):
@@ -54,24 +50,27 @@ class QbQuestionFavorite(Base, UserMixin):
     __table_args__ = (
         sa.UniqueConstraint('user_id', 'question_id', 'deleted', name='uq_qbv2_favorite_user_question'),
         sa.ForeignKeyConstraint(
-            ['question_id', 'source_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_favorite_source_revision',
-            ondelete='RESTRICT',
-        ),
-        sa.ForeignKeyConstraint(
             ['user_id', 'folder_id'],
             ['qbank_v2_favorite_folder.user_id', 'qbank_v2_favorite_folder.id'],
             name='fk_qbv2_favorite_user_folder',
             ondelete='RESTRICT',
         ),
         sa.ForeignKeyConstraint(
-            ['question_id', 'source_revision_id', 'bank_item_id'],
-            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.question_revision_id', 'qbank_v2_bank_item.id'],
+            ['question_id', 'bank_item_id'],
+            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.id'],
             name='fk_qbv2_favorite_bank_context',
             ondelete='RESTRICT',
         ),
         sa.Index('ix_qbv2_favorite_user_folder', 'user_id', 'folder_id', 'is_pinned', 'created_time'),
+        sa.Index(
+            'ix_qbv2_favorite_user_page',
+            'user_id',
+            sa.desc('is_pinned'),
+            sa.desc('pinned_time'),
+            sa.desc('created_time'),
+            sa.desc('id'),
+            postgresql_where=sa.text('deleted = 0'),
+        ).ddl_if(dialect='postgresql'),
         sa.Index('ix_qbv2_favorite_question', 'question_id'),
         sa.Index('ix_qbv2_favorite_bank_item', 'bank_item_id'),
         {'comment': '用户题目收藏表'},
@@ -84,7 +83,6 @@ class QbQuestionFavorite(Base, UserMixin):
         comment='用户 ID',
     )
     question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='稳定题目 ID')
-    source_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='收藏时看到的题目版本 ID')
     folder_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='收藏夹 ID')
     bank_item_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
@@ -102,11 +100,6 @@ class QbQuestionFavorite(Base, UserMixin):
         foreign_keys=[user_id, folder_id],
         lazy='noload',
     )
-    source_revision: Mapped[QbQuestionRevision] = relationship(
-        init=False,
-        foreign_keys=[question_id, source_revision_id],
-        lazy='noload',
-    )
 
 
 class QbQuestionNote(Base, UserMixin):
@@ -116,14 +109,8 @@ class QbQuestionNote(Base, UserMixin):
     __table_args__ = (
         sa.UniqueConstraint('user_id', 'question_id', 'deleted', name='uq_qbv2_note_user_question'),
         sa.ForeignKeyConstraint(
-            ['question_id', 'source_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_note_source_revision',
-            ondelete='RESTRICT',
-        ),
-        sa.ForeignKeyConstraint(
-            ['question_id', 'source_revision_id', 'bank_item_id'],
-            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.question_revision_id', 'qbank_v2_bank_item.id'],
+            ['question_id', 'bank_item_id'],
+            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.id'],
             name='fk_qbv2_note_bank_context',
             ondelete='RESTRICT',
         ),
@@ -138,7 +125,22 @@ class QbQuestionNote(Base, UserMixin):
             name='ck_qbv2_note_counts',
         ),
         sa.Index('ix_qbv2_note_user_updated', 'user_id', 'updated_time'),
+        sa.Index(
+            'ix_qbv2_note_user_page',
+            'user_id',
+            sa.desc('updated_time'),
+            sa.desc('id'),
+            postgresql_where=sa.text('deleted = 0'),
+        ).ddl_if(dialect='postgresql'),
         sa.Index('ix_qbv2_note_public_rank', 'question_id', 'visibility', 'status', 'like_count'),
+        sa.Index(
+            'ix_qbv2_note_public_page',
+            'question_id',
+            sa.desc('is_featured'),
+            sa.desc('like_count'),
+            sa.desc('id'),
+            postgresql_where=sa.text("deleted = 0 AND visibility = 'public' AND status = 'published'"),
+        ).ddl_if(dialect='postgresql'),
         sa.Index('ix_qbv2_note_featured', 'is_featured', 'featured_time'),
         {'comment': '用户题目笔记表'},
     )
@@ -150,7 +152,6 @@ class QbQuestionNote(Base, UserMixin):
         comment='作者用户 ID',
     )
     question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='稳定题目 ID')
-    source_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='笔记针对的题目版本 ID')
     content: Mapped[str] = mapped_column(UniversalText, comment='笔记正文')
     bank_item_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
@@ -173,11 +174,6 @@ class QbQuestionNote(Base, UserMixin):
     featured_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='精选时间')
     moderation_note: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='审核备注')
 
-    source_revision: Mapped[QbQuestionRevision] = relationship(
-        init=False,
-        foreign_keys=[question_id, source_revision_id],
-        lazy='noload',
-    )
     votes: Mapped[list[QbQuestionNoteVote]] = relationship(
         init=False,
         back_populates='note',
@@ -212,66 +208,3 @@ class QbQuestionNoteVote(Base):
     vote_value: Mapped[int] = mapped_column(sa.SmallInteger, comment='1 点赞，-1 点踩')
 
     note: Mapped[QbQuestionNote] = relationship(init=False, back_populates='votes', lazy='noload')
-
-
-class QbQuestionFeedback(Base, UserMixin):
-    """Moderated issue report pinned to the exact question revision seen."""
-
-    __tablename__ = 'qbank_v2_question_feedback'
-    __table_args__ = (
-        sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_feedback_question_revision',
-            ondelete='RESTRICT',
-        ),
-        sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id', 'bank_item_id'],
-            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.question_revision_id', 'qbank_v2_bank_item.id'],
-            name='fk_qbv2_feedback_bank_context',
-            ondelete='RESTRICT',
-        ),
-        sa.CheckConstraint(
-            "category IN ('content','answer','explanation','format','duplicate','copyright','other')",
-            name='ck_qbv2_feedback_category',
-        ),
-        sa.CheckConstraint(
-            "status IN ('open','triaged','resolved','rejected')",
-            name='ck_qbv2_feedback_status',
-        ),
-        sa.Index('ix_qbv2_feedback_status_created', 'status', 'category', 'created_time'),
-        sa.Index('ix_qbv2_feedback_question', 'question_id', 'question_revision_id', 'status'),
-        sa.Index('ix_qbv2_feedback_user_created', 'user_id', 'created_time'),
-        {'comment': '题目问题反馈与处理表'},
-    )
-
-    id: Mapped[id_key] = mapped_column(init=False)
-    user_id: Mapped[int] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('sys_user.id', ondelete='RESTRICT'),
-        comment='反馈用户 ID',
-    )
-    question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='稳定题目 ID')
-    question_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='用户看到的题目版本 ID')
-    category: Mapped[str] = mapped_column(sa.String(24), comment='反馈分类')
-    description: Mapped[str] = mapped_column(UniversalText, comment='反馈说明')
-    bank_item_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger,
-        default=None,
-        comment='反馈发生的题库上下文',
-    )
-    status: Mapped[str] = mapped_column(sa.String(16), default='open', comment='处理状态')
-    assignee_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey('sys_user.id', ondelete='SET NULL'),
-        default=None,
-        comment='处理人 ID',
-    )
-    resolution: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='处理结论')
-    resolved_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='处理完成时间')
-
-    question_revision: Mapped[QbQuestionRevision] = relationship(
-        init=False,
-        foreign_keys=[question_id, question_revision_id],
-        lazy='noload',
-    )

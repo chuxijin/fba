@@ -15,21 +15,14 @@ from .common import CompatibleJSONB
 if TYPE_CHECKING:
     from .bank import QbBankItem
     from .practice import QbQuestionAttempt
-    from .question import QbQuestionRevision
 
 
-class QbQuestionRevisionStatistics(Base):
+class QbQuestionStatistics(Base):
     """Rebuildable aggregate derived from immutable attempt facts."""
 
-    __tablename__ = 'qbank_v2_question_revision_statistics'
+    __tablename__ = 'qbank_v2_question_statistics'
     __table_args__ = (
-        sa.UniqueConstraint('question_revision_id', name='uq_qbv2_qstats_revision'),
-        sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_qstats_question_revision',
-            ondelete='CASCADE',
-        ),
+        sa.UniqueConstraint('question_id', name='uq_qbv2_qstats_question'),
         sa.CheckConstraint('attempt_count >= 0', name='ck_qbv2_qstats_attempt'),
         sa.CheckConstraint(
             'graded_count >= 0 AND graded_count <= attempt_count',
@@ -45,14 +38,16 @@ class QbQuestionRevisionStatistics(Base):
             name='ck_qbv2_qstats_score_rate',
         ),
         sa.CheckConstraint('avg_duration_ms IS NULL OR avg_duration_ms >= 0', name='ck_qbv2_qstats_duration'),
-        sa.Index('ix_qbv2_qstats_question', 'question_id'),
         sa.Index('ix_qbv2_qstats_rate_volume', 'correct_rate', 'graded_count'),
-        {'comment': '题目版本派生统计表'},
+        {'comment': '题目派生统计表'},
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
-    question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='题目身份 ID')
-    question_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='题目版本 ID')
+    question_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('qbank_v2_question.id', ondelete='CASCADE'),
+        comment='题目 ID',
+    )
     attempt_count: Mapped[int] = mapped_column(sa.BigInteger, default=0, comment='提交次数')
     graded_count: Mapped[int] = mapped_column(sa.BigInteger, default=0, comment='已判分次数')
     correct_count: Mapped[int] = mapped_column(sa.BigInteger, default=0, comment='答对次数')
@@ -78,45 +73,21 @@ class QbQuestionRevisionStatistics(Base):
     )
     calculated_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近聚合时间')
 
-    question_revision: Mapped[QbQuestionRevision] = relationship(
-        init=False,
-        foreign_keys=[question_id, question_revision_id],
-        lazy='noload',
-    )
-
 
 class QbUserQuestionMastery(Base):
-    """Rebuildable per-user learning state, separate from raw attempts."""
+    """Rebuildable per-user mastery projection; scheduling lives on the wrong-book state."""
 
     __tablename__ = 'qbank_v2_user_question_mastery'
     __table_args__ = (
         sa.UniqueConstraint('user_id', 'question_id', 'deleted', name='uq_qbv2_mastery_user_question'),
-        sa.ForeignKeyConstraint(
-            ['question_id', 'last_question_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_mastery_last_revision',
-            ondelete='RESTRICT',
-        ),
         sa.CheckConstraint(
             "state IN ('new','learning','review','mastered','suspended')",
             name='ck_qbv2_mastery_state',
         ),
         sa.CheckConstraint('mastery_score BETWEEN 0 AND 1', name='ck_qbv2_mastery_score'),
-        sa.CheckConstraint(
-            'attempt_count >= 0 AND correct_count >= 0 AND review_count >= 0 AND lapse_count >= 0',
-            name='ck_qbv2_mastery_count',
-        ),
+        sa.CheckConstraint('attempt_count >= 0 AND correct_count >= 0', name='ck_qbv2_mastery_count'),
         sa.CheckConstraint('correct_count <= attempt_count', name='ck_qbv2_mastery_correct'),
-        sa.Index('ix_qbv2_mastery_due', 'user_id', 'state', 'next_review_time', 'id'),
-        sa.Index(
-            'ix_qbv2_mastery_push_due',
-            'next_review_time',
-            'user_id',
-            'id',
-            postgresql_where=sa.text(
-                "deleted = 0 AND next_review_time IS NOT NULL AND state IN ('learning','review')"
-            ),
-        ).ddl_if(dialect='postgresql'),
+        sa.Index('ix_qbv2_mastery_state', 'user_id', 'state', 'id'),
         sa.Index('ix_qbv2_mastery_question', 'question_id', 'state'),
         {'comment': '用户题目掌握状态表'},
     )
@@ -132,18 +103,6 @@ class QbUserQuestionMastery(Base):
         sa.ForeignKey('qbank_v2_question.id', ondelete='RESTRICT'),
         comment='题目身份 ID',
     )
-    last_question_revision_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger,
-        default=None,
-        comment='最近作答题目版本 ID',
-    )
-    algorithm_name: Mapped[str] = mapped_column(sa.String(32), default='none', comment='sm2/fsrs/custom 等调度算法')
-    algorithm_version: Mapped[str] = mapped_column(sa.String(32), default='v1', comment='调度算法版本')
-    algorithm_state: Mapped[dict[str, Any]] = mapped_column(
-        CompatibleJSONB,
-        default_factory=dict,
-        comment='算法私有状态；切换算法时可重建',
-    )
     state: Mapped[str] = mapped_column(sa.String(16), default='new', comment='学习状态')
     mastery_score: Mapped[Decimal] = mapped_column(
         sa.Numeric(5, 4),
@@ -152,11 +111,7 @@ class QbUserQuestionMastery(Base):
     )
     attempt_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='累计提交次数')
     correct_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='累计答对次数')
-    review_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='累计复习次数')
-    lapse_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='已掌握后再次遗忘次数')
     last_attempt_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近作答时间')
-    last_review_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近复习时间')
-    next_review_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='下次复习时间')
 
 
 class QbUserBankItemProgress(Base):
