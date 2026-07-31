@@ -1,18 +1,24 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Request
+from fastapi import APIRouter, Path, Query, Request
 
 from backend.app.question_bank_v2.schema.practice import (
     CreatePracticeSessionParam,
     GetPracticeResponseDetail,
     GetPracticeSessionDetail,
+    GetPracticeSessionListItem,
+    GetPracticeSessionReport,
+    GetPracticeSessionSolutionItem,
     GetPracticeSolutionDetail,
+    PracticeMode,
+    PracticeSessionStatus,
     SavePracticeResponseParam,
     SubmitPracticeItemParam,
     SubmitPracticeItemResult,
     SubmitPracticeSessionResult,
 )
 from backend.app.question_bank_v2.service.practice_service import practice_service
+from backend.common.pagination import CursorPageData, DependsCursorPagination, cursor_paging_data
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -31,14 +37,82 @@ async def create_practice_session(
     return response_base.success(data=data)
 
 
+@router.get(
+    '',
+    summary='分页获取练习会话历史',
+    name='qbank_v2_get_practice_sessions',
+    dependencies=[DependsCursorPagination],
+)
+async def get_practice_sessions(
+    request: Request,
+    db: CurrentSession,
+    status: Annotated[PracticeSessionStatus | None, Query(description='会话状态')] = None,
+    mode: Annotated[PracticeMode | None, Query(description='练习模式')] = None,
+    source_type: Annotated[str | None, Query(max_length=24, description='组题来源类型')] = None,
+    bank_id: Annotated[int | None, Query(gt=0, description='题库稳定身份 ID')] = None,
+) -> ResponseSchemaModel[CursorPageData[GetPracticeSessionListItem]]:
+    stmt = practice_service.get_list_select(
+        user_id=request.user.id,
+        status=status,
+        mode=mode,
+        source_type=source_type,
+        bank_id=bank_id,
+    )
+    page_data = await cursor_paging_data(db, stmt, GetPracticeSessionListItem, unique=False)
+    return response_base.success(data=page_data)
+
+
 @router.get('/{session_key}', summary='获取练习会话', name='qbank_v2_get_practice_session')
 async def get_practice_session(
     request: Request,
-    db: CurrentSession,
+    db: CurrentSessionTransaction,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """仅会话所有者可以读取投递题目，响应不包含标准答案与解析"""
     data = await practice_service.get(db=db, session_key=session_key, user_id=request.user.id)
+    return response_base.success(data=data)
+
+
+@router.delete('/{session_key}', summary='隐藏练习会话', name='qbank_v2_delete_practice_session')
+async def delete_practice_session(
+    request: Request,
+    db: CurrentSessionTransaction,
+    session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
+) -> ResponseSchemaModel[None]:
+    """仅隐藏用户历史入口，保留作答事实、错题和学习统计"""
+    await practice_service.hide(db=db, session_key=session_key, user_id=request.user.id)
+    return response_base.success()
+
+
+@router.get(
+    '/{session_key}/report',
+    summary='获取整场练习报告',
+    name='qbank_v2_get_practice_session_report',
+)
+async def get_practice_session_report(
+    request: Request,
+    db: CurrentSessionTransaction,
+    session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
+) -> ResponseSchemaModel[GetPracticeSessionReport]:
+    data = await practice_service.get_report(db=db, session_key=session_key, user_id=request.user.id)
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/{session_key}/solutions',
+    summary='获取整场答案解析',
+    name='qbank_v2_get_practice_session_solutions',
+)
+async def get_practice_session_solutions(
+    request: Request,
+    db: CurrentSessionTransaction,
+    session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
+) -> ResponseSchemaModel[list[GetPracticeSessionSolutionItem]]:
+    data = await practice_service.get_session_solutions(
+        db=db,
+        session_key=session_key,
+        user_id=request.user.id,
+    )
     return response_base.success(data=data)
 
 

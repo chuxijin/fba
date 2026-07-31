@@ -2,9 +2,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank_v2.cache.composition_cache import composition_cache
 from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
 from backend.app.question_bank_v2.crud.crud_composition import bank_item_dao, bank_section_dao
-from backend.app.question_bank_v2.crud.crud_question import question_dao, question_revision_dao
+from backend.app.question_bank_v2.crud.crud_question import question_dao
 from backend.app.question_bank_v2.schema.composition import (
     CreateBankItemParam,
     CreateBankSectionParam,
@@ -61,21 +62,15 @@ class CompositionService:
         return parent_depth + 1
 
     @staticmethod
-    async def _validate_question_revision(
+    async def _validate_question(
         *,
         db: AsyncSession,
         question_id: int,
-        question_revision_id: int,
     ) -> None:
-        """校验编排固定的是同一题目的不可变版本"""
+        """校验题目存在且可用"""
         question = await question_dao.get(db, question_id)
         if question is None or question.status != 'active':
             raise errors.NotFoundError(msg='题目不存在或不可用')
-        revision = await question_revision_dao.get(db, question_revision_id, question_id=question_id)
-        if revision is None:
-            raise errors.NotFoundError(msg='题目版本不存在或不属于该题目')
-        if revision.status not in {'published', 'retired'}:
-            raise errors.ConflictError(msg='题库只能编排已发布的题目版本')
 
     @staticmethod
     def _build_section_tree(sections: list[Any]) -> list[GetBankSectionDetail]:
@@ -135,22 +130,51 @@ class CompositionService:
 
     @staticmethod
     async def get(*, db: AsyncSession, bank_id: int, revision_id: int) -> GetBankCompositionDetail:
-        """获取题库版本完整编排"""
-        revision = await CompositionService._get_bank_revision(
+        """获取题库版本轻量章节大纲，题项通过游标接口分页读取"""
+        async def factory() -> GetBankCompositionDetail:
+            revision = await CompositionService._get_bank_revision(
+                db=db,
+                bank_id=bank_id,
+                revision_id=revision_id,
+                draft_only=False,
+            )
+            sections = list(await bank_section_dao.get_all(db, revision_id))
+            return GetBankCompositionDetail(
+                bank_id=bank_id,
+                bank_revision_id=revision_id,
+                revision_status=revision.status,
+                sections=CompositionService._build_section_tree(sections),
+                items=[],
+            )
+        return await composition_cache.get_or_set(
+            bank_id,
+            revision_id,
+            factory=factory,
+            should_cache=lambda data: data.revision_status in {'published', 'retired'},
+        )
+
+    @staticmethod
+    async def invalidate_cache(*, bank_id: int, revision_id: int) -> None:
+        await composition_cache.invalidate(bank_id, revision_id)
+
+    @staticmethod
+    async def get_items_select(
+        *,
+        db: AsyncSession,
+        bank_id: int,
+        revision_id: int,
+        section_id: int | None,
+    ) -> Any:
+        """校验题库版本并构建题项游标分页查询"""
+        await CompositionService._get_bank_revision(
             db=db,
             bank_id=bank_id,
             revision_id=revision_id,
             draft_only=False,
         )
-        sections = list(await bank_section_dao.get_all(db, revision_id))
-        items = [GetBankItemDetail(**item) for item in await bank_item_dao.get_all(db, revision_id)]
-        return GetBankCompositionDetail(
-            bank_id=bank_id,
-            bank_revision_id=revision_id,
-            revision_status=revision.status,
-            sections=CompositionService._build_section_tree(sections),
-            items=items,
-        )
+        if section_id is not None and await bank_section_dao.get(db, section_id, revision_id=revision_id) is None:
+            raise errors.NotFoundError(msg='题库章节不存在')
+        return bank_item_dao.get_list_select(revision_id=revision_id, section_id=section_id)
 
     @staticmethod
     async def create_section(
@@ -246,10 +270,9 @@ class CompositionService:
             revision_id=revision_id,
             draft_only=True,
         )
-        await CompositionService._validate_question_revision(
+        await CompositionService._validate_question(
             db=db,
             question_id=obj.question_id,
-            question_revision_id=obj.question_revision_id,
         )
         if (
             obj.section_id is not None
@@ -294,12 +317,10 @@ class CompositionService:
             raise errors.NotFoundError(msg='题目编排不存在')
         data = obj.model_dump(exclude_unset=True)
         target_question_id = data.get('question_id', item.question_id)
-        target_revision_id = data.get('question_revision_id', item.question_revision_id)
-        if 'question_id' in data or 'question_revision_id' in data:
-            await CompositionService._validate_question_revision(
+        if 'question_id' in data:
+            await CompositionService._validate_question(
                 db=db,
                 question_id=target_question_id,
-                question_revision_id=target_revision_id,
             )
             existing = await bank_item_dao.get_by_question(db, revision_id, target_question_id)
             if existing is not None and existing.id != item_id:

@@ -14,7 +14,6 @@ from .common import CompatibleJSONB
 
 if TYPE_CHECKING:
     from .knowledge import QbKnowledgePoint
-    from .question import QbQuestionRevision
 
 
 class QbWrongQuestionState(Base, UserMixin):
@@ -24,12 +23,6 @@ class QbWrongQuestionState(Base, UserMixin):
     __table_args__ = (
         sa.UniqueConstraint('user_id', 'question_id', 'deleted', name='uq_qbv2_wrong_user_question'),
         sa.UniqueConstraint('user_id', 'question_id', 'id', name='uq_qbv2_wrong_user_question_id'),
-        sa.ForeignKeyConstraint(
-            ['question_id', 'last_question_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_wrong_last_revision',
-            ondelete='RESTRICT',
-        ),
         sa.ForeignKeyConstraint(
             ['user_id', 'question_id', 'source_attempt_id'],
             [
@@ -41,14 +34,10 @@ class QbWrongQuestionState(Base, UserMixin):
             ondelete='RESTRICT',
         ),
         sa.ForeignKeyConstraint(
-            ['question_id', 'last_question_revision_id', 'source_bank_item_id'],
-            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.question_revision_id', 'qbank_v2_bank_item.id'],
+            ['question_id', 'source_bank_item_id'],
+            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.id'],
             name='fk_qbv2_wrong_bank_context',
             ondelete='RESTRICT',
-        ),
-        sa.CheckConstraint(
-            'source_bank_item_id IS NULL OR last_question_revision_id IS NOT NULL',
-            name='ck_qbv2_wrong_bank_revision',
         ),
         sa.CheckConstraint(
             "entry_source IN ('attempt','manual','ocr','import')",
@@ -56,9 +45,43 @@ class QbWrongQuestionState(Base, UserMixin):
         ),
         sa.CheckConstraint("status IN ('active','resolved','suspended')", name='ck_qbv2_wrong_status'),
         sa.CheckConstraint('wrong_count >= 0 AND correct_streak >= 0', name='ck_qbv2_wrong_counts'),
+        sa.CheckConstraint('review_count >= 0 AND practice_level >= 0', name='ck_qbv2_wrong_review_counts'),
+        sa.CheckConstraint('last_rating IS NULL OR last_rating BETWEEN 1 AND 4', name='ck_qbv2_wrong_rating'),
         sa.Index('ix_qbv2_wrong_user_status', 'user_id', 'status', 'is_pinned', 'last_wrong_time', 'id'),
         sa.Index('ix_qbv2_wrong_question', 'question_id', 'status'),
         sa.Index('ix_qbv2_wrong_source_bank_item', 'source_bank_item_id'),
+        # 推送扫描：单表 partial index，只覆盖仍在错题本且已排期的行
+        sa.Index(
+            'ix_qbv2_wrong_push_due',
+            'next_practice_time',
+            'user_id',
+            'id',
+            postgresql_where=sa.text("deleted = 0 AND status = 'active' AND next_practice_time IS NOT NULL"),
+        ).ddl_if(dialect='postgresql'),
+        # 用户到期列表：按用户定位后扫描到期时间，避免扫描全站到期数据。
+        sa.Index(
+            'ix_qbv2_wrong_user_due',
+            'user_id',
+            'next_practice_time',
+            'id',
+            postgresql_where=sa.text("deleted = 0 AND status = 'active' AND next_practice_time IS NOT NULL"),
+        ).ddl_if(dialect='postgresql'),
+        # 复盘档案：只索引复盘过的行，考前回顾不受错题本状态影响
+        sa.Index(
+            'ix_qbv2_wrong_reviewed',
+            'user_id',
+            'last_reviewed_time',
+            'id',
+            postgresql_where=sa.text('deleted = 0 AND review_count > 0'),
+        ).ddl_if(dialect='postgresql'),
+        # 待复盘队列
+        sa.Index(
+            'ix_qbv2_wrong_unreviewed',
+            'user_id',
+            'last_wrong_time',
+            'id',
+            postgresql_where=sa.text("deleted = 0 AND review_count = 0 AND status = 'active'"),
+        ).ddl_if(dialect='postgresql'),
         {'comment': '用户错题本当前状态表'},
     )
 
@@ -72,11 +95,6 @@ class QbWrongQuestionState(Base, UserMixin):
         sa.BigInteger,
         sa.ForeignKey('qbank_v2_question.id', ondelete='RESTRICT'),
         comment='稳定题目 ID',
-    )
-    last_question_revision_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger,
-        default=None,
-        comment='最近答错或复习的题目版本 ID',
     )
     source_attempt_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
@@ -113,11 +131,20 @@ class QbWrongQuestionState(Base, UserMixin):
     pinned_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='置顶时间')
     resolved_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='转为已解决时间')
 
-    last_question_revision: Mapped[QbQuestionRevision | None] = relationship(
-        init=False,
-        foreign_keys=[question_id, last_question_revision_id],
-        lazy='noload',
+    # 复盘线：用户主动填写，不参与自动调度
+    review_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='真正复盘次数，不含录入事件')
+    last_reviewed_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近复盘时间')
+
+    # 重练线：由客观作答自动推进，next_practice_time 是推送的唯一真相源
+    practice_level: Mapped[int] = mapped_column(sa.SmallInteger, default=0, comment='重练阶梯等级')
+    last_rating: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='最近派生等级 1-4')
+    last_duration_ms: Mapped[int | None] = mapped_column(
+        sa.BigInteger,
+        default=None,
+        comment='最近一次作答用时，下次派生等级的对比基线',
     )
+    next_practice_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='下次重练时间')
+
     reviews: Mapped[list[QbQuestionReview]] = relationship(
         init=False,
         back_populates='wrong_state',
@@ -170,12 +197,6 @@ class QbQuestionReview(Base, UserMixin):
     __tablename__ = 'qbank_v2_question_review'
     __table_args__ = (
         sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id'],
-            ['qbank_v2_question_revision.question_id', 'qbank_v2_question_revision.id'],
-            name='fk_qbv2_review_question_revision',
-            ondelete='RESTRICT',
-        ),
-        sa.ForeignKeyConstraint(
             ['user_id', 'question_id', 'wrong_state_id'],
             [
                 'qbank_v2_wrong_question_state.user_id',
@@ -196,8 +217,8 @@ class QbQuestionReview(Base, UserMixin):
             ondelete='RESTRICT',
         ),
         sa.ForeignKeyConstraint(
-            ['question_id', 'question_revision_id', 'bank_item_id'],
-            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.question_revision_id', 'qbank_v2_bank_item.id'],
+            ['question_id', 'bank_item_id'],
+            ['qbank_v2_bank_item.question_id', 'qbank_v2_bank_item.id'],
             name='fk_qbv2_review_bank_context',
             ondelete='RESTRICT',
         ),
@@ -206,20 +227,24 @@ class QbQuestionReview(Base, UserMixin):
             "event_type IN ('capture','review')",
             name='ck_qbv2_review_event_type',
         ),
-        sa.CheckConstraint(
-            "(event_type = 'capture' AND rating IS NULL AND rating_source IS NULL) "
-            "OR (event_type = 'review' AND rating BETWEEN 1 AND 4 "
-            "AND rating_source IN ('user','auto'))",
-            name='ck_qbv2_review_rating',
-        ),
-        sa.CheckConstraint(
-            "outcome IN ('continue','mastered','reopened')",
-            name='ck_qbv2_review_outcome',
-        ),
         sa.UniqueConstraint('user_id', 'idempotency_key', 'deleted', name='uq_qbv2_review_idempotency'),
         sa.Index('ix_qbv2_review_user_time', 'user_id', 'reviewed_time'),
+        sa.Index(
+            'ix_qbv2_review_user_review_time',
+            'user_id',
+            'reviewed_time',
+            'id',
+            postgresql_where=sa.text("deleted = 0 AND event_type = 'review'"),
+        ).ddl_if(dialect='postgresql'),
         sa.Index('ix_qbv2_review_question_time', 'question_id', 'reviewed_time'),
         sa.Index('ix_qbv2_review_wrong_state', 'wrong_state_id', 'reviewed_time'),
+        sa.Index(
+            'ix_qbv2_review_wrong_state_page',
+            'wrong_state_id',
+            sa.desc('reviewed_time'),
+            sa.desc('id'),
+            postgresql_where=sa.text('deleted = 0'),
+        ).ddl_if(dialect='postgresql'),
         {'comment': '用户错题复盘事件表'},
     )
 
@@ -230,7 +255,6 @@ class QbQuestionReview(Base, UserMixin):
         comment='用户 ID',
     )
     question_id: Mapped[int] = mapped_column(sa.BigInteger, comment='稳定题目 ID')
-    question_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='本次复盘看到的题目版本 ID')
     wrong_state_id: Mapped[int] = mapped_column(sa.BigInteger, comment='错题当前状态 ID')
     idempotency_key: Mapped[str] = mapped_column(sa.String(128), comment='客户端复盘提交幂等键')
     source_attempt_id: Mapped[int | None] = mapped_column(
@@ -244,36 +268,13 @@ class QbQuestionReview(Base, UserMixin):
         comment='本次复盘题库上下文',
     )
     event_type: Mapped[str] = mapped_column(sa.String(16), default='review', comment='capture/review')
-    rating: Mapped[int | None] = mapped_column(
-        sa.SmallInteger,
-        default=None,
-        comment='FSRS 评分: 1 Again, 2 Hard, 3 Good, 4 Easy',
-    )
-    rating_source: Mapped[str | None] = mapped_column(
-        sa.String(16),
-        default=None,
-        comment='评分来源: user/auto',
-    )
     duration_ms: Mapped[int] = mapped_column(sa.BigInteger, default=0, comment='复盘用时毫秒')
     summary: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='学习者复盘总结')
-    outcome: Mapped[str] = mapped_column(sa.String(16), default='continue', comment='复盘后的错题状态意图')
     review_data: Mapped[dict[str, Any]] = mapped_column(
         CompatibleJSONB,
         default_factory=dict,
         comment='防错策略等可扩展结构化内容',
     )
-    algorithm_name: Mapped[str | None] = mapped_column(
-        sa.String(32),
-        default=None,
-        comment='本次调度算法名称',
-    )
-    algorithm_version: Mapped[str | None] = mapped_column(
-        sa.String(32),
-        default=None,
-        comment='本次调度算法版本',
-    )
-    due_before: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='复盘前到期时间')
-    due_after: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='复盘后到期时间')
     reviewed_time: Mapped[datetime] = mapped_column(
         TimeZone,
         default_factory=timezone.now,
@@ -284,12 +285,6 @@ class QbQuestionReview(Base, UserMixin):
         init=False,
         back_populates='reviews',
         foreign_keys=[user_id, question_id, wrong_state_id],
-        lazy='noload',
-    )
-    question_revision: Mapped[QbQuestionRevision] = relationship(
-        init=False,
-        foreign_keys=[question_id, question_revision_id],
-        overlaps='reviews,wrong_state',
         lazy='noload',
     )
     tags: Mapped[list[QbQuestionReviewTag]] = relationship(

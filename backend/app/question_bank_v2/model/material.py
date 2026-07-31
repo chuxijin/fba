@@ -14,7 +14,7 @@ from .common import CompatibleJSONB, ContentStatus
 
 if TYPE_CHECKING:
     from .asset import QbMaterialRevisionAsset
-    from .question import QbQuestionRevision
+    from .question import QbQuestion
 
 
 class QbMaterial(Base, UserMixin):
@@ -132,19 +132,19 @@ class QbMaterialRevision(Base, UserMixin):
 
 
 class QbQuestionMaterial(Base, UserMixin):
-    """Ordered relation pinning a material revision to a question revision."""
+    """Ordered relation pinning a material revision to a question."""
 
     __tablename__ = 'qbank_v2_question_material'
     __table_args__ = (
         sa.UniqueConstraint(
-            'question_revision_id',
+            'question_id',
             'material_id',
             'role',
             'deleted',
             name='uq_qbv2_question_material',
         ),
         sa.UniqueConstraint(
-            'question_revision_id',
+            'question_id',
             'material_revision_id',
             'id',
             name='uq_qbv2_qmaterial_context_id',
@@ -157,16 +157,16 @@ class QbQuestionMaterial(Base, UserMixin):
         ),
         sa.CheckConstraint("role IN ('passage','prompt','reference','attachment')", name='ck_qbv2_qmaterial_role'),
         sa.CheckConstraint('sort_order >= 0', name='ck_qbv2_qmaterial_sort'),
-        sa.Index('ix_qbv2_qmaterial_order', 'question_revision_id', 'sort_order'),
+        sa.Index('ix_qbv2_qmaterial_order', 'question_id', 'sort_order'),
         sa.Index('ix_qbv2_qmaterial_reverse', 'material_id', 'material_revision_id'),
-        {'comment': '题目版本与材料版本关联表'},
+        {'comment': '题目与材料版本关联表'},
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
-    question_revision_id: Mapped[int] = mapped_column(
+    question_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('qbank_v2_question_revision.id', ondelete='RESTRICT'),
-        comment='题目版本 ID',
+        sa.ForeignKey('qbank_v2_question.id', ondelete='RESTRICT'),
+        comment='题目 ID',
     )
     material_id: Mapped[int] = mapped_column(sa.BigInteger, comment='材料身份 ID')
     material_revision_id: Mapped[int] = mapped_column(sa.BigInteger, comment='固定材料版本 ID')
@@ -178,7 +178,7 @@ class QbQuestionMaterial(Base, UserMixin):
         comment='材料在此题目中的折叠、节选等展示配置',
     )
 
-    question_revision: Mapped[QbQuestionRevision] = relationship(
+    question: Mapped[QbQuestion] = relationship(
         init=False,
         back_populates='materials',
         lazy='noload',
@@ -192,12 +192,12 @@ class QbQuestionMaterial(Base, UserMixin):
         init=False,
         back_populates='question_material',
         foreign_keys=lambda: [
-            QbQuestionInteraction.question_revision_id,
+            QbQuestionInteraction.question_id,
             QbQuestionInteraction.material_revision_id,
             QbQuestionInteraction.question_material_id,
         ],
         cascade='save-update, merge',
-        overlaps='question_revision,interactions',
+        overlaps='question,interactions',
         lazy='noload',
     )
 
@@ -287,21 +287,21 @@ class QbMaterialAnchor(Base, UserMixin):
 
 
 class QbQuestionInteraction(Base, UserMixin):
-    """Interaction definition owned by one immutable question revision."""
+    """Interaction definition owned by one question."""
 
     __tablename__ = 'qbank_v2_question_interaction'
     __table_args__ = (
         sa.UniqueConstraint(
-            'question_revision_id',
+            'question_id',
             'interaction_key',
             'deleted',
             name='uq_qbv2_interaction_key',
         ),
         sa.UniqueConstraint('id', 'material_revision_id', name='uq_qbv2_interaction_id_mrev'),
         sa.ForeignKeyConstraint(
-            ['question_revision_id', 'material_revision_id', 'question_material_id'],
+            ['question_id', 'material_revision_id', 'question_material_id'],
             [
-                'qbank_v2_question_material.question_revision_id',
+                'qbank_v2_question_material.question_id',
                 'qbank_v2_question_material.material_revision_id',
                 'qbank_v2_question_material.id',
             ],
@@ -326,18 +326,18 @@ class QbQuestionInteraction(Base, UserMixin):
             "status IN ('draft','active','retired')",
             name='ck_qbv2_interaction_status',
         ),
-        sa.Index('ix_qbv2_interaction_revision', 'question_revision_id', 'status'),
+        sa.Index('ix_qbv2_interaction_question', 'question_id', 'status'),
         sa.Index('ix_qbv2_interaction_material', 'question_material_id'),
-        {'comment': '题目版本交互定义表'},
+        {'comment': '题目交互定义表'},
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
-    question_revision_id: Mapped[int] = mapped_column(
+    question_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('qbank_v2_question_revision.id', ondelete='RESTRICT'),
-        comment='题目版本 ID',
+        sa.ForeignKey('qbank_v2_question.id', ondelete='RESTRICT'),
+        comment='题目 ID',
     )
-    interaction_key: Mapped[str] = mapped_column(sa.String(128), comment='版本内稳定交互键')
+    interaction_key: Mapped[str] = mapped_column(sa.String(128), comment='题目内稳定交互键')
     interaction_type: Mapped[str] = mapped_column(sa.String(32), comment='可扩展交互类型')
     instruction: Mapped[str] = mapped_column(UniversalText, comment='交互指令')
     question_material_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='题目材料关联 ID')
@@ -357,18 +357,18 @@ class QbQuestionInteraction(Base, UserMixin):
     )
     status: Mapped[str] = mapped_column(sa.String(16), default='draft', comment='draft/active/retired')
 
-    question_revision: Mapped[QbQuestionRevision] = relationship(
+    question: Mapped[QbQuestion] = relationship(
         init=False,
         back_populates='interactions',
-        foreign_keys=[question_revision_id],
+        foreign_keys=[question_id],
         overlaps='interactions,question_material',
         lazy='noload',
     )
     question_material: Mapped[QbQuestionMaterial | None] = relationship(
         init=False,
         back_populates='interactions',
-        foreign_keys=[question_revision_id, material_revision_id, question_material_id],
-        overlaps='interactions,question_revision',
+        foreign_keys=[question_id, material_revision_id, question_material_id],
+        overlaps='interactions,question',
         lazy='noload',
     )
     candidates: Mapped[list[QbQuestionInteractionCandidate]] = relationship(

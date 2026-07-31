@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.common.model import Base, UniversalText, UserMixin, id_key
 
 if TYPE_CHECKING:
-    from .question import QbQuestionRevision
+    from .question import QbQuestion
 
 
 class QbKnowledgeSystem(Base, UserMixin):
@@ -106,12 +106,12 @@ class QbKnowledgePoint(Base, UserMixin):
 
 
 class QbQuestionKnowledgePoint(Base, UserMixin):
-    """Weighted, auditable relation from a question revision to a knowledge point."""
+    """Weighted, auditable relation from a question to a knowledge point."""
 
     __tablename__ = 'qbank_v2_question_knowledge_point'
     __table_args__ = (
         sa.UniqueConstraint(
-            'question_revision_id',
+            'question_id',
             'knowledge_point_id',
             'deleted',
             name='uq_qbv2_question_kpoint',
@@ -120,16 +120,16 @@ class QbQuestionKnowledgePoint(Base, UserMixin):
         sa.CheckConstraint("source IN ('manual','import','ai')", name='ck_qbv2_qkp_source'),
         sa.CheckConstraint('weight > 0 AND weight <= 1', name='ck_qbv2_qkp_weight'),
         sa.CheckConstraint('confidence IS NULL OR confidence BETWEEN 0 AND 1', name='ck_qbv2_qkp_confidence'),
-        sa.Index('ix_qbv2_qkp_point_revision', 'knowledge_point_id', 'question_revision_id'),
-        sa.Index('ix_qbv2_qkp_revision_role', 'question_revision_id', 'role'),
-        {'comment': '题目版本知识点关联表'},
+        sa.Index('ix_qbv2_qkp_point_question', 'knowledge_point_id', 'question_id'),
+        sa.Index('ix_qbv2_qkp_question_role', 'question_id', 'role'),
+        {'comment': '题目知识点关联表'},
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
-    question_revision_id: Mapped[int] = mapped_column(
+    question_id: Mapped[int] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('qbank_v2_question_revision.id', ondelete='RESTRICT'),
-        comment='题目版本 ID',
+        sa.ForeignKey('qbank_v2_question.id', ondelete='RESTRICT'),
+        comment='题目 ID',
     )
     knowledge_point_id: Mapped[int] = mapped_column(
         sa.BigInteger,
@@ -141,7 +141,7 @@ class QbQuestionKnowledgePoint(Base, UserMixin):
     source: Mapped[str] = mapped_column(sa.String(16), default='manual', comment='标注来源')
     confidence: Mapped[Decimal | None] = mapped_column(sa.Numeric(5, 4), default=None, comment='自动标注置信度')
 
-    question_revision: Mapped[QbQuestionRevision] = relationship(
+    question: Mapped[QbQuestion] = relationship(
         init=False,
         back_populates='knowledge_points',
         lazy='noload',

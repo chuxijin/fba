@@ -1,7 +1,5 @@
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from importlib.metadata import version
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,59 +7,21 @@ from backend.app.question_bank_v2.crud.crud_review import (
     user_question_mastery_dao,
     wrong_question_state_dao,
 )
+from backend.app.question_bank_v2.crud.crud_statistics import user_bank_item_progress_dao
 from backend.app.question_bank_v2.model.practice import QbPracticeSessionItem, QbQuestionAttempt
+from backend.app.question_bank_v2.model.review import QbWrongQuestionState
 from backend.app.question_bank_v2.model.statistics import QbUserQuestionMastery
-from backend.common.fsrs import NEW_CARD_STATE, ReviewForecast, ReviewResult, fsrs_engine
+from backend.app.question_bank_v2.service.practice_schedule_service import (
+    derive_rating,
+    next_practice_level,
+    next_practice_time,
+)
 
-FSRS_VERSION = version('fsrs')
-
-
-@dataclass(slots=True)
-class MasteryFSRSRecord:
-    """将题目掌握度中的算法私有状态适配为通用 FSRS 协议"""
-
-    state: int
-    step: int | None
-    stability: float | None
-    difficulty: float | None
-    due: datetime | None
-    last_review: datetime | None
+DEFAULT_RESOLVE_THRESHOLD = 3
 
 
 class ReviewScheduleService:
-    """用户题目掌握度和 FSRS 调度服务类"""
-
-    @staticmethod
-    def _algorithm_state(*, mastery: QbUserQuestionMastery) -> dict:
-        """获取有稳定默认值的 FSRS 私有状态"""
-        state = mastery.algorithm_state or {}
-        return {
-            'state': int(state.get('state', NEW_CARD_STATE)),
-            'step': state.get('step', 0),
-            'stability': state.get('stability'),
-            'difficulty': state.get('difficulty'),
-        }
-
-    @staticmethod
-    def _to_record(*, mastery: QbUserQuestionMastery) -> MasteryFSRSRecord:
-        """构建通用 FSRS 输入记录"""
-        state = ReviewScheduleService._algorithm_state(mastery=mastery)
-        return MasteryFSRSRecord(
-            **state,
-            due=mastery.next_review_time,
-            last_review=mastery.last_review_time,
-        )
-
-    @staticmethod
-    def _mastery_score(*, current: Decimal, rating: int) -> Decimal:
-        """使用平滑后的四级评分维护 0-1 掌握度展示值"""
-        rating_score = Decimal(rating - 1) / Decimal(3)
-        return (current * Decimal('0.7') + rating_score * Decimal('0.3')).quantize(Decimal('0.0001'))
-
-    @staticmethod
-    def forecast(*, mastery: QbUserQuestionMastery) -> ReviewForecast:
-        """预览当前调度状态下四种评分的下次复习时间"""
-        return fsrs_engine.forecast(ReviewScheduleService._to_record(mastery=mastery))
+    """由不可变作答事实维护掌握度、错题本状态和重练调度"""
 
     @staticmethod
     async def ensure_mastery(
@@ -69,11 +29,9 @@ class ReviewScheduleService:
         db: AsyncSession,
         user_id: int,
         question_id: int,
-        question_revision_id: int,
-        now: datetime,
         for_update: bool = False,
     ) -> QbUserQuestionMastery:
-        """按需创建题目掌握度和新 FSRS 卡片"""
+        """按需创建题目掌握度"""
         mastery = await user_question_mastery_dao.get_by_question(
             db,
             user_id=user_id,
@@ -81,58 +39,57 @@ class ReviewScheduleService:
             for_update=for_update,
         )
         if mastery is not None:
-            mastery.last_question_revision_id = question_revision_id
             return mastery
-
-        defaults = fsrs_engine.new_card_defaults(now)
         return await user_question_mastery_dao.create(
             db,
-            {
-                'user_id': user_id,
-                'question_id': question_id,
-                'last_question_revision_id': question_revision_id,
-                'algorithm_name': 'fsrs',
-                'algorithm_version': FSRS_VERSION,
-                'algorithm_state': {
-                    'state': defaults['state'],
-                    'step': defaults['step'],
-                    'stability': None,
-                    'difficulty': None,
-                },
-                'state': 'learning',
-                'next_review_time': defaults['due'],
-            },
+            {'user_id': user_id, 'question_id': question_id, 'state': 'learning'},
         )
 
     @staticmethod
-    async def apply_attempt(
+    def _refresh_mastery_score(*, mastery: QbUserQuestionMastery) -> None:
+        """由累计正确率维护 0-1 掌握度展示值"""
+        if mastery.attempt_count <= 0:
+            return
+        mastery.mastery_score = (Decimal(mastery.correct_count) / Decimal(mastery.attempt_count)).quantize(
+            Decimal('0.0001')
+        )
+
+    @staticmethod
+    def _advance_schedule(*, wrong_state: QbWrongQuestionState, attempt: QbQuestionAttempt) -> None:
+        """按客观派生等级推进重练阶梯"""
+        rating = derive_rating(
+            is_correct=attempt.is_correct,
+            duration_ms=attempt.duration_ms,
+            baseline_ms=wrong_state.last_duration_ms,
+        )
+        if rating is not None:
+            wrong_state.last_rating = rating
+            wrong_state.practice_level = next_practice_level(level=wrong_state.practice_level, rating=rating)
+            wrong_state.next_practice_time = next_practice_time(
+                level=wrong_state.practice_level,
+                now=attempt.submitted_time,
+            )
+        wrong_state.last_duration_ms = attempt.duration_ms
+
+    @staticmethod
+    async def _sync_wrong_state(
         *,
         db: AsyncSession,
         attempt: QbQuestionAttempt,
         session_item: QbPracticeSessionItem,
+        mastery: QbUserQuestionMastery,
+        resolve_threshold: int,
     ) -> None:
-        """由不可变作答事实同步掌握度和错题当前状态"""
-        mastery = await ReviewScheduleService.ensure_mastery(
-            db=db,
-            user_id=attempt.user_id,
-            question_id=attempt.question_id,
-            question_revision_id=attempt.question_revision_id,
-            now=attempt.submitted_time,
-            for_update=True,
-        )
-        mastery.attempt_count += 1
-        mastery.correct_count += int(attempt.is_correct is True)
-        mastery.last_attempt_time = attempt.submitted_time
-
+        """由作答事实推进错题本状态与重练调度"""
         wrong_state = await wrong_question_state_dao.get_by_question(
             db,
             user_id=attempt.user_id,
             question_id=attempt.question_id,
             for_update=True,
         )
+        now = attempt.submitted_time
+
         if attempt.is_correct is False:
-            if mastery.state in {'review', 'mastered'}:
-                mastery.lapse_count += 1
             mastery.state = 'learning'
             if wrong_state is None:
                 await wrong_question_state_dao.create(
@@ -140,71 +97,114 @@ class ReviewScheduleService:
                     {
                         'user_id': attempt.user_id,
                         'question_id': attempt.question_id,
-                        'last_question_revision_id': attempt.question_revision_id,
                         'source_attempt_id': attempt.id,
                         'source_bank_item_id': session_item.bank_item_id,
                         'entry_source': 'attempt',
                         'status': 'active',
                         'wrong_count': 1,
-                        'first_wrong_time': attempt.submitted_time,
-                        'last_wrong_time': attempt.submitted_time,
-                        'last_practice_time': attempt.submitted_time,
+                        'first_wrong_time': now,
+                        'last_wrong_time': now,
+                        'last_practice_time': now,
                         'last_wrong_response': attempt.response_data,
+                        'last_duration_ms': attempt.duration_ms,
+                        'next_practice_time': next_practice_time(level=0, now=now),
                         'created_by': attempt.user_id,
                     },
                 )
-            else:
-                wrong_state.last_question_revision_id = attempt.question_revision_id
-                wrong_state.source_attempt_id = attempt.id
+                return
+            wrong_state.status = 'active'
+            wrong_state.resolved_time = None
+            wrong_state.wrong_count += 1
+            wrong_state.correct_streak = 0
+            wrong_state.source_attempt_id = attempt.id
+            if session_item.bank_item_id is not None:
                 wrong_state.source_bank_item_id = session_item.bank_item_id
-                wrong_state.status = 'active'
-                wrong_state.wrong_count += 1
-                wrong_state.correct_streak = 0
-                wrong_state.last_wrong_time = attempt.submitted_time
-                wrong_state.last_practice_time = attempt.submitted_time
-                wrong_state.last_wrong_response = attempt.response_data
-        elif attempt.is_correct is True and wrong_state is not None:
-            wrong_state.last_question_revision_id = attempt.question_revision_id
+            wrong_state.last_wrong_time = now
+            wrong_state.last_practice_time = now
+            wrong_state.last_wrong_response = attempt.response_data
+            ReviewScheduleService._advance_schedule(wrong_state=wrong_state, attempt=attempt)
+            return
+
+        if attempt.is_correct is True and wrong_state is not None:
             wrong_state.correct_streak += 1
-            wrong_state.last_practice_time = attempt.submitted_time
+            wrong_state.last_practice_time = now
+            ReviewScheduleService._advance_schedule(wrong_state=wrong_state, attempt=attempt)
+            # 复盘过的题已经想清楚错因，做对一次即可移出；未复盘的仍需连对到偏好阈值
+            threshold = 1 if wrong_state.review_count > 0 else resolve_threshold
+            if wrong_state.status == 'active' and wrong_state.correct_streak >= threshold:
+                wrong_state.status = 'resolved'
+                wrong_state.resolved_time = now
+                wrong_state.next_practice_time = None
+                mastery.state = 'mastered'
+
+    @staticmethod
+    async def apply_attempt(
+        *,
+        db: AsyncSession,
+        attempt: QbQuestionAttempt,
+        session_item: QbPracticeSessionItem,
+        resolve_threshold: int = DEFAULT_RESOLVE_THRESHOLD,
+    ) -> None:
+        """由不可变作答事实同步掌握度和错题当前状态"""
+        mastery = await ReviewScheduleService.ensure_mastery(
+            db=db,
+            user_id=attempt.user_id,
+            question_id=attempt.question_id,
+            for_update=True,
+        )
+        mastery.attempt_count += 1
+        mastery.correct_count += int(attempt.is_correct is True)
+        mastery.last_attempt_time = attempt.submitted_time
+        ReviewScheduleService._refresh_mastery_score(mastery=mastery)
+        await user_bank_item_progress_dao.apply_attempt(
+            db,
+            attempt=attempt,
+            bank_item_id=session_item.bank_item_id,
+        )
+        await ReviewScheduleService._sync_wrong_state(
+            db=db,
+            attempt=attempt,
+            session_item=session_item,
+            mastery=mastery,
+            resolve_threshold=resolve_threshold,
+        )
         await db.flush()
 
     @staticmethod
-    async def schedule_review(
+    async def apply_delayed_grade(
         *,
         db: AsyncSession,
-        mastery: QbUserQuestionMastery,
-        rating: int,
-        reviewed_time: datetime,
-    ) -> tuple[datetime | None, ReviewResult, ReviewForecast]:
-        """推进一次 FSRS 复习并返回前后调度结果"""
-        due_before = mastery.next_review_time
-        before_state = ReviewScheduleService._algorithm_state(mastery=mastery)['state']
-        update_data, result = fsrs_engine.schedule(
-            ReviewScheduleService._to_record(mastery=mastery),
-            rating,
-            now=reviewed_time,
+        attempt: QbQuestionAttempt,
+        session_item: QbPracticeSessionItem,
+        resolve_threshold: int = DEFAULT_RESOLVE_THRESHOLD,
+    ) -> None:
+        """为已累计提交次数的主观题补写掌握度、题项进度和错题状态"""
+        mastery = await ReviewScheduleService.ensure_mastery(
+            db=db,
+            user_id=attempt.user_id,
+            question_id=attempt.question_id,
+            for_update=True,
         )
-        mastery.algorithm_name = 'fsrs'
-        mastery.algorithm_version = FSRS_VERSION
-        mastery.algorithm_state = {
-            'state': update_data['state'],
-            'step': update_data['step'],
-            'stability': update_data['stability'],
-            'difficulty': update_data['difficulty'],
-        }
-        mastery.state = 'review' if update_data['state'] == 2 else 'learning'
-        mastery.mastery_score = ReviewScheduleService._mastery_score(
-            current=mastery.mastery_score,
-            rating=rating,
+        mastery.correct_count += int(attempt.is_correct is True)
+        ReviewScheduleService._refresh_mastery_score(mastery=mastery)
+        await user_bank_item_progress_dao.apply_delayed_grade(
+            db,
+            attempt=attempt,
+            bank_item_id=session_item.bank_item_id,
         )
-        mastery.review_count += 1
-        mastery.lapse_count += int(rating == 1 and before_state == 2)
-        mastery.last_review_time = update_data['last_review']
-        mastery.next_review_time = update_data['due']
+        await ReviewScheduleService._sync_wrong_state(
+            db=db,
+            attempt=attempt,
+            session_item=session_item,
+            mastery=mastery,
+            resolve_threshold=resolve_threshold,
+        )
         await db.flush()
-        forecast = ReviewScheduleService.forecast(mastery=mastery)
-        return due_before, result, forecast
+
+    @staticmethod
+    def reschedule(*, wrong_state: QbWrongQuestionState, now: datetime) -> None:
+        """手动恢复错题时按当前阶梯重新排期"""
+        wrong_state.next_practice_time = next_practice_time(level=wrong_state.practice_level, now=now)
 
 
 review_schedule_service: ReviewScheduleService = ReviewScheduleService()

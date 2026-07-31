@@ -10,6 +10,7 @@ from backend.app.admin.api.v1.sys.dept import router as dept_router
 from backend.app.admin.api.v1.sys.feedback import router as feedback_router
 from backend.app.admin.api.v1.sys.file import router as file_router
 from backend.app.admin.api.v1.sys.menu import router as menu_router
+from backend.app.admin.api.v1.sys.message import router as message_router
 from backend.app.admin.api.v1.sys.plugin import router as plugin_router
 from backend.app.admin.api.v1.sys.role import router as role_router
 from backend.app.admin.api.v1.sys.tag import router as tag_router
@@ -30,4 +31,5 @@ router.include_router(data_scope_router, prefix='/data-scopes', tags=['系统数
 router.include_router(file_router, prefix='/files', tags=['系统文件'])
 router.include_router(plugin_router, prefix='/plugins', tags=['系统插件'])
 router.include_router(feedback_router, prefix='/feedbacks', tags=['系统反馈'])
+router.include_router(message_router, prefix='/messages', tags=['系统消息'])
 router.include_router(dashboard_router, prefix='/dashboard', tags=['系统数据概览'])

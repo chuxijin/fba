@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, RedirectResponse
 
 from backend.app.question_bank.service.membership_service import membership_service
+from backend.app.question_bank_v2.service.access_service import bank_access_service
 from backend.common.exception import errors
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
@@ -184,6 +185,15 @@ async def _ensure_render_payload_access(
 
     filters = payload.filters
     bank_id = _coerce_positive_int(filters.get('bank_id'))
+    if payload.metadata.get('qbank_version') == 'v2':
+        if bank_id is not None:
+            await bank_access_service.ensure_bank_access(
+                db=db,
+                user_id=bound_user_id,
+                bank_id=bank_id,
+            )
+        return bound_user_id
+
     chapter_id = _coerce_positive_int(filters.get('chapter_id'))
     if chapter_id is not None:
         filters['bank_id'] = await membership_service.resolve_bank_context_for_chapter(

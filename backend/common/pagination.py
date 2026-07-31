@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from math import ceil
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
@@ -150,7 +150,12 @@ class CursorPageData(_CursorPageDetails, Generic[SchemaT]):
     items: Sequence[SchemaT]
 
 
-async def paging_data(db: AsyncSession, select: Select, schema_cls=None, **kwargs) -> dict[str, Any]:
+async def paging_data(
+    db: AsyncSession,
+    select: Select,
+    schema_cls: type[Any] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
     """
     基于 SQLAlchemy 创建分页数据
 
@@ -162,10 +167,13 @@ async def paging_data(db: AsyncSession, select: Select, schema_cls=None, **kwarg
     """
     paginated_data: _CustomPage = await apaginate(db, select, **kwargs)
 
-    # 如果提供了 schema_cls，立即在异步上下文中转换 ORM 对象为 Schema
+    # 如果提供了 schema_cls，立即在异步上下文中转换 ORM 对象或 RowMapping 为 Schema
     # 这样可以避免在 model_dump() 时触发 SQLAlchemy 的懒加载
     if schema_cls:
-        paginated_data.items = [schema_cls.model_validate(item) for item in paginated_data.items]
+        paginated_data.items = [
+            schema_cls.model_validate(item._mapping if hasattr(item, '_mapping') else item)
+            for item in paginated_data.items
+        ]
 
     page_data = paginated_data.model_dump()
     return page_data
@@ -194,16 +202,30 @@ def paging_list_data(items: list, params: _CustomPageParams) -> dict[str, Any]:
     return page_data.model_dump()
 
 
-async def cursor_paging_data(db: AsyncSession, select: Select, **kwargs) -> dict[str, Any]:
+async def cursor_paging_data(
+    db: AsyncSession,
+    select: Select,
+    schema_cls: type[Any] | None = None,
+    item_transform: Callable[[list[Any]], Awaitable[list[Any]]] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
     """
     基于 SQLAlchemy 创建游标分页数据
 
     :param db: 数据库会话
     :param select: SQL 查询语句
+    :param schema_cls: 可选的 Pydantic Schema 类
     :param kwargs: 更多 fastapi-pagination apaginate 参数
     :return:
     """
     paginated_data: _CustomCursorPage = await apaginate(db, select, **kwargs)
+    if item_transform is not None:
+        paginated_data.items = await item_transform(list(paginated_data.items))
+    elif schema_cls:
+        paginated_data.items = [
+            schema_cls.model_validate(item._mapping if hasattr(item, '_mapping') else item)
+            for item in paginated_data.items
+        ]
     page_data = paginated_data.model_dump()
     return page_data
 

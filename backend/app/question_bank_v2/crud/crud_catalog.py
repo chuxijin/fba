@@ -13,6 +13,31 @@ from backend.app.question_bank_v2.model.catalog import QbBankCategory, QbCollect
 class CRUDCollection(CRUDPlus[QbCollection]):
     """题库合集数据库操作类"""
 
+    async def get_subtree_ids(self, db: AsyncSession, root_id: int) -> list[int]:
+        """获取合集及其全部后代合集 ID（公开且启用）"""
+        rows = await db.execute(
+            select(QbCollection.id, QbCollection.parent_id).where(
+                QbCollection.deleted == 0,
+                QbCollection.visibility == 'public',
+                QbCollection.status == 'active',
+            )
+        )
+        children: dict[int | None, list[int]] = {}
+        for cid, parent_id in rows.all():
+            children.setdefault(parent_id, []).append(cid)
+
+        result: list[int] = []
+        stack = [root_id]
+        seen: set[int] = set()
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            result.append(current)
+            stack.extend(children.get(current, []))
+        return result
+
     async def get(self, db: AsyncSession, pk: int, *, for_update: bool = False) -> QbCollection | None:
         """获取题库合集"""
         stmt = select(QbCollection).where(QbCollection.id == pk, QbCollection.deleted == 0)
@@ -29,13 +54,17 @@ class CRUDCollection(CRUDPlus[QbCollection]):
 
     async def get_all(self, db: AsyncSession) -> Sequence[QbCollection]:
         """获取全部题库合集"""
-        stmt = (
+        stmt = self.get_select()
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    def get_select(self) -> Select:
+        """获取全部题库合集 Select 查询句"""
+        return (
             select(QbCollection)
             .where(QbCollection.deleted == 0)
             .order_by(QbCollection.parent_id.nulls_first(), QbCollection.sort_order, QbCollection.id)
         )
-        result = await db.execute(stmt)
-        return result.scalars().all()
 
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> QbCollection:
         """创建题库合集"""
@@ -179,6 +208,42 @@ class CRUDCollectionBank(CRUDPlus[QbCollectionBank]):
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    def get_select_by_collection(self, collection_id: int) -> Select:
+        """构建合集关联的题库挂载查询表达式"""
+        effective_revision_id = case(
+            (QbCollectionBank.follow_latest.is_(True), QbBank.current_revision_id),
+            else_=QbCollectionBank.bank_revision_id,
+        )
+        return (
+            select(
+                QbCollectionBank.id,
+                QbCollectionBank.collection_id,
+                QbCollectionBank.bank_id,
+                QbBankRevision.name.label('bank_name'),
+                QbCollectionBank.bank_revision_id,
+                QbBankRevision.revision_no,
+                QbCollectionBank.follow_latest,
+                QbCollectionBank.display_name,
+                QbCollectionBank.sort_order,
+                QbCollectionBank.is_active,
+                QbCollectionBank.created_time,
+            )
+            .join(QbBank, and_(QbBank.id == QbCollectionBank.bank_id, QbBank.deleted == 0))
+            .outerjoin(
+                QbBankRevision,
+                and_(
+                    QbBankRevision.id == effective_revision_id,
+                    QbBankRevision.bank_id == QbBank.id,
+                    QbBankRevision.deleted == 0,
+                ),
+            )
+            .where(
+                QbCollectionBank.collection_id == collection_id,
+                QbCollectionBank.deleted == 0,
+            )
+            .order_by(QbCollectionBank.sort_order, QbCollectionBank.id)
+        )
+
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> QbCollectionBank:
         """创建题库合集挂载"""
         mount = QbCollectionBank(**data)
@@ -193,6 +258,45 @@ class CRUDCollectionBank(CRUDPlus[QbCollectionBank]):
     async def delete(self, db: AsyncSession, pk: int) -> int:
         """删除题库合集挂载"""
         return await self.delete_model(db, pk)
+
+    async def get_effective_bank_revisions(
+        self,
+        db: AsyncSession,
+        collection_ids: Sequence[int],
+    ) -> list[dict[str, Any]]:
+        """获取合集作用域内每个题库实际生效的版本 ID"""
+        if not collection_ids:
+            return []
+        effective_revision_id = case(
+            (QbCollectionBank.follow_latest.is_(True), QbBank.current_revision_id),
+            else_=QbCollectionBank.bank_revision_id,
+        )
+        stmt = (
+            select(
+                QbBank.id.label('bank_id'),
+                QbBankRevision.id.label('bank_revision_id'),
+                QbBankRevision.revision_no,
+                QbCollectionBank.follow_latest,
+            )
+            .join(QbBank, and_(QbBank.id == QbCollectionBank.bank_id, QbBank.deleted == 0))
+            .join(
+                QbBankRevision,
+                and_(
+                    QbBankRevision.id == effective_revision_id,
+                    QbBankRevision.bank_id == QbBank.id,
+                    QbBankRevision.deleted == 0,
+                    QbBankRevision.status.in_(('published', 'retired')),
+                ),
+            )
+            .where(
+                QbCollectionBank.collection_id.in_(collection_ids),
+                QbCollectionBank.deleted == 0,
+                QbCollectionBank.is_active.is_(True),
+                QbBank.visibility == 'public',
+                QbBank.status == 'active',
+            )
+        )
+        return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
 
 
 collection_dao: CRUDCollection = CRUDCollection(QbCollection)

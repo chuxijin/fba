@@ -140,3 +140,28 @@ def test_ensure_render_payload_access_only_normalizes_chapter_context(monkeypatc
     assert result == 9
     assert payload.filters['bank_id'] == 88
     assert captured == {'db': None, 'chapter_id': 34, 'bank_id': 12}
+
+
+def test_ensure_v2_render_payload_checks_bank_access(monkeypatch) -> None:
+    """V2 题库导出必须复用题库稳定身份的准入判断。"""
+    captured: dict[str, object] = {}
+
+    async def fake_ensure_bank_access(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        'backend.plugin.render_book.api.v1.render.bank_access_service.ensure_bank_access',
+        fake_ensure_bank_access,
+    )
+    request = SimpleNamespace(user=SimpleNamespace(id=9, is_superuser=False))
+    payload = RenderJobCreate(
+        template_key='practice',
+        title='V2 题本',
+        filters={'bank_id': 123, 'question_ids': [1, 2]},
+        metadata={'qbank_version': 'v2', 'source_type': 'placement'},
+    )
+
+    result = asyncio.run(_ensure_render_payload_access(request=request, db=None, payload=payload))
+
+    assert result == 9
+    assert captured == {'db': None, 'user_id': 9, 'bank_id': 123}

@@ -1,7 +1,7 @@
 from datetime import time
 from typing import Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 
 from backend.common.schema import SchemaBase
 
@@ -41,6 +41,19 @@ class UpdatePracticePreferenceParam(SchemaBase):
     review_reminder_timezone: str | None = Field(None, min_length=1, max_length=64, description='IANA 提醒时区')
     review_daily_limit: int | None = Field(None, ge=1, le=200, description='单日复习题数上限')
     custom_tabs: CategoryCustomTabs | None = Field(None, description='按分类范围隔离的自定义导航标签')
+
+    @field_validator('custom_tabs')
+    @classmethod
+    def validate_custom_tabs(cls, value: CategoryCustomTabs | None) -> CategoryCustomTabs | None:
+        if value is None:
+            return None
+        if len(value) > 20:
+            raise ValueError('自定义标签分类最多 20 个')
+        if any(len(tabs) > 20 for tabs in value.values()):
+            raise ValueError('每个分类最多 20 个自定义标签')
+        if sum(map(len, value.values())) > 100:
+            raise ValueError('自定义标签总数最多 100 个')
+        return value
 
 
 class GetPracticePreferenceDetail(SchemaBase):
