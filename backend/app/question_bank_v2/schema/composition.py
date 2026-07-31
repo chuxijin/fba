@@ -38,6 +38,8 @@ class GetBankSectionDetail(SchemaBase):
     parent_id: int | None = Field(None, description='父章节 ID')
     depth: int = Field(description='章节树深度')
     sort_order: int = Field(description='同层排序')
+    question_count: int = Field(default=0, ge=0, description='含后代章节的启用题目数')
+    question_type_counts: dict[str, int] = Field(default_factory=dict, description='含后代章节的各题型题目数')
     children: list['GetBankSectionDetail'] = Field(default_factory=list, description='子章节列表')
 
 
@@ -46,8 +48,8 @@ class CreateBankItemParam(SchemaBase):
 
     item_key: str = Field(min_length=1, max_length=64, description='版本内稳定题号或业务键')
     question_id: int = Field(gt=0, description='题目稳定身份 ID')
-    question_revision_id: int = Field(gt=0, description='固定题目版本 ID')
     section_id: int | None = Field(None, gt=0, description='同题库版本内章节 ID')
+    exam_year: int | None = Field(None, ge=1900, le=2100, description='试题年份；非真题可为空')
     score: Decimal = Field(default=Decimal('1.00'), ge=0, description='本题分值')
     sort_order: int = Field(default=0, ge=0, description='题目顺序')
     is_required: bool = Field(default=True, description='是否必答')
@@ -60,8 +62,8 @@ class UpdateBankItemParam(SchemaBase):
 
     item_key: str | None = Field(None, min_length=1, max_length=64, description='版本内稳定题号或业务键')
     question_id: int | None = Field(None, gt=0, description='题目稳定身份 ID')
-    question_revision_id: int | None = Field(None, gt=0, description='固定题目版本 ID')
     section_id: int | None = Field(None, gt=0, description='同题库版本内章节 ID')
+    exam_year: int | None = Field(None, ge=1900, le=2100, description='试题年份；非真题可为空')
     score: Decimal | None = Field(None, ge=0, description='本题分值')
     sort_order: int | None = Field(None, ge=0, description='题目顺序')
     is_required: bool | None = Field(None, description='是否必答')
@@ -76,8 +78,8 @@ class GetBankItemDetail(SchemaBase):
     bank_revision_id: int = Field(description='题库版本 ID')
     item_key: str = Field(description='版本内稳定题号或业务键')
     question_id: int = Field(description='题目稳定身份 ID')
-    question_revision_id: int = Field(description='固定题目版本 ID')
     section_id: int | None = Field(None, description='章节 ID')
+    exam_year: int | None = Field(None, description='试题年份')
     score: Decimal = Field(description='本题分值')
     sort_order: int = Field(description='题目顺序')
     is_required: bool = Field(description='是否必答')
@@ -95,4 +97,7 @@ class GetBankCompositionDetail(SchemaBase):
     bank_revision_id: int = Field(description='题库版本 ID')
     revision_status: str = Field(description='题库版本状态')
     sections: list[GetBankSectionDetail] = Field(default_factory=list, description='章节树')
-    items: list[GetBankItemDetail] = Field(default_factory=list, description='题目编排列表')
+    items: list[GetBankItemDetail] = Field(
+        default_factory=list,
+        description='兼容字段，始终为空；题目编排通过分页 items 接口读取',
+    )

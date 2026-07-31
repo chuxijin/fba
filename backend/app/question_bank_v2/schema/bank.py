@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
+from backend.app.question_bank_v2.schema.composition import GetBankSectionDetail
 from backend.common.schema import SchemaBase
 
 BankKind = Literal['practice', 'paper', 'mock']
@@ -49,7 +50,7 @@ class CreateBankParam(SchemaBase):
     visibility: BankVisibility = Field(default='public', description='题库可见范围')
     status: BankStatus = Field(default='active', description='题库身份状态')
     revision: CreateBankRevisionParam = Field(description='首个草稿版本')
-    category_ids: list[int] = Field(default_factory=list, description='题库所属业务分类 ID 列表')
+    category_ids: list[int] = Field(default_factory=list, max_length=20, description='题库所属业务分类 ID 列表')
     primary_category_id: int | None = Field(None, gt=0, description='题库主分类 ID')
 
     @model_validator(mode='after')
@@ -78,7 +79,7 @@ class UpdateBankParam(SchemaBase):
 class SetBankCategoriesParam(SchemaBase):
     """设置题库业务分类参数"""
 
-    category_ids: list[int] = Field(default_factory=list, description='题库所属业务分类 ID 列表')
+    category_ids: list[int] = Field(default_factory=list, max_length=20, description='题库所属业务分类 ID 列表')
     primary_category_id: int | None = Field(None, gt=0, description='题库主分类 ID')
 
     @model_validator(mode='after')
@@ -130,6 +131,10 @@ class GetBankDetail(SchemaBase):
     status: BankStatus = Field(description='题库身份状态')
     current_revision: GetBankRevisionDetail | None = Field(None, description='当前发布版本')
     categories: list[GetBankCategoryDetail] = Field(default_factory=list, description='题库业务分类列表')
+    question_type_counts: dict[str, int] = Field(default_factory=dict, description='各题型题目数')
+    requires_entitlement: bool = Field(default=False, description='题库是否存在权益门槛')
+    access_allowed: bool | None = Field(None, description='当前调用者是否可刷题；匿名访问时为空')
+    sections: list[GetBankSectionDetail] = Field(default_factory=list, description='章节树')
     created_by: int = Field(description='创建者 ID')
     updated_by: int | None = Field(None, description='修改者 ID')
     created_time: datetime = Field(description='创建时间')
@@ -155,3 +160,10 @@ class GetBankListItem(SchemaBase):
     total_score: Decimal = Field(description='总分快照')
     primary_category_id: int | None = Field(None, description='主分类 ID')
     primary_category_name: str | None = Field(None, description='主分类名称')
+
+
+class GetAdminBankListItem(GetBankListItem):
+    """管理端题库列表项。"""
+
+    current_revision_id: int | None = Field(None, description='当前发布版本 ID')
+    revision_status: RevisionStatus = Field(description='最新版本状态')
