@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from backend.common.schema import SchemaBase
 
@@ -119,6 +119,8 @@ class GetDeliveredMaterialDetail(SchemaBase):
 class GetMaterialRevisionDetail(MaterialRevisionSchemaBase):
     """材料版本详情"""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int = Field(description='材料版本 ID')
     material_id: int = Field(description='材料稳定身份 ID')
     revision_no: int = Field(description='材料版本号')
@@ -216,6 +218,8 @@ class UpdateMaterialAnchorParam(SchemaBase):
 
 class GetMaterialAnchorDetail(MaterialAnchorSchemaBase):
     """材料锚点详情"""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='材料锚点 ID')
     material_id: int = Field(description='材料稳定身份 ID')
