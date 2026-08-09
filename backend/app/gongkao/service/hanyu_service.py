@@ -653,8 +653,8 @@ class HanyuService:
         :param pk: 汉语词汇 ID
         :return: session_key
         """
-        from backend.app.question_bank.schema.practice import CreateSessionFromIdsParam
-        from backend.app.question_bank.service.session_service import session_service
+        from backend.app.question_bank_v2.schema.practice import CreatePracticeSessionParam
+        from backend.app.question_bank_v2.service.practice_service import practice_service
 
         hanyu = await hanyu_dao.get(db, pk)
         if not hanyu:
@@ -664,13 +664,14 @@ class HanyuService:
         if not question_ids:
             raise errors.ForbiddenError(msg=f'词语 "{hanyu.name}" 暂无相关题目')
 
-        obj = CreateSessionFromIdsParam(
+        obj = CreatePracticeSessionParam(
+            source_type='custom',
             question_ids=question_ids,
-            session_type='random',
-            practice_name=f'词语练习 - {hanyu.name}',
+            mode='practice',
+            title=f'词语练习 - {hanyu.name}',
             shuffle=True,
         )
-        session = await session_service.create_session_from_ids(db=db, user_id=user_id, obj=obj)
+        session = await practice_service.create(db=db, user_id=user_id, obj=obj)
         return session.session_key
 
 

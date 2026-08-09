@@ -223,12 +223,35 @@ async def update_hanyu_frequency() -> dict[str, Any]:
             idiom_rows = (await db.execute(idiom_sql)).mappings().all()
             result['total_count'] = len(idiom_rows)
 
-            target_text_sql = text("""
-                WITH target_questions AS (
-                    SELECT q.id, q.stem, q.options
-                    FROM study_question q
-                    WHERE q.knowledge_point IS NOT NULL
-                      AND q.knowledge_point::text LIKE '%逻辑填空%'
+            target_text_sql = text(
+                """
+                WITH RECURSIVE logic_fill_tree AS (
+                    SELECT kp.id
+                    FROM qbank_v2_knowledge_system ks
+                    JOIN qbank_v2_knowledge_point kp
+                      ON kp.system_id = ks.id
+                     AND kp.deleted = 0
+                     AND kp.name = '逻辑填空'
+                    WHERE ks.version = 'default'
+                      AND ks.status = 'active'
+                      AND ks.deleted = 0
+
+                    UNION ALL
+
+                    SELECT child.id
+                    FROM qbank_v2_knowledge_point child
+                    JOIN logic_fill_tree parent ON child.parent_id = parent.id
+                    WHERE child.deleted = 0
+                ),
+                target_questions AS (
+                    SELECT DISTINCT q.id, q.stem, q.option_data
+                    FROM qbank_v2_question q
+                    JOIN qbank_v2_question_knowledge_point qkp
+                      ON qkp.question_id = q.id
+                     AND qkp.deleted = 0
+                    JOIN logic_fill_tree lf ON lf.id = qkp.knowledge_point_id
+                    WHERE q.deleted = 0
+                      AND q.status = 'active'
                 ),
                 target_texts AS (
                     SELECT
@@ -244,14 +267,15 @@ async def update_hanyu_frequency() -> dict[str, Any]:
                         option_item.item ->> 'content' AS content
                     FROM target_questions tq
                     CROSS JOIN LATERAL jsonb_array_elements(
-                        COALESCE(tq.options, '[]'::jsonb)
+                        COALESCE(tq.option_data, '[]'::jsonb)
                     ) AS option_item(item)
                     WHERE COALESCE(option_item.item ->> 'is_active', 'true') <> 'false'
                       AND NULLIF(BTRIM(option_item.item ->> 'content'), '') IS NOT NULL
                 )
                 SELECT question_id, content
                 FROM target_texts
-            """)
+                """
+            )
             text_rows = (await db.execute(target_text_sql)).mappings().all()
             target_text_count = len(text_rows)
 

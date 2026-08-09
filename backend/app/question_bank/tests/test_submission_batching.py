@@ -12,7 +12,6 @@ from backend.app.question_bank.api.v1 import session as session_api
 from backend.app.question_bank.crud.crud_mastery import mastery_dao
 from backend.app.question_bank.crud.crud_question import question_statistics_dao
 from backend.app.question_bank.schema.practice import SubmitPracticeSessionParam, SubmitPracticeSessionResult
-from backend.app.study_plan.service import session_hook
 
 T = TypeVar('T')
 
@@ -131,12 +130,10 @@ def test_idempotent_submit_skips_completion_side_effects(monkeypatch: pytest.Mon
     )
     db = FakeTransactionDb()
     publish = AsyncMock()
-    handle_session_completed = AsyncMock()
 
     monkeypatch.setattr(session_api, '_resolve_session_id', AsyncMock(return_value=31))
     monkeypatch.setattr(session_api.session_service, 'submit_session', AsyncMock(return_value=(result, False)))
     monkeypatch.setattr(session_api, 'publish', publish)
-    monkeypatch.setattr(session_hook, 'handle_session_completed', handle_session_completed)
 
     response = run(
         session_api.submit_session(
@@ -150,4 +147,3 @@ def test_idempotent_submit_skips_completion_side_effects(monkeypatch: pytest.Mon
     assert response.data == result
     assert db.begin_count == 1
     publish.assert_not_awaited()
-    handle_session_completed.assert_not_awaited()

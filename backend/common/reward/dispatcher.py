@@ -6,8 +6,8 @@ from backend.common.log import log
 from backend.common.reward.fulfiller import (
     BaseRewardFulfiller,
     ChaojiCourseFulfiller,
-    FeatureFulfiller,
     PointsFulfiller,
+    QuotaFulfiller,
     VipFulfiller,
 )
 
@@ -23,7 +23,7 @@ from backend.common.reward.fulfiller import (
 _FULFILLER_REGISTRY: dict[str, BaseRewardFulfiller] = {
     'vip': VipFulfiller(),
     'points': PointsFulfiller(),
-    'feature': FeatureFulfiller(),
+    'quota': QuotaFulfiller(),
     'chaoji_course': ChaojiCourseFulfiller(),
 }
 

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from abc import ABC, abstractmethod
+from datetime import timedelta
 
 import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.access.constants import SubscriptionSource
+from backend.app.access.constants import CycleType, QuotaGrantSource, SubscriptionSource
+from backend.app.access.engine.ledger import ledger_service
 from backend.app.access.service.subscription_service import subscription_service
 from backend.app.growth.service import experience_service
 from backend.common.log import log
 from backend.core.conf import settings
+from backend.utils.timezone import timezone
 
 
 class BaseRewardFulfiller(ABC):
@@ -224,21 +227,68 @@ class PointsFulfiller(BaseRewardFulfiller):
         return True
 
 
-class FeatureFulfiller(BaseRewardFulfiller):
-    """功能权益履约(占位, 后续接 access.direct_grant)"""
+class QuotaFulfiller(BaseRewardFulfiller):
+    """消耗型额度履约(基于 access.quota_grant)
+
+    发放一个独立额度包, 与订阅周期补账的包并存。默认永不过期(一次性额度),
+    传 expires_in_days 可做限时额度。扣减时由引擎按过期时间优先消耗。
+    """
 
     async def fulfill(self, *, db: AsyncSession, user_id: int, reward_data: dict) -> bool:
         """
-        发放功能权益
+        发放额度(reward_data: {entitlement_code, amount, expires_in_days?, scope_key?, source_key})
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :param reward_data: 权益数据
         :return:
         """
-        feature_key = reward_data.get('feature_key', '')
-        days = reward_data.get('days', 0)
-        log.info(f'发放功能权益: user_id={user_id}, feature={feature_key}, days={days}')
+        entitlement_code = str(reward_data.get('entitlement_code') or '').strip()
+        amount = _parse_positive_int(reward_data.get('amount'))
+        scope_key = str(reward_data.get('scope_key') or 'global').strip() or 'global'
+        source = str(reward_data.get('source') or 'reward').strip() or 'reward'
+        source_key = str(reward_data.get('source_key') or '').strip()
+        expires_in_days = _parse_positive_int(reward_data.get('expires_in_days'))
+        reason = reward_data.get('reason') or '额度奖励'
+
+        if not entitlement_code:
+            log.warning(f'额度发放失败: user_id={user_id}, reason=missing_entitlement_code')
+            return False
+        if amount is None:
+            log.warning(f'额度发放失败: user_id={user_id}, reason=invalid_amount')
+            return False
+        if not source_key:
+            log.warning(f'额度发放失败: user_id={user_id}, reason=missing_source_key')
+            return False
+
+        grant_source = (
+            source if source in {member.value for member in QuotaGrantSource} else QuotaGrantSource.ACTIVITY.value
+        )
+        expires_at = timezone.now() + timedelta(days=expires_in_days) if expires_in_days else None
+
+        try:
+            await ledger_service.credit(
+                db,
+                user_id=user_id,
+                entitlement_code=entitlement_code,
+                amount=amount,
+                # 一次性额度不属于任何周期, 用 LIFETIME 表达"不随周期重置"
+                cycle_type=CycleType.LIFETIME,
+                scope_key=scope_key,
+                source=grant_source,
+                source_ref=source_key,
+                idempotency_key=f'reward:{grant_source}:{source_key}:{entitlement_code}',
+                reason=reason,
+                expires_at=expires_at,
+            )
+        except Exception as exc:
+            log.warning(f'额度发放失败: user_id={user_id}, code={entitlement_code}, error={exc!s}')
+            return False
+
+        log.info(
+            f'额度发放成功: user_id={user_id}, code={entitlement_code}, '
+            f'amount={amount}, scope={scope_key}, source_key={source_key}'
+        )
         return True
 
 

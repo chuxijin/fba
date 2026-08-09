@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import re
+import uuid
 
 from typing import Annotated
 from urllib.parse import urljoin, urlparse
 
 import requests
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
+from backend.app.access.service.resource_access_service import resource_access_service
+from backend.app.access.service.resource_profiles import ARTICLE_READ_PROFILE_CODE, LINK_VIEW_PROFILE_CODE
 from backend.app.content.schema.content import (
     CreateContentParam,
     GetContentDetail,
@@ -22,7 +25,7 @@ from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.rbac import DependsRBAC
-from backend.database.db import CurrentSession
+from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
 
@@ -50,9 +53,20 @@ async def get_sys_content_list(
     return response_base.success(data=page_data)
 
 
-@router.get('/link-detail', summary='获取链接详情')
-async def get_link_detail(url: Annotated[str, Query(description='解析URL')]):
-    def fetch_tdk(target_url: str):
+@router.get('/link-detail', summary='获取链接详情', dependencies=[DependsJwtAuth])
+async def get_link_detail(
+    request: Request,
+    db: CurrentSessionTransaction,
+    url: Annotated[str, Query(description='解析URL')],
+) -> JSONResponse:
+    await resource_access_service.consume(
+        db,
+        profile_code=LINK_VIEW_PROFILE_CODE,
+        user_id=request.user.id,
+        source_ref=f'link:{uuid.uuid4().hex}',
+    )
+
+    def fetch_tdk(target_url: str) -> dict[str, str]:
         try:
             parsed_url = urlparse(target_url)
             if parsed_url.scheme not in {'http', 'https'}:
@@ -139,9 +153,28 @@ async def get_related_content_list(
 
 
 @router.get('/{pk}', summary='获取内容详情', response_model=ResponseSchemaModel[GetContentDetail])
-async def get_sys_content(db: CurrentSession, pk: int):
+async def get_sys_content(request: Request, db: CurrentSession, pk: int):
+    content = await content_service.get(db=db, pk=pk)
+    trial_excerpt_chars = None
+    if (content.extra or {}).get('access_profile') == ARTICLE_READ_PROFILE_CODE:
+        user_id = getattr(getattr(request, 'user', None), 'id', None)
+        if user_id is None:
+            from backend.common.exception import errors
+
+            raise errors.AuthorizationError(msg='请先登录后阅读该文章')
+        decision = await resource_access_service.consume(
+            db,
+            profile_code=ARTICLE_READ_PROFILE_CODE,
+            user_id=user_id,
+            source_ref=f'article:{pk}:{uuid.uuid4().hex}',
+        )
+        trial_excerpt_chars = decision.trial_excerpt_chars
+
     content = await content_service.get_with_incr_view(db=db, pk=pk)
-    return response_base.success(data=content)
+    data = GetContentDetail.model_validate(content)
+    if trial_excerpt_chars and data.content_html:
+        data.content_html = data.content_html[:trial_excerpt_chars]
+    return response_base.success(data=data)
 
 
 @router.post('/{pk}/view', summary='增加浏览量')
