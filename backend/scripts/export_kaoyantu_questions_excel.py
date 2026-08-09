@@ -11,18 +11,18 @@
 
 import argparse
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any
 
 import httpx
-from openpyxl import load_workbook
+from openpyxl import Workbook
 from openpyxl.styles import Alignment
 
 BASE_URL = 'https://api.kaoyantu.top'
 PATH = '/routine/auth_api/get_question_list_by_page'
 EARMARK_PATH = '/routine/auth_api/get_earmark_list'
-DEFAULT_TEMPLATE = r'D:\100_Work\101_Program\Proj\excel\question_import_template.xlsx'
 DEFAULT_OUTPUT = 'backend/scripts/outputs/kaoyantu_questions_738_all_pages.xlsx'
 
 DEFAULT_ID = '738'
@@ -142,23 +142,37 @@ DEFAULT_PAGE_PAYLOADS: list[dict[str, str | int]] = [
 ]
 
 QUESTION_HEADERS = [
-    '序号',
-    '题型',
-    '题目',
-    '选项A',
-    '选项B',
-    '选项C',
-    '选项D',
-    '答案',
-    '解析',
-    '难度',
-    '分数',
-    '一级目录',
-    '二级目录',
-    '三级目录',
-    '知识点',
-    '材料编号',
+    'question_type',
+    'stem',
+    'answer',
+    'explanation_default',
+    'option_A',
+    'option_B',
+    'option_C',
+    'option_D',
+    'option_E',
+    'score',
+    'section_l1',
+    'section_l2',
+    'section_l3',
+    'item_key',
+    'material_code',
 ]
+
+MATERIAL_HEADERS = [
+    'material_code',
+    'material_title',
+    'material_content',
+]
+
+# 考研兔题型 -> V2 枚举
+TYPE_TO_V2 = {
+    '单选': 'single_choice',
+    '多选': 'multiple_choice',
+    '判断': 'true_false',
+    '填空': 'fill_blank',
+    '简答': 'short_answer',
+}
 
 
 def build_headers() -> dict[str, str]:
@@ -389,48 +403,46 @@ def build_chapter_path_map(item_list: list[dict[str, Any]]) -> dict[int, tuple[s
     return path_map
 
 
-def normalize_question_type(raw_type: Any) -> str:
+def normalize_question_type(raw_type: Any, answer: Any = None) -> str:
     """
-    转换题型
+    转换题型为 V2 枚举
 
     :param raw_type: 接口题型值
+    :param answer: 接口答案（非字母文本判为简答题）
     :return: 不添加返回说明
     """
+    answer_text = str(answer or '').strip()
+    if answer_text:
+        # 答案整体为字母组合（如 A、AB、A,B）才判选择/多选
+        if re.fullmatch(r'[A-Za-z\s,，、;；]+', answer_text):
+            letters = re.findall(r'[A-Z]', answer_text.upper())
+            return 'multiple_choice' if len(letters) > 1 else 'single_choice'
+        return 'short_answer'
+
     type_mapping = {
-        1: '单选',
-        2: '多选',
-        3: '判断',
-        4: '填空',
-        5: '简答',
+        1: 'single_choice',
+        2: 'multiple_choice',
+        3: 'true_false',
+        4: 'fill_blank',
+        5: 'short_answer',
     }
     if raw_type in type_mapping:
         return type_mapping[raw_type]
 
-    return '单选'
+    return 'single_choice'
 
 
-def normalize_difficulty(raw_difficulty: Any) -> str:
+def normalize_score(question_type: str) -> int:
     """
-    转换难度
+    转换分数：多选 2 分，其余 1 分
 
-    :param raw_difficulty: 接口难度值
+    :param question_type: V2 题型
     :return: 不添加返回说明
     """
-    difficulty_mapping = {
-        1: '简单',
-        2: '中等',
-        3: '困难',
-        '1': '简单',
-        '2': '中等',
-        '3': '困难',
-        'easy': '简单',
-        'medium': '中等',
-        'hard': '困难',
-    }
-    if raw_difficulty in difficulty_mapping:
-        return difficulty_mapping[raw_difficulty]
+    if question_type == 'multiple_choice':
+        return 2
 
-    return '中等'
+    return 1
 
 
 def extract_analysis(question: dict[str, Any]) -> str:
@@ -473,74 +485,61 @@ def build_excel_row(
     level1_name = data.get('category_name') or data.get('category_short_name') or ''
     level2_name = ''
     level3_name = ''
-    question_type = normalize_question_type(question.get('type'))
+    question_type = normalize_question_type(question.get('type'), question.get('answer'))
     eid = question.get('eid')
-    if isinstance(eid, int) and eid in chapter_path_map:
+    answer_text = str(question.get('answer') or '').strip()
+    if isinstance(eid, int) and eid in chapter_path_map and answer_text and re.fullmatch(r'[A-Za-z\s,，、;；]+', answer_text):
         level1_name, level2_name, level3_name = chapter_path_map[eid]
-        if level3_name in {'单选', '多选', '判断', '填空', '简答'}:
-            question_type = level3_name
+        if level3_name in TYPE_TO_V2:
+            question_type = TYPE_TO_V2[level3_name]
 
     return [
-        index,
         question_type,
         question.get('title') or '',
+        question.get('answer') or '',
+        extract_analysis(question),
         option_values[0],
         option_values[1],
         option_values[2],
         option_values[3],
-        question.get('answer') or '',
-        extract_analysis(question),
-        normalize_difficulty(question.get('difficulty')),
-        1,
+        '',
+        normalize_score(question_type),
         level1_name,
         level2_name,
         level3_name,
-        question.get('original_book_number') or '',
+        f'kt_{data.get("id") or ""}_{question.get("id")}',
         '',
     ]
-
-
-def clear_sheet_rows(ws: Any, start_row: int = 2) -> None:
-    """
-    清空模板数据行
-
-    :param ws: 工作表对象
-    :param start_row: 起始行
-    :return: 不添加返回说明
-    """
-    for row in ws.iter_rows(min_row=start_row, max_row=ws.max_row):
-        for cell in row:
-            cell.value = None
 
 
 def write_questions_to_template(
     data: dict[str, Any],
     chapter_path_map: dict[int, tuple[str, str, str]],
-    template_path: Path,
+    template_path: Path | None,
     output_path: Path,
 ) -> int:
     """
-    写入题目到模板
+    写入题目到 V2 格式 Excel（题目表 + 材料表两个 sheet）
 
     :param data: 接口 data 数据
-    :param template_path: 模板路径
+    :param chapter_path_map: 章节路径映射
+    :param template_path: 兼容参数，已不再使用（脚本直接生成表头）
     :param output_path: 输出路径
     :return: 不添加返回说明
     """
-    workbook = load_workbook(template_path)
-    question_sheet = workbook['题目']
-    material_sheet = workbook['材料']
+    workbook = Workbook()
+    question_sheet = workbook.active
+    question_sheet.title = '题目'
+    material_sheet = workbook.create_sheet('材料')
 
-    clear_sheet_rows(question_sheet)
-    clear_sheet_rows(material_sheet)
+    for column_index, header in enumerate(QUESTION_HEADERS, start=1):
+        question_sheet.cell(row=1, column=column_index, value=header)
+    for column_index, header in enumerate(MATERIAL_HEADERS, start=1):
+        material_sheet.cell(row=1, column=column_index, value=header)
 
     question_list = data.get('question_list')
     if not isinstance(question_list, list):
         raise RuntimeError('接口 question_list 结构异常')
-
-    header_values = [question_sheet.cell(row=1, column=column_index).value for column_index in range(1, 17)]
-    if header_values != QUESTION_HEADERS:
-        raise RuntimeError(f'模板题目表头不匹配: {header_values}')
 
     wrap_alignment = Alignment(wrap_text=True, vertical='top')
     for index, question in enumerate(question_list, start=1):
@@ -579,7 +578,6 @@ def main() -> None:
     parser.add_argument('--single-page', action='store_true', help='只导出 --page 指定的单页')
     parser.add_argument('--use-current-timestamp', action='store_true', help='使用当前毫秒时间戳覆盖 --timestamp')
     parser.add_argument('--timeout', type=float, default=20.0, help='请求超时时间（秒）')
-    parser.add_argument('--template', default=DEFAULT_TEMPLATE, help='Excel 模板路径')
     parser.add_argument('--output', default=DEFAULT_OUTPUT, help='输出 Excel 路径')
     args = parser.parse_args()
 
@@ -588,7 +586,7 @@ def main() -> None:
     count = write_questions_to_template(
         data=data,
         chapter_path_map=chapter_path_map,
-        template_path=Path(args.template),
+        template_path=None,
         output_path=Path(args.output),
     )
     print(
