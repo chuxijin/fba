@@ -42,11 +42,15 @@ async def get_experience_rule(
 async def get_experience_rule_list(
     db: CurrentSession,
     event_code: Annotated[str | None, Query(description='事件编码')] = None,
-    family_code: Annotated[str | None, Query(description='族群')] = None,
+    required_entitlement_code: Annotated[str | None, Query(description='生效所需权益编码')] = None,
     status: Annotated[int | None, Query(description='状态')] = None,
 ) -> ResponseSchemaModel[PageData[GetExperienceRuleDetail]]:
     """分页获取经验规则"""
-    stmt = await experience_rule_dao.get_select(event_code=event_code, family_code=family_code, status=status)
+    stmt = await experience_rule_dao.get_select(
+        event_code=event_code,
+        required_entitlement_code=required_entitlement_code,
+        status=status,
+    )
     page_data = await paging_data(db, stmt)
     return response_base.success(data=page_data)
 

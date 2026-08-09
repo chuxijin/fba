@@ -4,7 +4,6 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
-from backend.app.growth.constants import FamilyCode
 from backend.common.schema import SchemaBase
 
 
@@ -14,7 +13,11 @@ class CreateExperienceRuleParam(SchemaBase):
     event_code: str = Field(max_length=32, description='事件编码')
     name: str = Field(max_length=64, description='规则名称')
     exp_delta: int = Field(gt=0, description='经验奖励值')
-    family_code: FamilyCode | None = Field(default=None, description='族群')
+    required_entitlement_code: str | None = Field(
+        default=None,
+        max_length=64,
+        description='生效所需权益编码, 空表示对所有用户生效',
+    )
     cycle_day: int | None = Field(default=None, description='周期第几天')
     min_practice_count: int = Field(default=0, ge=0, description='最低做题数')
     min_practice_duration: int = Field(default=0, ge=0, description='最低练习时长(秒)')
@@ -27,7 +30,11 @@ class UpdateExperienceRuleParam(SchemaBase):
 
     name: str | None = Field(default=None, max_length=64, description='规则名称')
     exp_delta: int | None = Field(default=None, gt=0, description='经验奖励值')
-    family_code: FamilyCode | None = Field(default=None, description='族群')
+    required_entitlement_code: str | None = Field(
+        default=None,
+        max_length=64,
+        description='生效所需权益编码, 空表示对所有用户生效',
+    )
     cycle_day: int | None = Field(default=None, description='周期第几天')
     min_practice_count: int | None = Field(default=None, ge=0, description='最低做题数')
     min_practice_duration: int | None = Field(default=None, ge=0, description='最低练习时长(秒)')
@@ -45,7 +52,7 @@ class GetExperienceRuleDetail(SchemaBase):
     event_code: str = Field(description='事件编码')
     name: str = Field(description='规则名称')
     exp_delta: int = Field(description='经验奖励值')
-    family_code: str | None = Field(description='族群')
+    required_entitlement_code: str | None = Field(description='生效所需权益编码')
     cycle_day: int | None = Field(description='周期第几天')
     min_practice_count: int = Field(description='最低做题数')
     min_practice_duration: int = Field(description='最低练习时长(秒)')
