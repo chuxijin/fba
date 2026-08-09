@@ -42,12 +42,10 @@ class RuleResolver:
         if not rules:
             return []
 
-        if not audience_attrs:
-            return rules
-
+        attrs = audience_attrs or {}
         matched: list[ResourceRule] = []
         for rule in rules:
-            if cls._match_audience(rule.audience_filter, audience_attrs):
+            if cls._match_audience(rule.audience_filter, attrs):
                 matched.append(rule)
         return matched
 
@@ -56,12 +54,18 @@ class RuleResolver:
         """
         判断受众过滤是否匹配
 
+        无画像时对"声明了人群条件"的规则一律不匹配(fail-closed)。若在此处放行,
+        由于生产链路普遍不传 audience_attrs, 一条 audience_filter 规则会对所有人
+        生效 —— 与运营的定向意图完全相反。
+
         :param audience_filter: 规则上的过滤声明
         :param audience_attrs: 用户画像
         :return:
         """
         if not audience_filter:
             return True
+        if not audience_attrs:
+            return False
         for key, expected in audience_filter.items():
             actual = audience_attrs.get(key)
             if isinstance(expected, dict):

@@ -71,6 +71,7 @@ def make_rule(
     rule_id: int = 1,
     priority: int = 0,
     metadata_: dict[str, Any] | None = None,
+    trial_policy: dict[str, Any] | None = None,
 ) -> SimpleNamespace:
     """
     构造测试用 ResourceRule 替身
@@ -80,6 +81,7 @@ def make_rule(
     :param rule_id: 规则 ID
     :param priority: 优先级
     :param metadata_: 规则扩展元数据
+    :param trial_policy: 试看策略
     :return:
     """
     return SimpleNamespace(
@@ -90,6 +92,7 @@ def make_rule(
         grant_mode=grant_mode,
         priority=priority,
         metadata_=metadata_ or {},
+        trial_policy=trial_policy,
     )
 
 
@@ -98,9 +101,12 @@ def make_ctx(
     user_id: int = 42,
     resource_type: str = 'qbank',
     resource_id: int = 42,
+    allow_trial: bool = True,
     consume_trial: bool = True,
     scope_key: str = 'global',
     source_ref: str | None = None,
+    sub_resource_ordinal: int | None = None,
+    sub_resource_total: int | None = None,
 ) -> AccessContext:
     """
     构造测试用 AccessContext
@@ -108,18 +114,24 @@ def make_ctx(
     :param user_id: 用户 ID
     :param resource_type: 资源类型
     :param resource_id: 资源 ID
-    :param consume_trial: 是否允许扣减试看
+    :param allow_trial: 是否允许走试看策略
+    :param consume_trial: 是否允许扣减计量额度
     :param scope_key: 配额范围键
     :param source_ref: 扣减来源引用
+    :param sub_resource_ordinal: 子资源序号
+    :param sub_resource_total: 子资源总数
     :return:
     """
     return AccessContext(
         user_id=user_id,
         resource_type=resource_type,
         resource_id=resource_id,
+        allow_trial=allow_trial,
         consume_trial=consume_trial,
         scope_key=scope_key,
         source_ref=source_ref,
+        sub_resource_ordinal=sub_resource_ordinal,
+        sub_resource_total=sub_resource_total,
     )
 
 

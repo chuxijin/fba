@@ -82,8 +82,8 @@ async def test_engine_denies_when_no_matching_grant(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_engine_grants_via_subscription_and_skips_trial(monkeypatch) -> None:
-    """订阅命中后责任链短路, 试看额度不被消耗"""
+async def test_engine_grants_via_subscription_and_skips_metered(monkeypatch) -> None:
+    """订阅命中后责任链短路, 计量额度不被消耗"""
 
     consume_calls: list = []
 
@@ -92,7 +92,7 @@ async def test_engine_grants_via_subscription_and_skips_trial(monkeypatch) -> No
         return SimpleNamespace(id=999, balance_after=0)
 
     monkeypatch.setattr(
-        'backend.app.access.engine.evaluators.quota_trial.ledger_service.try_consume',
+        'backend.app.access.engine.evaluators.metered.ledger_service.try_consume',
         spy_try_consume,
     )
 
@@ -100,7 +100,7 @@ async def test_engine_grants_via_subscription_and_skips_trial(monkeypatch) -> No
         monkeypatch,
         rules=[
             make_rule(GrantMode.ACCESS, entitlement_code='qbank.kaoyan.access'),
-            make_rule(GrantMode.TRIAL, entitlement_code='content.kaoyan.trial', rule_id=2),
+            make_rule(GrantMode.METERED, entitlement_code='content.kaoyan.quota', rule_id=2),
         ],
         snapshot=FakeSnapshot(entitlements={'qbank.kaoyan.access': 1}),
     )
@@ -111,7 +111,7 @@ async def test_engine_grants_via_subscription_and_skips_trial(monkeypatch) -> No
 
     assert decision.allowed
     assert decision.reason_code == ReasonCode.SUBSCRIPTION_ACCESS
-    assert consume_calls == [], '订阅命中后不应再调用试看扣减'
+    assert consume_calls == [], '订阅命中后不应再调用计量扣减'
     assert db.added == [], '允许路径不应写决策日志'
 
 
@@ -143,14 +143,14 @@ async def test_engine_free_pass_overrides_inherited_paid_rule(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_engine_falls_through_to_quota_trial(monkeypatch) -> None:
-    """订阅未命中 + 无直接授予 → 走试看, 扣减成功放行"""
+async def test_engine_falls_through_to_metered(monkeypatch) -> None:
+    """订阅未命中 + 无直接授予 → 走计量配额, 扣减成功放行"""
 
     async def fake_try_consume(*_args, **_kwargs):
         return SimpleNamespace(id=2002, balance_after=2)
 
     monkeypatch.setattr(
-        'backend.app.access.engine.evaluators.quota_trial.ledger_service.try_consume',
+        'backend.app.access.engine.evaluators.metered.ledger_service.try_consume',
         fake_try_consume,
     )
 
@@ -158,7 +158,7 @@ async def test_engine_falls_through_to_quota_trial(monkeypatch) -> None:
         monkeypatch,
         rules=[
             make_rule(GrantMode.ACCESS, entitlement_code='content.kaoyan.view'),
-            make_rule(GrantMode.TRIAL, entitlement_code='content.kaoyan.trial', rule_id=2),
+            make_rule(GrantMode.METERED, entitlement_code='content.kaoyan.quota', rule_id=2),
         ],
         snapshot=FakeSnapshot(),
     )
@@ -168,7 +168,7 @@ async def test_engine_falls_through_to_quota_trial(monkeypatch) -> None:
     decision = await engine.decide(db, make_ctx())
 
     assert decision.allowed
-    assert decision.reason_code == ReasonCode.QUOTA_TRIAL
+    assert decision.reason_code == ReasonCode.METERED_CONSUMED
     assert decision.consumed_ledger_id == 2002
 
 
@@ -184,10 +184,9 @@ async def test_engine_records_explanation_path(monkeypatch) -> None:
     engine = AccessDecisionEngine()
     decision = await engine.decide(_StubSession(), make_ctx())
 
-    assert len(decision.explanation) >= 3
+    assert len(decision.explanation) >= 2
     evaluators_seen = [node.evaluator for node in decision.explanation]
     assert 'FreePassEvaluator' in evaluators_seen
-    assert 'OwnershipEvaluator' in evaluators_seen
     assert 'SubscriptionAccessEvaluator' in evaluators_seen
 
 
@@ -243,12 +242,12 @@ async def test_engine_grants_all_in_one_user_for_any_domain(monkeypatch, all_in_
 
 @pytest.mark.asyncio
 async def test_default_evaluators_chain_order() -> None:
-    """默认评估器责任链顺序: FreePass → Ownership → Subscription → DirectGrant → QuotaTrial"""
+    """默认责任链顺序: FreePass → Subscription → DirectGrant → Metered → TrialPolicy"""
     names = [e.name for e in DEFAULT_EVALUATORS]
     assert names == [
         'FreePassEvaluator',
-        'OwnershipEvaluator',
         'SubscriptionAccessEvaluator',
         'DirectGrantEvaluator',
-        'QuotaTrialEvaluator',
+        'MeteredEvaluator',
+        'TrialPolicyEvaluator',
     ]

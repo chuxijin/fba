@@ -39,6 +39,11 @@ class ResourceRule(Base):
         comment='授权模式',
     )
     priority: Mapped[int] = mapped_column(default=0, comment='优先级(越大越优先)')
+    trial_policy: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        default=None,
+        comment='试看策略, NULL 表示不允许试看; 形如 {"mode": "ordinal", "limit": 5}',
+    )
     valid_period: Mapped[Range[datetime] | None] = mapped_column(
         TSTZRANGE, default=None, comment='生效时间段, NULL 表示永久'
     )

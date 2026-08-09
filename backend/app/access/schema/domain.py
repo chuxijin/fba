@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import ConfigDict, Field
+from pydantic import AliasChoices, ConfigDict, Field
 
 from backend.app.access.constants import CommonStatus
 from backend.common.schema import SchemaBase
@@ -20,7 +20,12 @@ class CreateStudyDomainParam(SchemaBase):
     color: str | None = Field(default=None, max_length=16, description='主题色')
     description: str | None = Field(default=None, description='描述')
     display_order: int = Field(default=0, description='显示顺序')
-    metadata: dict[str, Any] = Field(default_factory=dict, description='扩展元数据')
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices('metadata', 'metadata_'),
+        serialization_alias='metadata',
+        description='扩展元数据',
+    )
 
 
 class UpdateStudyDomainParam(SchemaBase):
@@ -33,7 +38,12 @@ class UpdateStudyDomainParam(SchemaBase):
     color: str | None = Field(default=None, max_length=16, description='主题色')
     description: str | None = Field(default=None, description='描述')
     display_order: int | None = Field(default=None, description='显示顺序')
-    metadata: dict[str, Any] | None = Field(default=None, description='扩展元数据')
+    metadata_: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias=AliasChoices('metadata', 'metadata_'),
+        serialization_alias='metadata',
+        description='扩展元数据',
+    )
     status: CommonStatus | None = Field(default=None, description='状态')
 
 
@@ -51,6 +61,12 @@ class GetStudyDomainDetail(SchemaBase):
     color: str | None = Field(description='主题色')
     description: str | None = Field(description='描述')
     display_order: int = Field(description='显示顺序')
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices('metadata_', 'metadata'),
+        serialization_alias='metadata',
+        description='扩展元数据',
+    )
     status: CommonStatus = Field(description='状态')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(default=None, description='更新时间')

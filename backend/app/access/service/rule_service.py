@@ -76,6 +76,7 @@ class ResourceRuleService:
             entitlement_code=obj.entitlement_code,
             grant_mode=obj.grant_mode,
             priority=obj.priority,
+            trial_policy=obj.trial_policy.model_dump(exclude_none=True) if obj.trial_policy else None,
             valid_period=obj.valid_period.to_range() if obj.valid_period else None,
             audience_filter=obj.audience_filter,
             inherit_to_children=obj.inherit_to_children,
@@ -94,9 +95,11 @@ class ResourceRuleService:
         :return:
         """
         await ResourceRuleService.get(db, pk=pk)
-        data = obj.model_dump(exclude_unset=True, exclude={'valid_period'})
+        data = obj.model_dump(exclude_unset=True, exclude={'valid_period', 'trial_policy'})
         if obj.valid_period is not None:
             data['valid_period'] = obj.valid_period.to_range()
+        if 'trial_policy' in obj.model_fields_set:
+            data['trial_policy'] = obj.trial_policy.model_dump(exclude_none=True) if obj.trial_policy else None
         return await resource_rule_dao.update_model(db, pk, data)
 
     @staticmethod
@@ -121,6 +124,7 @@ class ResourceRuleService:
         """
         await ResourceRuleService._validate_entitlement(db, obj.entitlement_code)
         period: Range | None = obj.valid_period.to_range() if obj.valid_period else None
+        trial_policy = obj.trial_policy.model_dump(exclude_none=True) if obj.trial_policy else None
 
         created = 0
         for resource_id in obj.resource_ids:
@@ -130,6 +134,7 @@ class ResourceRuleService:
                 entitlement_code=obj.entitlement_code,
                 grant_mode=obj.grant_mode,
                 priority=obj.priority,
+                trial_policy=trial_policy,
                 valid_period=period,
             )
             db.add(rule)

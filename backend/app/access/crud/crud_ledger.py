@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
-from sqlalchemy import Select, select, tuple_
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -11,113 +11,10 @@ from backend.app.access.model.ledger import QuotaLedger
 
 
 class CRUDQuotaLedger(CRUDPlus[QuotaLedger]):
-    """配额账本 CRUD"""
+    """配额账本 CRUD(审计流水)
 
-    async def get_current_balance(
-        self,
-        db: AsyncSession,
-        *,
-        user_id: int,
-        entitlement_code: str,
-        scope_key: str,
-        cycle_key: str,
-    ) -> int:
-        """
-        获取当前余额(取最新一条 balance_after)
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :param entitlement_code: 权益编码
-        :param scope_key: 业务范围键
-        :param cycle_key: 周期键
-        :return:
-        """
-        stmt = (
-            select(self.model.balance_after)
-            .where(
-                self.model.user_id == user_id,
-                self.model.entitlement_code == entitlement_code,
-                self.model.scope_key == scope_key,
-                self.model.cycle_key == cycle_key,
-            )
-            .order_by(self.model.occurred_at.desc(), self.model.id.desc())
-            .limit(1)
-        )
-        balance = (await db.execute(stmt)).scalar()
-        return int(balance or 0)
-
-    async def get_latest_entry(
-        self,
-        db: AsyncSession,
-        *,
-        user_id: int,
-        entitlement_code: str,
-        scope_key: str,
-        cycle_key: str,
-    ) -> QuotaLedger | None:
-        """
-        获取当前周期最新流水
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :param entitlement_code: 权益编码
-        :param scope_key: 业务范围键
-        :param cycle_key: 周期键
-        :return:
-        """
-        stmt = (
-            select(self.model)
-            .where(
-                self.model.user_id == user_id,
-                self.model.entitlement_code == entitlement_code,
-                self.model.scope_key == scope_key,
-                self.model.cycle_key == cycle_key,
-            )
-            .order_by(self.model.occurred_at.desc(), self.model.id.desc())
-            .limit(1)
-        )
-        return (await db.execute(stmt)).scalars().first()
-
-    async def get_latest_entries(
-        self,
-        db: AsyncSession,
-        *,
-        user_id: int,
-        entitlement_cycle_keys: dict[str, str],
-        scope_key: str,
-    ) -> dict[str, int]:
-        """
-        批量获取当前周期最新余额
-
-        :param db: 数据库会话
-        :param user_id: 用户 ID
-        :param entitlement_cycle_keys: 权益编码与周期键映射
-        :param scope_key: 业务范围键
-        :return:
-        """
-        if not entitlement_cycle_keys:
-            return {}
-
-        pairs = list(entitlement_cycle_keys.items())
-        stmt = (
-            select(
-                self.model.entitlement_code.label('entitlement_code'),
-                self.model.balance_after.label('balance_after'),
-            )
-            .where(
-                self.model.user_id == user_id,
-                self.model.scope_key == scope_key,
-                tuple_(self.model.entitlement_code, self.model.cycle_key).in_(pairs),
-            )
-            .distinct(self.model.entitlement_code)
-            .order_by(
-                self.model.entitlement_code.asc(),
-                self.model.occurred_at.desc(),
-                self.model.id.desc(),
-            )
-        )
-        rows = (await db.execute(stmt)).all()
-        return {str(row.entitlement_code): int(row.balance_after or 0) for row in rows}
+    余额不再从账本推导, 请使用 quota_grant_dao 聚合额度包。
+    """
 
     async def get_by_idempotency_key(
         self,

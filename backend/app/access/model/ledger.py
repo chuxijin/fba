@@ -6,7 +6,7 @@ from datetime import datetime
 
 import sqlalchemy as sa
 
-from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.access.constants import LedgerOperation
@@ -20,7 +20,12 @@ def _enum_values(enum_cls: type) -> list[str]:
 
 
 class QuotaLedger(DataClassBase):
-    """配额账本表(事件溯源, append-only)"""
+    """配额账本表(事件溯源, append-only)
+
+    自额度包(quota_grant)引入后, 本表不再是余额真相源, 仅作为审计流水:
+    balance_after 记录操作后的全量有效余额快照, grant_breakdown 记录本次
+    操作实际命中的额度包明细, 用于精确回补。
+    """
 
     __tablename__ = 'quota_ledger'
     __table_args__ = (
@@ -53,6 +58,11 @@ class QuotaLedger(DataClassBase):
     balance_after: Mapped[int] = mapped_column(comment='操作后余额(快照)')
     source: Mapped[str] = mapped_column(sa.String(32), comment='来源标识')
     scope_key: Mapped[str] = mapped_column(sa.String(64), default='global', comment='业务范围键')
+    grant_breakdown: Mapped[list[dict[str, int]]] = mapped_column(
+        JSONB,
+        default_factory=list,
+        comment='本次操作命中的额度包明细 [{"grant_id": .., "amount": ..}]',
+    )
     source_ref: Mapped[str | None] = mapped_column(sa.String(128), default=None, comment='来源引用')
     idempotency_key: Mapped[str | None] = mapped_column(sa.String(128), unique=True, default=None, comment='幂等键')
     reason: Mapped[str | None] = mapped_column(sa.String(256), default=None, comment='原因')

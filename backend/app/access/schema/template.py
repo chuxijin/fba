@@ -92,3 +92,4 @@ class GetTemplateDetailWithPacks(GetTemplateDetail):
     """订阅模板详情(含关联权益包)"""
 
     packs: list[GetPackDetail] = Field(default_factory=list, description='关联的权益包')
+    domain_codes: list[str] = Field(default_factory=list, description='关联领域编码')

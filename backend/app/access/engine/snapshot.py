@@ -70,6 +70,15 @@ class UserGrantSnapshot:
         """用户通过订阅持有的全部权益编码"""
         return set(self._entitlement_value_map.keys())
 
+    @property
+    def all_entitlement_codes(self) -> set[str]:
+        """订阅 + 直接授予持有的全部权益编码"""
+        if self._cached_direct_grant_codes is not None:
+            direct = set(self._cached_direct_grant_codes)
+        else:
+            direct = {grant.entitlement_code for grant in self._direct_grants}
+        return set(self._entitlement_value_map.keys()) | direct
+
     def has_subscription_entitlement(self, code: str) -> bool:
         """
         判断是否通过订阅持有权益

@@ -6,7 +6,7 @@ from sqlalchemy import Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.access.constants import CommonStatus, GradeLevel
+from backend.app.access.constants import CommonStatus
 from backend.app.access.model.pack import EntitlementPack, PackItem
 
 
@@ -40,21 +40,17 @@ class CRUDEntitlementPack(CRUDPlus[EntitlementPack]):
     async def get_select(
         self,
         *,
-        grade: GradeLevel | None = None,
         domain_id: int | None = None,
         status: CommonStatus | None = None,
     ) -> Select:
         """
         分页查询语句
 
-        :param grade: 档次
         :param domain_id: 领域 ID
         :param status: 状态
         :return:
         """
         filters: dict[str, object] = {}
-        if grade is not None:
-            filters['grade__eq'] = grade
         if domain_id is not None:
             filters['domain_id__eq'] = domain_id
         if status is not None:

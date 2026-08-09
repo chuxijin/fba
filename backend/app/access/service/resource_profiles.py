@@ -8,6 +8,9 @@ AGENT_SHENLUN_GRADE_PROFILE_CODE = 'agent.shenlun.grade'
 AGENT_ENGLISH_ESSAY_GRADE_PROFILE_CODE = 'agent.english_essay.grade'
 AGENT_XINGCE_GRADE_PROFILE_CODE = 'agent.xingce.grade'
 AGENT_INTERVIEW_GRADE_PROFILE_CODE = 'agent.interview.grade'
+FILE_DOWNLOAD_PROFILE_CODE = 'content.file.download'
+LINK_VIEW_PROFILE_CODE = 'content.link.view'
+ARTICLE_READ_PROFILE_CODE = 'content.article.read'
 
 
 def register_builtin_access_profiles() -> None:
@@ -63,6 +66,45 @@ def register_builtin_access_profiles() -> None:
             action='access',
             deny_messages=shared_agent_messages,
             refund_reason='agent grading failed',
+        ),
+        AccessProfile(
+            code=FILE_DOWNLOAD_PROFILE_CODE,
+            resource_type=ResourceType.CONTENT,
+            resource_id=1,
+            action='download',
+            scope_key='file_download',
+            deny_messages={
+                ReasonCode.QUOTA_EXHAUSTED: '下载次数已用完，可开通会员或参与活动获取更多次数',
+                ReasonCode.NO_MATCHING_GRANT: '下载资料需要会员权限',
+                ReasonCode.TRIAL_EXHAUSTED: '免费下载次数已用完，开通会员可继续下载',
+            },
+            refund_reason='file download failed',
+        ),
+        AccessProfile(
+            code=LINK_VIEW_PROFILE_CODE,
+            resource_type=ResourceType.CONTENT,
+            resource_id=2,
+            action='view',
+            scope_key='link_view',
+            deny_messages={
+                ReasonCode.QUOTA_EXHAUSTED: '外链查看次数已用完，请明日再来或开通会员',
+                ReasonCode.NO_MATCHING_GRANT: '查看关联文献需要会员权限',
+                ReasonCode.TRIAL_EXHAUSTED: '免费查看次数已用完，开通会员可继续查看',
+            },
+            refund_reason='link view failed',
+        ),
+        AccessProfile(
+            code=ARTICLE_READ_PROFILE_CODE,
+            resource_type=ResourceType.CONTENT,
+            resource_id=3,
+            action='view',
+            scope_key='article_read',
+            deny_messages={
+                ReasonCode.QUOTA_EXHAUSTED: '深度文章阅读次数已用完，开通会员可无限阅读',
+                ReasonCode.NO_MATCHING_GRANT: '阅读该文章需要会员权限',
+                ReasonCode.TRIAL_EXHAUSTED: '免费试读已结束，开通会员可阅读全文',
+            },
+            refund_reason='article read failed',
         ),
     )
     for profile in profiles:

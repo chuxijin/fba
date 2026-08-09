@@ -7,12 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.app.access.constants import (
-    CommonStatus,
-    EntitlementCategory,
-    EntitlementMetric,
-    EntitlementVerb,
-)
+from backend.app.access.constants import CommonStatus, EntitlementCategory
 from backend.common.model import Base, id_key
 
 
@@ -22,7 +17,10 @@ def _enum_values(enum_cls: type) -> list[str]:
 
 
 class Entitlement(Base):
-    """权益字典表"""
+    """权益字典表
+
+    权益是最细粒度的能力凭证, 由运营自由勾选组合进权益包售卖。
+    """
 
     __tablename__ = 'entitlement'
 
@@ -37,26 +35,6 @@ class Entitlement(Base):
             values_callable=lambda x: _enum_values(EntitlementCategory),
         ),
         comment='权益分类',
-    )
-    metric: Mapped[EntitlementMetric] = mapped_column(
-        PG_ENUM(
-            EntitlementMetric,
-            name='entitlement_metric',
-            create_type=False,
-            values_callable=lambda x: _enum_values(EntitlementMetric),
-        ),
-        default=EntitlementMetric.BOOLEAN,
-        comment='权益度量',
-    )
-    verb: Mapped[EntitlementVerb] = mapped_column(
-        PG_ENUM(
-            EntitlementVerb,
-            name='entitlement_verb',
-            create_type=False,
-            values_callable=lambda x: _enum_values(EntitlementVerb),
-        ),
-        default=EntitlementVerb.ACCESS,
-        comment='权益动作',
     )
     domain_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='所属领域 ID')
     resource_type: Mapped[str | None] = mapped_column(sa.String(32), default=None, comment='资源类型')

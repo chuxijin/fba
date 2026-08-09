@@ -3,7 +3,7 @@
 from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.access.constants import CommonStatus, EntitlementCategory, EntitlementVerb
+from backend.app.access.constants import CommonStatus, EntitlementCategory
 from backend.app.access.crud.crud_entitlement import entitlement_dao
 from backend.app.access.model.entitlement import Entitlement
 from backend.app.access.schema.entitlement import (
@@ -49,7 +49,6 @@ class EntitlementService:
         *,
         keyword: str | None = None,
         category: EntitlementCategory | None = None,
-        verb: EntitlementVerb | None = None,
         domain_id: int | None = None,
         resource_type: str | None = None,
         status: CommonStatus | None = None,
@@ -59,7 +58,6 @@ class EntitlementService:
 
         :param keyword: 关键字
         :param category: 分类
-        :param verb: 动作
         :param domain_id: 领域 ID
         :param resource_type: 资源类型
         :param status: 状态
@@ -68,7 +66,6 @@ class EntitlementService:
         return await entitlement_dao.get_select(
             keyword=keyword,
             category=category,
-            verb=verb,
             domain_id=domain_id,
             resource_type=resource_type,
             status=status,

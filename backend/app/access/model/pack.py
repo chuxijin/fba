@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.app.access.constants import CommonStatus, GradeLevel
+from backend.app.access.constants import CommonStatus
 from backend.common.model import Base, id_key
 
 
@@ -17,23 +17,17 @@ def _enum_values(enum_cls: type) -> list[str]:
 
 
 class EntitlementPack(Base):
-    """权益包表"""
+    """权益包表
+
+    包只是"一组权益"的容器, 不带任何硬编码档位 —— VIP / SVIP 之类的档位名称
+    由售卖模板(subscription_template)承载, 权益内容完全由运营勾选决定。
+    """
 
     __tablename__ = 'entitlement_pack'
 
     id: Mapped[id_key] = mapped_column(init=False)
     code: Mapped[str] = mapped_column(sa.String(64), unique=True, comment='包编码')
     name: Mapped[str] = mapped_column(sa.String(128), comment='包名称')
-    grade: Mapped[GradeLevel] = mapped_column(
-        PG_ENUM(
-            GradeLevel,
-            name='grade_level',
-            create_type=False,
-            values_callable=lambda x: _enum_values(GradeLevel),
-        ),
-        default=GradeLevel.STANDARD,
-        comment='档次',
-    )
     domain_id: Mapped[int | None] = mapped_column(sa.BigInteger, default=None, comment='所属领域 ID')
     description: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='描述')
     status: Mapped[CommonStatus] = mapped_column(

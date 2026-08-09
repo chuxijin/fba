@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from backend.app.access.constants import CommonStatus, EntitlementCategory, EntitlementVerb
+from backend.app.access.constants import CommonStatus, EntitlementCategory
 from backend.app.access.schema.entitlement import (
     CreateEntitlementParam,
     GetEntitlementDetail,
@@ -40,7 +40,6 @@ async def get_entitlement_list(
     db: CurrentSession,
     keyword: Annotated[str | None, Query(description='关键字')] = None,
     category: Annotated[EntitlementCategory | None, Query(description='分类')] = None,
-    verb: Annotated[EntitlementVerb | None, Query(description='动作')] = None,
     domain_id: Annotated[int | None, Query(description='领域 ID')] = None,
     resource_type: Annotated[str | None, Query(description='资源类型')] = None,
     status: Annotated[CommonStatus | None, Query(description='状态')] = None,
@@ -49,7 +48,6 @@ async def get_entitlement_list(
     stmt = await entitlement_service.get_select(
         keyword=keyword,
         category=category,
-        verb=verb,
         domain_id=domain_id,
         resource_type=resource_type,
         status=status,

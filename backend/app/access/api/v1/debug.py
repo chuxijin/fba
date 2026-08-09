@@ -74,6 +74,7 @@ async def debug_access_decision(
                     'entitlement_code': rule.entitlement_code,
                     'grant_mode': rule.grant_mode,
                     'priority': rule.priority,
+                    'trial_policy': rule.trial_policy,
                     'inherit_to_children': rule.inherit_to_children,
                 }
                 for rule in rules
