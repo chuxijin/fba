@@ -90,13 +90,11 @@ class SlotService:
 
         if slot.target_user_type == 2:
             # 会员: 任何 active subscription 视为命中
-            grade = await subscription_service.get_max_grade(db, user_id=user_id)
-            return grade != 'basic'
+            return await subscription_service.has_active_subscription(db, user_id=user_id)
 
         if slot.target_user_type == 3:
             # 普通用户(无任何有效会员)
-            grade = await subscription_service.get_max_grade(db, user_id=user_id)
-            return grade == 'basic'
+            return not await subscription_service.has_active_subscription(db, user_id=user_id)
 
         # 99 自定义条件保留位
         return True

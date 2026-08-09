@@ -197,10 +197,11 @@ async def study_plan_delete_ability_binding(
     dependencies=[Depends(RequestPermission('study_plan:admin:read')), DependsRBAC],
 )
 async def study_plan_preview_practice_source(
+    request: Request,
     db: CurrentSession,
     param: PreviewStudyPlanPracticeSourceParam,
 ) -> ResponseSchemaModel[PreviewStudyPlanPracticeSourceResult]:
-    result = await preview_practice_source(db, param)
+    result = await preview_practice_source(db, param, user_id=request.user.id)
     return response_base.success(data=result)
 
 

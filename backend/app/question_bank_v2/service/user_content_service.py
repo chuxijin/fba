@@ -3,7 +3,6 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.crud.crud_composition import bank_item_dao
-from backend.app.question_bank_v2.crud.crud_knowledge import knowledge_system_dao
 from backend.app.question_bank_v2.crud.crud_practice import practice_session_dao
 from backend.app.question_bank_v2.crud.crud_question import question_dao
 from backend.app.question_bank_v2.crud.crud_user_content import (
@@ -28,6 +27,7 @@ from backend.app.question_bank_v2.schema.user_content import (
     UpdateQuestionNoteParam,
 )
 from backend.app.question_bank_v2.service.content_group_service import content_group_service
+from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
@@ -275,22 +275,52 @@ class UserContentService:
         return await question_favorite_dao.get_session_states(db, session_id=session.id, user_id=user_id)
 
     @staticmethod
+    async def _resolve_knowledge_system_ids(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        group_by: str,
+        knowledge_system_id: int | None,
+        domain_category_id: int | None,
+    ) -> list[int]:
+        """按知识点分组时解析当前领域各科目生效的体系；其他分组方式无需解析"""
+        if group_by != 'knowledge_point':
+            return []
+        resolved_domain_id = await knowledge_service.resolve_domain_category_id(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        return await knowledge_service.resolve_system_ids(
+            db=db,
+            domain_category_id=resolved_domain_id,
+            system_id=knowledge_system_id,
+            user_id=user_id,
+        )
+
+    @staticmethod
     async def get_favorite_statistics(
         *,
         db: AsyncSession,
         user_id: int,
         group_by: str,
+        knowledge_system_id: int | None = None,
+        domain_category_id: int | None = None,
     ) -> FavoriteStatistics:
         """获取收藏汇总及题库或知识点分组"""
         stats = await question_favorite_dao.get_statistics(db, user_id=user_id)
-        knowledge_system_id = (
-            await knowledge_system_dao.get_default_system_id(db) if group_by == 'knowledge_point' else None
+        knowledge_system_ids = await UserContentService._resolve_knowledge_system_ids(
+            db=db,
+            user_id=user_id,
+            group_by=group_by,
+            knowledge_system_id=knowledge_system_id,
+            domain_category_id=domain_category_id,
         )
         rows = await question_favorite_dao.get_group_counts(
             db,
             user_id=user_id,
             group_by=group_by,
-            knowledge_system_id=knowledge_system_id,
+            knowledge_system_ids=knowledge_system_ids,
         )
         groups = (
             UserContentService._build_groups(rows=rows, group_by=group_by)
@@ -437,17 +467,23 @@ class UserContentService:
         db: AsyncSession,
         user_id: int,
         group_by: str,
+        knowledge_system_id: int | None = None,
+        domain_category_id: int | None = None,
     ) -> NoteStatistics:
         """获取笔记汇总及题库或知识点分组"""
         stats = await question_note_dao.get_statistics(db, user_id=user_id)
-        knowledge_system_id = (
-            await knowledge_system_dao.get_default_system_id(db) if group_by == 'knowledge_point' else None
+        knowledge_system_ids = await UserContentService._resolve_knowledge_system_ids(
+            db=db,
+            user_id=user_id,
+            group_by=group_by,
+            knowledge_system_id=knowledge_system_id,
+            domain_category_id=domain_category_id,
         )
         rows = await question_note_dao.get_group_counts(
             db,
             user_id=user_id,
             group_by=group_by,
-            knowledge_system_id=knowledge_system_id,
+            knowledge_system_ids=knowledge_system_ids,
         )
         groups = (
             UserContentService._build_groups(rows=rows, group_by=group_by)

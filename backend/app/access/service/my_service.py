@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.engine import Row
 
 from backend.app.access.constants import (
-    CycleType,
     EntitlementCategory,
     SubscriptionSource,
     SubscriptionStatus,
@@ -19,9 +18,8 @@ from backend.app.access.crud.crud_grant import direct_grant_dao
 from backend.app.access.crud.crud_pack import entitlement_pack_dao, pack_item_dao
 from backend.app.access.crud.crud_subscription import subscription_dao
 from backend.app.access.crud.crud_template import subscription_template_dao, template_pack_dao
-from backend.app.access.engine.cycle import build_cycle_key
 from backend.app.access.model.entitlement import Entitlement
-from backend.app.access.model.pack import EntitlementPack, PackItem
+from backend.app.access.model.pack import EntitlementPack
 from backend.app.access.model.subscription import Subscription
 from backend.app.access.schema.base import TimePeriodOutput
 from backend.app.access.schema.entitlement import GetMyEntitlement
@@ -40,14 +38,6 @@ my_summary_cache: RedisCache[GetMyAccessSummary] = RedisCache(
     ttl=_MY_ACCESS_SUMMARY_CACHE_TTL,
     serializer=PydanticSerializer(GetMyAccessSummary),
 )
-
-_GRADE_WEIGHTS = {
-    'basic': 0,
-    'standard': 1,
-    'premium': 2,
-    'elite': 3,
-}
-
 
 class MyAccessService:
     """我的权益聚合服务"""
@@ -147,11 +137,7 @@ class MyAccessService:
         if not entitlement_map:
             return []
 
-        entitlement_map = MyAccessService._filter_covered_trials(entitlement_map)
-        if not entitlement_map:
-            return []
-
-        # 聚合 QUOTA 类型权益的当前余额: 优先取 ledger 现存余额, 否则按 pack_item 配置回退
+        # 聚合 QUOTA 类型权益的当前余额: 优先取额度包余额, 否则按 pack_item 配置回退
         quota_codes = [
             code
             for code, entitlement in entitlement_map.items()
@@ -237,10 +223,6 @@ class MyAccessService:
                     },
                 )
 
-        if not entitlement_map:
-            return []
-
-        entitlement_map = MyAccessService._filter_covered_trials(entitlement_map)
         if not entitlement_map:
             return []
 
@@ -437,152 +419,6 @@ class MyAccessService:
             'entitlement_map': entitlement_map,
         }
 
-    @staticmethod
-    def _get_quota_cycle_types(
-        subscription_context: dict[str, object],
-        quota_codes: list[str],
-    ) -> dict[str, str]:
-        """
-        获取订阅配额权益的周期类型
-
-        :param subscription_context: 订阅权益上下文
-        :param quota_codes: 配额权益编码
-        :return:
-        """
-        code_set = set(quota_codes)
-        pack_items = subscription_context.get('pack_items')
-        entitlement_map = subscription_context.get('entitlement_map')
-        if not isinstance(pack_items, list) or not isinstance(entitlement_map, dict):
-            return {}
-
-        cycle_types: dict[str, str] = {}
-        quota_values: dict[str, int] = {}
-        for item in pack_items:
-            if not isinstance(item, PackItem):
-                continue
-
-            entitlement = entitlement_map.get(item.entitlement_id)
-            if not isinstance(entitlement, Entitlement) or entitlement.code not in code_set:
-                continue
-
-            value = item.value_int if item.value_int is not None else 1
-            current_value = quota_values.get(entitlement.code, 0)
-            if value < current_value:
-                continue
-
-            value_meta = item.value_meta or {}
-            cycle_type = value_meta.get('cycle_type') or CycleType.MONTHLY
-            cycle_types[entitlement.code] = str(getattr(cycle_type, 'value', cycle_type))
-            quota_values[entitlement.code] = value
-        return cycle_types
-
-    @staticmethod
-    def _compute_quota_limits_from_context(
-        subscription_context: dict[str, object],
-        quota_codes: list[str],
-    ) -> dict[str, int]:
-        """
-        从订阅上下文直接计算配额上限, 避免落 ledger 时的多次查询
-
-        :param subscription_context: 订阅权益上下文
-        :param quota_codes: 配额权益编码
-        :return:
-        """
-        code_set = set(quota_codes)
-        pack_items = subscription_context.get('pack_items')
-        entitlement_map = subscription_context.get('entitlement_map')
-        if not isinstance(pack_items, list) or not isinstance(entitlement_map, dict):
-            return {}
-
-        quota_limits: dict[str, int] = {}
-        for item in pack_items:
-            if not isinstance(item, PackItem):
-                continue
-
-            entitlement = entitlement_map.get(item.entitlement_id)
-            if not isinstance(entitlement, Entitlement) or entitlement.code not in code_set:
-                continue
-
-            value = item.value_int if item.value_int is not None else 0
-            if value > quota_limits.get(entitlement.code, 0):
-                quota_limits[entitlement.code] = value
-        return quota_limits
-
-    @staticmethod
-    def _get_quota_cycle_types_from_items(
-        pack_items: list[dict[str, Any]],
-        quota_codes: list[str],
-    ) -> dict[str, str]:
-        """
-        从聚合行获取配额周期类型
-
-        :param pack_items: 权益包成员行
-        :param quota_codes: 配额权益编码
-        :return:
-        """
-        code_set = set(quota_codes)
-        cycle_types: dict[str, str] = {}
-        quota_values: dict[str, int] = {}
-        for item in pack_items:
-            code = item.get('entitlement_code')
-            if code not in code_set:
-                continue
-
-            value = item.get('value_int')
-            value = value if value is not None else 1
-            current_value = quota_values.get(str(code), 0)
-            if value < current_value:
-                continue
-
-            value_meta = item.get('value_meta') or {}
-            cycle_type = value_meta.get('cycle_type') or CycleType.MONTHLY
-            cycle_types[str(code)] = str(getattr(cycle_type, 'value', cycle_type))
-            quota_values[str(code)] = value
-        return cycle_types
-
-    @staticmethod
-    def _filter_covered_trials(entitlement_map: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-        """
-        过滤被完整权限覆盖的试看配额
-
-        若用户拥有 access 类型的 *.view 权益, 则隐藏同前缀的 *.trial 配额
-
-        :param entitlement_map: 权益映射
-        :return:
-        """
-        access_codes = {code for code, ent in entitlement_map.items() if ent['category'] == EntitlementCategory.ACCESS}
-        return {
-            code: ent
-            for code, ent in entitlement_map.items()
-            if not (code.endswith('.trial') and code.replace('.trial', '.view') in access_codes)
-        }
-
-    @staticmethod
-    async def _get_quota_cycle_types_from_rules(
-        db: AsyncSession,
-        quota_codes: list[str],
-    ) -> dict[str, str]:
-        """
-        从 resource_rule metadata 获取配额周期类型
-
-        :param db: 数据库会话
-        :param quota_codes: 配额权益编码
-        :return:
-        """
-        from sqlalchemy import select as sa_select
-
-        from backend.app.access.model.rule import ResourceRule
-
-        stmt = sa_select(ResourceRule).where(
-            ResourceRule.entitlement_code.in_(quota_codes),
-            ResourceRule.status == 'active',
-        )
-        rules = (await db.execute(stmt)).scalars().all()
-        cycle_types: dict[str, str] = {}
-        for rule in rules:
-            cycle_type = (rule.metadata_ or {}).get('cycle_type', CycleType.MONTHLY)
-            cycle_types[rule.entitlement_code] = str(getattr(cycle_type, 'value', cycle_type))
-        return cycle_types
 
     @staticmethod
     async def _get_quota_scope_keys_from_rules(
@@ -667,7 +503,10 @@ class MyAccessService:
         quota_codes: list[str],
     ) -> dict[str, int]:
         """
-        加载配额权益余额
+        加载配额权益余额(直接聚合额度包)
+
+        余额是当前所有有效额度包剩余量之和, 已天然包含周期补账额度与
+        活动赠送的一次性额度, 因此不再需要按 cycle_type 逐级推导周期键。
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -679,38 +518,30 @@ class MyAccessService:
         if not quota_codes:
             return {}
 
-        cycle_types = MyAccessService._get_quota_cycle_types_from_items(pack_items, quota_codes)
-        missing_cycle_codes = [code for code in quota_codes if code not in cycle_types]
-        if missing_cycle_codes:
-            rule_cycle_types = await MyAccessService._get_quota_cycle_types_from_rules(
-                db,
-                missing_cycle_codes,
-            )
-            cycle_types.update(rule_cycle_types)
+        from backend.app.access.crud.crud_quota_grant import quota_grant_dao
 
         scope_keys = await MyAccessService._get_quota_scope_keys_from_rules(db, quota_codes)
-        entitlement_groups: dict[str, dict[str, str]] = {}
+        grouped: dict[str, list[str]] = {}
         for code in quota_codes:
-            cycle_key = build_cycle_key(cycle_types.get(code, CycleType.MONTHLY), now)
-            scope_key = scope_keys.get(code, 'global')
-            entitlement_groups.setdefault(scope_key, {})[code] = cycle_key
-
-        from backend.app.access.crud.crud_ledger import quota_ledger_dao
+            grouped.setdefault(scope_keys.get(code, 'global'), []).append(code)
 
         balances: dict[str, int] = {}
-        for scope_key, entitlement_cycle_keys in entitlement_groups.items():
-            group_balances = await quota_ledger_dao.get_latest_entries(
-                db,
-                user_id=user_id,
-                entitlement_cycle_keys=entitlement_cycle_keys,
-                scope_key=scope_key,
+        for scope_key, codes in grouped.items():
+            balances.update(
+                await quota_grant_dao.get_balances(
+                    db,
+                    user_id=user_id,
+                    entitlement_codes=codes,
+                    scope_key=scope_key,
+                    ts=now,
+                )
             )
-            balances.update(group_balances)
 
         missing_codes = sorted(set(quota_codes) - set(balances))
         if not missing_codes:
             return balances
 
+        # 尚未生成过额度包(订阅后从未使用)时, 按权益包配置展示名义额度
         fallback_limits = MyAccessService._compute_quota_limits_from_items(
             pack_items,
             missing_codes,
@@ -751,21 +582,20 @@ class MyAccessService:
                 item['packs'].append({
                     'id': row.pack_id,
                     'code': row.pack_code,
-                    'grade': MyAccessService._source_value(row.pack_grade),
                 })
             if row.domain_code and row.domain_code not in item['domain_codes']:
                 item['domain_codes'].append(row.domain_code)
 
         result: list[GetMySubscription] = []
         for item in grouped.values():
-            primary_pack = MyAccessService._primary_pack_dict(item['packs'])
+            packs = item['packs']
             result.append(
                 GetMySubscription(
                     id=item['id'],
                     template_code=item['template_code'],
                     template_name=item['template_name'],
-                    pack_code=primary_pack['code'] if primary_pack else None,
-                    grade=primary_pack['grade'] if primary_pack else 'basic',
+                    pack_code=packs[0]['code'] if packs else None,
+                    pack_codes=[pack['code'] for pack in packs],
                     domain_codes=item['domain_codes'],
                     cover_image=item['cover_image'],
                     valid_period=TimePeriodOutput.from_range(item['valid_period']),
@@ -776,127 +606,6 @@ class MyAccessService:
                 )
             )
         return result
-
-    @staticmethod
-    def _primary_pack_dict(packs: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
-        """
-        获取主权益包字典
-
-        :param packs: 权益包字典列表
-        :return:
-        """
-        if not packs:
-            return None
-        return sorted(
-            packs,
-            key=lambda pack: _GRADE_WEIGHTS.get(str(pack.get('grade')), 0),
-            reverse=True,
-        )[0]
-
-    @staticmethod
-    def _build_subscription_item(sub: Subscription, context: dict[str, dict]) -> GetMySubscription:
-        """
-        构建我的订阅项
-
-        :param sub: 订阅
-        :param context: 关联上下文
-        :return:
-        """
-        template = context['templates'][sub.template_id]
-        packs = MyAccessService._subscription_packs(sub.template_id, context)
-        primary_pack = MyAccessService._primary_pack(packs)
-        valid_period = TimePeriodOutput.from_range(sub.valid_period)
-
-        return GetMySubscription(
-            id=sub.id,
-            template_code=template.code,
-            template_name=template.name,
-            pack_code=primary_pack.code if primary_pack else None,
-            grade=MyAccessService._pack_grade(primary_pack),
-            domain_codes=MyAccessService._domain_codes(packs, context),
-            cover_image=template.cover_image,
-            valid_period=valid_period,
-            valid_from=sub.valid_period.lower,
-            valid_to=sub.valid_period.upper,
-            status=sub.status,
-            created_time=sub.created_time,
-        )
-
-    @staticmethod
-    def _build_entitlement_item(entitlement: Entitlement, balance: int | None = None) -> GetMyEntitlement:
-        """
-        构建我的权益项
-
-        :param entitlement: 权益
-        :param balance: 余额
-        :return:
-        """
-        return GetMyEntitlement(
-            code=entitlement.code,
-            name=entitlement.name,
-            category=entitlement.category,
-            description=entitlement.description,
-            balance=balance,
-        )
-
-    @staticmethod
-    def _subscription_packs(template_id: int, context: dict[str, dict]) -> list[EntitlementPack]:
-        """
-        获取订阅关联权益包
-
-        :param template_id: 模板 ID
-        :param context: 关联上下文
-        :return:
-        """
-        pack_ids = context['template_pack_ids'].get(template_id, [])
-        return [context['packs'][pack_id] for pack_id in pack_ids if pack_id in context['packs']]
-
-    @staticmethod
-    def _primary_pack(packs: Sequence[EntitlementPack]) -> EntitlementPack | None:
-        """
-        获取主权益包
-
-        :param packs: 权益包列表
-        :return:
-        """
-        if not packs:
-            return None
-        return sorted(
-            packs,
-            key=lambda pack: _GRADE_WEIGHTS.get(MyAccessService._source_value(pack.grade), 0),
-            reverse=True,
-        )[0]
-
-    @staticmethod
-    def _domain_codes(packs: Sequence[EntitlementPack], context: dict[str, dict]) -> list[str]:
-        """
-        获取领域编码
-
-        :param packs: 权益包列表
-        :param context: 关联上下文
-        :return:
-        """
-        codes: list[str] = []
-        for pack in packs:
-            if pack.domain_id is None:
-                continue
-            domain = context['domains'].get(pack.domain_id)
-            if domain is None or domain.code in codes:
-                continue
-            codes.append(domain.code)
-        return codes
-
-    @staticmethod
-    def _pack_grade(pack: EntitlementPack | None) -> str:
-        """
-        获取权益包档次
-
-        :param pack: 权益包
-        :return:
-        """
-        if pack is None:
-            return 'basic'
-        return MyAccessService._source_value(pack.grade)
 
     @staticmethod
     def _source_value(source: object) -> str:

@@ -230,7 +230,7 @@ class StudyUserCategoryProfile(Base):
         sa.Index('idx_study_user_category_profile_user', 'user_id'),
         sa.Index('idx_study_user_category_profile_category', 'category_id'),
         sa.Index('idx_study_user_category_profile_mastery', 'mastery_score'),
-        sa.CheckConstraint("source_type IN ('ability','question_bank')", name='ck_study_user_category_profile_source'),
+        sa.CheckConstraint("source_type IN ('ability')", name='ck_study_user_category_profile_source'),
         sa.CheckConstraint(
             'attempt_count >= 0 AND total_count >= 0 AND correct_count >= 0',
             name='ck_study_user_category_profile_counts',
@@ -266,3 +266,46 @@ class StudyUserCategoryProfile(Base):
     algorithm_version: Mapped[str] = mapped_column(sa.String(32), default='ability_profile_v1', comment='算法版本')
 
     category: Mapped[Category] = relationship(init=False, lazy='noload')
+
+
+class StudyUserKnowledgeProfile(Base):
+    """用户知识点画像表"""
+
+    __tablename__ = 'study_user_knowledge_profile'
+    __table_args__ = (
+        sa.UniqueConstraint('user_id', 'knowledge_point_id', name='uq_study_user_knowledge_profile_point'),
+        sa.Index('idx_study_user_knowledge_profile_user', 'user_id'),
+        sa.Index('idx_study_user_knowledge_profile_point', 'knowledge_point_id'),
+        sa.Index('idx_study_user_knowledge_profile_mastery', 'mastery_score'),
+        sa.CheckConstraint(
+            'attempt_count >= 0 AND total_count >= 0 AND correct_count >= 0',
+            name='ck_study_user_knowledge_profile_counts',
+        ),
+        sa.CheckConstraint('duration_seconds >= 0', name='ck_study_user_knowledge_profile_duration'),
+        {'comment': '用户知识点画像表'},
+    )
+
+    id: Mapped[id_key] = mapped_column(init=False)
+    user_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('study_user_account.user_id', ondelete='CASCADE'),
+        comment='用户 ID',
+    )
+    knowledge_point_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('qbank_v2_knowledge_point.id', ondelete='RESTRICT'),
+        comment='题库 v2 知识点 ID',
+    )
+    attempt_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='练习次数')
+    total_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='总题数')
+    correct_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='正确数')
+    duration_seconds: Mapped[int] = mapped_column(sa.Integer, default=0, comment='总耗时秒')
+    accuracy_rate: Mapped[Decimal] = mapped_column(sa.Numeric(6, 2), default=Decimal('0'), comment='正确率百分比')
+    avg_seconds: Mapped[Decimal | None] = mapped_column(sa.Numeric(8, 2), default=None, comment='平均耗时秒')
+    mastery_score: Mapped[Decimal] = mapped_column(sa.Numeric(6, 2), default=Decimal('0'), comment='掌握度')
+    speed_score: Mapped[Decimal] = mapped_column(sa.Numeric(6, 2), default=Decimal('0'), comment='速度分')
+    confidence_score: Mapped[Decimal] = mapped_column(sa.Numeric(6, 2), default=Decimal('0'), comment='可信度')
+    trend_score: Mapped[Decimal] = mapped_column(sa.Numeric(6, 2), default=Decimal('0'), comment='趋势分')
+    weakness_score: Mapped[Decimal] = mapped_column(sa.Numeric(6, 2), default=Decimal('100'), comment='薄弱度')
+    last_attempt_at: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近练习时间')
+    algorithm_version: Mapped[str] = mapped_column(sa.String(32), default='ability_profile_v1', comment='算法版本')

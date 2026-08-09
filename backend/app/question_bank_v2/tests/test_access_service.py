@@ -21,8 +21,8 @@ def _make_bank(*, owner_id: int | None = None, visibility: str = 'public') -> Si
     )
 
 
-def test_bank_access_uses_stable_bank_id_and_disables_trial(monkeypatch) -> None:
-    """题库准入必须绑定稳定 bank_id 且完全禁用配额路径"""
+def test_bank_access_uses_stable_bank_id_and_disables_trial_without_ordinal(monkeypatch) -> None:
+    """不传题目序号时退化为纯准入判定, 不启用试看"""
 
     async def fake_get(*_args, **_kwargs):
         return _make_bank()
@@ -46,6 +46,63 @@ def test_bank_access_uses_stable_bank_id_and_disables_trial(monkeypatch) -> None
     assert ctx.action == 'practice'
     assert not ctx.allow_trial
     assert not ctx.consume_trial
+
+
+def test_bank_access_enables_trial_when_ordinal_supplied(monkeypatch) -> None:
+    """传入题目序号时启用试看, 并把序号/总数透传给引擎"""
+
+    async def fake_get(*_args, **_kwargs):
+        return _make_bank()
+
+    captured: dict[str, object] = {}
+
+    async def fake_decide(_db, ctx):
+        captured['ctx'] = ctx
+        return Decision.allow(reason_code=ReasonCode.TRIAL_POLICY, trial_mode='ordinal')
+
+    monkeypatch.setattr(access_service_module.bank_dao, 'get', fake_get)
+    monkeypatch.setattr(access_service_module.access_decision_engine, 'decide', fake_decide)
+
+    _, decision = asyncio.run(
+        bank_access_service.ensure_bank_access(
+            db=None,
+            user_id=7,
+            bank_id=21,
+            question_ordinal=2,
+            question_total=100,
+            consume=True,
+        )
+    )
+
+    assert decision.allowed
+    ctx = captured['ctx']
+    assert ctx.allow_trial
+    assert ctx.consume_trial
+    assert ctx.sub_resource_ordinal == 2
+    assert ctx.sub_resource_total == 100
+
+
+def test_bank_access_trial_exhausted_message(monkeypatch) -> None:
+    """试看耗尽应给出引导付费的文案, 而不是通用的无权限提示"""
+
+    async def fake_get(*_args, **_kwargs):
+        return _make_bank()
+
+    async def fake_decide(*_args, **_kwargs):
+        return Decision.deny(reason_code=ReasonCode.TRIAL_EXHAUSTED)
+
+    monkeypatch.setattr(access_service_module.bank_dao, 'get', fake_get)
+    monkeypatch.setattr(access_service_module.access_decision_engine, 'decide', fake_decide)
+
+    with pytest.raises(errors.ForbiddenError, match='免费试刷已结束'):
+        asyncio.run(
+            bank_access_service.ensure_bank_access(
+                db=None,
+                user_id=7,
+                bank_id=21,
+                question_ordinal=99,
+            )
+        )
 
 
 def test_bank_owner_bypasses_access_engine(monkeypatch) -> None:

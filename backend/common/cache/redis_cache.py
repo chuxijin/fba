@@ -238,7 +238,7 @@ class RedisCache(Generic[T]):
             local_cache_manager.delete_by_prefix(cache_key)
 
         try:
-            await redis_client.delete_prefix(cache_key)
+            await redis_client.delete_by_prefix(cache_key)
         except Exception as exc:
             log.warning(f'[RedisCache] INVALIDATE_PREFIX 失败 key={cache_key} err={exc}')
 

@@ -4,8 +4,8 @@ from backend.common.reward.dispatcher import dispatch_reward, register_fulfiller
 from backend.common.reward.fulfiller import (
     BaseRewardFulfiller,
     ChaojiCourseFulfiller,
-    FeatureFulfiller,
     PointsFulfiller,
+    QuotaFulfiller,
     VipFulfiller,
 )
 
@@ -16,6 +16,6 @@ __all__ = [
     'BaseRewardFulfiller',
     'VipFulfiller',
     'PointsFulfiller',
-    'FeatureFulfiller',
+    'QuotaFulfiller',
     'ChaojiCourseFulfiller',
 ]

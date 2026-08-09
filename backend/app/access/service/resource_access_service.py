@@ -170,18 +170,13 @@ class ResourceAccessService:
 
         profile = self.get_profile(profile_code=profile_code)
         entry = await quota_ledger_dao.select_model(db, decision.consumed_ledger_id)
-        if entry is None:
+        if entry is None or entry.user_id != user_id:
             return
 
-        await ledger_service.refund(
+        await ledger_service.refund_consumption(
             db,
-            user_id=user_id,
-            entitlement_code=entry.entitlement_code,
-            amount=entry.amount,
-            cycle_type=entry.cycle_type,
-            cycle_key=entry.cycle_key,
-            scope_key=entry.scope_key,
-            source='trial_refund',
+            ledger_id=entry.id,
+            source='quota_refund',
             source_ref=source_ref or f'{profile.code}:refund:{entry.id}',
             idempotency_key=f'refund:{entry.id}',
             reason=profile.refund_reason,

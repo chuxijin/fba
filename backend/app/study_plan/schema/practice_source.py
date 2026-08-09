@@ -17,7 +17,6 @@ class PreviewStudyPlanPracticeSourceParam(SchemaBase):
     source_mode: PracticeSourceMode = Field(description='来源模式')
     bank_id: int | None = Field(default=None, gt=0, description='题库 ID')
     chapter_id: int | None = Field(default=None, gt=0, description='篇章 ID')
-    cat_id: int | None = Field(default=None, gt=0, description='分类 ID')
     year_start: int | None = Field(default=None, ge=1900, le=2100, description='起始年份')
     year_end: int | None = Field(default=None, ge=1900, le=2100, description='结束年份')
     region: str | None = Field(default=None, max_length=100, description='地区关键字')

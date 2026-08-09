@@ -9,6 +9,7 @@ from datetime import date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.access.engine.snapshot import snapshot_service
 from backend.app.growth.crud import experience_rule_dao
 from backend.app.growth.model.experience_rule import ExperienceRule
 from backend.app.growth.service import experience_service
@@ -55,10 +56,12 @@ class CheckInService:
         """
         streak_before_today = await check_in_dao.get_streak(db, user_id)
         cycle_day = (streak_before_today % 7) + 1
+        snapshot = await snapshot_service.load(db, user_id=user_id, ts=timezone.now())
         reward_rule = await experience_rule_dao.get_active_rule(
             db,
             event_code='check_in',
             cycle_day=cycle_day,
+            held_entitlement_codes=snapshot.all_entitlement_codes,
         )
         return cycle_day, reward_rule
 

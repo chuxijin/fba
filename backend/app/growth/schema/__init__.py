@@ -10,4 +10,5 @@ from backend.app.growth.schema.account import (  # noqa: F401
     GetGrowthAccountDetail,
     GetGrowthEventDetail,
     GetGrowthProgress,
+    ManualExperienceParam,
 )

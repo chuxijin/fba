@@ -12,6 +12,7 @@ KnowledgePointSource = Literal['manual', 'import', 'ai']
 
 
 class CreateKnowledgeSystemParam(SchemaBase):
+    domain_category_id: int = Field(gt=0, description='所属领域分类 ID')
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=128)
     version: str = Field(min_length=1, max_length=32)
@@ -66,6 +67,7 @@ class GetKnowledgeSystemListItem(SchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='知识体系 ID')
+    domain_category_id: int = Field(description='所属领域分类 ID')
     code: str = Field(description='知识体系编码')
     name: str = Field(description='知识体系名称')
     version: str = Field(description='体系版本')
@@ -96,11 +98,11 @@ class GetKnowledgePointTreeNode(SchemaBase):
 
 
 class GetKnowledgeTreeDetail(SchemaBase):
-    """指定题库范围内的知识点树与用户进度"""
+    """知识点树与用户进度；限定题库时为该题库范围，否则跨全部可用题库"""
 
     system: GetKnowledgeSystemListItem = Field(description='知识体系')
-    bank_id: int = Field(description='题库稳定身份 ID')
-    bank_revision_id: int = Field(description='题库当前发布版本 ID')
+    bank_id: int | None = Field(None, description='题库稳定身份 ID；跨题库聚合时为空')
+    bank_revision_id: int | None = Field(None, description='题库当前发布版本 ID；跨题库聚合时为空')
     root_id: int | None = Field(None, description='限定的知识点根节点 ID')
     total_question_count: int = Field(ge=0, description='当前树题目总数')
     total_answered_count: int = Field(ge=0, description='当前树已作答题数')

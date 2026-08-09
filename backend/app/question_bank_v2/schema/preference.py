@@ -25,6 +25,9 @@ class CustomTab(SchemaBase):
 
 CategoryCustomTabs = dict[str, list[CustomTab]]
 
+KnowledgeSystemChoice = dict[str, int]
+"""各科目选定的知识体系版本；key 为体系 code（如 xingce），value 为 system_id，未配置的科目回落 default"""
+
 
 class UpdatePracticePreferenceParam(SchemaBase):
     """更新用户练习偏好参数"""
@@ -41,6 +44,25 @@ class UpdatePracticePreferenceParam(SchemaBase):
     review_reminder_timezone: str | None = Field(None, min_length=1, max_length=64, description='IANA 提醒时区')
     review_daily_limit: int | None = Field(None, ge=1, le=200, description='单日复习题数上限')
     custom_tabs: CategoryCustomTabs | None = Field(None, description='按分类范围隔离的自定义导航标签')
+    knowledge_system_choice: KnowledgeSystemChoice | None = Field(
+        None,
+        description='各科目选定的知识体系版本；key 为体系 code，未配置的科目回落 default',
+    )
+
+    @field_validator('knowledge_system_choice')
+    @classmethod
+    def validate_knowledge_system_choice(
+        cls, value: KnowledgeSystemChoice | None
+    ) -> KnowledgeSystemChoice | None:
+        if value is None:
+            return None
+        if len(value) > 50:
+            raise ValueError('知识体系选择最多 50 个科目')
+        if any(not code.strip() for code in value):
+            raise ValueError('知识体系编码不能为空')
+        if any(system_id <= 0 for system_id in value.values()):
+            raise ValueError('知识体系 ID 必须大于 0')
+        return value
 
     @field_validator('custom_tabs')
     @classmethod
@@ -73,3 +95,7 @@ class GetPracticePreferenceDetail(SchemaBase):
     review_reminder_timezone: str = Field(default='Asia/Shanghai', description='IANA 提醒时区')
     review_daily_limit: int = Field(default=30, description='单日复习题数上限')
     custom_tabs: CategoryCustomTabs = Field(default_factory=dict, description='按分类范围隔离的自定义导航标签')
+    knowledge_system_choice: KnowledgeSystemChoice = Field(
+        default_factory=dict,
+        description='各科目选定的知识体系版本；key 为体系 code，未配置的科目回落 default',
+    )

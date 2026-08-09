@@ -340,33 +340,19 @@ class SubscriptionService:
         return await subscription_dao.expire_due(db)
 
     @staticmethod
-    async def get_max_grade(db: AsyncSession, *, user_id: int) -> str:
+    async def has_active_subscription(db: AsyncSession, *, user_id: int) -> bool:
         """
-        获取用户当前最高档次(用于 cms 插槽过滤等场景)
+        判断用户当前是否持有任一有效订阅(用于 cms 分群等只关心"是否会员"的场景)
+
+        不返回档位: 档位由售卖模板名称承载, 权益由运营勾选组合决定,
+        因此系统里不存在一个可比较的全局"会员等级"。
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :return:
         """
-        from backend.app.access.crud.crud_pack import entitlement_pack_dao
-        from backend.app.access.crud.crud_template import template_pack_dao
-
         subs = await subscription_dao.list_active_for_user(db, user_id, timezone.now())
-        if not subs:
-            return 'basic'
-
-        relations = await template_pack_dao.get_by_templates(db, [s.template_id for s in subs])
-        pack_ids = list({r.pack_id for r in relations})
-        if not pack_ids:
-            return 'basic'
-
-        packs = await entitlement_pack_dao.select_models(db, id__in=pack_ids)
-        ranking = ['elite', 'premium', 'standard', 'basic']
-        seen = {(getattr(p.grade, 'value', p.grade)) for p in packs}
-        for grade in ranking:
-            if grade in seen:
-                return grade
-        return 'basic'
+        return bool(subs)
 
     @staticmethod
     async def _invalidate_user_access_cache(user_id: int) -> None:

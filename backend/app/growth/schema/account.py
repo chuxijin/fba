@@ -38,6 +38,15 @@ class AddExperienceParam(SchemaBase):
     reason: str | None = Field(default=None, max_length=256, description='原因')
 
 
+class ManualExperienceParam(SchemaBase):
+    """管理端手动调整经验值参数"""
+
+    user_id: int = Field(gt=0, description='用户 ID')
+    exp_delta: int = Field(gt=0, description='经验变动量')
+    source_key: str = Field(min_length=1, max_length=128, description='来源幂等键')
+    reason: str = Field(min_length=1, max_length=256, description='调整原因')
+
+
 class GetGrowthEventDetail(SchemaBase):
     """成长事件流水"""
 
@@ -45,7 +54,6 @@ class GetGrowthEventDetail(SchemaBase):
 
     id: int = Field(description='事件 ID')
     user_id: int = Field(description='用户 ID')
-    family_code: str = Field(description='族群')
     operation: GrowthEventOp = Field(description='操作类型')
     exp_delta: int = Field(description='变动量')
     total_exp_after: int = Field(description='操作后累计')

@@ -31,7 +31,7 @@ def test_resource_access_service_ensure_uses_registered_profile(monkeypatch) -> 
 
     async def fake_decide(_db, ctx):
         captured['ctx'] = ctx
-        return Decision.allow(reason_code=ReasonCode.QUOTA_TRIAL)
+        return Decision.allow(reason_code=ReasonCode.METERED_CONSUMED)
 
     monkeypatch.setattr(resource_access_service_module.access_decision_engine, 'decide', fake_decide)
 
@@ -112,7 +112,7 @@ def test_resource_access_service_consume_can_return_deny_without_raise(monkeypat
 
 
 def test_resource_access_service_refund_uses_ledger_entry(monkeypatch) -> None:
-    """回滚应复用账本条目里的 entitlement 与周期信息"""
+    """回滚应按原扣减流水精确回补额度包"""
     profile = AccessProfile(
         code='test.resource.refund',
         resource_type='test_resource',
@@ -124,6 +124,7 @@ def test_resource_access_service_refund_uses_ledger_entry(monkeypatch) -> None:
     async def fake_select_model(*_args, **_kwargs):
         return SimpleNamespace(
             id=123,
+            user_id=9,
             entitlement_code='test.entitlement.quota',
             amount=1,
             cycle_type='daily',
@@ -133,13 +134,17 @@ def test_resource_access_service_refund_uses_ledger_entry(monkeypatch) -> None:
 
     captured: dict[str, object] = {}
 
-    async def fake_refund(*_args, **kwargs):
+    async def fake_refund_consumption(*_args, **kwargs):
         captured.update(kwargs)
 
     monkeypatch.setattr(resource_access_service_module.quota_ledger_dao, 'select_model', fake_select_model)
-    monkeypatch.setattr(resource_access_service_module.ledger_service, 'refund', fake_refund)
+    monkeypatch.setattr(
+        resource_access_service_module.ledger_service,
+        'refund_consumption',
+        fake_refund_consumption,
+    )
 
-    decision = Decision.allow(reason_code=ReasonCode.QUOTA_TRIAL, consumed_ledger_id=123)
+    decision = Decision.allow(reason_code=ReasonCode.METERED_CONSUMED, consumed_ledger_id=123)
     asyncio.run(
         resource_access_service.refund(
             None,
@@ -150,8 +155,53 @@ def test_resource_access_service_refund_uses_ledger_entry(monkeypatch) -> None:
         )
     )
 
-    assert captured['user_id'] == 9
-    assert captured['entitlement_code'] == 'test.entitlement.quota'
-    assert captured['scope_key'] == 'test_scope'
+    assert captured['ledger_id'] == 123
     assert captured['source_ref'] == 'biz:refund:1'
+    assert captured['idempotency_key'] == 'refund:123'
     assert captured['reason'] == 'test refund reason'
+
+
+def test_resource_access_service_refund_skips_other_users_ledger(monkeypatch) -> None:
+    """流水不属于当前用户时不得回补, 防止跨账号退款"""
+    profile = AccessProfile(
+        code='test.resource.refund.owner',
+        resource_type='test_resource',
+        resource_id=11,
+        refund_reason='test refund reason',
+    )
+    resource_access_service.register_profile(profile)
+
+    async def fake_select_model(*_args, **_kwargs):
+        return SimpleNamespace(
+            id=456,
+            user_id=999,
+            entitlement_code='test.entitlement.quota',
+            amount=1,
+            cycle_type='daily',
+            cycle_key='2026-07-07',
+            scope_key='test_scope',
+        )
+
+    called: dict[str, object] = {}
+
+    async def fake_refund_consumption(*_args, **kwargs):
+        called.update(kwargs)
+
+    monkeypatch.setattr(resource_access_service_module.quota_ledger_dao, 'select_model', fake_select_model)
+    monkeypatch.setattr(
+        resource_access_service_module.ledger_service,
+        'refund_consumption',
+        fake_refund_consumption,
+    )
+
+    decision = Decision.allow(reason_code=ReasonCode.METERED_CONSUMED, consumed_ledger_id=456)
+    asyncio.run(
+        resource_access_service.refund(
+            None,
+            profile_code=profile.code,
+            user_id=9,
+            decision=decision,
+        )
+    )
+
+    assert called == {}

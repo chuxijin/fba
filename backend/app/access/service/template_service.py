@@ -7,7 +7,6 @@ from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.access.constants import CommonStatus, TemplateKind
-from backend.app.access.crud.crud_domain import study_domain_dao
 from backend.app.access.crud.crud_pack import entitlement_pack_dao
 from backend.app.access.crud.crud_template import subscription_template_dao, template_pack_dao
 from backend.app.access.model.pack import EntitlementPack
@@ -52,6 +51,7 @@ class SubscriptionTemplateService:
         """
         template = await SubscriptionTemplateService.get(db, pk=pk)
         packs = await SubscriptionTemplateService.get_packs(db, template_id=pk)
+        domain_codes = list((template.metadata_ or {}).get('domain_codes', []) or [])
         return GetTemplateDetailWithPacks(
             id=template.id,
             code=template.code,
@@ -68,6 +68,7 @@ class SubscriptionTemplateService:
             created_time=template.created_time,
             updated_time=template.updated_time,
             packs=packs,
+            domain_codes=domain_codes,
         )
 
     @staticmethod
@@ -135,40 +136,36 @@ class SubscriptionTemplateService:
             return []
 
         template_ids = [template.id for template in template_details]
+        templates_orm = await subscription_template_dao.select_models(db, id__in=template_ids)
+        metadata_map = {t.id: (t.metadata_ or {}) for t in templates_orm}
+
         relations = await template_pack_dao.get_by_templates(db, template_ids)
         pack_ids = list({relation.pack_id for relation in relations})
         packs = await entitlement_pack_dao.select_models(db, id__in=pack_ids) if pack_ids else []
-        domain_ids = list({pack.domain_id for pack in packs if pack.domain_id is not None})
-        domains = await study_domain_dao.select_models(db, id__in=domain_ids) if domain_ids else []
+
+        pack_map = {pack.id: pack for pack in packs}
 
         relation_map: dict[int, list[TemplatePack]] = {}
         for relation in relations:
             relation_map.setdefault(relation.template_id, []).append(relation)
 
-        pack_map = {pack.id: pack for pack in packs}
-        domain_code_map = {domain.id: domain.code for domain in domains}
         items: list[GetTemplateListItem] = []
         for template in template_details:
             pack_briefs: list[TemplatePackBrief] = []
-            domain_codes: list[str] = []
+            metadata = metadata_map.get(template.id) or {}
+            domain_codes: list[str] = list(metadata.get('domain_codes', []) or [])
 
             for relation in relation_map.get(template.id, []):
                 pack = pack_map.get(relation.pack_id)
                 if pack is None:
                     continue
 
-                domain_code = None
-                if pack.domain_id is not None:
-                    domain_code = domain_code_map.get(pack.domain_id)
-                    if domain_code and domain_code not in domain_codes:
-                        domain_codes.append(domain_code)
-
                 pack_briefs.append(
                     TemplatePackBrief(
                         code=pack.code,
                         name=pack.name,
                         domain_id=pack.domain_id,
-                        domain_code=domain_code,
+                        domain_code=None,
                     )
                 )
 

@@ -158,14 +158,27 @@ def _compile(statement: object) -> str:
 
 
 def test_default_system_lookup_targets_version_default() -> None:
-    """默认体系解析必须只命中 active 且 version=default 的系统"""
+    """默认体系解析必须限定领域，且只命中 active 且 version=default 的系统"""
     db = _CapturingSession()
-    asyncio.run(knowledge_system_dao.get_default_system_id(db))
+    asyncio.run(knowledge_system_dao.get_default_system_id(db, domain_category_id=1400, code='xingce'))
     sql = _compile(db.statement)
 
     assert "qbank_v2_knowledge_system.version = 'default'" in sql
     assert "qbank_v2_knowledge_system.status = 'active'" in sql
     assert "qbank_v2_knowledge_system.deleted = 0" in sql
+    # 领域与科目必须进入 WHERE，否则多领域下会随机命中别的领域的 default
+    assert 'qbank_v2_knowledge_system.domain_category_id = 1400' in sql
+    assert "qbank_v2_knowledge_system.code = 'xingce'" in sql
+
+
+def test_default_system_lookup_without_code_still_scopes_domain() -> None:
+    """不指定科目时仍必须限定领域"""
+    db = _CapturingSession()
+    asyncio.run(knowledge_system_dao.get_default_system_id(db, domain_category_id=1))
+    sql = _compile(db.statement)
+
+    assert 'qbank_v2_knowledge_system.domain_category_id = 1' in sql
+    assert 'qbank_v2_knowledge_system.code' not in sql.split('WHERE', 1)[1]
 
 
 def test_valid_knowledge_points_are_scoped_to_default_system() -> None:

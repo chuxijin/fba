@@ -79,12 +79,18 @@ async def get_favorite_statistics(
     request: Request,
     db: CurrentSession,
     group_by: Annotated[Literal['bank', 'knowledge_point'], Query(description='分组方式')] = 'bank',
+    knowledge_system_id: Annotated[
+        int | None, Query(gt=0, description='知识体系 ID；不传按科目偏好回落 default')
+    ] = None,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
 ) -> ResponseSchemaModel[FavoriteStatistics]:
     """获取收藏总数、收藏夹数及分组数据"""
     data = await user_content_service.get_favorite_statistics(
         db=db,
         user_id=request.user.id,
         group_by=group_by,
+        knowledge_system_id=knowledge_system_id,
+        domain_category_id=domain_category_id,
     )
     return response_base.success(data=data)
 
@@ -180,12 +186,18 @@ async def get_note_statistics(
     request: Request,
     db: CurrentSession,
     group_by: Annotated[Literal['bank', 'knowledge_point'], Query(description='分组方式')] = 'bank',
+    knowledge_system_id: Annotated[
+        int | None, Query(gt=0, description='知识体系 ID；不传按科目偏好回落 default')
+    ] = None,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
 ) -> ResponseSchemaModel[NoteStatistics]:
     """获取笔记总数、公开数、精选数及分组数据"""
     data = await user_content_service.get_note_statistics(
         db=db,
         user_id=request.user.id,
         group_by=group_by,
+        knowledge_system_id=knowledge_system_id,
+        domain_category_id=domain_category_id,
     )
     return response_base.success(data=data)
 

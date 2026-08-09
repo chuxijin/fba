@@ -166,6 +166,23 @@ def import_file(conn, file_path):
         print(f'    No valid rows')
         return
 
+    # 读取材料表（第二个 sheet，可选）
+    material_rows = []
+    try:
+        mdf = pd.read_excel(file_path, sheet_name='材料', dtype=str)
+        mdf = mdf.where(mdf.notna(), None)
+        for _, r in mdf.iterrows():
+            mrow = {}
+            for col in mdf.columns:
+                cc = str(col).strip().replace(' ', '_').replace('-', '_')
+                val = r[col]
+                if pd.notna(val) and val is not None:
+                    mrow[cc] = str(val).strip()
+            if mrow.get('material_code') and mrow.get('material_content'):
+                material_rows.append(mrow)
+    except Exception:
+        material_rows = []
+
     # 检查是否全部已存在
     all_existing = all(item_key_exists(conn, row.get('item_key', '')) for row in rows if row.get('item_key'))
     if all_existing and rows[0].get('item_key'):
@@ -190,6 +207,40 @@ def import_file(conn, file_path):
     )
     revision_id = r.fetchone()[0]
     conn.commit()
+
+    # 创建材料（material + material_revision + 设置 current_revision_id）
+    material_code_to_id = {}
+    for mrow in material_rows:
+        mcode = mrow['material_code']
+        existing = conn.execute(
+            text("SELECT id FROM qbank_v2_material WHERE code = :code AND deleted = 0"),
+            {'code': mcode}
+        ).fetchone()
+        if existing:
+            material_code_to_id[mcode] = existing[0]
+            continue
+
+        mid = conn.execute(
+            text("INSERT INTO qbank_v2_material (code, status, created_by, created_time) "
+                 "VALUES (:code, 'active', 1, NOW()) RETURNING id"),
+            {'code': mcode}
+        ).fetchone()[0]
+
+        mrev = conn.execute(
+            text("INSERT INTO qbank_v2_material_revision "
+                 "(material_id, revision_no, title, content, content_format, structured_data, "
+                 "status, published_by, published_time, created_by, created_time) "
+                 "VALUES (:mid, 1, :title, :content, 'html', '{}'::jsonb, "
+                 "'published', 1, NOW(), 1, NOW()) RETURNING id"),
+            {'mid': mid, 'title': mrow.get('material_title') or mcode,
+             'content': mrow['material_content']}
+        ).fetchone()[0]
+        conn.execute(
+            text("UPDATE qbank_v2_material SET current_revision_id = :rid WHERE id = :mid"),
+            {'rid': mrev, 'mid': mid}
+        )
+        conn.commit()
+        material_code_to_id[mcode] = mid
 
     success = 0
     skipped = 0
@@ -262,6 +313,30 @@ def import_file(conn, file_path):
              'score': float(score), 'sort': idx}
         )
 
+        # 关联材料（material_code 支持逗号分隔多材料）
+        material_codes = [
+            m.strip() for m in str(row.get('material_code', '') or '').split(',') if m.strip()
+        ]
+        for sort_no, mcode in enumerate(material_codes, start=1):
+            mid = material_code_to_id.get(mcode)
+            if mid is None:
+                continue
+            mrev = conn.execute(
+                text("SELECT id FROM qbank_v2_material_revision "
+                     "WHERE material_id = :mid AND revision_no = 1 AND deleted = 0"),
+                {'mid': mid}
+            ).fetchone()
+            if mrev is None:
+                continue
+            conn.execute(
+                text("INSERT INTO qbank_v2_question_material "
+                     "(question_id, material_id, material_revision_id, role, sort_order, display_config, "
+                     "created_by, created_time) "
+                     "VALUES (:qid, :mid, :mrev, 'passage', :sort, '{}'::jsonb, 1, NOW()) "
+                     "ON CONFLICT (question_id, material_id, role, deleted) DO NOTHING"),
+                {'qid': question_id, 'mid': mid, 'mrev': mrev[0], 'sort': sort_no}
+            )
+
         success += 1
         conn.commit()
 
@@ -281,7 +356,8 @@ def fix_sequences(conn):
     tables = [
         'qbank_v2_bank', 'qbank_v2_bank_revision', 'qbank_v2_bank_item',
         'qbank_v2_bank_section', 'qbank_v2_question', 'qbank_v2_question_answer',
-        'qbank_v2_question_explanation',
+        'qbank_v2_question_explanation', 'qbank_v2_material',
+        'qbank_v2_material_revision', 'qbank_v2_question_material',
     ]
     for table in tables:
         conn.execute(text(

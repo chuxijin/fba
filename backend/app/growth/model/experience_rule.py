@@ -15,7 +15,7 @@ class ExperienceRule(Base):
     __tablename__ = 'experience_rule'
     __table_args__ = (
         sa.Index('idx_exp_rule_event_status', 'event_code', 'status', 'sort'),
-        sa.Index('idx_exp_rule_match', 'event_code', 'family_code', 'cycle_day', 'status'),
+        sa.Index('idx_exp_rule_match', 'event_code', 'required_entitlement_code', 'cycle_day', 'status'),
         {'comment': '经验值规则'},
     )
 
@@ -23,7 +23,11 @@ class ExperienceRule(Base):
     event_code: Mapped[str] = mapped_column(sa.String(32), comment='事件编码')
     name: Mapped[str] = mapped_column(sa.String(64), comment='规则名称')
     exp_delta: Mapped[int] = mapped_column(comment='经验奖励值')
-    family_code: Mapped[str | None] = mapped_column(sa.String(16), default=None, comment='等级族群')
+    required_entitlement_code: Mapped[str | None] = mapped_column(
+        sa.String(64),
+        default=None,
+        comment='生效所需权益编码, 空表示对所有用户生效',
+    )
     cycle_day: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='周期第几天')
     min_practice_count: Mapped[int] = mapped_column(default=0, comment='最低做题数')
     min_practice_duration: Mapped[int] = mapped_column(default=0, comment='最低练习时长(秒)')

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 import json
 import logging
+import uuid
 
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
+from backend.app.access.service.resource_access_service import resource_access_service
+from backend.app.access.service.resource_profiles import FILE_DOWNLOAD_PROFILE_CODE
 from backend.app.question_bank.schema.parse import OCRMarkdownRecoverParam, ReviewJobUpdateParam
 from backend.app.question_bank.service.parse_service import parse_service
 from backend.common.exception import errors
@@ -231,6 +234,8 @@ async def export_review_job_excel(job_id: str) -> ResponseSchemaModel:
     dependencies=[DependsJwtAuth],
 )
 async def download_parse_file(
+    request: Request,
+    db: CurrentSessionTransaction,
     filename: Annotated[str, Query(description='文件名（如 parse_review/xxx.xlsx）')],
 ) -> Any:
     """下载解析生成的文件"""
@@ -243,6 +248,13 @@ async def download_parse_file(
     file_path = UPLOAD_DIR / safe_name
     if not file_path.exists():
         return response_base.fail(res=CustomResponse(code=404, msg='文件不存在'))
+
+    await resource_access_service.consume(
+        db,
+        profile_code=FILE_DOWNLOAD_PROFILE_CODE,
+        user_id=request.user.id,
+        source_ref=f'parse:{safe_name}:{uuid.uuid4().hex}',
+    )
 
     media_type = 'application/octet-stream'
     if file_path.suffix.lower() == '.xlsx':

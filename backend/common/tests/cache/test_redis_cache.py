@@ -57,7 +57,7 @@ class FakeRedis:
             self.store.pop(key, None)
             self.ttls.pop(key, None)
 
-    async def delete_prefix(
+    async def delete_by_prefix(
         self,
         prefix: str,
         exclude: str | list[str] | None = None,

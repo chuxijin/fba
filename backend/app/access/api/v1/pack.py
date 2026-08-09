@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from backend.app.access.constants import CommonStatus, GradeLevel
+from backend.app.access.constants import CommonStatus
 from backend.app.access.schema.pack import (
     CreatePackParam,
     GetPackDetail,
@@ -40,12 +40,11 @@ async def get_pack(
 )
 async def get_pack_list(
     db: CurrentSession,
-    grade: Annotated[GradeLevel | None, Query(description='档次')] = None,
     domain_id: Annotated[int | None, Query(description='领域 ID')] = None,
     status: Annotated[CommonStatus | None, Query(description='状态')] = None,
 ) -> ResponseSchemaModel[PageData[GetPackDetail]]:
     """分页获取权益包"""
-    stmt = await entitlement_pack_service.get_select(grade=grade, domain_id=domain_id, status=status)
+    stmt = await entitlement_pack_service.get_select(domain_id=domain_id, status=status)
     page_data = await paging_data(db, stmt)
     return response_base.success(data=page_data)
 

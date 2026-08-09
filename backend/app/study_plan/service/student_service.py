@@ -6,9 +6,9 @@ from typing import Any, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
-from backend.app.question_bank.schema.practice import CreatePracticeSessionParam, CreateSessionFromIdsParam
-from backend.app.question_bank.service.session_service import session_service
+from backend.app.question_bank_v2.crud.crud_practice import practice_session_dao
+from backend.app.question_bank_v2.schema.practice import CreatePracticeSessionParam
+from backend.app.question_bank_v2.service.practice_service import practice_service
 from backend.app.study_plan.crud import study_plan_dao, study_plan_item_dao
 from backend.app.study_plan.model.item import StudyPlanItem
 from backend.app.study_plan.model.plan import StudyPlan
@@ -18,6 +18,7 @@ from backend.app.study_plan.schema.item import (
     StartStudyPlanItemResult,
 )
 from backend.app.study_plan.service.completion import check_completion
+from backend.app.study_plan.service.practice_source import resolve_knowledge_point_ids
 from backend.app.study_plan.service.wrong_review_service import select_wrong_review_questions
 from backend.common.exception import errors
 
@@ -36,8 +37,8 @@ async def _ensure_practice_session(
     extra = dict(item.extra or {})
     existing = extra.get('session_key')
     if isinstance(existing, str) and existing:
-        session = await practice_session_dao.get_by_key(db, existing)
-        if session is not None and session.user_id == item.user_id and session.status == 'in_progress':
+        session = await practice_session_dao.get_by_key(db, existing, user_id=item.user_id)
+        if session is not None and session.status in {'created', 'in_progress'}:
             return existing
 
         extra.pop('session_key', None)
@@ -45,45 +46,8 @@ async def _ensure_practice_session(
     if item.ref_type != 'question_set':
         raise errors.RequestError(msg='刷题模块引用类型必须为 question_set')
 
-    question_ids = _parse_positive_int_list(extra.get('question_ids'), limit=500)
-    if question_ids:
-        create_from_ids_param = CreateSessionFromIdsParam(
-            question_ids=question_ids,
-            session_type='bank',
-            practice_name=item.title,
-            bank_id=item.ref_id if item.ref_id else None,
-        )
-        session = await session_service.create_session_from_ids(
-            db=db,
-            user_id=item.user_id,
-            obj=create_from_ids_param,
-        )
-
-        extra['session_key'] = session.session_key
-        await study_plan_item_dao.update_extra(db, item.id, extra)
-        item.extra = extra
-        return session.session_key
-
-    knowledge_points = _parse_knowledge_points(extra)
-    if item.ref_id is None and not knowledge_points:
-        raise errors.RequestError(msg='刷题模块未配置题库、知识点或题目 ID 列表')
-
-    create_param = CreatePracticeSessionParam(
-        session_type='bank' if item.ref_id is not None else 'random',
-        practice_name=item.title,
-        bank_id=item.ref_id,
-        chapter_id=_parse_positive_int(extra.get('chapter_id')),
-        cat_id=_parse_positive_int(extra.get('cat_id')),
-        year_start=_parse_year(extra.get('year_start')),
-        year_end=_parse_year(extra.get('year_end')),
-        region=_parse_text(extra.get('region')),
-        knowledge_point=knowledge_points,
-        limit=_parse_limited_positive_int(extra.get('question_count'), max_value=500),
-        shuffle=bool(extra.get('shuffle', False)),
-        question_types=_parse_question_types(extra.get('question_types')),
-        exam_config=_build_exam_config(extra),
-    )
-    session = await session_service.create_unified_session(
+    create_param = _build_create_session_param(item, extra)
+    session = await practice_service.create(
         db=db,
         user_id=item.user_id,
         obj=create_param,
@@ -93,6 +57,72 @@ async def _ensure_practice_session(
     await study_plan_item_dao.update_extra(db, item.id, extra)
     item.extra = extra
     return session.session_key
+
+
+def _build_create_session_param(item: StudyPlanItem, extra: dict[str, Any]) -> CreatePracticeSessionParam:
+    """
+    按计划项配置构建题库 v2 建会话参数
+
+    :param item: 计划项
+    :param extra: 计划项扩展配置
+    :return:
+    """
+    question_ids = _parse_positive_int_list(extra.get('question_ids'), limit=500)
+    knowledge_point_ids = resolve_knowledge_point_ids(_parse_knowledge_points(extra))
+    if not question_ids and item.ref_id is None and not knowledge_point_ids:
+        raise errors.RequestError(msg='刷题模块未配置题库、知识点或题目 ID 列表')
+
+    mode, duration_minutes = _resolve_session_mode(extra)
+    shared: dict[str, Any] = {
+        'mode': mode,
+        'duration_minutes': duration_minutes,
+        'title': item.title,
+        'question_types': _parse_question_types(extra.get('question_types')) or [],
+        'shuffle': bool(extra.get('shuffle', False)),
+        'limit': _parse_limited_positive_int(extra.get('question_count'), max_value=500),
+    }
+
+    # 指定题目优先：导师点了具体题目就不再按题库条件抽题
+    if question_ids:
+        return CreatePracticeSessionParam(source_type='custom', question_ids=question_ids, **shared)
+
+    if item.ref_id is None:
+        # 无题库时只能按知识点跨库组题，v2 的知识点来源仍走个人来源分支
+        raise errors.RequestError(msg='刷题模块必须配置题库')
+
+    return CreatePracticeSessionParam(
+        source_type='bank',
+        bank_id=item.ref_id,
+        section_id=_parse_positive_int(extra.get('chapter_id')),
+        knowledge_point_ids=knowledge_point_ids,
+        year_start=_parse_year(extra.get('year_start')),
+        year_end=_parse_year(extra.get('year_end')),
+        region=_parse_text(extra.get('region')),
+        **shared,
+    )
+
+
+def _resolve_session_mode(extra: dict[str, Any]) -> tuple[str, int | None]:
+    """
+    解析题库 v2 会话模式与限时分钟数
+
+    v1 的 time_limit 是秒，v2 的 duration_minutes 是分钟，且仅 exam / mock 模式生效。
+
+    :param extra: 计划项扩展配置
+    :return:
+    """
+    practice_mode = _parse_text(extra.get('practice_mode'))
+    mode = practice_mode if practice_mode in {'practice', 'exam', 'mock', 'memorize', 'review'} else 'practice'
+
+    time_limit_seconds = _parse_positive_int(extra.get('time_limit'))
+    if time_limit_seconds is None:
+        return mode, None
+
+    # 限时只在考试类模式生效；配了时长就按考试投递，避免顺序练习被中途过期
+    if mode not in {'exam', 'mock'}:
+        mode = 'exam'
+    duration_minutes = max(1, round(time_limit_seconds / 60))
+    return mode, min(duration_minutes, 600)
 
 
 def _parse_positive_int(value: Any) -> int | None:
@@ -236,25 +266,6 @@ def _parse_knowledge_points(extra: dict[str, Any]) -> list[Any] | None:
     return result or None
 
 
-def _build_exam_config(extra: dict[str, Any]) -> dict[str, Any] | None:
-    """
-    构建题库会话考试配置
-
-    :param extra: 计划项扩展配置
-    :return:
-    """
-    config: dict[str, Any] = {}
-    practice_mode = _parse_text(extra.get('practice_mode'))
-    if practice_mode:
-        config['practice_mode'] = practice_mode
-
-    time_limit = _parse_positive_int(extra.get('time_limit'))
-    if time_limit is not None:
-        config['time_limit'] = time_limit
-
-    return config or None
-
-
 async def get_item_for_user(
     db: AsyncSession,
     item_id: int,
@@ -355,7 +366,7 @@ async def start_item(
         question_ids = await select_wrong_review_questions(db, user_id, limit=10)
         payload = {
             'question_ids': question_ids,
-            'empty_hint': '近期没有需要复盘的错题，要不要做点新题？' if not question_ids else None,
+            'empty_hint': '暂时没有到期需要重练的错题，要不要做点新题？' if not question_ids else None,
         }
     elif item.module_type == 'practice':
         session_key = await _ensure_practice_session(db, item)

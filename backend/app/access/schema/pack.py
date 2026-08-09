@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field
 
-from backend.app.access.constants import CommonStatus, GradeLevel
+from backend.app.access.constants import CommonStatus
 from backend.common.schema import SchemaBase
 
 
@@ -14,7 +14,6 @@ class CreatePackParam(SchemaBase):
 
     code: str = Field(max_length=64, description='包编码')
     name: str = Field(max_length=128, description='包名称')
-    grade: GradeLevel = Field(default=GradeLevel.STANDARD, description='档次')
     domain_id: int | None = Field(default=None, description='所属领域 ID')
     description: str | None = Field(default=None, description='描述')
 
@@ -23,7 +22,6 @@ class UpdatePackParam(SchemaBase):
     """更新权益包"""
 
     name: str | None = Field(default=None, max_length=128, description='包名称')
-    grade: GradeLevel | None = Field(default=None, description='档次')
     domain_id: int | None = Field(default=None, description='所属领域 ID')
     description: str | None = Field(default=None, description='描述')
     status: CommonStatus | None = Field(default=None, description='状态')
@@ -66,7 +64,6 @@ class GetPackDetail(SchemaBase):
     id: int = Field(description='包 ID')
     code: str = Field(description='包编码')
     name: str = Field(description='包名称')
-    grade: GradeLevel = Field(description='档次')
     domain_id: int | None = Field(description='所属领域 ID')
     description: str | None = Field(description='描述')
     status: CommonStatus = Field(description='状态')

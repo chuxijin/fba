@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.access.constants import CommonStatus, GradeLevel
+from backend.app.access.constants import CommonStatus
 from backend.app.access.crud.crud_entitlement import entitlement_dao
 from backend.app.access.crud.crud_pack import entitlement_pack_dao, pack_item_dao
 from backend.app.access.model.pack import EntitlementPack, PackItem
@@ -98,7 +98,6 @@ class EntitlementPackService:
             id=pack.id,
             code=pack.code,
             name=pack.name,
-            grade=pack.grade,
             domain_id=pack.domain_id,
             description=pack.description,
             status=pack.status,
@@ -110,19 +109,17 @@ class EntitlementPackService:
     @staticmethod
     async def get_select(
         *,
-        grade: GradeLevel | None = None,
         domain_id: int | None = None,
         status: CommonStatus | None = None,
     ) -> Select:
         """
         获取分页查询语句
 
-        :param grade: 档次
         :param domain_id: 领域 ID
         :param status: 状态
         :return:
         """
-        return await entitlement_pack_dao.get_select(grade=grade, domain_id=domain_id, status=status)
+        return await entitlement_pack_dao.get_select(domain_id=domain_id, status=status)
 
     @staticmethod
     async def create(db: AsyncSession, *, obj: CreatePackParam) -> EntitlementPack:

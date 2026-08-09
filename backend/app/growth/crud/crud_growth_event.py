@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -43,6 +43,23 @@ class CRUDGrowthEvent(CRUDPlus[GrowthEvent]):
             .limit(limit)
         )
         return list((await db.execute(stmt)).scalars().all())
+
+    async def get_select(
+        self,
+        *,
+        user_id: int | None = None,
+        operation: str | None = None,
+        source: str | None = None,
+    ) -> Select:
+        """构建成长流水分页查询"""
+        filters: dict[str, object] = {}
+        if user_id is not None:
+            filters['user_id__eq'] = user_id
+        if operation is not None:
+            filters['operation__eq'] = operation
+        if source is not None:
+            filters['source__eq'] = source
+        return await self.select_order('occurred_at', 'desc', **filters)
 
 
 growth_event_dao: CRUDGrowthEvent = CRUDGrowthEvent(GrowthEvent)

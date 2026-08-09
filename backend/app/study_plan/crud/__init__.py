@@ -8,6 +8,7 @@ from backend.app.study_plan.crud.crud_ability_profile import (
     study_ability_catalog_dao,
     study_ability_category_binding_dao,
     study_user_category_profile_dao,
+    study_user_knowledge_profile_dao,
 )
 from backend.app.study_plan.crud.crud_item import study_plan_item_dao
 from backend.app.study_plan.crud.crud_mentor import study_mentor_student_dao
@@ -32,4 +33,5 @@ __all__ = [
     'study_plan_template_item_dao',
     'study_spatial_cube_pattern_dao',
     'study_user_category_profile_dao',
+    'study_user_knowledge_profile_dao',
 ]

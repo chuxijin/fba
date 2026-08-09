@@ -5,7 +5,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Path, Query, Request
 from loguru import logger
-from sqlalchemy.exc import SQLAlchemyError
 
 from backend.app.question_bank.schema.practice import (
     BatchUpsertPracticeRecordsResult,
@@ -281,35 +280,6 @@ async def submit_session(
             completed_count=result.completed_count,
             correct_count=result.correct_count,
         )
-
-    from backend.app.study_plan.service.session_hook import handle_session_completed
-
-    if completed_now:
-        async with db.begin():
-            await handle_session_completed(
-                db,
-                session_key=session_key,
-                user_id=request.user.id,
-                correct_count=result.correct_count,
-                total_count=result.completed_count,
-            )
-
-            from backend.app.study_plan.service.ability_profile import sync_question_bank_session_profile
-
-            try:
-                async with db.begin_nested():
-                    await sync_question_bank_session_profile(
-                        db,
-                        user_id=request.user.id,
-                        session_id=sid,
-                    )
-            except SQLAlchemyError as exc:
-                logger.warning(
-                    'sync_question_bank_session_profile_failed | user_id={} session_key={} error={}',
-                    request.user.id,
-                    session_key,
-                    exc,
-                )
 
     return response_base.success(data=result)
 

@@ -13,19 +13,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.model.category import Category
-from backend.app.question_bank.model import PracticeSession, Question, SessionQuestion
+from backend.app.question_bank_v2.model.knowledge import QbQuestionKnowledgePoint
+from backend.app.question_bank_v2.model.practice import QbPracticeSession, QbQuestionAttempt
 from backend.app.study_plan.crud import (
     study_ability_attempt_dao,
     study_ability_catalog_dao,
     study_ability_category_binding_dao,
     study_plan_record_dao,
     study_user_category_profile_dao,
+    study_user_knowledge_profile_dao,
 )
 from backend.app.study_plan.model.ability_profile import (
     StudyAbilityAttempt,
     StudyAbilityAttemptCategory,
     StudyAbilityCategoryBinding,
     StudyUserCategoryProfile,
+    StudyUserKnowledgeProfile,
 )
 from backend.app.study_plan.schema.ability import (
     BatchSubmitStudyAbilityAttemptParam,
@@ -47,27 +50,17 @@ DEFAULT_TARGET_ACCURACY = Decimal('0.75')
 QUESTION_BANK_BENCHMARK_SECONDS = Decimal('90')
 QBANK_CATEGORY_APP_CODE = 'youanshang'
 SOURCE_TYPE_ABILITY = 'ability'
-SOURCE_TYPE_QUESTION_BANK = 'question_bank'
 
 
 @dataclass(slots=True)
-class QuestionBankCategoryContribution:
-    """题库答题分类贡献"""
+class KnowledgePointContribution:
+    """题库答题知识点贡献"""
 
-    category_id: int
+    knowledge_point_id: int
     total_count: int
     correct_count: int
     duration_seconds: int
     completed_at: datetime
-
-
-@dataclass(slots=True)
-class QuestionBankCategoryLookup:
-    """题库知识点分类匹配结果"""
-
-    id_set: set[int]
-    code_to_id: dict[str, int]
-    name_to_id: dict[str, int]
 
 
 async def submit_ability_attempt(
@@ -327,15 +320,18 @@ async def sync_question_bank_session_profile(
     completed_at: datetime | None = None,
 ) -> int:
     """
-    同步题库会话答题数据到用户分类画像
+    同步题库 v2 会话答题数据到用户知识点画像
+
+    判分事实取自 QbQuestionAttempt（每题取最新一次提交），知识点走 QbQuestionKnowledgePoint 关联表，
+    按 weight 加权分摊到各知识点。题目未标注知识点时返回 0，属正常业务结果。
 
     :param db: 数据库会话
     :param user_id: 用户 ID
-    :param session_id: 题库会话 ID
+    :param session_id: 题库 v2 会话 ID
     :param completed_at: 完成时间
     :return:
     """
-    session = await db.get(PracticeSession, session_id)
+    session = await db.get(QbPracticeSession, session_id)
     if session is None or session.user_id != user_id:
         return 0
     if _is_question_bank_profile_synced(session):
@@ -345,54 +341,44 @@ async def sync_question_bank_session_profile(
     if not rows:
         return 0
 
-    lookup = await _resolve_question_bank_category_lookup(
-        db,
-        [question.knowledge_point for _record, question in rows],
-    )
-    if not lookup.id_set and not lookup.code_to_id and not lookup.name_to_id:
-        return 0
-
     profile_completed_at = _resolve_completed_at(completed_at)
-    contributions: dict[int, QuestionBankCategoryContribution] = {}
-    for record, question in rows:
-        category_ids = _resolve_question_category_ids(question.knowledge_point, lookup)
-        if not category_ids:
+    contributions: dict[int, KnowledgePointContribution] = {}
+    for row in rows:
+        point_id = int(row.knowledge_point_id)
+        weight = _to_decimal(row.weight, '0.0001') or Decimal('1')
+        # duration_ms 是毫秒且可能为空，画像统一按秒累计
+        duration_seconds = max(0, round(int(row.duration_ms or 0) / 1000))
+        correct_count = 1 if row.is_correct else 0
+
+        contribution = contributions.get(point_id)
+        if contribution is None:
+            contributions[point_id] = KnowledgePointContribution(
+                knowledge_point_id=point_id,
+                total_count=_weighted_int(1, weight),
+                correct_count=_weighted_int(correct_count, weight) if correct_count else 0,
+                duration_seconds=_weighted_int(duration_seconds, weight) if duration_seconds else 0,
+                completed_at=profile_completed_at,
+            )
             continue
 
-        duration_seconds = max(0, int(record.answer_time or 0))
-        correct_count = 1 if record.is_correct else 0
-        for category_id in category_ids:
-            contribution = contributions.get(category_id)
-            if contribution is None:
-                contributions[category_id] = QuestionBankCategoryContribution(
-                    category_id=category_id,
-                    total_count=1,
-                    correct_count=correct_count,
-                    duration_seconds=duration_seconds,
-                    completed_at=profile_completed_at,
-                )
-                continue
-
-            contribution.total_count += 1
-            contribution.correct_count += correct_count
-            contribution.duration_seconds += duration_seconds
+        contribution.total_count += _weighted_int(1, weight)
+        if correct_count:
+            contribution.correct_count += _weighted_int(correct_count, weight)
+        if duration_seconds:
+            contribution.duration_seconds += _weighted_int(duration_seconds, weight)
 
     if not contributions:
         return 0
 
     for contribution in contributions.values():
-        await _upsert_profile_by_values(
+        await _upsert_knowledge_profile(
             db=db,
             user_id=user_id,
-            category_id=contribution.category_id,
-            source_type=SOURCE_TYPE_QUESTION_BANK,
-            attempt_count=1,
+            knowledge_point_id=contribution.knowledge_point_id,
             total_count=contribution.total_count,
-            correct_count=contribution.correct_count,
+            correct_count=min(contribution.correct_count, contribution.total_count),
             duration_seconds=contribution.duration_seconds,
             completed_at=contribution.completed_at,
-            target_accuracy=DEFAULT_TARGET_ACCURACY,
-            benchmark_seconds=QUESTION_BANK_BENCHMARK_SECONDS,
         )
 
     _mark_question_bank_profile_synced(session, profile_completed_at)
@@ -403,196 +389,122 @@ async def _list_question_bank_session_rows(
     db: AsyncSession,
     user_id: int,
     session_id: int,
-) -> Sequence[tuple[SessionQuestion, Question]]:
+) -> Sequence[Any]:
     """
-    获取题库会话已判题记录
+    获取题库 v2 会话已判题记录及其知识点关联
+
+    同一投递题可能多次提交，只取每题 attempt_no 最大的那次作为判分事实。
 
     :param db: 数据库会话
     :param user_id: 用户 ID
     :param session_id: 会话 ID
     :return:
     """
-    stmt = (
-        select(SessionQuestion, Question)
-        .join(Question, SessionQuestion.question_id == Question.id)
-        .where(
-            SessionQuestion.session_id == session_id,
-            SessionQuestion.user_id == user_id,
-            SessionQuestion.is_correct.isnot(None),
-            Question.knowledge_point.isnot(None),
+    latest = (
+        select(
+            QbQuestionAttempt.session_item_id,
+            sa.func.max(QbQuestionAttempt.attempt_no).label('attempt_no'),
         )
-        .order_by(SessionQuestion.seq_no.asc(), SessionQuestion.id.asc())
+        .where(
+            QbQuestionAttempt.session_id == session_id,
+            QbQuestionAttempt.session_item_id.is_not(None),
+            QbQuestionAttempt.deleted == 0,
+        )
+        .group_by(QbQuestionAttempt.session_item_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            QbQuestionAttempt.question_id,
+            QbQuestionAttempt.is_correct,
+            QbQuestionAttempt.duration_ms,
+            QbQuestionKnowledgePoint.knowledge_point_id,
+            QbQuestionKnowledgePoint.weight,
+        )
+        .join(
+            latest,
+            sa.and_(
+                latest.c.session_item_id == QbQuestionAttempt.session_item_id,
+                latest.c.attempt_no == QbQuestionAttempt.attempt_no,
+            ),
+        )
+        .join(
+            QbQuestionKnowledgePoint,
+            sa.and_(
+                QbQuestionKnowledgePoint.question_id == QbQuestionAttempt.question_id,
+                QbQuestionKnowledgePoint.deleted == 0,
+            ),
+        )
+        .where(
+            QbQuestionAttempt.session_id == session_id,
+            QbQuestionAttempt.user_id == user_id,
+            # 主观题待批时 is_correct 为空，不参与画像
+            QbQuestionAttempt.is_correct.is_not(None),
+            QbQuestionAttempt.deleted == 0,
+        )
     )
     result = await db.execute(stmt)
     return result.all()
 
 
-async def _resolve_question_bank_category_lookup(
+async def _upsert_knowledge_profile(
+    *,
     db: AsyncSession,
-    raw_values: Sequence[Any],
-) -> QuestionBankCategoryLookup:
+    user_id: int,
+    knowledge_point_id: int,
+    total_count: int,
+    correct_count: int,
+    duration_seconds: int,
+    completed_at: datetime,
+) -> StudyUserKnowledgeProfile:
     """
-    解析题目知识点到系统分类
+    按贡献值更新用户知识点画像
 
     :param db: 数据库会话
-    :param raw_values: 题目 knowledge_point 原始值
+    :param user_id: 用户 ID
+    :param knowledge_point_id: 题库 v2 知识点 ID
+    :param total_count: 总题数增量
+    :param correct_count: 正确题数增量
+    :param duration_seconds: 耗时秒增量
+    :param completed_at: 完成时间
     :return:
     """
-    category_ids: set[int] = set()
-    terms: set[str] = set()
-    for raw_value in raw_values:
-        raw_ids, raw_terms = _extract_knowledge_point_refs(raw_value)
-        category_ids.update(raw_ids)
-        terms.update(raw_terms)
+    profile = await study_user_knowledge_profile_dao.get_by_user_point(db, user_id, knowledge_point_id)
+    if profile is None:
+        profile = StudyUserKnowledgeProfile(
+            user_id=user_id,
+            knowledge_point_id=knowledge_point_id,
+        )
+        db.add(profile)
+        await db.flush()
 
-    conditions: list[Any] = []
-    if category_ids:
-        conditions.append(Category.id.in_(category_ids))
-    if terms:
-        conditions.append(Category.code.in_(terms))
-        conditions.append(Category.name.in_(terms))
-    if not conditions:
-        return QuestionBankCategoryLookup(id_set=set(), code_to_id={}, name_to_id={})
+    profile.attempt_count += 1
+    profile.total_count += max(0, total_count)
+    profile.correct_count += max(0, correct_count)
+    profile.duration_seconds += max(0, duration_seconds)
+    profile.last_attempt_at = completed_at
+    profile.algorithm_version = ALGORITHM_VERSION
 
-    stmt = select(Category.id, Category.code, Category.name).where(
-        Category.app_code == QBANK_CATEGORY_APP_CODE,
-        Category.type == 'knowledge_point',
-        Category.status.is_(True),
-        Category.deleted == 0,
-        sa.or_(*conditions),
-    )
-    rows = (await db.execute(stmt)).all()
-
-    id_set: set[int] = set()
-    code_to_id: dict[str, int] = {}
-    name_to_id: dict[str, int] = {}
-    for row in rows:
-        category_id = int(row[0])
-        id_set.add(category_id)
-        if row[1]:
-            code_to_id[str(row[1]).strip()] = category_id
-        if row[2]:
-            name_to_id[str(row[2]).strip()] = category_id
-
-    return QuestionBankCategoryLookup(
-        id_set=id_set,
-        code_to_id=code_to_id,
-        name_to_id=name_to_id,
-    )
+    _refresh_profile_scores(profile, DEFAULT_TARGET_ACCURACY, QUESTION_BANK_BENCHMARK_SECONDS)
+    return profile
 
 
-def _resolve_question_category_ids(raw_value: Any, lookup: QuestionBankCategoryLookup) -> list[int]:
-    """
-    将单题知识点解析为分类 ID 列表
-
-    :param raw_value: 题目 knowledge_point 原始值
-    :param lookup: 分类匹配结果
-    :return:
-    """
-    raw_ids, terms = _extract_knowledge_point_refs(raw_value)
-    category_ids: set[int] = set()
-    for category_id in raw_ids:
-        if category_id in lookup.id_set:
-            category_ids.add(category_id)
-
-    for term in terms:
-        code_category_id = lookup.code_to_id.get(term)
-        if code_category_id is not None:
-            category_ids.add(code_category_id)
-
-        name_category_id = lookup.name_to_id.get(term)
-        if name_category_id is not None:
-            category_ids.add(name_category_id)
-
-    return sorted(category_ids)
-
-
-def _extract_knowledge_point_refs(raw_value: Any) -> tuple[set[int], set[str]]:
-    """
-    提取知识点引用
-
-    :param raw_value: 题目 knowledge_point 原始值
-    :return:
-    """
-    category_ids: set[int] = set()
-    terms: set[str] = set()
-
-    if raw_value is None:
-        return category_ids, terms
-
-    values = raw_value if isinstance(raw_value, list) else [raw_value]
-    for item in values:
-        if isinstance(item, dict):
-            for key in ('id', 'category_id', 'cat_id'):
-                category_id = _parse_category_id(item.get(key))
-                if category_id is not None:
-                    category_ids.add(category_id)
-
-            for key in ('code', 'name', 'label', 'title'):
-                term = _parse_category_term(item.get(key))
-                if term:
-                    terms.add(term)
-            continue
-
-        category_id = _parse_category_id(item)
-        if category_id is not None:
-            category_ids.add(category_id)
-
-        term = _parse_category_term(item)
-        if term:
-            terms.add(term)
-
-    return category_ids, terms
-
-
-def _parse_category_id(value: Any) -> int | None:
-    """
-    解析分类 ID
-
-    :param value: 原始值
-    :return:
-    """
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value if value > 0 else None
-    if isinstance(value, str):
-        text = value.strip()
-        if text.isdigit():
-            parsed = int(text)
-            return parsed if parsed > 0 else None
-    return None
-
-
-def _parse_category_term(value: Any) -> str | None:
-    """
-    解析分类编码或名称
-
-    :param value: 原始值
-    :return:
-    """
-    if not isinstance(value, str):
-        return None
-    text = value.strip()
-    return text or None
-
-
-def _is_question_bank_profile_synced(session: PracticeSession) -> bool:
+def _is_question_bank_profile_synced(session: QbPracticeSession) -> bool:
     """
     判断题库画像是否已同步
 
-    :param session: 题库会话
+    :param session: 题库 v2 会话
     :return:
     """
     snapshot = session.source_snapshot or {}
     return bool(snapshot.get('question_bank_profile_synced_at'))
 
 
-def _mark_question_bank_profile_synced(session: PracticeSession, completed_at: datetime) -> None:
+def _mark_question_bank_profile_synced(session: QbPracticeSession, completed_at: datetime) -> None:
     """
     标记题库画像已同步
 
-    :param session: 题库会话
+    :param session: 题库 v2 会话
     :param completed_at: 完成时间
     :return:
     """
@@ -961,14 +873,14 @@ async def _upsert_profile_by_values(
 
 
 def _refresh_profile_scores(
-    profile: StudyUserCategoryProfile,
+    profile: StudyUserCategoryProfile | StudyUserKnowledgeProfile,
     target_accuracy: Decimal,
     benchmark_seconds: Decimal | None,
 ) -> None:
     """
     刷新画像分数
 
-    :param profile: 用户分类画像
+    :param profile: 用户分类画像或知识点画像
     :param target_accuracy: 目标正确率
     :param benchmark_seconds: 速度基准秒
     :return:

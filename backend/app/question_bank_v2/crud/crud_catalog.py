@@ -226,7 +226,10 @@ class CRUDCollectionBank(CRUDPlus[QbCollectionBank]):
                 QbCollectionBank.display_name,
                 QbCollectionBank.sort_order,
                 QbCollectionBank.is_active,
+                QbCollectionBank.created_by,
+                QbCollectionBank.updated_by,
                 QbCollectionBank.created_time,
+                QbCollectionBank.updated_time,
             )
             .join(QbBank, and_(QbBank.id == QbCollectionBank.bank_id, QbBank.deleted == 0))
             .outerjoin(

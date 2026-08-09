@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, load_only, selectinload
 
+from backend.app.access.engine.snapshot import snapshot_service
 from backend.app.growth.crud import experience_rule_dao
 from backend.app.growth.service import experience_service
 from backend.app.question_bank.crud.crud_practice_session import practice_session_dao
@@ -1353,9 +1354,11 @@ class SessionService:
         if correct_count <= 0:
             return {'reward_exp': 0}
 
+        snapshot = await snapshot_service.load(db, user_id=user_id, ts=timezone.now())
         reward_rule = await experience_rule_dao.get_active_rule(
             db,
             event_code='practice_correct',
+            held_entitlement_codes=snapshot.all_entitlement_codes,
         )
         if not reward_rule:
             return {'reward_exp': 0}

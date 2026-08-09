@@ -29,15 +29,21 @@ class CreatePracticeSessionParam(SchemaBase):
     section_id: int | None = Field(None, gt=0, description='题库当前版本章节 ID')
     favorite_folder_id: int | None = Field(None, gt=0, description='收藏来源的收藏夹 ID')
     question_ids: list[int] = Field(default_factory=list, max_length=500, description='指定题目来源的稳定题目 ID')
+    knowledge_system_id: int | None = Field(
+        None,
+        gt=0,
+        description='知识体系 ID；空则按用户偏好回落到该领域 default 体系',
+    )
     knowledge_point_ids: list[int] = Field(
         default_factory=list,
         max_length=100,
-        description='知识点 ID，默认包含其后代节点',
+        description='知识点 ID，默认包含其后代节点；必须全部属于同一知识体系',
     )
     include_knowledge_descendants: bool = Field(default=True, description='是否包含所选知识点的后代节点')
     question_types: list[QuestionType] = Field(default_factory=list, max_length=7, description='允许投递的题型')
     year_start: int | None = Field(None, ge=1900, le=2100, description='试题起始年份')
     year_end: int | None = Field(None, ge=1900, le=2100, description='试题结束年份')
+    region: str | None = Field(None, max_length=100, description='地区关键字，模糊匹配题库名称、编码和描述')
     mode: PracticeMode = Field(default='practice', description='练习模式')
     duration_minutes: int | None = Field(
         None,
@@ -72,6 +78,8 @@ class CreatePracticeSessionParam(SchemaBase):
             raise ValueError('指定题目来源必须提供 question_ids')
         if self.source_type != 'custom' and self.question_ids:
             raise ValueError('question_ids 仅适用于指定题目来源')
+        if self.knowledge_system_id is not None and not self.knowledge_point_ids:
+            raise ValueError('knowledge_system_id 仅在按知识点组题时有效')
         return self
 
 
@@ -82,6 +90,8 @@ class GetPracticeSessionItem(SchemaBase):
     position: int = Field(ge=0, description='题目顺序，从 0 开始')
     question_id: int = Field(description='题目稳定身份 ID')
     bank_item_id: int | None = Field(None, description='来源题库编排项 ID')
+    section_id: int | None = Field(None, description='来源章节 ID')
+    section_name: str | None = Field(None, description='来源章节名称')
     exam_year: int | None = Field(None, description='试题年份')
     max_score: Decimal = Field(ge=Decimal(0), description='本次作答满分')
     display_config: dict[str, Any] = Field(default_factory=dict, description='本次投递展示配置')

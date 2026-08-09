@@ -28,30 +28,64 @@ class CRUDKnowledgeSystem(CRUDPlus[QbKnowledgeSystem]):
         )
         return (await db.execute(stmt)).scalars().first()
 
-    async def get_all(self, db: AsyncSession) -> Sequence[QbKnowledgeSystem]:
-        stmt = self.get_select()
+    async def get_all(
+        self,
+        db: AsyncSession,
+        *,
+        domain_category_id: int | None = None,
+        code: str | None = None,
+    ) -> Sequence[QbKnowledgeSystem]:
+        stmt = self.get_select(domain_category_id=domain_category_id, code=code)
         return (await db.execute(stmt)).scalars().all()
 
-    def get_select(self) -> Select:
-        return (
+    def get_select(self, *, domain_category_id: int | None = None, code: str | None = None) -> Select:
+        stmt = (
             select(QbKnowledgeSystem)
             .where(QbKnowledgeSystem.deleted == 0, QbKnowledgeSystem.status == 'active')
             .order_by(QbKnowledgeSystem.name, QbKnowledgeSystem.version, QbKnowledgeSystem.id)
         )
+        if domain_category_id is not None:
+            stmt = stmt.where(QbKnowledgeSystem.domain_category_id == domain_category_id)
+        if code is not None:
+            stmt = stmt.where(QbKnowledgeSystem.code == code)
+        return stmt
 
-    async def get_default_system_id(self, db: AsyncSession) -> int | None:
-        """ Resolve the active knowledge system whose version is the default marker. """
+    async def get_default_system_id(
+        self,
+        db: AsyncSession,
+        *,
+        domain_category_id: int,
+        code: str | None = None,
+    ) -> int | None:
+        """解析指定领域（可选科目）下 version 为默认标记的启用体系"""
         stmt = (
             select(QbKnowledgeSystem.id)
             .where(
                 QbKnowledgeSystem.deleted == 0,
                 QbKnowledgeSystem.status == 'active',
+                QbKnowledgeSystem.domain_category_id == domain_category_id,
                 QbKnowledgeSystem.version == DEFAULT_KNOWLEDGE_SYSTEM_VERSION,
             )
             .order_by(QbKnowledgeSystem.id)
             .limit(1)
         )
+        if code is not None:
+            stmt = stmt.where(QbKnowledgeSystem.code == code)
         return (await db.execute(stmt)).scalars().first()
+
+    async def get_codes(self, db: AsyncSession, *, domain_category_id: int) -> list[str]:
+        """获取指定领域下所有启用体系的科目编码"""
+        stmt = (
+            select(QbKnowledgeSystem.code)
+            .where(
+                QbKnowledgeSystem.deleted == 0,
+                QbKnowledgeSystem.status == 'active',
+                QbKnowledgeSystem.domain_category_id == domain_category_id,
+            )
+            .distinct()
+            .order_by(QbKnowledgeSystem.code)
+        )
+        return list((await db.execute(stmt)).scalars().all())
 
 
 class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
@@ -84,6 +118,17 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
         )
         return set(result.scalars().all())
 
+    async def get_system_ids(self, db: AsyncSession, point_ids: Sequence[int]) -> set[int]:
+        """获取一批知识点所属的体系 ID 集合，用于拒绝跨版本混选"""
+        if not point_ids:
+            return set()
+        result = await db.execute(
+            select(QbKnowledgePoint.system_id)
+            .where(QbKnowledgePoint.id.in_(point_ids), QbKnowledgePoint.deleted == 0)
+            .distinct()
+        )
+        return set(result.scalars().all())
+
     async def expand_descendant_ids(self, db: AsyncSession, point_ids: Sequence[int]) -> set[int]:
         """使用递归 CTE 展开多个知识点的全部后代"""
         if not point_ids:
@@ -112,14 +157,27 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
         db: AsyncSession,
         *,
         system_id: int,
-        bank_revision_id: int,
+        bank_revision_id: int | None,
         user_id: int,
     ) -> dict[int, dict[str, Any]]:
-        """按知识点聚合指定题库版本的题量与当前用户进度"""
+        """按知识点聚合题量与当前用户进度
+
+        bank_revision_id 为空时不限定题库，跨全部启用的题库版本聚合，
+        供知识点详情页这类没有题库上下文的场景使用。
+        """
+        bank_item_filters = [
+            QbBankItem.is_active.is_(True),
+            QbBankItem.deleted == 0,
+        ]
+        if bank_revision_id is not None:
+            bank_item_filters.append(QbBankItem.bank_revision_id == bank_revision_id)
+
         direct_stmt = (
             select(
                 QbQuestionKnowledgePoint.knowledge_point_id,
-                func.count(func.distinct(QbBankItem.id)).label('direct_question_count'),
+                func.count(
+                    func.distinct(QbBankItem.id if bank_revision_id is not None else QbBankItem.question_id)
+                ).label('direct_question_count'),
             )
             .select_from(QbQuestionKnowledgePoint)
             .join(
@@ -134,9 +192,7 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
                 QbBankItem,
                 and_(
                     QbBankItem.question_id == QbQuestionKnowledgePoint.question_id,
-                    QbBankItem.bank_revision_id == bank_revision_id,
-                    QbBankItem.is_active.is_(True),
-                    QbBankItem.deleted == 0,
+                    *bank_item_filters,
                 ),
             )
             .where(QbQuestionKnowledgePoint.deleted == 0)
@@ -191,10 +247,8 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
             .join(
                 QbBankItem,
                 and_(
-                    QbBankItem.bank_revision_id == bank_revision_id,
                     QbBankItem.question_id == QbQuestionKnowledgePoint.question_id,
-                    QbBankItem.is_active.is_(True),
-                    QbBankItem.deleted == 0,
+                    *bank_item_filters,
                 ),
             )
             .outerjoin(
@@ -216,10 +270,13 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
             .where(QbQuestionKnowledgePoint.deleted == 0)
         )
         facts = (await db.execute(fact_stmt)).mappings().all()
+        # 限定单一题库版本时按编排项计数；跨题库聚合时同一道题会出现在多个题库，
+        # 必须按题目去重，否则题量和作答数会被重复计算。
+        dedupe_field = 'bank_item_id' if bank_revision_id is not None else 'question_id'
         buckets: dict[int, dict[int, Any]] = {0: {}}
         for fact in facts:
             for ancestor_id in (*ancestors(int(fact['knowledge_point_id'])), 0):
-                buckets.setdefault(ancestor_id, {}).setdefault(int(fact['bank_item_id']), fact)
+                buckets.setdefault(ancestor_id, {}).setdefault(int(fact[dedupe_field]), fact)
 
         progress: dict[int, dict[str, Any]] = {}
         for point_id, item_facts in buckets.items():
@@ -243,7 +300,13 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
 class CRUDQuestionKnowledgePoint(CRUDPlus[QbQuestionKnowledgePoint]):
     """题目知识点标注数据库操作类"""
 
-    async def get_all(self, db: AsyncSession, question_id: int) -> list[dict[str, Any]]:
+    async def get_all(
+        self,
+        db: AsyncSession,
+        question_id: int,
+        *,
+        system_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         stmt = (
             select(
                 QbQuestionKnowledgePoint.id,
@@ -263,6 +326,8 @@ class CRUDQuestionKnowledgePoint(CRUDPlus[QbQuestionKnowledgePoint]):
             )
             .order_by(QbQuestionKnowledgePoint.role, QbKnowledgePoint.sort_order, QbKnowledgePoint.id)
         )
+        if system_id is not None:
+            stmt = stmt.where(QbKnowledgePoint.system_id == system_id)
         return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
 
     async def replace(

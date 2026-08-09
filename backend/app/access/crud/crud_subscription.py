@@ -91,7 +91,6 @@ class CRUDSubscription(CRUDPlus[Subscription]):
                 SubscriptionTemplate.cover_image.label('cover_image'),
                 EntitlementPack.id.label('pack_id'),
                 EntitlementPack.code.label('pack_code'),
-                EntitlementPack.grade.label('pack_grade'),
                 StudyDomain.code.label('domain_code'),
             )
             .join(SubscriptionTemplate, SubscriptionTemplate.id == self.model.template_id)
@@ -140,7 +139,6 @@ class CRUDSubscription(CRUDPlus[Subscription]):
                 SubscriptionTemplate.cover_image.label('cover_image'),
                 EntitlementPack.id.label('pack_id'),
                 EntitlementPack.code.label('pack_code'),
-                EntitlementPack.grade.label('pack_grade'),
                 StudyDomain.code.label('domain_code'),
                 PackItem.value_int.label('value_int'),
                 PackItem.value_meta.label('value_meta'),

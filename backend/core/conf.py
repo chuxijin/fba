@@ -132,7 +132,6 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/notify/wecom/callback',  # 企业微信自建应用接收消息回调免鉴权
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
-        re.compile(rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$'),
         re.compile(rf'^{FASTAPI_API_V1_PATH}/qbank/banks/\d+$'),  # 题库详情（公开接口）
         re.compile(rf'^{FASTAPI_API_V1_PATH}/resources/\d+/click$'),  # 资源点击统计（公开接口）
         re.compile(rf'^{FASTAPI_API_V1_PATH}/webhook/inbound/[^/]+$'),  # Webhook 入站接收（外部推送免鉴权）

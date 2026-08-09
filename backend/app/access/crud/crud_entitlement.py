@@ -6,7 +6,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.access.constants import CommonStatus, EntitlementCategory, EntitlementVerb
+from backend.app.access.constants import CommonStatus, EntitlementCategory
 from backend.app.access.model.entitlement import Entitlement
 
 
@@ -55,7 +55,6 @@ class CRUDEntitlement(CRUDPlus[Entitlement]):
         *,
         keyword: str | None = None,
         category: EntitlementCategory | None = None,
-        verb: EntitlementVerb | None = None,
         domain_id: int | None = None,
         resource_type: str | None = None,
         status: CommonStatus | None = None,
@@ -65,7 +64,6 @@ class CRUDEntitlement(CRUDPlus[Entitlement]):
 
         :param keyword: 关键字
         :param category: 分类
-        :param verb: 动作
         :param domain_id: 领域 ID
         :param resource_type: 资源类型
         :param status: 状态
@@ -76,8 +74,6 @@ class CRUDEntitlement(CRUDPlus[Entitlement]):
             filters['name__like'] = f'%{keyword}%'
         if category is not None:
             filters['category__eq'] = category
-        if verb is not None:
-            filters['verb__eq'] = verb
         if domain_id is not None:
             filters['domain_id__eq'] = domain_id
         if resource_type is not None:

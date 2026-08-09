@@ -83,3 +83,8 @@ class QbUserPracticePreference(Base, UserMixin):
         default_factory=dict,
         comment='按分类范围隔离的用户自定义导航标签',
     )
+    knowledge_system_choice: Mapped[dict[str, int]] = mapped_column(
+        CompatibleJSONB,
+        default_factory=dict,
+        comment='按知识体系编码隔离的选定版本；key 为 system code，value 为 system ID',
+    )
