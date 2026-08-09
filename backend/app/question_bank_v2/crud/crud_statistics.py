@@ -117,6 +117,31 @@ class CRUDUserBankItemProgress(CRUDPlus[QbUserBankItemProgress]):
 class CRUDQuestionStatistics(CRUDPlus[QbQuestionStatistics]):
     """题目统计投影数据库操作类"""
 
+    @staticmethod
+    def _extract_response_value(response_data: Any) -> Any:
+        """从 response_data 中提取作答值，与 grading_service 保持一致"""
+        if isinstance(response_data, dict) and 'answer' in response_data:
+            return response_data['answer']
+        return response_data
+
+    @staticmethod
+    def _response_distribution_key(response_value: Any) -> str:
+        """将作答值转为 response_distribution 字典的 key"""
+        if isinstance(response_value, list):
+            return ','.join(sorted(str(v) for v in response_value))
+        return str(response_value)
+
+    async def get_by_question(self, db: AsyncSession, question_id: int) -> QbQuestionStatistics | None:
+        """按题目 ID 获取统计"""
+        return (
+            await db.execute(
+                select(QbQuestionStatistics).where(
+                    QbQuestionStatistics.question_id == question_id,
+                    QbQuestionStatistics.deleted == 0,
+                )
+            )
+        ).scalars().first()
+
     async def apply_attempt(
         self,
         db: AsyncSession,
@@ -157,6 +182,12 @@ class CRUDQuestionStatistics(CRUDPlus[QbQuestionStatistics]):
             statistics.avg_duration_ms = (
                 (statistics.avg_duration_ms or Decimal(0)) * previous_attempt_count + attempt.duration_ms
             ) / statistics.attempt_count
+        response_value = self._extract_response_value(attempt.response_data)
+        if response_value is not None:
+            key = self._response_distribution_key(response_value)
+            current = statistics.response_distribution or {}
+            current[key] = current.get(key, 0) + 1
+            statistics.response_distribution = current
         statistics.calculated_time = attempt.submitted_time
         await db.flush()
         return statistics

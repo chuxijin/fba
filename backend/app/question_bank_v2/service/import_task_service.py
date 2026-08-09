@@ -214,6 +214,7 @@ class ImportTaskService:
         category_ids: list[int] | None = None,
         primary_category_id: int | None = None,
         description: str | None = None,
+        knowledge_system_id: int | None = None,
     ) -> BankImportResult:
         import random
         import time
@@ -250,10 +251,12 @@ class ImportTaskService:
         knowledge_labels = {row['knowledge_point'] for row in validated_rows if row.get('knowledge_point')}
         knowledge_ids: dict[str, int] = {}
         if knowledge_labels:
-            system_id = await knowledge_system_dao.get_default_system_id(db)
-            if system_id is None:
-                raise errors.ConflictError(msg='默认知识体系不存在，无法导入知识点')
-            points = await knowledge_point_dao.get_all(db, system_id)
+            if knowledge_system_id is None:
+                raise errors.RequestError(msg='Excel 含知识点列，必须指定 knowledge_system_id 以明确挂载到哪套知识体系')
+            system = await knowledge_system_dao.get(db, knowledge_system_id)
+            if system is None or system.status != 'active':
+                raise errors.NotFoundError(msg='知识体系不存在或未启用')
+            points = await knowledge_point_dao.get_all(db, knowledge_system_id)
             by_name: dict[str, list[int]] = {}
             for point in points:
                 by_name.setdefault(point.name.strip(), []).append(point.id)

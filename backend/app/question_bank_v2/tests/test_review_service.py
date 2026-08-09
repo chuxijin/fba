@@ -695,12 +695,16 @@ def test_review_links_reject_other_users_tags(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch: pytest.MonkeyPatch) -> None:
-    """错题知识点分组必须把解析出的默认体系传给 DAO，按题库分组不受影响"""
-    captured: list[tuple[object, str, int | None]] = []
+    """错题知识点分组必须把解析出的体系传给 DAO，按题库分组不受影响"""
+    captured: list[tuple[object, str, list[int]]] = []
 
-    async def fake_default_system_id(_db: object) -> int | None:
+    async def fake_resolve_domain(**_: object) -> int:
         await asyncio.sleep(0)
-        return 2
+        return 1400
+
+    async def fake_resolve_system_ids(**_: object) -> list[int]:
+        await asyncio.sleep(0)
+        return [2]
 
     async def fake_statistics(_db: object, **_: object) -> dict[str, Any]:
         await asyncio.sleep(0)
@@ -719,13 +723,18 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
         *,
         user_id: int,
         group_by: str,
-        knowledge_system_id: int | None = None,
+        knowledge_system_ids: list[int],
     ) -> list[dict[str, Any]]:
         await asyncio.sleep(0)
-        captured.append((user_id, group_by, knowledge_system_id))
+        captured.append((user_id, group_by, list(knowledge_system_ids)))
         return []
 
-    monkeypatch.setattr(wrong_review_module.knowledge_system_dao, 'get_default_system_id', fake_default_system_id)
+    monkeypatch.setattr(
+        wrong_review_module.knowledge_service, 'resolve_domain_category_id', fake_resolve_domain
+    )
+    monkeypatch.setattr(
+        wrong_review_module.knowledge_service, 'resolve_system_ids', fake_resolve_system_ids
+    )
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_statistics', fake_statistics)
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_group_counts', fake_group_counts)
 
@@ -736,7 +745,7 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
             group_by='knowledge_point',
         )
     )
-    assert captured == [(7, 'knowledge_point', 2)]
+    assert captured == [(7, 'knowledge_point', [2])]
 
     captured.clear()
     asyncio.run(
@@ -746,4 +755,5 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
             group_by='bank',
         )
     )
-    assert captured == [(7, 'bank', None)]
+    # 按题库分组不解析知识体系，DAO 收到空列表
+    assert captured == [(7, 'bank', [])]

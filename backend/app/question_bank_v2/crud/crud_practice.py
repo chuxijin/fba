@@ -8,9 +8,10 @@ from typing import Any
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.question_bank_v2.model.bank import QbBankItem, QbBankRevision, QbBankSection
+from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from backend.app.question_bank_v2.model.knowledge import QbQuestionKnowledgePoint
 from backend.app.question_bank_v2.model.practice import (
     QbPracticeSession,
@@ -35,6 +36,27 @@ class PracticeCandidate:
     bank_item_id: int | None
     max_score: Decimal
     display_config: dict[str, Any]
+
+
+def build_region_filter(region: str | None) -> ColumnElement[bool] | None:
+    """
+    构建题库地区关键字模糊匹配条件
+
+    地区在 v2 没有独立字段，沿用 v1 语义按题库版本名称、稳定编码和描述模糊匹配。
+    调用方需自行保证语句里已经 join 了 QbBankRevision 与 QbBank。
+
+    :param region: 地区关键字
+    :return:
+    """
+    region_text = (region or '').strip()
+    if not region_text:
+        return None
+    pattern = f'%{region_text}%'
+    return or_(
+        QbBankRevision.name.ilike(pattern),
+        QbBank.code.ilike(pattern),
+        QbBankRevision.description.ilike(pattern),
+    )
 
 
 class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
@@ -434,6 +456,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         year_end: int | None,
         shuffle: bool,
         limit: int,
+        region: str | None = None,
     ) -> Sequence[QbBankItem]:
         """获取待投递的题库编排项"""
         filters = (
@@ -450,6 +473,16 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
 
         base_stmt = select(QbBankItem)
         bounds_stmt = select(func.min(QbBankItem.id), func.max(QbBankItem.id)).select_from(QbBankItem)
+        region_filter = build_region_filter(region)
+        if region_filter is not None:
+            revision_join = and_(
+                QbBankRevision.id == QbBankItem.bank_revision_id,
+                QbBankRevision.deleted == 0,
+            )
+            bank_join = and_(QbBank.id == QbBankRevision.bank_id, QbBank.deleted == 0)
+            base_stmt = base_stmt.join(QbBankRevision, revision_join).join(QbBank, bank_join)
+            bounds_stmt = bounds_stmt.join(QbBankRevision, revision_join).join(QbBank, bank_join)
+            filters = (*filters, region_filter)
         if question_types:
             question_join = and_(
                 QbQuestion.id == QbBankItem.question_id,
@@ -519,6 +552,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         year_end: int | None,
         shuffle: bool,
         limit: int,
+        region: str | None = None,
     ) -> list[PracticeCandidate]:
         """获取错题、收藏、笔记或指定题目来源的固定版本候选题"""
         if source_type == 'custom':
@@ -626,11 +660,19 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
             stmt = stmt.where(QbBankItem.exam_year >= year_start)
         if year_end is not None:
             stmt = stmt.where(QbBankItem.exam_year <= year_end)
-        if bank_id is not None:
+        region_filter = build_region_filter(region)
+        if bank_id is not None or region_filter is not None:
             stmt = stmt.join(
                 QbBankRevision,
                 and_(QbBankRevision.id == QbBankItem.bank_revision_id, QbBankRevision.deleted == 0),
-            ).where(QbBankRevision.bank_id == bank_id)
+            )
+            if bank_id is not None:
+                stmt = stmt.where(QbBankRevision.bank_id == bank_id)
+            if region_filter is not None:
+                stmt = stmt.join(
+                    QbBank,
+                    and_(QbBank.id == QbBankRevision.bank_id, QbBank.deleted == 0),
+                ).where(region_filter)
 
         source_rows = stmt.subquery()
         if not shuffle:
@@ -714,6 +756,8 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 QbPracticeSessionItem.question_id,
                 QbPracticeSessionItem.bank_item_id,
                 QbBankItem.exam_year,
+                QbBankItem.section_id,
+                QbBankSection.name.label('section_name'),
                 QbPracticeSessionItem.max_score,
                 QbPracticeSessionItem.display_config,
                 QbQuestion.question_type,
@@ -743,6 +787,10 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                     QbBankItem.id == QbPracticeSessionItem.bank_item_id,
                     QbBankItem.deleted == 0,
                 ),
+            )
+            .outerjoin(
+                QbBankSection,
+                and_(QbBankSection.id == QbBankItem.section_id, QbBankSection.deleted == 0),
             )
             .outerjoin(
                 QbPracticeSessionResponse,

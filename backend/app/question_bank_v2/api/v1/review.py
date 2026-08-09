@@ -105,12 +105,16 @@ async def get_wrong_question_statistics(
     request: Request,
     db: CurrentSession,
     group_by: Annotated[Literal['bank', 'knowledge_point'], Query(description='分组方式')] = 'bank',
+    knowledge_system_id: Annotated[
+        int | None, Query(gt=0, description='知识体系 ID；空则按偏好回落 default，仅知识点分组生效')
+    ] = None,
 ) -> ResponseSchemaModel[WrongQuestionStatistics]:
     """获取错题总数、到期数、复盘数及题库或知识点分组"""
     data = await wrong_review_service.get_statistics(
         db=db,
         user_id=request.user.id,
         group_by=group_by,
+        knowledge_system_id=knowledge_system_id,
     )
     return response_base.success(data=data)
 
@@ -172,9 +176,16 @@ async def get_pending_review_wrong_questions(
 async def get_wrong_review_dashboard(
     request: Request,
     db: CurrentSession,
+    knowledge_system_id: Annotated[
+        int | None, Query(gt=0, description='知识体系 ID；空则按偏好回落 default')
+    ] = None,
 ) -> ResponseSchemaModel[GetWrongReviewDashboard]:
     """分布来自用户复盘时主观选择的标签和知识点"""
-    data = await wrong_review_service.get_dashboard(db=db, user_id=request.user.id)
+    data = await wrong_review_service.get_dashboard(
+        db=db,
+        user_id=request.user.id,
+        knowledge_system_id=knowledge_system_id,
+    )
     return response_base.success(data=data)
 
 

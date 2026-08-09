@@ -2,13 +2,16 @@ import hashlib
 import json
 import uuid
 
+from collections.abc import Sequence
 from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
+from backend.app.access.constants import ReasonCode
 from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
 from backend.app.question_bank_v2.crud.crud_composition import bank_section_dao
 from backend.app.question_bank_v2.crud.crud_material import question_interaction_dao, question_material_dao
@@ -45,13 +48,14 @@ from backend.app.question_bank_v2.schema.practice import (
     SubmitPracticeSessionResult,
 )
 from backend.app.question_bank_v2.schema.question import CollectQuestionsParam, CollectQuestionsResult
-from backend.app.question_bank_v2.service.access_service import bank_access_service
+from backend.app.question_bank_v2.service.access_service import BankAccessService, bank_access_service
 from backend.app.question_bank_v2.service.grading_service import practice_grading_service
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.preference_service import preference_service
 from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
 from backend.app.question_bank_v2.service.statistics_service import statistics_service
 from backend.common.exception import errors
+from backend.common.log import log
 from backend.utils.timezone import timezone
 
 
@@ -113,6 +117,40 @@ class PracticeService:
             by_question.setdefault(interaction['question_id'], []).append(interaction)
         for item in items:
             item['interactions'] = by_question.get(item['question_id'], [])
+
+    @staticmethod
+    async def _filter_accessible_candidates(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int | None,
+        candidates: Sequence[Any],
+        source_ref_prefix: str,
+        consume: bool,
+    ) -> list[Any]:
+        """按投递顺序应用题库准入与试看策略"""
+        if bank_id is None:
+            return list(candidates)
+
+        accessible: list[Any] = []
+        total = len(candidates)
+        for ordinal, candidate in enumerate(candidates):
+            _, decision = await bank_access_service.ensure_bank_access(
+                db=db,
+                user_id=user_id,
+                bank_id=bank_id,
+                question_ordinal=ordinal,
+                question_total=total,
+                consume=consume,
+                source_ref=f'{source_ref_prefix}:{ordinal}',
+                raise_on_deny=False,
+            )
+            if not decision.allowed:
+                if not accessible:
+                    raise errors.ForbiddenError(msg=BankAccessService._deny_message(decision))
+                break
+            accessible.append(candidate)
+        return accessible
 
     @staticmethod
     async def get(*, db: AsyncSession, session_key: str, user_id: int) -> GetPracticeSessionDetail:
@@ -337,6 +375,10 @@ class PracticeService:
             and source_snapshot.get('favorite_folder_id') == obj.favorite_folder_id
             and list(source_snapshot.get('question_ids') or []) == obj.question_ids
             and list(source_snapshot.get('knowledge_point_ids') or []) == obj.knowledge_point_ids
+            and (
+                obj.knowledge_system_id is None
+                or source_snapshot.get('knowledge_system_id') == obj.knowledge_system_id
+            )
             and session.mode == obj.mode
             and (obj.title is None or getattr(session, 'title_snapshot', None) == obj.title)
             and bool(delivery_config.get('shuffle')) == obj.shuffle
@@ -345,6 +387,7 @@ class PracticeService:
             and list(delivery_config.get('question_types') or []) == obj.question_types
             and delivery_config.get('year_start') == obj.year_start
             and delivery_config.get('year_end') == obj.year_end
+            and delivery_config.get('region') == obj.region
             and bool(delivery_config.get('include_knowledge_descendants', True)) == obj.include_knowledge_descendants
         )
 
@@ -698,6 +741,7 @@ class PracticeService:
         session.submitted_time = timezone.now()
         await statistics_service.apply_session_submission(db=db, user_id=user_id)
         await db.flush()
+        await PracticeService._notify_study_plan(db=db, session=session, user_id=user_id)
         return SubmitPracticeSessionResult(
             session_key=session.session_key,
             status=session.status,
@@ -707,6 +751,35 @@ class PracticeService:
             score=session.score,
             submitted_time=session.submitted_time,
         )
+
+    @staticmethod
+    async def _notify_study_plan(
+        *,
+        db: AsyncSession,
+        session: QbPracticeSession,
+        user_id: int,
+    ) -> None:
+        """交卷后回调学习计划，自动完成绑定该会话的计划项"""
+        # lazy import 避免题库与学习计划模块循环依赖
+        from backend.app.study_plan.service.session_hook import handle_session_completed
+
+        try:
+            async with db.begin_nested():
+                await handle_session_completed(
+                    db,
+                    session_key=session.session_key,
+                    user_id=user_id,
+                    correct_count=session.correct_items,
+                    total_count=session.answered_items,
+                )
+        except SQLAlchemyError as exc:
+            # 学习计划同步失败不应阻断交卷主流程
+            log.warning(
+                'study_plan_session_hook_failed | user_id={} session_key={} error={}',
+                user_id,
+                session.session_key,
+                exc,
+            )
 
     @staticmethod
     async def _get_idempotent_session(
@@ -745,12 +818,19 @@ class PracticeService:
 
         bank = None
         revision = None
+        initial_decision = None
         if obj.bank_id is not None:
-            bank, _ = await bank_access_service.ensure_bank_access(
+            bank, initial_decision = await bank_access_service.ensure_bank_access(
                 db=db,
                 user_id=user_id,
                 bank_id=obj.bank_id,
+                question_ordinal=0,
+                question_total=obj.limit or 500,
+                consume=False,
+                raise_on_deny=False,
             )
+            if not initial_decision.allowed:
+                raise errors.ForbiddenError(msg=BankAccessService._deny_message(initial_decision))
             if obj.source_type == 'bank' or obj.section_id is not None:
                 revision = await bank_revision_dao.get(db, bank.current_revision_id, bank_id=bank.id)
                 if revision is None or revision.status != 'published':
@@ -766,11 +846,17 @@ class PracticeService:
                 raise errors.NotFoundError(msg='收藏夹不存在')
 
         resolved_knowledge_point_ids: set[int] = set()
+        resolved_knowledge_system_id: int | None = None
         if obj.knowledge_point_ids:
             resolved_knowledge_point_ids = await knowledge_service.resolve_point_ids(
                 db=db,
                 point_ids=obj.knowledge_point_ids,
                 include_descendants=obj.include_knowledge_descendants,
+                system_id=obj.knowledge_system_id,
+            )
+            resolved_knowledge_system_id = obj.knowledge_system_id or await knowledge_service.resolve_point_system_id(
+                db=db,
+                point_ids=obj.knowledge_point_ids,
             )
 
         existing_detail = await PracticeService._get_idempotent_session(
@@ -795,6 +881,7 @@ class PracticeService:
                 year_end=obj.year_end,
                 shuffle=obj.shuffle,
                 limit=obj.limit or 500,
+                region=obj.region,
             )
         else:
             candidates = await practice_session_item_dao.get_user_candidates(
@@ -811,11 +898,27 @@ class PracticeService:
                 year_end=obj.year_end,
                 shuffle=obj.shuffle,
                 limit=obj.limit or 500,
+                region=obj.region,
             )
         if not candidates:
             raise errors.RequestError(msg='当前条件下没有可投递题目')
         if obj.source_type == 'custom' and len(candidates) != min(len(obj.question_ids), obj.limit or 500):
             raise errors.NotFoundError(msg='部分指定题目不存在、未发布或不可访问')
+
+        if initial_decision is not None and initial_decision.reason_code in {
+            ReasonCode.METERED_CONSUMED,
+            ReasonCode.TRIAL_POLICY,
+        }:
+            candidates = await PracticeService._filter_accessible_candidates(
+                db=db,
+                user_id=user_id,
+                bank_id=bank.id,
+                candidates=candidates,
+                source_ref_prefix=f'qbank_v2:{session_key}',
+                consume=True,
+            )
+        if not candidates:
+            raise errors.RequestError(msg='当前账号没有可投递的题目')
 
         now = timezone.now()
         # 仅限时模式套用过期时间：顺序练习 / 背题不应因题库版本配了时长而中途过期
@@ -859,6 +962,7 @@ class PracticeService:
                     'question_types': obj.question_types,
                     'year_start': obj.year_start,
                     'year_end': obj.year_end,
+                    'region': obj.region,
                     'include_knowledge_descendants': obj.include_knowledge_descendants,
                 },
                 'source_snapshot': {
@@ -868,6 +972,7 @@ class PracticeService:
                     'section_id': obj.section_id,
                     'favorite_folder_id': obj.favorite_folder_id,
                     'question_ids': obj.question_ids,
+                    'knowledge_system_id': resolved_knowledge_system_id,
                     'knowledge_point_ids': obj.knowledge_point_ids,
                     'resolved_knowledge_point_ids': sorted(resolved_knowledge_point_ids),
                 },
@@ -890,12 +995,19 @@ class PracticeService:
         """按与练习会话相同的来源规则采集题目 ID"""
         bank = None
         revision = None
+        initial_decision = None
         if obj.bank_id is not None:
-            bank, _ = await bank_access_service.ensure_bank_access(
+            bank, initial_decision = await bank_access_service.ensure_bank_access(
                 db=db,
                 user_id=user_id,
                 bank_id=obj.bank_id,
+                question_ordinal=0,
+                question_total=obj.limit or 500,
+                consume=False,
+                raise_on_deny=False,
             )
+            if not initial_decision.allowed:
+                raise errors.ForbiddenError(msg=BankAccessService._deny_message(initial_decision))
             if obj.source_type == 'bank' or obj.section_id is not None:
                 revision = await bank_revision_dao.get(db, bank.current_revision_id, bank_id=bank.id)
                 if revision is None or revision.status != 'published':
@@ -912,6 +1024,7 @@ class PracticeService:
             db=db,
             point_ids=obj.knowledge_point_ids,
             include_descendants=obj.include_knowledge_descendants,
+            system_id=obj.knowledge_system_id,
         )
         if obj.source_type == 'bank':
             if revision is None:
@@ -926,6 +1039,7 @@ class PracticeService:
                 year_end=obj.year_end,
                 shuffle=False,
                 limit=obj.limit,
+                region=obj.region,
             )
         else:
             candidates = await practice_session_item_dao.get_user_candidates(
@@ -942,6 +1056,16 @@ class PracticeService:
                 year_end=obj.year_end,
                 shuffle=False,
                 limit=obj.limit,
+                region=obj.region,
+            )
+        if initial_decision is not None and initial_decision.reason_code == ReasonCode.TRIAL_POLICY:
+            candidates = await PracticeService._filter_accessible_candidates(
+                db=db,
+                user_id=user_id,
+                bank_id=bank.id,
+                candidates=candidates,
+                source_ref_prefix=f'qbank_v2:collect:{user_id}:{obj.bank_id}',
+                consume=False,
             )
         question_ids = list(dict.fromkeys(item.question_id for item in candidates))
         if obj.source_type == 'custom' and len(question_ids) != min(len(obj.question_ids), obj.limit):

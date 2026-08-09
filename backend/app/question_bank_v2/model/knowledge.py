@@ -18,13 +18,31 @@ class QbKnowledgeSystem(Base, UserMixin):
 
     __tablename__ = 'qbank_v2_knowledge_system'
     __table_args__ = (
-        sa.UniqueConstraint('code', 'version', 'deleted', name='uq_qbv2_ksystem_code_version'),
+        sa.UniqueConstraint(
+            'domain_category_id',
+            'code',
+            'version',
+            'deleted',
+            name='uq_qbv2_ksystem_domain_code_version',
+        ),
         sa.CheckConstraint("status IN ('draft','active','archived')", name='ck_qbv2_ksystem_status'),
         sa.Index('ix_qbv2_ksystem_status', 'status'),
+        sa.Index(
+            'ix_qbv2_ksystem_domain_version',
+            'domain_category_id',
+            'code',
+            'version',
+            'status',
+        ),
         {'comment': '知识体系表'},
     )
 
     id: Mapped[id_key] = mapped_column(init=False)
+    domain_category_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('sys_category.id', ondelete='RESTRICT'),
+        comment='所属领域分类 ID；指向 product_catalog 根分类',
+    )
     code: Mapped[str] = mapped_column(sa.String(64), comment='知识体系编码')
     name: Mapped[str] = mapped_column(sa.String(128), comment='知识体系名称')
     version: Mapped[str] = mapped_column(sa.String(32), comment='体系版本')

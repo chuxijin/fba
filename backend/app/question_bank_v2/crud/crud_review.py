@@ -342,7 +342,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         *,
         user_id: int,
         since: datetime,
-        knowledge_system_id: int | None = None,
+        knowledge_system_ids: Sequence[int],
     ) -> tuple[int, list[dict[str, Any]], list[dict[str, Any]]]:
         """按用户复盘时主观选择的标签和知识点聚合分布"""
         review_scope = (
@@ -400,7 +400,9 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             )
             .where(QbQuestionReviewKnowledgePoint.deleted == 0)
         )
-        knowledge_rows_select = knowledge_rows_select.where(QbKnowledgePoint.system_id == knowledge_system_id)
+        knowledge_rows_select = knowledge_rows_select.where(
+            QbKnowledgePoint.system_id.in_(list(knowledge_system_ids) or [0])
+        )
         knowledge_rows = [
             dict(row)
             for row in (
@@ -452,7 +454,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         *,
         user_id: int,
         group_by: str,
-        knowledge_system_id: int | None = None,
+        knowledge_system_ids: Sequence[int],
     ) -> list[dict[str, Any]]:
         """按题库篇章或知识点统计活跃错题"""
         if group_by == 'knowledge_point':
@@ -483,7 +485,9 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                     QbWrongQuestionState.deleted == 0,
                 )
             )
-            stmt = stmt.where(QbKnowledgePoint.system_id == knowledge_system_id)
+            if not knowledge_system_ids:
+                return []
+            stmt = stmt.where(QbKnowledgePoint.system_id.in_(list(knowledge_system_ids)))
             stmt = stmt.group_by(
                 QbKnowledgePoint.id,
                 QbKnowledgePoint.name,
@@ -753,7 +757,7 @@ class CRUDReviewReference:
         db: AsyncSession,
         *,
         knowledge_point_ids: Sequence[int],
-        knowledge_system_id: int | None,
+        knowledge_system_id: int,
     ) -> set[int]:
         """获取有效知识点 ID"""
         if not knowledge_point_ids:

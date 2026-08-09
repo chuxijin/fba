@@ -272,6 +272,9 @@ async def import_bank(
     category_ids: Annotated[str | None, Form(description='分类 ID 列表，逗号分隔')] = None,
     primary_category_id: Annotated[int | None, Form(gt=0, description='主分类 ID')] = None,
     description: Annotated[str | None, Form(max_length=500, description='题库描述')] = None,
+    knowledge_system_id: Annotated[
+        int | None, Form(gt=0, description='知识点挂载的目标体系 ID；Excel 含知识点列时必填')
+    ] = None,
 ) -> ResponseSchemaModel[BankImportResult]:
     """上传 XLSX 文件，自动创建题库、导入题目、发布版本、挂载合集并设置分类。"""
     content = await file.read(20 * 1024 * 1024 + 1)
@@ -300,5 +303,6 @@ async def import_bank(
         category_ids=parsed_category_ids or None,
         primary_category_id=primary_category_id,
         description=description,
+        knowledge_system_id=knowledge_system_id,
     )
     return response_base.success(data=data)

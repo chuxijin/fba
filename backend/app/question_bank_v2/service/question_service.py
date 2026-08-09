@@ -13,6 +13,7 @@ from backend.app.question_bank_v2.crud.crud_question import (
     question_dao,
     question_explanation_dao,
 )
+from backend.app.question_bank_v2.crud.crud_statistics import question_statistics_dao
 from backend.app.question_bank_v2.schema.knowledge import GetKnowledgePointAssignmentDetail
 from backend.app.question_bank_v2.schema.material import GetQuestionMaterialDetail
 from backend.app.question_bank_v2.schema.question import (
@@ -61,6 +62,7 @@ class QuestionService:
         knowledge_points = await question_knowledge_point_dao.get_all(db, question.id)
         materials = await question_material_dao.get_all(db, question.id)
         interactions = await question_interaction_dao.get_all(db, question_ids=[question.id])
+        statistics = await question_statistics_dao.get_by_question(db, question.id)
         return GetQuestionDetail(
             id=question.id,
             code=question.code,
@@ -75,6 +77,7 @@ class QuestionService:
             default_score=question.default_score,
             difficulty=question.difficulty,
             content_hash=question.content_hash,
+            response_distribution=statistics.response_distribution if statistics is not None else {},
             answer=GetQuestionAnswerDetail.model_validate(answer) if answer is not None else None,
             explanations=[GetQuestionExplanationDetail.model_validate(item) for item in explanations],
             knowledge_points=[GetKnowledgePointAssignmentDetail(**item) for item in knowledge_points],

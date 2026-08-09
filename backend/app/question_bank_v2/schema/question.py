@@ -46,6 +46,7 @@ class CollectQuestionsParam(SchemaBase):
     question_types: list[QuestionType] = Field(default_factory=list, max_length=7, description='题型筛选')
     year_start: int | None = Field(None, ge=1900, le=2100, description='试题起始年份')
     year_end: int | None = Field(None, ge=1900, le=2100, description='试题结束年份')
+    region: str | None = Field(None, max_length=100, description='地区关键字，模糊匹配题库名称、编码和描述')
     limit: int = Field(default=5000, ge=1, le=5000, description='返回题量上限')
 
     @model_validator(mode='after')
@@ -229,6 +230,10 @@ class GetQuestionDetail(SchemaBase):
     default_score: Decimal = Field(description='默认分值')
     difficulty: Decimal | None = Field(None, description='基于作答数据动态计算的难度')
     content_hash: str | None = Field(None, description='规范化内容 SHA-256')
+    response_distribution: dict[str, int] = Field(
+        default_factory=dict,
+        description='各选项回答次数分布',
+    )
     answer: GetQuestionAnswerDetail | None = Field(None, description='权威答案')
     explanations: list[GetQuestionExplanationDetail] = Field(default_factory=list, description='解析列表')
     knowledge_points: list[GetKnowledgePointAssignmentDetail] = Field(default_factory=list, description='知识点标注')

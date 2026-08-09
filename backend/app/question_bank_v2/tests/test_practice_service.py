@@ -85,6 +85,36 @@ def test_create_session_checks_bank_access_before_delivery(monkeypatch) -> None:
     assert call_order == ['access', 'revision', 'candidates', 'session', 'items']
 
 
+def test_trial_access_is_checked_in_delivery_order(monkeypatch) -> None:
+    """试看准入应按投递序号逐题透传, 并在耗尽后截断会话题目"""
+    candidates = [SimpleNamespace(question_id=index) for index in range(4)]
+    calls: list[dict] = []
+
+    async def fake_ensure(**kwargs):
+        calls.append(kwargs)
+        if kwargs['question_ordinal'] >= 2:
+            return SimpleNamespace(id=21), Decision.deny(reason_code=ReasonCode.TRIAL_EXHAUSTED)
+        return SimpleNamespace(id=21), Decision.allow(reason_code=ReasonCode.TRIAL_POLICY)
+
+    monkeypatch.setattr(practice_service_module.bank_access_service, 'ensure_bank_access', fake_ensure)
+
+    result = asyncio.run(
+        PracticeService._filter_accessible_candidates(
+            db=None,
+            user_id=7,
+            bank_id=21,
+            candidates=candidates,
+            source_ref_prefix='qbank:test-session',
+            consume=True,
+        )
+    )
+
+    assert result == candidates[:2]
+    assert [call['question_ordinal'] for call in calls] == [0, 1, 2]
+    assert all(call['question_total'] == 4 for call in calls)
+    assert calls[-1]['source_ref'] == 'qbank:test-session:2'
+
+
 def test_objective_grading_supports_exact_and_unordered_multiple_choice() -> None:
     """内置判分覆盖四六级常用单选与无序多选"""
     exact = practice_grading_service.grade(
@@ -297,3 +327,107 @@ def test_session_solutions_require_submission(monkeypatch) -> None:
         asyncio.run(
             practice_service.get_session_solutions(db=None, session_key='client-session-001', user_id=7)
         )
+
+
+class _HookDb:
+    """交卷回调只需要 flush 与 begin_nested，其余走 fake"""
+
+    def __init__(self) -> None:
+        self.nested_count = 0
+
+    async def flush(self) -> None:
+        return None
+
+    def begin_nested(self) -> '_HookDb':
+        self.nested_count += 1
+        return self
+
+    async def __aenter__(self) -> '_HookDb':
+        return self
+
+    async def __aexit__(self, *_exc_info) -> bool:
+        return False
+
+
+def _submitted_session() -> SimpleNamespace:
+    return SimpleNamespace(
+        id=71,
+        session_key='client-session-001',
+        user_id=7,
+        status='in_progress',
+        submitted_time=None,
+        total_items=3,
+        answered_items=3,
+        correct_items=2,
+        score=Decimal('6.00'),
+    )
+
+
+def _patch_submit_dependencies(monkeypatch, session) -> None:
+    async def fake_get_by_key(*_args, **_kwargs):
+        return session
+
+    async def fake_ensure_open(**_kwargs):
+        return None
+
+    async def fake_apply_deferred(**_kwargs):
+        return None
+
+    async def fake_has_pending(*_args, **_kwargs):
+        return False
+
+    async def fake_apply_submission(**_kwargs):
+        return None
+
+    monkeypatch.setattr(practice_service_module.practice_session_dao, 'get_by_key', fake_get_by_key)
+    monkeypatch.setattr(practice_service_module.PracticeService, '_ensure_session_open', fake_ensure_open)
+    monkeypatch.setattr(practice_service_module.PracticeService, '_apply_deferred_attempts', fake_apply_deferred)
+    monkeypatch.setattr(practice_service_module.practice_response_dao, 'has_pending_grading', fake_has_pending)
+    monkeypatch.setattr(practice_service_module.statistics_service, 'apply_session_submission', fake_apply_submission)
+
+
+def test_submit_session_notifies_study_plan(monkeypatch) -> None:
+    """交卷后回调学习计划，把已答与答对题数透传给计划项"""
+    session = _submitted_session()
+    _patch_submit_dependencies(monkeypatch, session)
+
+    received: dict = {}
+
+    async def fake_hook(_db, **kwargs):
+        received.update(kwargs)
+
+    monkeypatch.setattr(
+        'backend.app.study_plan.service.session_hook.handle_session_completed',
+        fake_hook,
+    )
+
+    result = asyncio.run(practice_service.submit_session(db=_HookDb(), session_key='client-session-001', user_id=7))
+
+    assert result.status == 'graded'
+    assert received == {
+        'session_key': 'client-session-001',
+        'user_id': 7,
+        'correct_count': 2,
+        'total_count': 3,
+    }
+
+
+def test_submit_session_survives_study_plan_failure(monkeypatch) -> None:
+    """学习计划同步失败不能阻断交卷主流程"""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    session = _submitted_session()
+    _patch_submit_dependencies(monkeypatch, session)
+
+    async def failing_hook(_db, **_kwargs):
+        raise SQLAlchemyError('study plan write failed')
+
+    monkeypatch.setattr(
+        'backend.app.study_plan.service.session_hook.handle_session_completed',
+        failing_hook,
+    )
+
+    result = asyncio.run(practice_service.submit_session(db=_HookDb(), session_key='client-session-001', user_id=7))
+
+    assert result.status == 'graded'
+    assert result.submitted_time is not None

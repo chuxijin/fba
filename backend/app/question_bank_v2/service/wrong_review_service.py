@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank_v2.crud.crud_knowledge import knowledge_system_dao, question_knowledge_point_dao
+from backend.app.question_bank_v2.crud.crud_knowledge import question_knowledge_point_dao
 from backend.app.question_bank_v2.crud.crud_practice import (
     practice_session_item_dao,
     question_attempt_dao,
@@ -43,6 +43,7 @@ from backend.app.question_bank_v2.schema.review import (
 )
 from backend.app.question_bank_v2.schema.user_content import ContentGroupNode
 from backend.app.question_bank_v2.service.content_group_service import content_group_service
+from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.practice_schedule_service import next_practice_time
 from backend.app.question_bank_v2.service.preference_service import preference_service
 from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
@@ -69,15 +70,9 @@ class WrongReviewService:
         if missing_tag_ids:
             raise errors.NotFoundError(msg=f'复盘标签不存在或不可用: {sorted(missing_tag_ids)}')
 
-        knowledge_system_id = await knowledge_system_dao.get_default_system_id(db)
-        valid_knowledge_point_ids = await review_reference_dao.get_valid_knowledge_point_ids(
-            db,
-            knowledge_point_ids=knowledge_point_ids,
-            knowledge_system_id=knowledge_system_id,
-        )
-        missing_knowledge_point_ids = set(knowledge_point_ids) - valid_knowledge_point_ids
-        if missing_knowledge_point_ids:
-            raise errors.NotFoundError(msg=f'知识点不存在: {sorted(missing_knowledge_point_ids)}')
+        # 知识点 ID 全局唯一，用户是从某一版本的树上选的；这里只需校验存在且未跨版本混选
+        if knowledge_point_ids:
+            await knowledge_service.ensure_point_ids(db=db, point_ids=knowledge_point_ids)
 
     @staticmethod
     async def _validate_assets(
@@ -251,16 +246,32 @@ class WrongReviewService:
         )
 
     @staticmethod
-    async def get_dashboard(*, db: AsyncSession, user_id: int) -> GetWrongReviewDashboard:
+    async def get_dashboard(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        knowledge_system_id: int | None = None,
+        domain_category_id: int | None = None,
+    ) -> GetWrongReviewDashboard:
         """获取错因与知识点复盘看板"""
         now = timezone.now()
-        knowledge_system_id = await knowledge_system_dao.get_default_system_id(db)
+        resolved_domain_id = await knowledge_service.resolve_domain_category_id(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        knowledge_system_ids = await knowledge_service.resolve_system_ids(
+            db=db,
+            domain_category_id=resolved_domain_id,
+            system_id=knowledge_system_id,
+            user_id=user_id,
+        )
         statistics = await wrong_question_state_dao.get_statistics(db, user_id=user_id, now=now)
         event_count, reason_rows, knowledge_rows = await wrong_question_state_dao.get_dashboard_rows(
             db,
             user_id=user_id,
             since=now - timedelta(days=DASHBOARD_WINDOW_DAYS),
-            knowledge_system_id=knowledge_system_id,
+            knowledge_system_ids=knowledge_system_ids,
         )
         return GetWrongReviewDashboard(
             reviewed_count=statistics['reviewed_count'],
@@ -278,17 +289,29 @@ class WrongReviewService:
         db: AsyncSession,
         user_id: int,
         group_by: str,
+        knowledge_system_id: int | None = None,
+        domain_category_id: int | None = None,
     ) -> WrongQuestionStatistics:
         """获取错题汇总及题库或知识点分组"""
         statistics = await wrong_question_state_dao.get_statistics(db, user_id=user_id, now=timezone.now())
-        knowledge_system_id = (
-            await knowledge_system_dao.get_default_system_id(db) if group_by == 'knowledge_point' else None
-        )
+        knowledge_system_ids: list[int] = []
+        if group_by == 'knowledge_point':
+            resolved_domain_id = await knowledge_service.resolve_domain_category_id(
+                db=db,
+                user_id=user_id,
+                domain_category_id=domain_category_id,
+            )
+            knowledge_system_ids = await knowledge_service.resolve_system_ids(
+                db=db,
+                domain_category_id=resolved_domain_id,
+                system_id=knowledge_system_id,
+                user_id=user_id,
+            )
         rows = await wrong_question_state_dao.get_group_counts(
             db,
             user_id=user_id,
             group_by=group_by,
-            knowledge_system_id=knowledge_system_id,
+            knowledge_system_ids=knowledge_system_ids,
         )
         if group_by == 'knowledge_point':
             groups = [

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import Select, and_, case, exists, func, or_, select
@@ -105,7 +106,7 @@ async def _get_knowledge_group_counts(
     *,
     model: type[QbQuestionFavorite] | type[QbQuestionNote],
     user_id: int,
-    knowledge_system_id: int | None = None,
+    knowledge_system_ids: Sequence[int],
 ) -> list[dict[str, Any]]:
     """按知识点统计用户内容"""
     stmt = (
@@ -128,7 +129,7 @@ async def _get_knowledge_group_counts(
         )
         .where(model.user_id == user_id, model.deleted == 0)
     )
-    stmt = stmt.where(QbKnowledgePoint.system_id == knowledge_system_id)
+    stmt = stmt.where(QbKnowledgePoint.system_id.in_(knowledge_system_ids))
     stmt = stmt.group_by(QbKnowledgePoint.id, QbKnowledgePoint.name, QbKnowledgePoint.sort_order).order_by(
         QbKnowledgePoint.sort_order,
         QbKnowledgePoint.id,
@@ -358,7 +359,7 @@ class CRUDQuestionFavorite(CRUDPlus[QbQuestionFavorite]):
         *,
         user_id: int,
         group_by: str,
-        knowledge_system_id: int | None = None,
+        knowledge_system_ids: Sequence[int],
     ) -> list[dict[str, Any]]:
         """获取收藏的题库或知识点分组统计"""
         if group_by == 'bank':
@@ -367,7 +368,7 @@ class CRUDQuestionFavorite(CRUDPlus[QbQuestionFavorite]):
             db,
             model=QbQuestionFavorite,
             user_id=user_id,
-            knowledge_system_id=knowledge_system_id,
+            knowledge_system_ids=knowledge_system_ids,
         )
 
 
@@ -529,7 +530,7 @@ class CRUDQuestionNote(CRUDPlus[QbQuestionNote]):
         *,
         user_id: int,
         group_by: str,
-        knowledge_system_id: int | None = None,
+        knowledge_system_ids: Sequence[int],
     ) -> list[dict[str, Any]]:
         """获取笔记的题库或知识点分组统计"""
         if group_by == 'bank':
@@ -538,7 +539,7 @@ class CRUDQuestionNote(CRUDPlus[QbQuestionNote]):
             db,
             model=QbQuestionNote,
             user_id=user_id,
-            knowledge_system_id=knowledge_system_id,
+            knowledge_system_ids=knowledge_system_ids,
         )
 
 
