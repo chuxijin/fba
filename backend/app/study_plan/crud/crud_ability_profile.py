@@ -14,6 +14,7 @@ from backend.app.study_plan.model.ability_profile import (
     StudyAbilityCatalog,
     StudyAbilityCategoryBinding,
     StudyUserCategoryProfile,
+    StudyUserKnowledgeProfile,
 )
 
 
@@ -390,8 +391,54 @@ class CRUDStudyUserCategoryProfile(CRUDPlus[StudyUserCategoryProfile]):
         return result.scalars().all()
 
 
+class CRUDStudyUserKnowledgeProfile(CRUDPlus[StudyUserKnowledgeProfile]):
+    """用户知识点画像数据库操作类"""
+
+    async def get_by_user_point(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        knowledge_point_id: int,
+    ) -> StudyUserKnowledgeProfile | None:
+        """
+        获取用户知识点画像
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param knowledge_point_id: 题库 v2 知识点 ID
+        :return:
+        """
+        return await self.select_model_by_column(
+            db,
+            user_id=user_id,
+            knowledge_point_id=knowledge_point_id,
+            deleted=0,
+        )
+
+    async def list_by_user(
+        self,
+        db: AsyncSession,
+        user_id: int,
+    ) -> Sequence[StudyUserKnowledgeProfile]:
+        """
+        获取用户知识点画像列表
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return:
+        """
+        stmt = (
+            select(StudyUserKnowledgeProfile)
+            .where(StudyUserKnowledgeProfile.user_id == user_id, StudyUserKnowledgeProfile.deleted == 0)
+            .order_by(StudyUserKnowledgeProfile.weakness_score.desc(), StudyUserKnowledgeProfile.updated_time.desc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+
 study_ability_catalog_dao = CRUDStudyAbilityCatalog(StudyAbilityCatalog)
 study_ability_category_binding_dao = CRUDStudyAbilityCategoryBinding(StudyAbilityCategoryBinding)
 study_ability_attempt_dao = CRUDStudyAbilityAttempt(StudyAbilityAttempt)
 study_ability_attempt_category_dao = CRUDStudyAbilityAttemptCategory(StudyAbilityAttemptCategory)
 study_user_category_profile_dao = CRUDStudyUserCategoryProfile(StudyUserCategoryProfile)
+study_user_knowledge_profile_dao = CRUDStudyUserKnowledgeProfile(StudyUserKnowledgeProfile)

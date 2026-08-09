@@ -8,6 +8,7 @@ from backend.app.study_plan.model.ability_profile import (
     StudyAbilityCatalog,
     StudyAbilityCategoryBinding,
     StudyUserCategoryProfile,
+    StudyUserKnowledgeProfile,
 )
 from backend.app.study_plan.model.item import StudyPlanItem
 from backend.app.study_plan.model.mentor import StudyMentorStudent
@@ -29,4 +30,5 @@ __all__ = [
     'StudyPlanTemplateItem',
     'StudySpatialCubePattern',
     'StudyUserCategoryProfile',
+    'StudyUserKnowledgeProfile',
 ]

@@ -1,6 +1,7 @@
 -- 学习规划能力画像建表脚本
 -- schema = fba
--- 前置依赖：fba.study_user_account / fba.study_plan_item / fba.study_plan_record / fba.sys_category 已存在
+-- 前置依赖：fba.study_user_account / fba.study_plan_item / fba.study_plan_record / fba.sys_category
+--           / fba.qbank_v2_knowledge_point 已存在
 
 BEGIN;
 
@@ -182,7 +183,7 @@ CREATE TABLE fba.study_user_category_profile (
   deleted_time TIMESTAMP WITH TIME ZONE,
   PRIMARY KEY (id),
   CONSTRAINT uq_study_user_category_profile_source UNIQUE (user_id, category_id, source_type),
-  CONSTRAINT ck_study_user_category_profile_source CHECK (source_type IN ('ability','question_bank')),
+  CONSTRAINT ck_study_user_category_profile_source CHECK (source_type IN ('ability')),
   CONSTRAINT ck_study_user_category_profile_counts CHECK (
     attempt_count >= 0 AND total_count >= 0 AND correct_count >= 0
   ),
@@ -194,5 +195,42 @@ CREATE UNIQUE INDEX ix_study_user_category_profile_id ON fba.study_user_category
 CREATE INDEX idx_study_user_category_profile_user ON fba.study_user_category_profile (user_id);
 CREATE INDEX idx_study_user_category_profile_category ON fba.study_user_category_profile (category_id);
 CREATE INDEX idx_study_user_category_profile_mastery ON fba.study_user_category_profile (mastery_score);
+
+-- ===== study_user_knowledge_profile =====
+-- 题库 v2 来源的画像落在知识点维度，与 sys_category 分类画像分开存放
+CREATE TABLE fba.study_user_knowledge_profile (
+  id BIGSERIAL NOT NULL,
+  user_id BIGINT NOT NULL,
+  knowledge_point_id BIGINT NOT NULL,
+  attempt_count INTEGER NOT NULL,
+  total_count INTEGER NOT NULL,
+  correct_count INTEGER NOT NULL,
+  duration_seconds INTEGER NOT NULL,
+  accuracy_rate NUMERIC(6, 2) NOT NULL,
+  avg_seconds NUMERIC(8, 2),
+  mastery_score NUMERIC(6, 2) NOT NULL,
+  speed_score NUMERIC(6, 2) NOT NULL,
+  confidence_score NUMERIC(6, 2) NOT NULL,
+  trend_score NUMERIC(6, 2) NOT NULL,
+  weakness_score NUMERIC(6, 2) NOT NULL,
+  last_attempt_at TIMESTAMP WITH TIME ZONE,
+  algorithm_version VARCHAR(32) NOT NULL,
+  created_time TIMESTAMP WITH TIME ZONE NOT NULL,
+  updated_time TIMESTAMP WITH TIME ZONE,
+  deleted BIGINT DEFAULT '0' NOT NULL,
+  deleted_time TIMESTAMP WITH TIME ZONE,
+  PRIMARY KEY (id),
+  CONSTRAINT uq_study_user_knowledge_profile_point UNIQUE (user_id, knowledge_point_id),
+  CONSTRAINT ck_study_user_knowledge_profile_counts CHECK (
+    attempt_count >= 0 AND total_count >= 0 AND correct_count >= 0
+  ),
+  CONSTRAINT ck_study_user_knowledge_profile_duration CHECK (duration_seconds >= 0),
+  FOREIGN KEY(user_id) REFERENCES fba.study_user_account (user_id) ON DELETE CASCADE,
+  FOREIGN KEY(knowledge_point_id) REFERENCES fba.qbank_v2_knowledge_point (id) ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX ix_study_user_knowledge_profile_id ON fba.study_user_knowledge_profile (id);
+CREATE INDEX idx_study_user_knowledge_profile_user ON fba.study_user_knowledge_profile (user_id);
+CREATE INDEX idx_study_user_knowledge_profile_point ON fba.study_user_knowledge_profile (knowledge_point_id);
+CREATE INDEX idx_study_user_knowledge_profile_mastery ON fba.study_user_knowledge_profile (mastery_score);
 
 COMMIT;
