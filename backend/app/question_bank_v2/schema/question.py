@@ -41,6 +41,11 @@ class CollectQuestionsParam(SchemaBase):
     section_id: int | None = Field(None, gt=0, description='篇章 ID')
     favorite_folder_id: int | None = Field(None, gt=0, description='收藏来源的收藏夹 ID')
     question_ids: list[int] = Field(default_factory=list, max_length=5000, description='指定题目的稳定身份 ID')
+    knowledge_system_id: int | None = Field(
+        None,
+        gt=0,
+        description='知识体系 ID；空则按用户偏好回落到该领域 default 体系',
+    )
     knowledge_point_ids: list[int] = Field(default_factory=list, max_length=200, description='知识点 ID')
     include_knowledge_descendants: bool = Field(default=True, description='是否包含知识点后代节点')
     question_types: list[QuestionType] = Field(default_factory=list, max_length=7, description='题型筛选')
