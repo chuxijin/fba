@@ -9,6 +9,11 @@ from backend.app.question_bank_v2.model.catalog import QbCollection, QbCollectio
 from backend.app.question_bank_v2.schema.user_content import ContentGroupNode
 
 
+def _unique_ids(ids: list[int]) -> list[int]:
+    """保持顺序去重题目 ID"""
+    return list(dict.fromkeys(ids))
+
+
 class ContentGroupService:
     """Build collection, bank, and section trees for user-content statistics."""
 
@@ -45,12 +50,20 @@ class ContentGroupService:
             for row in related_rows
             if row['section_id'] is not None
         }
+        direct_ids: dict[int, list[int]] = {}
+        for row in related_rows:
+            if row['section_id'] is None:
+                continue
+            ids = [int(qid) for qid in (row.get('question_ids') or [])]
+            if ids:
+                direct_ids.setdefault(int(row['section_id']), []).extend(ids)
         nodes = {
             int(row['id']): ContentGroupNode(
                 id=int(row['id']),
                 bank_id=bank_id,
                 name=row['name'],
                 count=direct_counts.get(int(row['id']), 0),
+                question_ids=_unique_ids(direct_ids.get(int(row['id']), [])),
             )
             for row in section_rows
         }
@@ -102,6 +115,13 @@ class ContentGroupService:
             bank.count += int(row['count'] or 0)
         for bank_id, bank in banks.items():
             related_rows = rows_by_bank[bank_id]
+            # 直接挂在题库下（无章节归属）的题目 ID
+            bank_related_ids: list[int] = []
+            for row in related_rows:
+                if row['section_id'] is not None:
+                    continue
+                bank_related_ids.extend(int(qid) for qid in (row.get('question_ids') or []))
+            bank.question_ids = _unique_ids(bank_related_ids)
             related_revision_ids = {int(row['bank_revision_id']) for row in related_rows}
             related_sections = [
                 section
@@ -224,9 +244,22 @@ class ContentGroupService:
         collection_rows = await cls._get_collection_rows(db, set(banks))
         roots, mounted_banks = cls._build_collection_roots(collection_rows, banks)
         roots.extend(bank for bank_id, bank in banks.items() if bank_id not in mounted_banks)
-        ungrouped_count = sum(int(row['count'] or 0) for row in rows if row['bank_id'] is None)
+        ungrouped_count = 0
+        ungrouped_ids: list[int] = []
+        for row in rows:
+            if row['bank_id'] is not None:
+                continue
+            ungrouped_count += int(row['count'] or 0)
+            ungrouped_ids.extend(int(qid) for qid in (row.get('question_ids') or []))
         if ungrouped_count:
-            roots.append(ContentGroupNode(id=0, name=ungrouped_name, count=ungrouped_count))
+            roots.append(
+                ContentGroupNode(
+                    id=0,
+                    name=ungrouped_name,
+                    count=ungrouped_count,
+                    question_ids=_unique_ids(ungrouped_ids),
+                )
+            )
         return roots
 
 

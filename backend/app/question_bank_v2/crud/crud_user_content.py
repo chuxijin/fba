@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy import Select, and_, case, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import aggregate_strings
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.admin.model.user import User
@@ -16,6 +17,11 @@ from backend.app.question_bank_v2.model.user_content import (
     QbQuestionNote,
     QbQuestionNoteVote,
 )
+
+
+def _parse_question_ids(value: str | None) -> list[int]:
+    """解析跨数据库字符串聚合得到的题目 ID。"""
+    return [int(question_id) for question_id in value.split(',')] if value else []
 
 
 async def _get_bank_group_counts(
@@ -62,6 +68,7 @@ async def _get_bank_group_counts(
             QbBankSection.id.label('section_id'),
             QbBankSection.name.label('section_name'),
             func.count(func.distinct(model.question_id)).label('count'),
+            aggregate_strings(func.distinct(model.question_id), ',').label('question_ids_csv'),
         )
         .select_from(model)
         .join(
@@ -98,7 +105,12 @@ async def _get_bank_group_counts(
         )
         .order_by(QbBankRevision.name, QbBankSection.name)
     )
-    return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
+    rows = []
+    for row in (await db.execute(stmt)).mappings().all():
+        result = dict(row)
+        result['question_ids'] = _parse_question_ids(result.pop('question_ids_csv'))
+        rows.append(result)
+    return rows
 
 
 async def _get_knowledge_group_counts(
@@ -114,6 +126,7 @@ async def _get_knowledge_group_counts(
             QbKnowledgePoint.id,
             QbKnowledgePoint.name,
             func.count(func.distinct(model.question_id)).label('count'),
+            aggregate_strings(func.distinct(model.question_id), ',').label('question_ids_csv'),
         )
         .select_from(model)
         .join(
@@ -134,7 +147,12 @@ async def _get_knowledge_group_counts(
         QbKnowledgePoint.sort_order,
         QbKnowledgePoint.id,
     )
-    return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
+    rows = []
+    for row in (await db.execute(stmt)).mappings().all():
+        result = dict(row)
+        result['question_ids'] = _parse_question_ids(result.pop('question_ids_csv'))
+        rows.append(result)
+    return rows
 
 
 class CRUDFavoriteFolder(CRUDPlus[QbFavoriteFolder]):

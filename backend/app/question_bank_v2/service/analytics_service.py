@@ -3,6 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
@@ -13,6 +14,8 @@ from backend.app.question_bank_v2.crud.crud_statistics import (
     user_daily_statistics_dao,
     user_practice_statistics_dao,
 )
+from backend.app.question_bank_v2.model.bank import QbBankRevision
+from backend.app.question_bank_v2.model.practice import QbPracticeSession
 from backend.app.question_bank_v2.schema.analytics import (
     BankProgressSummary,
     BankSectionProgress,
@@ -25,6 +28,7 @@ from backend.app.question_bank_v2.schema.analytics import (
     PracticeRankItem,
     QuestionTypeProgress,
     RankType,
+    ResumableScope,
     UserDailyPracticeDetail,
     UserMonthlyPracticeDetail,
     WrongSectionCount,
@@ -101,7 +105,11 @@ class AnalyticsService:
         return merged_counts, merged_progress
 
     @staticmethod
-    def _progress_summary(data: dict[str, int], qtype_counts: dict[str, int] | None = None, qtype_progress: dict[str, QuestionTypeProgress] | None = None) -> BankProgressSummary:
+    def _progress_summary(
+        data: dict[str, int],
+        qtype_counts: dict[str, int] | None = None,
+        qtype_progress: dict[str, QuestionTypeProgress] | None = None,
+    ) -> BankProgressSummary:
         """将计数转换为进度汇总"""
         graded_count = data['correct_count'] + data['wrong_count']
         return BankProgressSummary(
@@ -188,6 +196,54 @@ class AnalyticsService:
         return bank, revision
 
     @staticmethod
+    async def _get_resumable_scopes(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int,
+    ) -> list[ResumableScope]:
+        """聚合当前用户在题库维度下可续接的进行中会话维度
+
+        仅收录“按题库/篇章/题型”来源的会话（排除知识点与收藏维度），
+        每个维度聚合存在进行中会话的练习模式，供前端判断入口显示“继续”还是“开始”。
+        """
+        rows = (
+            await db.execute(
+                select(
+                    QbPracticeSession.mode,
+                    QbPracticeSession.source_snapshot,
+                    QbPracticeSession.delivery_config,
+                )
+                .join(
+                    QbBankRevision,
+                    and_(
+                        QbBankRevision.id == QbPracticeSession.bank_revision_id,
+                        QbBankRevision.deleted == 0,
+                    ),
+                )
+                .where(
+                    QbPracticeSession.user_id == user_id,
+                    QbPracticeSession.deleted == 0,
+                    QbPracticeSession.status.in_(('created', 'in_progress')),
+                    QbBankRevision.bank_id == bank_id,
+                )
+            )
+        ).mappings().all()
+        scopes: dict[tuple[Any, Any], set[str]] = defaultdict(set)
+        for row in rows:
+            source = dict(row['source_snapshot'] or {})
+            delivery = dict(row['delivery_config'] or {})
+            if source.get('knowledge_point_ids') or source.get('favorite_folder_id') is not None:
+                continue
+            question_types = list(delivery.get('question_types') or [])
+            question_type = question_types[0] if len(question_types) == 1 else None
+            scopes[source.get('section_id'), question_type].add(str(row['mode']))
+        return [
+            ResumableScope(section_id=section_id, question_type=question_type, modes=sorted(modes))
+            for (section_id, question_type), modes in scopes.items()
+        ]
+
+    @staticmethod
     async def get_bank_progress(
         *,
         db: AsyncSession,
@@ -228,7 +284,7 @@ class AnalyticsService:
                 cp.wrong_count += int(tr['wrong_count'])
             else:
                 all_qt_progress[qt] = AnalyticsService._type_progress(tr)
-        for qt, qtp in all_qt_progress.items():
+        for qtp in all_qt_progress.values():
             graded = qtp.correct_count + qtp.wrong_count
             qtp.progress_rate = AnalyticsService._rate(qtp.answered_count, qtp.question_count)
             qtp.accuracy_rate = AnalyticsService._rate(qtp.correct_count, graded)
@@ -238,8 +294,17 @@ class AnalyticsService:
             bank_revision_id=revision.id,
             bank_name=revision.name,
             **AnalyticsService._progress_summary(totals, all_qt_counts, all_qt_progress).model_dump(),
-            unsectioned=AnalyticsService._progress_summary(unsectioned_data, unsectioned_qt_counts, unsectioned_qt_progress),
+            unsectioned=AnalyticsService._progress_summary(
+                unsectioned_data,
+                unsectioned_qt_counts,
+                unsectioned_qt_progress,
+            ),
             sections=AnalyticsService._build_progress_tree(sections=sections, rows=rows, type_rows=type_rows),
+            resumable_scopes=await AnalyticsService._get_resumable_scopes(
+                db=db,
+                user_id=user_id,
+                bank_id=bank_id,
+            ),
         )
 
     @staticmethod
@@ -453,7 +518,10 @@ class AnalyticsService:
         today_first = today.replace(day=1)
         while cursor <= today_first:
             month_key = cursor.strftime('%Y-%m')
-            data = monthly_agg.get(month_key, {'attempt_count': 0, 'graded_count': 0, 'correct_count': 0, 'duration_ms': 0})
+            data = monthly_agg.get(
+                month_key,
+                {'attempt_count': 0, 'graded_count': 0, 'correct_count': 0, 'duration_ms': 0},
+            )
             monthly_trend.append(UserMonthlyPracticeDetail(month=month_key, **data))
             if cursor.month == 12:
                 cursor = cursor.replace(year=cursor.year + 1, month=1)

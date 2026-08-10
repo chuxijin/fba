@@ -20,6 +20,7 @@ class ContentGroupNode(SchemaBase):
     count: int = Field(ge=0, description='题目数量')
     bank_id: int | None = Field(None, description='章节节点所属题库 ID')
     type: Literal['collection'] | None = Field(None, description='合集节点类型；题库和章节为空')
+    question_ids: list[int] = Field(default_factory=list, description='节点下题目 ID 列表（叶节点）')
     children: list['ContentGroupNode'] = Field(default_factory=list, description='子分组')
 
 

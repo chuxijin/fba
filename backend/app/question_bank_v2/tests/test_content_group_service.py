@@ -41,6 +41,7 @@ def test_bank_tree_restores_collection_and_section_ancestors() -> None:
                     'section_id': 101,
                     'section_name': '仔细阅读',
                     'count': 3,
+                    'question_ids': [101, 102, 103],
                 },
                 {
                     'bank_id': 10,
@@ -49,7 +50,17 @@ def test_bank_tree_restores_collection_and_section_ancestors() -> None:
                     'section_id': 200,
                     'section_name': '数量',
                     'count': 2,
-                }
+                    'question_ids': [201, 202],
+                },
+                {
+                    'bank_id': None,
+                    'bank_revision_id': None,
+                    'bank_name': None,
+                    'section_id': None,
+                    'section_name': None,
+                    'count': 1,
+                    'question_ids': [301],
+                },
             ],
             ungrouped_name='未归属题库',
         )
@@ -61,5 +72,10 @@ def test_bank_tree_restores_collection_and_section_ancestors() -> None:
     assert bank.name == '2026 国考行测'
     assert bank.children[0].name == '阅读'
     assert bank.children[0].children[0].name == '仔细阅读'
+    assert bank.children[0].children[0].question_ids == [101, 102, 103]
     assert bank.children[1].name == '数量'
+    assert bank.children[1].question_ids == [201, 202]
     assert groups[0].count == 5
+    assert groups[1].name == '未归属题库'
+    assert groups[1].id == 0
+    assert groups[1].question_ids == [301]

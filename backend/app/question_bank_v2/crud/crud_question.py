@@ -254,6 +254,7 @@ class CRUDQuestionExplanation(CRUDPlus[QbQuestionExplanation]):
         question_id: int,
         items: list[QuestionExplanationParam],
         user_id: int,
+        status: str = 'draft',
     ) -> None:
         existing = await self.get_all(db, question_id)
         for item in existing:
@@ -263,7 +264,8 @@ class CRUDQuestionExplanation(CRUDPlus[QbQuestionExplanation]):
                 QbQuestionExplanation(
                     question_id=question_id,
                     created_by=user_id,
-                    **item.model_dump(),
+                    status=status,
+                    **item.model_dump(exclude={'version_no'}),
                 )
             )
         await db.flush()

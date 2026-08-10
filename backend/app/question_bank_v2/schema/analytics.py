@@ -47,6 +47,14 @@ class BankSectionProgress(BankProgressSummary):
     children: list['BankSectionProgress'] = Field(default_factory=list, description='子篇章')
 
 
+class ResumableScope(SchemaBase):
+    """当前可续接的进行中会话维度，用于判断练习入口展示“继续”还是“开始”"""
+
+    section_id: int | None = Field(None, description='篇章 ID；None 表示题库整卷维度')
+    question_type: str | None = Field(None, description='题型；None 表示全题型维度')
+    modes: list[str] = Field(default_factory=list, description='存在进行中会话的练习模式')
+
+
 class GetBankProgressDetail(BankProgressSummary):
     """题库当前发布版本学习进度"""
 
@@ -55,6 +63,9 @@ class GetBankProgressDetail(BankProgressSummary):
     bank_name: str = Field(description='题库名称')
     unsectioned: BankProgressSummary = Field(description='未归入篇章的题目进度')
     sections: list[BankSectionProgress] = Field(default_factory=list, description='篇章进度树')
+    resumable_scopes: list[ResumableScope] = Field(
+        default_factory=list, description='当前可续接的进行中会话维度'
+    )
 
 
 class GetBankProgressBrief(SchemaBase):

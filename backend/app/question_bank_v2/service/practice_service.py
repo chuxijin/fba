@@ -680,7 +680,7 @@ class PracticeService:
             session_item_id=session_item.id,
         )
         if response is None:
-            if session.mode != 'practice':
+            if session.mode not in {'practice', 'memorize'}:
                 raise errors.ForbiddenError(msg='提交答案后才可查看解析')
         elif response.status not in {'submitted', 'graded', 'review_required'}:
             raise errors.ForbiddenError(msg='提交答案后才可查看解析')

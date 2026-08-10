@@ -142,6 +142,7 @@ async def get_reviewed_wrong_questions(
     mastery_state: Annotated[MasteryState | None, Query(description='掌握状态筛选')] = None,
     tag_id: Annotated[int | None, Query(gt=0, description='错因标签筛选')] = None,
     knowledge_point_id: Annotated[int | None, Query(gt=0, description='知识点筛选')] = None,
+    keyword: Annotated[str | None, Query(max_length=100, description='题干关键词搜索')] = None,
 ) -> ResponseSchemaModel[CursorPageData[GetWrongQuestionListItem]]:
     """考前回顾入口；不过滤错题本状态，已移出的题仍可查看"""
     stmt = wrong_review_service.get_reviewed_select(
@@ -149,6 +150,7 @@ async def get_reviewed_wrong_questions(
         mastery_state=mastery_state,
         tag_id=tag_id,
         knowledge_point_id=knowledge_point_id,
+        keyword=keyword,
     )
     return response_base.success(data=await cursor_paging_data(db, stmt, GetWrongQuestionListItem))
 
