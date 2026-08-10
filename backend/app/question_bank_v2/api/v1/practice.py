@@ -173,7 +173,7 @@ async def get_practice_solution(
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
     session_item_id: Annotated[int, Path(gt=0, description='会话题目 ID')],
 ) -> ResponseSchemaModel[GetPracticeSolutionDetail]:
-    """练习题提交后可查看；考试和模考必须整卷交卷后查看"""
+    """普通练习或背题模式可查看；考试和模考必须整卷交卷后查看"""
     data = await practice_service.get_solution(
         db=db,
         session_key=session_key,

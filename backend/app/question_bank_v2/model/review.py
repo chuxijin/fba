@@ -74,13 +74,16 @@ class QbWrongQuestionState(Base, UserMixin):
             'id',
             postgresql_where=sa.text('deleted = 0 AND review_count > 0'),
         ).ddl_if(dialect='postgresql'),
-        # 待复盘队列
+        # 待复盘队列：从未复盘，或上次复盘后又重新答错
         sa.Index(
             'ix_qbv2_wrong_unreviewed',
             'user_id',
             'last_wrong_time',
             'id',
-            postgresql_where=sa.text("deleted = 0 AND review_count = 0 AND status = 'active'"),
+            postgresql_where=sa.text(
+                "deleted = 0 AND status = 'active' "
+                "AND (review_count = 0 OR (last_reviewed_time IS NOT NULL AND last_wrong_time > last_reviewed_time))"
+            ),
         ).ddl_if(dialect='postgresql'),
         {'comment': '用户错题本当前状态表'},
     )

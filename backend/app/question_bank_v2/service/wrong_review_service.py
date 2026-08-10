@@ -145,6 +145,7 @@ class WrongReviewService:
         mastery_state: str | None = None,
         tag_id: int | None = None,
         knowledge_point_id: int | None = None,
+        keyword: str | None = None,
     ) -> Any:
         """构建复盘档案查询"""
         return wrong_question_state_dao.get_reviewed_list_select(
@@ -152,6 +153,7 @@ class WrongReviewService:
             mastery_state=mastery_state,
             tag_id=tag_id,
             knowledge_point_id=knowledge_point_id,
+            keyword=keyword,
         )
 
     @staticmethod
@@ -400,6 +402,7 @@ class WrongReviewService:
                 question_id=question.id,
                 items=obj.explanations,
                 user_id=user_id,
+                status='published',
             )
         if obj.assets:
             await review_reference_dao.create_question_asset_links(

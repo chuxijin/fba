@@ -82,7 +82,7 @@ class BankAccessService:
             return '免费试刷已结束，开通会员可继续刷题'
         if decision.reason_code == ReasonCode.QUOTA_EXHAUSTED:
             return '本期刷题额度已用完，可升级会员获取更多额度'
-        return '当前账号没有此题库的刷题权限'
+        return '当前账号没有此题库的刷题权限，开通对应权益后可刷题'
 
     @staticmethod
     async def describe_bank_access(

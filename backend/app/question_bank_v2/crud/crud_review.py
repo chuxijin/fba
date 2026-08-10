@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import and_, case, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import aggregate_strings
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank_v2.model.asset import QbAsset, QbQuestionAsset
@@ -150,12 +151,15 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         mastery_state: str | None,
         tag_id: int | None,
         knowledge_point_id: int | None,
+        keyword: str | None = None,
     ) -> Any:
         """构建复盘档案游标分页查询"""
         stmt = self._list_stmt().where(
             QbWrongQuestionState.user_id == user_id,
             QbWrongQuestionState.review_count > 0,
         )
+        if keyword and keyword.strip():
+            stmt = stmt.where(QbQuestion.stem.ilike(f'%{keyword.strip()}%'))
         if mastery_state is not None:
             stmt = stmt.where(QbUserQuestionMastery.state == mastery_state)
         if tag_id is not None:
@@ -195,11 +199,20 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         user_id: int,
         entry_scope: str | None,
     ) -> Any:
-        """构建待复盘队列游标分页查询"""
+        """构建待复盘队列游标分页查询
+
+        口径：仍活跃且从未复盘，或上次复盘后又重新答错的题才需要再次复盘。
+        """
         stmt = self._list_stmt().where(
             QbWrongQuestionState.user_id == user_id,
             QbWrongQuestionState.status == 'active',
-            QbWrongQuestionState.review_count == 0,
+            or_(
+                QbWrongQuestionState.review_count == 0,
+                and_(
+                    QbWrongQuestionState.last_reviewed_time.is_not(None),
+                    QbWrongQuestionState.last_wrong_time > QbWrongQuestionState.last_reviewed_time,
+                ),
+            ),
         )
         stmt = self._apply_entry_scope(stmt, entry_scope)
         return stmt.order_by(
@@ -311,7 +324,14 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                             (
                                 and_(
                                     QbWrongQuestionState.status == 'active',
-                                    QbWrongQuestionState.review_count == 0,
+                                    or_(
+                                        QbWrongQuestionState.review_count == 0,
+                                        and_(
+                                            QbWrongQuestionState.last_reviewed_time.is_not(None),
+                                            QbWrongQuestionState.last_wrong_time
+                                            > QbWrongQuestionState.last_reviewed_time,
+                                        ),
+                                    ),
                                 ),
                                 1,
                             ),
@@ -531,6 +551,9 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                     QbBankSection.id.label('section_id'),
                     QbBankSection.name.label('section_name'),
                     func.count(func.distinct(QbWrongQuestionState.question_id)).label('count'),
+                    aggregate_strings(func.distinct(QbWrongQuestionState.question_id), ',').label(
+                        'question_ids_csv'
+                    ),
                 )
                 .select_from(QbWrongQuestionState)
                 .outerjoin(
@@ -568,7 +591,15 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 )
                 .order_by(QbBankRevision.name.nullsfirst(), QbBankSection.name)
             )
-        return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
+        rows = []
+        for row in (await db.execute(stmt)).mappings().all():
+            result = dict(row)
+            question_ids_csv = result.pop('question_ids_csv')
+            result['question_ids'] = (
+                [int(question_id) for question_id in question_ids_csv.split(',')] if question_ids_csv else []
+            )
+            rows.append(result)
+        return rows
 
 
 class CRUDUserQuestionMastery(CRUDPlus[QbUserQuestionMastery]):

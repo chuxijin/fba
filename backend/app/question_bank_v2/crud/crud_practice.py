@@ -12,7 +12,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
-from backend.app.question_bank_v2.model.knowledge import QbQuestionKnowledgePoint
+from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbQuestionKnowledgePoint
 from backend.app.question_bank_v2.model.practice import (
     QbPracticeSession,
     QbPracticeSessionItem,
@@ -24,7 +24,13 @@ from backend.app.question_bank_v2.model.question import (
     QbQuestionAnswer,
     QbQuestionExplanation,
 )
-from backend.app.question_bank_v2.model.review import QbWrongQuestionState
+from backend.app.question_bank_v2.model.review import (
+    QbQuestionReview,
+    QbQuestionReviewKnowledgePoint,
+    QbQuestionReviewTag,
+    QbReviewTag,
+    QbWrongQuestionState,
+)
 from backend.app.question_bank_v2.model.user_content import QbQuestionFavorite, QbQuestionNote
 
 
@@ -560,6 +566,15 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 select(
                     QbQuestion.id.label('question_id'),
                     QbQuestion.default_score.label('max_score'),
+                    QbWrongQuestionState.last_wrong_response,
+                )
+                .outerjoin(
+                    QbWrongQuestionState,
+                    and_(
+                        QbWrongQuestionState.user_id == user_id,
+                        QbWrongQuestionState.question_id == QbQuestion.id,
+                        QbWrongQuestionState.deleted == 0,
+                    ),
                 )
                 .where(
                     QbQuestion.id.in_(question_ids),
@@ -593,15 +608,116 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
             )
             if shuffle:
                 secrets.SystemRandom().shuffle(rows)
-            return [
-                PracticeCandidate(
-                    question_id=int(row['question_id']),
-                    bank_item_id=None,
-                    max_score=row['max_score'],
-                    display_config={},
+            candidate_question_ids = [int(row['question_id']) for row in rows]
+            review_ranked = (
+                select(
+                    QbQuestionReview.id.label('review_id'),
+                    QbQuestionReview.question_id,
+                    QbQuestionReview.summary,
+                    QbQuestionReview.review_data,
+                    func.row_number()
+                    .over(
+                        partition_by=QbQuestionReview.question_id,
+                        order_by=(QbQuestionReview.reviewed_time.desc(), QbQuestionReview.id.desc()),
+                    )
+                    .label('review_rank'),
                 )
-                for row in rows
-            ]
+                .where(
+                    QbQuestionReview.user_id == user_id,
+                    QbQuestionReview.question_id.in_(candidate_question_ids),
+                    QbQuestionReview.event_type == 'review',
+                    QbQuestionReview.deleted == 0,
+                )
+                .subquery()
+            )
+            latest_reviews = (
+                select(
+                    review_ranked.c.review_id,
+                    review_ranked.c.question_id,
+                    review_ranked.c.summary,
+                    review_ranked.c.review_data,
+                )
+                .where(review_ranked.c.review_rank == 1)
+                .subquery()
+            )
+            latest_review_rows = (
+                await db.execute(select(latest_reviews))
+            ).mappings().all()
+            latest_review_map = {
+                int(row['question_id']): row for row in latest_review_rows
+            }
+
+            tag_rows = (
+                await db.execute(
+                    select(latest_reviews.c.question_id, QbReviewTag.name)
+                    .select_from(latest_reviews)
+                    .join(
+                        QbQuestionReviewTag,
+                        and_(
+                            QbQuestionReviewTag.review_id == latest_reviews.c.review_id,
+                            QbQuestionReviewTag.deleted == 0,
+                        ),
+                    )
+                    .join(
+                        QbReviewTag,
+                        and_(QbReviewTag.id == QbQuestionReviewTag.tag_id, QbReviewTag.deleted == 0),
+                    )
+                )
+            ).all()
+            tag_names: dict[int, list[str]] = {}
+            for question_id, name in tag_rows:
+                tag_names.setdefault(int(question_id), []).append(name)
+
+            knowledge_rows = (
+                await db.execute(
+                    select(latest_reviews.c.question_id, QbKnowledgePoint.name)
+                    .select_from(latest_reviews)
+                    .join(
+                        QbQuestionReviewKnowledgePoint,
+                        and_(
+                            QbQuestionReviewKnowledgePoint.review_id == latest_reviews.c.review_id,
+                            QbQuestionReviewKnowledgePoint.deleted == 0,
+                        ),
+                    )
+                    .join(
+                        QbKnowledgePoint,
+                        and_(
+                            QbKnowledgePoint.id == QbQuestionReviewKnowledgePoint.knowledge_point_id,
+                            QbKnowledgePoint.deleted == 0,
+                        ),
+                    )
+                )
+            ).all()
+            knowledge_names: dict[int, list[str]] = {}
+            for question_id, name in knowledge_rows:
+                knowledge_names.setdefault(int(question_id), []).append(name)
+
+            candidates: list[PracticeCandidate] = []
+            for row in rows:
+                question_id = int(row['question_id'])
+                latest_review = latest_review_map.get(question_id)
+                review_data = dict((latest_review or {}).get('review_data') or {})
+                display_config: dict[str, Any] = {}
+                if row['last_wrong_response'] is not None:
+                    display_config['last_wrong_response'] = row['last_wrong_response']
+                if latest_review is not None:
+                    display_config.update(
+                        {
+                            'review_summary': latest_review['summary'],
+                            'review_prevention': review_data.get('prevention', ''),
+                            'review_tag_names': tag_names.get(question_id, []),
+                            'review_knowledge_point_names': knowledge_names.get(question_id, []),
+                        }
+                    )
+                candidates.append(
+                    PracticeCandidate(
+                        question_id=question_id,
+                        bank_item_id=None,
+                        max_score=row['max_score'],
+                        display_config=display_config,
+                    )
+                )
+            return candidates
 
         source_model: type[QbWrongQuestionState | QbQuestionFavorite | QbQuestionNote]
         if source_type == 'wrong':
