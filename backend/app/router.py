@@ -11,6 +11,7 @@ from backend.app.gongkao.api.router import v1 as gongkao_v1
 from backend.app.growth.api import v1 as growth_v1
 from backend.app.halo.api.router import v1 as halo_v1
 from backend.app.invite.api.router import v1 as invite_v1
+from backend.app.learning.api.router import v1 as learning_v1
 from backend.app.mcp.api.router import v1 as mcp_v1
 from backend.app.mydrive.api.router import v1 as mydrive_v1
 from backend.app.payment.api.router import v1 as payment_v1
@@ -41,6 +42,7 @@ router.include_router(question_generation_v1)
 router.include_router(gongkao_v1)
 router.include_router(halo_v1)
 router.include_router(invite_v1)
+router.include_router(learning_v1)
 router.include_router(payment_v1)
 router.include_router(content_v1)
 router.include_router(quest_v1)

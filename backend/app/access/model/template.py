@@ -28,6 +28,12 @@ class SubscriptionTemplate(Base):
     id: Mapped[id_key] = mapped_column(init=False)
     code: Mapped[str] = mapped_column(sa.String(64), unique=True, comment='模板编码')
     name: Mapped[str] = mapped_column(sa.String(128), comment='模板名称')
+    tier_id: Mapped[int | None] = mapped_column(
+        sa.ForeignKey('membership_tier.id', ondelete='RESTRICT'),
+        default=None,
+        index=True,
+        comment='商业会员档位 ID',
+    )
     kind: Mapped[TemplateKind] = mapped_column(
         PG_ENUM(
             TemplateKind,

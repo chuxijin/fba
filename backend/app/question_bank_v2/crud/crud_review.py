@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, case, exists, func, or_, select
+from sqlalchemy import String, and_, case, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import aggregate_strings
 from sqlalchemy_crud_plus import CRUDPlus
@@ -551,7 +551,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                     QbBankSection.id.label('section_id'),
                     QbBankSection.name.label('section_name'),
                     func.count(func.distinct(QbWrongQuestionState.question_id)).label('count'),
-                    aggregate_strings(func.distinct(QbWrongQuestionState.question_id), ',').label(
+                    aggregate_strings(func.distinct(QbWrongQuestionState.question_id.cast(String)), ',').label(
                         'question_ids_csv'
                     ),
                 )
@@ -594,7 +594,8 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         rows = []
         for row in (await db.execute(stmt)).mappings().all():
             result = dict(row)
-            question_ids_csv = result.pop('question_ids_csv')
+            # 知识点分组不下发题目 ID，只有题库分组才有该字段
+            question_ids_csv = result.pop('question_ids_csv', None)
             result['question_ids'] = (
                 [int(question_id) for question_id in question_ids_csv.split(',')] if question_ids_csv else []
             )

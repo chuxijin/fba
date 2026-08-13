@@ -8,6 +8,7 @@ from backend.app.question_bank_v2.schema.analytics import (
     GetCollectionProgressSummary,
     GetPracticeRankList,
     GetUserPracticeReport,
+    GetKnowledgePointTrends,
     RankType,
 )
 from backend.app.question_bank_v2.service.analytics_service import analytics_service
@@ -87,5 +88,23 @@ async def get_practice_ranks(
         rank_type=rank_type,
         offset=offset,
         limit=limit,
+    )
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/analytics/knowledge-trends',
+    summary='知识点维度刷题趋势',
+    name='qbank_v2_get_knowledge_point_trends',
+)
+async def get_knowledge_point_trends(
+    request: Request,
+    db: CurrentSession,
+    days: Annotated[int, Query(ge=7, le=365, description='趋势天数')] = 90,
+) -> ResponseSchemaModel[GetKnowledgePointTrends]:
+    data = await analytics_service.get_knowledge_point_trends(
+        db=db,
+        user_id=request.user.id,
+        days=days,
     )
     return response_base.success(data=data)

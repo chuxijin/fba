@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Select, and_, case, exists, func, or_, select
+from sqlalchemy import Select, String, and_, case, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import aggregate_strings
 from sqlalchemy_crud_plus import CRUDPlus
@@ -68,7 +68,7 @@ async def _get_bank_group_counts(
             QbBankSection.id.label('section_id'),
             QbBankSection.name.label('section_name'),
             func.count(func.distinct(model.question_id)).label('count'),
-            aggregate_strings(func.distinct(model.question_id), ',').label('question_ids_csv'),
+            aggregate_strings(func.distinct(model.question_id.cast(String)), ',').label('question_ids_csv'),
         )
         .select_from(model)
         .join(
@@ -126,7 +126,7 @@ async def _get_knowledge_group_counts(
             QbKnowledgePoint.id,
             QbKnowledgePoint.name,
             func.count(func.distinct(model.question_id)).label('count'),
-            aggregate_strings(func.distinct(model.question_id), ',').label('question_ids_csv'),
+            aggregate_strings(func.distinct(model.question_id.cast(String)), ',').label('question_ids_csv'),
         )
         .select_from(model)
         .join(

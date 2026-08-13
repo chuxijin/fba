@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.access.service.subscription_service import subscription_service
 from backend.app.admin.model import User
 from backend.app.cms.crud.crud_slot import cms_slot_dao, cms_slot_log_dao
 from backend.app.cms.model import CmsSlot, CmsSlotLog
@@ -14,7 +15,6 @@ from backend.app.cms.schema.slot import (
     GetSlotDetail,
     UpdateSlotParam,
 )
-from backend.app.access.service.subscription_service import subscription_service
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
 from backend.utils.timezone import timezone
@@ -89,7 +89,7 @@ class SlotService:
             return (timezone.now() - created_time) <= timedelta(days=NEW_USER_WINDOW_DAYS)
 
         if slot.target_user_type == 2:
-            # 会员: 任何 active subscription 视为命中
+            # 会员: 持有有效付费会员档位的订阅
             return await subscription_service.has_active_subscription(db, user_id=user_id)
 
         if slot.target_user_type == 3:

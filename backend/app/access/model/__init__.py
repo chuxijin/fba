@@ -10,12 +10,14 @@ from backend.app.access.model.quota_grant import QuotaGrant
 from backend.app.access.model.rule import ResourceRule
 from backend.app.access.model.subscription import Subscription
 from backend.app.access.model.template import SubscriptionTemplate, TemplatePack
+from backend.app.access.model.tier import MembershipTier
 
 __all__ = [
     'DecisionLog',
     'DirectGrant',
     'Entitlement',
     'EntitlementPack',
+    'MembershipTier',
     'PackItem',
     'QuotaGrant',
     'QuotaLedger',

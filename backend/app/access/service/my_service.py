@@ -4,8 +4,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.engine import Row
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.access.constants import (
     EntitlementCategory,
@@ -18,12 +18,10 @@ from backend.app.access.crud.crud_grant import direct_grant_dao
 from backend.app.access.crud.crud_pack import entitlement_pack_dao, pack_item_dao
 from backend.app.access.crud.crud_subscription import subscription_dao
 from backend.app.access.crud.crud_template import subscription_template_dao, template_pack_dao
-from backend.app.access.model.entitlement import Entitlement
-from backend.app.access.model.pack import EntitlementPack
 from backend.app.access.model.subscription import Subscription
 from backend.app.access.schema.base import TimePeriodOutput
 from backend.app.access.schema.entitlement import GetMyEntitlement
-from backend.app.access.schema.my import GetMyAccessSummary
+from backend.app.access.schema.my import GetMyAccessSummary, GetMyDomainMembership, GetMyMembershipProfile
 from backend.app.access.schema.subscription import GetMySubscription, GetMySubscriptionLedger
 from backend.common.cache.redis_cache import RedisCache
 from backend.common.cache.serializers import PydanticSerializer
@@ -38,6 +36,7 @@ my_summary_cache: RedisCache[GetMyAccessSummary] = RedisCache(
     ttl=_MY_ACCESS_SUMMARY_CACHE_TTL,
     serializer=PydanticSerializer(GetMyAccessSummary),
 )
+
 
 class MyAccessService:
     """我的权益聚合服务"""
@@ -294,6 +293,8 @@ class MyAccessService:
             return GetMyAccessSummary(
                 subscriptions=subscriptions,
                 entitlements=entitlements,
+                membership=MyAccessService._build_membership_profile(subscriptions),
+                domain_memberships=MyAccessService._build_domain_memberships(subscriptions),
             )
 
         result = await my_summary_cache.get_or_set(user_id, factory=factory)
@@ -418,7 +419,6 @@ class MyAccessService:
             'pack_items': list(pack_items),
             'entitlement_map': entitlement_map,
         }
-
 
     @staticmethod
     async def _get_quota_scope_keys_from_rules(
@@ -561,6 +561,12 @@ class MyAccessService:
         """
         grouped: dict[int, dict[str, Any]] = {}
         for row in rows:
+            metadata = row.template_metadata or {}
+            metadata_domain_codes = [
+                str(code)
+                for code in metadata.get('domain_codes', [])
+                if code
+            ]
             item = grouped.setdefault(
                 row.subscription_id,
                 {
@@ -568,6 +574,11 @@ class MyAccessService:
                     'template_id': row.template_id,
                     'template_code': row.template_code,
                     'template_name': row.template_name,
+                    'tier_code': row.tier_code,
+                    'tier_name': row.tier_name,
+                    'tier_weight': int(row.tier_weight or 0),
+                    'tier_is_paid': bool(row.tier_is_paid),
+                    'tier_badge_color': row.tier_badge_color,
                     'cover_image': row.cover_image,
                     'valid_period': row.valid_period,
                     'valid_from': row.valid_period.lower,
@@ -575,10 +586,10 @@ class MyAccessService:
                     'status': row.status,
                     'created_time': row.created_time,
                     'packs': [],
-                    'domain_codes': [],
+                    'domain_codes': list(dict.fromkeys(metadata_domain_codes)),
                 },
             )
-            if row.pack_id is not None:
+            if row.pack_id is not None and row.pack_code not in {pack['code'] for pack in item['packs']}:
                 item['packs'].append({
                     'id': row.pack_id,
                     'code': row.pack_code,
@@ -594,6 +605,11 @@ class MyAccessService:
                     id=item['id'],
                     template_code=item['template_code'],
                     template_name=item['template_name'],
+                    tier_code=item['tier_code'],
+                    tier_name=item['tier_name'],
+                    tier_weight=item['tier_weight'],
+                    is_paid_membership=item['tier_is_paid'],
+                    tier_badge_color=item['tier_badge_color'],
                     pack_code=packs[0]['code'] if packs else None,
                     pack_codes=[pack['code'] for pack in packs],
                     domain_codes=item['domain_codes'],
@@ -605,7 +621,60 @@ class MyAccessService:
                     created_time=item['created_time'],
                 )
             )
-        return result
+        return sorted(
+            result,
+            key=lambda subscription: (subscription.tier_weight, subscription.created_time),
+            reverse=True,
+        )
+
+    @staticmethod
+    def _build_membership_profile(subscriptions: Sequence[GetMySubscription]) -> GetMyMembershipProfile:
+        """从有效订阅构建商业会员身份"""
+        paid_subscriptions = [subscription for subscription in subscriptions if subscription.is_paid_membership]
+        primary = paid_subscriptions[0] if paid_subscriptions else (subscriptions[0] if subscriptions else None)
+        if primary is None:
+            return GetMyMembershipProfile()
+
+        is_member = bool(paid_subscriptions)
+        return GetMyMembershipProfile(
+            is_member=is_member,
+            is_vip=is_member,
+            is_svip=any((subscription.tier_code or '').upper() == 'SVIP' for subscription in paid_subscriptions),
+            tier_code=primary.tier_code or ('VIP' if is_member else 'FREE'),
+            tier_name=primary.tier_name or ('会员' if is_member else '普通用户'),
+            tier_weight=primary.tier_weight,
+            tier_badge_color=primary.tier_badge_color,
+            template_code=primary.template_code,
+            template_name=primary.template_name,
+            valid_from=primary.valid_from,
+            valid_to=primary.valid_to,
+        )
+
+    @staticmethod
+    def _build_domain_memberships(
+        subscriptions: Sequence[GetMySubscription],
+    ) -> list[GetMyDomainMembership]:
+        """按领域选取权重最高的有效会员身份"""
+        by_domain: dict[str, GetMySubscription] = {}
+        for subscription in subscriptions:
+            for domain_code in subscription.domain_codes:
+                current = by_domain.get(domain_code)
+                if current is None or subscription.tier_weight > current.tier_weight:
+                    by_domain[domain_code] = subscription
+
+        return [
+            GetMyDomainMembership(
+                domain_code=domain_code,
+                tier_code=subscription.tier_code or 'FREE',
+                tier_name=subscription.tier_name or '普通用户',
+                tier_weight=subscription.tier_weight,
+                is_paid_membership=subscription.is_paid_membership,
+                template_code=subscription.template_code,
+                template_name=subscription.template_name,
+                valid_to=subscription.valid_to,
+            )
+            for domain_code, subscription in sorted(by_domain.items())
+        ]
 
     @staticmethod
     def _source_value(source: object) -> str:

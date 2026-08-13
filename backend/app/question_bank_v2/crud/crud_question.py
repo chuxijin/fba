@@ -41,6 +41,7 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
         db: AsyncSession,
         *,
         bank_id: int | None = None,
+        bank_revision_id: int | None = None,
         question_type: str | None = None,
         keyword: str | None = None,
         offset: int = 0,
@@ -48,6 +49,7 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
     ) -> list[dict[str, Any]]:
         stmt = self.get_list_select(
             bank_id=bank_id,
+            bank_revision_id=bank_revision_id,
             question_type=question_type,
             keyword=keyword,
         ).offset(offset).limit(limit)
@@ -58,6 +60,7 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
         self,
         *,
         bank_id: int | None = None,
+        bank_revision_id: int | None = None,
         question_type: str | None = None,
         keyword: str | None = None,
     ) -> Select:
@@ -75,17 +78,20 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
             QbQuestion.created_time,
             QbQuestion.updated_time,
         ).where(QbQuestion.deleted == 0)
-        if bank_id is not None:
+        if bank_id is not None or bank_revision_id is not None:
             stmt = (
                 stmt.join(QbBankItem, QbBankItem.question_id == QbQuestion.id)
                 .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
                 .where(
-                    QbBankRevision.bank_id == bank_id,
                     QbBankItem.deleted == 0,
                     QbBankRevision.deleted == 0,
                 )
                 .distinct()
             )
+            if bank_id is not None:
+                stmt = stmt.where(QbBankRevision.bank_id == bank_id)
+            if bank_revision_id is not None:
+                stmt = stmt.where(QbBankRevision.id == bank_revision_id)
         if question_type is not None:
             stmt = stmt.where(QbQuestion.question_type == question_type)
         if keyword:

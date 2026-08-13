@@ -173,3 +173,27 @@ class GetPracticeRankList(SchemaBase):
     total_users: int = Field(ge=0, description='参与排名用户数')
     current_user_rank: PracticeRankItem | None = Field(None, description='当前用户排名')
     items: list[PracticeRankItem] = Field(default_factory=list, description='排行榜列表')
+
+
+class KnowledgePointTrendPoint(SchemaBase):
+    """单知识点在某天的趋势数据点"""
+
+    practiced_at: str = Field(description='练习日期 YYYY-MM-DD')
+    attempt_count: int = Field(ge=0, description='做题数')
+    correct_count: int = Field(ge=0, description='正确数')
+    accuracy: float = Field(ge=0, le=100, description='正确率百分比')
+    avg_seconds: float | None = Field(None, description='平均每题用时秒')
+
+
+class KnowledgePointTrendModule(SchemaBase):
+    """单知识点的趋势序列"""
+
+    module_name: str = Field(description='知识点名称')
+    knowledge_point_id: int = Field(description='知识点 ID')
+    points: list[KnowledgePointTrendPoint] = Field(default_factory=list, description='时间序列')
+
+
+class GetKnowledgePointTrends(SchemaBase):
+    """知识点维度刷题趋势"""
+
+    module_trends: list[KnowledgePointTrendModule] = Field(default_factory=list, description='各知识点趋势')
