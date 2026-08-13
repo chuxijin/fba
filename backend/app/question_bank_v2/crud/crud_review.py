@@ -514,11 +514,19 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 QbKnowledgePoint.sort_order,
             ).order_by(QbKnowledgePoint.sort_order, QbKnowledgePoint.id)
         else:
-            saved_item = QbBankItem.__table__.alias('saved_wrong_bank_item')
-            has_valid_saved_item = exists(
-                select(saved_item.c.id).where(
-                    saved_item.c.id == QbWrongQuestionState.source_bank_item_id,
+            # 窗口函数只需对当前用户的错题题目范围计算一次，避免按错题行重复触发全表扫描；
+            # 用 CTE 物化后先解析每道错题最终归属的 bank item，再 JOIN，规避 OR 条件导致的笛卡尔扫描
+            user_wrongs = (
+                select(
+                    QbWrongQuestionState.question_id,
+                    QbWrongQuestionState.source_bank_item_id,
                 )
+                .where(
+                    QbWrongQuestionState.user_id == user_id,
+                    QbWrongQuestionState.status == 'active',
+                    QbWrongQuestionState.deleted == 0,
+                )
+                .cte('user_wrongs')
             )
             ranked_items = (
                 select(
@@ -537,11 +545,30 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 )
                 .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
                 .join(QbBank, QbBank.id == QbBankRevision.bank_id)
+                .where(QbBankItem.question_id.in_(select(user_wrongs.c.question_id)))
+                .cte('ranked_items')
+            )
+            fallback_item_ids = (
+                select(ranked_items.c.question_id, ranked_items.c.id.label('item_id'))
+                .where(ranked_items.c.rank == 1)
                 .subquery()
             )
-            fallback_item_ids = select(ranked_items.c.id).where(
-                ranked_items.c.question_id == QbWrongQuestionState.question_id,
-                ranked_items.c.rank == 1,
+            saved_item = QbBankItem.__table__.alias('saved_wrong_bank_item')
+            resolved = (
+                select(
+                    user_wrongs.c.question_id,
+                    case(
+                        (saved_item.c.id.is_not(None), user_wrongs.c.source_bank_item_id),
+                        else_=fallback_item_ids.c.item_id,
+                    ).label('item_id'),
+                )
+                .select_from(user_wrongs)
+                .outerjoin(saved_item, saved_item.c.id == user_wrongs.c.source_bank_item_id)
+                .outerjoin(
+                    fallback_item_ids,
+                    fallback_item_ids.c.question_id == user_wrongs.c.question_id,
+                )
+                .cte('resolved')
             )
             stmt = (
                 select(
@@ -557,17 +584,10 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 )
                 .select_from(QbWrongQuestionState)
                 .outerjoin(
-                    QbBankItem,
-                    and_(
-                        or_(
-                            QbBankItem.id == QbWrongQuestionState.source_bank_item_id,
-                            and_(
-                                QbBankItem.id.in_(fallback_item_ids),
-                                ~has_valid_saved_item,
-                            ),
-                        ),
-                    ),
+                    resolved,
+                    resolved.c.question_id == QbWrongQuestionState.question_id,
                 )
+                .outerjoin(QbBankItem, QbBankItem.id == resolved.c.item_id)
                 .outerjoin(
                     QbBankRevision,
                     QbBankRevision.id == QbBankItem.bank_revision_id,
