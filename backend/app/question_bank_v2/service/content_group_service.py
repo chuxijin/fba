@@ -1,17 +1,31 @@
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.model.bank import QbBankSection
-from backend.app.question_bank_v2.model.catalog import QbCollection, QbCollectionBank
 from backend.app.question_bank_v2.schema.user_content import ContentGroupNode
 
 
 def _unique_ids(ids: list[int]) -> list[int]:
     """保持顺序去重题目 ID"""
     return list(dict.fromkeys(ids))
+
+
+def _section_root_of(
+    section_id: int,
+    parent_by_id: dict[int, int | None],
+) -> int:
+    """沿章节父链上溯到根章节；父链断裂时返回当前可达的最上层。"""
+    seen: set[int] = set()
+    current = section_id
+    parent_id = parent_by_id.get(current)
+    while parent_id is not None and parent_id not in seen:
+        seen.add(parent_id)
+        current = parent_id
+        parent_id = parent_by_id.get(current)
+    return current
 
 
 class ContentGroupService:
@@ -45,6 +59,7 @@ class ContentGroupService:
         related_rows: Sequence[dict[str, Any]],
         section_rows: Sequence[dict[str, Any]],
     ) -> list[ContentGroupNode]:
+        """把错题压到题库下的章节一层：子章节的错题归并到根章节，返回题库→章节两级。"""
         direct_counts = {
             int(row['section_id']): int(row['count'] or 0)
             for row in related_rows
@@ -62,8 +77,8 @@ class ContentGroupService:
                 id=int(row['id']),
                 bank_id=bank_id,
                 name=row['name'],
-                count=direct_counts.get(int(row['id']), 0),
-                question_ids=_unique_ids(direct_ids.get(int(row['id']), [])),
+                count=0,
+                question_ids=[],
             )
             for row in section_rows
         }
@@ -71,27 +86,22 @@ class ContentGroupService:
             int(row['id']): int(row['parent_id']) if row['parent_id'] is not None else None
             for row in section_rows
         }
-        keep = set(direct_counts)
-        for section_id in list(keep):
-            parent_id = parent_by_id.get(section_id)
-            while parent_id is not None and parent_id not in keep:
-                keep.add(parent_id)
-                parent_id = parent_by_id.get(parent_id)
-        depth_by_id = {int(row['id']): int(row['depth']) for row in section_rows}
-        for section_id in sorted(keep, key=depth_by_id.get, reverse=True):
-            parent_id = parent_by_id.get(section_id)
-            if parent_id in keep:
-                nodes[parent_id].count += nodes[section_id].count
-        roots: list[ContentGroupNode] = []
-        for row in section_rows:
-            section_id = int(row['id'])
-            if section_id not in keep:
+
+        for section_id, count in direct_counts.items():
+            root_id = _section_root_of(section_id, parent_by_id)
+            if root_id not in nodes:
                 continue
-            parent_id = parent_by_id.get(section_id)
-            if parent_id in keep:
-                nodes[parent_id].children.append(nodes[section_id])
-            else:
-                roots.append(nodes[section_id])
+            nodes[root_id].count += count
+            nodes[root_id].question_ids.extend(direct_ids.get(section_id, []))
+
+        roots: list[ContentGroupNode] = []
+        for section_id, node in nodes.items():
+            if parent_by_id.get(section_id) is not None:
+                continue
+            if node.count <= 0 and not node.question_ids:
+                continue
+            node.question_ids = _unique_ids(node.question_ids)
+            roots.append(node)
         return roots
 
     @classmethod
@@ -135,100 +145,6 @@ class ContentGroupService:
             )
         return banks
 
-    @staticmethod
-    async def _get_collection_rows(
-        db: AsyncSession,
-        bank_ids: set[int],
-    ) -> Sequence[dict[str, Any]]:
-        if not bank_ids:
-            return []
-        return (
-            await db.execute(
-                select(
-                    QbCollection.id,
-                    QbCollection.parent_id,
-                    QbCollection.name,
-                    QbCollection.sort_order,
-                    QbCollectionBank.bank_id,
-                    QbCollectionBank.sort_order.label('bank_sort_order'),
-                )
-                .select_from(QbCollection)
-                .outerjoin(
-                    QbCollectionBank,
-                    and_(
-                        QbCollectionBank.collection_id == QbCollection.id,
-                        QbCollectionBank.bank_id.in_(bank_ids),
-                        QbCollectionBank.is_active.is_(True),
-                        QbCollectionBank.deleted == 0,
-                    ),
-                )
-                .where(
-                    QbCollection.visibility == 'public',
-                    QbCollection.status == 'active',
-                    QbCollection.deleted == 0,
-                )
-                .order_by(QbCollection.sort_order, QbCollection.id, QbCollectionBank.sort_order)
-            )
-        ).mappings().all()
-
-    @staticmethod
-    def _rollup_collection(node: ContentGroupNode) -> int:
-        node.count += sum(
-            ContentGroupService._rollup_collection(child)
-            for child in node.children
-            if child.type == 'collection'
-        )
-        return node.count
-
-    @classmethod
-    def _build_collection_roots(
-        cls,
-        collection_rows: Sequence[dict[str, Any]],
-        banks: dict[int, ContentGroupNode],
-    ) -> tuple[list[ContentGroupNode], set[int]]:
-        collections = {
-            int(row['id']): ContentGroupNode(
-                id=int(row['id']),
-                name=row['name'],
-                count=0,
-                type='collection',
-            )
-            for row in collection_rows
-        }
-        collection_ids = list(dict.fromkeys(int(row['id']) for row in collection_rows))
-        collection_parent = {
-            int(row['id']): int(row['parent_id']) if row['parent_id'] is not None else None
-            for row in collection_rows
-        }
-        mounted_banks: set[int] = set()
-        for row in collection_rows:
-            if row['bank_id'] is None:
-                continue
-            bank_id = int(row['bank_id'])
-            if bank_id in mounted_banks:
-                continue
-            collections[int(row['id'])].children.append(banks[bank_id])
-            collections[int(row['id'])].count += banks[bank_id].count
-            mounted_banks.add(bank_id)
-        keep_collections = {cid for cid, node in collections.items() if node.count > 0}
-        for collection_id in list(keep_collections):
-            parent_id = collection_parent.get(collection_id)
-            while parent_id is not None and parent_id not in keep_collections:
-                keep_collections.add(parent_id)
-                parent_id = collection_parent.get(parent_id)
-        roots: list[ContentGroupNode] = []
-        for collection_id in collection_ids:
-            if collection_id not in keep_collections:
-                continue
-            parent_id = collection_parent.get(collection_id)
-            if parent_id in keep_collections:
-                collections[parent_id].children.append(collections[collection_id])
-            else:
-                roots.append(collections[collection_id])
-        for root in roots:
-            cls._rollup_collection(root)
-        return roots, mounted_banks
-
     @classmethod
     async def build_bank_tree(
         cls,
@@ -241,9 +157,8 @@ class ContentGroupService:
         revision_ids = {int(row['bank_revision_id']) for row in bank_rows}
         section_rows = await cls._get_section_rows(db, revision_ids)
         banks = cls._build_banks(bank_rows, section_rows)
-        collection_rows = await cls._get_collection_rows(db, set(banks))
-        roots, mounted_banks = cls._build_collection_roots(collection_rows, banks)
-        roots.extend(bank for bank_id, bank in banks.items() if bank_id not in mounted_banks)
+        # 层级收敛为两级：题库直接作顶层，章节归并到题库下（不再按专区分组）
+        roots = list(banks.values())
         ungrouped_count = 0
         ungrouped_ids: list[int] = []
         for row in rows:

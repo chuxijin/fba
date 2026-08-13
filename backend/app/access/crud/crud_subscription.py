@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import Integer, Row, Select, literal, select, union_all
+from sqlalchemy import Integer, Row, Select, false, func, literal, select, union_all
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
@@ -78,6 +78,7 @@ class CRUDSubscription(CRUDPlus[Subscription]):
         from backend.app.access.model.domain import StudyDomain
         from backend.app.access.model.pack import EntitlementPack
         from backend.app.access.model.template import SubscriptionTemplate, TemplatePack
+        from backend.app.access.model.tier import MembershipTier
 
         stmt = (
             select(
@@ -89,11 +90,18 @@ class CRUDSubscription(CRUDPlus[Subscription]):
                 SubscriptionTemplate.code.label('template_code'),
                 SubscriptionTemplate.name.label('template_name'),
                 SubscriptionTemplate.cover_image.label('cover_image'),
+                SubscriptionTemplate.metadata_.label('template_metadata'),
+                MembershipTier.code.label('tier_code'),
+                MembershipTier.name.label('tier_name'),
+                func.coalesce(MembershipTier.weight, 0).label('tier_weight'),
+                func.coalesce(MembershipTier.is_paid, false()).label('tier_is_paid'),
+                MembershipTier.badge_color.label('tier_badge_color'),
                 EntitlementPack.id.label('pack_id'),
                 EntitlementPack.code.label('pack_code'),
                 StudyDomain.code.label('domain_code'),
             )
             .join(SubscriptionTemplate, SubscriptionTemplate.id == self.model.template_id)
+            .outerjoin(MembershipTier, MembershipTier.id == SubscriptionTemplate.tier_id)
             .outerjoin(TemplatePack, TemplatePack.template_id == self.model.template_id)
             .outerjoin(EntitlementPack, EntitlementPack.id == TemplatePack.pack_id)
             .outerjoin(StudyDomain, StudyDomain.id == EntitlementPack.domain_id)
@@ -166,6 +174,33 @@ class CRUDSubscription(CRUDPlus[Subscription]):
             .order_by(self.model.id.desc(), TemplatePack.id.asc(), PackItem.id.asc())
         )
         return (await db.execute(stmt)).all()
+
+    async def has_active_paid_membership(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        ts: datetime,
+    ) -> bool:
+        """判断用户是否持有当前有效的付费会员订阅"""
+        from backend.app.access.model.template import SubscriptionTemplate
+        from backend.app.access.model.tier import MembershipTier
+
+        stmt = (
+            select(literal(True))
+            .select_from(self.model)
+            .join(SubscriptionTemplate, SubscriptionTemplate.id == self.model.template_id)
+            .join(MembershipTier, MembershipTier.id == SubscriptionTemplate.tier_id)
+            .where(
+                self.model.user_id == user_id,
+                self.model.status == SubscriptionStatus.ACTIVE,
+                self.model.valid_period.contains(ts),
+                MembershipTier.status == CommonStatus.ACTIVE,
+                MembershipTier.is_paid.is_(True),
+            )
+            .limit(1)
+        )
+        return bool((await db.execute(stmt)).scalar_one_or_none())
 
     async def list_my_access_entitlement_rows(
         self,
@@ -294,10 +329,9 @@ class CRUDSubscription(CRUDPlus[Subscription]):
         :param source: 来源
         :return:
         """
-        from backend.app.admin.model.user import User
         from backend.app.access.model.template import SubscriptionTemplate
-        from sqlalchemy import func
-
+        from backend.app.access.model.tier import MembershipTier
+        from backend.app.admin.model.user import User
         stmt = (
             select(
                 Subscription.id,
@@ -315,11 +349,16 @@ class CRUDSubscription(CRUDPlus[Subscription]):
                 User.nickname.label('nickname'),
                 SubscriptionTemplate.code.label('template_code'),
                 SubscriptionTemplate.name.label('template_name'),
+                MembershipTier.code.label('tier_code'),
+                MembershipTier.name.label('tier_name'),
+                func.coalesce(MembershipTier.weight, 0).label('tier_weight'),
+                func.coalesce(MembershipTier.is_paid, false()).label('is_paid_membership'),
                 func.lower(Subscription.valid_period).label('valid_from'),
                 func.upper(Subscription.valid_period).label('valid_to'),
             )
             .outerjoin(User, Subscription.user_id == User.id)
             .outerjoin(SubscriptionTemplate, Subscription.template_id == SubscriptionTemplate.id)
+            .outerjoin(MembershipTier, MembershipTier.id == SubscriptionTemplate.tier_id)
             .order_by(Subscription.id.desc())
         )
 
@@ -346,10 +385,9 @@ class CRUDSubscription(CRUDPlus[Subscription]):
         :param pk: 订阅 ID
         :return:
         """
-        from backend.app.admin.model.user import User
         from backend.app.access.model.template import SubscriptionTemplate
-        from sqlalchemy import func
-
+        from backend.app.access.model.tier import MembershipTier
+        from backend.app.admin.model.user import User
         stmt = (
             select(
                 Subscription.id,
@@ -367,11 +405,16 @@ class CRUDSubscription(CRUDPlus[Subscription]):
                 User.nickname.label('nickname'),
                 SubscriptionTemplate.code.label('template_code'),
                 SubscriptionTemplate.name.label('template_name'),
+                MembershipTier.code.label('tier_code'),
+                MembershipTier.name.label('tier_name'),
+                func.coalesce(MembershipTier.weight, 0).label('tier_weight'),
+                func.coalesce(MembershipTier.is_paid, false()).label('is_paid_membership'),
                 func.lower(Subscription.valid_period).label('valid_from'),
                 func.upper(Subscription.valid_period).label('valid_to'),
             )
             .outerjoin(User, Subscription.user_id == User.id)
             .outerjoin(SubscriptionTemplate, Subscription.template_id == SubscriptionTemplate.id)
+            .outerjoin(MembershipTier, MembershipTier.id == SubscriptionTemplate.tier_id)
             .where(Subscription.id == pk)
         )
         return (await db.execute(stmt)).first()

@@ -342,17 +342,19 @@ class SubscriptionService:
     @staticmethod
     async def has_active_subscription(db: AsyncSession, *, user_id: int) -> bool:
         """
-        判断用户当前是否持有任一有效订阅(用于 cms 分群等只关心"是否会员"的场景)
+        判断用户当前是否持有任一有效付费会员订阅。
 
-        不返回档位: 档位由售卖模板名称承载, 权益由运营勾选组合决定,
-        因此系统里不存在一个可比较的全局"会员等级"。
+        免费订阅仍可用于发放基础权益，但不应命中 CMS 的会员人群。
 
         :param db: 数据库会话
         :param user_id: 用户 ID
         :return:
         """
-        subs = await subscription_dao.list_active_for_user(db, user_id, timezone.now())
-        return bool(subs)
+        return await subscription_dao.has_active_paid_membership(
+            db,
+            user_id=user_id,
+            ts=timezone.now(),
+        )
 
     @staticmethod
     async def _invalidate_user_access_cache(user_id: int) -> None:

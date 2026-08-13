@@ -149,8 +149,8 @@ def test_v2_openapi_routes_and_names_are_unique() -> None:
     paths = {path: operations for path, operations in spec['paths'].items() if '/qbank-v2/' in path}
     operation_ids = [operation['operationId'] for operations in paths.values() for operation in operations.values()]
 
-    assert len(paths) == 89
-    assert len(operation_ids) == 121
+    assert len(paths) == 90
+    assert len(operation_ids) == 122
     assert '/api/v1/qbank-v2/sessions' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/response' in paths

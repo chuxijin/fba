@@ -162,6 +162,8 @@ class QuestionService:
     async def get_list(
         *,
         db: AsyncSession,
+        bank_id: int | None = None,
+        bank_revision_id: int | None = None,
         question_type: str | None = None,
         keyword: str | None = None,
         offset: int = 0,
@@ -170,6 +172,8 @@ class QuestionService:
         """获取题目管理列表"""
         rows = await question_dao.get_list(
             db,
+            bank_id=bank_id,
+            bank_revision_id=bank_revision_id,
             question_type=question_type,
             keyword=keyword,
             offset=offset,
@@ -181,11 +185,17 @@ class QuestionService:
     def get_list_select(
         *,
         bank_id: int | None = None,
+        bank_revision_id: int | None = None,
         question_type: str | None = None,
         keyword: str | None = None,
     ) -> Select:
         """构建题目管理列表分页查询，交给 API 层 paging_data 处理"""
-        return question_dao.get_list_select(bank_id=bank_id, question_type=question_type, keyword=keyword)
+        return question_dao.get_list_select(
+            bank_id=bank_id,
+            bank_revision_id=bank_revision_id,
+            question_type=question_type,
+            keyword=keyword,
+        )
 
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateQuestionParam, created_by: int) -> GetQuestionDetail:

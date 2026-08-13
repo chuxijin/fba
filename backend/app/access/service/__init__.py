@@ -10,14 +10,16 @@ from backend.app.access.service.resource_profile_registry import AccessProfile, 
 from backend.app.access.service.rule_service import resource_rule_service
 from backend.app.access.service.subscription_service import subscription_service
 from backend.app.access.service.template_service import subscription_template_service
+from backend.app.access.service.tier_service import membership_tier_service
 
 __all__ = [
     'AccessProfile',
-    'direct_grant_service',
-    'access_redeem_service',
     'access_profile_registry',
+    'access_redeem_service',
+    'direct_grant_service',
     'entitlement_pack_service',
     'entitlement_service',
+    'membership_tier_service',
     'resource_access_service',
     'resource_rule_service',
     'study_domain_service',

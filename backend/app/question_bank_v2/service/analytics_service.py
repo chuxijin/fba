@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import and_, select
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
@@ -32,6 +33,9 @@ from backend.app.question_bank_v2.schema.analytics import (
     UserDailyPracticeDetail,
     UserMonthlyPracticeDetail,
     WrongSectionCount,
+    GetKnowledgePointTrends,
+    KnowledgePointTrendModule,
+    KnowledgePointTrendPoint,
 )
 from backend.app.question_bank_v2.service.access_service import bank_access_service
 from backend.common.exception import errors
@@ -557,6 +561,114 @@ class AnalyticsService:
             daily_trend=daily_trend,
             monthly_trend=monthly_trend,
         )
+
+    @staticmethod
+    async def get_knowledge_point_trends(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        days: int = 90,
+    ) -> GetKnowledgePointTrends:
+        """基于作答事实表，按顶层知识点 × 日期聚合刷题趋势
+
+        通过 QbQuestionAttempt JOIN QbQuestionKnowledgePoint JOIN QbKnowledgePoint 实时计算，
+        仅取 version='default' 知识体系中 parent_id IS NULL 的顶层知识点。
+        """
+        from backend.app.question_bank_v2.model.knowledge import (
+            QbKnowledgePoint,
+            QbKnowledgeSystem,
+            QbQuestionKnowledgePoint,
+        )
+        from backend.app.question_bank_v2.model.practice import QbQuestionAttempt
+
+        now = timezone.now()
+        start_datetime = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        practiced_at = sa.cast(QbQuestionAttempt.submitted_time, sa.Date).label('practiced_at')
+        attempt_count_col = sa.func.count(QbQuestionAttempt.id).label('attempt_count')
+        correct_count_col = sa.func.sum(
+            sa.case((QbQuestionAttempt.is_correct.is_(True), 1), else_=0)
+        ).label('correct_count')
+        avg_duration_col = sa.func.avg(QbQuestionAttempt.duration_ms).label('avg_duration_ms')
+
+        stmt = (
+            select(
+                practiced_at,
+                QbKnowledgePoint.id.label('knowledge_point_id'),
+                QbKnowledgePoint.name.label('module_name'),
+                QbKnowledgePoint.sort_order,
+                attempt_count_col,
+                correct_count_col,
+                avg_duration_col,
+            )
+            .select_from(QbQuestionAttempt)
+            .join(
+                QbQuestionKnowledgePoint,
+                and_(
+                    QbQuestionAttempt.question_id == QbQuestionKnowledgePoint.question_id,
+                    QbQuestionKnowledgePoint.deleted == 0,
+                ),
+            )
+            .join(
+                QbKnowledgePoint,
+                and_(
+                    QbQuestionKnowledgePoint.knowledge_point_id == QbKnowledgePoint.id,
+                    QbKnowledgePoint.deleted == 0,
+                    QbKnowledgePoint.parent_id.is_(None),
+                ),
+            )
+            .join(
+                QbKnowledgeSystem,
+                and_(
+                    QbKnowledgePoint.system_id == QbKnowledgeSystem.id,
+                    QbKnowledgeSystem.deleted == 0,
+                    QbKnowledgeSystem.version == 'default',
+                ),
+            )
+            .where(
+                QbQuestionAttempt.user_id == user_id,
+                QbQuestionAttempt.deleted == 0,
+                QbQuestionAttempt.grading_status == 'graded',
+                QbQuestionAttempt.submitted_time >= start_datetime,
+            )
+            .group_by(
+                practiced_at,
+                QbKnowledgePoint.id,
+                QbKnowledgePoint.name,
+                QbKnowledgePoint.sort_order,
+            )
+            .order_by(sa.text('practiced_at'), QbKnowledgePoint.sort_order)
+        )
+
+        rows = (await db.execute(stmt)).mappings().all()
+
+        modules: dict[int, KnowledgePointTrendModule] = {}
+        for row in rows:
+            kp_id = int(row['knowledge_point_id'])
+            if kp_id not in modules:
+                modules[kp_id] = KnowledgePointTrendModule(
+                    module_name=row['module_name'],
+                    knowledge_point_id=kp_id,
+                    points=[],
+                )
+
+            att_count = int(row['attempt_count'])
+            cor_count = int(row['correct_count'] or 0)
+            accuracy = round(cor_count * 100.0 / att_count, 1) if att_count > 0 else 0.0
+            avg_ms = float(row['avg_duration_ms'] or 0)
+            avg_seconds = round(avg_ms / 1000.0, 1) if avg_ms > 0 else None
+
+            modules[kp_id].points.append(
+                KnowledgePointTrendPoint(
+                    practiced_at=str(row['practiced_at']),
+                    attempt_count=att_count,
+                    correct_count=cor_count,
+                    accuracy=accuracy,
+                    avg_seconds=avg_seconds,
+                )
+            )
+
+        return GetKnowledgePointTrends(module_trends=list(modules.values()))
 
 
 analytics_service: AnalyticsService = AnalyticsService()
