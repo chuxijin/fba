@@ -450,6 +450,35 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         )
         return (await db.execute(stmt)).scalars().first()
 
+    @staticmethod
+    async def _resolve_section_ids(
+        db: AsyncSession,
+        bank_revision_id: int,
+        section_id: int,
+    ) -> list[int]:
+        """解析选中章节及其全部后代章节 ID（章节树向下包含）。"""
+        rows = (
+            await db.execute(
+                select(QbBankSection.id, QbBankSection.parent_id).where(
+                    QbBankSection.bank_revision_id == bank_revision_id,
+                    QbBankSection.deleted == 0,
+                )
+            )
+        ).all()
+        children: dict[int, list[int]] = {}
+        for row in rows:
+            parent_id = row[1]
+            if parent_id is None:
+                continue
+            children.setdefault(int(parent_id), []).append(int(row[0]))
+        resolved: list[int] = []
+        stack = [section_id]
+        while stack:
+            current = stack.pop()
+            resolved.append(current)
+            stack.extend(children.get(current, []))
+        return resolved
+
     async def get_candidates(
         self,
         db: AsyncSession,
@@ -471,7 +500,8 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
             QbBankItem.is_active.is_(True),
         )
         if section_id is not None:
-            filters = (*filters, QbBankItem.section_id == section_id)
+            section_ids = await self._resolve_section_ids(db, bank_revision_id, section_id)
+            filters = (*filters, QbBankItem.section_id.in_(section_ids))
         if year_start is not None:
             filters = (*filters, QbBankItem.exam_year >= year_start)
         if year_end is not None:
