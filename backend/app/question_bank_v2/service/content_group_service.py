@@ -161,18 +161,32 @@ class ContentGroupService:
         roots = list(banks.values())
         ungrouped_count = 0
         ungrouped_ids: list[int] = []
+        ungrouped_children: dict[str, ContentGroupNode] = {}
         for row in rows:
             if row['bank_id'] is not None:
                 continue
-            ungrouped_count += int(row['count'] or 0)
-            ungrouped_ids.extend(int(qid) for qid in (row.get('question_ids') or []))
+            count = int(row['count'] or 0)
+            question_ids = [int(qid) for qid in (row.get('question_ids') or [])]
+            ungrouped_count += count
+            ungrouped_ids.extend(question_ids)
+            source_name = str(row.get('external_source') or '').strip()
+            if source_name:
+                child = ungrouped_children.setdefault(
+                    source_name,
+                    ContentGroupNode(id=None, name=source_name, count=0, question_ids=[]),
+                )
+                child.count += count
+                child.question_ids.extend(question_ids)
         if ungrouped_count:
+            for child in ungrouped_children.values():
+                child.question_ids = _unique_ids(child.question_ids)
             roots.append(
                 ContentGroupNode(
                     id=0,
                     name=ungrouped_name,
                     count=ungrouped_count,
-                    question_ids=_unique_ids(ungrouped_ids),
+                    question_ids=[] if ungrouped_children else _unique_ids(ungrouped_ids),
+                    children=list(ungrouped_children.values()),
                 )
             )
         return roots

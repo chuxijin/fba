@@ -179,6 +179,21 @@ class WrongReviewService:
         row = await wrong_question_state_dao.get_detail_row(db, pk=wrong_state_id, user_id=user_id)
         if row is None:
             raise errors.NotFoundError(msg='错题不存在')
+        wrong_attempts = await question_attempt_dao.get_wrong_by_question(
+            db,
+            user_id=user_id,
+            question_id=int(row['question_id']),
+        )
+        for attempt in wrong_attempts:
+            response_data = attempt.response_data
+            if (
+                isinstance(response_data, dict)
+                and response_data.get('mode') == 'memorize'
+                and response_data.get('viewed') is True
+            ):
+                continue
+            row['last_wrong_response'] = response_data
+            break
         preference = await preference_service.get(db=db, user_id=user_id)
         threshold = 1 if row['review_count'] > 0 else preference.mastery_threshold
         return GetWrongQuestionDetail(
@@ -316,10 +331,29 @@ class WrongReviewService:
             knowledge_system_ids=knowledge_system_ids,
         )
         if group_by == 'knowledge_point':
-            groups = [
-                ContentGroupNode(id=row['id'], name=row['name'], count=int(row['count'] or 0))
-                for row in rows
-            ]
+            bank_groups: list[ContentGroupNode] = []
+            external_groups: list[ContentGroupNode] = []
+            for row in rows:
+                node = ContentGroupNode(
+                    id=row['id'],
+                    name=row['name'],
+                    count=int(row['count'] or 0),
+                    question_ids=row.get('question_ids') or [],
+                )
+                if row.get('entry_scope') == 'external':
+                    external_groups.append(node)
+                else:
+                    bank_groups.append(node)
+            groups = bank_groups
+            if external_groups:
+                groups.append(
+                    ContentGroupNode(
+                        id=0,
+                        name='自主录入',
+                        count=sum(node.count for node in external_groups),
+                        children=external_groups,
+                    )
+                )
         else:
             groups = await content_group_service.build_bank_tree(
                 db=db,

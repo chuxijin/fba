@@ -409,6 +409,7 @@ class CaptureHarness:
         return CreateExternalWrongQuestionParam(
             idempotency_key='capture-0001',
             entry_source='manual',
+            entry_metadata={'source': '测试来源'},
             stem='Which option is correct?',
             knowledge_point_ids=[88],
             options=[
