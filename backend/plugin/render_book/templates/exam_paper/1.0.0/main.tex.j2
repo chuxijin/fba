@@ -68,6 +68,8 @@
 {% set show_solution_only = variant == 'solutions_only' %}
 {% set stretch_map = {'compact': '1.08', 'standard': '1.18', 'loose': '1.30'} %}
 {% set itemsep_map = {'compact': '0.50em', 'standard': '0.85em', 'loose': '1.20em'} %}
+{% set question_space_map = {'compact': '1.2em', 'standard': '2.0em', 'loose': '3.5em'} %}
+{% set question_space = metadata_data.get('question_space', options_data.get('question_space', question_space_map.get(layout_mode_base, '2.0em'))) %}
 {% set theme_map = {
     'blue': {'accent': '1F4E79', 'accent_dark': '15334D', 'accent_soft': 'EAF2F9', 'rule': '8FB7D9'},
     'green': {'accent': '2E6A57', 'accent_dark': '1E4338', 'accent_soft': 'E8F3EF', 'rule': '9BC8B6'},
@@ -456,7 +458,7 @@
 {% endif %}
 {% endfor %}
 
-\vspace{0.45em}
+\vspace{ {{ question_space }} }
 \noindent
 \hangindent=2.5em\hangafter=1
 {\bfseries\makebox[2.2em][l]{\textrm{ {{ question.get('number', loop.index) }}.}}}\hspace{0.28em}{{ render_question_source_prefix(question) }}%
