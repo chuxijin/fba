@@ -478,11 +478,19 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
     ) -> list[dict[str, Any]]:
         """按题库篇章或知识点统计活跃错题"""
         if group_by == 'knowledge_point':
+            knowledge_scope = case(
+                (QbWrongQuestionState.entry_source.in_(EXTERNAL_ENTRY_SOURCES), 'external'),
+                else_='bank',
+            ).label('entry_scope')
             stmt = (
                 select(
                     QbKnowledgePoint.id,
                     QbKnowledgePoint.name,
                     func.count(func.distinct(QbWrongQuestionState.question_id)).label('count'),
+                    knowledge_scope,
+                    aggregate_strings(func.distinct(QbWrongQuestionState.question_id.cast(String)), ',').label(
+                        'question_ids_csv'
+                    ),
                 )
                 .select_from(QbWrongQuestionState)
                 .join(
@@ -512,105 +520,139 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 QbKnowledgePoint.id,
                 QbKnowledgePoint.name,
                 QbKnowledgePoint.sort_order,
-            ).order_by(QbKnowledgePoint.sort_order, QbKnowledgePoint.id)
-        else:
-            # 窗口函数只需对当前用户的错题题目范围计算一次，避免按错题行重复触发全表扫描；
-            # 用 CTE 物化后先解析每道错题最终归属的 bank item，再 JOIN，规避 OR 条件导致的笛卡尔扫描
-            user_wrongs = (
-                select(
-                    QbWrongQuestionState.question_id,
-                    QbWrongQuestionState.source_bank_item_id,
+                knowledge_scope,
+            ).order_by(QbKnowledgePoint.sort_order, QbKnowledgePoint.id, knowledge_scope)
+            knowledge_rows = []
+            for row in (await db.execute(stmt)).mappings().all():
+                result = dict(row)
+                question_ids_csv = result.pop('question_ids_csv', None)
+                result['question_ids'] = (
+                    [int(question_id) for question_id in question_ids_csv.split(',')]
+                    if question_ids_csv
+                    else []
                 )
-                .where(
-                    QbWrongQuestionState.user_id == user_id,
-                    QbWrongQuestionState.status == 'active',
-                    QbWrongQuestionState.deleted == 0,
-                )
-                .cte('user_wrongs')
+                knowledge_rows.append(result)
+            return knowledge_rows
+        # 窗口函数只需对当前用户的错题题目范围计算一次，避免按错题行重复触发全表扫描；
+        # 用 CTE 物化后先解析每道错题最终归属的 bank item，再 JOIN，规避 OR 条件导致的笛卡尔扫描
+        user_wrongs = (
+            select(
+                QbWrongQuestionState.question_id,
+                QbWrongQuestionState.source_bank_item_id,
             )
-            ranked_items = (
-                select(
-                    QbBankItem.id,
-                    QbBankItem.question_id,
-                    func.row_number()
-                    .over(
-                        partition_by=(QbBankItem.question_id, QbBankRevision.bank_id),
-                        order_by=(
-                            (QbBankItem.bank_revision_id == QbBank.current_revision_id).desc(),
-                            QbBankRevision.revision_no.desc(),
-                            QbBankItem.id.desc(),
-                        ),
-                    )
-                    .label('rank'),
-                )
-                .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
-                .join(QbBank, QbBank.id == QbBankRevision.bank_id)
-                .where(QbBankItem.question_id.in_(select(user_wrongs.c.question_id)))
-                .cte('ranked_items')
+            .where(
+                QbWrongQuestionState.user_id == user_id,
+                QbWrongQuestionState.status == 'active',
+                QbWrongQuestionState.deleted == 0,
+                QbWrongQuestionState.entry_source == 'attempt',
             )
-            fallback_item_ids = (
-                select(ranked_items.c.question_id, ranked_items.c.id.label('item_id'))
-                .where(ranked_items.c.rank == 1)
-                .subquery()
-            )
-            saved_item = QbBankItem.__table__.alias('saved_wrong_bank_item')
-            resolved = (
-                select(
-                    user_wrongs.c.question_id,
-                    case(
-                        (saved_item.c.id.is_not(None), user_wrongs.c.source_bank_item_id),
-                        else_=fallback_item_ids.c.item_id,
-                    ).label('item_id'),
-                )
-                .select_from(user_wrongs)
-                .outerjoin(saved_item, saved_item.c.id == user_wrongs.c.source_bank_item_id)
-                .outerjoin(
-                    fallback_item_ids,
-                    fallback_item_ids.c.question_id == user_wrongs.c.question_id,
-                )
-                .cte('resolved')
-            )
-            stmt = (
-                select(
-                    QbBank.id.label('bank_id'),
-                    QbBankItem.bank_revision_id,
-                    QbBankRevision.name.label('bank_name'),
-                    QbBankSection.id.label('section_id'),
-                    QbBankSection.name.label('section_name'),
-                    func.count(func.distinct(QbWrongQuestionState.question_id)).label('count'),
-                    aggregate_strings(func.distinct(QbWrongQuestionState.question_id.cast(String)), ',').label(
-                        'question_ids_csv'
+            .cte('user_wrongs')
+        )
+        ranked_items = (
+            select(
+                QbBankItem.id,
+                QbBankItem.question_id,
+                func.row_number()
+                .over(
+                    partition_by=(QbBankItem.question_id, QbBankRevision.bank_id),
+                    order_by=(
+                        (QbBankItem.bank_revision_id == QbBank.current_revision_id).desc(),
+                        QbBankRevision.revision_no.desc(),
+                        QbBankItem.id.desc(),
                     ),
                 )
-                .select_from(QbWrongQuestionState)
-                .outerjoin(
-                    resolved,
-                    resolved.c.question_id == QbWrongQuestionState.question_id,
-                )
-                .outerjoin(QbBankItem, QbBankItem.id == resolved.c.item_id)
-                .outerjoin(
-                    QbBankRevision,
-                    QbBankRevision.id == QbBankItem.bank_revision_id,
-                )
-                .outerjoin(QbBank, QbBank.id == QbBankRevision.bank_id)
-                .outerjoin(
-                    QbBankSection,
-                    QbBankSection.id == QbBankItem.section_id,
-                )
-                .where(
-                    QbWrongQuestionState.user_id == user_id,
-                    QbWrongQuestionState.status == 'active',
-                    QbWrongQuestionState.deleted == 0,
-                )
-                .group_by(
-                    QbBank.id,
-                    QbBankItem.bank_revision_id,
-                    QbBankRevision.name,
-                    QbBankSection.id,
-                    QbBankSection.name,
-                )
-                .order_by(QbBankRevision.name.nullsfirst(), QbBankSection.name)
+                .label('rank'),
             )
+            .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
+            .join(QbBank, QbBank.id == QbBankRevision.bank_id)
+            .where(QbBankItem.question_id.in_(select(user_wrongs.c.question_id)))
+            .cte('ranked_items')
+        )
+        fallback_item_ids = (
+            select(ranked_items.c.question_id, ranked_items.c.id.label('item_id'))
+            .where(ranked_items.c.rank == 1)
+            .subquery()
+        )
+        saved_item = QbBankItem.__table__.alias('saved_wrong_bank_item')
+        resolved = (
+            select(
+                user_wrongs.c.question_id,
+                case(
+                    (saved_item.c.id.is_not(None), user_wrongs.c.source_bank_item_id),
+                    else_=fallback_item_ids.c.item_id,
+                ).label('item_id'),
+            )
+            .select_from(user_wrongs)
+            .outerjoin(saved_item, saved_item.c.id == user_wrongs.c.source_bank_item_id)
+            .outerjoin(
+                fallback_item_ids,
+                fallback_item_ids.c.question_id == user_wrongs.c.question_id,
+            )
+            .cte('resolved')
+        )
+        stmt = (
+            select(
+                QbBank.id.label('bank_id'),
+                QbBankItem.bank_revision_id,
+                QbBankRevision.name.label('bank_name'),
+                QbBankSection.id.label('section_id'),
+                QbBankSection.name.label('section_name'),
+                func.count(func.distinct(QbWrongQuestionState.question_id)).label('count'),
+                aggregate_strings(func.distinct(QbWrongQuestionState.question_id.cast(String)), ',').label(
+                    'question_ids_csv'
+                ),
+            )
+            .select_from(QbWrongQuestionState)
+            .outerjoin(
+                resolved,
+                resolved.c.question_id == QbWrongQuestionState.question_id,
+            )
+            .outerjoin(QbBankItem, QbBankItem.id == resolved.c.item_id)
+            .outerjoin(
+                QbBankRevision,
+                QbBankRevision.id == QbBankItem.bank_revision_id,
+            )
+            .outerjoin(QbBank, QbBank.id == QbBankRevision.bank_id)
+            .outerjoin(
+                QbBankSection,
+                QbBankSection.id == QbBankItem.section_id,
+            )
+            .where(
+                QbWrongQuestionState.user_id == user_id,
+                QbWrongQuestionState.status == 'active',
+                QbWrongQuestionState.deleted == 0,
+                QbWrongQuestionState.entry_source == 'attempt',
+            )
+            .group_by(
+                QbBank.id,
+                QbBankItem.bank_revision_id,
+                QbBankRevision.name,
+                QbBankSection.id,
+                QbBankSection.name,
+            )
+            .order_by(QbBankRevision.name.nullsfirst(), QbBankSection.name)
+        )
+        external_source = func.coalesce(
+            func.nullif(QbWrongQuestionState.entry_metadata['source'].as_string(), ''),
+            '未填写来源',
+        )
+        external_stmt = (
+            select(
+                external_source.label('external_source'),
+                func.count(func.distinct(QbWrongQuestionState.question_id)).label('count'),
+                aggregate_strings(func.distinct(QbWrongQuestionState.question_id.cast(String)), ',').label(
+                    'question_ids_csv'
+                ),
+            )
+            .where(
+                QbWrongQuestionState.user_id == user_id,
+                QbWrongQuestionState.status == 'active',
+                QbWrongQuestionState.deleted == 0,
+                QbWrongQuestionState.entry_source.in_(EXTERNAL_ENTRY_SOURCES),
+            )
+            .group_by(external_source)
+            .order_by(external_source)
+        )
         rows = []
         for row in (await db.execute(stmt)).mappings().all():
             result = dict(row)
@@ -620,6 +662,24 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 [int(question_id) for question_id in question_ids_csv.split(',')] if question_ids_csv else []
             )
             rows.append(result)
+        for row in (await db.execute(external_stmt)).mappings().all():
+            question_ids_csv = row['question_ids_csv']
+            rows.append(
+                {
+                    'bank_id': None,
+                    'bank_revision_id': None,
+                    'bank_name': None,
+                    'section_id': None,
+                    'section_name': None,
+                    'count': int(row['count'] or 0),
+                    'question_ids': (
+                        [int(question_id) for question_id in question_ids_csv.split(',')]
+                        if question_ids_csv
+                        else []
+                    ),
+                    'external_source': row['external_source'],
+                }
+            )
         return rows
 
 

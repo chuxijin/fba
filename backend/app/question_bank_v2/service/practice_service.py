@@ -189,6 +189,7 @@ class PracticeService:
         mode: str | None,
         source_type: str | None,
         bank_id: int | None,
+        category_ids: list[int] | None = None,
     ) -> Select:
         """构建当前用户会话历史分页查询"""
         return practice_session_dao.get_list_select(
@@ -197,6 +198,7 @@ class PracticeService:
             mode=mode,
             source_type=source_type,
             bank_id=bank_id,
+            category_ids=category_ids,
         )
 
     @staticmethod
@@ -682,7 +684,9 @@ class PracticeService:
         if response is None:
             if session.mode not in {'practice', 'memorize'}:
                 raise errors.ForbiddenError(msg='提交答案后才可查看解析')
-        elif response.status not in {'submitted', 'graded', 'review_required'}:
+        elif response.status not in {'submitted', 'graded', 'review_required'} and not (
+            session.mode == 'memorize' and response.status == 'answered'
+        ):
             raise errors.ForbiddenError(msg='提交答案后才可查看解析')
         if session.mode in {'exam', 'mock'} and session.status not in {'submitted', 'graded'}:
             raise errors.ForbiddenError(msg='考试或模考交卷后才可查看解析')

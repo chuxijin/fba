@@ -101,6 +101,10 @@ class CreateExternalWrongQuestionParam(SchemaBase):
     @model_validator(mode='after')
     def validate_content(self) -> 'CreateExternalWrongQuestionParam':
         """校验选项、解析和外部来源参数"""
+        source = str(self.entry_metadata.get('source') or '').strip()
+        if not source:
+            raise ValueError('错题来源不能为空')
+        self.entry_metadata = {**self.entry_metadata, 'source': source}
         option_codes = [item.option_code for item in self.options]
         if len(option_codes) != len(set(option_codes)):
             raise ValueError('选项编码不能重复')
