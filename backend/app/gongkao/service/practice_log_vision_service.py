@@ -21,12 +21,14 @@ DEFAULT_PROMPT = """你是一个练习记录解析助手。请从这张练习/�
   "material_title": "完整标题",
   "total_questions": 130,
   "correct_count": 96,
+  "duration_raw": "104分19秒",
   "duration_seconds": 6259,
   "modules": [
     {
       "module_name": "言语理解与表达",
       "total_questions": 30,
       "correct_count": 21,
+      "duration_raw": "15分09秒",
       "duration_seconds": 909,
       "seq_no": 1
     }
@@ -35,6 +37,7 @@ DEFAULT_PROMPT = """你是一个练习记录解析助手。请从这张练习/�
 
 要求：
 - material_type: exam=模考/考试, practice=日常练习, special=专项练习，根据标题判断
+- duration_raw: 截图中显示的原始时间文字，原样复制，如 "104分19秒" "1小时45分" "90秒"
 - duration_seconds: 换算为秒，如"104分19秒"→6259
 - modules 按模块出现的顺序排列 seq_no，没有模块明细就传空数组
 - 只返回 JSON，不要加任何说明文字"""
@@ -94,6 +97,8 @@ class PracticeLogVisionService:
         if not data:
             raise errors.ServerError(msg='AI 未能正确解析图片内容，请重试或换一张图片')
 
+        PracticeLogVisionService._normalize_duration(data)
+
         return ImportPracticeLogVisionResult(
             material_type=data.get('material_type', 'exam'),
             material_title=data.get('material_title', ''),
@@ -103,6 +108,61 @@ class PracticeLogVisionService:
             modules=data.get('modules', []),
             raw_raw=content,
         )
+
+    @staticmethod
+    def _parse_duration_text(text: str) -> int | None:
+        """从原始时间文本中解析秒数，如 '104分19秒' → 6259"""
+        if not text:
+            return None
+
+        text = str(text).strip()
+        if not text:
+            return None
+
+        hours = 0
+        minutes = 0
+        seconds = 0
+        found = False
+
+        h_match = re.search(r'(\d+)\s*小?时', text)
+        if h_match:
+            hours = int(h_match.group(1))
+            found = True
+
+        m_match = re.search(r'(\d+)\s*分', text)
+        if m_match:
+            minutes = int(m_match.group(1))
+            found = True
+
+        s_match = re.search(r'(\d+)\s*秒', text)
+        if s_match:
+            seconds = int(s_match.group(1))
+            found = True
+
+        if found:
+            return hours * 3600 + minutes * 60 + seconds
+
+        # 纯数字时尝试作为秒数
+        if text.isdigit():
+            return int(text)
+
+        return None
+
+    @staticmethod
+    def _normalize_duration(data: dict) -> None:
+        """用 duration_raw 原始文本重新解析秒数，覆盖 AI 可能算错的 duration_seconds"""
+        raw = data.get('duration_raw')
+        if raw:
+            parsed = PracticeLogVisionService._parse_duration_text(raw)
+            if parsed is not None:
+                data['duration_seconds'] = parsed
+
+        for module in data.get('modules', []) or []:
+            m_raw = module.get('duration_raw')
+            if m_raw:
+                m_parsed = PracticeLogVisionService._parse_duration_text(m_raw)
+                if m_parsed is not None:
+                    module['duration_seconds'] = m_parsed
 
     @staticmethod
     def _parse_json(content: str) -> dict | None:

@@ -2,6 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
 
+from backend.app.admin.crud.crud_category import category_dao
+from backend.app.question_bank_v2.crud.crud_preference import practice_preference_dao
 from backend.app.question_bank_v2.schema.practice import (
     CreatePracticeSessionParam,
     GetPracticeResponseDetail,
@@ -51,12 +53,21 @@ async def get_practice_sessions(
     source_type: Annotated[str | None, Query(max_length=24, description='组题来源类型')] = None,
     bank_id: Annotated[int | None, Query(gt=0, description='题库稳定身份 ID')] = None,
 ) -> ResponseSchemaModel[CursorPageData[GetPracticeSessionListItem]]:
+    category_ids: list[int] | None = None
+    preference = await practice_preference_dao.get_by_user_id(db, request.user.id)
+    root_category_id = getattr(preference, 'current_category_id', None)
+    if root_category_id:
+        category_ids = await category_dao.get_subtree_ids_by_path(db, root_category_id)
+        if not category_ids:
+            category_ids = None
+
     stmt = practice_service.get_list_select(
         user_id=request.user.id,
         status=status,
         mode=mode,
         source_type=source_type,
         bank_id=bank_id,
+        category_ids=category_ids,
     )
     page_data = await cursor_paging_data(db, stmt, GetPracticeSessionListItem, unique=False)
     return response_base.success(data=page_data)

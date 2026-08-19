@@ -12,6 +12,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
+from backend.app.question_bank_v2.model.catalog import QbBankCategory
 from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbQuestionKnowledgePoint
 from backend.app.question_bank_v2.model.practice import (
     QbPracticeSession,
@@ -176,6 +177,7 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
         mode: str | None,
         source_type: str | None,
         bank_id: int | None,
+        category_ids: list[int] | None = None,
     ) -> Select:
         """构建用户练习会话分页查询"""
         user_session_ids = select(QbPracticeSession.id).where(
@@ -267,6 +269,18 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
             stmt = stmt.where(QbPracticeSession.source_type == source_type)
         if bank_id is not None:
             stmt = stmt.where(QbBankRevision.bank_id == bank_id)
+        if category_ids:
+            bank_in_domain = (
+                select(QbBankCategory.id)
+                .select_from(QbBankCategory)
+                .where(
+                    QbBankCategory.bank_id == QbBankRevision.bank_id,
+                    QbBankCategory.deleted == 0,
+                    QbBankCategory.category_id.in_(category_ids),
+                )
+                .exists()
+            )
+            stmt = stmt.where(or_(QbPracticeSession.bank_revision_id.is_(None), bank_in_domain))
         return stmt
 
     async def get_report_items(self, db: AsyncSession, session_id: int) -> list[dict[str, Any]]:
@@ -677,6 +691,113 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 int(row['question_id']): row for row in latest_review_rows
             }
 
+            history_rows = (
+                await db.execute(
+                    select(
+                        QbQuestionReview.id,
+                        QbQuestionReview.question_id,
+                        QbQuestionReview.summary,
+                        QbQuestionReview.review_data,
+                        QbQuestionReview.reviewed_time,
+                    )
+                    .where(
+                        QbQuestionReview.user_id == user_id,
+                        QbQuestionReview.question_id.in_(candidate_question_ids),
+                        QbQuestionReview.event_type == 'review',
+                        QbQuestionReview.deleted == 0,
+                    )
+                    .order_by(
+                        QbQuestionReview.question_id,
+                        QbQuestionReview.reviewed_time.desc(),
+                        QbQuestionReview.id.desc(),
+                    )
+                )
+            ).mappings().all()
+            history_review_ids = [int(row['id']) for row in history_rows]
+            history_tag_rows = (
+                await db.execute(
+                    select(QbQuestionReviewTag.review_id, QbReviewTag.name)
+                    .join(QbReviewTag, QbReviewTag.id == QbQuestionReviewTag.tag_id)
+                    .where(
+                        QbQuestionReviewTag.review_id.in_(history_review_ids),
+                        QbQuestionReviewTag.deleted == 0,
+                        QbReviewTag.deleted == 0,
+                    )
+                )
+            ).all() if history_review_ids else []
+            history_tag_names: dict[int, list[str]] = {}
+            for review_id, name in history_tag_rows:
+                history_tag_names.setdefault(int(review_id), []).append(name)
+
+            history_knowledge_rows = (
+                await db.execute(
+                    select(QbQuestionReviewKnowledgePoint.review_id, QbKnowledgePoint.name)
+                    .join(
+                        QbKnowledgePoint,
+                        QbKnowledgePoint.id == QbQuestionReviewKnowledgePoint.knowledge_point_id,
+                    )
+                    .where(
+                        QbQuestionReviewKnowledgePoint.review_id.in_(history_review_ids),
+                        QbQuestionReviewKnowledgePoint.deleted == 0,
+                        QbKnowledgePoint.deleted == 0,
+                    )
+                )
+            ).all() if history_review_ids else []
+            history_knowledge_names: dict[int, list[str]] = {}
+            for review_id, name in history_knowledge_rows:
+                history_knowledge_names.setdefault(int(review_id), []).append(name)
+            review_history: dict[int, list[dict[str, Any]]] = {}
+            for row in history_rows:
+                review_id = int(row['id'])
+                review_data = dict(row['review_data'] or {})
+                review_history.setdefault(int(row['question_id']), []).append(
+                    {
+                        'summary': row['summary'],
+                        'prevention': review_data.get('prevention', ''),
+                        'tag_names': history_tag_names.get(review_id, []),
+                        'knowledge_point_names': history_knowledge_names.get(review_id, []),
+                        'reviewed_time': row['reviewed_time'].isoformat(),
+                    }
+                )
+
+            wrong_attempt_rows = (
+                await db.execute(
+                    select(
+                        QbQuestionAttempt.question_id,
+                        QbQuestionAttempt.attempt_no,
+                        QbQuestionAttempt.response_data,
+                        QbQuestionAttempt.submitted_time,
+                    )
+                    .where(
+                        QbQuestionAttempt.user_id == user_id,
+                        QbQuestionAttempt.question_id.in_(candidate_question_ids),
+                        QbQuestionAttempt.is_correct.is_(False),
+                        QbQuestionAttempt.deleted == 0,
+                    )
+                    .order_by(
+                        QbQuestionAttempt.question_id,
+                        QbQuestionAttempt.submitted_time.desc(),
+                        QbQuestionAttempt.id.desc(),
+                    )
+                )
+            ).mappings().all()
+            wrong_answer_history: dict[int, list[dict[str, Any]]] = {}
+            for row in wrong_attempt_rows:
+                response_data = row['response_data']
+                if (
+                    isinstance(response_data, dict)
+                    and response_data.get('mode') == 'memorize'
+                    and response_data.get('viewed') is True
+                ):
+                    continue
+                wrong_answer_history.setdefault(int(row['question_id']), []).append(
+                    {
+                        'answer': response_data,
+                        'attempt_no': row['attempt_no'],
+                        'submitted_time': row['submitted_time'].isoformat(),
+                    }
+                )
+
             tag_rows = (
                 await db.execute(
                     select(latest_reviews.c.question_id, QbReviewTag.name)
@@ -730,6 +851,8 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 display_config: dict[str, Any] = {}
                 if row['last_wrong_response'] is not None:
                     display_config['last_wrong_response'] = row['last_wrong_response']
+                if wrong_answer_history.get(question_id):
+                    display_config['wrong_answer_history'] = wrong_answer_history[question_id]
                 if latest_review is not None:
                     display_config.update(
                         {
@@ -737,6 +860,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                             'review_prevention': review_data.get('prevention', ''),
                             'review_tag_names': tag_names.get(question_id, []),
                             'review_knowledge_point_names': knowledge_names.get(question_id, []),
+                            'review_history': review_history.get(question_id, []),
                         }
                     )
                 candidates.append(
@@ -1004,6 +1128,26 @@ class CRUDPracticeSessionResponse(CRUDPlus[QbPracticeSessionResponse]):
 class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
     """不可变题目提交事实数据库操作类"""
 
+    async def get_wrong_by_question(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        question_id: int,
+    ) -> list[QbQuestionAttempt]:
+        """获取用户某道题的错误作答事实，按最近时间倒序"""
+        stmt = (
+            select(QbQuestionAttempt)
+            .where(
+                QbQuestionAttempt.user_id == user_id,
+                QbQuestionAttempt.question_id == question_id,
+                QbQuestionAttempt.is_correct.is_(False),
+                QbQuestionAttempt.deleted == 0,
+            )
+            .order_by(QbQuestionAttempt.submitted_time.desc(), QbQuestionAttempt.id.desc())
+        )
+        return list((await db.execute(stmt)).scalars().all())
+
     async def get(
         self,
         db: AsyncSession,
@@ -1092,133 +1236,3 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
 
 practice_response_dao: CRUDPracticeSessionResponse = CRUDPracticeSessionResponse(QbPracticeSessionResponse)
 question_attempt_dao: CRUDQuestionAttempt = CRUDQuestionAttempt(QbQuestionAttempt)
-
-            history_rows = (
-                await db.execute(
-                    select(
-                        QbQuestionReview.id,
-                        QbQuestionReview.question_id,
-                        QbQuestionReview.summary,
-                        QbQuestionReview.review_data,
-                        QbQuestionReview.reviewed_time,
-                    )
-                    .where(
-                        QbQuestionReview.user_id == user_id,
-                        QbQuestionReview.question_id.in_(candidate_question_ids),
-                        QbQuestionReview.event_type == 'review',
-                        QbQuestionReview.deleted == 0,
-                    )
-                    .order_by(
-                        QbQuestionReview.question_id,
-                        QbQuestionReview.reviewed_time.desc(),
-                        QbQuestionReview.id.desc(),
-                    )
-                )
-            ).mappings().all()
-            history_review_ids = [int(row['id']) for row in history_rows]
-            history_tag_rows = (
-                await db.execute(
-                    select(QbQuestionReviewTag.review_id, QbReviewTag.name)
-                    .join(QbReviewTag, QbReviewTag.id == QbQuestionReviewTag.tag_id)
-                    .where(
-                        QbQuestionReviewTag.review_id.in_(history_review_ids),
-                        QbQuestionReviewTag.deleted == 0,
-                        QbReviewTag.deleted == 0,
-                    )
-                )
-            ).all() if history_review_ids else []
-            history_tag_names: dict[int, list[str]] = {}
-            for review_id, name in history_tag_rows:
-                history_tag_names.setdefault(int(review_id), []).append(name)
-
-            history_knowledge_rows = (
-                await db.execute(
-                    select(QbQuestionReviewKnowledgePoint.review_id, QbKnowledgePoint.name)
-                    .join(
-                        QbKnowledgePoint,
-                        QbKnowledgePoint.id == QbQuestionReviewKnowledgePoint.knowledge_point_id,
-                    )
-                    .where(
-                        QbQuestionReviewKnowledgePoint.review_id.in_(history_review_ids),
-                        QbQuestionReviewKnowledgePoint.deleted == 0,
-                        QbKnowledgePoint.deleted == 0,
-                    )
-                )
-            ).all() if history_review_ids else []
-            history_knowledge_names: dict[int, list[str]] = {}
-            for review_id, name in history_knowledge_rows:
-                history_knowledge_names.setdefault(int(review_id), []).append(name)
-            review_history: dict[int, list[dict[str, Any]]] = {}
-            for row in history_rows:
-                review_id = int(row['id'])
-                review_data = dict(row['review_data'] or {})
-                review_history.setdefault(int(row['question_id']), []).append(
-                    {
-                        'summary': row['summary'],
-                        'prevention': review_data.get('prevention', ''),
-                        'tag_names': history_tag_names.get(review_id, []),
-                        'knowledge_point_names': history_knowledge_names.get(review_id, []),
-                        'reviewed_time': row['reviewed_time'].isoformat(),
-                    }
-                )
-
-            wrong_attempt_rows = (
-                await db.execute(
-                    select(
-                        QbQuestionAttempt.question_id,
-                        QbQuestionAttempt.attempt_no,
-                        QbQuestionAttempt.response_data,
-                        QbQuestionAttempt.submitted_time,
-                    )
-                    .where(
-                        QbQuestionAttempt.user_id == user_id,
-                        QbQuestionAttempt.question_id.in_(candidate_question_ids),
-                        QbQuestionAttempt.is_correct.is_(False),
-                        QbQuestionAttempt.deleted == 0,
-                    )
-                    .order_by(
-                        QbQuestionAttempt.question_id,
-                        QbQuestionAttempt.submitted_time.desc(),
-                        QbQuestionAttempt.id.desc(),
-                    )
-                )
-            ).mappings().all()
-            wrong_answer_history: dict[int, list[dict[str, Any]]] = {}
-            for row in wrong_attempt_rows:
-                response_data = row['response_data']
-                if (
-                    isinstance(response_data, dict)
-                    and response_data.get('mode') == 'memorize'
-                    and response_data.get('viewed') is True
-                ):
-                    continue
-                wrong_answer_history.setdefault(int(row['question_id']), []).append(
-                    {
-                        'answer': response_data,
-                        'attempt_no': row['attempt_no'],
-                        'submitted_time': row['submitted_time'].isoformat(),
-                    }
-                )
-                if wrong_answer_history.get(question_id):
-                    display_config['wrong_answer_history'] = wrong_answer_history[question_id]
-                            'review_history': review_history.get(question_id, []),
-
-    async def get_wrong_by_question(
-        self,
-        db: AsyncSession,
-        *,
-        user_id: int,
-        question_id: int,
-    ) -> list[QbQuestionAttempt]:
-        """获取用户某道题的错误作答事实，按最近时间倒序"""
-        stmt = (
-            select(QbQuestionAttempt)
-            .where(
-                QbQuestionAttempt.user_id == user_id,
-                QbQuestionAttempt.question_id == question_id,
-                QbQuestionAttempt.is_correct.is_(False),
-                QbQuestionAttempt.deleted == 0,
-            )
-            .order_by(QbQuestionAttempt.submitted_time.desc(), QbQuestionAttempt.id.desc())
-        )
-        return list((await db.execute(stmt)).scalars().all())

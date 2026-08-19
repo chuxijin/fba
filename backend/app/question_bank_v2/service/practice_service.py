@@ -189,6 +189,7 @@ class PracticeService:
         mode: str | None,
         source_type: str | None,
         bank_id: int | None,
+        category_ids: list[int] | None = None,
     ) -> Select:
         """构建当前用户会话历史分页查询"""
         return practice_session_dao.get_list_select(
@@ -197,6 +198,7 @@ class PracticeService:
             mode=mode,
             source_type=source_type,
             bank_id=bank_id,
+            category_ids=category_ids,
         )
 
     @staticmethod
