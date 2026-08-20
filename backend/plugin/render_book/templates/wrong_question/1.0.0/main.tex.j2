@@ -69,8 +69,8 @@
 {% set show_solution_only = variant == 'solutions_only' %}
 {% set stretch_map = {'compact': '1.08', 'standard': '1.18', 'loose': '1.30'} %}
 {% set itemsep_map = {'compact': '0.50em', 'standard': '0.85em', 'loose': '1.20em'} %}
-{% set question_space_map = {'compact': '1.2em', 'standard': '2.0em', 'loose': '3.5em'} %}
-{% set question_space = metadata_data.get('question_space', options_data.get('question_space', question_space_map.get(layout_mode_base, '2.0em'))) %}
+{% set question_space_map = {'compact': '1.0em', 'standard': '1.65em', 'loose': '3.0em'} %}
+{% set question_space = metadata_data.get('question_space', options_data.get('question_space', question_space_map.get(layout_mode_base, '1.65em'))) %}
 {% set theme_map = {
     'blue': {'accent': '1F4E79', 'accent_dark': '15334D', 'accent_soft': 'EAF2F9', 'rule': '8FB7D9'},
     'green': {'accent': '2E6A57', 'accent_dark': '1E4338', 'accent_soft': 'E8F3EF', 'rule': '9BC8B6'},
@@ -164,7 +164,7 @@
 {%- endmacro %}
 
 {% macro render_option_label(option) -%}
-\makebox[2.05em][l]{\textnormal{ {{- option.get('key', '') | string | upper | tex_escape -}}.}}
+\makebox[1.45em][l]{\textnormal{ {{- option.get('key', '') | string | upper | tex_escape -}}.}}
 {%- endmacro %}
 
 {% macro render_option_list(options) -%}
@@ -173,7 +173,7 @@
 {% for option in options %}
 \begingroup
 \setlength{\parindent}{0pt}
-\hangindent=2.2em
+\hangindent=1.5em
 \hangafter=1
 \noindent{{ render_option_label(option) }}{{ render_option_content(option) }}\par
 \endgroup
@@ -183,16 +183,16 @@
 {% endfor %}
 {% else %}
 {\setlength{\tabcolsep}{0pt}
-\renewcommand{\arraystretch}{1.05}
+\renewcommand{\arraystretch}{1.1}
 \begin{tabularx}{\linewidth}{@{}{% for _ in range(option_columns) %}>{\raggedright\arraybackslash}X{% if not loop.last %}@{\hspace{1.2em}}{% endif %}{% endfor %}@{}}
 {% for row in options | batch(option_columns, none) %}
 {% for option in row %}
 {% if option %}
-\parbox[t]{\linewidth}{\raggedright\begingroup\setlength{\parindent}{0pt}\hangindent=2.2em\hangafter=1{{ render_option_label(option) }}{{ render_option_content(option) }}\par\endgroup}
+\parbox[t]{\linewidth}{\raggedright\begingroup\setlength{\parindent}{0pt}\hangindent=1.5em\hangafter=1{{ render_option_label(option) }}{{ render_option_content(option) }}\par\endgroup}
 {% else %}
 ~
 {% endif %}{% if not loop.last %} & {% endif %}
-{% endfor %} \\{% if not loop.last %}[0.6em]{% endif %}
+{% endfor %} \\{% if not loop.last %}[0.45em]{% endif %}
 {% endfor %}
 \end{tabularx}}
 {% endif %}
@@ -391,7 +391,7 @@
 {% endif %}
 
 {% if question.get('options') %}
-\par\noindent\hspace*{2.2em}%
+\par\vspace{0.35em}\noindent\hspace*{2.2em}%
 \parbox[t]{\dimexpr\textwidth-2.2em\relax}{ %
 {{ render_option_list(question.get('options', [])) }}%
 }%
