@@ -53,6 +53,9 @@ class ResumableScope(SchemaBase):
     section_id: int | None = Field(None, description='篇章 ID；None 表示题库整卷维度')
     question_type: str | None = Field(None, description='题型；None 表示全题型维度')
     modes: list[str] = Field(default_factory=list, description='存在进行中会话的练习模式')
+    session_keys: dict[str, str] = Field(
+        default_factory=dict, description='各练习模式下最近一条进行中会话的幂等标识'
+    )
 
 
 class GetBankProgressDetail(BankProgressSummary):

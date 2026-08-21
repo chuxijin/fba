@@ -214,7 +214,9 @@ class AnalyticsService:
         rows = (
             await db.execute(
                 select(
+                    QbPracticeSession.id,
                     QbPracticeSession.mode,
+                    QbPracticeSession.session_key,
                     QbPracticeSession.source_snapshot,
                     QbPracticeSession.delivery_config,
                 )
@@ -233,7 +235,7 @@ class AnalyticsService:
                 )
             )
         ).mappings().all()
-        scopes: dict[tuple[Any, Any], set[str]] = defaultdict(set)
+        best: dict[tuple[Any, Any, str], tuple[int, str]] = {}
         for row in rows:
             source = dict(row['source_snapshot'] or {})
             delivery = dict(row['delivery_config'] or {})
@@ -241,10 +243,23 @@ class AnalyticsService:
                 continue
             question_types = list(delivery.get('question_types') or [])
             question_type = question_types[0] if len(question_types) == 1 else None
-            scopes[source.get('section_id'), question_type].add(str(row['mode']))
+            mode = str(row['mode'])
+            key = source.get('section_id'), question_type, mode
+            prev = best.get(key)
+            # 同一维度同模式可能残留多条进行中会话，取最近创建的一条
+            if prev is None or row['id'] > prev[0]:
+                best[key] = (row['id'], row['session_key'])
+        scopes: dict[tuple[Any, Any], dict[str, str]] = defaultdict(dict)
+        for (section_id, question_type, mode), (_, session_key) in best.items():
+            scopes[(section_id, question_type)][mode] = session_key
         return [
-            ResumableScope(section_id=section_id, question_type=question_type, modes=sorted(modes))
-            for (section_id, question_type), modes in scopes.items()
+            ResumableScope(
+                section_id=section_id,
+                question_type=question_type,
+                modes=sorted(session_keys),
+                session_keys=session_keys,
+            )
+            for (section_id, question_type), session_keys in scopes.items()
         ]
 
     @staticmethod

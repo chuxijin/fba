@@ -794,7 +794,7 @@ class PracticeService:
         obj: CreatePracticeSessionParam,
     ) -> GetPracticeSessionDetail | None:
         """按客户端幂等键获取同一创建请求已经生成的会话"""
-        existing = await practice_session_dao.get_by_key(db, session_key)
+        existing = await practice_session_dao.get_by_key(db, session_key, user_id=user_id)
         if existing is None:
             return None
         if not PracticeService._matches_create_request(session=existing, user_id=user_id, obj=obj):
