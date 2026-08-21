@@ -819,6 +819,10 @@ class PracticeService:
             )
             if existing_detail is not None:
                 return existing_detail
+            # 幂等键已被其他用户占用时回退随机 key，避免全局唯一约束冲突
+            occupied = await practice_session_dao.get_by_key(db, session_key)
+            if occupied is not None:
+                session_key = uuid.uuid4().hex
 
         bank = None
         revision = None
