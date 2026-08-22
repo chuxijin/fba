@@ -4,13 +4,14 @@ from .asset import (
     QbAsset,
     QbAssetLocation,
     QbMaterialRevisionAsset,
-    QbQuestionAttemptAsset,
     QbQuestionAsset,
+    QbQuestionAttemptAsset,
 )
 from .bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from .catalog import QbBankCategory, QbCollection, QbCollectionBank
 from .evaluation import QbEvaluationRun
 from .knowledge import QbKnowledgePoint, QbKnowledgeSystem, QbQuestionKnowledgePoint
+from .mastery import QbQuestionAttemptKnowledgePoint, QbUserKnowledgeMastery
 from .material import (
     QbMaterial,
     QbMaterialAnchor,
@@ -71,8 +72,10 @@ __all__ = [
     'QbPracticeSessionResponse',
     'QbQuestion',
     'QbQuestionAnswer',
+    'QbQuestionAsset',
     'QbQuestionAttempt',
     'QbQuestionAttemptAsset',
+    'QbQuestionAttemptKnowledgePoint',
     'QbQuestionEmbedding',
     'QbQuestionExplanation',
     'QbQuestionFavorite',
@@ -85,11 +88,11 @@ __all__ = [
     'QbQuestionReview',
     'QbQuestionReviewKnowledgePoint',
     'QbQuestionReviewTag',
-    'QbQuestionAsset',
     'QbQuestionStatistics',
     'QbReviewTag',
     'QbUserBankItemProgress',
     'QbUserDailyStatistics',
+    'QbUserKnowledgeMastery',
     'QbUserPracticePreference',
     'QbUserPracticeStatistics',
     'QbUserQuestionMastery',

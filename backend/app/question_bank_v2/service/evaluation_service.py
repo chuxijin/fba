@@ -25,8 +25,8 @@ from backend.app.question_bank_v2.model.evaluation import QbEvaluationRun
 from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
 from backend.app.question_bank_v2.service.statistics_service import statistics_service
 from backend.common.exception import errors
-from backend.plugin.agents.schema import AgentType, GradingDetail, GradingStartParam, GradingStartResult
-from backend.plugin.agents.service.grading_service import grading_service
+from backend.plugin.agent.schema.grading import GradingRunRead, StartShenlunGradingParam, StartShenlunGradingResult
+from backend.plugin.agent.service.shenlun_service import shenlun_grading_service
 from backend.plugin.ai.model.model import AIModel
 from backend.plugin.ai.model.provider import AIProvider
 from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
@@ -799,8 +799,8 @@ class EvaluationService:
         db: AsyncSession,
         attempt_id: int,
         user_id: int,
-    ) -> GradingStartResult:
-        """使用现有申论 Agent 对一次主观题作答启动深度批改"""
+    ) -> StartShenlunGradingResult:
+        """使用新申论 Agent 对一次主观题作答启动深度批改"""
         context = await evaluation_run_dao.get_attempt_context(
             db,
             attempt_id=attempt_id,
@@ -809,32 +809,12 @@ class EvaluationService:
         if context is None:
             raise errors.NotFoundError(msg='作答记录不存在')
         cls._ensure_attempt_supported(context)
-        material_rows = await question_material_dao.get_all_by_questions(db, [context.question.id])
-        materials = '\n\n'.join(
-            f"{item['title']}\n{cls._strip_markup(item['content'])}" for item in material_rows if item['content']
-        )
-        explanations = await question_explanation_dao.get_all(db, context.question.id)
-        reference_answers = [
-            json.dumps(context.answer.answer_data, ensure_ascii=False, default=str),
-            json.dumps(context.answer.grading_config, ensure_ascii=False, default=str),
-            *[
-                cls._strip_markup(item.content)
-                for item in explanations
-                if item.status == 'published' and item.content
-            ],
-        ]
-        params = GradingStartParam(
-            agent_type=AgentType.shenlun,
+        return await shenlun_grading_service.start(
+            db=db,
+            attempt_id=attempt_id,
             user_id=user_id,
-            mini_model_id=None,
-            score_total=float(context.session_item.max_score),
-            question_stem=cls._strip_markup(context.question.stem),
-            question=cls._strip_markup(context.question.stem),
-            materials=materials,
-            reference_answers=[item for item in reference_answers if item and item not in {'{}', '[]'}],
-            user_answer_text=cls._stringify_response(context.attempt.response_data),
+            params=StartShenlunGradingParam(),
         )
-        return await grading_service.start(db=db, params=params)
 
     @staticmethod
     async def get_shenlun_agent(
@@ -842,14 +822,9 @@ class EvaluationService:
         db: AsyncSession,
         task_id: int,
         user_id: int,
-    ) -> GradingDetail:
+    ) -> GradingRunRead:
         """获取当前用户的申论 Agent 批改详情"""
-        detail = await grading_service.get_detail(db=db, task_id=task_id)
-        if detail.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权访问此批改任务')
-        if detail.agent_type != AgentType.shenlun:
-            raise errors.RequestError(msg='当前任务不是申论批改任务')
-        return detail
+        return await shenlun_grading_service.get_detail(db=db, run_id=task_id, user_id=user_id)
 
 
 evaluation_service: EvaluationService = EvaluationService()

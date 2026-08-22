@@ -4,11 +4,13 @@ from backend.app.question_bank_v2.model import (
     QbBank,
     QbBankCategory,
     QbPracticeSession,
+    QbQuestionAttemptKnowledgePoint,
     QbQuestionFavorite,
     QbQuestionNote,
     QbQuestionReview,
     QbUserBankItemProgress,
     QbUserDailyStatistics,
+    QbUserKnowledgeMastery,
     QbUserPracticePreference,
     QbUserPracticeStatistics,
     QbUserQuestionMastery,
@@ -72,3 +74,12 @@ def test_wrong_review_models_keep_scope_constraints_and_due_indexes() -> None:
     assert 'ix_qbv2_review_wrong_state_page' in _index_names(QbQuestionReview)
     assert 'ix_qbv2_mastery_state' in _index_names(QbUserQuestionMastery)
     assert 'ck_qbv2_preference_review_limit' in _constraint_names(QbUserPracticePreference)
+
+
+def test_knowledge_mastery_models_keep_version_scope_and_snapshot_guards() -> None:
+    """知识点掌握度必须按体系隔离，并保留作答时知识点快照。"""
+    assert 'uq_qbv2_user_system_knowledge_mastery' in _constraint_names(QbUserKnowledgeMastery)
+    assert 'ix_qbv2_user_kmastery_scope' in _index_names(QbUserKnowledgeMastery)
+    assert 'ck_qbv2_user_kmastery_state' in _constraint_names(QbUserKnowledgeMastery)
+    assert 'uq_qbv2_attempt_kp_snapshot' in _constraint_names(QbQuestionAttemptKnowledgePoint)
+    assert 'ix_qbv2_attempt_kp_user_system_point' in _index_names(QbQuestionAttemptKnowledgePoint)

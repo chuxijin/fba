@@ -15,7 +15,6 @@ from backend.common.exception import errors
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
-from backend.plugin.agents.schema import GradingDetail, GradingStartResult
 from backend.plugin.ocr.service.ocr_service import ocr_service
 
 router = APIRouter()
@@ -88,46 +87,6 @@ async def judge_record(
         force_regenerate=obj.force_regenerate,
     )
     return response_base.success(data=PracticeAIEvaluationRead.model_validate(evaluation))
-
-
-@router.post(
-    '/records/{record_id}/shenlun-agent',
-    summary='启动申论 Agent 批改',
-    name='qbank_ai_evaluation_start_shenlun_agent',
-    dependencies=[DependsJwtAuth],
-)
-async def start_shenlun_agent_grading(
-    request: Request,
-    db: CurrentSession,
-    record_id: Annotated[int, Path(description='答题记录 ID')],
-) -> ResponseSchemaModel[GradingStartResult]:
-    """启动申论 Agent 批改"""
-    result = await practice_ai_evaluation_service.start_shenlun_agent_grading(
-        db=db,
-        record_id=record_id,
-        user_id=request.user.id,
-    )
-    return response_base.success(data=result)
-
-
-@router.get(
-    '/agents/{task_id}',
-    summary='获取申论 Agent 批改详情',
-    name='qbank_ai_evaluation_get_shenlun_agent',
-    dependencies=[DependsJwtAuth],
-)
-async def get_shenlun_agent_grading_detail(
-    request: Request,
-    db: CurrentSession,
-    task_id: Annotated[int, Path(description='批改任务 ID')],
-) -> ResponseSchemaModel[GradingDetail]:
-    """获取申论 Agent 批改详情"""
-    detail = await practice_ai_evaluation_service.get_shenlun_agent_grading_detail(
-        db=db,
-        task_id=task_id,
-        user_id=request.user.id,
-    )
-    return response_base.success(data=detail)
 
 
 @router.post(

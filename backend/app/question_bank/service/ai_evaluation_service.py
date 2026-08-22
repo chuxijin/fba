@@ -24,13 +24,6 @@ from backend.plugin.ai.model.model import AIModel
 from backend.plugin.ai.model.provider import AIProvider
 from backend.plugin.ai.schema.chat import AIChat, AIChatMessage
 from backend.plugin.ai.service.chat_service import ai_chat_service
-from backend.plugin.agents.schema import (
-    AgentType,
-    GradingDetail,
-    GradingStartParam,
-    GradingStartResult,
-)
-from backend.plugin.agents.service.grading_service import grading_service
 from backend.utils.timezone import timezone
 
 SUBJECTIVE_QUESTION_TYPES = {'shortAnswer'}
@@ -275,56 +268,6 @@ class PracticeAIEvaluationService:
             'has_reference': has_reference,
             'full_score': str(full_score),
         }
-
-    @classmethod
-    def _extract_shenlun_reference_answers(cls, analysis: QuestionAnalysis | None) -> list[str]:
-        """
-        提取申论批改参考答案
-
-        :param analysis: 默认解析
-        :return:
-        """
-        if analysis is None:
-            return []
-
-        answer_data = analysis.answer_data if analysis.answer_data else {}
-        reference_answers: list[str] = []
-
-        for key in ('reference_answers', 'reference_answer', 'correct', 'score_points', 'rubric', 'keywords'):
-            text = cls._stringify_answer_data_value(answer_data.get(key))
-            if text and text not in PLACEHOLDER_TEXTS:
-                reference_answers.append(text)
-
-        analysis_text = cls._strip_html(analysis.content)
-        if analysis_text and analysis_text not in PLACEHOLDER_TEXTS:
-            reference_answers.append(analysis_text)
-
-        deduplicated: list[str] = []
-        for item in reference_answers:
-            if item not in deduplicated:
-                deduplicated.append(item)
-        return deduplicated
-
-    @classmethod
-    def _build_shenlun_materials(cls, question: Question) -> str:
-        """
-        构建申论材料文本
-
-        :param question: 题目对象
-        :return:
-        """
-        materials = sorted(question.materials or [], key=lambda item: (item.sort_order, item.id))
-        parts: list[str] = []
-        for index, material in enumerate(materials, start=1):
-            title = cls._strip_html(material.title)
-            content = cls._strip_html(material.content)
-            if not content:
-                continue
-            if title:
-                parts.append(f'材料{index}：{title}\n{content}')
-                continue
-            parts.append(f'材料{index}：\n{content}')
-        return '\n\n'.join(parts)
 
     @staticmethod
     def _normalize_knowledge_points(question: Question) -> list[str]:
@@ -929,79 +872,6 @@ class PracticeAIEvaluationService:
         if not evaluation:
             raise errors.NotFoundError(msg='该题暂无 AI 判分结果')
         return evaluation
-
-    @classmethod
-    async def start_shenlun_agent_grading(
-        cls,
-        *,
-        db: AsyncSession,
-        record_id: int,
-        user_id: int,
-    ) -> GradingStartResult:
-        """
-        启动申论 Agent 批改
-
-        :param db: 数据库会话
-        :param record_id: 作答记录 ID
-        :param user_id: 用户 ID
-        :return:
-        """
-        record, _, question = await cls._get_owned_record_with_question(
-            db=db,
-            record_id=record_id,
-            user_id=user_id,
-        )
-        if question.type not in SUBJECTIVE_QUESTION_TYPES:
-            raise errors.RequestError(msg='当前题型不支持申论 Agent 批改')
-
-        user_answer_text = cls._stringify_answer(record.user_answer)
-        if not user_answer_text:
-            raise errors.RequestError(msg='请先提交答案后再进行申论批改')
-
-        analysis = cls._extract_analysis(question)
-        question_stem = cls._strip_html(question.stem)
-        reference_answers = cls._extract_shenlun_reference_answers(analysis)
-
-        if not question_stem:
-            raise errors.RequestError(msg='题干为空，暂无法进行申论批改')
-
-        raw_score_total = record.full_score or question.default_score
-        score_total = float(raw_score_total) if raw_score_total else None
-
-        params = GradingStartParam(
-            agent_type=AgentType.shenlun,
-            user_id=user_id,
-            mini_model_id=None,
-            score_total=score_total,
-            question_stem=question_stem,
-            question=question_stem,
-            materials=cls._build_shenlun_materials(question),
-            reference_answers=reference_answers,
-            user_answer_text=user_answer_text,
-        )
-        return await grading_service.start(db=db, params=params)
-
-    @staticmethod
-    async def get_shenlun_agent_grading_detail(
-        *,
-        db: AsyncSession,
-        task_id: int,
-        user_id: int,
-    ) -> GradingDetail:
-        """
-        获取申论 Agent 批改详情
-
-        :param db: 数据库会话
-        :param task_id: 任务 ID
-        :param user_id: 用户 ID
-        :return:
-        """
-        detail = await grading_service.get_detail(db=db, task_id=task_id)
-        if detail.user_id != user_id:
-            raise errors.ForbiddenError(msg='无权访问此批改任务')
-        if detail.agent_type != AgentType.shenlun:
-            raise errors.RequestError(msg='当前任务不是申论批改任务')
-        return detail
 
     @classmethod
     async def generate_session_summary(

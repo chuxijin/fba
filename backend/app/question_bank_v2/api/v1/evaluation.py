@@ -11,7 +11,7 @@ from backend.app.question_bank_v2.service.evaluation_service import evaluation_s
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
-from backend.plugin.agents.schema import GradingDetail, GradingStartResult
+from backend.plugin.agent.schema.grading import GradingRunRead, StartShenlunGradingResult
 from backend.plugin.ocr.service.ocr_service import ocr_service
 
 router = APIRouter(dependencies=[DependsJwtAuth])
@@ -71,9 +71,9 @@ async def judge_attempt(
 )
 async def start_shenlun_agent(
     request: Request,
-    db: CurrentSession,
+    db: CurrentSessionTransaction,
     attempt_id: Annotated[int, Path(gt=0, description='作答事实 ID')],
-) -> ResponseSchemaModel[GradingStartResult]:
+) -> ResponseSchemaModel[StartShenlunGradingResult]:
     data = await evaluation_service.start_shenlun_agent(
         db=db,
         attempt_id=attempt_id,
@@ -91,7 +91,7 @@ async def get_shenlun_agent(
     request: Request,
     db: CurrentSession,
     task_id: Annotated[int, Path(gt=0, description='Agent 任务 ID')],
-) -> ResponseSchemaModel[GradingDetail]:
+) -> ResponseSchemaModel[GradingRunRead]:
     data = await evaluation_service.get_shenlun_agent(
         db=db,
         task_id=task_id,
