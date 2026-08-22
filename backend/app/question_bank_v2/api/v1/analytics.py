@@ -6,9 +6,9 @@ from backend.app.question_bank_v2.schema.analytics import (
     GetBankProgressDetail,
     GetBankWrongSectionCounts,
     GetCollectionProgressSummary,
+    GetKnowledgePointTrends,
     GetPracticeRankList,
     GetUserPracticeReport,
-    GetKnowledgePointTrends,
     RankType,
 )
 from backend.app.question_bank_v2.service.analytics_service import analytics_service
@@ -101,10 +101,14 @@ async def get_knowledge_point_trends(
     request: Request,
     db: CurrentSession,
     days: Annotated[int, Query(ge=7, le=365, description='趋势天数')] = 90,
+    system_id: Annotated[int | None, Query(gt=0, description='知识体系 ID；不传则解析当前生效体系')] = None,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID')] = None,
 ) -> ResponseSchemaModel[GetKnowledgePointTrends]:
     data = await analytics_service.get_knowledge_point_trends(
         db=db,
         user_id=request.user.id,
         days=days,
+        system_id=system_id,
+        domain_category_id=domain_category_id,
     )
     return response_base.success(data=data)

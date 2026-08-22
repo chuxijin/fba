@@ -3,8 +3,9 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, select
 import sqlalchemy as sa
+
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
@@ -24,8 +25,11 @@ from backend.app.question_bank_v2.schema.analytics import (
     GetBankProgressDetail,
     GetBankWrongSectionCounts,
     GetCollectionProgressSummary,
+    GetKnowledgePointTrends,
     GetPracticeRankList,
     GetUserPracticeReport,
+    KnowledgePointTrendModule,
+    KnowledgePointTrendPoint,
     PracticeRankItem,
     QuestionTypeProgress,
     RankType,
@@ -33,11 +37,9 @@ from backend.app.question_bank_v2.schema.analytics import (
     UserDailyPracticeDetail,
     UserMonthlyPracticeDetail,
     WrongSectionCount,
-    GetKnowledgePointTrends,
-    KnowledgePointTrendModule,
-    KnowledgePointTrendPoint,
 )
 from backend.app.question_bank_v2.service.access_service import bank_access_service
+from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
@@ -583,11 +585,14 @@ class AnalyticsService:
         db: AsyncSession,
         user_id: int,
         days: int = 90,
+        system_id: int | None = None,
+        domain_category_id: int | None = None,
     ) -> GetKnowledgePointTrends:
         """基于作答事实表，按顶层知识点 × 日期聚合刷题趋势
 
         通过 QbQuestionAttempt JOIN QbQuestionKnowledgePoint JOIN QbKnowledgePoint 实时计算，
-        仅取 version='default' 知识体系中 parent_id IS NULL 的顶层知识点。
+        未显式传 system_id 时，按当前领域和用户偏好解析各科目的生效体系；
+        当前用户未选择版本时仍回落 version='default'。
         """
         from backend.app.question_bank_v2.model.knowledge import (
             QbKnowledgePoint,
@@ -598,6 +603,17 @@ class AnalyticsService:
 
         now = timezone.now()
         start_datetime = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        resolved_domain_id = await knowledge_service.resolve_domain_category_id(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        system_ids = await knowledge_service.resolve_system_ids(
+            db=db,
+            domain_category_id=resolved_domain_id,
+            system_id=system_id,
+            user_id=user_id,
+        )
 
         practiced_at = sa.cast(QbQuestionAttempt.submitted_time, sa.Date).label('practiced_at')
         attempt_count_col = sa.func.count(QbQuestionAttempt.id).label('attempt_count')
@@ -637,7 +653,7 @@ class AnalyticsService:
                 and_(
                     QbKnowledgePoint.system_id == QbKnowledgeSystem.id,
                     QbKnowledgeSystem.deleted == 0,
-                    QbKnowledgeSystem.version == 'default',
+                    QbKnowledgeSystem.id.in_(system_ids),
                 ),
             )
             .where(
