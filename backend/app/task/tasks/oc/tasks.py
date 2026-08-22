@@ -36,15 +36,22 @@ async def crawl_jobs_task(self, job_type: str = 'campus') -> str:
             cookie=cookie,
         )
 
-        if result.get('errors'):
-            error_detail = '\n'.join(result['errors'][:5])
-            log.warning(f'[定时任务] {job_type_name}爬取完成但有错误:\n{error_detail}')
+        errors = result.get('errors') or []
+        total_crawled = result.get('total_crawled', 0)
+
+        # Cookie 过期时请求"成功"但解析为 0 条，此时 errors 为空，需要主动告警
+        if errors or total_crawled == 0:
+            warning_lines = list(errors[:5])
+            if total_crawled == 0 and not errors:
+                warning_lines.append('爬取数量为 0，可能 Cookie 已过期或网站结构变化，请检查 CRAWLER_COOKIE 配置')
+            warning_detail = '\n'.join(warning_lines)
+            log.warning(f'[定时任务] {job_type_name}爬取完成但有异常:\n{warning_detail}')
             await self.on_warning(
-                f'{job_type_name}爬取完成但有部分错误，'
-                f'爬取: {result.get("total_crawled", 0)}, '
+                f'{job_type_name}爬取异常，'
+                f'爬取: {total_crawled}, '
                 f'保存: {result.get("total_saved", 0)}, '
                 f'跳过: {result.get("total_skipped", 0)}\n'
-                f'错误: {error_detail}'
+                f'详情: {warning_detail}'
             )
 
         success_msg = (

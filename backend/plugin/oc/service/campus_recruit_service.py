@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.plugin.oc.crud.crud_campus_recruit import campus_recruit_dao
@@ -67,19 +67,74 @@ class CampusRecruitService:
         )
         page_data = await paging_data(db, job_select)
 
-        # 计算今日更新数量
+        # 计算多维度企业统计数据（按企业名称去重）
         today = date.today()
-        today_count_query = select(func.count(CampusRecruit.id)).where(CampusRecruit.update_time == today)
-        today_count_result = await db.execute(today_count_query)
-        today_count = today_count_result.scalar() or 0
+        today_str = today.strftime('%Y-%m-%d')
+        recent_3_days = today - timedelta(days=2)
+        in_1_day_str = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+        in_3_days_str = (today + timedelta(days=3)).strftime('%Y-%m-%d')
 
-        # 计算岗位总数
-        total_count_query = select(func.count(CampusRecruit.id))
-        total_count_result = await db.execute(total_count_query)
-        total_count = total_count_result.scalar() or 0
+        stats_query = select(
+            func.count(distinct(case((CampusRecruit.update_time == today, CampusRecruit.company_name)))).label(
+                'today_count'
+            ),
+            func.count(distinct(case((CampusRecruit.update_time >= recent_3_days, CampusRecruit.company_name)))).label(
+                'recent_3_days_count'
+            ),
+            func.count(
+                distinct(
+                    case((
+                        and_(
+                            CampusRecruit.deadline.isnot(None),
+                            CampusRecruit.deadline != '',
+                            CampusRecruit.deadline >= today_str,
+                            CampusRecruit.deadline <= in_1_day_str,
+                        ),
+                        CampusRecruit.company_name,
+                    ))
+                )
+            ).label('deadline_1_day_count'),
+            func.count(
+                distinct(
+                    case((
+                        and_(
+                            CampusRecruit.deadline.isnot(None),
+                            CampusRecruit.deadline != '',
+                            CampusRecruit.deadline >= today_str,
+                            CampusRecruit.deadline <= in_3_days_str,
+                        ),
+                        CampusRecruit.company_name,
+                    ))
+                )
+            ).label('deadline_3_days_count'),
+            func.count(
+                distinct(
+                    case((
+                        or_(
+                            CampusRecruit.deadline.is_(None),
+                            CampusRecruit.deadline == '',
+                            CampusRecruit.deadline >= today_str,
+                        ),
+                        CampusRecruit.company_name,
+                    ))
+                )
+            ).label('valid_count'),
+            func.count(distinct(CampusRecruit.company_name)).label('total_count'),
+            func.count(CampusRecruit.id).label('total_job_count'),
+        )
+        stats_result = await db.execute(stats_query)
+        stats_row = stats_result.one()
 
         # 添加统计数据
-        page_data['stats'] = {'today_count': today_count, 'total_count': total_count}
+        page_data['stats'] = {
+            'today_count': stats_row.today_count or 0,
+            'recent_3_days_count': stats_row.recent_3_days_count or 0,
+            'deadline_1_day_count': stats_row.deadline_1_day_count or 0,
+            'deadline_3_days_count': stats_row.deadline_3_days_count or 0,
+            'valid_count': stats_row.valid_count or 0,
+            'total_count': stats_row.total_count or 0,
+            'total_job_count': stats_row.total_job_count or 0,
+        }
 
         return page_data
 
