@@ -100,3 +100,8 @@ superpowers/
 .codegraph/
 backend/output/
 .pi/
+
+# 本地临时/参考文件，不入库
+downloads/
+references/
+tmp_render_fix/

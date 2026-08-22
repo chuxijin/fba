@@ -36,6 +36,7 @@
 {% set heading_font_family = font_family_map.get(heading_font_family_raw, 'heiti') %}
 {% set cover_font_family = font_family_map.get(cover_font_family_raw, 'heiti') %}
 \documentclass[{{ base_font_size }},{{ paper_size }}{% if double_sided %},twoside{% endif %}]{ctexart}
+\xeCJKDeclareCharClass{CJK}{"2460 -> "24FF}
 \usepackage[{{ paper_size }},margin={{ page_margin }}]{geometry}
 \usepackage{enumitem}
 \usepackage{amsmath,amssymb}
