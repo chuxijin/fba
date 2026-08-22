@@ -1,28 +1,44 @@
+import math
+
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select
+import sqlalchemy as sa
+
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.cache.knowledge_cache import points_tree_cache
 from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
 from backend.app.question_bank_v2.crud.crud_knowledge import knowledge_point_dao, knowledge_system_dao
+from backend.app.question_bank_v2.crud.crud_mastery import user_knowledge_mastery_dao
 from backend.app.question_bank_v2.crud.crud_preference import practice_preference_dao
-from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbKnowledgeSystem
+from backend.app.question_bank_v2.model.bank import QbBankItem
+from backend.app.question_bank_v2.model.knowledge import (
+    QbKnowledgePoint,
+    QbKnowledgeSystem,
+    QbQuestionKnowledgePoint,
+)
+from backend.app.question_bank_v2.model.mastery import QbQuestionAttemptKnowledgePoint
+from backend.app.question_bank_v2.model.question import QbQuestion
 from backend.app.question_bank_v2.schema.knowledge import (
     CreateKnowledgePointParam,
     CreateKnowledgeSystemParam,
+    GetKnowledgeMasteryRadar,
     GetKnowledgePointNode,
     GetKnowledgePointTreeNode,
     GetKnowledgePointTreeResult,
     GetKnowledgeSystemListItem,
     GetKnowledgeTreeDetail,
+    KnowledgeMasteryRadarNode,
     UpdateKnowledgePointParam,
     UpdateKnowledgeSystemParam,
 )
 from backend.app.question_bank_v2.service.access_service import bank_access_service
+from backend.app.question_bank_v2.service.knowledge_mastery_service import KnowledgeMasteryService
 from backend.common.exception import errors
+from backend.utils.timezone import timezone
 
 
 class KnowledgeService:
@@ -444,6 +460,188 @@ class KnowledgeService:
     @staticmethod
     async def invalidate_points_tree_cache(system_id: int) -> None:
         await points_tree_cache.invalidate(system_id)
+
+    @staticmethod
+    async def get_mastery_radar(  # noqa: C901
+        *,
+        db: AsyncSession,
+        user_id: int,
+        system_id: int,
+        bank_id: int | None = None,
+    ) -> GetKnowledgeMasteryRadar:
+        """获取当前知识体系顶层知识点掌握度雷达图。"""
+        system = await knowledge_system_dao.get(db, system_id)
+        if system is None:
+            raise errors.NotFoundError(msg='知识体系不存在或未启用')
+        points = list(await knowledge_point_dao.get_all(db, system_id))
+        point_by_id = {point.id: point for point in points}
+        children: dict[int | None, list[int]] = {}
+        for point in points:
+            children.setdefault(point.parent_id, []).append(point.id)
+
+        def subtree_ids(point_id: int) -> set[int]:
+            result = {point_id}
+            for child_id in children.get(point_id, []):
+                result.update(subtree_ids(child_id))
+            return result
+
+        bank_revision_id: int | None = None
+        if bank_id is not None:
+            bank, _ = await bank_access_service.ensure_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+            revision = await bank_revision_dao.get(db, bank.current_revision_id, bank_id=bank.id)
+            if revision is None or revision.status != 'published':
+                raise errors.NotFoundError(msg='题库当前发布版本不存在')
+            bank_revision_id = revision.id
+
+        question_filters = [QbQuestion.deleted == 0, QbQuestion.status == 'active']
+        if bank_revision_id is not None:
+            question_filters.append(
+                QbQuestion.id.in_(
+                    select(QbBankItem.question_id).where(
+                        QbBankItem.bank_revision_id == bank_revision_id,
+                        QbBankItem.is_active.is_(True),
+                        QbBankItem.deleted == 0,
+                    )
+                )
+            )
+        qpoint_rows = (
+            await db.execute(
+                select(QbQuestionKnowledgePoint.knowledge_point_id, QbQuestionKnowledgePoint.question_id)
+                .join(QbKnowledgePoint, QbKnowledgePoint.id == QbQuestionKnowledgePoint.knowledge_point_id)
+                .join(QbQuestion, QbQuestion.id == QbQuestionKnowledgePoint.question_id)
+                .where(
+                    QbQuestionKnowledgePoint.deleted == 0,
+                    QbKnowledgePoint.deleted == 0,
+                    QbKnowledgePoint.system_id == system_id,
+                    *question_filters,
+                )
+            )
+        ).all()
+        question_ids_by_point: dict[int, set[int]] = {point.id: set() for point in points}
+        mapped_question_ids: set[int] = set()
+        for point_id, question_id in qpoint_rows:
+            question_ids_by_point.setdefault(point_id, set()).add(int(question_id))
+            mapped_question_ids.add(int(question_id))
+        all_question_count = int(
+            (
+                await db.execute(
+                    select(sa.func.count(QbQuestion.id)).where(*question_filters)
+                )
+            ).scalar_one()
+        )
+        snapshots = (
+            await db.execute(
+                select(
+                    QbQuestionAttemptKnowledgePoint.knowledge_point_id,
+                    QbQuestionAttemptKnowledgePoint.question_id,
+                )
+                .join(QbQuestion, QbQuestion.id == QbQuestionAttemptKnowledgePoint.question_id)
+                .where(
+                    QbQuestionAttemptKnowledgePoint.user_id == user_id,
+                    QbQuestionAttemptKnowledgePoint.system_id == system_id,
+                    QbQuestionAttemptKnowledgePoint.deleted == 0,
+                    QbQuestionAttemptKnowledgePoint.evidence_applied.is_(True),
+                    *question_filters,
+                )
+            )
+        ).all()
+        answered_question_ids_by_point: dict[int, set[int]] = {point.id: set() for point in points}
+        for point_id, question_id in snapshots:
+            answered_question_ids_by_point.setdefault(point_id, set()).add(int(question_id))
+        mastery_rows = await user_knowledge_mastery_dao.get_scope(
+            db,
+            user_id=user_id,
+            system_id=system_id,
+        )
+        mastery_by_point = {row.knowledge_point_id: row for row in mastery_rows}
+
+        def aggregate(point_id: int) -> dict[str, Any]:
+            ids = subtree_ids(point_id)
+            rows = [mastery_by_point[item_id] for item_id in ids if item_id in mastery_by_point]
+            now = timezone.now()
+            decayed_rows: list[tuple[Any, Decimal, Decimal]] = []
+            for row in rows:
+                elapsed_days = Decimal(0)
+                if row.last_attempt_time is not None:
+                    elapsed_days = max(
+                        Decimal(0),
+                        Decimal(str((now - row.last_attempt_time).total_seconds())) / Decimal(86400),
+                    )
+                decay = KnowledgeMasteryService._decay(elapsed_days=elapsed_days)
+                decayed_effective = Decimal(row.effective_sample_size or 0) * decay
+                decayed_correct = Decimal(row.weighted_correct or 0) * decay
+                decayed_wrong = Decimal(row.weighted_wrong or 0) * decay
+                score = (Decimal(1) + decayed_correct) / (Decimal(2) + decayed_correct + decayed_wrong)
+                decayed_rows.append((row, decayed_effective, score))
+            effective = sum((item[1] for item in decayed_rows), Decimal(0))
+            score = (
+                sum(
+                    (row_score * row_effective for _, row_effective, row_score in decayed_rows),
+                    Decimal(0),
+                )
+                / effective
+                if effective > 0
+                else None
+            )
+            question_ids = set().union(*(question_ids_by_point.get(item_id, set()) for item_id in ids))
+            answered_ids = set().union(*(answered_question_ids_by_point.get(item_id, set()) for item_id in ids))
+            last_attempt = max(
+                (row.last_attempt_time for row in rows if row.last_attempt_time is not None),
+                default=None,
+            )
+            display_score = score if effective >= Decimal(1) else None
+            state = KnowledgeMasteryService._refresh_state(
+                score=score if score is not None else Decimal('0.5'),
+                effective_sample_size=effective,
+            )
+            return {
+                'mastery_score': display_score,
+                'confidence_score': Decimal(str(1 - math.exp(-float(effective) / 5))) if effective > 0 else Decimal(0),
+                'effective_sample_size': effective,
+                'attempt_count': sum(row.attempt_count for row in rows),
+                'correct_count': sum(row.correct_count for row in rows),
+                'question_count': len(question_ids),
+                'answered_question_count': len(answered_ids),
+                'coverage_rate': KnowledgeService._ratio(len(answered_ids), len(question_ids)),
+                'state': state,
+                'last_attempt_time': last_attempt,
+            }
+
+        def build(point_id: int) -> KnowledgeMasteryRadarNode:
+            point = point_by_id[point_id]
+            return KnowledgeMasteryRadarNode(
+                id=point.id,
+                system_id=point.system_id,
+                name=point.name,
+                parent_id=point.parent_id,
+                depth=point.depth,
+                children=[build(child_id) for child_id in children.get(point_id, [])],
+                **aggregate(point_id),
+            )
+
+        roots = [point.id for point in points if point.parent_id is None or point.parent_id not in point_by_id]
+        roots.sort(key=lambda point_id: (point_by_id[point_id].sort_order, point_id))
+        mapped_count = len(mapped_question_ids)
+        # Without a bank revision there is no authoritative, deduplicated
+        # denominator: questions may belong to multiple banks and the caller
+        # did not specify which published scope should define coverage.
+        scoped_question_count = all_question_count if bank_revision_id is not None else None
+        return GetKnowledgeMasteryRadar(
+            system=GetKnowledgeSystemListItem.model_validate(system),
+            bank_id=bank_id,
+            bank_revision_id=bank_revision_id,
+            points=[build(point_id) for point_id in roots],
+            question_count=scoped_question_count,
+            mapped_question_count=mapped_count,
+            unmapped_question_count=(
+                max(0, all_question_count - mapped_count) if scoped_question_count is not None else None
+            ),
+            coverage_rate=(
+                KnowledgeService._ratio(mapped_count, all_question_count)
+                if scoped_question_count is not None
+                else None
+            ),
+        )
 
 
 knowledge_service: KnowledgeService = KnowledgeService()

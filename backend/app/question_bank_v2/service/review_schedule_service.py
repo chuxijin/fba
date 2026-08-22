@@ -11,6 +11,7 @@ from backend.app.question_bank_v2.crud.crud_statistics import user_bank_item_pro
 from backend.app.question_bank_v2.model.practice import QbPracticeSessionItem, QbQuestionAttempt
 from backend.app.question_bank_v2.model.review import QbWrongQuestionState
 from backend.app.question_bank_v2.model.statistics import QbUserQuestionMastery
+from backend.app.question_bank_v2.service.knowledge_mastery_service import knowledge_mastery_service
 from backend.app.question_bank_v2.service.practice_schedule_service import (
     derive_rating,
     next_practice_level,
@@ -168,6 +169,11 @@ class ReviewScheduleService:
             mastery=mastery,
             resolve_threshold=resolve_threshold,
         )
+        await knowledge_mastery_service.apply_attempt(
+            db,
+            attempt=attempt,
+            session_item=session_item,
+        )
         await db.flush()
 
     @staticmethod
@@ -198,6 +204,11 @@ class ReviewScheduleService:
             session_item=session_item,
             mastery=mastery,
             resolve_threshold=resolve_threshold,
+        )
+        await knowledge_mastery_service.apply_delayed_grade(
+            db,
+            attempt=attempt,
+            session_item=session_item,
         )
         await db.flush()
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Path, Query, Request
 from backend.app.question_bank_v2.schema.knowledge import (
     CreateKnowledgePointParam,
     CreateKnowledgeSystemParam,
+    GetKnowledgeMasteryRadar,
     GetKnowledgePointTreeResult,
     GetKnowledgeSystemListItem,
     GetKnowledgeTreeDetail,
@@ -90,6 +91,27 @@ async def get_knowledge_tree(
         system_id=system_id,
         bank_id=bank_id,
         root_id=root_id,
+    )
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/knowledge-systems/{system_id}/mastery/radar',
+    summary='获取知识点掌握度雷达图',
+    name='qbank_v2_get_knowledge_mastery_radar',
+)
+async def get_knowledge_mastery_radar(
+    request: Request,
+    db: CurrentSession,
+    system_id: Annotated[int, Path(gt=0, description='知识体系 ID')],
+    bank_id: Annotated[int | None, Query(gt=0, description='题库 ID；不传则跨题库聚合')] = None,
+) -> ResponseSchemaModel[GetKnowledgeMasteryRadar]:
+    """当前阶段默认由前端传入 default system_id，后续可开放用户版本选择。"""
+    data = await knowledge_service.get_mastery_radar(
+        db=db,
+        user_id=request.user.id,
+        system_id=system_id,
+        bank_id=bank_id,
     )
     return response_base.success(data=data)
 

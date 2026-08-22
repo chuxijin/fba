@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     DATABASE_CHARSET: str = 'utf8mb4'
     DATABASE_PK_MODE: Literal['autoincrement', 'snowflake'] = 'autoincrement'
 
+    # 题库 V2 知识点掌握度
+    QBANK_V2_MASTERY_HALF_LIFE_DAYS: int = 30
+
     # .env Redis
     REDIS_HOST: str
     REDIS_PORT: int
