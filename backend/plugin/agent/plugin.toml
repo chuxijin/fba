@@ -1,0 +1,17 @@
+[plugin]
+summary = '智能批改 Agent'
+version = '0.6.0'
+description = '面向申论批改的 Agent 平台，后续扩展英语作文和面试能力。'
+author = 'gongkao'
+tags = ['ai', 'agent']
+database = ['mysql', 'postgresql']
+
+[app]
+router = ['v1']
+
+[settings]
+AGENT_SHENLUN_ENABLED = true
+AGENT_SHENLUN_COACH_ENABLED = false
+AGENT_SHENLUN_WORKFLOW_VERSION = 'shenlun-grading-v5'
+AGENT_SHENLUN_MAX_CONCURRENCY = 2
+AGENT_SHENLUN_STALE_SECONDS = 900
