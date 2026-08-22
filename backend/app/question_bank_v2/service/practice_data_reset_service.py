@@ -10,6 +10,10 @@ if TYPE_CHECKING:
 
 from backend.app.question_bank_v2.model.asset import QbQuestionAttemptAsset
 from backend.app.question_bank_v2.model.evaluation import QbEvaluationRun
+from backend.app.question_bank_v2.model.mastery import (
+    QbQuestionAttemptKnowledgePoint,
+    QbUserKnowledgeMastery,
+)
 from backend.app.question_bank_v2.model.practice import (
     QbPracticeSession,
     QbPracticeSessionItem,
@@ -40,6 +44,8 @@ class PracticeDataResetResult:
     evaluation_count: int = 0
     user_tag_count: int = 0
     mastery_count: int = 0
+    knowledge_mastery_count: int = 0
+    attempt_knowledge_snapshot_count: int = 0
     bank_progress_count: int = 0
     practice_stats_count: int = 0
     daily_stats_count: int = 0
@@ -84,9 +90,11 @@ class PracticeDataResetService:
         r.attempt_count += await _exec(db, delete(QbQuestionAttemptAsset).where(
             QbQuestionAttemptAsset.created_by == user_id
         ))
-        r.attempt_count += await _exec(db, delete(QbQuestionAttempt).where(
-            QbQuestionAttempt.user_id == user_id
-        ))
+        r.attempt_knowledge_snapshot_count = await _exec(
+            db,
+            delete(QbQuestionAttemptKnowledgePoint).where(QbQuestionAttemptKnowledgePoint.user_id == user_id),
+        )
+        r.attempt_count += await _exec(db, delete(QbQuestionAttempt).where(QbQuestionAttempt.user_id == user_id))
 
         user_session_ids = select(QbPracticeSession.id).where(QbPracticeSession.user_id == user_id)
         r.attempt_count += await _exec(db, delete(QbPracticeSessionResponse).where(
@@ -103,6 +111,10 @@ class PracticeDataResetService:
         r.mastery_count = await _exec(db, delete(QbUserQuestionMastery).where(
             QbUserQuestionMastery.user_id == user_id
         ))
+        r.knowledge_mastery_count = await _exec(
+            db,
+            delete(QbUserKnowledgeMastery).where(QbUserKnowledgeMastery.user_id == user_id),
+        )
         r.bank_progress_count = await _exec(db, delete(QbUserBankItemProgress).where(
             QbUserBankItemProgress.user_id == user_id
         ))
