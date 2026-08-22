@@ -8,6 +8,7 @@ from backend.app.access.constants import CycleType, ReasonCode, TrialMode
 from backend.app.access.engine.cycle import build_cycle_end, build_cycle_key
 from backend.app.access.engine.evaluators.base import BaseEvaluator
 from backend.app.access.engine.snapshot import UserGrantSnapshot
+from backend.app.access.engine.trial_counter import trial_counter_service
 from backend.app.access.model.rule import ResourceRule
 from backend.app.access.schema.engine import AccessContext, Decision, ExplanationNode
 from backend.common.log import log
@@ -194,14 +195,25 @@ class TrialPolicyEvaluator(BaseEvaluator):
             f'{_TRIAL_COUNTER_PREFIX}:{ctx.user_id}:{rule.resource_type}:'
             f'{rule.resource_id}:{rule.entitlement_code}:{build_cycle_key(CycleType.DAILY, now)}'
         )
+        cycle_end = build_cycle_end(CycleType.DAILY, now)
+        ttl = max(int((cycle_end - now).total_seconds()), 1) if cycle_end else 86400
+        idempotency_key: str | None = None
 
         try:
             if ctx.consume_trial:
-                used = int(await redis_client.incr(cache_key))
-                if used == 1:
-                    cycle_end = build_cycle_end(CycleType.DAILY, now)
-                    ttl = max(int((cycle_end - now).total_seconds()), 1) if cycle_end else 86400
-                    await redis_client.expire(cache_key, ttl)
+                if ctx.source_ref:
+                    used, allowed, idempotency_key = await trial_counter_service.consume_once(
+                        counter_key=cache_key,
+                        source_ref=ctx.source_ref,
+                        ttl=ttl,
+                        limit=limit,
+                    )
+                    if not allowed:
+                        return Decision.deny(reason_code=ReasonCode.TRIAL_EXHAUSTED, explanation=explanation)
+                else:
+                    used = int(await redis_client.incr(cache_key))
+                    if used == 1:
+                        await redis_client.expire(cache_key, ttl)
             else:
                 used = int(await redis_client.get(cache_key) or 0) + 1
         except Exception as exc:
@@ -231,6 +243,8 @@ class TrialPolicyEvaluator(BaseEvaluator):
                 reason_code=ReasonCode.TRIAL_POLICY,
                 matched_grant=rule.entitlement_code,
                 trial_mode=TrialMode.DAILY_COUNT.value,
+                trial_counter_key=cache_key if idempotency_key else None,
+                trial_idempotency_key=idempotency_key,
                 explanation=explanation,
             )
         return Decision.deny(reason_code=ReasonCode.TRIAL_EXHAUSTED, explanation=explanation)

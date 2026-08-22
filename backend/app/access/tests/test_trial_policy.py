@@ -180,3 +180,24 @@ def test_daily_count_trial_degrades_open_when_redis_down(empty_snapshot: FakeSna
     assert decision is not None
     assert decision.allowed
     assert decision.reason_code == ReasonCode.TRIAL_POLICY
+
+
+def test_daily_count_trial_uses_source_ref_idempotency(empty_snapshot: FakeSnapshot, monkeypatch) -> None:
+    """带业务来源的按日体验应返回可恢复和可退款的幂等标识。"""
+    explanation: list = []
+    rules = [make_rule(GrantMode.ACCESS, trial_policy={'mode': 'daily_count', 'limit': 3})]
+
+    async def fake_consume_once(**_kwargs):
+        return 2, True, 'trial-idempotency-key'
+
+    monkeypatch.setattr(
+        'backend.app.access.engine.evaluators.trial_policy.trial_counter_service.consume_once',
+        fake_consume_once,
+    )
+
+    decision = _run(make_ctx(source_ref='shenlun_grading_run:12'), rules, explanation, empty_snapshot)
+
+    assert decision is not None
+    assert decision.allowed
+    assert decision.trial_counter_key
+    assert decision.trial_idempotency_key == 'trial-idempotency-key'

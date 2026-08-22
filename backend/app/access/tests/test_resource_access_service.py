@@ -205,3 +205,44 @@ def test_resource_access_service_refund_skips_other_users_ledger(monkeypatch) ->
     )
 
     assert called == {}
+
+
+def test_resource_access_service_refund_releases_daily_trial(monkeypatch) -> None:
+    """带幂等标识的按日体验失败后应回退一次计数。"""
+    profile = AccessProfile(
+        code='test.resource.trial-refund',
+        resource_type='test_resource',
+        resource_id=12,
+    )
+    resource_access_service.register_profile(profile)
+    captured: dict[str, object] = {}
+
+    async def fake_refund_once(**kwargs):
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        resource_access_service_module.trial_counter_service,
+        'refund_once',
+        fake_refund_once,
+    )
+
+    decision = Decision.allow(
+        reason_code=ReasonCode.TRIAL_POLICY,
+        trial_mode='daily_count',
+        trial_counter_key='access:trial:counter',
+        trial_idempotency_key='access:trial:source',
+    )
+    asyncio.run(
+        resource_access_service.refund(
+            None,
+            profile_code=profile.code,
+            user_id=9,
+            decision=decision,
+        )
+    )
+
+    assert captured == {
+        'counter_key': 'access:trial:counter',
+        'idempotency_key': 'access:trial:source',
+    }

@@ -54,6 +54,8 @@ class Decision(SchemaBase):
         default=None,
         description='excerpt 试看下业务层应截断的字数',
     )
+    trial_counter_key: str | None = Field(default=None, description='可退款试看计数器键')
+    trial_idempotency_key: str | None = Field(default=None, description='可退款试看来源幂等键')
     explanation: list[ExplanationNode] = Field(default_factory=list, description='决策路径')
 
     @classmethod
@@ -65,6 +67,8 @@ class Decision(SchemaBase):
         consumed_ledger_id: int | None = None,
         trial_mode: str | None = None,
         trial_excerpt_chars: int | None = None,
+        trial_counter_key: str | None = None,
+        trial_idempotency_key: str | None = None,
         explanation: list[ExplanationNode] | None = None,
     ) -> 'Decision':
         """
@@ -75,6 +79,8 @@ class Decision(SchemaBase):
         :param consumed_ledger_id: 消耗的账本流水 ID
         :param trial_mode: 命中的试看模式
         :param trial_excerpt_chars: excerpt 试看的可见字数
+        :param trial_counter_key: 可退款试看计数器键
+        :param trial_idempotency_key: 可退款试看来源幂等键
         :param explanation: 决策路径
         :return:
         """
@@ -86,6 +92,8 @@ class Decision(SchemaBase):
             consumed_ledger_id=consumed_ledger_id,
             trial_mode=trial_mode,
             trial_excerpt_chars=trial_excerpt_chars,
+            trial_counter_key=trial_counter_key,
+            trial_idempotency_key=trial_idempotency_key,
             explanation=explanation or [],
         )
 

@@ -5,14 +5,15 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import backend.app.access.service.resource_profiles  # noqa: F401
+
 from backend.app.access.crud.crud_ledger import quota_ledger_dao
 from backend.app.access.engine.decide import access_decision_engine
 from backend.app.access.engine.ledger import ledger_service
+from backend.app.access.engine.trial_counter import trial_counter_service
 from backend.app.access.schema.engine import AccessContext, Decision
 from backend.app.access.service.resource_profile_registry import AccessProfile, access_profile_registry
 from backend.common.exception import errors
-
-import backend.app.access.service.resource_profiles  # noqa: F401
 
 
 class ResourceAccessService:
@@ -165,6 +166,12 @@ class ResourceAccessService:
         :param source_ref: 来源引用
         :return:
         """
+        if decision.trial_counter_key and decision.trial_idempotency_key:
+            await trial_counter_service.refund_once(
+                counter_key=decision.trial_counter_key,
+                idempotency_key=decision.trial_idempotency_key,
+            )
+            return
         if decision.consumed_ledger_id is None:
             return
 

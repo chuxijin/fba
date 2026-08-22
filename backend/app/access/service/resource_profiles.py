@@ -5,6 +5,7 @@ from backend.app.access.service.resource_profile_registry import AccessProfile, 
 
 RENDER_BOOK_EXPORT_PROFILE_CODE = 'render_book.export'
 AGENT_SHENLUN_GRADE_PROFILE_CODE = 'agent.shenlun.grade'
+AGENT_SHENLUN_COACH_PROFILE_CODE = 'agent.shenlun.coach'
 AGENT_ENGLISH_ESSAY_GRADE_PROFILE_CODE = 'agent.english_essay.grade'
 AGENT_XINGCE_GRADE_PROFILE_CODE = 'agent.xingce.grade'
 AGENT_INTERVIEW_GRADE_PROFILE_CODE = 'agent.interview.grade'
@@ -42,6 +43,14 @@ def register_builtin_access_profiles() -> None:
             action='access',
             deny_messages=shared_agent_messages,
             refund_reason='agent grading failed',
+        ),
+        AccessProfile(
+            code=AGENT_SHENLUN_COACH_PROFILE_CODE,
+            resource_type=ResourceType.AGENT_SHENLUN,
+            resource_id=1,
+            action='coach',
+            deny_messages=shared_agent_messages,
+            refund_reason='agent coaching failed',
         ),
         AccessProfile(
             code=AGENT_ENGLISH_ESSAY_GRADE_PROFILE_CODE,
