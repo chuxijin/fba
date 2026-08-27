@@ -105,3 +105,8 @@ backend/output/
 downloads/
 references/
 tmp_render_fix/
+# OC 调试脚本与题库导入数据表，不入库
+backend/print_sql.py
+backend/print_job_sql.py
+backend/test_stats.py
+backend/app/question_bank_v2/*.xlsx
