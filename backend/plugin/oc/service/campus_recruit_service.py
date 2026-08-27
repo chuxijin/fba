@@ -66,8 +66,13 @@ class CampusRecruitService:
             application_status=application_status,
         )
         page_data = await paging_data(db, job_select)
+        return page_data
 
-        # 计算多维度企业统计数据（按企业名称去重）
+    @staticmethod
+    async def get_stats(*, db: AsyncSession) -> dict[str, Any]:
+        """
+        获取校招岗位统计数据
+        """
         today = date.today()
         today_str = today.strftime('%Y-%m-%d')
         recent_3_days = today - timedelta(days=2)
@@ -121,12 +126,12 @@ class CampusRecruitService:
             ).label('valid_count'),
             func.count(distinct(CampusRecruit.company_name)).label('total_count'),
             func.count(CampusRecruit.id).label('total_job_count'),
-        )
+        ).select_from(CampusRecruit)
+        
         stats_result = await db.execute(stats_query)
         stats_row = stats_result.one()
 
-        # 添加统计数据
-        page_data['stats'] = {
+        return {
             'today_count': stats_row.today_count or 0,
             'recent_3_days_count': stats_row.recent_3_days_count or 0,
             'deadline_1_day_count': stats_row.deadline_1_day_count or 0,
@@ -135,8 +140,6 @@ class CampusRecruitService:
             'total_count': stats_row.total_count or 0,
             'total_job_count': stats_row.total_job_count or 0,
         }
-
-        return page_data
 
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateCampusRecruitParam) -> None:

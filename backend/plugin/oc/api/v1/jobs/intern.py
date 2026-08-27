@@ -16,6 +16,13 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
+@router.get('/stats', summary='获取实习岗位统计数据', dependencies=[DependsJwtAuth])
+async def get_intern_recruit_stats(db: CurrentSession) -> ResponseModel:
+    """获取实习岗位统计数据"""
+    data = await intern_recruit_service.get_stats(db=db)
+    return response_base.success(data=data)
+
+
 @router.get('/{job_id}', summary='获取实习岗位详情', dependencies=[DependsJwtAuth])
 async def get_intern_recruit(
     db: CurrentSession, job_id: Annotated[int, Path(description='岗位 ID')]
