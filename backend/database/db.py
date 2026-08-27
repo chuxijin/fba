@@ -7,8 +7,9 @@ from typing import Annotated, Any, TypeAlias
 from uuid import uuid4
 
 from fastapi import Depends
-from sqlalchemy import URL, event
+from sqlalchemy import URL, event, text
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
@@ -145,9 +146,23 @@ async def get_db_transaction() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def create_postgresql_extensions(conn: AsyncConnection | AsyncSession) -> None:
+    """
+    创建 PostgreSQL 扩展
+
+    :param conn: 数据库连接
+    :return:
+    """
+    if DataBaseType.postgresql != settings.DATABASE_TYPE:
+        return
+
+    await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+
+
 async def create_tables() -> None:
     """创建数据库表"""
     async with async_engine.begin() as coon:
+        await create_postgresql_extensions(coon)
         await coon.run_sync(MappedBase.metadata.create_all)
 
 
