@@ -7,9 +7,8 @@ from typing import Annotated, Any, TypeAlias
 from uuid import uuid4
 
 from fastapi import Depends
-from sqlalchemy import URL, event, text
+from sqlalchemy import URL, event
 from sqlalchemy.ext.asyncio import (
-    AsyncConnection,
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
@@ -66,8 +65,8 @@ def create_database_async_engine(url: str | URL) -> AsyncEngine:
             pool_size=10,  # 低：- 高：+
             max_overflow=20,  # 低：- 高：+
             pool_timeout=30,  # 低：+ 高：-
-            pool_recycle=1800,  # 30 分钟回收，配合 pool_pre_ping=False 兜底死连接
-            pool_pre_ping=False,  # 关闭：DB 同机网络稳定，避免每次 checkout 多发 SELECT 1（实测节省 ~50ms/请求）
+            pool_recycle=3600,  # 低：+ 高：-
+            pool_pre_ping=True,  # 低：False 高：True
             pool_use_lifo=False,  # 低：False 高：True
         )
     except Exception as e:
@@ -149,7 +148,6 @@ async def get_db_transaction() -> AsyncGenerator[AsyncSession, None]:
 async def create_tables() -> None:
     """创建数据库表"""
     async with async_engine.begin() as coon:
-        await create_postgresql_extensions(coon)
         await coon.run_sync(MappedBase.metadata.create_all)
 
 
@@ -157,19 +155,6 @@ async def drop_tables() -> None:
     """丢弃数据库表"""
     async with async_engine.begin() as conn:
         await conn.run_sync(MappedBase.metadata.drop_all)
-
-
-async def create_postgresql_extensions(conn: AsyncConnection | AsyncSession) -> None:
-    """
-    创建 PostgreSQL 扩展
-
-    :param conn: 数据库连接
-    :return:
-    """
-    if DataBaseType.postgresql != settings.DATABASE_TYPE:
-        return
-
-    await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
 
 
 def uuid4_str() -> str:

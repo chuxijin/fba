@@ -7,7 +7,7 @@ from functools import cache
 from re import Pattern
 from typing import Any, Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from backend.core.path_conf import ENV_EXAMPLE_FILE_PATH, ENV_FILE_PATH
@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     DATABASE_PORT: int
     DATABASE_USER: str
     DATABASE_PASSWORD: str
+    DATABASE_SOURCES: dict[str, str] = Field(default_factory=dict)
 
     # 数据库
     DATABASE_ECHO: bool | Literal['debug'] = False
