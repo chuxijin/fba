@@ -40,11 +40,13 @@ class GetMemoryOverview(SchemaBase):
 
 
 class StudySegmentItem(SchemaBase):
-    """学习用素材片段（不含正确答案）。"""
+    """学习用素材片段。"""
 
     type: Literal['text', 'point'] = Field(description='text 普通文本 / point 记忆点')
     id: str | None = Field(None, description='记忆点 ID')
-    text: str = Field(default='', description='文本内容；纠错模式下 point 为当前展示内容')
+    text: str = Field(default='', description='文本内容；纠错/揭晓模式下 point 为当前展示内容')
+    length: int | None = Field(None, description='记忆点答案字符长度，用于排版占位')
+    answer: str | None = Field(None, description='揭晓模式预置答案')
     options: list[str] = Field(default_factory=list, description='选择模式选项')
 
 

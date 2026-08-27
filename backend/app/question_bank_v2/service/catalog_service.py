@@ -183,7 +183,7 @@ class CatalogService:
             if display_name:
                 data['name'] = display_name
             pcid = data.get('primary_category_id')
-            if category_ids is not None and pcid is not None and pcid not in category_ids:
+            if category_ids is not None and (pcid is None or pcid not in category_ids):
                 continue
             banks_by_collection.setdefault(collection_id, []).append(GetBankListItem(**data))
         return banks_by_collection

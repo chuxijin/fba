@@ -311,6 +311,7 @@ class ImportTaskService:
                 parent_id=parent_id,
                 depth=depth,
                 sort_order=0,
+                created_by=user_id,
             )
             db.add(sec)
             await db.flush()

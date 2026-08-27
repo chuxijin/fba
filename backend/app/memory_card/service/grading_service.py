@@ -117,10 +117,15 @@ def build_study_content(*, content: dict[str, Any], mode: str) -> dict[str, Any]
         if segment.get('type') == 'text':
             segments.append({'type': 'text', 'text': segment.get('text', '')})
             continue
+        correct_val = str(segment.get('correct') or '')
         item: dict[str, Any] = {
             'type': 'point',
             'id': segment['id'],
+            'length': len(correct_val),
         }
+        if mode == 'reveal':
+            item['answer'] = correct_val
+            item['text'] = correct_val
         if mode == 'correction':
             item['text'] = segment['wrong'] if correction_case == 'wrong' else segment['correct']
         if mode == 'choice':
