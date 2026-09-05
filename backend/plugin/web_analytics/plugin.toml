@@ -1,0 +1,17 @@
+[plugin]
+summary = '网站统计'
+version = '1.0.0'
+description = '自托管多站点流量、事件、热力图和会话回放统计'
+author = 'gongkao'
+tags = ['other']
+database = ['mysql', 'postgresql']
+
+[app]
+router = ['v1']
+
+[settings]
+WEB_ANALYTICS_HASH_SALT = 'change-me-before-production'
+WEB_ANALYTICS_EVENT_RETENTION_DAYS = 180
+WEB_ANALYTICS_REPLAY_RETENTION_DAYS = 30
+WEB_ANALYTICS_MAX_BATCH_SIZE = 50
+WEB_ANALYTICS_MAX_REPLAY_BYTES = 524288

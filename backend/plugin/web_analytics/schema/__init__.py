@@ -1,0 +1,31 @@
+from backend.plugin.web_analytics.schema.analytics import (
+    AnalyticsEventParam,
+    CollectBatchParam,
+    CollectResult,
+    CounterDetail,
+    CreateSiteParam,
+    DailyTrendDetail,
+    DimensionDetail,
+    HeatmapPointDetail,
+    OverviewDetail,
+    ReplayChunkParam,
+    ReplayDetail,
+    SiteDetail,
+    UpdateSiteParam,
+)
+
+__all__ = [
+    'AnalyticsEventParam',
+    'CollectBatchParam',
+    'CollectResult',
+    'CounterDetail',
+    'CreateSiteParam',
+    'DailyTrendDetail',
+    'DimensionDetail',
+    'HeatmapPointDetail',
+    'OverviewDetail',
+    'ReplayChunkParam',
+    'ReplayDetail',
+    'SiteDetail',
+    'UpdateSiteParam',
+]
