@@ -8,6 +8,7 @@ from backend.app.question_bank_v2.api.v1.composition import router as compositio
 from backend.app.question_bank_v2.api.v1.evaluation import router as evaluation_router
 from backend.app.question_bank_v2.api.v1.interaction import router as interaction_router
 from backend.app.question_bank_v2.api.v1.knowledge import router as knowledge_router
+from backend.app.question_bank_v2.api.v1.locate_training import router as locate_training_router
 from backend.app.question_bank_v2.api.v1.material import router as material_router
 from backend.app.question_bank_v2.api.v1.practice import router as practice_router
 from backend.app.question_bank_v2.api.v1.preference import router as preference_router
@@ -30,3 +31,4 @@ router.include_router(review_router, prefix='/wrong-questions', tags=['错题复
 router.include_router(knowledge_router, tags=['题库知识点 V2'])
 router.include_router(user_content_router, tags=['题库用户内容 V2'])
 router.include_router(analytics_router, tags=['题库统计 V2'])
+router.include_router(locate_training_router, prefix='/locate-trainings', tags=['找数训练 V2'])

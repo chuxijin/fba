@@ -98,6 +98,7 @@ backend/scripts/quality.sh
 .superpowers/
 superpowers/
 .codegraph/
+.zcode/
 backend/output/
 .pi/
 

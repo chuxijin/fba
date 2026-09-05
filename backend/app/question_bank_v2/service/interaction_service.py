@@ -46,10 +46,19 @@ class InteractionService:
         *,
         db: AsyncSession,
         question_id: int | None = None,
+        interaction_type: str | None = None,
+        material_id: int | None = None,
+        status: str | None = None,
     ) -> list[GetQuestionInteractionDetail]:
         """获取题目交互定义"""
         q_ids = [question_id] if question_id is not None else None
-        rows = await question_interaction_dao.get_all(db, question_ids=q_ids)
+        rows = await question_interaction_dao.get_all(
+            db,
+            question_ids=q_ids,
+            interaction_type=interaction_type,
+            material_id=material_id,
+            status=status,
+        )
         return [GetQuestionInteractionDetail(**row) for row in rows]
 
     @staticmethod
@@ -149,8 +158,8 @@ class InteractionService:
         for interaction in active:
             if len(interaction.candidates) < interaction.min_selections:
                 raise errors.ConflictError(msg='交互定义候选数量少于最少选择数')
-            if any(candidate.anchor.status != 'active' for candidate in interaction.candidates):
-                raise errors.ConflictError(msg='交互定义包含未启用的材料锚点')
+            if any(candidate.anchor.status == 'retired' for candidate in interaction.candidates):
+                raise errors.ConflictError(msg='交互定义包含已退役的材料锚点')
         return active
 
 

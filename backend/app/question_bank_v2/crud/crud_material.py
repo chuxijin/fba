@@ -1,7 +1,9 @@
+import re
+
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Select, and_, func, select, tuple_
+from sqlalchemy import Select, and_, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -13,6 +15,7 @@ from backend.app.question_bank_v2.model.material import (
     QbQuestionInteractionCandidate,
     QbQuestionMaterial,
 )
+from backend.app.question_bank_v2.model.question import QbQuestion
 from backend.app.question_bank_v2.schema.material import (
     CreateMaterialAnchorParam,
     CreateMaterialRevisionParam,
@@ -88,9 +91,17 @@ class CRUDMaterial(CRUDPlus[QbMaterial]):
         if revision_status is not None:
             stmt = stmt.where(QbMaterialRevision.status == revision_status)
         if keyword:
-            stmt = stmt.where(QbMaterial.code.ilike(f'%{keyword}%') | QbMaterialRevision.title.ilike(f'%{keyword}%'))
+            keyword_conditions = self._keyword_conditions(keyword)
+            if keyword_conditions:
+                stmt = stmt.where(and_(*keyword_conditions))
         stmt = stmt.order_by(QbMaterialRevision.updated_time.desc(), QbMaterial.id.desc()).offset(offset).limit(limit)
         return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
+
+    @staticmethod
+    def _keyword_conditions(keyword: str) -> list:
+        """按空白切分关键词，每个词对编码或标题模糊匹配（词间为 AND 关系）"""
+        terms = [term for term in re.split(r'\s+', keyword.strip()) if term]
+        return [or_(QbMaterial.code.ilike(f'%{term}%'), QbMaterialRevision.title.ilike(f'%{term}%')) for term in terms]
 
     def get_list_select(
         self,
@@ -138,7 +149,9 @@ class CRUDMaterial(CRUDPlus[QbMaterial]):
         if revision_status is not None:
             stmt = stmt.where(QbMaterialRevision.status == revision_status)
         if keyword:
-            stmt = stmt.where(QbMaterial.code.ilike(f'%{keyword}%') | QbMaterialRevision.title.ilike(f'%{keyword}%'))
+            keyword_conditions = self._keyword_conditions(keyword)
+            if keyword_conditions:
+                stmt = stmt.where(and_(*keyword_conditions))
         return stmt.order_by(QbMaterialRevision.updated_time.desc(), QbMaterial.id.desc())
 
     async def create(self, db: AsyncSession, *, code: str, status: str, created_by: int) -> QbMaterial:
@@ -617,6 +630,9 @@ class CRUDQuestionInteraction(CRUDPlus[QbQuestionInteraction]):
         *,
         question_ids: Sequence[int] | None = None,
         active_only: bool = False,
+        interaction_type: str | None = None,
+        material_id: int | None = None,
+        status: str | None = None,
     ) -> list[dict[str, Any]]:
         """批量获取题目交互定义和候选锚点"""
         stmt = self._detail_stmt()
@@ -624,6 +640,19 @@ class CRUDQuestionInteraction(CRUDPlus[QbQuestionInteraction]):
             stmt = stmt.where(QbQuestionInteraction.question_id.in_(set(question_ids)))
         if active_only:
             stmt = stmt.where(QbQuestionInteraction.status == 'active')
+        if interaction_type is not None:
+            stmt = stmt.where(QbQuestionInteraction.interaction_type == interaction_type)
+        if status is not None:
+            stmt = stmt.where(QbQuestionInteraction.status == status)
+        if material_id is not None:
+            stmt = stmt.where(
+                QbQuestionInteraction.material_revision_id.in_(
+                    select(QbMaterialRevision.id).where(
+                        QbMaterialRevision.material_id == material_id,
+                        QbMaterialRevision.deleted == 0,
+                    )
+                )
+            )
         stmt = stmt.order_by(
             QbQuestionInteraction.question_id,
             QbQuestionInteraction.id,
@@ -687,6 +716,65 @@ class CRUDQuestionInteraction(CRUDPlus[QbQuestionInteraction]):
                     },
                 })
         return list(interactions.values())
+
+    async def get_locate_question_ids(
+        self,
+        db: AsyncSession,
+        *,
+        interaction_types: Sequence[str],
+        limit: int,
+    ) -> list[int]:
+        """随机获取配置了找数交互的活跃题目 ID（有可用候选锚点或材料版本存在可用锚点）"""
+        has_usable_candidates = (
+            select(1)
+            .select_from(QbQuestionInteractionCandidate)
+            .join(
+                QbMaterialAnchor,
+                and_(
+                    QbMaterialAnchor.id == QbQuestionInteractionCandidate.anchor_id,
+                    QbMaterialAnchor.material_revision_id == QbQuestionInteractionCandidate.material_revision_id,
+                    QbMaterialAnchor.deleted == 0,
+                    QbMaterialAnchor.status != 'retired',
+                ),
+            )
+            .where(
+                QbQuestionInteractionCandidate.interaction_id == QbQuestionInteraction.id,
+                QbQuestionInteractionCandidate.deleted == 0,
+            )
+            .exists()
+        )
+        has_revision_anchors = (
+            select(1)
+            .select_from(QbMaterialAnchor)
+            .where(
+                QbMaterialAnchor.material_revision_id == QbQuestionInteraction.material_revision_id,
+                QbMaterialAnchor.deleted == 0,
+                QbMaterialAnchor.status != 'retired',
+            )
+            .exists()
+        )
+        stmt = (
+            select(QbQuestionInteraction.question_id)
+            .select_from(QbQuestionInteraction)
+            .join(
+                QbQuestion,
+                and_(
+                    QbQuestion.id == QbQuestionInteraction.question_id,
+                    QbQuestion.deleted == 0,
+                    QbQuestion.status == 'active',
+                ),
+            )
+            .where(
+                QbQuestionInteraction.deleted == 0,
+                QbQuestionInteraction.status == 'active',
+                QbQuestionInteraction.interaction_type.in_(list(interaction_types)),
+                or_(has_usable_candidates, has_revision_anchors),
+            )
+            .group_by(QbQuestionInteraction.question_id)
+            .order_by(func.random())
+            .limit(limit)
+        )
+        return list((await db.execute(stmt)).scalars().all())
 
     async def create(
         self,

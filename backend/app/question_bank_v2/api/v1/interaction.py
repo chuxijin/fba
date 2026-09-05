@@ -24,9 +24,18 @@ router = APIRouter(dependencies=[DependsJwtAuth, Depends(RequestPermission('ques
 )
 async def list_question_interactions(
     db: CurrentSession,
-    question_id: Annotated[int, Query(gt=0, description='题目稳定身份 ID')],
+    question_id: Annotated[int | None, Query(gt=0, description='题目稳定身份 ID，不传返回全部')] = None,
+    interaction_type: Annotated[str | None, Query(max_length=32, description='交互类型过滤')] = None,
+    material_id: Annotated[int | None, Query(gt=0, description='材料 ID 过滤')] = None,
+    status: Annotated[str | None, Query(max_length=16, description='状态过滤')] = None,
 ) -> ResponseSchemaModel[list[GetQuestionInteractionDetail]]:
-    data = await interaction_service.get_all(db=db, question_id=question_id)
+    data = await interaction_service.get_all(
+        db=db,
+        question_id=question_id,
+        interaction_type=interaction_type,
+        material_id=material_id,
+        status=status,
+    )
     return response_base.success(data=data)
 
 
