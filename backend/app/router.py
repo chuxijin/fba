@@ -12,6 +12,7 @@ from backend.app.growth.api import v1 as growth_v1
 from backend.app.halo.api.router import v1 as halo_v1
 from backend.app.invite.api.router import v1 as invite_v1
 from backend.app.learning.api.router import v1 as learning_v1
+from backend.app.media_studio.api.router import v1 as media_studio_v1
 from backend.app.memory_card.api.router import v1 as memory_card_v1
 from backend.app.mydrive.api.router import v1 as mydrive_v1
 from backend.app.payment.api.router import v1 as payment_v1
@@ -53,3 +54,4 @@ router.include_router(challenge_v1)
 router.include_router(vocab_v1)
 router.include_router(study_plan_v1)
 router.include_router(pomodoro_v1)
+router.include_router(media_studio_v1)
