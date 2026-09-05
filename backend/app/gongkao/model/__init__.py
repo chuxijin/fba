@@ -5,6 +5,7 @@ from backend.app.gongkao.model.dict_region import GkDictRegion
 from backend.app.gongkao.model.gangwei import GkGangwei
 from backend.app.gongkao.model.hanyu import GkHanyu
 from backend.app.gongkao.model.hanyu_checkin import GkHanyuCheckin
+from backend.app.gongkao.model.hanyu_group import GkHanyuGroup, GkHanyuGroupItem
 from backend.app.gongkao.model.hanyu_notebook import GkHanyuNotebook
 from backend.app.gongkao.model.hanyu_review_log import GkHanyuReviewLog
 from backend.app.gongkao.model.hanyu_user_book import GkHanyuUserBook
@@ -24,6 +25,8 @@ __all__ = [
     'GkGangwei',
     'GkHanyu',
     'GkHanyuNotebook',
+    'GkHanyuGroup',
+    'GkHanyuGroupItem',
     # 学习本
     'GkHanyuWordbook',
     'GkHanyuWordbookEntry',

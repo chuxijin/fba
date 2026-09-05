@@ -147,7 +147,7 @@ async def create_hanyu_practice_session(
     return response_base.success(data={'session_key': session_key})
 
 
-@router.post('/notebook/{hanyu_id}', summary='加入生词本')
+@router.post('/quick-notebook/{hanyu_id}', summary='加入生词本')
 async def add_to_hanyu_notebook(
     request: Request,
     db: CurrentSessionTransaction,
@@ -161,7 +161,7 @@ async def add_to_hanyu_notebook(
     return response_base.success()
 
 
-@router.delete('/notebook/{hanyu_id}', summary='移出生词本')
+@router.delete('/quick-notebook/{hanyu_id}', summary='移出生词本')
 async def remove_from_hanyu_notebook(
     request: Request,
     db: CurrentSessionTransaction,

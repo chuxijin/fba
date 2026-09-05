@@ -33,32 +33,35 @@ class HanyuReviewService:
         now = timezone.now()
 
         if uw is None:
+            from backend.app.gongkao.model import GkHanyuUserWord
+
             defaults = fsrs_engine.new_card_defaults(now)
-            uw = await hanyu_user_word_dao.create_model(
-                db,
-                {'user_id': user_id, 'hanyu_id': obj.hanyu_id, **defaults},
-                commit=False,
+            uw = GkHanyuUserWord(
+                user_id=user_id,
+                hanyu_id=obj.hanyu_id,
+                **defaults,
             )
+            db.add(uw)
             await db.flush()
 
         update_data, result = fsrs_engine.schedule(uw, obj.rating, now=now)
 
         old_state = uw.state
-        await hanyu_user_word_dao.update_model(db, uw.id, update_data, commit=False)
+        for k, v in update_data.items():
+            setattr(uw, k, v)
 
-        await hanyu_review_log_dao.create_model(
-            db,
-            {
-                'user_id': user_id,
-                'hanyu_id': obj.hanyu_id,
-                'rating': obj.rating,
-                'state': old_state,
-                'review_mode': obj.review_mode,
-                'duration_ms': obj.duration_ms,
-                'reviewed_at': now,
-            },
-            commit=False,
+        from backend.app.gongkao.model import GkHanyuReviewLog
+
+        review_log = GkHanyuReviewLog(
+            user_id=user_id,
+            hanyu_id=obj.hanyu_id,
+            rating=obj.rating,
+            state=old_state,
+            review_mode=obj.review_mode,
+            duration_ms=obj.duration_ms,
+            reviewed_at=now,
         )
+        db.add(review_log)
 
         # 联动打卡
         from backend.app.gongkao.service.hanyu_checkin_service import hanyu_checkin_service

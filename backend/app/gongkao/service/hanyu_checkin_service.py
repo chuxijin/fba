@@ -39,33 +39,26 @@ class HanyuCheckinService:
         record = await hanyu_checkin_dao.get_by_user_and_date(db, user_id, today)
 
         if record:
-            update_data: dict = {
-                'duration_seconds': record.duration_seconds + max(0, duration_ms // 1000),
-            }
+            record.duration_seconds += max(0, duration_ms // 1000)
             if is_new_word:
-                update_data['new_words'] = record.new_words + 1
+                record.new_words += 1
             else:
-                update_data['review_words'] = record.review_words + 1
+                record.review_words += 1
 
             setting = await hanyu_user_setting_dao.get_or_create(db, user_id)
-            new_total = update_data.get('new_words', record.new_words)
-            if new_total >= setting.daily_new_target and record.streak_days == 0:
+            if record.new_words >= setting.daily_new_target and record.streak_days == 0:
                 yesterday = await hanyu_checkin_dao.get_yesterday(db, user_id, today)
-                update_data['streak_days'] = (yesterday.streak_days + 1) if yesterday else 1
-
-            await hanyu_checkin_dao.update_model(db, record.id, update_data)
+                record.streak_days = (yesterday.streak_days + 1) if yesterday else 1
         else:
-            await hanyu_checkin_dao.create_model(
-                db,
-                {
-                    'user_id': user_id,
-                    'checkin_date': today,
-                    'new_words': 1 if is_new_word else 0,
-                    'review_words': 0 if is_new_word else 1,
-                    'duration_seconds': max(0, duration_ms // 1000),
-                    'streak_days': 0,
-                },
+            record = GkHanyuCheckin(
+                user_id=user_id,
+                checkin_date=today,
+                new_words=1 if is_new_word else 0,
+                review_words=0 if is_new_word else 1,
+                duration_seconds=max(0, duration_ms // 1000),
+                streak_days=0,
             )
+            db.add(record)
 
     @staticmethod
     async def get_today_status(*, db: AsyncSession, user_id: int) -> HanyuCheckinToday:

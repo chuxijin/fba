@@ -15,6 +15,27 @@ class SubmitReviewParam(SchemaBase):
     duration_ms: int | None = Field(None, description='耗时(毫秒)')
 
 
+class HanyuGroupItemOut(SchemaBase):
+    """辨析组成员明细"""
+
+    hanyu_id: int | None = Field(None, description='词汇 ID')
+    word: str = Field(description='词语')
+    emphasis: str | None = Field(None, description='对比侧重点/释义')
+    collocation: str | None = Field(None, description='常见搭配/考频')
+    is_current: bool = Field(False, description='是否为当前卡片背诵词')
+
+
+class HanyuGroupOut(SchemaBase):
+    """汉语辨析组详情"""
+
+    id: int = Field(description='辨析组 ID')
+    title: str = Field(description='辨析组标题')
+    group_no: str | None = Field(None, description='题号/序号')
+    category: str = Field(description='分类')
+    summary: str | None = Field(None, description='整组解析概要')
+    items: list[HanyuGroupItemOut] = Field(default=[], description='组内对比词条')
+
+
 class StudySessionWord(SchemaBase):
     """学习会话中的词语"""
 
@@ -33,6 +54,8 @@ class StudySessionWord(SchemaBase):
     difficulty: float | None = Field(None, description='FSRS 难度')
     is_new: bool = Field(description='是否新词')
     is_starred: bool = Field(False, description='是否收藏')
+    bianxi_groups: list[HanyuGroupOut] = Field(default=[], description='关联的近义辨析对比组')
+
 
 
 class GetStudySession(SchemaBase):

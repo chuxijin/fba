@@ -10,10 +10,13 @@ from backend.app.gongkao.crud.crud_hanyu_user_word import hanyu_user_word_dao
 from backend.app.gongkao.crud.crud_hanyu_wordbook import hanyu_wordbook_dao
 from backend.app.gongkao.crud.crud_hanyu_wordbook_entry import hanyu_wordbook_entry_dao
 from backend.app.gongkao.model import GkHanyu, GkHanyuUserWord, GkHanyuWordbook, GkHanyuWordbookEntry
+from backend.app.gongkao.model.hanyu_group import GkHanyuGroup, GkHanyuGroupItem
 from backend.app.gongkao.schema.hanyu_review import (
     GetStudySession,
     GetStudyStats,
     HanyuBookProgress,
+    HanyuGroupItemOut,
+    HanyuGroupOut,
     StudySessionWord,
 )
 from backend.utils.timezone import timezone
@@ -28,6 +31,7 @@ class HanyuStudyService:
         hanyu: GkHanyu,
         user_word: GkHanyuUserWord | None = None,
         entry: GkHanyuWordbookEntry | None = None,
+        wordbook_id: int | None = None,
     ) -> StudySessionWord:
         """
         构建学习会话词语
@@ -36,8 +40,61 @@ class HanyuStudyService:
         :param hanyu: 汉语词汇
         :param user_word: 用户词语状态
         :param entry: 词语本条目（含自定义释义）
+        :param wordbook_id: 当前在学的词语本 ID
         :return:
         """
+        target_book_id = wordbook_id or (entry.wordbook_id if entry else None)
+
+        # 查询该词所属的辨析组
+        bianxi_groups: list[HanyuGroupOut] = []
+        stmt_group_ids = select(GkHanyuGroupItem.group_id).where(
+            (GkHanyuGroupItem.hanyu_id == hanyu.id) | (GkHanyuGroupItem.word == hanyu.name)
+        ).distinct()
+        res_gids = await db.execute(stmt_group_ids)
+        group_ids = [gid for (gid,) in res_gids.all()]
+
+        if group_ids:
+            # 严格根据当前在学的词书隔离辨析组
+            stmt_groups = select(GkHanyuGroup).where(GkHanyuGroup.id.in_(group_ids))
+            if target_book_id == 2:
+                stmt_groups = stmt_groups.where(GkHanyuGroup.category == '花生十三高频1000词')
+            elif target_book_id == 1:
+                stmt_groups = stmt_groups.where(GkHanyuGroup.category != '花生十三高频1000词')
+
+            stmt_groups = stmt_groups.order_by(GkHanyuGroup.id)
+            res_groups = await db.execute(stmt_groups)
+            group_objs = res_groups.scalars().all()
+
+            if group_objs:
+                filtered_gids = [g.id for g in group_objs]
+                stmt_items = select(GkHanyuGroupItem).where(GkHanyuGroupItem.group_id.in_(filtered_gids)).order_by(GkHanyuGroupItem.sort_order)
+                res_items = await db.execute(stmt_items)
+                item_objs = res_items.scalars().all()
+
+                items_by_gid: dict[int, list[HanyuGroupItemOut]] = {}
+                for item in item_objs:
+                    items_by_gid.setdefault(item.group_id, []).append(
+                        HanyuGroupItemOut(
+                            hanyu_id=item.hanyu_id,
+                            word=item.word,
+                            emphasis=item.emphasis,
+                            collocation=item.collocation,
+                            is_current=(item.hanyu_id == hanyu.id or item.word == hanyu.name),
+                        )
+                    )
+
+                for g in group_objs:
+                    bianxi_groups.append(
+                        HanyuGroupOut(
+                            id=g.id,
+                            title=g.title,
+                            group_no=g.group_no,
+                            category=g.category,
+                            summary=g.summary,
+                            items=items_by_gid.get(g.id, []),
+                        )
+                    )
+
         return StudySessionWord(
             hanyu_id=hanyu.id,
             word=hanyu.name,
@@ -54,7 +111,9 @@ class HanyuStudyService:
             difficulty=user_word.difficulty if user_word else None,
             is_new=user_word is None,
             is_starred=user_word.is_starred if user_word else False,
+            bianxi_groups=bianxi_groups,
         )
+
 
     @staticmethod
     async def get_study_session(
@@ -72,6 +131,8 @@ class HanyuStudyService:
         :return:
         """
         setting = await hanyu_user_setting_dao.get_or_create(db, user_id)
+        active_ub = await hanyu_user_book_dao.get_active_book(db, user_id)
+        active_book_id = active_ub.book_id if active_ub else None
         now = timezone.now()
 
         words: list[StudySessionWord] = []
@@ -85,19 +146,23 @@ class HanyuStudyService:
             for uw in due_user_words:
                 stmt = (
                     select(GkHanyu, GkHanyuWordbookEntry)
-                    .join(GkHanyuWordbookEntry, GkHanyuWordbookEntry.hanyu_id == GkHanyu.id, isouter=True)
+                    .join(
+                        GkHanyuWordbookEntry,
+                        (GkHanyuWordbookEntry.hanyu_id == GkHanyu.id)
+                        & (GkHanyuWordbookEntry.wordbook_id == active_book_id if active_book_id else True),
+                        isouter=True,
+                    )
                     .where(GkHanyu.id == uw.hanyu_id)
                 )
                 result = await db.execute(stmt)
                 row = result.first()
                 if row:
                     hanyu, entry = row
-                    words.append(await HanyuStudyService._build_session_word(db, hanyu, uw, entry))
+                    words.append(await HanyuStudyService._build_session_word(db, hanyu, uw, entry, active_book_id))
             review_count = len(words)
 
         # 2. 新词
         if mode in ('all', 'learn'):
-            active_ub = await hanyu_user_book_dao.get_active_book(db, user_id)
             if active_ub:
                 needed = setting.daily_new_target
                 learned_ids = await hanyu_user_word_dao.get_learned_hanyu_ids(db, user_id)
@@ -117,7 +182,7 @@ class HanyuStudyService:
                     row = result.first()
                     if row:
                         hanyu, entry = row
-                        words.append(await HanyuStudyService._build_session_word(db, hanyu, None, entry))
+                        words.append(await HanyuStudyService._build_session_word(db, hanyu, None, entry, active_ub.book_id))
                         new_count += 1
 
         return GetStudySession(words=words, new_count=new_count, review_count=review_count, total=len(words))

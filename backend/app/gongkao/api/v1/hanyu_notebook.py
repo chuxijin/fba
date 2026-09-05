@@ -38,19 +38,19 @@ async def hanyu_start_book(
 
     ub = await hanyu_user_book_dao.get_by_user_and_book(db, user_id, book_id)
     if ub:
-        await hanyu_user_book_dao.update_model(db, ub.id, {'is_active': True, 'finished_at': None})
+        ub.is_active = True
+        ub.finished_at = None
+        await db.commit()
         await db.refresh(ub)
     else:
-        ub = await hanyu_user_book_dao.create_model(
-            db,
-            {
-                'user_id': user_id,
-                'book_id': book_id,
-                'is_active': True,
-                'started_at': timezone.now(),
-            },
-            commit=False,
+        from backend.app.gongkao.model import GkHanyuUserBook
+        ub = GkHanyuUserBook(
+            user_id=user_id,
+            book_id=book_id,
+            is_active=True,
+            started_at=timezone.now(),
         )
+        db.add(ub)
         await db.commit()
         await db.refresh(ub)
 
@@ -68,7 +68,9 @@ async def hanyu_finish_book(
 
     ub = await hanyu_user_book_dao.get_by_user_and_book(db, request.user.id, book_id)
     if ub:
-        await hanyu_user_book_dao.update_model(db, ub.id, {'is_active': False, 'finished_at': timezone.now()})
+        ub.is_active = False
+        ub.finished_at = timezone.now()
+        await db.commit()
     return response_base.success()
 
 
@@ -180,7 +182,8 @@ async def hanyu_toggle_star(
 
     uw = await hanyu_user_word_dao.get_by_user_and_word(db, request.user.id, hanyu_id)
     if uw:
-        await hanyu_user_word_dao.update_model(db, uw.id, {'is_starred': is_starred})
+        uw.is_starred = is_starred
+        await db.commit()
     return response_base.success()
 
 
