@@ -25,6 +25,16 @@ class AuthLoginParam(AuthSchemaBase):
     captcha: str | None = Field(None, description='验证码')
 
 
+class AuthRegisterParam(AuthSchemaBase):
+    """用户注册参数"""
+
+    username: str = Field(min_length=3, max_length=20, description='用户名')
+    password: str = Field(min_length=6, max_length=32, description='密码')
+    nickname: Annotated[str | None, Field(None, min_length=2, max_length=20, description='昵称')]
+    uuid: str | None = Field(None, description='验证码 UUID')
+    captcha: str | None = Field(None, description='验证码')
+
+
 class SmsLoginParam(SchemaBase):
     """短信验证码登录参数"""
 

@@ -7,7 +7,7 @@ from backend.app.admin.crud.crud_menu import menu_dao
 from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.model import User
 from backend.app.admin.schema.token import GetLoginToken, GetNewToken
-from backend.app.admin.schema.user import AuthLoginParam, SmsLoginParam
+from backend.app.admin.schema.user import AuthLoginParam, AuthRegisterParam, SmsLoginParam
 from backend.app.admin.service.login_log_service import login_log_service
 from backend.app.admin.service.user_password_history_service import password_security_service
 from backend.app.admin.utils.password_security import password_verify
@@ -310,6 +310,47 @@ class AuthService:
         await redis_client.delete(f'{settings.TOKEN_EXTRA_INFO_REDIS_PREFIX}:{user_id}:{session_uuid}')
         if refresh_token:
             await redis_client.delete(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}:{session_uuid}')
+
+    async def register_user(self, *, db: AsyncSession, obj: AuthRegisterParam) -> User:
+        """
+        用户名密码注册（C 端）
+
+        :param db: 数据库会话
+        :param obj: 注册参数
+        :return: 新注册的用户
+        """
+        import bcrypt
+
+        from backend.app.admin.service.user_service import user_service
+        from backend.app.admin.utils.password_security import get_hash_password
+
+        await load_login_config(db)
+        if settings.LOGIN_CAPTCHA_ENABLED:
+            if not obj.uuid or not obj.captcha:
+                raise errors.RequestError(msg=t('error.captcha.invalid'))
+            captcha_code = await redis_client.get(f'{settings.LOGIN_CAPTCHA_REDIS_PREFIX}:{obj.uuid}')
+            if not captcha_code:
+                raise errors.RequestError(msg=t('error.captcha.expired'))
+            if captcha_code.lower() != obj.captcha.lower():
+                raise errors.CustomError(error=CustomErrorCode.CAPTCHA_ERROR)
+            await redis_client.delete(f'{settings.LOGIN_CAPTCHA_REDIS_PREFIX}:{obj.uuid}')
+
+        if await user_dao.get_by_username(db, obj.username):
+            raise errors.ConflictError(msg='用户名已注册')
+
+        salt = bcrypt.gensalt()
+        user = await user_service.register(
+            db=db,
+            user_data={
+                'username': obj.username,
+                'password': get_hash_password(obj.password, salt),
+                'salt': salt,
+                'nickname': obj.nickname or obj.username,
+                'status': 1,
+            },
+        )
+        log.info(f'新用户注册: {obj.username}')
+        return user
 
     async def login_by_sms(
         self,

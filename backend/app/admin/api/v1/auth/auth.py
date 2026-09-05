@@ -6,7 +6,7 @@ from pyrate_limiter import Duration, Rate
 from starlette.background import BackgroundTasks
 
 from backend.app.admin.schema.token import GetLoginToken, GetNewToken, GetSwaggerToken
-from backend.app.admin.schema.user import AuthLoginParam
+from backend.app.admin.schema.user import AuthLoginParam, AuthRegisterParam
 from backend.app.admin.service.auth_service import auth_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -38,6 +38,20 @@ async def login(
 ) -> ResponseSchemaModel[GetLoginToken]:
     data = await auth_service.login(db=db, response=response, obj=obj, background_tasks=background_tasks)
     return response_base.success(data=data)
+
+
+@router.post(
+    '/register',
+    summary='用户注册',
+    description='json 格式注册,C 端用户名密码注册,需图形验证码',
+    dependencies=[Depends(RateLimiter(Rate(5, Duration.MINUTE)))],
+)
+async def register(
+    db: CurrentSessionTransaction,
+    obj: AuthRegisterParam,
+) -> ResponseModel:
+    await auth_service.register_user(db=db, obj=obj)
+    return response_base.success()
 
 
 @router.get('/codes', summary='获取所有授权码', description='适配 vben admin v5', dependencies=[DependsJwtAuth])
