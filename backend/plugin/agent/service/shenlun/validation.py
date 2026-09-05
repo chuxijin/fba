@@ -114,7 +114,8 @@ def validate_grading_result(  # noqa: C901
 
     display_max_score = float(rubric.get('display_max_score') or rubric.get('max_score') or 100)
     score, score_calibration = apply_score_calibration(raw_score_percent, calibration_policy)
-    display_score = round(score * display_max_score / 100, 2)
+    # 与 YanShen 保持一致:总分按 0.5 的倍数取整(round-half)
+    display_score = round(score * display_max_score / 100 * 2) / 2
     _redistribute_dimension_scores(dimensions, score)
     content_score = next((item['score'] for item in dimensions if item['dimension'] == 'content'), 0.0)
     display_scale = display_max_score / 100
