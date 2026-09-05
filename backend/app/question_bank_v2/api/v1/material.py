@@ -61,15 +61,15 @@ async def get_materials(
     '/{pk}/revisions/{revision_id}/anchors',
     summary='获取材料版本锚点',
     name='qbank_v2_get_material_anchors',
-    dependencies=[DependsCursorPagination],
 )
 async def get_material_anchors(
     db: CurrentSession,
     pk: Annotated[int, Path(gt=0, description='材料 ID')],
     revision_id: Annotated[int, Path(gt=0, description='材料版本 ID')],
 ) -> ResponseSchemaModel[CursorPageData[GetMaterialAnchorDetail]]:
-    stmt = await material_service.get_anchors_select(db=db, material_id=pk, revision_id=revision_id)
-    return response_base.success(data=await cursor_paging_data(db, stmt, GetMaterialAnchorDetail))
+    """锚点为标注基础数据，单版本数量有限，直接全量返回，避免分页截断导致回显/候选缺失"""
+    data = await material_service.get_anchors(db=db, material_id=pk, revision_id=revision_id)
+    return response_base.success(data=CursorPageData[GetMaterialAnchorDetail](items=data, has_more=False))
 
 
 @router.post(
