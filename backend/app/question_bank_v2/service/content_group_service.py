@@ -59,26 +59,22 @@ class ContentGroupService:
         related_rows: Sequence[dict[str, Any]],
         section_rows: Sequence[dict[str, Any]],
     ) -> list[ContentGroupNode]:
-        """把错题压到题库下的章节一层：子章节的错题归并到根章节，返回题库→章节两级。"""
+        """把错题压到题库下的章节一层：子章节的错题归并到根章节，返回题库→章节两级。
+
+        题库章节节点只做统计展示，不下发题目 ID；
+        具体题目按节点上下文（bank_id/section_id）由会话/采集接口现查。
+        """
         direct_counts = {
             int(row['section_id']): int(row['count'] or 0)
             for row in related_rows
             if row['section_id'] is not None
         }
-        direct_ids: dict[int, list[int]] = {}
-        for row in related_rows:
-            if row['section_id'] is None:
-                continue
-            ids = [int(qid) for qid in (row.get('question_ids') or [])]
-            if ids:
-                direct_ids.setdefault(int(row['section_id']), []).extend(ids)
         nodes = {
             int(row['id']): ContentGroupNode(
                 id=int(row['id']),
                 bank_id=bank_id,
                 name=row['name'],
                 count=0,
-                question_ids=[],
             )
             for row in section_rows
         }
@@ -92,15 +88,13 @@ class ContentGroupService:
             if root_id not in nodes:
                 continue
             nodes[root_id].count += count
-            nodes[root_id].question_ids.extend(direct_ids.get(section_id, []))
 
         roots: list[ContentGroupNode] = []
         for section_id, node in nodes.items():
             if parent_by_id.get(section_id) is not None:
                 continue
-            if node.count <= 0 and not node.question_ids:
+            if node.count <= 0:
                 continue
-            node.question_ids = _unique_ids(node.question_ids)
             roots.append(node)
         return roots
 
@@ -125,13 +119,6 @@ class ContentGroupService:
             bank.count += int(row['count'] or 0)
         for bank_id, bank in banks.items():
             related_rows = rows_by_bank[bank_id]
-            # 直接挂在题库下（无章节归属）的题目 ID
-            bank_related_ids: list[int] = []
-            for row in related_rows:
-                if row['section_id'] is not None:
-                    continue
-                bank_related_ids.extend(int(qid) for qid in (row.get('question_ids') or []))
-            bank.question_ids = _unique_ids(bank_related_ids)
             related_revision_ids = {int(row['bank_revision_id']) for row in related_rows}
             related_sections = [
                 section

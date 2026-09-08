@@ -598,9 +598,6 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 QbBankSection.id.label('section_id'),
                 QbBankSection.name.label('section_name'),
                 func.count(func.distinct(QbWrongQuestionState.question_id)).label('count'),
-                aggregate_strings(func.distinct(QbWrongQuestionState.question_id.cast(String)), ',').label(
-                    'question_ids_csv'
-                ),
             )
             .select_from(QbWrongQuestionState)
             .outerjoin(
@@ -656,11 +653,9 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         rows = []
         for row in (await db.execute(stmt)).mappings().all():
             result = dict(row)
-            # 知识点分组不下发题目 ID，只有题库分组才有该字段
-            question_ids_csv = result.pop('question_ids_csv', None)
-            result['question_ids'] = (
-                [int(question_id) for question_id in question_ids_csv.split(',')] if question_ids_csv else []
-            )
+            # 题库分组不下发题目 ID：列表只做统计展示，
+            # 投递与导出按 bank_id/section_id 上下文由会话/采集接口现查
+            result['question_ids'] = []
             rows.append(result)
         for row in (await db.execute(external_stmt)).mappings().all():
             question_ids_csv = row['question_ids_csv']

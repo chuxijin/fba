@@ -68,16 +68,19 @@ def test_bank_tree_restores_collection_and_section_ancestors() -> None:
     assert bank.type is None
     assert bank.name == '2026 国考行测'
     assert bank.count == 5
+    # 题库章节节点只做统计展示，不下发题目 ID
+    assert bank.question_ids == []
     assert len(bank.children) == 2
     # 子章节「仔细阅读」的错题归并到根章节「阅读」，不再往下展开
     assert bank.children[0].name == '阅读'
     assert bank.children[0].children == []
     assert bank.children[0].count == 3
-    assert bank.children[0].question_ids == [101, 102, 103]
+    assert bank.children[0].question_ids == []
     assert bank.children[1].name == '数量'
     assert bank.children[1].children == []
     assert bank.children[1].count == 2
-    assert bank.children[1].question_ids == [201, 202]
+    assert bank.children[1].question_ids == []
+    # 未归属（外部录入）节点仍下发题目 ID，供 custom 投递使用
     assert groups[1].name == '未归属题库'
     assert groups[1].id == 0
     assert groups[1].question_ids == [301]
