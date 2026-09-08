@@ -140,7 +140,9 @@ def _build_sync_failure_message(result: dict[str, Any]) -> str:
     :param result: 同步执行结果
     :return:
     """
-    return f'MyDrive 同步任务 {result.get("task_id")} 执行失败: {result.get("error") or "未知错误"}'
+    config_name = str(result.get('config_name') or '').strip()
+    config_part = f'（{config_name}）' if config_name else ' '
+    return f'MyDrive 同步任务 {result.get("task_id")}{config_part}执行失败: {result.get("error") or "未知错误"}'
 
 
 def _should_execute_now(cron_expr: str, last_synced_at: datetime | None, current_time: datetime) -> bool:

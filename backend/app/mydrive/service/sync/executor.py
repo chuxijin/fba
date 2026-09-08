@@ -57,13 +57,23 @@ class MyDriveSyncExecutor:
         config = await mydrive_sync_config_dao.select_model(db, task.config_id)
         if config is None or config.deleted or not config.is_enabled:
             await self._finish_task(db, task_id, 'failed', '同步配置不存在或已停用')
-            return {'success': False, 'task_id': task_id, 'error': '同步配置不存在或已停用'}
+            return {
+                'success': False,
+                'task_id': task_id,
+                'config_name': config.name if config is not None else None,
+                'error': '同步配置不存在或已停用',
+            }
 
         source_space = await mydrive_space_dao.get(db, config.source_space_id, config.owner_id)
         target_space = await mydrive_space_dao.get(db, config.target_space_id, config.owner_id)
         if source_space is None or target_space is None:
             await self._finish_task(db, task_id, 'failed', '同步来源或目标文件空间不存在')
-            return {'success': False, 'task_id': task_id, 'error': '同步来源或目标文件空间不存在'}
+            return {
+                'success': False,
+                'task_id': task_id,
+                'config_name': config.name,
+                'error': '同步来源或目标文件空间不存在',
+            }
 
         try:
             validate_sync_spaces(source_space, target_space)
@@ -122,18 +132,18 @@ class MyDriveSyncExecutor:
                     await mydrive_space_service.invalidate_space_cache(target_space.id)
         except MyDriveSyncAccountLockError as exc:
             await self._finish_task(db, task_id, 'failed', str(exc))
-            return {'success': False, 'task_id': task_id, 'error': str(exc)}
+            return {'success': False, 'task_id': task_id, 'config_name': config.name, 'error': str(exc)}
         except errors.ForbiddenError as exc:
             await self._finish_task(db, task_id, 'failed', exc.msg)
-            return {'success': False, 'task_id': task_id, 'error': exc.msg}
+            return {'success': False, 'task_id': task_id, 'config_name': config.name, 'error': exc.msg}
         except (MyDriveError, BaiduRequestError, QuarkRequestError, ThunderRequestError) as exc:
             error_message = str(exc)
             await self._finish_task(db, task_id, 'failed', error_message)
-            return {'success': False, 'task_id': task_id, 'error': error_message}
+            return {'success': False, 'task_id': task_id, 'config_name': config.name, 'error': error_message}
         except Exception as exc:
             log.exception('MyDrive 同步任务 {} 执行失败: {}', task_id, exc)
             await self._finish_task(db, task_id, 'failed', str(exc))
-            return {'success': False, 'task_id': task_id, 'error': str(exc)}
+            return {'success': False, 'task_id': task_id, 'config_name': config.name, 'error': str(exc)}
 
         task = await mydrive_sync_task_dao.select_model(db, task_id)
         if task is not None and task.cancel_requested:
