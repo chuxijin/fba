@@ -186,7 +186,9 @@ async def _ensure_render_payload_access(
     filters = payload.filters
     bank_id = _coerce_positive_int(filters.get('bank_id'))
     if payload.metadata.get('qbank_version') == 'v2':
-        if bank_id is not None:
+        # 错题/收藏/笔记是用户自有练习数据，随用户走不随题库权益走
+        source_type = payload.metadata.get('source_type')
+        if bank_id is not None and source_type not in {'wrong', 'favorite', 'note'}:
             await bank_access_service.ensure_bank_access(
                 db=db,
                 user_id=bound_user_id,

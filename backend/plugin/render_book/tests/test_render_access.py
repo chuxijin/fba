@@ -165,3 +165,28 @@ def test_ensure_v2_render_payload_checks_bank_access(monkeypatch) -> None:
 
     assert result == 9
     assert captured == {'db': None, 'user_id': 9, 'bank_id': 123}
+
+
+def test_ensure_v2_render_payload_skips_bank_access_for_user_content(monkeypatch) -> None:
+    """错题/收藏/笔记是用户自有数据，V2 渲染导出不再触发题库权益门禁。"""
+
+    async def fail_ensure(*_args, **_kwargs):
+        raise AssertionError('user content exports should bypass bank access')
+
+    monkeypatch.setattr(
+        'backend.plugin.render_book.api.v1.render.bank_access_service.ensure_bank_access',
+        fail_ensure,
+    )
+    request = SimpleNamespace(user=SimpleNamespace(id=9, is_superuser=False))
+
+    for source_type in ('wrong', 'favorite', 'note'):
+        payload = RenderJobCreate(
+            template_key='wrong_question',
+            title='错题本',
+            filters={'bank_id': 123, 'question_ids': [1, 2]},
+            metadata={'qbank_version': 'v2', 'source_type': source_type},
+        )
+
+        result = asyncio.run(_ensure_render_payload_access(request=request, db=None, payload=payload))
+
+        assert result == 9
