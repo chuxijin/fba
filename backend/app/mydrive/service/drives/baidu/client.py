@@ -438,12 +438,15 @@ class BaiduRequest:
         self._observe_request('GET', url, 'success', start_time)
         self._update_cookie_header(response)
         match = re.search(r'(?:yunData\.setData|locals\.mset)\((.+?)\);', response.text)
-        if match is None:
-            raise BaiduRequestError('无法解析百度分享上下文')
-        try:
-            payload = json.loads(match.group(1))
-        except ValueError as exc:
-            raise BaiduRequestError('百度分享上下文格式错误') from exc
+        if match is not None:
+            try:
+                payload = json.loads(match.group(1))
+            except ValueError as exc:
+                raise BaiduRequestError('百度分享上下文格式错误') from exc
+        else:
+            payload = self._extract_locals_data_payload(response.text)
+            if payload is None:
+                raise BaiduRequestError('无法解析百度分享上下文')
         file_list = payload.get('file_list', [])
         if isinstance(file_list, dict):
             file_list = file_list.get('list', [])
@@ -675,6 +678,30 @@ class BaiduRequest:
         """移除提取码等查询参数，构建已验证分享页地址。"""
         parsed_url = httpx.URL(url)
         return str(parsed_url.copy_with(query=None))
+
+    @staticmethod
+    def _extract_locals_data_payload(page_text: str) -> dict[str, Any] | None:
+        """
+        解析新版分享页内嵌的 locals-data JSON 上下文。
+
+        :param page_text: 分享页面 HTML
+        :return:
+        """
+        tag_match = re.search(r'<script\b[^>]*\bid=["\']locals-data["\'][^>]*>', page_text)
+        if tag_match is None:
+            return None
+        content = page_text[tag_match.end():]
+        end = content.find('</script>')
+        if end != -1:
+            content = content[:end]
+        start = content.find('{')
+        if start == -1:
+            return None
+        try:
+            payload, _ = json.JSONDecoder().raw_decode(content[start:])
+        except ValueError:
+            return None
+        return payload if isinstance(payload, dict) else None
 
     @staticmethod
     def _parse_cookie(cookie: str) -> dict[str, str]:

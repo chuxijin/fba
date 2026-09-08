@@ -3,8 +3,66 @@
 import asyncio
 
 import httpx
+import pytest
 
-from backend.app.mydrive.service.drives.baidu.client import BaiduRequest
+from backend.app.mydrive.service.drives.baidu.client import BaiduRequest, BaiduRequestError
+
+
+def test_baidu_request_parses_legacy_share_page_context() -> None:
+    """旧版分享页应继续从 locals.mset 中解析分享上下文。"""
+    page = (
+        '<html><body><script>'
+        'locals.mset({"share_uk":1099884833520,"shareid":6322382938,"bdstoken":"legacy-token",'
+        '"file_list":[{"fs_id":3,"path":"/sharelink1099884833520-1/course","server_filename":"course","isdir":0,"size":1024}]});'
+        '</script></body></html>'
+    )
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=page)))
+    request = BaiduRequest('BDUSS=value', client=client)
+
+    context, files = asyncio.run(request.get_share_root('https://pan.baidu.com/s/1share?pwd=code'))
+    asyncio.run(client.aclose())
+
+    assert context['uk'] == 1099884833520
+    assert context['share_id'] == 6322382938
+    assert context['bdstoken'] == 'legacy-token'
+    assert context['url'] == 'https://pan.baidu.com/s/1share'
+    assert files[0]['fs_id'] == 3
+
+
+def test_baidu_request_parses_v2_share_page_locals_data() -> None:
+    """新版分享页应从 locals-data JSON 中解析分享上下文。"""
+    page = (
+        '<!doctype html><html><head></head><body>'
+        '<script id="locals-data" type="application/json">\n'
+        '{"uk":1103411849043,"share_uk":1099884833520,"shareid":6322382938,'
+        '"bdstoken":"0ae2fa08318797fc440488a386aacf65","loginstate":1,'
+        '"file_list":[{"fs_id":123,"path":"/sharelink1099884833520-456/course",'
+        '"server_filename":"course","isdir":1,"size":0}]}\n'
+        '</script></body></html>'
+    )
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=page)))
+    request = BaiduRequest('BDUSS=value', client=client)
+
+    context, files = asyncio.run(request.get_share_root('https://pan.baidu.com/s/1share'))
+    asyncio.run(client.aclose())
+
+    assert context['uk'] == 1099884833520
+    assert context['share_id'] == 6322382938
+    assert context['bdstoken'] == '0ae2fa08318797fc440488a386aacf65'
+    assert not context['sekey']
+    assert files[0]['fs_id'] == 123
+    assert files[0]['server_filename'] == 'course'
+
+
+def test_baidu_request_rejects_unknown_share_page() -> None:
+    """无法识别的分享页面应抛出解析异常。"""
+    page = '<!doctype html><html><head></head><body>disk-share-v2</body></html>'
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=page)))
+    request = BaiduRequest('BDUSS=value', client=client)
+
+    with pytest.raises(BaiduRequestError, match='无法解析百度分享上下文'):
+        asyncio.run(request.get_share_root('https://pan.baidu.com/s/1share'))
+    asyncio.run(client.aclose())
 
 
 def test_baidu_request_extracts_bdstoken_from_page_assignment() -> None:
