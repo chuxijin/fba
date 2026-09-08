@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
 from backend.app.access.constants import ReasonCode
-from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
+from backend.app.question_bank_v2.crud.crud_bank import bank_dao, bank_revision_dao
 from backend.app.question_bank_v2.crud.crud_composition import bank_section_dao
 from backend.app.question_bank_v2.crud.crud_material import question_interaction_dao, question_material_dao
 from backend.app.question_bank_v2.crud.crud_practice import (
@@ -57,6 +57,9 @@ from backend.app.question_bank_v2.service.statistics_service import statistics_s
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.utils.timezone import timezone
+
+#: 用户自有练习数据来源：错题/收藏/笔记随用户走，不随题库权益走
+USER_CONTENT_SOURCE_TYPES = frozenset({'wrong', 'favorite', 'note'})
 
 
 class PracticeService:
@@ -828,17 +831,23 @@ class PracticeService:
         revision = None
         initial_decision = None
         if obj.bank_id is not None:
-            bank, initial_decision = await bank_access_service.ensure_bank_access(
-                db=db,
-                user_id=user_id,
-                bank_id=obj.bank_id,
-                question_ordinal=0,
-                question_total=obj.limit or 500,
-                consume=False,
-                raise_on_deny=False,
-            )
-            if not initial_decision.allowed:
-                raise errors.ForbiddenError(msg=BankAccessService._deny_message(initial_decision))
+            if obj.source_type in USER_CONTENT_SOURCE_TYPES:
+                # 用户自有内容豁免权益门禁：只校验题库存在且可用，不校验刷题权益
+                bank = await bank_dao.get(db, obj.bank_id)
+                if bank is None or bank.status != 'active' or bank.current_revision_id is None:
+                    raise errors.NotFoundError(msg='题库不存在或尚未发布')
+            else:
+                bank, initial_decision = await bank_access_service.ensure_bank_access(
+                    db=db,
+                    user_id=user_id,
+                    bank_id=obj.bank_id,
+                    question_ordinal=0,
+                    question_total=obj.limit or 500,
+                    consume=False,
+                    raise_on_deny=False,
+                )
+                if not initial_decision.allowed:
+                    raise errors.ForbiddenError(msg=BankAccessService._deny_message(initial_decision))
             if obj.source_type == 'bank' or obj.section_id is not None:
                 revision = await bank_revision_dao.get(db, bank.current_revision_id, bank_id=bank.id)
                 if revision is None or revision.status != 'published':
@@ -892,12 +901,22 @@ class PracticeService:
                 region=obj.region,
             )
         else:
+            # 用户内容来源的章节过滤与整库投递同口径：展开选中章节及其全部后代
+            resolved_section_ids: list[int] = []
+            if obj.section_id is not None:
+                if revision is None:
+                    raise errors.NotFoundError(msg='题库当前发布版本不存在')
+                resolved_section_ids = await practice_session_item_dao._resolve_section_ids(
+                    db,
+                    revision.id,
+                    obj.section_id,
+                )
             candidates = await practice_session_item_dao.get_user_candidates(
                 db,
                 user_id=user_id,
                 source_type=obj.source_type,
                 bank_id=obj.bank_id,
-                section_id=obj.section_id,
+                section_ids=resolved_section_ids,
                 favorite_folder_id=obj.favorite_folder_id,
                 question_ids=obj.question_ids,
                 knowledge_point_ids=sorted(resolved_knowledge_point_ids),
@@ -1005,17 +1024,23 @@ class PracticeService:
         revision = None
         initial_decision = None
         if obj.bank_id is not None:
-            bank, initial_decision = await bank_access_service.ensure_bank_access(
-                db=db,
-                user_id=user_id,
-                bank_id=obj.bank_id,
-                question_ordinal=0,
-                question_total=obj.limit or 500,
-                consume=False,
-                raise_on_deny=False,
-            )
-            if not initial_decision.allowed:
-                raise errors.ForbiddenError(msg=BankAccessService._deny_message(initial_decision))
+            if obj.source_type in USER_CONTENT_SOURCE_TYPES:
+                # 用户自有内容豁免权益门禁：与练习会话创建同口径
+                bank = await bank_dao.get(db, obj.bank_id)
+                if bank is None or bank.status != 'active' or bank.current_revision_id is None:
+                    raise errors.NotFoundError(msg='题库不存在或尚未发布')
+            else:
+                bank, initial_decision = await bank_access_service.ensure_bank_access(
+                    db=db,
+                    user_id=user_id,
+                    bank_id=obj.bank_id,
+                    question_ordinal=0,
+                    question_total=obj.limit or 500,
+                    consume=False,
+                    raise_on_deny=False,
+                )
+                if not initial_decision.allowed:
+                    raise errors.ForbiddenError(msg=BankAccessService._deny_message(initial_decision))
             if obj.source_type == 'bank' or obj.section_id is not None:
                 revision = await bank_revision_dao.get(db, bank.current_revision_id, bank_id=bank.id)
                 if revision is None or revision.status != 'published':
@@ -1050,12 +1075,22 @@ class PracticeService:
                 region=obj.region,
             )
         else:
+            # 与练习会话投递同口径：章节过滤展开选中章节及其全部后代
+            resolved_section_ids = []
+            if obj.section_id is not None:
+                if revision is None:
+                    raise errors.NotFoundError(msg='题库当前发布版本不存在')
+                resolved_section_ids = await practice_session_item_dao._resolve_section_ids(
+                    db,
+                    revision.id,
+                    obj.section_id,
+                )
             candidates = await practice_session_item_dao.get_user_candidates(
                 db,
                 user_id=user_id,
                 source_type=obj.source_type,
                 bank_id=obj.bank_id,
-                section_id=obj.section_id,
+                section_ids=resolved_section_ids,
                 favorite_folder_id=obj.favorite_folder_id,
                 question_ids=obj.question_ids,
                 knowledge_point_ids=sorted(resolved_point_ids),

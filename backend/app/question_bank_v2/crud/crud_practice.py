@@ -593,7 +593,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         user_id: int,
         source_type: str,
         bank_id: int | None,
-        section_id: int | None,
+        section_ids: Sequence[int],
         favorite_folder_id: int | None,
         question_ids: Sequence[int],
         knowledge_point_ids: Sequence[int],
@@ -924,8 +924,8 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                     QbQuestionKnowledgePoint.deleted == 0,
                 ),
             ).distinct()
-        if section_id is not None:
-            stmt = stmt.where(QbBankItem.section_id == section_id)
+        if section_ids:
+            stmt = stmt.where(QbBankItem.section_id.in_(section_ids))
         if year_start is not None:
             stmt = stmt.where(QbBankItem.exam_year >= year_start)
         if year_end is not None:

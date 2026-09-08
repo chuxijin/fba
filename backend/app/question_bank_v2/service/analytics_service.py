@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
+from backend.app.question_bank_v2.crud.crud_bank import bank_dao, bank_revision_dao
 from backend.app.question_bank_v2.crud.crud_catalog import collection_bank_dao, collection_dao
 from backend.app.question_bank_v2.crud.crud_composition import bank_section_dao
 from backend.app.question_bank_v2.crud.crud_statistics import (
@@ -193,9 +193,23 @@ class AnalyticsService:
         return [build(section_id) for section_id in root_ids]
 
     @staticmethod
-    async def _get_bank_context(*, db: AsyncSession, user_id: int, bank_id: int) -> tuple[Any, Any]:
-        """校验题库刷题权限并获取当前发布版本"""
-        bank, _ = await bank_access_service.ensure_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+    async def _get_bank_context(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int,
+        require_access: bool = True,
+    ) -> tuple[Any, Any]:
+        """校验题库刷题权限并获取当前发布版本
+
+        :param require_access: False 时仅校验题库存在与版本可用，用于用户自有内容（如错题章节树）
+        """
+        if require_access:
+            bank, _ = await bank_access_service.ensure_bank_access(db=db, user_id=user_id, bank_id=bank_id)
+        else:
+            bank = await bank_dao.get(db, bank_id)
+            if bank is None or bank.status != 'active' or bank.current_revision_id is None:
+                raise errors.NotFoundError(msg='题库不存在或尚未发布')
         revision = await bank_revision_dao.get(db, bank.current_revision_id, bank_id=bank.id)
         if revision is None or revision.status != 'published':
             raise errors.NotFoundError(msg='题库当前发布版本不存在')
@@ -419,7 +433,13 @@ class AnalyticsService:
         bank_id: int,
     ) -> GetBankWrongSectionCounts:
         """获取题库当前版本的活跃错题篇章树"""
-        _, revision = await AnalyticsService._get_bank_context(db=db, user_id=user_id, bank_id=bank_id)
+        # 错题是用户自有练习数据：权益过期仍可查看错题章节树并重练
+        _, revision = await AnalyticsService._get_bank_context(
+            db=db,
+            user_id=user_id,
+            bank_id=bank_id,
+            require_access=False,
+        )
         # 只需要章节树本身，不必跑 get_bank_progress_rows 的两条聚合查询
         sections = list(await bank_section_dao.get_all(db, revision_id=revision.id))
         rows = await learning_analytics_dao.get_wrong_section_counts(

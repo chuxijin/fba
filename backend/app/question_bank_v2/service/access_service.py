@@ -22,6 +22,7 @@ class BankAccessService:
         question_ordinal: int | None = None,
         question_total: int | None = None,
         consume: bool = False,
+        source_ref: str | None = None,
         raise_on_deny: bool = True,
     ) -> tuple[QbBank, Decision]:
         """
@@ -39,6 +40,7 @@ class BankAccessService:
         :param question_ordinal: 当前题目在题库中的序号(0 起), 空则不启用试看
         :param question_total: 题库题目总数, 供按比例试看使用
         :param consume: 是否消耗计量额度与按日试看次数
+        :param source_ref: 消耗来源引用(如会话键+题序), 供按日试看幂等扣减
         :param raise_on_deny: 权限不足时是否抛出异常
         :return:
         """
@@ -61,6 +63,7 @@ class BankAccessService:
                     action='practice',
                     allow_trial=question_ordinal is not None,
                     consume_trial=consume,
+                    source_ref=source_ref,
                     sub_resource_ordinal=question_ordinal,
                     sub_resource_total=question_total,
                 ),

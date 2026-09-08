@@ -281,3 +281,226 @@ def test_large_batch_inputs_are_rejected() -> None:
     }
     with pytest.raises(ValidationError, match='总数最多 100'):
         UpdatePracticePreferenceParam(custom_tabs=tabs)
+
+
+def test_user_candidate_sections_expand_descendants(monkeypatch: MonkeyPatch) -> None:
+    """用户内容来源的章节过滤应展开子孙集合，父章节能命中子章节错题"""
+    import backend.app.question_bank_v2.service.practice_service as practice_service_module
+
+    from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
+    from backend.app.question_bank_v2.crud.crud_composition import bank_section_dao
+    from backend.app.question_bank_v2.schema.practice import CreatePracticeSessionParam
+
+    captured: dict[str, Any] = {}
+
+    async def fake_get_user_candidates(_db: AsyncSession | None, **kwargs: Any) -> list[Any]:
+        await asyncio.sleep(0)
+        captured.update(kwargs)
+        return []
+
+    async def fake_resolve_section_ids(
+        _db: AsyncSession | None,
+        bank_revision_id: int,
+        section_id: int,
+    ) -> list[int]:
+        await asyncio.sleep(0)
+        assert bank_revision_id == 101
+        assert section_id == 11
+        return [11, 12]
+
+    class FakeBank:
+        id = 1
+        current_revision_id = 101
+        status = 'active'
+
+    class FakeRevision:
+        id = 101
+        status = 'published'
+
+    class FakeSection:
+        id = 11
+
+    async def fake_ensure_bank_access(**_kwargs: Any) -> tuple[Any, Any]:
+        await asyncio.sleep(0)
+        raise AssertionError('用户内容来源不应触发题库权益门禁')
+
+    async def fake_bank_get(_db: AsyncSession | None, _bank_id: int) -> Any:
+        await asyncio.sleep(0)
+        return FakeBank()
+
+    async def fake_revision_get(_db: AsyncSession | None, _revision_id: int, **_kwargs: Any) -> Any:
+        await asyncio.sleep(0)
+        return FakeRevision()
+
+    async def fake_section_get(_db: AsyncSession | None, _section_id: int, **_kwargs: Any) -> Any:
+        await asyncio.sleep(0)
+        return FakeSection()
+
+    async def fake_get_by_key(_db: AsyncSession | None, _session_key: str, **_kwargs: Any) -> None:
+        await asyncio.sleep(0)
+        return
+
+    monkeypatch.setattr(
+        practice_service_module.practice_session_item_dao,
+        'get_user_candidates',
+        fake_get_user_candidates,
+    )
+    monkeypatch.setattr(
+        practice_service_module.practice_session_item_dao,
+        '_resolve_section_ids',
+        staticmethod(fake_resolve_section_ids),
+    )
+    monkeypatch.setattr(
+        practice_service_module.bank_access_service,
+        'ensure_bank_access',
+        staticmethod(fake_ensure_bank_access),
+    )
+    monkeypatch.setattr(practice_service_module.bank_dao, 'get', fake_bank_get)
+    monkeypatch.setattr(bank_revision_dao, 'get', fake_revision_get)
+    monkeypatch.setattr(bank_section_dao, 'get', fake_section_get)
+    monkeypatch.setattr(practice_service_module.practice_session_dao, 'get_by_key', fake_get_by_key)
+
+    param = CreatePracticeSessionParam(
+        source_type='wrong',
+        bank_id=1,
+        section_id=11,
+        mode='review',
+    )
+    with pytest.raises(errors.RequestError, match='当前条件下没有可投递题目'):
+        run(
+            practice_service_module.practice_service.create(
+                db=None,
+                user_id=42,
+                obj=param,
+            )
+        )
+
+    assert captured['section_ids'] == [11, 12]
+    assert 'section_id' not in captured
+
+
+def test_user_content_sources_bypass_bank_entitlement(monkeypatch: MonkeyPatch) -> None:
+    """错题/收藏/笔记来源跳过题库权益门禁；整库来源仍受权益保护"""
+    from types import SimpleNamespace
+
+    import backend.app.question_bank_v2.service.practice_service as practice_service_module
+
+    from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
+    from backend.app.question_bank_v2.schema.practice import CreatePracticeSessionParam
+
+    class FakeBank:
+        id = 1
+        current_revision_id = 101
+        status = 'active'
+
+    class FakeRevision:
+        id = 101
+        status = 'published'
+
+    ensure_calls: list[dict[str, Any]] = []
+
+    async def fake_ensure_bank_access(**kwargs: Any) -> tuple[Any, Any]:
+        await asyncio.sleep(0)
+        ensure_calls.append(kwargs)
+        return (FakeBank(), SimpleNamespace(allowed=False, reason_code='NO_MATCHING_GRANT'))
+
+    async def fake_bank_get(_db: AsyncSession | None, _bank_id: int) -> Any:
+        await asyncio.sleep(0)
+        return FakeBank()
+
+    async def fake_revision_get(_db: AsyncSession | None, _revision_id: int, **_kwargs: Any) -> Any:
+        await asyncio.sleep(0)
+        return FakeRevision()
+
+    async def fake_get_by_key(_db: AsyncSession | None, _session_key: str, **_kwargs: Any) -> None:
+        await asyncio.sleep(0)
+        return
+
+    async def fake_get_user_candidates(_db: AsyncSession | None, **kwargs: Any) -> list[Any]:
+        await asyncio.sleep(0)
+        return [SimpleNamespace(question_id=1, bank_item_id=None, max_score=1, display_config={})]
+
+    async def fake_create_session(_db: AsyncSession | None, _data: dict[str, Any], **_kwargs: Any) -> Any:
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=1, session_key='k')
+
+    async def fake_create_items(_db: AsyncSession | None, **_kwargs: Any) -> None:
+        await asyncio.sleep(0)
+        return
+
+    async def fake_service_get(**_kwargs: Any) -> dict[str, Any]:
+        await asyncio.sleep(0)
+        return {'session_key': 'k'}
+
+    monkeypatch.setattr(
+        practice_service_module.bank_access_service,
+        'ensure_bank_access',
+        staticmethod(fake_ensure_bank_access),
+    )
+    monkeypatch.setattr(practice_service_module.bank_dao, 'get', fake_bank_get)
+    monkeypatch.setattr(bank_revision_dao, 'get', fake_revision_get)
+    monkeypatch.setattr(practice_service_module.practice_session_dao, 'get_by_key', fake_get_by_key)
+    monkeypatch.setattr(
+        practice_service_module.practice_session_item_dao,
+        'get_user_candidates',
+        fake_get_user_candidates,
+    )
+    monkeypatch.setattr(practice_service_module.practice_session_dao, 'create', fake_create_session)
+    monkeypatch.setattr(practice_service_module.practice_session_item_dao, 'create_all', fake_create_items)
+    monkeypatch.setattr(practice_service_module.PracticeService, 'get', staticmethod(fake_service_get))
+
+    # 用户自有内容来源：即便权益决策为 deny，会话仍正常创建
+    for source_type in ('wrong', 'favorite', 'note'):
+        param = CreatePracticeSessionParam(source_type=source_type, bank_id=1, mode='review')
+        detail = run(
+            practice_service_module.practice_service.create(
+                db=None,
+                user_id=42,
+                obj=param,
+            )
+        )
+        assert detail == {'session_key': 'k'}
+    assert ensure_calls == []
+
+
+def test_bank_source_still_requires_entitlement(monkeypatch: MonkeyPatch) -> None:
+    """整库来源仍受权益门禁保护：deny 时创建会话应 403"""
+    from types import SimpleNamespace
+
+    import backend.app.question_bank_v2.service.practice_service as practice_service_module
+
+    from backend.app.question_bank_v2.schema.practice import CreatePracticeSessionParam
+
+    class FakeBank:
+        id = 1
+        current_revision_id = 101
+
+    ensure_calls: list[dict[str, Any]] = []
+
+    async def fake_ensure_bank_access(**kwargs: Any) -> tuple[Any, Any]:
+        await asyncio.sleep(0)
+        ensure_calls.append(kwargs)
+        return (FakeBank(), SimpleNamespace(allowed=False, reason_code='NO_MATCHING_GRANT'))
+
+    async def fake_get_by_key(_db: AsyncSession | None, _session_key: str, **_kwargs: Any) -> None:
+        await asyncio.sleep(0)
+        return
+
+    monkeypatch.setattr(
+        practice_service_module.bank_access_service,
+        'ensure_bank_access',
+        staticmethod(fake_ensure_bank_access),
+    )
+    monkeypatch.setattr(practice_service_module.practice_session_dao, 'get_by_key', fake_get_by_key)
+
+    # 整库来源：权益决策 deny 时仍应 403
+    param = CreatePracticeSessionParam(source_type='bank', bank_id=1, mode='practice')
+    with pytest.raises(errors.ForbiddenError):
+        run(
+            practice_service_module.practice_service.create(
+                db=None,
+                user_id=42,
+                obj=param,
+            )
+        )
+    assert len(ensure_calls) == 1
