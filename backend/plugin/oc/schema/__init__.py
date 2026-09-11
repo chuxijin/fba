@@ -1,41 +1,51 @@
 # oc schemas
-from backend.plugin.oc.schema.campus_recruit import (
-    CampusRecruitSchemaBase,
-    CreateCampusRecruitParam,
-    GetCampusRecruitDetail,
-    UpdateCampusRecruitParam,
+from backend.plugin.oc.schema.company import (
+    CompanyWebsiteParam,
+    CreateCompanyParam,
+    GetCompanyDetail,
+    GetCompanyWebsiteDetail,
+    OCCompanySchemaBase,
+    UpdateCompanyParam,
 )
 from backend.plugin.oc.schema.crawler import CrawlerParam, CrawlerResult
-from backend.plugin.oc.schema.intern_recruit import (
-    CreateInternRecruitParam,
-    GetInternRecruitDetail,
-    InternRecruitSchemaBase,
-    UpdateInternRecruitParam,
+from backend.plugin.oc.schema.recruit_announcement import (
+    CreateRecruitAnnouncementParam,
+    GetCompanyBriefDetail,
+    GetCompanyWebsiteBrief,
+    GetRecruitAnnouncementDetail,
+    GetRecruitAnnouncementWithCompanyDetail,
+    OCRecruitAnnouncementSchemaBase,
+    UpdateRecruitAnnouncementParam,
 )
 from backend.plugin.oc.schema.user_application import (
     CreateUserApplicationParam,
+    GetApplicationAnnouncementDetail,
     GetUserApplicationDetail,
+    GetUserApplicationWithRelationDetail,
     UpdateUserApplicationParam,
     UserApplicationSchemaBase,
 )
 
 __all__ = [
-    # campus recruit
-    'CampusRecruitSchemaBase',
-    'CreateCampusRecruitParam',
-    'UpdateCampusRecruitParam',
-    'GetCampusRecruitDetail',
-    # intern recruit
-    'InternRecruitSchemaBase',
-    'CreateInternRecruitParam',
-    'UpdateInternRecruitParam',
-    'GetInternRecruitDetail',
-    # user application
-    'UserApplicationSchemaBase',
-    'CreateUserApplicationParam',
-    'UpdateUserApplicationParam',
-    'GetUserApplicationDetail',
-    # crawler
+    'CompanyWebsiteParam',
     'CrawlerParam',
     'CrawlerResult',
+    'CreateCompanyParam',
+    'CreateRecruitAnnouncementParam',
+    'CreateUserApplicationParam',
+    'GetApplicationAnnouncementDetail',
+    'GetCompanyBriefDetail',
+    'GetCompanyDetail',
+    'GetCompanyWebsiteBrief',
+    'GetCompanyWebsiteDetail',
+    'GetRecruitAnnouncementDetail',
+    'GetRecruitAnnouncementWithCompanyDetail',
+    'GetUserApplicationDetail',
+    'GetUserApplicationWithRelationDetail',
+    'OCCompanySchemaBase',
+    'OCRecruitAnnouncementSchemaBase',
+    'UpdateCompanyParam',
+    'UpdateRecruitAnnouncementParam',
+    'UpdateUserApplicationParam',
+    'UserApplicationSchemaBase',
 ]

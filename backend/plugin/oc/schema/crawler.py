@@ -18,6 +18,7 @@ class CrawlerResult(SchemaBase):
     """爬虫结果"""
 
     total_crawled: int = Field(description='总爬取数量')
-    total_saved: int = Field(description='保存成功数量')
-    total_skipped: int = Field(description='跳过数量')
+    total_created: int = Field(description='新增公告数量')
+    total_updated: int = Field(description='更新公告数量')
+    total_expired: int = Field(description='过期跳过数量')
     errors: list[str] = Field(description='错误信息列表')

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from backend.app.task.celery import celery_app
-
 from backend.common.log import log
+from backend.core.conf import settings
 from backend.database.db import async_db_session
 from backend.utils.dynamic_config import load_crawler_config
-from backend.core.conf import settings
 
 
 @celery_app.task(name='oc:crawl_jobs_task', bind=True)
@@ -49,16 +48,18 @@ async def crawl_jobs_task(self, job_type: str = 'campus') -> str:
             await self.on_warning(
                 f'{job_type_name}爬取异常，'
                 f'爬取: {total_crawled}, '
-                f'保存: {result.get("total_saved", 0)}, '
-                f'跳过: {result.get("total_skipped", 0)}\n'
+                f'新增: {result.get("total_created", 0)}, '
+                f'更新: {result.get("total_updated", 0)}, '
+                f'过期跳过: {result.get("total_expired", 0)}\n'
                 f'详情: {warning_detail}'
             )
 
         success_msg = (
             f'[定时任务] {job_type_name}爬取完成 - '
             f'爬取: {result.get("total_crawled", 0)}, '
-            f'保存: {result.get("total_saved", 0)}, '
-            f'跳过: {result.get("total_skipped", 0)}'
+            f'新增: {result.get("total_created", 0)}, '
+            f'更新: {result.get("total_updated", 0)}, '
+            f'过期跳过: {result.get("total_expired", 0)}'
         )
         log.info(success_msg)
         return success_msg

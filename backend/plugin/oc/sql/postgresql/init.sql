@@ -48,12 +48,65 @@ CREATE TABLE IF NOT EXISTS oc_intern_recruit (
 CREATE INDEX IF NOT EXISTS idx_oc_intern_recruit_company_name ON oc_intern_recruit(company_name);
 COMMENT ON TABLE oc_intern_recruit IS '实习岗位表';
 
+-- 公司信息表
+CREATE TABLE IF NOT EXISTS oc_company (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    short_name VARCHAR(64),
+    company_type VARCHAR(64),
+    industry VARCHAR(128),
+    company_size VARCHAR(100),
+    location VARCHAR(256),
+    extra_info JSONB DEFAULT '{}'::jsonb NOT NULL,
+    remark TEXT,
+    created_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_time TIMESTAMP WITH TIME ZONE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_oc_company_name ON oc_company(name);
+COMMENT ON TABLE oc_company IS '公司信息表';
+
+-- 公司网站表
+CREATE TABLE IF NOT EXISTS oc_company_website (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES oc_company(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    name VARCHAR(128),
+    remark TEXT,
+    created_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_time TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS ix_oc_company_website_company_id ON oc_company_website(company_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_oc_company_website ON oc_company_website(company_id, url);
+COMMENT ON TABLE oc_company_website IS '公司网站表';
+
+-- 招聘公告表
+CREATE TABLE IF NOT EXISTS oc_recruit_announcement (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES oc_company(id) ON DELETE CASCADE,
+    title VARCHAR(256) NOT NULL,
+    recruitment_type VARCHAR(32) NOT NULL,
+    recruit_target VARCHAR(128),
+    positions TEXT,
+    start_time VARCHAR(64),
+    end_time VARCHAR(64),
+    location TEXT,
+    exam_info VARCHAR(500),
+    referral_code VARCHAR(64),
+    source_key VARCHAR(64),
+    remark TEXT,
+    created_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_time TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS ix_oc_recruit_announcement_company_id ON oc_recruit_announcement(company_id);
+CREATE INDEX IF NOT EXISTS ix_oc_announcement_company_type ON oc_recruit_announcement(company_id, recruitment_type);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_oc_recruit_announcement_source_key ON oc_recruit_announcement(source_key) WHERE source_key IS NOT NULL;
+COMMENT ON TABLE oc_recruit_announcement IS '招聘公告表';
+
 -- 用户投递记录表
 CREATE TABLE IF NOT EXISTS oc_user_application (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES sys_user(id) ON DELETE CASCADE,
-    job_id BIGINT NOT NULL,
-    job_type VARCHAR(16) NOT NULL,
+    announcement_id BIGINT NOT NULL REFERENCES oc_recruit_announcement(id) ON DELETE CASCADE,
     application_status VARCHAR(32) DEFAULT '未投递',
     applied_at TIMESTAMP,
     remark TEXT,
@@ -61,7 +114,7 @@ CREATE TABLE IF NOT EXISTS oc_user_application (
     updated_time TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX IF NOT EXISTS idx_oc_user_application_user_id ON oc_user_application(user_id);
-CREATE INDEX IF NOT EXISTS idx_oc_user_application_job_id ON oc_user_application(job_id);
+CREATE INDEX IF NOT EXISTS idx_oc_user_application_announcement_id ON oc_user_application(announcement_id);
 COMMENT ON TABLE oc_user_application IS '用户投递记录表';
 
 -- 笔面试资料包表

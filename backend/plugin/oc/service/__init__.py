@@ -1,16 +1,18 @@
 # oc services
-from backend.plugin.oc.service.campus_recruit_service import CampusRecruitService, campus_recruit_service
-from backend.plugin.oc.service.intern_recruit_service import InternRecruitService, intern_recruit_service
+from backend.plugin.oc.service.company_service import OCCompanyService, oc_company_service
+from backend.plugin.oc.service.crawler_service import crawler
+from backend.plugin.oc.service.recruit_announcement_service import (
+    OCRecruitAnnouncementService,
+    recruit_announcement_service,
+)
 from backend.plugin.oc.service.user_application_service import UserApplicationService, user_application_service
 
 __all__ = [
-    # campus recruit
-    'CampusRecruitService',
-    'campus_recruit_service',
-    # intern recruit
-    'InternRecruitService',
-    'intern_recruit_service',
-    # user application
+    'OCCompanyService',
+    'OCRecruitAnnouncementService',
     'UserApplicationService',
+    'crawler',
+    'oc_company_service',
+    'recruit_announcement_service',
     'user_application_service',
 ]

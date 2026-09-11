@@ -1,22 +1,24 @@
 import asyncio
+import html as html_lib
 import re
-from datetime import datetime
-from typing import Any, Dict, List
+
+from datetime import date, datetime
+from typing import Any
 
 import httpx
+import sqlalchemy as sa
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.plugin.oc.crud.crud_campus_recruit import campus_recruit_dao
-from backend.plugin.oc.crud.crud_intern_recruit import intern_recruit_dao
-from backend.plugin.oc.schema.campus_recruit import CreateCampusRecruitParam, UpdateCampusRecruitParam
-from backend.plugin.oc.schema.intern_recruit import CreateInternRecruitParam, UpdateInternRecruitParam
 from backend.common.log import log
+from backend.plugin.oc.model import OCCompany, OCCompanyWebsite, OCRecruitAnnouncement
+from backend.utils.timezone import timezone
 
 
 class GiveMeOCCrawler:
     """GiveMeOC招聘信息爬虫"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url = 'https://www.givemeoc.com/wp-admin/admin-ajax.php'
         self.page_urls = {
             'campus': 'https://www.givemeoc.com/',
@@ -71,9 +73,8 @@ class GiveMeOCCrawler:
                     log.info(f'成功获取 {job_type} 的 nonce: {nonce}')
                     self._cached_nonce[job_type] = nonce
                     return nonce
-                else:
-                    log.warning(f'未能从页面提取 nonce，job_type={job_type}')
-                    return None
+                log.warning(f'未能从页面提取 nonce，job_type={job_type}')
+                return None
 
         except Exception as e:
             log.error(f'获取 nonce 失败: {e}')
@@ -81,7 +82,7 @@ class GiveMeOCCrawler:
 
     async def fetch_page_data(
         self, page: int = 1, job_type: str = 'campus', nonce: str | None = None, cookie: str | None = None, **filters
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         获取指定页面的招聘数据
 
@@ -145,7 +146,7 @@ class GiveMeOCCrawler:
             log.error(f'获取第 {page} 页数据失败: {e}')
             return {}
 
-    def parse_html_to_jobs(self, html: str, job_type: str = 'campus') -> List[Dict[str, Any]]:
+    def parse_html_to_jobs(self, html: str, job_type: str = 'campus') -> list[dict[str, Any]]:  # noqa: C901
         """
         解析HTML内容为招聘信息列表
 
@@ -225,7 +226,7 @@ class GiveMeOCCrawler:
                 rf'<span class="{prefix}-badge {prefix}-target-([^"]*)"[^>]*>([^<]*)</span>', tr_content
             )
             if target_match:
-                job_data['recruit_target'] = target_match.group(2).strip()
+                job_data['recruit_target'] = re.sub(r'<[^>]+>', '', target_match.group(1)).strip()
 
             # 提取岗位信息
             position_match = re.search(rf'<span class="{prefix}-position-tag"[^>]*>(.*?)</span>', tr_content, re.DOTALL)
@@ -240,7 +241,9 @@ class GiveMeOCCrawler:
                 update_time_text = re.sub(r'<[^>]+>', '', update_time_match.group(1)).strip()
                 if update_time_text:
                     try:
-                        job_data['update_time'] = datetime.strptime(update_time_text, '%Y-%m-%d').date()
+                        job_data['update_time'] = datetime.strptime(  # noqa: DTZ007
+                            update_time_text, '%Y-%m-%d'
+                        ).date()
                     except Exception:
                         pass
 
@@ -252,7 +255,9 @@ class GiveMeOCCrawler:
                     # 尝试多种日期格式
                     for fmt in ['%Y-%m-%d', '%Y.%m.%d', '%Y/%m/%d']:
                         try:
-                            job_data['deadline'] = datetime.strptime(deadline_text, fmt).strftime('%Y-%m-%d')
+                            job_data['deadline'] = datetime.strptime(deadline_text, fmt).strftime(  # noqa: DTZ007
+                                '%Y-%m-%d'
+                            )
                             break
                         except Exception:
                             continue
@@ -302,6 +307,249 @@ class GiveMeOCCrawler:
 
         return jobs
 
+    @staticmethod
+    def _clean_text(value: str | None) -> str | None:
+        """清理 HTML 实体并规范化空值"""
+        if value is None:
+            return None
+        cleaned = html_lib.unescape(value).strip()
+        return cleaned or None
+
+    @staticmethod
+    def _is_expired(deadline: str | None, today: date) -> bool:
+        """判断公告是否已过截止日期"""
+        if not deadline:
+            return False
+        try:
+            end_date = datetime.strptime(deadline, '%Y-%m-%d').date()  # noqa: DTZ007
+        except ValueError:
+            return False
+        return end_date < today
+
+    async def _upsert_company(
+        self,
+        db: AsyncSession,
+        company_name: str,
+        company_type: str | None,
+        industry: str | None,
+        company_size: str | None,
+    ) -> OCCompany:
+        """
+        按公司名称 upsert 公司，仅回填 NULL 字段，不覆盖已有值
+
+        :param db: 数据库会话
+        :param company_name: 公司名称
+        :param company_type: 公司类型
+        :param industry: 所属行业
+        :param company_size: 公司规模
+        :return: 公司 ORM 对象
+        """
+        company = await db.scalar(sa.select(OCCompany).where(OCCompany.name == company_name))
+        if company is None:
+            company = OCCompany(
+                name=company_name,
+                company_type=company_type,
+                industry=industry,
+                company_size=company_size,
+                extra_info={},
+            )
+            db.add(company)
+            await db.flush()
+            return company
+
+        # 仅回填空字段，保护人工维护数据
+        changed = False
+        if company.company_type is None and company_type:
+            company.company_type = company_type
+            changed = True
+        if company.industry is None and industry:
+            company.industry = industry
+            changed = True
+        if company.company_size is None and company_size:
+            company.company_size = company_size
+            changed = True
+        if changed:
+            await db.flush()
+        return company
+
+    async def _upsert_websites(self, db: AsyncSession, company: OCCompany, job_data: dict[str, Any]) -> int:
+        """
+        公司网站 upsert（一对多积累，跨帖去重）
+
+        按来源命名：apply_link -> {公司名}投递入口，notice_link -> {公司名}招聘公告；
+        两链接相同时只记一条，以投递入口为准
+
+        :param db: 数据库会话
+        :param company: 公司 ORM 对象
+        :param job_data: 单条招聘数据
+        :return: 新增网站数量
+        """
+        link_pairs: list[tuple[str | None, str]] = [
+            (job_data.get('apply_link'), f'{company.name}投递入口'),
+            (job_data.get('notice_link'), f'{company.name}招聘公告'),
+        ]
+        added = 0
+        seen_urls: set[str] = set()
+        for url, website_name in link_pairs:
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            exists = await db.scalar(
+                sa.select(OCCompanyWebsite.id).where(
+                    OCCompanyWebsite.company_id == company.id, OCCompanyWebsite.url == url
+                )
+            )
+            if exists is None:
+                db.add(OCCompanyWebsite(company_id=company.id, url=url, name=website_name))
+                added += 1
+        if added:
+            await db.flush()
+        return added
+
+    async def _upsert_announcement(
+        self, db: AsyncSession, company: OCCompany, job_data: dict[str, Any], source_key: str
+    ) -> str:
+        """
+        公告按 source_key upsert（一帖一公告）
+
+        :param db: 数据库会话
+        :param company: 公司 ORM 对象
+        :param job_data: 单条招聘数据
+        :param source_key: 来源幂等键（如 campus:25567）
+        :return: 'created' / 'updated'
+        """
+        announcement = await db.scalar(
+            sa.select(OCRecruitAnnouncement).where(OCRecruitAnnouncement.source_key == source_key)
+        )
+
+        if announcement is None:
+            announcement = OCRecruitAnnouncement(
+                company_id=company.id,
+                title=f'{company.name}公告详情',
+                recruitment_type=job_data['recruitment_type'] or '未知',
+                recruit_target=self._clean_text(job_data.get('recruit_target')) or '未知',
+                positions=self._clean_text(job_data.get('positions')),
+                end_time=job_data.get('deadline'),
+                location=self._clean_text(job_data.get('location')) or '未知',
+                exam_info=self._clean_text(job_data.get('exam_info')),
+                referral_code=self._clean_text(job_data.get('referral_code')),
+                source_key=source_key,
+                remark=f'源站更新: {job_data["update_time"] or timezone.now().date()}',
+            )
+            db.add(announcement)
+            await db.flush()
+            return 'created'
+
+        # 已存在：以源站最新数据为准更新
+        announcement.company_id = company.id
+        announcement.recruitment_type = job_data['recruitment_type'] or '未知'
+        announcement.recruit_target = self._clean_text(job_data.get('recruit_target')) or '未知'
+        announcement.positions = self._clean_text(job_data.get('positions'))
+        announcement.end_time = job_data.get('deadline')
+        announcement.location = self._clean_text(job_data.get('location')) or '未知'
+        announcement.exam_info = self._clean_text(job_data.get('exam_info'))
+        announcement.referral_code = self._clean_text(job_data.get('referral_code'))
+        announcement.remark = f'源站更新: {job_data["update_time"] or timezone.now().date()}'
+        await db.flush()
+        return 'updated'
+
+    async def save_job_data(self, db: AsyncSession, job_data: dict[str, Any], job_type: str, today: date) -> str:
+        """
+        保存单条招聘数据（公司 upsert -> 网站积累 -> 公告 upsert）
+
+        :param db: 数据库会话
+        :param job_data: 单条招聘数据
+        :param job_type: 数据类型 ('campus'=校招, 'intern'=实习)
+        :param today: 当前日期
+        :return: 'skipped_expired' / 'created' / 'updated'
+        """
+        # 过期公告直接跳过，防止已清理数据被源站置顶帖"复活"
+        if self._is_expired(job_data.get('deadline'), today):
+            return 'skipped_expired'
+
+        company = await self._upsert_company(
+            db,
+            company_name=job_data['company_name'],
+            company_type=self._clean_text(job_data.get('company_type')),
+            industry=self._clean_text(job_data.get('industry')),
+            company_size=self._clean_text(job_data.get('company_size')),
+        )
+        await self._upsert_websites(db, company, job_data)
+        source_key = f'{job_type}:{job_data["source_id"]}'
+        return await self._upsert_announcement(db, company, job_data, source_key)
+
+    async def _crawl_page(
+        self,
+        db: AsyncSession,
+        page: int,
+        job_type: str,
+        nonce: str,
+        cookie: str | None,
+        delay: float,
+        start_page: int,
+        today: date,
+    ) -> dict[str, Any]:
+        """
+        爬取并保存单页数据
+
+        :param db: 数据库会话
+        :param page: 页码
+        :param job_type: 数据类型 ('campus'=校招, 'intern'=实习)
+        :param nonce: nonce 值
+        :param cookie: Cookie值（可选）
+        :param delay: 请求间隔（秒）
+        :param start_page: 开始页码
+        :param today: 当前日期
+        :return: {'crawled': int, 'created': int, 'updated': int, 'expired': int, 'errors': list}
+        """
+        stats = {'crawled': 0, 'created': 0, 'updated': 0, 'expired': 0, 'errors': []}
+
+        response_data = await self.fetch_page_data(page, job_type, nonce, cookie)
+
+        if not response_data.get('success'):
+            error_msg = f'第 {page} 页获取失败'
+            log.warning(error_msg)
+            stats['errors'].append(error_msg)
+            return stats
+
+        # 解析HTML
+        html = response_data.get('data', {}).get('html', '')
+        if not html:
+            log.warning(f'第 {page} 页无数据')
+            return stats
+
+        jobs = self.parse_html_to_jobs(html, job_type)
+        stats['crawled'] = len(jobs)
+        log.info(f'第 {page} 页解析到 {len(jobs)} 条招聘信息')
+
+        # 保存到数据库
+        for job_data in jobs:
+            # 确保有 source_id
+            if not job_data.get('source_id'):
+                log.warning(f'跳过没有 source_id 的数据: {job_data["company_name"]}')
+                continue
+
+            # 用 savepoint 隔离每条记录，单条失败不影响其他
+            try:
+                async with db.begin_nested():
+                    result = await self.save_job_data(db, job_data, job_type, today)
+                if result == 'created':
+                    stats['created'] += 1
+                elif result == 'updated':
+                    stats['updated'] += 1
+                else:
+                    stats['expired'] += 1
+            except Exception as e:
+                log.warning(f'保存失败: {job_data["company_name"]} - {e!s}')
+                stats['errors'].append(f'保存失败: {job_data["company_name"]} - {e!s}')
+                continue
+
+        # 请求间隔（倒序爬取，只要不是最后一页就需要延迟）
+        if page > start_page:
+            await asyncio.sleep(delay)
+
+        return stats
+
     async def crawl_and_save(
         self,
         db: AsyncSession,
@@ -311,7 +559,7 @@ class GiveMeOCCrawler:
         delay: float = 1.0,
         nonce: str | None = None,
         cookie: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         爬取并保存数据
 
@@ -325,11 +573,13 @@ class GiveMeOCCrawler:
         :return: 统计信息
         """
         total_crawled = 0
-        total_saved = 0
+        total_created = 0
         total_skipped = 0
+        total_expired = 0
         errors = []
 
         job_type_name = '校招' if job_type == 'campus' else '实习'
+        today = timezone.now().date()
 
         # 如果没有传入 nonce，自动获取
         if not nonce:
@@ -338,8 +588,10 @@ class GiveMeOCCrawler:
             if not nonce:
                 return {
                     'total_crawled': 0,
-                    'total_saved': 0,
+                    'total_created': 0,
+                    'total_updated': 0,
                     'total_skipped': 0,
+                    'total_expired': 0,
                     'errors': ['无法自动获取 nonce，请手动传入或检查网站是否可访问'],
                 }
             log.info(f'自动获取到 nonce: {nonce}')
@@ -349,130 +601,28 @@ class GiveMeOCCrawler:
         # 从后往前爬，确保最新数据最后写入
         for page in range(end_page, start_page - 1, -1):
             try:
-                # 获取页面数据
-                response_data = await self.fetch_page_data(page, job_type, nonce, cookie)
-
-                if not response_data.get('success'):
-                    error_msg = f'第 {page} 页获取失败'
-                    log.warning(error_msg)
-                    errors.append(error_msg)
-                    continue
-
-                # 解析HTML
-                html = response_data.get('data', {}).get('html', '')
-                if not html:
-                    log.warning(f'第 {page} 页无数据')
-                    continue
-
-                jobs = self.parse_html_to_jobs(html, job_type)
-                total_crawled += len(jobs)
-                log.info(f'第 {page} 页解析到 {len(jobs)} 条招聘信息')
-
-                # 保存到数据库
-                for job_data in jobs:
-                    # 确保有 source_id
-                    if not job_data.get('source_id'):
-                        log.warning(f'跳过没有 source_id 的数据: {job_data["company_name"]}')
-                        continue
-
-                    # 用 savepoint 隔离每条记录，单条失败不影响其他
-                    try:
-                        async with db.begin_nested():
-                            if job_type == 'campus':
-                                existing = await campus_recruit_dao.get(db, job_data['source_id'])
-
-                                if existing:
-                                    update_param = UpdateCampusRecruitParam(
-                                        company_name=job_data['company_name'],
-                                        company_type=job_data['company_type'] or '未知',
-                                        company_size=job_data.get('company_size'),
-                                        industry=job_data['industry'] or '未知',
-                                        recruitment_type=job_data['recruitment_type'] or '未知',
-                                        recruit_target=job_data['recruit_target'] or '未知',
-                                        location=job_data['location'] or '未知',
-                                        positions=job_data['positions'],
-                                        update_time=job_data['update_time'] or datetime.now().date(),
-                                        deadline=job_data.get('deadline'),
-                                        apply_link=job_data.get('apply_link'),
-                                        notice_link=job_data.get('notice_link'),
-                                        referral_code=job_data.get('referral_code'),
-                                        exam_info=job_data.get('exam_info'),
-                                        remark=job_data.get('remark'),
-                                    )
-                                    await campus_recruit_dao.update_model(db, job_data['source_id'], update_param)
-                                    total_skipped += 1
-                                else:
-                                    param = CreateCampusRecruitParam(
-                                        id=job_data['source_id'],
-                                        company_name=job_data['company_name'],
-                                        company_type=job_data['company_type'] or '未知',
-                                        company_size=job_data.get('company_size'),
-                                        industry=job_data['industry'] or '未知',
-                                        recruitment_type=job_data['recruitment_type'] or '未知',
-                                        recruit_target=job_data['recruit_target'] or '未知',
-                                        location=job_data['location'] or '未知',
-                                        positions=job_data['positions'],
-                                        application_status='未投递',
-                                        update_time=job_data['update_time'] or datetime.now().date(),
-                                        deadline=job_data.get('deadline'),
-                                        apply_link=job_data.get('apply_link'),
-                                        notice_link=job_data.get('notice_link'),
-                                        referral_code=job_data.get('referral_code'),
-                                        exam_info=job_data.get('exam_info'),
-                                        remark=job_data.get('remark'),
-                                    )
-                                    await campus_recruit_dao.create(db, param)
-                                    total_saved += 1
-                            else:
-                                existing = await intern_recruit_dao.get(db, job_data['source_id'])
-
-                                param = CreateInternRecruitParam(
-                                    id=job_data['source_id'],
-                                    company_name=job_data['company_name'],
-                                    company_type=job_data['company_type'] or '未知',
-                                    industry=job_data['industry'] or '未知',
-                                    recruitment_type=job_data['recruitment_type'] or '未知',
-                                    recruit_target=job_data['recruit_target'] or '未知',
-                                    location=job_data['location'] or '未知',
-                                    positions=job_data['positions'],
-                                    application_status='未投递',
-                                    update_time=job_data['update_time'] or datetime.now().date(),
-                                    deadline=job_data.get('deadline'),
-                                    apply_link=job_data.get('apply_link'),
-                                    notice_link=job_data.get('notice_link'),
-                                    referral_code=job_data.get('referral_code'),
-                                    remark=job_data.get('remark'),
-                                )
-
-                                if existing:
-                                    update_param = UpdateInternRecruitParam(**param.model_dump(exclude={'id'}))
-                                    await intern_recruit_dao.update_model(db, job_data['source_id'], update_param)
-                                    total_skipped += 1
-                                else:
-                                    await intern_recruit_dao.create(db, param)
-                                    total_saved += 1
-
-                    except Exception as e:
-                        log.warning(f'保存失败: {job_data["company_name"]} - {str(e)}')
-                        errors.append(f'保存失败: {job_data["company_name"]} - {str(e)}')
-                        continue
-
-                # 请求间隔（倒序爬取，只要不是最后一页就需要延迟）
-                if page > start_page:
-                    await asyncio.sleep(delay)
-
+                page_stats = await self._crawl_page(db, page, job_type, nonce, cookie, delay, start_page, today)
             except Exception as e:
-                error_msg = f'处理第 {page} 页时出错: {str(e)}'
+                error_msg = f'处理第 {page} 页时出错: {e!s}'
                 log.error(error_msg)
                 errors.append(error_msg)
                 continue
+            total_crawled += page_stats['crawled']
+            total_created += page_stats['created']
+            total_skipped += page_stats['updated']
+            total_expired += page_stats['expired']
+            errors.extend(page_stats['errors'])
 
-        log.info(f'爬取完成！总爬取: {total_crawled}, 保存: {total_saved}, 跳过: {total_skipped}')
+        log.info(
+            f'爬取完成！总爬取: {total_crawled}, 新增: {total_created}, '
+            f'更新: {total_skipped}, 过期跳过: {total_expired}'
+        )
 
         return {
             'total_crawled': total_crawled,
-            'total_saved': total_saved,
-            'total_skipped': total_skipped,
+            'total_created': total_created,
+            'total_updated': total_skipped,
+            'total_expired': total_expired,
             'errors': errors[:10],  # 只返回前10个错误
         }
 

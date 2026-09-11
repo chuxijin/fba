@@ -46,20 +46,73 @@ CREATE TABLE IF NOT EXISTS `oc_intern_recruit` (
     INDEX `idx_oc_intern_recruit_company_name` (`company_name`(100))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='实习岗位表';
 
+-- 公司信息表
+CREATE TABLE IF NOT EXISTS `oc_company` (
+    `id` BIGINT PRIMARY KEY,
+    `name` VARCHAR(128) NOT NULL,
+    `short_name` VARCHAR(64),
+    `company_type` VARCHAR(64),
+    `industry` VARCHAR(128),
+    `company_size` VARCHAR(100),
+    `location` VARCHAR(256),
+    `extra_info` JSON NOT NULL,
+    `remark` TEXT,
+    `created_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_time` DATETIME ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `ix_oc_company_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公司信息表';
+
+-- 公司网站表
+CREATE TABLE IF NOT EXISTS `oc_company_website` (
+    `id` BIGINT PRIMARY KEY,
+    `company_id` BIGINT NOT NULL,
+    `url` TEXT NOT NULL,
+    `name` VARCHAR(128),
+    `remark` TEXT,
+    `created_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_time` DATETIME ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `ix_oc_company_website_company_id` (`company_id`),
+    UNIQUE KEY `uq_oc_company_website` (`company_id`, `url`(255)),
+    CONSTRAINT `fk_oc_company_website_company` FOREIGN KEY (`company_id`) REFERENCES `oc_company`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公司网站表';
+
+-- 招聘公告表
+CREATE TABLE IF NOT EXISTS `oc_recruit_announcement` (
+    `id` BIGINT PRIMARY KEY,
+    `company_id` BIGINT NOT NULL,
+    `title` VARCHAR(256) NOT NULL,
+    `recruitment_type` VARCHAR(32) NOT NULL,
+    `recruit_target` VARCHAR(128),
+    `positions` TEXT,
+    `start_time` VARCHAR(64),
+    `end_time` VARCHAR(64),
+    `location` TEXT,
+    `exam_info` VARCHAR(500),
+    `referral_code` VARCHAR(64),
+    `source_key` VARCHAR(64),
+    `remark` TEXT,
+    `created_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_time` DATETIME ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `ix_oc_recruit_announcement_company_id` (`company_id`),
+    INDEX `ix_oc_announcement_company_type` (`company_id`, `recruitment_type`),
+    UNIQUE KEY `uq_oc_recruit_announcement_source_key` (`source_key`),
+    CONSTRAINT `fk_oc_recruit_announcement_company` FOREIGN KEY (`company_id`) REFERENCES `oc_company`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='招聘公告表';
+
 -- 用户投递记录表
 CREATE TABLE IF NOT EXISTS `oc_user_application` (
     `id` BIGINT PRIMARY KEY,
     `user_id` BIGINT NOT NULL,
-    `job_id` BIGINT NOT NULL,
-    `job_type` VARCHAR(16) NOT NULL,
+    `announcement_id` BIGINT NOT NULL,
     `application_status` VARCHAR(32) DEFAULT '未投递',
     `applied_at` DATETIME,
     `remark` TEXT,
     `created_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
     `updated_time` DATETIME ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_oc_user_application_user_id` (`user_id`),
-    INDEX `idx_oc_user_application_job_id` (`job_id`),
-    CONSTRAINT `fk_oc_user_application_user_id` FOREIGN KEY (`user_id`) REFERENCES `sys_user`(`id`) ON DELETE CASCADE
+    INDEX `idx_oc_user_application_announcement_id` (`announcement_id`),
+    CONSTRAINT `fk_oc_user_application_user_id` FOREIGN KEY (`user_id`) REFERENCES `sys_user`(`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_oc_user_application_announcement` FOREIGN KEY (`announcement_id`) REFERENCES `oc_recruit_announcement`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户投递记录表';
 
 -- 笔面试资料包表

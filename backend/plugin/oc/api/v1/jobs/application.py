@@ -2,16 +2,16 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from backend.plugin.oc.schema.user_application import (
-    CreateUserApplicationParam,
-    GetUserApplicationDetail,
-    UpdateUserApplicationParam,
-)
-from backend.plugin.oc.service.user_application_service import user_application_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.plugin.oc.schema.user_application import (
+    CreateUserApplicationParam,
+    GetUserApplicationWithRelationDetail,
+    UpdateUserApplicationParam,
+)
+from backend.plugin.oc.service.user_application_service import user_application_service
 
 router = APIRouter()
 
@@ -19,8 +19,8 @@ router = APIRouter()
 @router.get('/{application_id}', summary='获取用户投递记录详情', dependencies=[DependsJwtAuth])
 async def get_user_application(
     db: CurrentSession, application_id: Annotated[int, Path(description='投递记录 ID')]
-) -> ResponseSchemaModel[GetUserApplicationDetail]:
-    """获取用户投递记录详情"""
+) -> ResponseSchemaModel[GetUserApplicationWithRelationDetail]:
+    """获取用户投递记录详情（含公告与公司信息）"""
     data = await user_application_service.get(db=db, application_id=application_id)
     return response_base.success(data=data)
 
@@ -29,14 +29,12 @@ async def get_user_application(
 async def get_user_application_list(
     db: CurrentSession,
     user_id: Annotated[int | None, Query(description='用户 ID')] = None,
-    job_type: Annotated[str | None, Query(description='岗位类型')] = None,
     application_status: Annotated[str | None, Query(description='投递状态')] = None,
-) -> ResponseSchemaModel[PageData[GetUserApplicationDetail]]:
-    """获取用户投递记录列表"""
+) -> ResponseSchemaModel[PageData[GetUserApplicationWithRelationDetail]]:
+    """获取用户投递记录列表（含公告与公司信息）"""
     data = await user_application_service.get_list(
         db=db,
         user_id=user_id,
-        job_type=job_type,
         application_status=application_status,
     )
     return response_base.success(data=data)

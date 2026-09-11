@@ -3,9 +3,11 @@
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy.orm import Mapped, mapped_column
+
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.common.model import DataClassBase, DateTimeMixin, id_key
+from backend.plugin.oc.model.company import OCRecruitAnnouncement
 
 
 class UserApplication(DataClassBase, DateTimeMixin):
@@ -17,8 +19,14 @@ class UserApplication(DataClassBase, DateTimeMixin):
     user_id: Mapped[int] = mapped_column(
         sa.BigInteger, sa.ForeignKey('sys_user.id', ondelete='CASCADE'), index=True, comment='用户ID'
     )
-    job_id: Mapped[int] = mapped_column(sa.BigInteger, index=True, comment='岗位ID')
-    job_type: Mapped[str] = mapped_column(sa.String(16), comment='岗位类型')
+    announcement_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey('oc_recruit_announcement.id', ondelete='CASCADE'),
+        index=True,
+        comment='公告ID',
+    )
     application_status: Mapped[str] = mapped_column(sa.String(32), default='未投递', comment='投递状态')
     applied_at: Mapped[datetime | None] = mapped_column(sa.DateTime, default=None, comment='投递时间')
     remark: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='备注')
+
+    announcement: Mapped[OCRecruitAnnouncement] = relationship(init=False, lazy='noload')

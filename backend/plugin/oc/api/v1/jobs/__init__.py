@@ -1,22 +1,22 @@
 from fastapi import APIRouter
 
 from backend.plugin.oc.api.v1.jobs import (
+    announcement,
     application,
-    campus,
+    company,
+    config,
     crawler,
-    intern,
-    resource,
+    feedback,
     quick_register,
     referral_code,
+    resource,
     resume,
-    config,
-    feedback,
 )
 
 router = APIRouter(prefix='/jobs')
 
-router.include_router(campus.router, prefix='/campus', tags=['校招岗位'])
-router.include_router(intern.router, prefix='/intern', tags=['实习岗位'])
+router.include_router(company.router, prefix='/company', tags=['公司信息'])
+router.include_router(announcement.router, prefix='/announcement', tags=['招聘公告'])
 router.include_router(application.router, prefix='/application', tags=['投递记录'])
 router.include_router(crawler.router, prefix='/crawler', tags=['数据爬虫'])
 router.include_router(resource.router, prefix='/resources', tags=['笔面试资料包'])
