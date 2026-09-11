@@ -91,8 +91,7 @@ WITH union_rows AS (
         NULLIF(regexp_replace(company_type, '&(amp|lt|gt|#038|quot);', '', 'g'), ''),
         CASE WHEN industry IN ('未知', '') THEN NULL
              ELSE NULLIF(regexp_replace(industry, '&(amp|lt|gt|#038|quot);', '', 'g'), '') END,
-        CASE WHEN company_size IN ('会员可见', '未知', '') THEN NULL
-             ELSE NULLIF(regexp_replace(company_size, '&(amp|lt|gt|#038|quot);', '', 'g'), '') END,
+        NULL,  -- oc_intern_recruit 无 company_size 列
         update_time,
         2
     FROM oc_intern_recruit
@@ -248,7 +247,7 @@ SELECT
     AS remark
 FROM filtered f
 JOIN oc_company c ON c.name = f.company_name
-ON CONFLICT (source_key) DO NOTHING;
+ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO NOTHING;
 
 
 -- -----------------------------------------------------------------------------
