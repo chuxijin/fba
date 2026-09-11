@@ -225,7 +225,8 @@ filtered AS (
 )
 INSERT INTO oc_recruit_announcement (
     company_id, title, recruitment_type, recruit_target, positions,
-    start_time, end_time, location, exam_info, referral_code, apply_url, notice_url, source_key, remark
+    start_time, end_time, location, exam_info, referral_code, apply_url, notice_url,
+    source_update_date, source_key, remark
 )
 SELECT
     c.id,
@@ -241,6 +242,7 @@ SELECT
     NULLIF(regexp_replace(f.referral_code, '&(amp|lt|gt|#038|quot);', '', 'g'), '') AS referral_code,
     NULLIF(regexp_replace(f.apply_link, '&(amp|lt|gt|#038|quot);', '', 'g'), '') AS apply_url,
     NULLIF(regexp_replace(f.notice_link, '&(amp|lt|gt|#038|quot);', '', 'g'), '') AS notice_url,
+    to_char(f.update_time, 'YYYY-MM-DD') AS source_update_date,
     f.src || ':' || f.id AS source_key,
     '源站更新: ' || to_char(f.update_time, 'YYYY-MM-DD')
         || CASE WHEN f.application_status IS NOT NULL AND f.application_status NOT IN ('', '未投递')
@@ -258,13 +260,13 @@ ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO NOTHING;
 -- -----------------------------------------------------------------------------
 
 WITH src AS (
-    SELECT 'campus' AS s, id,
+    SELECT 'campus' AS s, id, update_time AS update_date,
            regexp_replace(apply_link, '&(amp|lt|gt|#038|quot);', '', 'g') AS apply_url,
            regexp_replace(notice_link, '&(amp|lt|gt|#038|quot);', '', 'g') AS notice_url
     FROM oc_campus_recruit
     WHERE apply_link IS NOT NULL OR notice_link IS NOT NULL
     UNION ALL
-    SELECT 'intern', id,
+    SELECT 'intern', id, update_time,
            regexp_replace(apply_link, '&(amp|lt|gt|#038|quot);', '', 'g'),
            regexp_replace(notice_link, '&(amp|lt|gt|#038|quot);', '', 'g')
     FROM oc_intern_recruit
@@ -272,7 +274,8 @@ WITH src AS (
 )
 UPDATE oc_recruit_announcement a
 SET apply_url = NULLIF(src.apply_url, ''),
-    notice_url = NULLIF(src.notice_url, '')
+    notice_url = NULLIF(src.notice_url, ''),
+    source_update_date = to_char(src.update_date, 'YYYY-MM-DD')
 FROM src
 WHERE a.source_key = src.s || ':' || src.id
   AND a.apply_url IS NULL

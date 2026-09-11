@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS `oc_recruit_announcement` (
     `referral_code` VARCHAR(64),
     `apply_url` TEXT,
     `notice_url` TEXT,
+    `source_update_date` VARCHAR(32),
     `source_key` VARCHAR(64),
     `remark` TEXT,
     `created_time` DATETIME DEFAULT CURRENT_TIMESTAMP,

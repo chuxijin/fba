@@ -91,6 +91,9 @@ class OCRecruitAnnouncement(DataClassBase, DateTimeMixin):
     referral_code: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='内推码')
     apply_url: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='投递链接（本帖）')
     notice_url: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='公告链接（本帖）')
+    source_update_date: Mapped[str | None] = mapped_column(
+        sa.String(32), default=None, comment='源站更新日期（YYYY-MM-DD）'
+    )
     source_key: Mapped[str | None] = mapped_column(
         sa.String(64), unique=True, index=True, default=None, comment='来源幂等键（如 campus:25567）'
     )

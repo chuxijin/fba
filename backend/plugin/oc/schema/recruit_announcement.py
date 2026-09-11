@@ -20,6 +20,7 @@ class OCRecruitAnnouncementSchemaBase(SchemaBase):
     referral_code: str | None = Field(None, description='内推码')
     apply_url: str | None = Field(None, description='投递链接（本帖）')
     notice_url: str | None = Field(None, description='公告链接（本帖）')
+    source_update_date: str | None = Field(None, description='源站更新日期（YYYY-MM-DD）')
     remark: str | None = Field(None, description='备注')
 
 
@@ -42,6 +43,7 @@ class UpdateRecruitAnnouncementParam(SchemaBase):
     referral_code: str | None = Field(None, description='内推码')
     apply_url: str | None = Field(None, description='投递链接（本帖）')
     notice_url: str | None = Field(None, description='公告链接（本帖）')
+    source_update_date: str | None = Field(None, description='源站更新日期（YYYY-MM-DD）')
     remark: str | None = Field(None, description='备注')
 
 
