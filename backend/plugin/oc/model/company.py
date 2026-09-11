@@ -89,6 +89,8 @@ class OCRecruitAnnouncement(DataClassBase, DateTimeMixin):
     location: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='工作地点')
     exam_info: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='笔试情况')
     referral_code: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='内推码')
+    apply_url: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='投递链接（本帖）')
+    notice_url: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='公告链接（本帖）')
     source_key: Mapped[str | None] = mapped_column(
         sa.String(64), unique=True, index=True, default=None, comment='来源幂等键（如 campus:25567）'
     )

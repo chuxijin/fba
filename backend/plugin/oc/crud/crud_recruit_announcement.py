@@ -11,10 +11,8 @@ from backend.plugin.oc.schema.recruit_announcement import (
     UpdateRecruitAnnouncementParam,
 )
 
-# 公告关联加载选项：公司(joinedload 单 JOIN) + 公司网站(selectinload 每页一条 IN 查询)
-ANNOUNCEMENT_COMPANY_OPTIONS = (
-    joinedload(OCRecruitAnnouncement.company).selectinload(OCCompany.websites)
-)
+# 公告关联加载选项：公司（joinedload 单 JOIN，列表按本帖链接渲染无需网站聚合）
+ANNOUNCEMENT_COMPANY_OPTIONS = joinedload(OCRecruitAnnouncement.company)
 
 
 class CRUDOCRecruitAnnouncement(CRUDPlus[OCRecruitAnnouncement]):
@@ -88,6 +86,22 @@ class CRUDOCRecruitAnnouncement(CRUDPlus[OCRecruitAnnouncement]):
         if conditions:
             stmt = stmt.where(sa.and_(*conditions))
         return stmt.order_by(desc(OCRecruitAnnouncement.id))
+
+    async def get_by_source_key(self, db: AsyncSession, source_key: str) -> OCRecruitAnnouncement | None:
+        """
+        通过来源幂等键获取公告（含公司信息）
+
+        :param db: 数据库会话
+        :param source_key: 来源幂等键
+        :return:
+        """
+        stmt = (
+            sa.select(OCRecruitAnnouncement)
+            .where(OCRecruitAnnouncement.source_key == source_key)
+            .options(ANNOUNCEMENT_COMPANY_OPTIONS)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def create(self, db: AsyncSession, obj: CreateRecruitAnnouncementParam) -> None:
         """

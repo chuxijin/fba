@@ -225,7 +225,7 @@ filtered AS (
 )
 INSERT INTO oc_recruit_announcement (
     company_id, title, recruitment_type, recruit_target, positions,
-    start_time, end_time, location, exam_info, referral_code, source_key, remark
+    start_time, end_time, location, exam_info, referral_code, apply_url, notice_url, source_key, remark
 )
 SELECT
     c.id,
@@ -239,6 +239,8 @@ SELECT
     CASE WHEN f.exam_info IN ('会员可见', '') THEN NULL
          ELSE NULLIF(regexp_replace(f.exam_info, '&(amp|lt|gt|#038|quot);', '', 'g'), '') END AS exam_info,
     NULLIF(regexp_replace(f.referral_code, '&(amp|lt|gt|#038|quot);', '', 'g'), '') AS referral_code,
+    NULLIF(regexp_replace(f.apply_link, '&(amp|lt|gt|#038|quot);', '', 'g'), '') AS apply_url,
+    NULLIF(regexp_replace(f.notice_link, '&(amp|lt|gt|#038|quot);', '', 'g'), '') AS notice_url,
     f.src || ':' || f.id AS source_key,
     '源站更新: ' || to_char(f.update_time, 'YYYY-MM-DD')
         || CASE WHEN f.application_status IS NOT NULL AND f.application_status NOT IN ('', '未投递')
@@ -251,7 +253,34 @@ ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO NOTHING;
 
 
 -- -----------------------------------------------------------------------------
--- 4. 迁移结果核对
+-- 4.5 公告自身链接回填（已迁移环境补跑；幂等，只填 NULL 行）
+--     公告列表按本帖链接渲染投递/公告按钮，不再使用公司网站聚合
+-- -----------------------------------------------------------------------------
+
+WITH src AS (
+    SELECT 'campus' AS s, id,
+           regexp_replace(apply_link, '&(amp|lt|gt|#038|quot);', '', 'g') AS apply_url,
+           regexp_replace(notice_link, '&(amp|lt|gt|#038|quot);', '', 'g') AS notice_url
+    FROM oc_campus_recruit
+    WHERE apply_link IS NOT NULL OR notice_link IS NOT NULL
+    UNION ALL
+    SELECT 'intern', id,
+           regexp_replace(apply_link, '&(amp|lt|gt|#038|quot);', '', 'g'),
+           regexp_replace(notice_link, '&(amp|lt|gt|#038|quot);', '', 'g')
+    FROM oc_intern_recruit
+    WHERE apply_link IS NOT NULL OR notice_link IS NOT NULL
+)
+UPDATE oc_recruit_announcement a
+SET apply_url = NULLIF(src.apply_url, ''),
+    notice_url = NULLIF(src.notice_url, '')
+FROM src
+WHERE a.source_key = src.s || ':' || src.id
+  AND a.apply_url IS NULL
+  AND a.notice_url IS NULL;
+
+
+-- -----------------------------------------------------------------------------
+-- 5. 迁移结果核对
 -- -----------------------------------------------------------------------------
 
 SELECT

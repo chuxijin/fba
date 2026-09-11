@@ -92,6 +92,8 @@ CREATE TABLE IF NOT EXISTS oc_recruit_announcement (
     location TEXT,
     exam_info VARCHAR(500),
     referral_code VARCHAR(64),
+    apply_url TEXT,
+    notice_url TEXT,
     source_key VARCHAR(64),
     remark TEXT,
     created_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

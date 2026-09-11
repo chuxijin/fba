@@ -18,6 +18,8 @@ class OCRecruitAnnouncementSchemaBase(SchemaBase):
     location: str | None = Field(None, description='工作地点')
     exam_info: str | None = Field(None, description='笔试情况')
     referral_code: str | None = Field(None, description='内推码')
+    apply_url: str | None = Field(None, description='投递链接（本帖）')
+    notice_url: str | None = Field(None, description='公告链接（本帖）')
     remark: str | None = Field(None, description='备注')
 
 
@@ -38,17 +40,9 @@ class UpdateRecruitAnnouncementParam(SchemaBase):
     location: str | None = Field(None, description='工作地点')
     exam_info: str | None = Field(None, description='笔试情况')
     referral_code: str | None = Field(None, description='内推码')
+    apply_url: str | None = Field(None, description='投递链接（本帖）')
+    notice_url: str | None = Field(None, description='公告链接（本帖）')
     remark: str | None = Field(None, description='备注')
-
-
-class GetCompanyWebsiteBrief(SchemaBase):
-    """公司网站简要信息（公告内嵌）"""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int = Field(description='网站 ID')
-    url: str = Field(description='网站链接')
-    name: str | None = Field(None, description='网站名称')
 
 
 class GetCompanyBriefDetail(SchemaBase):
@@ -62,7 +56,6 @@ class GetCompanyBriefDetail(SchemaBase):
     company_type: str | None = Field(None, description='公司类型')
     industry: str | None = Field(None, description='所属行业')
     company_size: str | None = Field(None, description='公司规模')
-    websites: list[GetCompanyWebsiteBrief] = Field(default_factory=list, description='网站列表')
 
 
 class GetRecruitAnnouncementDetail(OCRecruitAnnouncementSchemaBase):

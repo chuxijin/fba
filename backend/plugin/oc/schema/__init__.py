@@ -11,7 +11,6 @@ from backend.plugin.oc.schema.crawler import CrawlerParam, CrawlerResult
 from backend.plugin.oc.schema.recruit_announcement import (
     CreateRecruitAnnouncementParam,
     GetCompanyBriefDetail,
-    GetCompanyWebsiteBrief,
     GetRecruitAnnouncementDetail,
     GetRecruitAnnouncementWithCompanyDetail,
     OCRecruitAnnouncementSchemaBase,
@@ -36,7 +35,6 @@ __all__ = [
     'GetApplicationAnnouncementDetail',
     'GetCompanyBriefDetail',
     'GetCompanyDetail',
-    'GetCompanyWebsiteBrief',
     'GetCompanyWebsiteDetail',
     'GetRecruitAnnouncementDetail',
     'GetRecruitAnnouncementWithCompanyDetail',

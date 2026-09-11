@@ -433,6 +433,8 @@ class GiveMeOCCrawler:
                 location=self._clean_text(job_data.get('location')) or '未知',
                 exam_info=self._clean_text(job_data.get('exam_info')),
                 referral_code=self._clean_text(job_data.get('referral_code')),
+                apply_url=self._clean_text(job_data.get('apply_link')),
+                notice_url=self._clean_text(job_data.get('notice_link')),
                 source_key=source_key,
                 remark=f'源站更新: {job_data["update_time"] or timezone.now().date()}',
             )
@@ -449,6 +451,8 @@ class GiveMeOCCrawler:
         announcement.location = self._clean_text(job_data.get('location')) or '未知'
         announcement.exam_info = self._clean_text(job_data.get('exam_info'))
         announcement.referral_code = self._clean_text(job_data.get('referral_code'))
+        announcement.apply_url = self._clean_text(job_data.get('apply_link'))
+        announcement.notice_url = self._clean_text(job_data.get('notice_link'))
         announcement.remark = f'源站更新: {job_data["update_time"] or timezone.now().date()}'
         await db.flush()
         return 'updated'
