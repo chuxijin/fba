@@ -240,12 +240,12 @@ class GiveMeOCCrawler:
             if location_match:
                 job_data['location'] = re.sub(r'<[^>]+>', '', location_match.group(1)).strip()
 
-            # 提取招聘对象
+            # 提取招聘对象（class 中的分类名可能过期，取文本内容 group(2)）
             target_match = re.search(
                 rf'<span class="{prefix}-badge {prefix}-target-([^"]*)"[^>]*>([^<]*)</span>', tr_content
             )
             if target_match:
-                job_data['recruit_target'] = re.sub(r'<[^>]+>', '', target_match.group(1)).strip()
+                job_data['recruit_target'] = re.sub(r'<[^>]+>', '', target_match.group(2)).strip()
 
             # 提取岗位信息
             position_match = re.search(rf'<span class="{prefix}-position-tag"[^>]*>(.*?)</span>', tr_content, re.DOTALL)
