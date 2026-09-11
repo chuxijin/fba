@@ -30,7 +30,7 @@ async def crawl_jobs_task(self, job_type: str = 'campus') -> str:
             start_page=1,
             end_page=3,
             job_type=job_type,
-            delay=1.0,
+            delay=60.0,
             nonce=None,
             cookie=cookie,
         )

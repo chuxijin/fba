@@ -24,14 +24,23 @@ class GiveMeOCCrawler:
             'campus': 'https://www.givemeoc.com/',
             'intern': 'https://www.givemeoc.com/internship',
         }
+        # 模拟真实 Chrome 浏览器请求头
         self.base_headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+            ),
             'Accept': '*/*',
-            'Accept-Language': 'zh-CN,zh;q=0.9',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Cache-Control': 'no-cache',
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
             'Origin': 'https://www.givemeoc.com',
             'Referer': 'https://www.givemeoc.com/',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'X-Requested-With': 'XMLHttpRequest',
         }
         # 缓存的 nonce 值（会自动获取）
         self._cached_nonce: dict[str, str] = {}
@@ -47,9 +56,19 @@ class GiveMeOCCrawler:
         page_url = self.page_urls.get(job_type, self.page_urls['campus'])
 
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'zh-CN,zh;q=0.9',
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+            ),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Cache-Control': 'no-cache',
+            'Referer': 'https://www.givemeoc.com/',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Upgrade-Insecure-Requests': '1',
         }
         if cookie:
             headers['Cookie'] = cookie
@@ -429,6 +448,7 @@ class GiveMeOCCrawler:
                 recruitment_type=job_data['recruitment_type'] or '未知',
                 recruit_target=self._clean_text(job_data.get('recruit_target')) or '未知',
                 positions=self._clean_text(job_data.get('positions')),
+                start_time=str(job_data['update_time'] or timezone.now().date()),
                 end_time=job_data.get('deadline'),
                 location=self._clean_text(job_data.get('location')) or '未知',
                 exam_info=self._clean_text(job_data.get('exam_info')),
@@ -448,6 +468,7 @@ class GiveMeOCCrawler:
         announcement.recruitment_type = job_data['recruitment_type'] or '未知'
         announcement.recruit_target = self._clean_text(job_data.get('recruit_target')) or '未知'
         announcement.positions = self._clean_text(job_data.get('positions'))
+        announcement.start_time = str(job_data['update_time'] or timezone.now().date())
         announcement.end_time = job_data.get('deadline')
         announcement.location = self._clean_text(job_data.get('location')) or '未知'
         announcement.exam_info = self._clean_text(job_data.get('exam_info'))
