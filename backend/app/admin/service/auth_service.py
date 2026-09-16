@@ -18,12 +18,14 @@ from backend.common.exception import errors
 from backend.common.i18n import t
 from backend.common.log import log
 from backend.common.response.response_code import CustomErrorCode
-from backend.common.security.jwt import (
+from backend.common.security.jwt import jwt_decode
+from backend.common.security.token import (
     create_access_token,
     create_new_token,
     create_refresh_token,
     get_token,
-    jwt_decode,
+    get_user_sessions,
+    revoke_token,
 )
 from backend.core.conf import settings
 from backend.database.db import uuid4_str
@@ -46,14 +48,14 @@ class AuthService:
         success_msg: str | None = None,
     ) -> GetLoginToken:
         """
-        鍩轰簬鐜版湁鐢ㄦ埛绛惧彂鐧诲綍浠ょ墝
+        基于现有用户签发登录令牌
 
-        :param db: 鏁版嵁搴撲細璇?
-        :param response: 鍝嶅簲瀵硅薄
-        :param user: 鐢ㄦ埛 ORM 瀵硅薄
-        :param background_tasks: 鍚庡彴浠诲姟
-        :param password_expire_days_remaining: 瀵嗙爜鍒版湡鍓╀綑澶╂暟
-        :param success_msg: 鐧诲綍鎴愬姛鏃ュ織
+        :param db: 数据库会话
+        :param response: 响应对象
+        :param user: 用户 ORM 对象
+        :param background_tasks: 后台任务
+        :param password_expire_days_remaining: 密码到期剩余天数
+        :param success_msg: 登录成功日志
         :return:
         """
         await user_dao.update_login_time(db, user.username)
@@ -104,7 +106,7 @@ class AuthService:
         )
 
     @staticmethod
-    async def user_verify(db: AsyncSession, username: str, password: str) -> tuple[User, int | None]:
+    async def user_verify(*, db: AsyncSession, username: str, password: str) -> tuple[User, int | None]:
         """
         验证用户名和密码
 
@@ -116,9 +118,7 @@ class AuthService:
         user = await user_dao.get_by_username_or_email(db, username)
         if not user:
             raise errors.NotFoundError(msg='用户名或密码有误')
-
         await password_security_service.check_status(user.id, user.status)
-
         if user.password is None or not password_verify(password, user.password):
             await password_security_service.handle_login_failure(db, user.id)
             raise errors.AuthorizationError(msg='用户名或密码有误')
@@ -126,7 +126,6 @@ class AuthService:
         days_remaining = await password_security_service.check_password_expiry_status(
             db, user.last_password_changed_time
         )
-
         await password_security_service.handle_login_success(user.id)
 
         return user, days_remaining
@@ -139,12 +138,11 @@ class AuthService:
         :param obj: 登录凭证
         :return:
         """
-        user, _ = await self.user_verify(db, obj.username, obj.password)
+        user, _ = await self.user_verify(db=db, username=obj.username, password=obj.password)
         await user_dao.update_login_time(db, obj.username)
         access_token_data = await create_access_token(
             user.id,
             multi_login=user.is_multi_login,
-            # extra info
             swagger=True,
         )
         return access_token_data.access_token, user
@@ -179,7 +177,7 @@ class AuthService:
                     raise errors.CustomError(error=CustomErrorCode.CAPTCHA_ERROR)
                 await redis_client.delete(f'{settings.LOGIN_CAPTCHA_REDIS_PREFIX}:{obj.uuid}')
 
-            user, days_remaining = await self.user_verify(db, obj.username, obj.password)
+            user, days_remaining = await self.user_verify(db=db, username=obj.username, password=obj.password)
         except errors.NotFoundError as e:
             log.error('登陆错误: 用户名不存在')
             raise errors.NotFoundError(msg=e.msg)
@@ -253,11 +251,8 @@ class AuthService:
             raise errors.NotFoundError(msg='用户不存在')
         if not user.status:
             raise errors.AuthorizationError(msg='用户已被锁定, 请联系统管理员')
-        token_keys = await redis_client.get_by_prefix(f'{settings.TOKEN_REDIS_PREFIX}:{user.id}')
-        if not user.is_multi_login and [
-            key for key in token_keys if not key.endswith(f':{token_payload.session_uuid}')
-        ]:
-            raise errors.TokenError(msg='此用户已在异地登录，请重新登录并及时修改密码')
+        if not user.is_multi_login and await get_user_sessions(user.id) - {token_payload.session_uuid}:
+            raise errors.ForbiddenError(msg='此用户已在异地登录，请重新登录并及时修改密码')
         new_token = await create_new_token(
             refresh_token,
             token_payload.session_uuid,
@@ -279,6 +274,7 @@ class AuthService:
             expires=timezone.to_utc(new_token.new_refresh_token_expire_time),
             httponly=True,
         )
+
         data = GetNewToken(
             access_token=new_token.new_access_token,
             access_token_expire_time=new_token.new_access_token_expire_time,
@@ -298,18 +294,12 @@ class AuthService:
         try:
             token = get_token(request)
             token_payload = jwt_decode(token)
-            user_id = token_payload.user_id
-            session_uuid = token_payload.session_uuid
-            refresh_token = request.cookies.get(settings.COOKIE_REFRESH_TOKEN_KEY)
         except errors.TokenError:
             return
         finally:
             response.delete_cookie(settings.COOKIE_REFRESH_TOKEN_KEY)
 
-        await redis_client.delete(f'{settings.TOKEN_REDIS_PREFIX}:{user_id}:{session_uuid}')
-        await redis_client.delete(f'{settings.TOKEN_EXTRA_INFO_REDIS_PREFIX}:{user_id}:{session_uuid}')
-        if refresh_token:
-            await redis_client.delete(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}:{session_uuid}')
+        await revoke_token(token_payload.user_id, token_payload.session_uuid)
 
     async def register_user(self, *, db: AsyncSession, obj: AuthRegisterParam) -> User:
         """

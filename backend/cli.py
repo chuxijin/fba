@@ -42,8 +42,8 @@ from backend.database.db import (
     async_db_session,
     create_database_async_engine,
     create_database_async_session,
-    get_database_url,
     create_postgresql_extensions,
+    get_database_url,
 )
 from backend.database.redis import RedisCli, redis_client
 from backend.plugin.core import (
@@ -285,8 +285,10 @@ async def init(db: AsyncSession, redis: RedisCli) -> None:
             for prefix in [
                 settings.JWT_USER_REDIS_PREFIX,
                 settings.TOKEN_EXTRA_INFO_REDIS_PREFIX,
+                settings.TOKEN_ONLINE_REDIS_PREFIX,
                 settings.TOKEN_REDIS_PREFIX,
                 settings.TOKEN_REFRESH_REDIS_PREFIX,
+                settings.TOKEN_SESSION_REDIS_PREFIX,
             ]:
                 await redis.delete_by_prefix(prefix)
 

@@ -12,9 +12,10 @@ from backend.app.question_bank.schema.bank_mount import (
 )
 from backend.app.question_bank.service.bank_mount_service import bank_mount_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
-from backend.common.security.jwt import DependsJwtAuth, get_token, jwt_authentication
+from backend.common.security.jwt import DependsJwtAuth, jwt_authentication
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
+from backend.common.security.token import get_token
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter()
