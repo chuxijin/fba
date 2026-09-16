@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     REDIS_TIMEOUT: int = 5  # redis 默认连接超时时间
     REDIS_SOCKET_TIMEOUT: int = 5  # redis socket 连接超时时间
     REDIS_CONNECT_TIMEOUT: int = 5  # redis 连接超时时间
+    REDIS_MAX_CONNECTIONS: int = 100  # 连接池上限
+    REDIS_POOL_TIMEOUT: int = 20  # 等待空闲连接超时（秒）
 
     # 缓存
     CACHE_LOCAL_ENABLED: bool = True
@@ -90,6 +92,7 @@ class Settings(BaseSettings):
     CACHE_PUBSUB_CHANNEL: str = 'fba:cache:invalidate'
     CACHE_PUBSUB_RECONNECT_DELAY: int = 5  # 重连延迟（秒）
     CACHE_PUBSUB_MAX_RECONNECT_ATTEMPTS: int = 10  # 最大重连次数
+    CACHE_PUBSUB_POLL_TIMEOUT: float = 1.0  # 订阅消息轮询超时（秒）
 
     # .env Snowflake
     SNOWFLAKE_ENABLED: bool = False
