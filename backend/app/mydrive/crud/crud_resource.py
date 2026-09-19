@@ -38,6 +38,23 @@ class CRUDMyDriveResource(CRUDPlus[MyDriveResource]):
         )
         return (await db.execute(stmt)).scalars().first()
 
+    def _resource_type_condition(self, resource_type: str):
+        """
+        构造资源类型筛选条件
+
+        支持逗号分隔的多值：前端筛选下拉的「干货汇总」聚合项对应多个资源类型
+        （干货 / 电子书 / 软件 / 其他），需要一次匹配；单值时保持原有精确匹配语义不变。
+
+        :param resource_type: 资源类型，或逗号分隔的多个资源类型
+        :return:
+        """
+        types = [item.strip() for item in resource_type.split(',') if item.strip()]
+        if not types:
+            return None
+        if len(types) == 1:
+            return self.model.resource_type == types[0]
+        return self.model.resource_type.in_(types)
+
     async def get_select(self, owner_id: int, params: GetMyDriveResourceListParam) -> Select:
         """
         获取资源查询语句。
@@ -56,7 +73,9 @@ class CRUDMyDriveResource(CRUDPlus[MyDriveResource]):
         if params.category_id is not None:
             filters.append(self.model.category_id == params.category_id)
         if params.resource_type:
-            filters.append(self.model.resource_type == params.resource_type)
+            condition = self._resource_type_condition(params.resource_type)
+            if condition is not None:
+                filters.append(condition)
         if params.status:
             filters.append(self.model.status == params.status)
         if params.audit_status:
@@ -178,7 +197,9 @@ class CRUDMyDriveResource(CRUDPlus[MyDriveResource]):
         if params.category_id is not None:
             filters.append(self.model.category_id == params.category_id)
         if params.resource_type:
-            filters.append(self.model.resource_type == params.resource_type)
+            condition = self._resource_type_condition(params.resource_type)
+            if condition is not None:
+                filters.append(condition)
         if params.keyword:
             keyword = f'%{params.keyword}%'
             filters.append(

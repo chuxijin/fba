@@ -117,7 +117,7 @@ class GetMyDriveResourceListParam(SchemaBase):
     """资源列表参数"""
 
     category_id: int | None = Field(default=None, description='分类 ID')
-    resource_type: str | None = Field(default=None, description='资源类型')
+    resource_type: str | None = Field(default=None, description='资源类型，支持逗号分隔多值（前端「干货汇总」聚合项）')
     provider: str | None = Field(default=None, description='网盘驱动标识')
     status: str | None = Field(default=None, description='状态')
     audit_status: str | None = Field(default=None, description='审核状态')
