@@ -1,0 +1,24 @@
+[plugin]
+summary = '飞书电子表格'
+version = '1.0.0'
+description = '飞书电子表格读写插件，支持多工作簿 / 多子表追加、批量写入、单元格样式与下拉列表设置'
+author = 'null'
+tags = ['other']
+database = ['mysql', 'postgresql']
+
+[app]
+router = ['v1']
+
+[settings]
+# 请求超时时间（秒）
+FEISHU_REQUEST_TIMEOUT = 30
+# tenant_access_token 的 Redis 缓存前缀
+FEISHU_TOKEN_REDIS_PREFIX = 'fba:feishu:token'
+# 默认表格（留空则调用时必须显式传入 workbook）
+FEISHU_SHEET_URL = ''
+FEISHU_SHEET_ID = ''
+FEISHU_SHEET_NAME = ''
+
+# 导出业务配置（资源类型映射 / 分类来源 / 定时表达式等）
+# 已迁至数据库表 feishu_sheet_config，可在管理端「飞书表配置」页面维护，
+# 支持多张表并存（公考 / 考研……），无需再改本文件。
