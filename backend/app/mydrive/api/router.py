@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from backend.app.mydrive.api.v1.account import router as account_router
+from backend.app.mydrive.api.v1.feishu import router as feishu_router
 from backend.app.mydrive.api.v1.public_resource import router as public_resource_router
 from backend.app.mydrive.api.v1.relationship import router as relationship_router
 from backend.app.mydrive.api.v1.resource import router as resource_router
@@ -17,5 +18,6 @@ v1.include_router(relationship_router, prefix='/mydrive', tags=['我的关系分
 v1.include_router(resource_router, prefix='/mydrive/resources', tags=['我的资源'])
 v1.include_router(space_router, prefix='/mydrive/spaces', tags=['我的文件空间'])
 v1.include_router(sync_router, prefix='/mydrive/sync', tags=['我的文件同步'])
+v1.include_router(feishu_router, prefix='/mydrive/feishu', tags=['飞书表导出'])
 
 router = v1
