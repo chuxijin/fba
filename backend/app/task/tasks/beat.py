@@ -24,6 +24,10 @@ def get_local_beat_schedule() -> dict[str, dict[str, Any]]:
             'task': 'mydrive:check_and_execute_cron_tasks',
             'schedule': TzAwareCrontab('*/5'),
         },
+        '飞书表定时导出任务检查': {
+            'task': 'feishu:check_and_execute_cron_tasks',
+            'schedule': TzAwareCrontab('*/5'),
+        },
         '刷新 MyDrive 网盘账户资料': {
             'task': 'mydrive:sync_active_account_profiles',
             'schedule': TzAwareCrontab('0', '22'),
