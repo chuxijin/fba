@@ -126,11 +126,7 @@ def _compact_success_result(result: dict[str, Any]) -> dict[str, Any]:
     :param result: 原始任务结果
     :return:
     """
-    return {
-        key: value
-        for key, value in result.items()
-        if key not in {'details', 'items', 'records'}
-    }
+    return {key: value for key, value in result.items() if key not in {'details', 'items', 'records'}}
 
 
 def _build_sync_failure_message(result: dict[str, Any]) -> str:
