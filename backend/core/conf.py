@@ -578,6 +578,22 @@ class Settings(BaseSettings):
     BAIDUPAN_REDIRECT_URI: str = ''  # OAuth 回调地址
 
     ##################################################
+    # [ Plugin ] feishu 飞书电子表格
+    ##################################################
+    # .env 飞书开放平台应用凭证
+    FEISHU_APP_ID: str = ''
+    FEISHU_APP_SECRET: str = ''
+    # 默认表格（支持 /sheets/ 直链、/wiki/ 知识库链接或裸 token）
+    FEISHU_SHEET_URL: str = ''
+    # 默认子表（sheet_id 或子表名称）
+    FEISHU_SHEET_ID: str = ''
+    FEISHU_SHEET_NAME: str = ''
+
+    # 基础配置（in plugin.toml）
+    FEISHU_REQUEST_TIMEOUT: int = 30
+    FEISHU_TOKEN_REDIS_PREFIX: str = 'fba:feishu:token'
+
+    ##################################################
     # [ App ] Jia 推送服务
     ##################################################
     # Firebase 服务账号凭证 JSON 文件路径
