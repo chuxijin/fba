@@ -47,12 +47,44 @@ class UpdateCompanyParam(SchemaBase):
     websites: list[CompanyWebsiteParam] | None = Field(None, description='网站列表（传入时全量替换）')
 
 
+class CreateWebsiteParam(SchemaBase):
+    """公司网站创建参数"""
+
+    company_id: int = Field(description='公司 ID')
+    url: str = Field(description='网站链接')
+    name: str | None = Field(None, description='网站名称（官网/投递入口等）')
+    remark: str | None = Field(None, description='备注')
+
+
+class UpdateWebsiteParam(SchemaBase):
+    """公司网站更新参数"""
+
+    company_id: int | None = Field(None, description='公司 ID')
+    url: str | None = Field(None, description='网站链接')
+    name: str | None = Field(None, description='网站名称（官网/投递入口等）')
+    remark: str | None = Field(None, description='备注')
+
+
 class GetCompanyWebsiteDetail(SchemaBase):
     """公司网站详情"""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='网站 ID')
+    url: str = Field(description='网站链接')
+    name: str | None = Field(None, description='网站名称')
+    remark: str | None = Field(None, description='备注')
+    created_time: datetime = Field(description='创建时间')
+
+
+class GetWebsiteListDetail(SchemaBase):
+    """公司网站列表详情（含所属公司）"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description='网站 ID')
+    company_id: int = Field(description='公司 ID')
+    company_name: str = Field(description='公司名称')
     url: str = Field(description='网站链接')
     name: str | None = Field(None, description='网站名称')
     remark: str | None = Field(None, description='备注')

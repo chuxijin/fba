@@ -11,11 +11,13 @@ from backend.plugin.oc.api.v1.jobs import (
     referral_code,
     resource,
     resume,
+    website,
 )
 
 router = APIRouter(prefix='/jobs')
 
 router.include_router(company.router, prefix='/company', tags=['公司信息'])
+router.include_router(website.router, prefix='/website', tags=['公司网站'])
 router.include_router(announcement.router, prefix='/announcement', tags=['招聘公告'])
 router.include_router(application.router, prefix='/application', tags=['投递记录'])
 router.include_router(crawler.router, prefix='/crawler', tags=['数据爬虫'])

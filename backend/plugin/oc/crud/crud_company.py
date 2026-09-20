@@ -8,7 +8,13 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.plugin.oc.model import OCCompany, OCCompanyWebsite
-from backend.plugin.oc.schema.company import CompanyWebsiteParam, CreateCompanyParam, UpdateCompanyParam
+from backend.plugin.oc.schema.company import (
+    CompanyWebsiteParam,
+    CreateCompanyParam,
+    CreateWebsiteParam,
+    UpdateCompanyParam,
+    UpdateWebsiteParam,
+)
 
 
 class CRUDOCCompany(CRUDPlus[OCCompany]):
@@ -132,4 +138,101 @@ class CRUDOCCompany(CRUDPlus[OCCompany]):
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=company_ids)
 
 
+class CRUDOCCompanyWebsite(CRUDPlus[OCCompanyWebsite]):
+    """公司网站数据库操作类"""
+
+    async def get_website_select(
+        self,
+        company_name: str | None,
+        name: str | None,
+        url: str | None,
+    ) -> Select:
+        """
+        获取网站列表查询表达式（含所属公司名称）
+
+        :param company_name: 公司名称（模糊）
+        :param name: 网站名称（模糊）
+        :param url: 网站链接（模糊）
+        :return:
+        """
+        conditions = []
+        if company_name is not None:
+            conditions.append(OCCompany.name.like(f'%{company_name}%'))
+        if name is not None:
+            conditions.append(OCCompanyWebsite.name.like(f'%{name}%'))
+        if url is not None:
+            conditions.append(OCCompanyWebsite.url.like(f'%{url}%'))
+
+        return (
+            sa.select(
+                OCCompanyWebsite.id,
+                OCCompanyWebsite.company_id,
+                OCCompany.name.label('company_name'),
+                OCCompanyWebsite.url,
+                OCCompanyWebsite.name,
+                OCCompanyWebsite.remark,
+                OCCompanyWebsite.created_time,
+            )
+            .join(OCCompany, OCCompany.id == OCCompanyWebsite.company_id)
+            .where(*conditions)
+            .order_by(desc(OCCompanyWebsite.id))
+        )
+
+    async def get_website(self, db: AsyncSession, website_id: int) -> OCCompanyWebsite | None:
+        """
+        获取网站详情
+
+        :param db: 数据库会话
+        :param website_id: 网站 ID
+        :return:
+        """
+        return await self.select_model(db, website_id)
+
+    async def get_website_by_url(self, db: AsyncSession, company_id: int, url: str) -> OCCompanyWebsite | None:
+        """
+        通过公司 ID 与链接获取网站（唯一约束校验）
+
+        :param db: 数据库会话
+        :param company_id: 公司 ID
+        :param url: 网站链接
+        :return:
+        """
+        return await self.select_model_by_column(db, company_id=company_id, url=url)
+
+    async def create_website(self, db: AsyncSession, obj: CreateWebsiteParam) -> OCCompanyWebsite:
+        """
+        创建网站
+
+        :param db: 数据库会话
+        :param obj: 创建参数
+        :return:
+        """
+        website = OCCompanyWebsite(**obj.model_dump())
+        db.add(website)
+        await db.flush()
+        return website
+
+    async def update_website(self, db: AsyncSession, website_id: int, obj: UpdateWebsiteParam) -> int:
+        """
+        更新网站
+
+        :param db: 数据库会话
+        :param website_id: 网站 ID
+        :param obj: 更新参数
+        :return:
+        """
+        return await self.update_model(db, website_id, obj.model_dump(exclude_unset=True))
+
+    async def delete_website(self, db: AsyncSession, website_ids: list[int]) -> int:
+        """
+        批量删除网站
+
+        :param db: 数据库会话
+        :param website_ids: 网站 ID 列表
+        :return:
+        """
+        return await self.delete_model_by_column(db, allow_multiple=True, id__in=website_ids)
+
+
 oc_company_dao: CRUDOCCompany = CRUDOCCompany(OCCompany)
+oc_company_website_dao: CRUDOCCompanyWebsite = CRUDOCCompanyWebsite(OCCompanyWebsite)
