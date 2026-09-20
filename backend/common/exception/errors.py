@@ -22,7 +22,15 @@ class BaseExceptionError(Exception):
 class HTTPError(HTTPException):
     """HTTP 异常"""
 
-    def __init__(self, *, code: int, msg: Any = None, headers: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        code: int,
+        msg: Any = None,
+        data: Any = None,
+        headers: dict[str, Any] | None = None,
+    ) -> None:
+        self.data = data
         super().__init__(status_code=code, detail=msg, headers=headers)
 
 
@@ -111,8 +119,19 @@ class TokenError(HTTPError):
 
     code = StandardResponseCode.HTTP_401
 
-    def __init__(self, *, msg: str = 'Not Authenticated', headers: dict[str, Any] | None = None) -> None:
-        super().__init__(code=self.code, msg=msg, headers=headers or {'WWW-Authenticate': 'Bearer'})
+    def __init__(
+        self,
+        *,
+        msg: str = 'Not Authenticated',
+        data: Any = None,
+        headers: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            code=self.code,
+            msg=msg,
+            data=data,
+            headers=headers or {'WWW-Authenticate': 'Bearer'},
+        )
 
 
 class ConflictError(BaseExceptionError):

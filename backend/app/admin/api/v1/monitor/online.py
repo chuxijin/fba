@@ -10,6 +10,7 @@ from backend.common.exception import errors
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsSuperUser, jwt_decode
 from backend.common.security.token import revoke_token
+from backend.common.security.token_reason import TokenInvalidReason
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 
@@ -115,5 +116,5 @@ async def delete_online_session(
     pk: Annotated[int, Path(description='用户 ID')],
     session_uuid: Annotated[str, Query(description='会话 UUID')],
 ) -> ResponseModel:
-    await revoke_token(pk, session_uuid)
+    await revoke_token(pk, session_uuid, reason=TokenInvalidReason.admin_revoked)
     return response_base.success()

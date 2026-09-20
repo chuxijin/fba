@@ -24,8 +24,14 @@ from backend.common.security.token import (
     create_new_token,
     create_refresh_token,
     get_token,
-    get_user_sessions,
     revoke_token,
+)
+from backend.common.security.token_reason import (
+    TokenAuthReason,
+    TokenInvalidReason,
+    auth_reason_data,
+    auth_reason_message,
+    get_token_invalid_reason,
 )
 from backend.core.conf import settings
 from backend.database.db import uuid4_str
@@ -244,16 +250,30 @@ class AuthService:
         """
         refresh_token = request.cookies.get(settings.COOKIE_REFRESH_TOKEN_KEY)
         if not refresh_token:
-            raise errors.TokenError(msg='Refresh Token 已过期，请重新登录')
+            raise errors.TokenError(
+                msg=auth_reason_message(TokenAuthReason.refresh_expired.value),
+                data=auth_reason_data(TokenAuthReason.refresh_expired.value),
+            )
 
-        token_payload = jwt_decode(refresh_token)
+        token_payload = jwt_decode(refresh_token, verify_exp=False)
+
+        invalid_reason = await get_token_invalid_reason(token_payload.user_id, token_payload.session_uuid)
+        if invalid_reason:
+            raise errors.TokenError(
+                msg=auth_reason_message(invalid_reason),
+                data=auth_reason_data(invalid_reason),
+            )
+        if token_payload.expire_time <= timezone.now():
+            raise errors.TokenError(
+                msg=auth_reason_message(TokenAuthReason.refresh_expired.value),
+                data=auth_reason_data(TokenAuthReason.refresh_expired.value),
+            )
+
         user = await user_dao.get(db, token_payload.user_id)
         if not user:
             raise errors.NotFoundError(msg='用户不存在')
         if not user.status:
             raise errors.AuthorizationError(msg='用户已被锁定, 请联系统管理员')
-        if not user.is_multi_login and await get_user_sessions(user.id) - {token_payload.session_uuid}:
-            raise errors.ForbiddenError(msg='此用户已在异地登录，请重新登录并及时修改密码')
         new_token = await create_new_token(
             refresh_token,
             token_payload.session_uuid,
@@ -294,13 +314,17 @@ class AuthService:
         """
         try:
             token = get_token(request)
-            token_payload = jwt_decode(token)
+            token_payload = jwt_decode(token, verify_exp=False)
         except errors.TokenError:
             return
         finally:
             response.delete_cookie(settings.COOKIE_REFRESH_TOKEN_KEY)
 
-        await revoke_token(token_payload.user_id, token_payload.session_uuid)
+        await revoke_token(
+            token_payload.user_id,
+            token_payload.session_uuid,
+            reason=TokenInvalidReason.logout,
+        )
 
     async def register_user(self, *, db: AsyncSession, obj: AuthRegisterParam) -> User:
         """

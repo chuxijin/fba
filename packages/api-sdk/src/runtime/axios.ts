@@ -31,6 +31,8 @@ export type {
   RetryOptions,
   SdkInstance,
   SetupSdkOptions,
+  TokenRefreshResult,
+  UnauthorizedContext,
 } from '../core/types'
 
 // 兼容旧名字 (legacy 别名, 业务侧偶尔有人作 type 用)

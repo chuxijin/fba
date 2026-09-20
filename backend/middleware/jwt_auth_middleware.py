@@ -25,6 +25,7 @@ class AuthenticationError(StarletteAuthenticationError):
         *,
         code: int | None = None,
         msg: str | None = None,
+        data: Any = None,
         headers: dict[str, Any] | None = None,
     ) -> None:
         """
@@ -32,11 +33,13 @@ class AuthenticationError(StarletteAuthenticationError):
 
         :param code: 错误码
         :param msg: 错误信息
+        :param data: 错误数据
         :param headers: 响应头
         :return:
         """
         self.code = code
         self.msg = msg
+        self.data = data
         self.headers = headers
 
 
@@ -52,7 +55,7 @@ class JwtAuthMiddleware(AuthenticationBackend):
         :param exc: 认证错误对象
         :return:
         """
-        content = {'code': exc.code, 'msg': exc.msg, 'data': None}
+        content = {'code': exc.code, 'msg': exc.msg, 'data': exc.data}
         ctx.__request_authentication_exception__ = content
         return MsgSpecJSONResponse(content=content, status_code=exc.code)
 
@@ -96,7 +99,7 @@ class JwtAuthMiddleware(AuthenticationBackend):
             user = await jwt_authentication(token)
         except TokenError as exc:
             if settings.TOKEN_REQUEST_UNDERLYING_SECURITY:
-                raise AuthenticationError(code=exc.code, msg=exc.detail, headers=exc.headers)
+                raise AuthenticationError(code=exc.code, msg=exc.detail, data=exc.data, headers=exc.headers)
             ctx.__request_jwt_authentication_exception__ = exc
             return None
         except Exception as e:

@@ -521,6 +521,112 @@ async function runExtraScenarios(): Promise<ExtraResult[]> {
     sdk.dispose();
   }
 
+  // ---- J. 结构化 data: session_replaced 不允许刷新 ----
+  {
+    let refreshCalled = 0;
+    let unauthorizedReason: string | undefined;
+    let unauthorizedCalled = 0;
+    const sdk = createSdk({
+      baseURL: 'http://fake',
+      adapter: ((config: any) =>
+        Promise.resolve({
+          data: {
+            code: 401,
+            msg: '账号已在其他设备登录，请重新登录',
+            data: { auth_reason: 'session_replaced', refreshable: false },
+          },
+          status: 401,
+          statusText: '401',
+          headers: {},
+          config,
+        })) as any,
+      getToken: () => 'fake-token',
+      onTokenExpired: async () => { refreshCalled++; return true; },
+      onUnauthorized: (ctx) => { unauthorizedCalled++; unauthorizedReason = ctx?.authReason; },
+    });
+
+    await sdk.axios.get('/api/test').catch(() => null);
+
+    out.push({
+      name: 'J. session_replaced(refreshable=false): 不刷新, onUnauthorized 收到 authReason',
+      pass: refreshCalled === 0 && unauthorizedCalled === 1 && unauthorizedReason === 'session_replaced',
+      expected: { refreshCalled: 0, unauthorizedCalled: 1, unauthorizedReason: 'session_replaced' },
+      actual: { refreshCalled, unauthorizedCalled, unauthorizedReason },
+    });
+    sdk.dispose();
+  }
+
+  // ---- K. 结构化 data: access_expired 允许刷新并重放 ----
+  {
+    let refreshCalled = 0;
+    let callIndex = 0;
+    const sdk = createSdk({
+      baseURL: 'http://fake',
+      adapter: ((config: any) => {
+        const i = callIndex++;
+        const result = i === 0
+          ? { status: 401, body: { code: 401, msg: 'Token 已过期', data: { auth_reason: 'access_expired', refreshable: true } } }
+          : { status: 200, body: { code: 200, msg: 'ok', data: { ok: true } } };
+        return Promise.resolve({
+          data: result.body,
+          status: result.status,
+          statusText: String(result.status),
+          headers: {},
+          config,
+        });
+      }) as any,
+      getToken: () => 'fake-token',
+      onTokenExpired: async () => { refreshCalled++; return true; },
+    });
+
+    let success = false;
+    try {
+      await sdk.axios.get('/api/test');
+      success = true;
+    }
+    catch {
+      success = false;
+    }
+
+    out.push({
+      name: 'K. access_expired(refreshable=true): 刷新 1 次并重放成功',
+      pass: success && refreshCalled === 1,
+      expected: { success: true, refreshCalled: 1 },
+      actual: { success, refreshCalled },
+    });
+    sdk.dispose();
+  }
+
+  // ---- L. refresh 失败带回 session_replaced, 透传给 onUnauthorized ----
+  {
+    let unauthorizedReason: string | undefined;
+    let unauthorizedMsg: string | undefined;
+    const sdk = createSdk({
+      baseURL: 'http://fake',
+      adapter: ((config: any) =>
+        Promise.resolve({
+          data: { code: 401, msg: 'Token 已过期', data: { auth_reason: 'access_expired', refreshable: true } },
+          status: 401,
+          statusText: '401',
+          headers: {},
+          config,
+        })) as any,
+      getToken: () => 'fake-token',
+      onTokenExpired: async () => ({ ok: false, authReason: 'session_replaced', msg: '账号已在其他设备登录，请重新登录' }),
+      onUnauthorized: (ctx) => { unauthorizedReason = ctx?.authReason; unauthorizedMsg = ctx?.msg; },
+    });
+
+    await sdk.axios.get('/api/test').catch(() => null);
+
+    out.push({
+      name: 'L. refresh 失败返回 session_replaced: 透传给 onUnauthorized',
+      pass: unauthorizedReason === 'session_replaced' && unauthorizedMsg === '账号已在其他设备登录，请重新登录',
+      expected: { unauthorizedReason: 'session_replaced', unauthorizedMsg: '账号已在其他设备登录，请重新登录' },
+      actual: { unauthorizedReason, unauthorizedMsg },
+    });
+    sdk.dispose();
+  }
+
   return out;
 }
 

@@ -24,6 +24,7 @@ from backend.common.pagination import paging_data
 from backend.common.response.response_code import CustomErrorCode
 from backend.common.security.jwt import jwt_decode
 from backend.common.security.token import get_token, revoke_user_tokens
+from backend.common.security.token_reason import TokenInvalidReason
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 from backend.utils.sensitive_words import validate_no_sensitive_words
@@ -205,11 +206,15 @@ class UserService:
                 if pk == request.user.id:
                     # 系统管理员修改自身时，除当前 token 外，其他 token 失效
                     if not new_multi_login:
-                        await revoke_user_tokens(user.id, exclude_session_uuid=token_payload.session_uuid)
+                        await revoke_user_tokens(
+                            user.id,
+                            exclude_session_uuid=token_payload.session_uuid,
+                            reason=TokenInvalidReason.policy_changed,
+                        )
                 else:
                     # 系统管理员修改他人时，他人 token 全部失效
                     if not new_multi_login:
-                        await revoke_user_tokens(user.id)
+                        await revoke_user_tokens(user.id, reason=TokenInvalidReason.policy_changed)
             case _:
                 raise errors.RequestError(msg='权限类型不存在')
 
@@ -235,7 +240,7 @@ class UserService:
         history_obj = CreateUserPasswordHistoryParam(user_id=user.id, password=user.password)
         await password_security_service.save_password_history(db, history_obj)
         await user_dao.update_password_changed_time(db, user.id)
-        await revoke_user_tokens(user.id)
+        await revoke_user_tokens(user.id, reason=TokenInvalidReason.password_changed)
         await redis_client.delete(f'{settings.JWT_USER_REDIS_PREFIX}:{user.id}')
         return count
 
@@ -407,7 +412,7 @@ class UserService:
         history_obj = CreateUserPasswordHistoryParam(user_id=user.id, password=user.password)
         await password_security_service.save_password_history(db, history_obj)
         await user_dao.update_password_changed_time(db, user.id)
-        await revoke_user_tokens(user_id)
+        await revoke_user_tokens(user_id, reason=TokenInvalidReason.password_changed)
         await redis_client.delete(f'{settings.JWT_USER_REDIS_PREFIX}:{user_id}')
         return count
 
@@ -425,7 +430,7 @@ class UserService:
             raise errors.NotFoundError(msg='用户不存在')
 
         count = await user_dao.delete(db, user.id)
-        await revoke_user_tokens(user.id)
+        await revoke_user_tokens(user.id, reason=TokenInvalidReason.account_deleted)
         await redis_client.delete(f'{settings.JWT_USER_REDIS_PREFIX}:{user.id}')
         return count
 

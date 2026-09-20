@@ -11,6 +11,14 @@ from fastapi.security.utils import get_authorization_scheme_param
 from backend.common.dataclasses import AccessToken, NewToken, RefreshToken
 from backend.common.exception import errors
 from backend.common.security.jwt import jwt_encode
+from backend.common.security.token_reason import (
+    TokenAuthReason,
+    TokenInvalidReason,
+    auth_reason_data,
+    auth_reason_message,
+    get_token_invalid_reason,
+    remember_token_invalid_reason,
+)
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 from backend.utils.timezone import timezone
@@ -137,7 +145,12 @@ async def create_access_token(
     })
 
     if not swagger and not multi_login:
-        await revoke_user_tokens(user_id, exclude_session_uuid=session_uuid, include_swagger=False)
+        await revoke_user_tokens(
+            user_id,
+            exclude_session_uuid=session_uuid,
+            include_swagger=False,
+            reason=TokenInvalidReason.session_replaced,
+        )
 
     extra_info = {'swagger': True, **kwargs} if swagger else kwargs
     extra_ttl = (
@@ -226,9 +239,19 @@ async def create_new_token(
     :param kwargs: token 附加信息
     :return:
     """
+    invalid_reason = await get_token_invalid_reason(user_id, session_uuid)
+    if invalid_reason:
+        raise errors.TokenError(
+            msg=auth_reason_message(invalid_reason),
+            data=auth_reason_data(invalid_reason),
+        )
+
     redis_refresh_token = await redis_client.get(f'{settings.TOKEN_REFRESH_REDIS_PREFIX}:{user_id}:{session_uuid}')
     if not redis_refresh_token or redis_refresh_token != refresh_token:
-        raise errors.TokenError(msg='Refresh Token 已过期，请重新登录')
+        raise errors.TokenError(
+            msg=auth_reason_message(TokenAuthReason.refresh_expired.value),
+            data=auth_reason_data(TokenAuthReason.refresh_expired.value),
+        )
 
     new_access_token = await create_access_token(
         user_id,
@@ -247,18 +270,28 @@ async def create_new_token(
     )
 
 
-async def _revoke_sessions(user_id: int, session_uuids: set[str]) -> None:
+async def _revoke_sessions(
+    user_id: int,
+    session_uuids: set[str],
+    *,
+    reason: TokenInvalidReason | None = None,
+) -> None:
     """
     批量删除会话相关 key，并异步断开 socket
 
     :param user_id: 用户 ID
     :param session_uuids: 要撤销的会话 UUID
+    :param reason: 主动失效原因，用于后续区分自然过期与主动撤销
     :return:
     """
     if not session_uuids:
         return
 
     ordered = list(session_uuids)
+    if reason is not None:
+        await asyncio.gather(
+            *[remember_token_invalid_reason(user_id, session_uuid, reason) for session_uuid in ordered]
+        )
     sid_sets = await redis_client.smembers_many([
         f'{settings.TOKEN_ONLINE_REDIS_PREFIX}:session:{session_uuid}' for session_uuid in ordered
     ])
@@ -296,15 +329,21 @@ async def _revoke_sessions(user_id: int, session_uuids: set[str]) -> None:
                 task.add_done_callback(_socket_disconnect_tasks.discard)
 
 
-async def revoke_token(user_id: int, session_uuid: str) -> None:
+async def revoke_token(
+    user_id: int,
+    session_uuid: str,
+    *,
+    reason: TokenInvalidReason | None = None,
+) -> None:
     """
     撤销 token
 
     :param user_id: 用户 ID
     :param session_uuid: 会话 ID
+    :param reason: 主动失效原因
     :return:
     """
-    await _revoke_sessions(user_id, {session_uuid})
+    await _revoke_sessions(user_id, {session_uuid}, reason=reason)
 
 
 async def revoke_user_tokens(
@@ -312,6 +351,7 @@ async def revoke_user_tokens(
     *,
     exclude_session_uuid: str | None = None,
     include_swagger: bool = True,
+    reason: TokenInvalidReason | None = None,
 ) -> None:
     """
     撤销用户全部会话，可保留当前会话
@@ -319,6 +359,7 @@ async def revoke_user_tokens(
     :param user_id: 用户 ID
     :param exclude_session_uuid: 需要保留的会话 UUID
     :param include_swagger: 是否同时撤销 swagger 调试 token
+    :param reason: 主动失效原因
     :return:
     """
     session_uuids = await get_user_sessions(user_id)
@@ -326,4 +367,4 @@ async def revoke_user_tokens(
         session_uuids |= set(await redis_client.smembers(f'{settings.TOKEN_SESSION_REDIS_PREFIX}:{user_id}:swagger'))
     if exclude_session_uuid:
         session_uuids.discard(exclude_session_uuid)
-    await _revoke_sessions(user_id, session_uuids)
+    await _revoke_sessions(user_id, session_uuids, reason=reason)

@@ -38,7 +38,18 @@ export class ApiError extends Error {
 
 /** 认证失败: HTTP 401 或后端 code === 401; refresh 失败兜底也走这里 */
 export class UnauthorizedError extends ApiError {
-  constructor(args: { msg?: string, status?: number, data?: unknown } = {}) {
+  /** 机器可读的认证失败原因, 如 access_expired / session_replaced / refresh_expired */
+  readonly authReason?: string
+  /** 是否允许客户端自动刷新 token */
+  readonly refreshable?: boolean
+
+  constructor(args: {
+    msg?: string
+    status?: number
+    data?: unknown
+    authReason?: string
+    refreshable?: boolean
+  } = {}) {
     super({
       code: 401,
       msg: args.msg ?? '认证已过期，请重新登录',
@@ -46,6 +57,8 @@ export class UnauthorizedError extends ApiError {
       data: args.data,
     })
     this.name = 'UnauthorizedError'
+    this.authReason = args.authReason
+    this.refreshable = args.refreshable
   }
 }
 

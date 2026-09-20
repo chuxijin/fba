@@ -6,7 +6,7 @@ from starlette.middleware.cors import CORSMiddleware
 from uvicorn.protocols.http.h11_impl import STATUS_PHRASES
 
 from backend.common.context import ctx
-from backend.common.exception.errors import BaseExceptionError
+from backend.common.exception.errors import BaseExceptionError, HTTPError
 from backend.common.i18n import i18n, t
 from backend.common.response.response_code import CustomResponseCode, StandardResponseCode
 from backend.common.response.response_schema import response_base
@@ -88,7 +88,13 @@ def register_exception(app: FastAPI) -> None:  # ruff:ignore[complex-structure]
         :param exc: HTTP 异常
         :return:
         """
-        if settings.ENVIRONMENT == 'dev':
+        if isinstance(exc, HTTPError) and exc.data is not None:
+            content = {
+                'code': exc.status_code,
+                'msg': exc.detail,
+                'data': exc.data,
+            }
+        elif settings.ENVIRONMENT == 'dev':
             content = {
                 'code': exc.status_code,
                 'msg': exc.detail,

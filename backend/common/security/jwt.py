@@ -12,6 +12,12 @@ from backend.app.admin.schema.user import GetUserInfoWithRelationDetail
 from backend.common.context import ctx
 from backend.common.dataclasses import TokenPayload
 from backend.common.exception import errors
+from backend.common.security.token_reason import (
+    TokenAuthReason,
+    auth_reason_data,
+    auth_reason_message,
+    get_token_invalid_reason,
+)
 from backend.core.conf import settings
 from backend.database.db import async_db_session
 from backend.database.redis import redis_client
@@ -28,11 +34,12 @@ def jwt_encode(payload: dict[str, Any]) -> str:
     return jwt.encode(payload, settings.TOKEN_SECRET_KEY, settings.TOKEN_ALGORITHM)
 
 
-def jwt_decode(token: str) -> TokenPayload:
+def jwt_decode(token: str, *, verify_exp: bool = True) -> TokenPayload:
     """
     解析 JWT token
 
     :param token: JWT token
+    :param verify_exp: 是否校验过期时间；关闭后可用于识别已过期 token 的失效原因
     :return:
     """
     try:
@@ -40,17 +47,28 @@ def jwt_decode(token: str) -> TokenPayload:
             token,
             settings.TOKEN_SECRET_KEY,
             algorithms=[settings.TOKEN_ALGORITHM],
-            options={'verify_exp': True},
+            options={'verify_exp': verify_exp},
         )
         session_uuid = payload.get('session_uuid')
         user_id = payload.get('sub')
         expire = payload.get('exp')
         if not session_uuid or not user_id or not expire:
-            raise errors.TokenError(msg='Token 无效')
+            raise errors.TokenError(
+                msg=auth_reason_message(TokenAuthReason.token_invalid.value),
+                data=auth_reason_data(TokenAuthReason.token_invalid.value),
+            )
+    except errors.TokenError:
+        raise
     except ExpiredSignatureError:
-        raise errors.TokenError(msg='Token 已过期')
+        raise errors.TokenError(
+            msg=auth_reason_message(TokenAuthReason.access_expired.value),
+            data=auth_reason_data(TokenAuthReason.access_expired.value),
+        )
     except (JWTError, Exception):
-        raise errors.TokenError(msg='Token 无效')
+        raise errors.TokenError(
+            msg=auth_reason_message(TokenAuthReason.token_invalid.value),
+            data=auth_reason_data(TokenAuthReason.token_invalid.value),
+        )
     return TokenPayload(
         user_id=int(user_id),
         session_uuid=session_uuid,
@@ -116,13 +134,35 @@ async def jwt_authentication(token: str) -> GetUserInfoWithRelationDetail:
     :param token: JWT token
     :return:
     """
-    token_payload = jwt_decode(token)
+    # 先不校验过期，优先识别服务端记录的主动失效原因
+    token_payload = jwt_decode(token, verify_exp=False)
     ctx.user_id = token_payload.user_id
+
+    invalid_reason = await get_token_invalid_reason(token_payload.user_id, token_payload.session_uuid)
+    if invalid_reason:
+        raise errors.TokenError(
+            msg=auth_reason_message(invalid_reason),
+            data=auth_reason_data(invalid_reason),
+        )
+
+    if token_payload.expire_time <= timezone.now():
+        raise errors.TokenError(
+            msg=auth_reason_message(TokenAuthReason.access_expired.value),
+            data=auth_reason_data(TokenAuthReason.access_expired.value),
+        )
+
     redis_token = await redis_client.get(f'{settings.TOKEN_REDIS_PREFIX}:{ctx.user_id}:{token_payload.session_uuid}')
     if not redis_token:
-        raise errors.TokenError(msg='Token 已过期')
+        # 未被主动标记失效，仅说明 access token 已不在（自然过期）
+        raise errors.TokenError(
+            msg=auth_reason_message(TokenAuthReason.access_expired.value),
+            data=auth_reason_data(TokenAuthReason.access_expired.value),
+        )
     if token != redis_token:
-        raise errors.TokenError(msg='Token 已失效')
+        raise errors.TokenError(
+            msg=auth_reason_message(TokenAuthReason.token_replaced.value),
+            data=auth_reason_data(TokenAuthReason.token_replaced.value),
+        )
 
     user = await get_jwt_user(ctx.user_id)
     ctx.is_superuser = user.is_superuser

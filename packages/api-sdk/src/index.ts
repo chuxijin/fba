@@ -40,6 +40,8 @@ export type {
   SdkInstance,
   SdkPlugin,
   SetupSdkOptions,
+  TokenRefreshResult,
+  UnauthorizedContext,
 } from './core/types'
 
 // ===== 类型对齐工具 (告别 as any) =====

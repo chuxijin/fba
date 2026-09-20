@@ -8,9 +8,16 @@ const DEFAULT_RETRY_STATUS_CODES = [502, 503, 504]
 const DEFAULT_RETRY_BASE_DELAY_MS = 300
 const DEFAULT_RETRY_MAX_DELAY_MS = 5000
 
+/** refresh 结果; ok 为 false 时可携带更精确的失败原因 */
+interface RefreshOutcome {
+  ok: boolean
+  authReason?: string
+  msg?: string
+}
+
 /** 每个 SDK 实例的内部状态; createSdk 之间互相隔离 */
 interface InstanceState {
-  refreshing: Promise<boolean> | null
+  refreshing: Promise<RefreshOutcome> | null
   /**
    * unauthorized 单飞标记: 同一次"全局未登录"事件只回调 onUnauthorized 一次
    *
@@ -145,24 +152,27 @@ function buildErrorFromAxios(error: AxiosError, url: string): Error {
  * :param state: 当前 SDK 实例的内部状态
  * :param opts: SDK 配置
  */
-async function dedupedRefresh(state: InstanceState, opts: SetupSdkOptions): Promise<boolean> {
+async function dedupedRefresh(state: InstanceState, opts: SetupSdkOptions): Promise<RefreshOutcome> {
   if (state.refreshing) {
     return state.refreshing
   }
   if (!opts.onTokenExpired) {
-    return false
+    return { ok: false }
   }
   state.refreshing = (async () => {
     try {
-      const ok = await opts.onTokenExpired!()
-      if (ok) {
+      const raw = await opts.onTokenExpired!()
+      const outcome: RefreshOutcome = typeof raw === 'boolean'
+        ? { ok: raw }
+        : { ok: raw.ok, authReason: raw.authReason, msg: raw.msg }
+      if (outcome.ok) {
         // refresh 成功 → 重置 unauthorized 单飞标记, 让下一次真正的未登录还能被识别
         state.unauthorizedFired = false
       }
-      return ok
+      return outcome
     }
     catch {
-      return false
+      return { ok: false }
     }
     finally {
       state.refreshing = null
@@ -210,6 +220,40 @@ function matchSkipAuthPath(url: string, paths: string[] | undefined): boolean {
   return paths.some(path => url.includes(path))
 }
 
+interface AuthReasonInfo {
+  authReason?: string
+  refreshable?: boolean
+}
+
+/**
+ * 从 401 响应的 data 中解析机器可读的认证原因
+ *
+ * :param data: 响应 data
+ */
+function parseAuthReason(data: unknown): AuthReasonInfo {
+  if (!data || typeof data !== 'object') {
+    return {}
+  }
+  const record = data as { auth_reason?: unknown, refreshable?: unknown }
+  return {
+    authReason: typeof record.auth_reason === 'string' ? record.auth_reason : undefined,
+    refreshable: typeof record.refreshable === 'boolean' ? record.refreshable : undefined,
+  }
+}
+
+/**
+ * 是否允许自动刷新: 优先使用后端 refreshable, 缺失时兼容旧的 msg 判断
+ *
+ * :param info: 认证原因信息
+ * :param msg: 错误文案
+ */
+function isRefreshable(info: AuthReasonInfo, msg: string | undefined): boolean {
+  if (typeof info.refreshable === 'boolean') {
+    return info.refreshable
+  }
+  return msg === TOKEN_EXPIRED_MSG
+}
+
 interface Handle401Args {
   instance: AxiosInstance
   state: InstanceState
@@ -224,22 +268,23 @@ type Handle401Result = { replayed: true, value: AxiosResponse } | { replayed: fa
 
 async function handle401(args: Handle401Args): Promise<Handle401Result> {
   const { instance, state, opts, config, msg } = args
+  const authInfo = parseAuthReason(args.data)
 
   if (!config) {
-    await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data })
+    await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data, ...authInfo })
     return { replayed: false }
   }
 
   if (config._retry) {
     // 已经重放过一次, 还是 401 → 不再尝试 refresh, 让外层处理
-    await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data })
+    await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data, ...authInfo })
     return { replayed: false }
   }
 
-  if (msg === TOKEN_EXPIRED_MSG && opts.onTokenExpired) {
+  if (isRefreshable(authInfo, msg) && opts.onTokenExpired) {
     config._retry = true
-    const refreshed = await dedupedRefresh(state, opts)
-    if (refreshed) {
+    const outcome = await dedupedRefresh(state, opts)
+    if (outcome.ok) {
       try {
         const value = await instance.request(config)
         return { replayed: true, value }
@@ -248,9 +293,20 @@ async function handle401(args: Handle401Args): Promise<Handle401Result> {
         // 重放失败, 落到下方 fireUnauthorizedOnce 兜底
       }
     }
+    else if (outcome.authReason) {
+      // refresh 失败带回了更精确的原因 (如 session_replaced / refresh_expired)
+      await fireUnauthorizedOnce(state, opts, {
+        msg: outcome.msg ?? msg,
+        status: args.status,
+        data: args.data,
+        authReason: outcome.authReason,
+        refreshable: false,
+      })
+      return { replayed: false }
+    }
   }
 
-  await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data })
+  await fireUnauthorizedOnce(state, opts, { msg, status: args.status, data: args.data, ...authInfo })
   return { replayed: false }
 }
 
@@ -370,7 +426,7 @@ function buildInstance(opts: SetupSdkOptions): SdkInstance {
           if (result.replayed) {
             return result.value
           }
-          const err = new UnauthorizedError({ msg, status: res.status, data })
+          const err = new UnauthorizedError({ msg, status: res.status, data, ...parseAuthReason(data) })
           await runHook(hooks.onError, {
             url: config.url ?? '',
             method: (config.method ?? 'GET').toUpperCase(),
@@ -452,7 +508,12 @@ function buildInstance(opts: SetupSdkOptions): SdkInstance {
         if (result.replayed) {
           return result.value
         }
-        const err = new UnauthorizedError({ msg, status: 401, data: responseBody?.data })
+        const err = new UnauthorizedError({
+          msg,
+          status: 401,
+          data: responseBody?.data,
+          ...parseAuthReason(responseBody?.data),
+        })
         await runHook(hooks.onError, { url, method, error: err, config, attempt })
         return Promise.reject(err)
       }

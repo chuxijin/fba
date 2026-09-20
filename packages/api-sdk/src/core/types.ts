@@ -57,6 +57,24 @@ export interface UnauthorizedContext {
   msg?: string
   status?: number
   data?: unknown
+  /** 机器可读的认证失败原因, 如 access_expired / session_replaced / refresh_expired */
+  authReason?: string
+  /** 是否允许客户端自动刷新 token */
+  refreshable?: boolean
+}
+
+/**
+ * refresh 结果; 允许回调返回布尔值 (兼容旧用法) 或结构化结果
+ *
+ * 结构化结果可把 refresh 接口返回的真实失败原因 (如 session_replaced) 透传给 onUnauthorized
+ */
+export interface TokenRefreshResult {
+  /** 是否刷新成功 */
+  ok: boolean
+  /** 刷新失败时的机器可读原因 */
+  authReason?: string
+  /** 刷新失败时的提示文案 */
+  msg?: string
 }
 
 /**
@@ -84,14 +102,16 @@ export interface SetupSdkOptions {
   getToken?: () => string | undefined | null | Promise<string | undefined | null>
 
   /**
-   * Token 自然过期回调; 仅在响应 msg 为 "Token 已过期" 时触发
+   * Token 自然过期回调; 仅在认证失败原因允许刷新时触发 (access_expired / 可恢复的 token_replaced)
    *
    * 并发安全: SDK 内部会对同一时刻的多个 401 dedupe, 只调用一次 onTokenExpired,
    * 所有并发请求等待同一个 promise, 成功后统一重放
    *
-   * 返回 true → SDK 自动重放原请求; 返回 false / 抛错 → 走 onUnauthorized
+   * 返回 true / { ok: true } → SDK 自动重放原请求;
+   * 返回 false / 抛错 → 走 onUnauthorized
+   * 返回 { ok: false, authReason, msg } → 该原因会透传给 onUnauthorized
    */
-  onTokenExpired?: () => Promise<boolean>
+  onTokenExpired?: () => Promise<boolean | TokenRefreshResult>
 
   /** 401 兜底回调 (refresh 失败 / refresh 不可用 / 不可恢复的 401), 通常用于跳登录页 */
   onUnauthorized?: (ctx?: UnauthorizedContext) => void | Promise<void>
