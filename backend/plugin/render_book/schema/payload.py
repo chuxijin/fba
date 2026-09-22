@@ -61,6 +61,10 @@ class RenderQuestionPayload(SchemaBase):
     chapter_name: str | None = Field(default=None, description='章节名称')
     material_ids: list[int] = Field(default_factory=list, description='关联材料 ID')
     tags: list[str] = Field(default_factory=list, description='扩展标签')
+    user_answer: str | None = Field(default=None, description='用户作答')
+    wrong_thought: str | None = Field(default=None, description='错误思路/错因诊断')
+    correct_thought: str | None = Field(default=None, description='正确思路/破局公式')
+    metadata: dict[str, Any] = Field(default_factory=dict, description='题目扩展元数据')
 
 
 class RenderWordPayload(SchemaBase):

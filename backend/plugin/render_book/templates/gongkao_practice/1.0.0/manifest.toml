@@ -1,0 +1,17 @@
+key = "gongkao_practice"
+version = "1.0.0"
+enabled = true
+name = "公考刷题本"
+description = "专用于公考（行测）日常专项刷题、自测打卡的专属题本，支持双栏真题排版、速查参考答案卡与逐题深度解析。"
+entrypoint = "template.docx"
+engine = "docxtpl"
+default_variant = "questions_only"
+
+[supported_features]
+two_column = true
+auto_option_layout = true
+materials_support = true
+answer_summary_table = true
+deep_analysis_support = true
+word_export = true
+pdf_export = true

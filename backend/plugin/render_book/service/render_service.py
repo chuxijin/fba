@@ -14,7 +14,6 @@ import httpx
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.service.category_filter_service import category_filter_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.pagination import _CustomPageParams, paging_list_data
@@ -43,7 +42,18 @@ from backend.plugin.render_book.schema.render import (
 )
 from backend.plugin.render_book.service.payload_service import render_payload_service
 from backend.plugin.render_book.service.quota_service import render_book_quota_service
+from backend.plugin.render_book.service.docx_engine import docx_render_engine
+from backend.plugin.render_book.service.adapters import (
+    adapt_gongkao_payload,
+    adapt_default_payload,
+    adapt_practice_payload,
+    adapt_mistake_payload,
+    adapt_basic_calc_payload,
+    adapt_hanyu_payload,
+)
 from backend.plugin.render_book.utils import get_template_catalog, get_template_registry, resolve_template_manifest
+from backend.plugin.render_book.utils.template_catalog import TEMPLATES_ROOT
+
 
 
 class RenderService:
@@ -146,7 +156,7 @@ class RenderService:
             )
 
         if (
-            payload.template_key == 'exam_paper'
+            payload.template_key in {'exam_paper', 'gongkao_xingce'}
             and not payload.filters.get('bank_id')
             and not payload.filters.get('question_ids')
         ):
@@ -158,7 +168,7 @@ class RenderService:
                 )
             )
 
-        if payload.template_key == 'wrong_question' and not payload.metadata.get('user_id'):
+        if payload.template_key in {'wrong_question', 'gongkao_mistake'} and not payload.metadata.get('user_id'):
             issues.append(
                 RenderValidationIssue(
                     field='metadata.user_id',
@@ -180,7 +190,7 @@ class RenderService:
             payload.filters.get('analysis_keyword'),
         ])
         if (
-            payload.template_key not in {'wrong_question', 'hanyu', 'basic_calculation'}
+            payload.template_key not in {'wrong_question', 'gongkao_mistake', 'hanyu', 'basic_calculation'}
             and not payload.filters.get('bank_id')
             and not payload.filters.get('chapter_id')
             and not payload.filters.get('question_ids')
@@ -259,45 +269,16 @@ class RenderService:
                 )
             await self.mark_job_running(db=db, job_id=job.job_id)
 
-            executor_result = await self._call_render_executor(
-                template_key=job.template_key,
-                template_version=job.template_version,
-                template_digest=job.template_digest,
-                job_id=job.job_id,
-                render_variant=render_variant,
-                context=document_payload.model_dump(mode='json'),
-            )
-            downloaded_pdf = await self._download_executor_artifact(
-                job_id=job.job_id,
-                render_variant=render_variant,
-                artifact_kind='pdf',
-                artifact_path=executor_result.get('pdf_download_path'),
-            )
-            await self._download_executor_artifact(
-                job_id=job.job_id,
-                render_variant=render_variant,
-                artifact_kind='log',
-                artifact_path=executor_result.get('log_download_path'),
-                required=False,
-            )
-
-            file_record = await self.register_output_file(
+            # ---------- 调用统一 Word 渲染流水线 ----------
+            file_record = await self._run_render_pipeline(
                 db=db,
-                job_id=job.job_id,
-                file_kind=self._variant_to_file_kind(render_variant),
-                local_path=downloaded_pdf,
-                render_variant=render_variant,
-                filename=downloaded_pdf.name,
+                job=job,
+                document_payload=document_payload,
+                render_variants=[render_variant],
                 upload_to_oss=payload.upload_to_oss,
             )
-            if file_record.status != 'available':
-                raise errors.ServerError(msg=file_record.error_message or f'{render_variant} 预览产物登记失败')
 
-            preview_pdf_url = (
-                file_record.url
-                or self._resolve_executor_artifact_url(executor_result.get('pdf_download_path'))
-                or file_record.local_path
-            )
+            preview_pdf_url = file_record.url or file_record.local_path
             await self.mark_job_succeeded(
                 db=db,
                 job_id=job.job_id,
@@ -471,13 +452,6 @@ class RenderService:
         params: RenderJobListParams,
     ) -> dict:
         bank_ids: set[int] | None = None
-        if params.cat_id is not None:
-            category_filter = await category_filter_service.get_question_filter(
-                db=db,
-                cat_id=params.cat_id,
-                kp_cat_id=params.kp_cat_id,
-            )
-            bank_ids = category_filter.bank_ids if category_filter else set()
 
         stmt = render_book_job_dao.build_list_stmt(
             job_id=params.job_id,
@@ -715,6 +689,124 @@ class RenderService:
         self._sync_job_snapshot(self._job_to_read(latest))
         return self._file_to_read(file_record)
 
+    async def _run_render_pipeline(
+        self,
+        *,
+        db: AsyncSession,
+        job: RenderBookJob,
+        document_payload: RenderDocumentPayload,
+        render_variants: list[str],
+        upload_to_oss: bool = True,
+    ) -> RenderJobFileRead:
+        """统一 Word 题本渲染流水线：模板定位 -> 场景适配 -> 极速本地生成 -> 产物登记 -> 上传 OSS"""
+        template_file = TEMPLATES_ROOT / job.template_key / job.template_version / 'template.docx'
+        if not template_file.exists():
+            alias_map = {
+                'exam_paper': 'gongkao_xingce',
+                'practice': 'gongkao_practice',
+                'wrong_question': 'gongkao_mistake',
+            }
+            mapped_key = alias_map.get(job.template_key)
+            if mapped_key:
+                template_file = TEMPLATES_ROOT / mapped_key / '1.0.0' / 'template.docx'
+            if not template_file.exists():
+                template_file = TEMPLATES_ROOT / 'gongkao_xingce' / '1.0.0' / 'template.docx'
+
+        # 区分业务场景进行数据适配（公考真题 vs 公考刷题本 vs 公考错题本 vs 基础计算 vs 汉语词汇 vs 通用模板）
+        if job.template_key in {'gongkao_xingce', 'exam_paper'}:
+            docx_context = adapt_gongkao_payload(document_payload)
+        elif job.template_key in {'gongkao_practice', 'practice'}:
+            docx_context = adapt_practice_payload(document_payload)
+        elif job.template_key in {'gongkao_mistake', 'wrong_question'}:
+            docx_context = adapt_mistake_payload(document_payload)
+        elif job.template_key == 'basic_calculation':
+            docx_context = adapt_basic_calc_payload(document_payload)
+        elif job.template_key == 'hanyu':
+            docx_context = adapt_hanyu_payload(document_payload)
+        else:
+            docx_context = adapt_default_payload(document_payload)
+
+        job_artifacts_dir = self.jobs_root / job.job_id / 'artifacts'
+        meta = dict(job.metadata_json or {})
+        last_file_record = None
+
+        for variant in render_variants:
+            render_res = docx_render_engine.render_all(
+                template_file=template_file,
+                context=docx_context,
+                output_dir=job_artifacts_dir,
+                base_name=f'{job.job_id}_{variant}',
+                compile_pdf=True,
+            )
+            downloaded_pdf = render_res['pdf']
+            rendered_docx = render_res['docx']
+
+            # 1. 登记主 PDF 文件到数据库并按需上传 OSS
+            file_record = await self.register_output_file(
+                db=db,
+                job_id=job.job_id,
+                file_kind=self._variant_to_file_kind(variant),
+                local_path=downloaded_pdf,
+                render_variant=variant,
+                filename=downloaded_pdf.name,
+                upload_to_oss=upload_to_oss,
+            )
+            if file_record.status != 'available':
+                raise errors.ServerError(msg=file_record.error_message or f'{variant} 产物登记失败')
+            last_file_record = file_record
+
+            # 2. 上传 Word 格式题本到 OSS 并记录其 URL 到元数据
+            docx_url = str(rendered_docx)
+            if upload_to_oss and rendered_docx.exists():
+                try:
+                    docx_url, docx_key = await self._upload_local_file_to_oss(
+                        db=db,
+                        job_id=job.job_id,
+                        output_file=rendered_docx,
+                        filename=f'{job.title}.docx',
+                    )
+                    meta['docx_url'] = docx_url
+                    meta['docx_object_key'] = docx_key
+                except Exception as exc:
+                    log.warning(f'上传 Word 题本到 OSS 失败: {exc}')
+            meta['docx_local_path'] = str(rendered_docx)
+
+            # 3. 上传封面预览图到 OSS 并记录
+            preview_urls = []
+            preview_object_keys = []
+            preview_local_paths = []
+            for preview_img in render_res.get('previews', []):
+                if preview_img.exists():
+                    preview_local_paths.append(str(preview_img))
+                    if upload_to_oss:
+                        try:
+                            url, object_key = await self._upload_local_file_to_oss(
+                                db=db,
+                                job_id=job.job_id,
+                                output_file=preview_img,
+                                filename=preview_img.name,
+                            )
+                            if object_key:
+                                preview_object_keys.append(object_key)
+                            preview_urls.append(url or str(preview_img))
+                        except Exception as e:
+                            log.warning(f'上传预览图到 OSS 失败: {e}')
+                            preview_urls.append(str(preview_img))
+                    else:
+                        preview_urls.append(str(preview_img))
+
+            if preview_urls:
+                meta['preview_urls'] = preview_urls
+            if preview_object_keys:
+                meta['preview_object_keys'] = preview_object_keys
+            if preview_local_paths:
+                meta['preview_local_paths'] = preview_local_paths
+
+            job.metadata_json = meta
+            await db.flush()
+
+        return last_file_record
+
     async def execute_job(
         self,
         *,
@@ -722,29 +814,13 @@ class RenderService:
         job_id: str,
         upload_to_oss: bool = True,
     ) -> RenderJobRead:
-        if str(getattr(settings, 'RENDER_BOOK_EXECUTOR_MODE', 'external')).strip().lower() != 'external':
-            raise errors.ServerError(msg='当前仅支持 external 模式的渲染执行器。')
-
         job = await render_book_job_dao.get_by_job_id(db, job_id, with_files=True)
         if job is None:
             raise errors.NotFoundError(msg='渲染任务不存在')
 
-        payload_context = self._load_payload_context(job)
         render_variants = list(job.render_variants or [])
         if not render_variants:
-            raise errors.RequestError(msg='当前任务缺少 render_variants，无法执行渲染。')
-
-        template_manifest = resolve_template_manifest(
-            self._template_catalog,
-            job.template_key,
-            job.template_version,
-        )
-        if template_manifest is None:
-            raise errors.RequestError(msg='当前任务关联的模板版本不存在，无法执行渲染。')
-        template_digest = job.template_digest or template_manifest.digest
-        if not job.template_digest:
-            job.template_digest = template_digest
-            await db.flush()
+            render_variants = ['questions_only']
 
         quota_user_id = self._coerce_positive_int(job.user_id) or self._coerce_positive_int(
             (job.metadata_json or {}).get('user_id')
@@ -762,82 +838,33 @@ class RenderService:
 
             await self.mark_job_running(db=db, job_id=job_id)
 
-            for variant in render_variants:
-                executor_result = await self._call_render_executor(
-                    template_key=job.template_key,
-                    template_version=job.template_version,
-                    template_digest=template_digest,
-                    job_id=job.job_id,
-                    render_variant=variant,
-                    context=payload_context,
-                )
-                downloaded_pdf = await self._download_executor_artifact(
-                    job_id=job.job_id,
-                    render_variant=variant,
-                    artifact_kind='pdf',
-                    artifact_path=executor_result.get('pdf_download_path'),
-                )
-                await self._download_executor_artifact(
-                    job_id=job.job_id,
-                    render_variant=variant,
-                    artifact_kind='log',
-                    artifact_path=executor_result.get('log_download_path'),
-                    required=False,
-                )
+            # 读取或重新加载题本 payload 数据
+            document_payload = None
+            if job.payload_path and Path(job.payload_path).exists():
+                try:
+                    payload_data = json.loads(Path(job.payload_path).read_text(encoding='utf-8'))
+                    document_payload = RenderDocumentPayload.model_validate(payload_data)
+                except Exception:
+                    pass
 
-                file_record = await self.register_output_file(
-                    db=db,
-                    job_id=job.job_id,
-                    file_kind=self._variant_to_file_kind(variant),
-                    local_path=downloaded_pdf,
-                    render_variant=variant,
-                    filename=downloaded_pdf.name,
-                    upload_to_oss=upload_to_oss,
-                )
-                if file_record.status != 'available':
-                    raise errors.ServerError(msg=file_record.error_message or f'{variant} 产物登记失败')
+            if document_payload is None:
+                request_file = self.jobs_root / job.job_id / 'request.json'
+                if request_file.exists():
+                    req_data = json.loads(request_file.read_text(encoding='utf-8'))
+                    req_obj = RenderJobCreate.model_validate(req_data)
+                    document_payload = await render_payload_service.build_payload(db=db, payload=req_obj)
 
-                preview_paths = executor_result.get('preview_download_paths', [])
-                if preview_paths and variant in ('questions_only', 'combined_inline', 'combined_appendix'):
-                    preview_urls = []
-                    preview_object_keys = []
-                    preview_local_paths = []
-                    for idx, artifact_path in enumerate(preview_paths):
-                        try:
-                            downloaded_preview = await self._download_executor_artifact(
-                                job_id=job.job_id,
-                                render_variant=variant,
-                                artifact_kind=f'preview_{idx + 1}',
-                                artifact_path=artifact_path,
-                                required=False,
-                            )
-                            if downloaded_preview and downloaded_preview.exists():
-                                preview_local_paths.append(str(downloaded_preview))
-                                if upload_to_oss:
-                                    url, object_key = await self._upload_local_file_to_oss(
-                                        db=db,
-                                        job_id=job.job_id,
-                                        output_file=downloaded_preview,
-                                        filename=downloaded_preview.name,
-                                    )
-                                    if object_key:
-                                        preview_object_keys.append(object_key)
-                                    preview_urls.append(url if url else str(downloaded_preview))
-                                else:
-                                    preview_urls.append(str(downloaded_preview))
-                        except Exception as e:
-                            log.warning(f'Failed to process preview image: {e}')
+            if document_payload is None:
+                raise errors.RequestError(msg=f'任务 {job.job_id} 缺少题本渲染数据，无法执行。')
 
-                    if preview_urls:
-                        # Append preview URLs to job metadata
-                        meta = dict(job.metadata_json or {})
-                        meta['preview_urls'] = preview_urls
-                        if preview_object_keys:
-                            meta['preview_object_keys'] = preview_object_keys
-                        if preview_local_paths:
-                            meta['preview_local_paths'] = preview_local_paths
-                        job.metadata_json = meta
-                        await db.flush()
+            # ---------- 调用统一 Word 渲染流水线 ----------
+            await self._run_render_pipeline(
+                db=db,
+                job=job,
+                document_payload=document_payload,
+                render_variants=render_variants,
+                upload_to_oss=upload_to_oss,
+            )
 
             latest = await self.get_job(job_id, db=db)
             if latest is None:
@@ -914,107 +941,6 @@ class RenderService:
                 path=upload_path,
             )
 
-    async def _call_render_executor(
-        self,
-        *,
-        template_key: str,
-        template_version: str,
-        template_digest: str,
-        job_id: str,
-        render_variant: str,
-        context: dict,
-    ) -> dict:
-        executor_url = self._executor_base_url()
-        timeout_seconds = self._executor_timeout_seconds()
-        request_payload = {
-            'template_key': template_key,
-            'template_version': template_version,
-            'template_digest': template_digest,
-            'job_id': job_id,
-            'render_variant': render_variant,
-            'compile_pdf': True,
-            'keep_workdir': True,
-            'context': context,
-        }
-        async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
-            response = await client.post(f'{executor_url}/api/v1/render', json=request_payload)
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                # 把执行器返回的 detail 带出来，方便排查模板/环境问题。
-                detail = response.text
-                if detail:
-                    raise ValueError(f'渲染执行器返回错误: {detail}') from exc
-                raise
-            result = response.json()
-            if result.get('template_digest') != template_digest:
-                raise ValueError('渲染执行器模板摘要与任务记录不一致，请同步模板发布产物。')
-            return result
-
-    async def _download_executor_artifact(
-        self,
-        *,
-        job_id: str,
-        render_variant: str,
-        artifact_kind: str,
-        artifact_path: str | None,
-        required: bool = True,
-    ) -> Path | None:
-        if not artifact_path:
-            if required:
-                raise errors.ServerError(msg=f'执行器未返回 {artifact_kind} 下载地址。')
-            return None
-
-        executor_url = self._executor_base_url()
-        artifact_url = f'{executor_url}{artifact_path}'
-        timeout_seconds = self._executor_timeout_seconds()
-        async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
-            response = await client.get(artifact_url)
-            if response.status_code == 404 and not required:
-                return None
-            response.raise_for_status()
-            content = response.content
-
-        artifact_file = self._artifact_local_path(
-            job_id=job_id, render_variant=render_variant, artifact_kind=artifact_kind
-        )
-        artifact_file.parent.mkdir(parents=True, exist_ok=True)
-        artifact_file.write_bytes(content)
-        return artifact_file
-
-    def _load_payload_context(self, job: RenderBookJob) -> dict:
-        if job.payload_path:
-            payload_file = Path(job.payload_path)
-            if payload_file.exists():
-                return json.loads(payload_file.read_text(encoding='utf-8'))
-
-        request_path = self.jobs_root / job.job_id / 'request.json'
-        if not request_path.exists():
-            raise errors.RequestError(msg='任务缺少 payload.json 或 request.json，无法执行渲染。')
-
-        request_payload = json.loads(request_path.read_text(encoding='utf-8'))
-        render_job = RenderJobCreate.model_validate(request_payload)
-        raise errors.RequestError(
-            msg=f'任务 {job.job_id} 缺少 payload.json，请重新创建任务后再执行。模板：{render_job.template_key}'
-        )
-
-    def _artifact_local_path(self, *, job_id: str, render_variant: str, artifact_kind: str) -> Path:
-        job_dir = self.jobs_root / job_id / 'artifacts'
-        if artifact_kind == 'pdf':
-            return job_dir / f'{render_variant}.pdf'
-        if artifact_kind == 'log':
-            return job_dir / f'{render_variant}.log'
-        if artifact_kind.startswith('preview_'):
-            return job_dir / f'{render_variant}_{artifact_kind}.jpg'
-        return job_dir / f'{render_variant}_{artifact_kind}'
-
-    def _resolve_executor_artifact_url(self, artifact_path: str | None) -> str | None:
-        if not artifact_path:
-            return None
-        if artifact_path.startswith('http://') or artifact_path.startswith('https://'):
-            return artifact_path
-        return f'{self._executor_base_url()}{artifact_path}'
-
     @staticmethod
     def _variant_to_file_kind(render_variant: str) -> RenderFileKind:
         mapping: dict[str, RenderFileKind] = {
@@ -1027,22 +953,6 @@ class RenderService:
             return mapping[render_variant]
         except KeyError as exc:
             raise errors.RequestError(msg=f'不支持的渲染变体: {render_variant}') from exc
-
-    @staticmethod
-    def _executor_timeout_seconds() -> float:
-        value = getattr(settings, 'RENDER_BOOK_EXECUTOR_TIMEOUT_SECONDS', 600)
-        try:
-            timeout = float(value)
-        except Exception:
-            timeout = 600.0
-        return timeout if timeout > 0 else 600.0
-
-    @staticmethod
-    def _executor_base_url() -> str:
-        executor_url = str(getattr(settings, 'RENDER_BOOK_EXECUTOR_URL', '') or '').strip().rstrip('/')
-        if not executor_url:
-            raise errors.ServerError(msg='未配置 RENDER_BOOK_EXECUTOR_URL。')
-        return executor_url
 
     def _job_to_read(self, job: RenderBookJob) -> RenderJobRead:
         file_records = [self._file_to_read(item) for item in (job.files or [])]

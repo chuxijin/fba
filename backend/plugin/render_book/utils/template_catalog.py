@@ -109,6 +109,13 @@ def get_latest_template_manifests() -> dict[str, RenderTemplateManifest]:
     return latest_manifests
 
 
+TEMPLATE_KEY_ALIASES: dict[str, str] = {
+    'exam_paper': 'gongkao_xingce',
+    'practice': 'gongkao_practice',
+    'wrong_question': 'gongkao_mistake',
+}
+
+
 def resolve_template_manifest(
     catalog: dict[str, dict[str, RenderTemplateManifest]],
     template_key: str,
@@ -122,7 +129,8 @@ def resolve_template_manifest(
     :param template_version: 指定版本，为空时取最新启用版本
     :return:
     """
-    versions = catalog.get(template_key)
+    target_key = TEMPLATE_KEY_ALIASES.get(template_key, template_key)
+    versions = catalog.get(target_key)
     if not versions:
         return None
     if template_version:

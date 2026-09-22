@@ -1,0 +1,15 @@
+key = "gongkao_xingce"
+version = "1.0.0"
+enabled = true
+name = "公考行测真题卷"
+description = "用于导出标准公考（国考/省考）行测规范排版的 Word 与 PDF 题本。"
+entrypoint = "template.docx"
+engine = "docxtpl"
+default_variant = "questions_only"
+
+[supported_features]
+two_column = true
+auto_option_layout = true
+materials_support = true
+word_export = true
+pdf_export = true

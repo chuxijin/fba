@@ -11,7 +11,7 @@ def test_template_catalog_loads_versioned_templates() -> None:
     """模板目录应加载全部已发布版本并生成摘要"""
     catalog = get_template_catalog()
 
-    assert set(catalog) == {'basic_calculation', 'exam_paper', 'hanyu', 'practice', 'wrong_question'}
+    assert set(catalog) == {'basic_calculation', 'gongkao_mistake', 'gongkao_practice', 'gongkao_xingce', 'hanyu'}
     assert all('1.0.0' in versions for versions in catalog.values())
     assert all(len(versions['1.0.0'].digest) == 64 for versions in catalog.values())
 
@@ -20,16 +20,16 @@ def test_resolve_template_manifest_defaults_to_latest_enabled_version() -> None:
     """未指定版本时应选择最新启用版本"""
     catalog = get_template_catalog()
 
-    manifest = resolve_template_manifest(catalog, 'practice')
+    manifest = resolve_template_manifest(catalog, 'gongkao_practice')
 
     assert manifest is not None
-    assert manifest.version == '1.0.1'
+    assert manifest.version == '1.0.0'
 
 
 def test_validate_job_rejects_unknown_template_version() -> None:
     """不存在的模板版本应在任务创建前被拒绝"""
     payload = RenderJobCreate(
-        template_key='practice',
+        template_key='gongkao_practice',
         template_version='9.9.9',
         title='版本校验',
         filters={'question_ids': '1'},
@@ -44,7 +44,7 @@ def test_validate_job_rejects_unknown_template_version() -> None:
 def test_validate_job_returns_resolved_template_identity() -> None:
     """有效任务应返回固定模板版本和内容摘要"""
     payload = RenderJobCreate(
-        template_key='practice',
+        template_key='gongkao_practice',
         title='版本校验',
         filters={'question_ids': '1'},
     )
@@ -53,5 +53,19 @@ def test_validate_job_returns_resolved_template_identity() -> None:
 
     assert result.valid is True
     assert result.template is not None
-    assert result.template.version == '1.0.1'
+    assert result.template.version == '1.0.0'
     assert len(result.template.digest) == 64
+
+
+def test_validate_job_supports_legacy_template_keys() -> None:
+    """老版本小程序传入的旧模板键应自动别名解析并通过校验"""
+    for old_key in ['exam_paper', 'practice']:
+        payload = RenderJobCreate(
+            template_key=old_key,
+            title='旧版兼容测试',
+            filters={'question_ids': '1', 'bank_id': 1},
+        )
+        result = asyncio.run(render_service.validate_job(payload))
+        assert result.valid is True
+        assert result.template is not None
+        assert result.template.version == '1.0.0'

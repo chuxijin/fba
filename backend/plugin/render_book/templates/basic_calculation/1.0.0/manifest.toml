@@ -3,10 +3,14 @@ version = "1.0.0"
 enabled = true
 name = "基础计算练习"
 description = "用于生成口算、估算、除法等基础计算训练题单。"
-entrypoint = "main.tex.j2"
+entrypoint = "template.docx"
+engine = "docxtpl"
 default_variant = "questions_only"
 
-[variant_entrypoints]
-questions_only = "main.tex.j2"
-solutions_only = "main.tex.j2"
-combined_appendix = "main.tex.j2"
+[supported_features]
+two_column = true
+compact_grid = true
+draft_answer_box = true
+answer_summary_table = true
+word_export = true
+pdf_export = true

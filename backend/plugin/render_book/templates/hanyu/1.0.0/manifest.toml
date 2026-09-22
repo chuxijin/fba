@@ -3,9 +3,15 @@ version = "1.0.0"
 enabled = true
 name = "汉语词汇手册"
 description = "汉语词汇积累与复习手册，支持词语卡片式排版，含拼音、释义、例句、近反义词等。"
-entrypoint = "main.tex.j2"
+entrypoint = "template.docx"
+engine = "docxtpl"
 default_variant = "questions_only"
 
-[variant_entrypoints]
-questions_only = "main.tex.j2"
-combined_appendix = "main.tex.j2"
+[supported_features]
+card_layout = true
+pinyin_support = true
+definition_support = true
+example_sentence_support = true
+synonym_antonym_support = true
+word_export = true
+pdf_export = true

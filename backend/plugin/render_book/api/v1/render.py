@@ -11,7 +11,6 @@ import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, RedirectResponse
 
-from backend.app.question_bank.service.membership_service import membership_service
 from backend.app.question_bank_v2.service.access_service import bank_access_service
 from backend.common.exception import errors
 from backend.common.pagination import DependsPagination, PageData
@@ -185,22 +184,12 @@ async def _ensure_render_payload_access(
 
     filters = payload.filters
     bank_id = _coerce_positive_int(filters.get('bank_id'))
-    if payload.metadata.get('qbank_version') == 'v2':
-        # 错题/收藏/笔记是用户自有练习数据，随用户走不随题库权益走
-        source_type = payload.metadata.get('source_type')
-        if bank_id is not None and source_type not in {'wrong', 'favorite', 'note'}:
-            await bank_access_service.ensure_bank_access(
-                db=db,
-                user_id=bound_user_id,
-                bank_id=bank_id,
-            )
-        return bound_user_id
-
-    chapter_id = _coerce_positive_int(filters.get('chapter_id'))
-    if chapter_id is not None:
-        filters['bank_id'] = await membership_service.resolve_bank_context_for_chapter(
+    # 错题/收藏/笔记是用户自有练习数据，随用户走不随题库权益走
+    source_type = payload.metadata.get('source_type')
+    if bank_id is not None and source_type not in {'wrong', 'favorite', 'note'}:
+        await bank_access_service.ensure_bank_access(
             db=db,
-            chapter_id=chapter_id,
+            user_id=bound_user_id,
             bank_id=bank_id,
         )
     return bound_user_id
@@ -317,35 +306,6 @@ async def preview_render_template_pdf(
 
 
 import asyncio
-
-import httpx
-
-
-async def _fetch_bing_image_url() -> str | None:
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get('https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1')
-            if resp.status_code == 200:
-                data = resp.json()
-                if 'images' in data and len(data['images']) > 0:
-                    # 获取高质量基础图片并加上基础域名
-                    return f'https://www.bing.com{data["images"][0]["url"]}'
-    except Exception:
-        pass
-    return None
-
-
-async def _fetch_hitokoto() -> str | None:
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get('https://v1.hitokoto.cn/?c=k')
-            if resp.status_code == 200:
-                return resp.json().get('hitokoto')
-    except Exception:
-        pass
-    return None
-
-
 @router.post('/jobs', summary='创建题本渲染任务', dependencies=[DependsJwtAuth])
 async def create_render_job(
     request: Request,
@@ -363,26 +323,6 @@ async def create_render_job(
         if 'practice_cover_avatar' not in payload.metadata:
             avatar = getattr(user, 'avatar', '')
             payload.metadata['practice_cover_avatar'] = str(avatar) if avatar else ''
-
-        if payload.template_key == 'practice':
-            tasks = []
-            if not payload.metadata.get('practice_cover_img'):
-                tasks.append(_fetch_bing_image_url())
-            else:
-                tasks.append(asyncio.sleep(0))
-
-            if not payload.metadata.get('practice_cover_motto'):
-                tasks.append(_fetch_hitokoto())
-            else:
-                tasks.append(asyncio.sleep(0))
-
-            results = await asyncio.gather(*tasks)
-            if results and len(results) == 2:
-                bing_url, motto = results[0], results[1]
-                if bing_url:
-                    payload.metadata['practice_cover_img'] = bing_url
-                if motto:
-                    payload.metadata['practice_cover_motto'] = motto
 
         job = await render_service.create_job(payload, db=db)
         await db.commit()

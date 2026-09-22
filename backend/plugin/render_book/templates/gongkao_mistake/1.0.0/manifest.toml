@@ -1,0 +1,19 @@
+key = "gongkao_mistake"
+version = "1.0.0"
+enabled = true
+name = "公考错题本"
+description = "专用于公考（行测）错题复盘、思维诊断与查漏补缺的专属题本，支持左右双栏思路复盘卡、作答核对栏与灵活解析控制。"
+entrypoint = "template.docx"
+engine = "docxtpl"
+default_variant = "combined_appendix"
+
+[supported_features]
+single_column = true
+mistake_review_card = true
+wrong_thought_support = true
+correct_thought_support = true
+auto_option_layout = true
+materials_support = true
+deep_analysis_support = true
+word_export = true
+pdf_export = true

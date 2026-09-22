@@ -299,4 +299,9 @@ def get_template_registry() -> dict[str, RenderTemplateDetail]:
             continue
         registry[template_key] = template.model_copy(update=manifest_values)
 
-    return {template_key: registry[template_key] for template_key in manifests}
+    final_registry = {template_key: registry[template_key] for template_key in manifests}
+    for old_key, new_key in [('exam_paper', 'gongkao_xingce'), ('practice', 'gongkao_practice'), ('wrong_question', 'gongkao_mistake')]:
+        if new_key in final_registry:
+            final_registry[old_key] = final_registry[new_key].model_copy(update={'key': old_key})
+
+    return final_registry

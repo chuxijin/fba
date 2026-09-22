@@ -1,1 +1,5 @@
 # Optional extra dependencies for render_book plugin.
+python-docx
+docxtpl
+pymupdf
+latex2mathml
