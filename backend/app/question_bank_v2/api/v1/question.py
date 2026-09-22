@@ -33,13 +33,22 @@ async def get_questions(
     bank_revision_id: Annotated[int | None, Query(gt=0, description='题库版本 ID')] = None,
     question_type: Annotated[QuestionType | None, Query(description='题型')] = None,
     keyword: Annotated[str | None, Query(max_length=200, description='题干关键字')] = None,
+    knowledge_labeled: Annotated[
+        bool | None, Query(description='是否已标注知识点；不传为全部，False 仅未标注')
+    ] = None,
+    section_id: Annotated[
+        int | None, Query(gt=0, description='章节 ID；自动包含其全部子章节')
+    ] = None,
 ) -> ResponseSchemaModel[PageData[GetQuestionListItem]]:
     """获取题目管理列表（分页）"""
-    stmt = question_service.get_list_select(
+    stmt = await question_service.get_list_select(
+        db=db,
         bank_id=bank_id,
         bank_revision_id=bank_revision_id,
         question_type=question_type,
         keyword=keyword,
+        knowledge_labeled=knowledge_labeled,
+        section_id=section_id,
     )
     page_data = await paging_data(db, stmt, GetQuestionListItem)
     return response_base.success(data=page_data)

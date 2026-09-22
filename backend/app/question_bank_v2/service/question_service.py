@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.question_bank_v2.crud.crud_composition import bank_section_dao
 from backend.app.question_bank_v2.crud.crud_knowledge import question_knowledge_point_dao
 from backend.app.question_bank_v2.crud.crud_material import question_interaction_dao, question_material_dao
 from backend.app.question_bank_v2.crud.crud_question import (
@@ -182,19 +183,35 @@ class QuestionService:
         return [GetQuestionListItem(**row) for row in rows]
 
     @staticmethod
-    def get_list_select(
+    async def get_list_select(
         *,
+        db: AsyncSession,
         bank_id: int | None = None,
         bank_revision_id: int | None = None,
         question_type: str | None = None,
         keyword: str | None = None,
+        knowledge_labeled: bool | None = None,
+        section_id: int | None = None,
     ) -> Select:
         """构建题目管理列表分页查询，交给 API 层 paging_data 处理"""
+        section_ids: list[int] | None = None
+        if section_id is not None:
+            section = await bank_section_dao.get(db, section_id)
+            if section is None:
+                raise errors.NotFoundError(msg='章节不存在')
+            # 章节树按题库版本隔离，展开子孙后才能命中挂在叶子节点上的题目
+            section_ids = await bank_section_dao.resolve_ids_with_descendants(
+                db,
+                section.bank_revision_id,
+                section_id,
+            )
         return question_dao.get_list_select(
             bank_id=bank_id,
             bank_revision_id=bank_revision_id,
             question_type=question_type,
             keyword=keyword,
+            knowledge_labeled=knowledge_labeled,
+            section_ids=section_ids,
         )
 
     @staticmethod

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank_v2.model.bank import QbBankItem, QbBankRevision
+from backend.app.question_bank_v2.model.knowledge import QbQuestionKnowledgePoint
 from backend.app.question_bank_v2.model.material import QbQuestionMaterial
 from backend.app.question_bank_v2.model.question import (
     QbQuestion,
@@ -63,6 +64,8 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
         bank_revision_id: int | None = None,
         question_type: str | None = None,
         keyword: str | None = None,
+        knowledge_labeled: bool | None = None,
+        section_ids: Sequence[int] | None = None,
     ) -> Select:
         """构建题目列表分页查询，交给 API 层 paging_data 处理"""
         stmt = select(
@@ -78,7 +81,7 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
             QbQuestion.created_time,
             QbQuestion.updated_time,
         ).where(QbQuestion.deleted == 0)
-        if bank_id is not None or bank_revision_id is not None:
+        if bank_id is not None or bank_revision_id is not None or section_ids is not None:
             stmt = (
                 stmt.join(QbBankItem, QbBankItem.question_id == QbQuestion.id)
                 .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
@@ -92,10 +95,20 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
                 stmt = stmt.where(QbBankRevision.bank_id == bank_id)
             if bank_revision_id is not None:
                 stmt = stmt.where(QbBankRevision.id == bank_revision_id)
+            if section_ids is not None:
+                # 章节筛选：调用方需先展开子孙章节；空列表语义为「无匹配」而非「不过滤」
+                stmt = stmt.where(QbBankItem.section_id.in_(section_ids))
         if question_type is not None:
             stmt = stmt.where(QbQuestion.question_type == question_type)
         if keyword:
             stmt = stmt.where(QbQuestion.stem.ilike(f'%{keyword}%'))
+        if knowledge_labeled is not None:
+            # True 只保留已挂知识点的题，False 只保留未标注的题
+            linked = select(QbQuestionKnowledgePoint.id).where(
+                QbQuestionKnowledgePoint.question_id == QbQuestion.id,
+                QbQuestionKnowledgePoint.deleted == 0,
+            )
+            stmt = stmt.where(linked.exists() if knowledge_labeled else ~linked.exists())
         return stmt.order_by(QbQuestion.updated_time.desc(), QbQuestion.id.desc())
 
     async def get_by_material(self, db: AsyncSession, *, material_id: int) -> Sequence[dict[str, Any]]:

@@ -11,6 +11,7 @@ from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy_crud_plus import CRUDPlus
 
+from backend.app.question_bank_v2.crud.crud_composition import bank_section_dao
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from backend.app.question_bank_v2.model.catalog import QbBankCategory
 from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbQuestionKnowledgePoint
@@ -471,27 +472,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         section_id: int,
     ) -> list[int]:
         """解析选中章节及其全部后代章节 ID（章节树向下包含）。"""
-        rows = (
-            await db.execute(
-                select(QbBankSection.id, QbBankSection.parent_id).where(
-                    QbBankSection.bank_revision_id == bank_revision_id,
-                    QbBankSection.deleted == 0,
-                )
-            )
-        ).all()
-        children: dict[int, list[int]] = {}
-        for row in rows:
-            parent_id = row[1]
-            if parent_id is None:
-                continue
-            children.setdefault(int(parent_id), []).append(int(row[0]))
-        resolved: list[int] = []
-        stack = [section_id]
-        while stack:
-            current = stack.pop()
-            resolved.append(current)
-            stack.extend(children.get(current, []))
-        return resolved
+        return await bank_section_dao.resolve_ids_with_descendants(db, bank_revision_id, section_id)
 
     async def get_candidates(
         self,

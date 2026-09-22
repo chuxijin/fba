@@ -40,6 +40,36 @@ class CRUDBankSection(CRUDPlus[QbBankSection]):
         result = await db.execute(stmt)
         return result.scalars().first()
 
+    async def resolve_ids_with_descendants(
+        self, db: AsyncSession, revision_id: int, section_id: int
+    ) -> list[int]:
+        """解析选中章节及其全部后代章节 ID（章节树向下包含）。
+
+        章节树按题库版本隔离，因此必须给定 revision_id。父章节自身通常不直接挂题
+        （题目挂在叶子节点上），所以按章节筛选题目时一律展开子孙。
+        """
+        rows = (
+            await db.execute(
+                select(QbBankSection.id, QbBankSection.parent_id).where(
+                    QbBankSection.bank_revision_id == revision_id,
+                    QbBankSection.deleted == 0,
+                )
+            )
+        ).all()
+        children: dict[int, list[int]] = {}
+        for row in rows:
+            parent_id = row[1]
+            if parent_id is None:
+                continue
+            children.setdefault(int(parent_id), []).append(int(row[0]))
+        resolved: list[int] = []
+        stack = [section_id]
+        while stack:
+            current = stack.pop()
+            resolved.append(current)
+            stack.extend(children.get(current, []))
+        return resolved
+
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> QbBankSection:
         """创建题库版本章节"""
         section = QbBankSection(**data)
