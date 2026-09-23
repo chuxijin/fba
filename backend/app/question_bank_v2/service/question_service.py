@@ -315,12 +315,15 @@ class QuestionService:
             await knowledge_service.ensure_point_ids(
                 db=db,
                 point_ids=[item.knowledge_point_id for item in obj.knowledge_points],
+                system_id=obj.knowledge_system_id,
             )
+            # 传了体系就只替换该体系的标注，避免把其他体系的标注一起物理删除
             await question_knowledge_point_dao.replace(
                 db,
                 question_id=pk,
                 items=obj.knowledge_points,
                 user_id=updated_by,
+                system_id=obj.knowledge_system_id,
             )
         if obj.materials is not None:
             await material_service.ensure_references(db=db, items=obj.materials)

@@ -337,15 +337,31 @@ class CRUDQuestionKnowledgePoint(CRUDPlus[QbQuestionKnowledgePoint]):
         question_id: int,
         items: Sequence[KnowledgePointAssignmentParam],
         user_id: int,
+        system_id: int | None = None,
     ) -> None:
-        existing = (
-            await db.execute(
-                select(QbQuestionKnowledgePoint).where(
-                    QbQuestionKnowledgePoint.question_id == question_id,
-                    QbQuestionKnowledgePoint.deleted == 0,
-                )
+        """整体替换某题的知识点标注。
+
+        ⚠️ `qbank_v2_question_knowledge_point` 本身**不带 knowledge_system_id**
+        （体系挂在知识点侧），所以「该删哪些旧关联」必须由调用方说明：
+
+        - 传入 `system_id`：**只替换该体系的标注**，其他体系的标注原样保留；
+        - 不传（默认）：保持历史行为 —— 删除该题**全部体系**的关联再插入。
+
+        历史行为在「客户端把各体系标注一起回传」时是无损的（读完再写回原样），
+        但只回传单个体系时会把其他体系悄悄删光，且这里是**物理删除**不可恢复。
+        所以新的按体系标注入口（如知识点标注页）**必须**传 `system_id`。
+        """
+        existing_stmt = (
+            select(QbQuestionKnowledgePoint)
+            .join(QbKnowledgePoint, QbKnowledgePoint.id == QbQuestionKnowledgePoint.knowledge_point_id)
+            .where(
+                QbQuestionKnowledgePoint.question_id == question_id,
+                QbQuestionKnowledgePoint.deleted == 0,
             )
-        ).scalars().all()
+        )
+        if system_id is not None:
+            existing_stmt = existing_stmt.where(QbKnowledgePoint.system_id == system_id)
+        existing = (await db.execute(existing_stmt)).scalars().all()
         for item in existing:
             await self.delete_model(db, item.id)
         db.add_all([

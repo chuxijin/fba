@@ -178,6 +178,14 @@ class UpdateQuestionParam(SchemaBase):
         max_length=50,
         description='知识点标注；传入时全量替换',
     )
+    knowledge_system_id: int | None = Field(
+        None,
+        gt=0,
+        description=(
+            '知识点所属体系；传入后 knowledge_points 只替换该体系的标注，'
+            '其他体系的标注保持不变（不传则为历史行为：替换全部体系）'
+        ),
+    )
     materials: list[QuestionMaterialParam] | None = Field(
         None,
         max_length=20,
