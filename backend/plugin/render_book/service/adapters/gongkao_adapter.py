@@ -20,6 +20,7 @@ from backend.plugin.render_book.schema.payload import RenderDocumentPayload, Ren
 from backend.plugin.render_book.service.rich_text_parser import (
     parse_material_blocks,
     parse_stem_and_images,
+    parse_stem_structure,
     parse_option_data,
 )
 from backend.plugin.render_book.utils.template_catalog import TEMPLATES_ROOT
@@ -194,9 +195,14 @@ def format_question_for_docx(
     def visual_len(text: str) -> float:
         return sum(1.0 if ord(c) > 127 else 0.5 for c in text)
 
-    # 1. 题干纯文本（加粗设问词）与题干插图列表
-    clean_stem, stem_images = parse_stem_and_images(q.stem_text, doc, max_width_mm=120.0)
-    stem_segments = highlight_reverse_questions(clean_stem)
+    # 1. 题干结构化图文解析（行内微型公式精准嵌入段落，大配图独立段落居中输出）
+    stem_segments, stem_images, clean_stem = parse_stem_structure(q.stem_text, doc, max_width_mm=120.0)
+
+    # 1.1 若存在合并来源标签（如【26国考·地市 & 行政执法】），在题干首部注入标识
+    if q.source_label:
+        label_text = f"【{q.source_label}】 "
+        if not clean_stem.startswith(f"【{q.source_label}】"):
+            stem_segments.insert(0, {"text": label_text, "bold": True, "is_img": False})
 
     # 2. 选项解析
     opts_payload = q.options or []
@@ -289,9 +295,12 @@ def adapt_gongkao_payload(
 
     material_map = {m.id: m for m in (payload.paper.materials or [])}
 
+    # 0. 自动去重与合并来源标签（多卷合并/同题多卷复用时，保留首题并生成如【26国考·地市 & 行政执法】）
+    from backend.plugin.render_book.service.dedup_service import deduplicate_and_merge_sections
+    raw_sections = payload.paper.sections or []
+    sections, _ = deduplicate_and_merge_sections(raw_sections)
+
     # 1. 将题目按所属模块分类
-    sections = payload.paper.sections or []
-    # 建立分类桶
     categorized_questions: dict[str, list[RenderQuestionPayload]] = {
         std["key"]: [] for std in GONGKAO_STANDARD_MODULES
     }

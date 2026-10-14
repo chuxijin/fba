@@ -70,6 +70,12 @@ QUESTION_TYPE_LABELS = {
     'shortAnswer': '简答题',
 }
 
+# 基础计算题单允许导出的最大题量。
+# 该上限仅约束外部 HTTP 请求提交的 metadata.questions（防御异常大载荷）；
+# 模板与渲染引擎按循环渲染，内部管线直接构造 RenderDocumentPayload 时不经过此截断。
+# 后端生成接口单次出题上限为 100，多题型合并导出时总量 = 选中项数 x 每项题量。
+BASIC_CALCULATION_MAX_QUESTIONS = 500
+
 
 class RenderPayloadService:
     """统一题本渲染载荷组装服务（面向新题库 question_bank_v2）。"""
@@ -245,11 +251,13 @@ class RenderPayloadService:
                 'answer_text': answer_text,
                 'section_title': section_title or '基础计算',
             })
-        return questions[:200]
+        return questions
 
     @classmethod
     def _build_basic_calculation_payload(cls, payload: RenderJobCreate) -> RenderDocumentPayload:
-        questions = cls._normalize_basic_calculation_questions(payload.metadata.get('questions'))
+        raw_questions = cls._normalize_basic_calculation_questions(payload.metadata.get('questions'))
+        questions = raw_questions[:BASIC_CALCULATION_MAX_QUESTIONS]
+        truncated = len(raw_questions) > len(questions)
         if not questions:
             raise ValueError('未找到可导出的计算题，请先生成题目。')
 
@@ -320,6 +328,8 @@ class RenderPayloadService:
                 'solution_mode': solution_mode,
                 'render_variants': render_variants,
                 'question_ids': [item['number'] for item in questions],
+                'question_count_total': len(raw_questions),
+                'truncated': truncated,
                 'generated_at': timezone.now().isoformat(),
             },
         )

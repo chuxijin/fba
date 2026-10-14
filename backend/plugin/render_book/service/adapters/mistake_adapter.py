@@ -29,6 +29,7 @@ from backend.plugin.render_book.service.rich_text_parser import (
     parse_stem_and_images,
     parse_option_data,
     parse_explanation_and_images,
+    parse_analysis_structure,
 )
 from backend.plugin.render_book.utils.template_catalog import TEMPLATES_ROOT
 from backend.utils.timezone import timezone
@@ -75,7 +76,7 @@ PROVINCE_NAMES = [
 
 
 def extract_source_tag(q: RenderQuestionPayload, material_map: dict[int, Any] | None = None) -> str | None:
-    """提取真题来源标签，统一规范为形如【26·国考】、【25·江苏】的紧凑短标签"""
+    """提取真题与模考来源标签，统一规范为形如【26·粉笔模考行测No.94】、【25·江苏行测】的高辨识度标签"""
     candidates = []
     if q.source_label:
         candidates.append(q.source_label)
@@ -88,46 +89,68 @@ def extract_source_tag(q: RenderQuestionPayload, material_map: dict[int, Any] | 
             mat = material_map.get(mid)
             if mat and mat.source_text:
                 candidates.append(mat.source_text)
+    for tag in q.tags:
+        candidates.append(tag)
+
+    if not candidates:
+        return None
 
     raw = " ".join(candidates)
     if not raw.strip():
         return None
 
-    year_match = re.search(r"(20\d{2})|(\b\d{2}\b)", raw)
-    year_str = ""
-    if year_match:
-        y = year_match.group(0)
-        year_str = y[-2:]
+    # 1. 题号
+    q_no = ""
+    m_no = re.search(r'第\s*(\d+)\s*题', raw, re.IGNORECASE)
+    if m_no:
+        q_no = f"No.{m_no.group(1)}"
 
-    cat_str = ""
-    if "国考" in raw or "国家公务员" in raw or "中央机关" in raw:
-        cat_str = "国考"
-    elif "联考" in raw:
-        cat_str = "联考"
+    # 2. 提取年份
+    year_str = ""
+    m_year_4 = re.search(r'20(\d{2})', raw)
+    if m_year_4:
+        year_str = f"{m_year_4.group(1)}·"
+    else:
+        m_year_2 = re.search(r'(\d{2})年', raw)
+        if m_year_2:
+            year_str = f"{m_year_2.group(1)}·"
+
+    # 3. 提取科目
+    sub_str = ""
+    if "行测" in raw or "行政职业能力" in raw:
+        sub_str = "行测"
+    elif "职测" in raw or "职业能力倾向" in raw:
+        sub_str = "职测"
+    elif "申论" in raw:
+        sub_str = "申论"
+
+    # 4. 提取考型与平台
+    is_mock = "模考" in raw or "大赛" in raw
+    is_shiye = "事业单位" in raw or "统考" in raw or "职测" in raw or "事业编" in raw
+
+    body = ""
+    if is_mock:
+        plat = "华图" if "华图" in raw else ("事考帮" if "事考帮" in raw else "粉笔")
+        body = f"{plat}模考"
+    elif "国考" in raw or "国家公务员" in raw or "中央机关" in raw:
+        body = "国考"
     else:
         for prov in PROVINCE_NAMES:
             if prov in raw:
-                cat_str = "内蒙" if prov == "内蒙古" else prov
+                prov_short = "内蒙" if prov == "内蒙古" else prov
+                body = f"{prov_short}事业编" if is_shiye else f"{prov_short}省考"
                 break
+        if not body:
+            if "事业单位" in raw or "联考" in raw:
+                body = "事业编" if is_shiye else "联考"
+            elif "省考" in raw:
+                body = "省考"
+            else:
+                body = "真题"
 
-    if not cat_str:
-        if "事业单位" in raw:
-            cat_str = "事业编"
-        elif "选调" in raw:
-            cat_str = "选调"
-        elif "公安" in raw:
-            cat_str = "公安"
-        elif "省考" in raw:
-            cat_str = "省考"
+    final_tag = f"{year_str}{body}{sub_str}{q_no}".strip()
+    return final_tag or None
 
-    if year_str and cat_str:
-        return f"{year_str}·{cat_str}"
-    elif cat_str:
-        return cat_str
-    elif year_str:
-        return f"{year_str}·真题"
-
-    return None
 
 
 def format_mistake_question(
@@ -212,8 +235,8 @@ def format_mistake_question(
     wrong_thought = getattr(q, "wrong_thought", None) or meta.get("wrong_thought") or meta.get("error_thought") or ""
     correct_thought = getattr(q, "correct_thought", None) or meta.get("correct_thought") or meta.get("right_thought") or ""
 
-    # 5. 解析与解析配图
-    clean_exp, analysis_images = parse_explanation_and_images(q.analysis_text, doc, max_width_mm=110.0)
+    # 5. 解析与解析配图（流式图文混排，公式小图精准内联，大配图独立段落居中）
+    analysis_segments, analysis_images, clean_exp = parse_analysis_structure(q.analysis_text, doc, max_width_mm=110.0)
 
     q_data = {
         "number": q.number,
@@ -230,6 +253,7 @@ def format_mistake_question(
         "answer_text": q.answer_text or "暂无",
         "wrong_thought": wrong_thought,
         "correct_thought": correct_thought,
+        "analysis_segments": analysis_segments,
         "analysis_text": clean_exp,
         "analysis_images": analysis_images,
     }

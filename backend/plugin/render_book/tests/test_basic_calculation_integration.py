@@ -28,8 +28,43 @@ from backend.plugin.render_book.schema.payload import (
 from backend.plugin.render_book.schema.render import RenderJobCreate, RenderOptions, RenderOutputTargets
 from backend.plugin.render_book.service.adapters.basic_calc_adapter import adapt_basic_calc_payload
 from backend.plugin.render_book.service.docx_engine import docx_render_engine
-from backend.plugin.render_book.service.payload_service import RenderPayloadService
+from backend.plugin.render_book.service.payload_service import (
+    BASIC_CALCULATION_MAX_QUESTIONS,
+    RenderPayloadService,
+)
 from backend.plugin.render_book.utils.template_catalog import TEMPLATES_ROOT
+
+
+def test_basic_calc_truncation_marks_metadata() -> None:
+    """超过单卷题量上限时应截断，并在 metadata 中保留完整题量与截断标记"""
+    total = BASIC_CALCULATION_MAX_QUESTIONS + 30
+    mini_metadata = {
+        "client": "mini",
+        "source_type": "basic_calculation",
+        "questions": [
+            {"expression": f"{i} + {i} =", "answer": str(i * 2), "section_title": "两位数加减"}
+            for i in range(1, total + 1)
+        ],
+        "type_title": "截断测试",
+    }
+
+    job = RenderJobCreate(
+        template_key="basic_calculation",
+        title="截断测试题单",
+        metadata=mini_metadata,
+    )
+
+    doc_payload = RenderPayloadService._build_basic_calculation_payload(job)
+    assert doc_payload.paper.question_count == BASIC_CALCULATION_MAX_QUESTIONS
+    assert doc_payload.metadata["truncated"] is True
+    assert doc_payload.metadata["question_count_total"] == total
+    assert len(doc_payload.metadata["question_ids"]) == BASIC_CALCULATION_MAX_QUESTIONS
+
+    # 未超限时不应带截断标记
+    job.metadata["questions"] = job.metadata["questions"][:BASIC_CALCULATION_MAX_QUESTIONS]
+    doc_payload = RenderPayloadService._build_basic_calculation_payload(job)
+    assert doc_payload.metadata["truncated"] is False
+    assert doc_payload.metadata["question_count_total"] == BASIC_CALCULATION_MAX_QUESTIONS
 
 
 def test_basic_calc_from_mini_app_payload():
@@ -138,3 +173,5 @@ if __name__ == "__main__":
     print("[✓] test_basic_calc_from_mini_app_payload PASSED")
     test_basic_calc_with_data_box_and_fractions()
     print("[✓] test_basic_calc_with_data_box_and_fractions PASSED")
+    test_basic_calc_truncation_marks_metadata()
+    print("[✓] test_basic_calc_truncation_marks_metadata PASSED")

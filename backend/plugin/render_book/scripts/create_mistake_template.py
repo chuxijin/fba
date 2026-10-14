@@ -48,6 +48,14 @@ def create_mistake_template():
             rFonts.set(qn("w:hAnsi"), ascii_font)
             rFonts.set(qn("w:cs"), east_asia)
 
+    def apply_justified_paragraph(p):
+        """为段落设置出版级两端对齐与严格避头尾属性，确保右边缘平齐"""
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        pPr = p._p.get_or_add_pPr()
+        pPr.append(parse_xml(f'<w:jc {nsdecls("w")} w:val="both"/>'))
+        pPr.append(parse_xml(f'<w:kinsoku {nsdecls("w")} w:val="1"/>'))
+        pPr.append(parse_xml(f'<w:overflowPunct {nsdecls("w")} w:val="0"/>'))
+
     # 辅助函数：设置单元格边框
     def set_cell_borders(cell, top="single", bottom="single", left="single", right="single", color="C5CAD0", sz="4"):
         tcPr = cell._tc.get_or_add_tcPr()
@@ -231,6 +239,7 @@ def create_mistake_template():
     doc.add_paragraph("{% if q.material and q.material.blocks %}{% for blk in q.material.blocks %}")
     doc.add_paragraph("{% if not blk.is_img %}")
     p_mat_text = doc.add_paragraph()
+    apply_justified_paragraph(p_mat_text)
     p_mat_text.paragraph_format.space_before = Pt(1)
     p_mat_text.paragraph_format.space_after = Pt(2)
     p_mat_text.paragraph_format.left_indent = Pt(0)
@@ -248,6 +257,7 @@ def create_mistake_template():
     p_mat_img.add_run("{{ blk.img }}")
     doc.add_paragraph("{% endif %}{% endfor %}{% elif q.material and q.material.lines %}{% for line in q.material.lines %}")
     p_mat_fb = doc.add_paragraph()
+    apply_justified_paragraph(p_mat_fb)
     p_mat_fb.paragraph_format.space_before = Pt(1)
     p_mat_fb.paragraph_format.space_after = Pt(2)
     p_mat_fb.paragraph_format.first_line_indent = Pt(HANG_INDENT_PT)
@@ -259,6 +269,7 @@ def create_mistake_template():
 
     # 3. 题干：悬挂缩进 24pt
     p_stem = doc.add_paragraph()
+    apply_justified_paragraph(p_stem)
     p_stem.paragraph_format.space_before = Pt(5)
     p_stem.paragraph_format.space_after = Pt(2)
     p_stem.paragraph_format.line_spacing = 1.25
@@ -466,8 +477,24 @@ def create_mistake_template():
     p_inline_ana.paragraph_format.first_line_indent = Pt(0)
     r_iana_lbl = p_inline_ana.add_run("【官方解析】")
     set_font(r_iana_lbl, east_asia="黑体", size_pt=10.5, bold=True)
+
+    r_iana_seg_start = p_inline_ana.add_run("{% if q.analysis_segments %}{% for seg in q.analysis_segments %}{% if seg.is_img %}")
+    set_font(r_iana_seg_start, east_asia="仿宋", size_pt=10.5)
+    r_iana_img = p_inline_ana.add_run("{{ seg.img }}")
+    r_iana_elif = p_inline_ana.add_run("{% elif seg.bold %}")
+    set_font(r_iana_elif, east_asia="仿宋", size_pt=10.5)
+    r_iana_bold = p_inline_ana.add_run("{{ seg.text }}")
+    set_font(r_iana_bold, east_asia="仿宋", size_pt=10.5, bold=True)
+    r_iana_else = p_inline_ana.add_run("{% else %}")
+    set_font(r_iana_else, east_asia="仿宋", size_pt=10.5)
+    r_iana_normal = p_inline_ana.add_run("{{ seg.text }}")
+    set_font(r_iana_normal, east_asia="仿宋", size_pt=10.5, bold=False)
+    r_iana_seg_end = p_inline_ana.add_run("{% endif %}{% endfor %}{% else %}")
+    set_font(r_iana_seg_end, east_asia="仿宋", size_pt=10.5)
     r_iana_txt = p_inline_ana.add_run("{{ q.analysis_text }}")
     set_font(r_iana_txt, east_asia="仿宋", size_pt=10.5, bold=False)
+    r_iana_close = p_inline_ana.add_run("{% endif %}")
+    set_font(r_iana_close, east_asia="仿宋", size_pt=10.5)
 
     doc.add_paragraph("{% if q.analysis_images %}{% for aimg in q.analysis_images %}")
     p_iaimg = doc.add_paragraph()
@@ -540,6 +567,7 @@ def create_mistake_template():
     set_font(r_no, east_asia="黑体", size_pt=10.5, bold=True)
 
     p_item_ana = doc.add_paragraph()
+    apply_justified_paragraph(p_item_ana)
     p_item_ana.paragraph_format.space_before = Pt(1)
     p_item_ana.paragraph_format.space_after = Pt(5)
     p_item_ana.paragraph_format.line_spacing = 1.25
@@ -547,8 +575,24 @@ def create_mistake_template():
     p_item_ana.paragraph_format.first_line_indent = Pt(0)
     r_ana_lbl = p_item_ana.add_run("【解析】")
     set_font(r_ana_lbl, east_asia="黑体", size_pt=10.5, bold=True)
+
+    r_ana_seg_start = p_item_ana.add_run("{% if q.analysis_segments %}{% for seg in q.analysis_segments %}{% if seg.is_img %}")
+    set_font(r_ana_seg_start, east_asia="仿宋", size_pt=10.5)
+    r_ana_img = p_item_ana.add_run("{{ seg.img }}")
+    r_ana_elif = p_item_ana.add_run("{% elif seg.bold %}")
+    set_font(r_ana_elif, east_asia="仿宋", size_pt=10.5)
+    r_ana_bold = p_item_ana.add_run("{{ seg.text }}")
+    set_font(r_ana_bold, east_asia="仿宋", size_pt=10.5, bold=True)
+    r_ana_else = p_item_ana.add_run("{% else %}")
+    set_font(r_ana_else, east_asia="仿宋", size_pt=10.5)
+    r_ana_normal = p_item_ana.add_run("{{ seg.text }}")
+    set_font(r_ana_normal, east_asia="仿宋", size_pt=10.5, bold=False)
+    r_ana_seg_end = p_item_ana.add_run("{% endif %}{% endfor %}{% else %}")
+    set_font(r_ana_seg_end, east_asia="仿宋", size_pt=10.5)
     r_ana_txt = p_item_ana.add_run("{{ q.analysis_text }}")
     set_font(r_ana_txt, east_asia="仿宋", size_pt=10.5, bold=False)
+    r_ana_close = p_item_ana.add_run("{% endif %}")
+    set_font(r_ana_close, east_asia="仿宋", size_pt=10.5)
 
     doc.add_paragraph("{% if q.analysis_images %}{% for aimg in q.analysis_images %}")
     p_aimg = doc.add_paragraph()

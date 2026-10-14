@@ -23,8 +23,12 @@ except ImportError:
     latex2mathml_convert = None
 
 
-# 常见 MML2OMML.XSL 系统路径候选
+# 项目内置 MML2OMML.XSL 路径（跨平台，Linux/Windows 通用）
+BUILTIN_XSL_PATH = Path(__file__).resolve().parent.parent / "assets" / "MML2OMML.XSL"
+
+# 常见 MML2OMML.XSL 系统路径候选（首选内置，系统路径兜底）
 CANDIDATE_XSL_PATHS = [
+    str(BUILTIN_XSL_PATH),
     r"C:\Program Files\Microsoft Office\root\Office16\MML2OMML.XSL",
     r"C:\Program Files (x86)\Microsoft Office\root\Office16\MML2OMML.XSL",
     r"C:\Program Files\Microsoft Office\Office16\MML2OMML.XSL",
