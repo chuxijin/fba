@@ -13,7 +13,7 @@ npm run gen
 
 | 步骤 | 命令 | 产物 |
 |---|---|---|
-| 1. dump | `python ../../backend/scripts/dump_openapi.py` | `packages/api-sdk/openapi.json` |
+| 1. dump | `python ../../backend/scripts/dev/dump_openapi.py` | `packages/api-sdk/openapi.json` |
 | 2. codegen | `openapi-ts` (读 `openapi-ts.config.ts`) | `packages/api-sdk/src/generated/` |
 | 3. build | `tsup` | `packages/api-sdk/dist/` |
 
@@ -45,7 +45,7 @@ npm run gen
 
 | 路径 | 角色 |
 |---|---|
-| `backend/scripts/dump_openapi.py` | 不启服务器 dump openapi.json |
+| `backend/scripts/dev/dump_openapi.py` | 不启服务器 dump openapi.json |
 | `backend/utils/openapi.py:simplify_operation_ids` | 让 operation_id = endpoint 函数名 (snake_case) |
 | `packages/api-sdk/openapi-ts.config.ts` | hey-api 配置(axios client + asClass:false) |
 | `packages/api-sdk/src/runtime/axios.ts` | 跨端 setupSdk + ResponseModel 拆包 |
