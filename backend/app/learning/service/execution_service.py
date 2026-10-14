@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import select
@@ -19,6 +19,10 @@ from backend.app.question_bank_v2.crud.crud_practice import practice_session_dao
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
+# 未结束的专注超过该时长即视为「忘记结束」：不再算作当前专注（否则一次没结束的专注会
+# 让规划页永久停在「请先结束当前专注」，右侧入口消失），并在下次开始专注时自动收口。
+FOCUS_SESSION_STALE_HOURS = 12
+
 
 class LearningExecutionService:
     async def get_current_focus(
@@ -28,7 +32,9 @@ class LearningExecutionService:
         user_id: int,
     ) -> GetLearningFocusSessionDetail | None:
         session = await learning_focus_dao.get_current(db, user_id)
-        return await self._to_detail(db=db, session=session) if session is not None else None
+        if session is None or self._is_stale(session, timezone.now()):
+            return None
+        return await self._to_detail(db=db, session=session)
 
     async def start_focus(
         self,
@@ -42,6 +48,8 @@ class LearningExecutionService:
             task = await self._get_user_task(db=db, task_id=task_id, user_id=user_id)
             if task.status in {LearningTaskStatus.completed.value, LearningTaskStatus.canceled.value}:
                 raise errors.RequestError(msg='当前任务不能开始专注')
+        # 先把忘记结束的历史专注收口，避免它们用「请先结束当前专注」把用户卡死
+        await self._expire_stale_focus(db=db, user_id=user_id)
         if await learning_focus_dao.get_current(db, user_id) is not None:
             raise errors.ConflictError(msg='请先结束当前专注')
         session = LearningFocusSession(
@@ -246,6 +254,20 @@ class LearningExecutionService:
         """按 已流逝 - 累计暂停 推算当前有效专注秒数。"""
         elapsed = max(0, int((now - session.started_at).total_seconds()))
         return max(0, elapsed - session.paused_seconds)
+
+    @staticmethod
+    def _is_stale(session: LearningFocusSession, now: datetime) -> bool:
+        """判断专注是否已经过期（开始得太久仍未结束）。"""
+        return now - session.started_at >= timedelta(hours=FOCUS_SESSION_STALE_HOURS)
+
+    @staticmethod
+    async def _expire_stale_focus(*, db: AsyncSession, user_id: int) -> int:
+        """收口该用户所有忘记结束的专注，返回收口条数。"""
+        return await learning_focus_dao.expire_stale(
+            db,
+            user_id,
+            before=timezone.now() - timedelta(hours=FOCUS_SESSION_STALE_HOURS),
+        )
 
     @staticmethod
     async def _mark_task_in_progress(*, db: AsyncSession, task_id: int) -> None:
