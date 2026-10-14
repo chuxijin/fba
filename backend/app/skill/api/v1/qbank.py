@@ -10,7 +10,11 @@ from backend.app.admin.service.category_service import category_service
 from backend.app.question_bank_v2.crud.crud_knowledge import question_knowledge_point_dao
 from backend.app.question_bank_v2.schema.bank import GetBankListItem
 from backend.app.question_bank_v2.schema.knowledge import GetKnowledgeSystemListItem
-from backend.app.question_bank_v2.schema.question import GetQuestionDetail, GetQuestionListItem
+from backend.app.question_bank_v2.schema.question import (
+    GetQuestionDetail,
+    GetQuestionListItem,
+    QuestionType,
+)
 from backend.app.question_bank_v2.service.bank_service import bank_service
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.question_service import question_service
