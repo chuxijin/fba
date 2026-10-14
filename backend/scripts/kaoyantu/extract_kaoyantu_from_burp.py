@@ -4,9 +4,9 @@
 从 Burp 导出文件中提取考研兔题目响应
 
 用法:
-    python backend/scripts/extract_kaoyantu_from_burp.py --input burp_items.xml
-    python backend/scripts/extract_kaoyantu_from_burp.py --input old.xml patch.xml --output backend/scripts/outputs/merged.xlsx
-    python backend/scripts/extract_kaoyantu_from_burp.py --input burp_raw.txt --output backend/scripts/outputs/burp_questions.xlsx
+    python backend/scripts/kaoyantu/extract_kaoyantu_from_burp.py --input burp_items.xml
+    python backend/scripts/kaoyantu/extract_kaoyantu_from_burp.py --input old.xml patch.xml --output backend/scripts/outputs/merged.xlsx
+    python backend/scripts/kaoyantu/extract_kaoyantu_from_burp.py --input burp_raw.txt --output backend/scripts/outputs/burp_questions.xlsx
 """
 
 import argparse

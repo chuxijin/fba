@@ -74,6 +74,10 @@ status.json
 claude.md
 200
 
+# 临时脚本与预览产物（内含本地库连接串，禁止入库）
+scratch/
+backend/scratch/
+
 # CI/质量检查工具缓存
 .playwright-mcp/
 .schemas/
@@ -88,7 +92,7 @@ packages/api-sdk/src/generated/
 # 质量检查
 requirements-quality.txt
 scripts/check-quality.ps1
-backend/scripts/quality.sh
+backend/scripts/dev/quality.sh
 .github/workflows/quality.yml
 
 # AI 工具缓存
