@@ -2,6 +2,7 @@ import secrets
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -44,6 +45,17 @@ class PracticeCandidate:
     bank_item_id: int | None
     max_score: Decimal
     display_config: dict[str, Any]
+
+
+def _filter_values(value: str | Sequence[str] | None) -> list[str]:
+    """把筛选条件归一成去重后的列表，兼容单值、逗号分隔与多值传参"""
+    if value is None:
+        return []
+    raw = [value] if isinstance(value, str) else list(value)
+    items: list[str] = []
+    for item in raw:
+        items.extend(part.strip() for part in str(item).split(','))
+    return [item for item in dict.fromkeys(items) if item]
 
 
 def build_region_filter(region: str | None) -> ColumnElement[bool] | None:
@@ -174,10 +186,11 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
         self,
         *,
         user_id: int,
-        status: str | None,
-        mode: str | None,
+        status: str | Sequence[str] | None,
+        mode: str | Sequence[str] | None,
         source_type: str | None,
         bank_id: int | None,
+        created_after: datetime | None = None,
         category_ids: list[int] | None = None,
     ) -> Select:
         """构建用户练习会话分页查询"""
@@ -262,14 +275,16 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
             .where(QbPracticeSession.user_id == user_id, QbPracticeSession.deleted == 0)
             .order_by(QbPracticeSession.created_time.desc(), QbPracticeSession.id.desc())
         )
-        if status is not None:
-            stmt = stmt.where(QbPracticeSession.status == status)
-        if mode is not None:
-            stmt = stmt.where(QbPracticeSession.mode == mode)
+        if statuses := _filter_values(status):
+            stmt = stmt.where(QbPracticeSession.status.in_(statuses))
+        if modes := _filter_values(mode):
+            stmt = stmt.where(QbPracticeSession.mode.in_(modes))
         if source_type is not None:
             stmt = stmt.where(QbPracticeSession.source_type == source_type)
         if bank_id is not None:
             stmt = stmt.where(QbBankRevision.bank_id == bank_id)
+        if created_after is not None:
+            stmt = stmt.where(QbPracticeSession.created_time >= created_after)
         if category_ids:
             bank_in_domain = (
                 select(QbBankCategory.id)
@@ -1104,6 +1119,38 @@ class CRUDPracticeSessionResponse(CRUDPlus[QbPracticeSessionResponse]):
             )
         )
         return int(result.scalar_one()) > 0
+
+    async def get_total_duration_ms(self, db: AsyncSession, session_id: int) -> int:
+        """会话累计有效作答时长（毫秒），与整场报告同口径：逐题 duration_ms 求和"""
+        result = await db.execute(
+            select(func.coalesce(func.sum(QbPracticeSessionResponse.duration_ms), 0)).where(
+                QbPracticeSessionResponse.session_id == session_id,
+                QbPracticeSessionResponse.deleted == 0,
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    async def get_today_practice_summary(self, db: AsyncSession, *, user_id: int, since: datetime) -> dict[str, int]:
+        """今日练习摘要：该时刻之后提交的题数与有效作答时长（秒），供签到门槛判断"""
+        stmt = (
+            select(
+                func.count(QbPracticeSessionResponse.id).label('practice_count'),
+                func.coalesce(func.sum(QbPracticeSessionResponse.duration_ms), 0).label('duration_ms'),
+            )
+            .join(QbPracticeSession, QbPracticeSession.id == QbPracticeSessionResponse.session_id)
+            .where(
+                QbPracticeSession.user_id == user_id,
+                QbPracticeSession.deleted == 0,
+                QbPracticeSessionResponse.deleted == 0,
+                QbPracticeSessionResponse.status.in_({'submitted', 'graded', 'review_required'}),
+                QbPracticeSessionResponse.last_submitted_time >= since,
+            )
+        )
+        row = (await db.execute(stmt)).one()
+        return {
+            'practice_count': int(row.practice_count or 0),
+            'duration_seconds': int((row.duration_ms or 0) // 1000),
+        }
 
 
 class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):

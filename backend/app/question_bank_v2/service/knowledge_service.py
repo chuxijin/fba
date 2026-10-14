@@ -59,6 +59,30 @@ class KnowledgeService:
         return knowledge_system_dao.get_select(domain_category_id=domain_category_id, code=code)
 
     @staticmethod
+    async def resolve_optional_domain_category_id(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        domain_category_id: int | None = None,
+    ) -> int | None:
+        """可选解析当前领域分类 ID
+
+        显式传入优先；否则取用户偏好里的 current_category_id（小程序切换领域时会写入领域根分类）。
+        与 resolve_domain_category_id 的区别：无法判断领域时返回 None 而不是报错，
+        供错题本这类「历史账号没有领域也要能看到数据」的场景使用。
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :param domain_category_id: 显式指定的领域分类 ID
+        :return: 领域分类 ID，无法判断时为 None
+        """
+        if domain_category_id is not None:
+            return domain_category_id
+        preference = await practice_preference_dao.get_by_user_id(db, user_id)
+        current = getattr(preference, 'current_category_id', None)
+        return int(current) if current else None
+
+    @staticmethod
     async def resolve_domain_category_id(
         *,
         db: AsyncSession,
@@ -70,13 +94,14 @@ class KnowledgeService:
         显式传入优先；否则取用户偏好里的 current_category_id（小程序切换领域时会写入领域根分类）。
         两者都没有时无法判断领域，直接报错而不是猜一个，避免跨领域串体系。
         """
-        if domain_category_id is not None:
-            return domain_category_id
-        preference = await practice_preference_dao.get_by_user_id(db, user_id)
-        current = getattr(preference, 'current_category_id', None)
-        if not current:
+        resolved = await KnowledgeService.resolve_optional_domain_category_id(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        if resolved is None:
             raise errors.RequestError(msg='未设置当前领域，请先选择学习领域')
-        return int(current)
+        return resolved
 
     @staticmethod
     async def resolve_system(

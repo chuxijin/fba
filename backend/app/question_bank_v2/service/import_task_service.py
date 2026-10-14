@@ -295,22 +295,30 @@ class ImportTaskService:
         )
         await db.flush()
 
-        # 6. 收集章节路径 → 创建章节
-        paths: set[tuple[str | None, str | None, str | None]] = set()
-        paths.update((vr['section_l1'], vr['section_l2'], vr['section_l3']) for vr in validated_rows)
+        # 6. 收集章节路径 → 创建章节（保持 Excel 中的先后出现顺序）
+        paths: list[tuple[str | None, str | None, str | None]] = []
+        seen_paths: set[tuple[str | None, str | None, str | None]] = set()
+        for vr in validated_rows:
+            p = (vr['section_l1'], vr['section_l2'], vr['section_l3'])
+            if p not in seen_paths:
+                seen_paths.add(p)
+                paths.append(p)
 
         section_cache: dict[str, int] = {}
+        child_counters: dict[int | None, int] = {}
 
         async def _get_or_create_sec(key: str, name: str, parent_id: int | None, depth: int) -> int:
             if key in section_cache:
                 return section_cache[key]
+            current_order = child_counters.get(parent_id, 0)
+            child_counters[parent_id] = current_order + 1
             sec = QbBankSection(
                 bank_revision_id=revision.id,
                 code=key,
                 name=name,
                 parent_id=parent_id,
                 depth=depth,
-                sort_order=0,
+                sort_order=current_order,
                 created_by=user_id,
             )
             db.add(sec)
@@ -318,7 +326,7 @@ class ImportTaskService:
             section_cache[key] = sec.id
             return sec.id
 
-        for l1, l2, l3 in sorted(paths):
+        for l1, l2, l3 in paths:
             if l1:
                 p1 = await _get_or_create_sec(f'l1/{l1}', l1, None, 0)
                 if l2:

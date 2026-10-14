@@ -1,6 +1,7 @@
 import hashlib
 import json
 
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import Select
@@ -25,6 +26,7 @@ from backend.app.question_bank_v2.schema.question import (
     GetQuestionListItem,
     UpdateQuestionParam,
 )
+from backend.app.question_bank_v2.service.catalog_service import catalog_service
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.material_service import material_service
 from backend.common.exception import errors
@@ -88,6 +90,25 @@ class QuestionService:
             updated_by=question.updated_by,
             created_time=question.created_time,
             updated_time=question.updated_time,
+        )
+
+    @staticmethod
+    async def get_public_search_select(
+        *,
+        db: AsyncSession,
+        keyword: str,
+        domain_category_id: int | None = None,
+    ) -> Select:
+        """构建公开题目检索查询
+
+        领域按分类子树展开；不传领域时不额外收窄，但仍只覆盖公开已发布题库。
+        """
+        domain_category_ids = None
+        if domain_category_id is not None:
+            domain_category_ids = await catalog_service.resolve_category_subtree_ids(db=db, cat_id=domain_category_id)
+        return question_dao.get_public_search_select(
+            keyword=keyword,
+            domain_category_ids=domain_category_ids,
         )
 
     @staticmethod
@@ -192,6 +213,7 @@ class QuestionService:
         keyword: str | None = None,
         knowledge_labeled: bool | None = None,
         section_id: int | None = None,
+        knowledge_point_ids: Sequence[int] | None = None,
     ) -> Select:
         """构建题目管理列表分页查询，交给 API 层 paging_data 处理"""
         section_ids: list[int] | None = None
@@ -205,6 +227,10 @@ class QuestionService:
                 section.bank_revision_id,
                 section_id,
             )
+        if knowledge_point_ids is not None:
+            if not knowledge_point_ids:
+                knowledge_point_ids = []
+            await knowledge_service.ensure_point_ids(db=db, point_ids=list(knowledge_point_ids))
         return question_dao.get_list_select(
             bank_id=bank_id,
             bank_revision_id=bank_revision_id,
@@ -212,6 +238,7 @@ class QuestionService:
             keyword=keyword,
             knowledge_labeled=knowledge_labeled,
             section_ids=section_ids,
+            knowledge_point_ids=knowledge_point_ids,
         )
 
     @staticmethod

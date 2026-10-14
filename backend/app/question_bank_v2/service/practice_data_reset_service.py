@@ -94,6 +94,14 @@ class PracticeDataResetService:
             db,
             delete(QbQuestionAttemptKnowledgePoint).where(QbQuestionAttemptKnowledgePoint.user_id == user_id),
         )
+
+        # 删除顺序不可调整：qbank_v2_user_bank_item_progress.last_attempt_id 以 RESTRICT 指向
+        # qbank_v2_question_attempt(user_id, question_id, id)（约束 fk_qbv2_ubip_last_attempt），
+        # 必须在删除作答事实之前清掉这张进度表，否则整批删除会被外键挡下。
+        r.bank_progress_count = await _exec(db, delete(QbUserBankItemProgress).where(
+            QbUserBankItemProgress.user_id == user_id
+        ))
+
         r.attempt_count += await _exec(db, delete(QbQuestionAttempt).where(QbQuestionAttempt.user_id == user_id))
 
         user_session_ids = select(QbPracticeSession.id).where(QbPracticeSession.user_id == user_id)
@@ -115,9 +123,6 @@ class PracticeDataResetService:
             db,
             delete(QbUserKnowledgeMastery).where(QbUserKnowledgeMastery.user_id == user_id),
         )
-        r.bank_progress_count = await _exec(db, delete(QbUserBankItemProgress).where(
-            QbUserBankItemProgress.user_id == user_id
-        ))
         r.practice_stats_count = await _exec(db, delete(QbUserPracticeStatistics).where(
             QbUserPracticeStatistics.user_id == user_id
         ))

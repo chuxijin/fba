@@ -142,11 +142,11 @@ class CatalogService:
         return GetCollectionDetail.model_validate(collection)
 
     @staticmethod
-    async def _resolve_category_ids(
+    async def resolve_category_subtree_ids(
         db: AsyncSession,
         cat_id: int,
     ) -> set[int]:
-        """递归查询 cat_id 及其所有子分类的 ID"""
+        """递归查询 cat_id 及其所有子分类的 ID；公开题库与检索都按分类子树圈定领域"""
         ids = {cat_id}
         rows = (
             await db.execute(
@@ -173,7 +173,7 @@ class CatalogService:
     ) -> dict[int, list[GetBankListItem]]:
         category_ids: set[int] | None = None
         if cat_id is not None:
-            category_ids = await CatalogService._resolve_category_ids(db, cat_id)
+            category_ids = await CatalogService.resolve_category_subtree_ids(db, cat_id)
         banks_by_collection: dict[int, list[GetBankListItem]] = {}
         for row in mount_rows:
             data = dict(row)

@@ -2,6 +2,7 @@ import asyncio
 import importlib
 
 from collections.abc import Coroutine
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, TypeVar
@@ -504,3 +505,49 @@ def test_bank_source_still_requires_entitlement(monkeypatch: MonkeyPatch) -> Non
             )
         )
     assert len(ensure_calls) == 1
+
+
+def test_practice_history_filters_support_multi_values_and_time_range() -> None:
+    """状态/模式支持多值（逗号分隔），时间范围按天数换算成创建时间下限"""
+    from backend.app.question_bank_v2.schema.practice import PRACTICE_SESSION_RANGE_DAYS
+
+    assert PRACTICE_SESSION_RANGE_DAYS == {'7d': 7, '30d': 30, '90d': 90}
+
+    stmt = practice_session_dao.get_list_select(
+        user_id=42,
+        status='graded,submitted',
+        mode='exam,mock',
+        source_type=None,
+        bank_id=None,
+        created_after=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={'literal_binds': True}))
+
+    assert "status IN ('graded', 'submitted')" in sql
+    assert "mode IN ('exam', 'mock')" in sql
+    assert 'created_time >=' in sql
+
+    # 单值调用保持原语义，不传筛选时不加条件
+    single = practice_session_dao.get_list_select(
+        user_id=42,
+        status='graded',
+        mode=None,
+        source_type=None,
+        bank_id=None,
+    )
+    single_sql = str(single.compile(dialect=postgresql.dialect(), compile_kwargs={'literal_binds': True}))
+    assert "status IN ('graded')" in single_sql
+    assert 'mode IN' not in single_sql
+    assert 'created_time >=' not in single_sql
+
+
+def test_practice_session_page_reports_total_only_on_first_page() -> None:
+    """会话历史沿用游标分页，total 只在首页返回，避免每次翻页都 count"""
+    from backend.app.question_bank_v2.schema.practice import GetPracticeSessionListPage
+
+    assert set(GetPracticeSessionListPage.model_fields) == {'items', 'next_cursor', 'has_more', 'total'}
+    assert GetPracticeSessionListPage(items=[], has_more=False).total is None
+
+    source = Path('backend/app/question_bank_v2/api/v1/practice.py').read_text(encoding='utf-8')
+    assert 'if not page_params.cursor:' in source
+    assert 'select_from(stmt.order_by(None).subquery())' in source

@@ -3,7 +3,7 @@ import json
 import uuid
 
 from collections.abc import Sequence
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -53,6 +53,7 @@ from backend.app.question_bank_v2.service.grading_service import practice_gradin
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.preference_service import preference_service
 from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
+from backend.app.question_bank_v2.service.reward_service import PracticeReward, practice_reward_service
 from backend.app.question_bank_v2.service.statistics_service import statistics_service
 from backend.common.exception import errors
 from backend.common.log import log
@@ -188,10 +189,11 @@ class PracticeService:
     def get_list_select(
         *,
         user_id: int,
-        status: str | None,
-        mode: str | None,
+        status: str | Sequence[str] | None,
+        mode: str | Sequence[str] | None,
         source_type: str | None,
         bank_id: int | None,
+        created_after: datetime | None = None,
         category_ids: list[int] | None = None,
     ) -> Select:
         """构建当前用户会话历史分页查询"""
@@ -201,6 +203,7 @@ class PracticeService:
             mode=mode,
             source_type=source_type,
             bank_id=bank_id,
+            created_after=created_after,
             category_ids=category_ids,
         )
 
@@ -732,6 +735,13 @@ class PracticeService:
         if session is None:
             raise errors.NotFoundError(msg='练习会话不存在')
         if session.status in {'submitted', 'graded'} and session.submitted_time is not None:
+            # 幂等：已交卷过，回查上次发放的练习奖励与今日签到奖励原样返回，不重复发放
+            reward = await practice_reward_service.resolve_granted_practice_reward(
+                db=db,
+                user_id=user_id,
+                session_id=session.id,
+            )
+            check_in = await practice_reward_service.resolve_granted_check_in_reward(db=db, user_id=user_id)
             return SubmitPracticeSessionResult(
                 session_key=session.session_key,
                 status=session.status,
@@ -740,6 +750,7 @@ class PracticeService:
                 correct_items=session.correct_items,
                 score=session.score,
                 submitted_time=session.submitted_time,
+                **PracticeService._reward_fields(reward, check_in),
             )
         await PracticeService._ensure_session_open(db=db, session=session)
         await PracticeService._apply_deferred_attempts(db=db, session=session)
@@ -748,6 +759,14 @@ class PracticeService:
         session.submitted_time = timezone.now()
         await statistics_service.apply_session_submission(db=db, user_id=user_id)
         await db.flush()
+        reward = await practice_reward_service.grant_practice_correct_experience(
+            db=db,
+            user_id=user_id,
+            session_id=session.id,
+            answered_count=session.answered_items,
+            correct_count=session.correct_items,
+        )
+        check_in = await practice_reward_service.try_auto_check_in(db=db, user_id=user_id)
         await PracticeService._notify_study_plan(db=db, session=session, user_id=user_id)
         return SubmitPracticeSessionResult(
             session_key=session.session_key,
@@ -757,7 +776,32 @@ class PracticeService:
             correct_items=session.correct_items,
             score=session.score,
             submitted_time=session.submitted_time,
+            **PracticeService._reward_fields(reward, check_in),
         )
+
+    @staticmethod
+    def _reward_fields(reward: PracticeReward, check_in: PracticeReward | None = None) -> dict[str, Any]:
+        """把练习奖励与自动签到奖励摊平成交卷响应字段"""
+        check_in = check_in or PracticeReward()
+        return {
+            'reward_exp': reward.reward_exp + check_in.reward_exp,
+            'practice_reward_exp': reward.practice_reward_exp,
+            'check_in_reward_exp': check_in.check_in_reward_exp,
+            # 成长进度取更靠后的那次发放：签到发生在练习奖励之后
+            'tier_grade': PracticeService._latest(check_in.tier_grade, reward.tier_grade),
+            'exp': PracticeService._latest(check_in.exp, reward.exp),
+            'available_exp': PracticeService._latest(check_in.available_exp, reward.available_exp),
+            'is_auto_checked_in': check_in.is_auto_checked_in,
+            'check_in_streak': check_in.check_in_streak,
+        }
+
+    @staticmethod
+    def _latest(*values: int | None) -> int | None:
+        """取第一个非空值：用于在练习奖励与签到奖励之间选出最新的成长进度"""
+        for value in values:
+            if value is not None:
+                return value
+        return None
 
     @staticmethod
     async def _notify_study_plan(

@@ -1,5 +1,6 @@
 import asyncio
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ from backend.app.question_bank_v2.service import practice_service as practice_se
 from backend.app.question_bank_v2.service.grading_service import practice_grading_service
 from backend.app.question_bank_v2.service.practice_service import practice_service
 from backend.app.question_bank_v2.service.practice_service import PracticeService
+from backend.app.question_bank_v2.service.reward_service import PracticeReward
 from backend.common.exception import errors
 
 
@@ -379,11 +381,43 @@ def _patch_submit_dependencies(monkeypatch, session) -> None:
     async def fake_apply_submission(**_kwargs):
         return None
 
+    async def fake_grant_reward(**_kwargs):
+        return PracticeReward()
+
+    async def fake_resolve_reward(**_kwargs):
+        return PracticeReward()
+
+    async def fake_auto_check_in(**_kwargs):
+        return PracticeReward()
+
+    async def fake_resolve_check_in(**_kwargs):
+        return PracticeReward()
+
     monkeypatch.setattr(practice_service_module.practice_session_dao, 'get_by_key', fake_get_by_key)
     monkeypatch.setattr(practice_service_module.PracticeService, '_ensure_session_open', fake_ensure_open)
     monkeypatch.setattr(practice_service_module.PracticeService, '_apply_deferred_attempts', fake_apply_deferred)
     monkeypatch.setattr(practice_service_module.practice_response_dao, 'has_pending_grading', fake_has_pending)
     monkeypatch.setattr(practice_service_module.statistics_service, 'apply_session_submission', fake_apply_submission)
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'grant_practice_correct_experience',
+        fake_grant_reward,
+    )
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'resolve_granted_practice_reward',
+        fake_resolve_reward,
+    )
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'try_auto_check_in',
+        fake_auto_check_in,
+    )
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'resolve_granted_check_in_reward',
+        fake_resolve_check_in,
+    )
 
 
 def test_submit_session_notifies_study_plan(monkeypatch) -> None:
@@ -431,3 +465,140 @@ def test_submit_session_survives_study_plan_failure(monkeypatch) -> None:
 
     assert result.status == 'graded'
     assert result.submitted_time is not None
+
+
+def test_submit_session_grants_practice_experience(monkeypatch) -> None:
+    """交卷成功后按答对题数发放练习经验，并把奖励透传给前端"""
+    session = _submitted_session()
+    _patch_submit_dependencies(monkeypatch, session)
+
+    granted: dict = {}
+
+    async def fake_grant(**kwargs):
+        granted.update(kwargs)
+        return PracticeReward(reward_exp=4, practice_reward_exp=4, tier_grade=1, exp=4, available_exp=4)
+
+    async def fake_hook(_db, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'grant_practice_correct_experience',
+        fake_grant,
+    )
+    monkeypatch.setattr(
+        'backend.app.study_plan.service.session_hook.handle_session_completed',
+        fake_hook,
+    )
+
+    result = asyncio.run(practice_service.submit_session(db=_HookDb(), session_key='client-session-001', user_id=7))
+
+    assert granted['user_id'] == 7
+    assert granted['session_id'] == 71
+    assert granted['answered_count'] == 3
+    assert granted['correct_count'] == 2
+    assert result.reward_exp == 4
+    assert result.practice_reward_exp == 4
+    assert result.check_in_reward_exp == 0
+    assert result.tier_grade == 1
+    assert result.exp == 4
+    assert result.available_exp == 4
+
+
+def test_submit_session_merges_auto_check_in_reward(monkeypatch) -> None:
+    """自动签到奖励合并进交卷响应：合计 = 练习经验 + 签到经验"""
+    session = _submitted_session()
+    _patch_submit_dependencies(monkeypatch, session)
+
+    async def fake_grant(**_kwargs):
+        return PracticeReward(reward_exp=4, practice_reward_exp=4, tier_grade=1, exp=4, available_exp=4)
+
+    async def fake_check_in(**_kwargs):
+        return PracticeReward(
+            reward_exp=2,
+            check_in_reward_exp=2,
+            tier_grade=1,
+            exp=6,
+            available_exp=6,
+            is_auto_checked_in=True,
+            check_in_streak=3,
+        )
+
+    async def fake_hook(_db, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'grant_practice_correct_experience',
+        fake_grant,
+    )
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'try_auto_check_in',
+        fake_check_in,
+    )
+    monkeypatch.setattr(
+        'backend.app.study_plan.service.session_hook.handle_session_completed',
+        fake_hook,
+    )
+
+    result = asyncio.run(practice_service.submit_session(db=_HookDb(), session_key='client-session-001', user_id=7))
+
+    assert result.reward_exp == 6
+    assert result.practice_reward_exp == 4
+    assert result.check_in_reward_exp == 2
+    assert result.is_auto_checked_in is True
+    assert result.check_in_streak == 3
+    assert result.exp == 6
+
+
+def test_submit_session_reuses_reward_on_repeat_submit(monkeypatch) -> None:
+    """重复交卷走幂等分支：不重复发放，把上次发放的奖励原样返回"""
+    session = _submitted_session()
+    session.status = 'graded'
+    session.submitted_time = datetime(2026, 10, 11, 8, 3, tzinfo=timezone.utc)
+    _patch_submit_dependencies(monkeypatch, session)
+
+    granted: list = []
+
+    async def fake_grant(**kwargs):
+        granted.append(kwargs)
+
+    async def fake_resolve(**_kwargs):
+        return PracticeReward(reward_exp=4, practice_reward_exp=4)
+
+    async def fake_resolve_check_in(**_kwargs):
+        return PracticeReward(reward_exp=2, check_in_reward_exp=2, is_auto_checked_in=True, check_in_streak=3)
+
+    async def fake_hook(_db, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'grant_practice_correct_experience',
+        fake_grant,
+    )
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'resolve_granted_practice_reward',
+        fake_resolve,
+    )
+    monkeypatch.setattr(
+        practice_service_module.practice_reward_service,
+        'resolve_granted_check_in_reward',
+        fake_resolve_check_in,
+    )
+    monkeypatch.setattr(
+        'backend.app.study_plan.service.session_hook.handle_session_completed',
+        fake_hook,
+    )
+
+    result = asyncio.run(practice_service.submit_session(db=_HookDb(), session_key='client-session-001', user_id=7))
+
+    assert granted == []
+    assert result.status == 'graded'
+    assert result.reward_exp == 6
+    assert result.practice_reward_exp == 4
+    assert result.check_in_reward_exp == 2
+    assert result.is_auto_checked_in is True
+    assert result.check_in_streak == 3

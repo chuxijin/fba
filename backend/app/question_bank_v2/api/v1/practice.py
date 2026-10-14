@@ -1,29 +1,37 @@
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
+from sqlalchemy import func, select
 
 from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank_v2.crud.crud_preference import practice_preference_dao
 from backend.app.question_bank_v2.schema.practice import (
+    PRACTICE_SESSION_RANGE_DAYS,
     CreatePracticeSessionParam,
     GetPracticeResponseDetail,
     GetPracticeSessionDetail,
     GetPracticeSessionListItem,
+    GetPracticeSessionListPage,
     GetPracticeSessionReport,
     GetPracticeSessionSolutionItem,
     GetPracticeSolutionDetail,
-    PracticeMode,
-    PracticeSessionStatus,
+    PracticeSessionRange,
     SavePracticeResponseParam,
     SubmitPracticeItemParam,
     SubmitPracticeItemResult,
     SubmitPracticeSessionResult,
 )
 from backend.app.question_bank_v2.service.practice_service import practice_service
-from backend.common.pagination import CursorPageData, DependsCursorPagination, cursor_paging_data
+from backend.common.pagination import (
+    DependsCursorPagination,
+    _CustomCursorParams,
+    cursor_paging_data,
+)
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.utils.timezone import timezone
 
 router = APIRouter(dependencies=[DependsJwtAuth])
 
@@ -48,11 +56,13 @@ async def create_practice_session(
 async def get_practice_sessions(
     request: Request,
     db: CurrentSession,
-    status: Annotated[PracticeSessionStatus | None, Query(description='会话状态')] = None,
-    mode: Annotated[PracticeMode | None, Query(description='练习模式')] = None,
+    page_params: Annotated[_CustomCursorParams, DependsCursorPagination],
+    status: Annotated[str | None, Query(description='会话状态，多个用逗号分隔，如 graded,submitted')] = None,
+    mode: Annotated[str | None, Query(description='练习模式，多个用逗号分隔，如 exam,mock')] = None,
     source_type: Annotated[str | None, Query(max_length=24, description='组题来源类型')] = None,
     bank_id: Annotated[int | None, Query(gt=0, description='题库稳定身份 ID')] = None,
-) -> ResponseSchemaModel[CursorPageData[GetPracticeSessionListItem]]:
+    time_range: Annotated[PracticeSessionRange, Query(description='时间范围：all / 7d / 30d / 90d')] = 'all',
+) -> ResponseSchemaModel[GetPracticeSessionListPage]:
     category_ids: list[int] | None = None
     preference = await practice_preference_dao.get_by_user_id(db, request.user.id)
     root_category_id = getattr(preference, 'current_category_id', None)
@@ -61,16 +71,25 @@ async def get_practice_sessions(
         if not category_ids:
             category_ids = None
 
+    range_days = PRACTICE_SESSION_RANGE_DAYS.get(time_range)
+    created_after = timezone.now() - timedelta(days=range_days) if range_days else None
+
     stmt = practice_service.get_list_select(
         user_id=request.user.id,
         status=status,
         mode=mode,
         source_type=source_type,
         bank_id=bank_id,
+        created_after=created_after,
         category_ids=category_ids,
     )
+    # 仅首页统计总数：翻页时没必要为了列表头再 count 一次
+    total: int | None = None
+    if not page_params.cursor:
+        total = int(await db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
+
     page_data = await cursor_paging_data(db, stmt, GetPracticeSessionListItem, unique=False)
-    return response_base.success(data=page_data)
+    return response_base.success(data=GetPracticeSessionListPage(total=total, **page_data))
 
 
 @router.get('/{session_key}', summary='获取练习会话', name='qbank_v2_get_practice_session')

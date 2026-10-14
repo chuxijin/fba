@@ -89,13 +89,20 @@ async def get_wrong_questions(
     status: Annotated[WrongStateStatus | None, Query(description='错题状态；空表示全部')] = 'active',
     entry_source: Annotated[WrongEntrySource | None, Query(description='首次录入来源')] = None,
     entry_scope: Annotated[WrongEntryScope | None, Query(description='题库错题或自主录入')] = None,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
  ) -> ResponseSchemaModel[CursorPageData[GetWrongQuestionListItem]]:
     """系统内答错与外部录入使用同一列表模型"""
+    domain_category_ids = await wrong_review_service.resolve_domain_scope(
+        db=db,
+        user_id=request.user.id,
+        domain_category_id=domain_category_id,
+    )
     stmt = wrong_review_service.get_list_select(
         user_id=request.user.id,
         status=status,
         entry_source=entry_source,
         entry_scope=entry_scope,
+        domain_category_ids=domain_category_ids,
     )
     return response_base.success(data=await cursor_paging_data(db, stmt, GetWrongQuestionListItem))
 
@@ -108,6 +115,7 @@ async def get_wrong_question_statistics(
     knowledge_system_id: Annotated[
         int | None, Query(gt=0, description='知识体系 ID；空则按偏好回落 default，仅知识点分组生效')
     ] = None,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
 ) -> ResponseSchemaModel[WrongQuestionStatistics]:
     """获取错题总数、到期数、复盘数及题库或知识点分组"""
     data = await wrong_review_service.get_statistics(
@@ -115,6 +123,7 @@ async def get_wrong_question_statistics(
         user_id=request.user.id,
         group_by=group_by,
         knowledge_system_id=knowledge_system_id,
+        domain_category_id=domain_category_id,
     )
     return response_base.success(data=data)
 
@@ -143,14 +152,21 @@ async def get_reviewed_wrong_questions(
     tag_id: Annotated[int | None, Query(gt=0, description='错因标签筛选')] = None,
     knowledge_point_id: Annotated[int | None, Query(gt=0, description='知识点筛选')] = None,
     keyword: Annotated[str | None, Query(max_length=100, description='题干关键词搜索')] = None,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
 ) -> ResponseSchemaModel[CursorPageData[GetWrongQuestionListItem]]:
     """考前回顾入口；不过滤错题本状态，已移出的题仍可查看"""
+    domain_category_ids = await wrong_review_service.resolve_domain_scope(
+        db=db,
+        user_id=request.user.id,
+        domain_category_id=domain_category_id,
+    )
     stmt = wrong_review_service.get_reviewed_select(
         user_id=request.user.id,
         mastery_state=mastery_state,
         tag_id=tag_id,
         knowledge_point_id=knowledge_point_id,
         keyword=keyword,
+        domain_category_ids=domain_category_ids,
     )
     return response_base.success(data=await cursor_paging_data(db, stmt, GetWrongQuestionListItem))
 
@@ -165,11 +181,18 @@ async def get_pending_review_wrong_questions(
     request: Request,
     db: CurrentSession,
     entry_scope: Annotated[WrongEntryScope | None, Query(description='题库错题或自主录入')] = None,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
 ) -> ResponseSchemaModel[CursorPageData[GetWrongQuestionListItem]]:
     """仍在错题本且从未复盘的题；复盘一次即自动出队"""
+    domain_category_ids = await wrong_review_service.resolve_domain_scope(
+        db=db,
+        user_id=request.user.id,
+        domain_category_id=domain_category_id,
+    )
     stmt = wrong_review_service.get_pending_review_select(
         user_id=request.user.id,
         entry_scope=entry_scope,
+        domain_category_ids=domain_category_ids,
     )
     return response_base.success(data=await cursor_paging_data(db, stmt, GetWrongQuestionListItem))
 
@@ -181,12 +204,14 @@ async def get_wrong_review_dashboard(
     knowledge_system_id: Annotated[
         int | None, Query(gt=0, description='知识体系 ID；空则按偏好回落 default')
     ] = None,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
 ) -> ResponseSchemaModel[GetWrongReviewDashboard]:
     """分布来自用户复盘时主观选择的标签和知识点"""
     data = await wrong_review_service.get_dashboard(
         db=db,
         user_id=request.user.id,
         knowledge_system_id=knowledge_system_id,
+        domain_category_id=domain_category_id,
     )
     return response_base.success(data=data)
 

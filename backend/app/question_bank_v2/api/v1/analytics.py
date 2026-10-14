@@ -14,7 +14,7 @@ from backend.app.question_bank_v2.schema.analytics import (
 from backend.app.question_bank_v2.service.analytics_service import analytics_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
-from backend.database.db import CurrentSession
+from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter(dependencies=[DependsJwtAuth])
 
@@ -48,6 +48,20 @@ async def get_bank_progress(
 ) -> ResponseSchemaModel[GetBankProgressDetail]:
     data = await analytics_service.get_bank_progress(db=db, user_id=request.user.id, bank_id=bank_id)
     return response_base.success(data=data)
+
+
+@router.post(
+    '/banks/{bank_id}/progress/reset',
+    summary='重置题库学习进度',
+    name='qbank_v2_reset_bank_progress',
+)
+async def reset_bank_progress(
+    request: Request,
+    db: CurrentSessionTransaction,
+    bank_id: Annotated[int, Path(gt=0, description='题库稳定身份 ID')],
+) -> ResponseSchemaModel[None]:
+    await analytics_service.reset_bank_progress(db=db, user_id=request.user.id, bank_id=bank_id)
+    return response_base.success()
 
 
 @router.get(

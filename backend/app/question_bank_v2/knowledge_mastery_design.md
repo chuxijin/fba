@@ -438,7 +438,7 @@ calculated_time
 - [x] 建立作答后知识点投影更新服务；
 - [x] 支持 Beta 平滑、时间衰减、有效样本量和置信度；
 - [x] 支持投影按 `model_version` 重建；
-- [ ] 为已有 `default` 作答历史执行一次回填（脚本：`backend/scripts/backfill_qbank_v2_knowledge_mastery.py`，迁移上线后执行）。
+- [ ] 为已有 `default` 作答历史执行一次回填（脚本：`backend/scripts/data/backfill_qbank_v2_knowledge_mastery.py`，迁移上线后执行）。
 
 ### 阶段 2：雷达图和知识点看板（基础接口已落地）
 

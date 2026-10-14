@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank_v2.crud.crud_knowledge import question_knowledge_point_dao
 from backend.app.question_bank_v2.crud.crud_practice import (
     practice_session_item_dao,
@@ -27,6 +28,7 @@ from backend.app.question_bank_v2.model.practice import QbQuestionAttempt
 from backend.app.question_bank_v2.model.review import QbQuestionReview, QbWrongQuestionState
 from backend.app.question_bank_v2.schema.knowledge import KnowledgePointAssignmentParam
 from backend.app.question_bank_v2.schema.review import (
+    ENTRY_METADATA_DOMAIN_KEY,
     CreateExternalWrongQuestionParam,
     CreateQuestionReviewParam,
     CreateReviewTagParam,
@@ -123,12 +125,40 @@ class WrongReviewService:
         return GetWrongQuestionListItem(**row)
 
     @staticmethod
+    async def get_domain_category_ids(*, db: AsyncSession, domain_category_id: int) -> list[int] | None:
+        """把领域根分类展开成含子分类的 ID 列表；为空时不过滤"""
+        category_ids = await category_dao.get_subtree_ids_by_path(db, domain_category_id)
+        return category_ids or None
+
+    @staticmethod
+    async def resolve_domain_scope(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        domain_category_id: int | None = None,
+    ) -> list[int] | None:
+        """解析错题领域范围（含子分类）
+
+        显式传入优先，其次取用户当前领域；两者都无法判断时返回 None（不过滤），
+        避免历史账号因为没设过领域而看不到任何错题。
+        """
+        resolved = await knowledge_service.resolve_optional_domain_category_id(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        if resolved is None:
+            return None
+        return await WrongReviewService.get_domain_category_ids(db=db, domain_category_id=resolved)
+
+    @staticmethod
     def get_list_select(
         *,
         user_id: int,
         status: str | None = 'active',
         entry_source: str | None = None,
         entry_scope: str | None = None,
+        domain_category_ids: Sequence[int] | None = None,
     ) -> Any:
         """构建当前用户统一错题列表查询"""
         return wrong_question_state_dao.get_list_select(
@@ -136,6 +166,7 @@ class WrongReviewService:
             status=status,
             entry_source=entry_source,
             entry_scope=entry_scope,
+            domain_category_ids=domain_category_ids,
         )
 
     @staticmethod
@@ -146,6 +177,7 @@ class WrongReviewService:
         tag_id: int | None = None,
         knowledge_point_id: int | None = None,
         keyword: str | None = None,
+        domain_category_ids: Sequence[int] | None = None,
     ) -> Any:
         """构建复盘档案查询"""
         return wrong_question_state_dao.get_reviewed_list_select(
@@ -154,6 +186,7 @@ class WrongReviewService:
             tag_id=tag_id,
             knowledge_point_id=knowledge_point_id,
             keyword=keyword,
+            domain_category_ids=domain_category_ids,
         )
 
     @staticmethod
@@ -161,11 +194,13 @@ class WrongReviewService:
         *,
         user_id: int,
         entry_scope: str | None = None,
+        domain_category_ids: Sequence[int] | None = None,
     ) -> Any:
         """构建待复盘队列查询"""
         return wrong_question_state_dao.get_pending_review_list_select(
             user_id=user_id,
             entry_scope=entry_scope,
+            domain_category_ids=domain_category_ids,
         )
 
     @staticmethod
@@ -277,18 +312,28 @@ class WrongReviewService:
             user_id=user_id,
             domain_category_id=domain_category_id,
         )
+        domain_category_ids = await WrongReviewService.get_domain_category_ids(
+            db=db,
+            domain_category_id=resolved_domain_id,
+        )
         knowledge_system_ids = await knowledge_service.resolve_system_ids(
             db=db,
             domain_category_id=resolved_domain_id,
             system_id=knowledge_system_id,
             user_id=user_id,
         )
-        statistics = await wrong_question_state_dao.get_statistics(db, user_id=user_id, now=now)
+        statistics = await wrong_question_state_dao.get_statistics(
+            db,
+            user_id=user_id,
+            now=now,
+            domain_category_ids=domain_category_ids,
+        )
         event_count, reason_rows, knowledge_rows = await wrong_question_state_dao.get_dashboard_rows(
             db,
             user_id=user_id,
             since=now - timedelta(days=DASHBOARD_WINDOW_DAYS),
             knowledge_system_ids=knowledge_system_ids,
+            domain_category_ids=domain_category_ids,
         )
         return GetWrongReviewDashboard(
             reviewed_count=statistics['reviewed_count'],
@@ -310,7 +355,17 @@ class WrongReviewService:
         domain_category_id: int | None = None,
     ) -> WrongQuestionStatistics:
         """获取错题汇总及题库或知识点分组"""
-        statistics = await wrong_question_state_dao.get_statistics(db, user_id=user_id, now=timezone.now())
+        domain_category_ids = await WrongReviewService.resolve_domain_scope(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        statistics = await wrong_question_state_dao.get_statistics(
+            db,
+            user_id=user_id,
+            now=timezone.now(),
+            domain_category_ids=domain_category_ids,
+        )
         knowledge_system_ids: list[int] = []
         if group_by == 'knowledge_point':
             resolved_domain_id = await knowledge_service.resolve_domain_category_id(
@@ -329,6 +384,7 @@ class WrongReviewService:
             user_id=user_id,
             group_by=group_by,
             knowledge_system_ids=knowledge_system_ids,
+            domain_category_ids=domain_category_ids,
         )
         if group_by == 'knowledge_point':
             bank_groups: list[ContentGroupNode] = []
@@ -407,6 +463,16 @@ class WrongReviewService:
         )
         await WrongReviewService._validate_assets(db=db, user_id=user_id, obj=obj)
 
+        # 自主录入的错题没有题库归属，把录入当时的领域记进 entry_metadata，
+        # 之后按领域筛选待复盘/错题列表时才有依据（拿不到领域时不写，保持不过滤语义）
+        recorded_domain_id = await knowledge_service.resolve_optional_domain_category_id(
+            db=db,
+            user_id=user_id,
+        )
+        entry_metadata = dict(obj.entry_metadata)
+        if recorded_domain_id is not None:
+            entry_metadata[ENTRY_METADATA_DOMAIN_KEY] = int(recorded_domain_id)
+
         question = await question_dao.create(
             db,
             code=f'usr.{user_id}.wrong.{uuid.uuid4().hex}',
@@ -468,7 +534,7 @@ class WrongReviewService:
                 'user_id': user_id,
                 'question_id': question.id,
                 'entry_source': obj.entry_source,
-                'entry_metadata': obj.entry_metadata,
+                'entry_metadata': entry_metadata,
                 'status': 'active',
                 'wrong_count': 1,
                 'first_wrong_time': now,

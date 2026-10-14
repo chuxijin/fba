@@ -350,6 +350,12 @@ class CaptureHarness:
         self.review_events: list[dict[str, Any]] = []
         self.wrong_state_data: dict[str, Any] = {}
         self.expected = SimpleNamespace(id=31)
+        # 录入时所在的领域：None 表示账号还没设过领域
+        self.domain_category_id: int | None = 1400
+
+    async def resolve_domain_category_id(self, **_kwargs: object) -> int | None:
+        await asyncio.sleep(0)
+        return self.domain_category_id
 
     async def no_op(self, *_args: object, **_kwargs: object) -> None:
         await asyncio.sleep(0)
@@ -402,6 +408,11 @@ class CaptureHarness:
         monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'create', self.create_wrong_state)
         monkeypatch.setattr(wrong_review_module.question_review_dao, 'create', self.create_review)
         monkeypatch.setattr(wrong_review_module.question_review_dao, 'create_links', self.no_op)
+        monkeypatch.setattr(
+            wrong_review_module.knowledge_service,
+            'resolve_optional_domain_category_id',
+            self.resolve_domain_category_id,
+        )
 
     @staticmethod
     def build_param() -> CreateExternalWrongQuestionParam:
@@ -443,6 +454,45 @@ def test_external_capture_is_private_and_practiceable(monkeypatch: pytest.Monkey
     assert harness.wrong_state_data['next_practice_time'] is not None
     # 该参数包含知识点，属于录入时同步完成复盘
     assert [event['event_type'] for event in harness.review_events] == ['capture', 'review']
+
+
+def test_external_capture_records_entry_domain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """自主录入没有题库归属，必须把录入时的领域写进 entry_metadata 才能按领域复盘"""
+    harness = CaptureHarness()
+    harness.patch(monkeypatch)
+
+    asyncio.run(WrongReviewService.capture_external(db=DummyDB(), user_id=7, obj=harness.build_param()))
+
+    assert harness.wrong_state_data['entry_metadata']['domain_category_id'] == 1400
+    assert harness.wrong_state_data['entry_metadata']['source'] == '测试来源'
+
+
+def test_external_capture_without_domain_keeps_metadata_clean(monkeypatch: pytest.MonkeyPatch) -> None:
+    """账号还没设过领域时不写领域键，避免把错题错误地归到某个领域下"""
+    harness = CaptureHarness()
+    harness.domain_category_id = None
+    harness.patch(monkeypatch)
+
+    asyncio.run(WrongReviewService.capture_external(db=DummyDB(), user_id=7, obj=harness.build_param()))
+
+    assert 'domain_category_id' not in harness.wrong_state_data['entry_metadata']
+
+
+def test_external_capture_rejects_client_declared_domain() -> None:
+    """领域由服务端按当前领域写入，客户端同名键必须被丢弃"""
+    obj = CreateExternalWrongQuestionParam(
+        idempotency_key='capture-0003',
+        entry_source='manual',
+        entry_metadata={'source': '测试来源', 'domain_category_id': 999},
+        stem='Which option is correct?',
+        options=[
+            {'option_code': 'A', 'content': 'Answer A'},
+            {'option_code': 'B', 'content': 'Answer B'},
+        ],
+        answer={'answer_data': {'correct': 'A'}},
+    )
+
+    assert 'domain_category_id' not in obj.entry_metadata
 
 
 def test_external_capture_requires_authoritative_answer() -> None:
@@ -696,8 +746,9 @@ def test_review_links_reject_other_users_tags(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch: pytest.MonkeyPatch) -> None:
-    """错题知识点分组必须把解析出的体系传给 DAO，按题库分组不受影响"""
-    captured: list[tuple[object, str, list[int]]] = []
+    """错题知识点分组必须把解析出的体系传给 DAO，按题库分组不受影响，且计数与分组同领域口径"""
+    captured: list[tuple[object, str, list[int], list[int] | None]] = []
+    statistics_scopes: list[list[int] | None] = []
 
     async def fake_resolve_domain(**_: object) -> int:
         await asyncio.sleep(0)
@@ -707,8 +758,13 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
         await asyncio.sleep(0)
         return [2]
 
-    async def fake_statistics(_db: object, **_: object) -> dict[str, Any]:
+    async def fake_domain_scope(**_: object) -> list[int]:
         await asyncio.sleep(0)
+        return [1400, 1365]
+
+    async def fake_statistics(_db: object, **kwargs: object) -> dict[str, Any]:
+        await asyncio.sleep(0)
+        statistics_scopes.append(kwargs.get('domain_category_ids'))
         return {
             'total_count': 5,
             'active_count': 3,
@@ -725,9 +781,10 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
         user_id: int,
         group_by: str,
         knowledge_system_ids: list[int],
+        domain_category_ids: list[int] | None = None,
     ) -> list[dict[str, Any]]:
         await asyncio.sleep(0)
-        captured.append((user_id, group_by, list(knowledge_system_ids)))
+        captured.append((user_id, group_by, list(knowledge_system_ids), domain_category_ids))
         return []
 
     monkeypatch.setattr(
@@ -736,6 +793,7 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
     monkeypatch.setattr(
         wrong_review_module.knowledge_service, 'resolve_system_ids', fake_resolve_system_ids
     )
+    monkeypatch.setattr(WrongReviewService, 'resolve_domain_scope', fake_domain_scope)
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_statistics', fake_statistics)
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_group_counts', fake_group_counts)
 
@@ -746,7 +804,7 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
             group_by='knowledge_point',
         )
     )
-    assert captured == [(7, 'knowledge_point', [2])]
+    assert captured == [(7, 'knowledge_point', [2], [1400, 1365])]
 
     captured.clear()
     asyncio.run(
@@ -756,5 +814,6 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
             group_by='bank',
         )
     )
-    # 按题库分组不解析知识体系，DAO 收到空列表
-    assert captured == [(7, 'bank', [])]
+    # 按题库分组不解析知识体系，DAO 收到空列表；两种分组都带上同一份领域范围
+    assert captured == [(7, 'bank', [], [1400, 1365])]
+    assert statistics_scopes == [[1400, 1365], [1400, 1365]]

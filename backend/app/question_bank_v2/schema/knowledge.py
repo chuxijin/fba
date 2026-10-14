@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+# pydantic 在运行时解析模型注解，datetime 不能只放进 TYPE_CHECKING，
+# 否则 KnowledgeMasteryRadarNode 会“not fully defined”，整个 OpenAPI 都构建不出来
+from datetime import datetime  # noqa: TC003
 from decimal import Decimal
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 KnowledgePointRole = Literal['primary', 'secondary', 'prerequisite']
 KnowledgePointSource = Literal['manual', 'import', 'ai']

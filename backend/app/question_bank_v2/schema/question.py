@@ -272,3 +272,22 @@ class GetQuestionListItem(SchemaBase):
     difficulty: Decimal | None = Field(None, description='基于作答数据动态计算的难度')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='最近更新时间')
+
+
+class GetQuestionSearchItem(SchemaBase):
+    """公开题目检索结果项
+
+    只返回学生端可见的内容：题干、有序选项和默认解析；不含标准答案，
+    避免检索接口变成批量对答案的入口。
+    """
+
+    id: int = Field(description='题目稳定身份 ID')
+    question_type: QuestionType = Field(description='题型')
+    stem: str = Field(description='题干富文本')
+    content_format: ContentFormat = Field(default='html', description='题干内容格式')
+    option_data: list[dict[str, Any]] = Field(default_factory=list, description='有序选项')
+    explanation: str | None = Field(None, description='默认解析富文本；未配置解析时为空')
+    difficulty: Decimal | None = Field(None, description='基于作答数据动态计算的难度')
+    bank_id: int | None = Field(None, description='来源题库稳定身份 ID')
+    bank_name: str | None = Field(None, description='来源题库名称')
+    section_name: str | None = Field(None, description='来源章节名称')

@@ -23,6 +23,9 @@ ReviewTagType = Literal['reason', 'method', 'other']
 QuestionAssetRole = Literal['stem', 'option', 'explanation', 'attachment', 'ocr_source', 'other']
 
 EXTERNAL_ENTRY_SOURCES: tuple[str, ...] = ('manual', 'ocr', 'import')
+# 自主录入的错题没有题库归属，录入时把当时的领域写进 entry_metadata，列表按它做领域筛选。
+# 键名由服务端写、服务端读，客户端传入的同名键会被丢弃。
+ENTRY_METADATA_DOMAIN_KEY = 'domain_category_id'
 
 
 class ExternalQuestionAssetParam(SchemaBase):
@@ -104,7 +107,9 @@ class CreateExternalWrongQuestionParam(SchemaBase):
         source = str(self.entry_metadata.get('source') or '').strip()
         if not source:
             raise ValueError('错题来源不能为空')
-        self.entry_metadata = {**self.entry_metadata, 'source': source}
+        # 领域归属必须由服务端按当前领域写入，不能让客户端自己声明
+        metadata = {key: value for key, value in self.entry_metadata.items() if key != ENTRY_METADATA_DOMAIN_KEY}
+        self.entry_metadata = {**metadata, 'source': source}
         option_codes = [item.option_code for item in self.options]
         if len(option_codes) != len(set(option_codes)):
             raise ValueError('选项编码不能重复')

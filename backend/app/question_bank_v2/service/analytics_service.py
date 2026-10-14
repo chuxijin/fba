@@ -5,7 +5,7 @@ from typing import Any
 
 import sqlalchemy as sa
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.crud.crud_bank import bank_dao, bank_revision_dao
@@ -18,6 +18,7 @@ from backend.app.question_bank_v2.crud.crud_statistics import (
 )
 from backend.app.question_bank_v2.model.bank import QbBankRevision
 from backend.app.question_bank_v2.model.practice import QbPracticeSession
+from backend.app.question_bank_v2.model.statistics import QbUserBankItemProgress
 from backend.app.question_bank_v2.schema.analytics import (
     BankProgressSummary,
     BankSectionProgress,
@@ -341,6 +342,41 @@ class AnalyticsService:
                 bank_id=bank_id,
             ),
         )
+
+    @staticmethod
+    async def reset_bank_progress(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        bank_id: int,
+    ) -> None:
+        """重置当前用户在指定题库上的学习进度，并取消进行中会话"""
+        _, revision = await AnalyticsService._get_bank_context(
+            db=db, user_id=user_id, bank_id=bank_id, require_access=False
+        )
+        # 1. 清空当前版本的题项做题进度
+        await db.execute(
+            delete(QbUserBankItemProgress).where(
+                QbUserBankItemProgress.user_id == user_id,
+                QbUserBankItemProgress.bank_revision_id == revision.id,
+            )
+        )
+        # 2. 将当前题库进行中/创建状态的会话标记为已取消，避免“重置后仍显示继续做卷”
+        await db.execute(
+            update(QbPracticeSession)
+            .where(
+                QbPracticeSession.user_id == user_id,
+                QbPracticeSession.bank_revision_id == revision.id,
+                QbPracticeSession.status.in_(('created', 'in_progress')),
+                QbPracticeSession.deleted == 0,
+            )
+            .values(
+                status='cancelled',
+                deleted=QbPracticeSession.id,
+                deleted_time=timezone.now(),
+            )
+        )
+        await db.flush()
 
     @staticmethod
     async def get_collection_progress_summary(

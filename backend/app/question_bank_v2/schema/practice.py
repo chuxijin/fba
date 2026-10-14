@@ -10,12 +10,16 @@ from backend.app.question_bank_v2.schema.material import (
     GetQuestionMaterialReference,
 )
 from backend.app.question_bank_v2.schema.question import QuestionType
+from backend.common.pagination import CursorPageData
 from backend.common.schema import SchemaBase
 
 PracticeMode = Literal['practice', 'exam', 'mock', 'memorize', 'review', 'adaptive']
 PracticeSourceType = Literal['bank', 'wrong', 'favorite', 'note', 'custom']
 PracticeSessionStatus = Literal['created', 'in_progress', 'submitted', 'graded', 'expired', 'cancelled']
 PracticeAnswerCardStatus = Literal['correct', 'wrong', 'pending', 'unanswered']
+#: 会话历史的时间范围筛选（按创建时间倒推）
+PracticeSessionRange = Literal['all', '7d', '30d', '90d']
+PRACTICE_SESSION_RANGE_DAYS: dict[str, int] = {'7d': 7, '30d': 30, '90d': 90}
 
 #: 会套用限时的练习模式；其余模式即使题库版本配了时长也不设过期时间
 TIMED_PRACTICE_MODES: frozenset[str] = frozenset({'exam', 'mock'})
@@ -169,6 +173,18 @@ class GetPracticeSessionListItem(SchemaBase):
     updated_time: datetime | None = Field(None, description='更新时间')
 
 
+class GetPracticeSessionListPage(CursorPageData[GetPracticeSessionListItem]):
+    """练习会话历史分页
+
+    会话历史是会被不断插入的流水（每开一场练习就新增一条，用户还能左滑删除），
+    所以沿用游标翻页，不用页码分页的 offset（否则翻页会出现重复/漏项）。
+
+    total 只在首页（不传 cursor）返回：列表头要显示真实条数，但没必要每次翻页都 count。
+    """
+
+    total: int | None = Field(None, description='当前筛选条件下的记录总数；仅首页返回')
+
+
 class SavePracticeResponseParam(SchemaBase):
     """自动保存题目作答参数"""
 
@@ -246,6 +262,14 @@ class SubmitPracticeSessionResult(SchemaBase):
     correct_items: int = Field(ge=0, description='答对题数')
     score: Decimal = Field(ge=Decimal(0), description='当前总得分')
     submitted_time: datetime = Field(description='交卷时间')
+    reward_exp: int = Field(0, ge=0, description='本次奖励经验合计')
+    practice_reward_exp: int = Field(0, ge=0, description='本次答题奖励经验')
+    check_in_reward_exp: int = Field(0, ge=0, description='本次自动签到奖励经验')
+    tier_grade: int | None = Field(None, description='发放后的成长等级')
+    exp: int | None = Field(None, description='发放后的累计经验')
+    available_exp: int | None = Field(None, description='发放后的可用经验')
+    is_auto_checked_in: bool = Field(False, description='本次是否触发自动签到')
+    check_in_streak: int | None = Field(None, description='自动签到后的连续签到天数')
 
 
 class PracticeReportItem(SchemaBase):

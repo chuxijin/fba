@@ -1,11 +1,14 @@
-from collections.abc import Sequence
+import re
+
+from collections.abc import Collection, Sequence
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, Text, and_, case, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.question_bank_v2.model.bank import QbBankItem, QbBankRevision
+from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
+from backend.app.question_bank_v2.model.catalog import QbBankCategory
 from backend.app.question_bank_v2.model.knowledge import QbQuestionKnowledgePoint
 from backend.app.question_bank_v2.model.material import QbQuestionMaterial
 from backend.app.question_bank_v2.model.question import (
@@ -66,6 +69,7 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
         keyword: str | None = None,
         knowledge_labeled: bool | None = None,
         section_ids: Sequence[int] | None = None,
+        knowledge_point_ids: Sequence[int] | None = None,
     ) -> Select:
         """构建题目列表分页查询，交给 API 层 paging_data 处理"""
         stmt = select(
@@ -109,7 +113,122 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
                 QbQuestionKnowledgePoint.deleted == 0,
             )
             stmt = stmt.where(linked.exists() if knowledge_labeled else ~linked.exists())
+        if knowledge_point_ids is not None:
+            # 知识点筛选：题目标注的知识点至少命中一个即可；空列表语义为「无匹配」而非「不过滤」
+            stmt = (
+                stmt.join(QbQuestionKnowledgePoint)
+                .where(QbQuestionKnowledgePoint.knowledge_point_id.in_(knowledge_point_ids))
+                .distinct()
+            )
         return stmt.order_by(QbQuestion.updated_time.desc(), QbQuestion.id.desc())
+
+    def get_public_search_select(
+        self,
+        *,
+        keyword: str,
+        domain_category_ids: Collection[int] | None = None,
+    ) -> Select:
+        """构建公开题目检索查询
+
+        命中口径：题干、有序选项、已发布解析任一处包含关键词；空格分隔的多个关键词
+        之间是「与」关系，与题库名检索保持一致。
+        题目必须挂在公开、启用且已发布的题库上，避免把后台草稿或下架内容搜出来；
+        传入领域分类时按分类子树收窄，只搜当前领域的题。
+        """
+        terms = [term for term in re.split(r'\s+', keyword.strip()) if term] or [keyword.strip()]
+
+        def match_condition(term: str) -> Any:
+            """单个关键词的命中条件：题干 / 选项 / 解析任一命中即可"""
+            pattern = f'%{term}%'
+            matched_explanation = select(QbQuestionExplanation.id).where(
+                QbQuestionExplanation.question_id == QbQuestion.id,
+                QbQuestionExplanation.deleted == 0,
+                QbQuestionExplanation.status == 'published',
+                QbQuestionExplanation.content.ilike(pattern),
+            )
+            return or_(
+                QbQuestion.stem.ilike(pattern),
+                cast(QbQuestion.option_data, Text).ilike(pattern),
+                matched_explanation.exists(),
+            )
+
+        source_stmt = (
+            select(
+                QbBankItem.question_id.label('question_id'),
+                QbBank.id.label('bank_id'),
+                QbBankRevision.name.label('bank_name'),
+                QbBankSection.name.label('section_name'),
+            )
+            .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
+            .join(QbBank, QbBank.id == QbBankRevision.bank_id)
+            .outerjoin(
+                QbBankSection,
+                and_(QbBankSection.id == QbBankItem.section_id, QbBankSection.deleted == 0),
+            )
+            .where(
+                QbBankItem.deleted == 0,
+                QbBankRevision.deleted == 0,
+                QbBankRevision.status == 'published',
+                QbBank.deleted == 0,
+                QbBank.visibility == 'public',
+                QbBank.status == 'active',
+            )
+        )
+        if domain_category_ids:
+            source_stmt = source_stmt.join(
+                QbBankCategory,
+                and_(QbBankCategory.bank_id == QbBank.id, QbBankCategory.deleted == 0),
+            ).where(QbBankCategory.category_id.in_(list(domain_category_ids)))
+
+        # 同一道题可能挂在多份试卷里，这里只保留最早的一条挂载作为来源上下文
+        source = (
+            source_stmt.distinct(QbBankItem.question_id)
+            .order_by(QbBankItem.question_id, QbBankItem.id)
+            .subquery('public_question_source')
+        )
+
+        default_explanation = (
+            select(QbQuestionExplanation.content)
+            .where(
+                QbQuestionExplanation.question_id == QbQuestion.id,
+                QbQuestionExplanation.deleted == 0,
+                QbQuestionExplanation.status == 'published',
+                QbQuestionExplanation.is_default.is_(True),
+            )
+            .order_by(QbQuestionExplanation.id)
+            .limit(1)
+            .scalar_subquery()
+        )
+
+        return (
+            select(
+                QbQuestion.id,
+                QbQuestion.question_type,
+                QbQuestion.stem,
+                QbQuestion.content_format,
+                QbQuestion.option_data,
+                QbQuestion.difficulty,
+                default_explanation.label('explanation'),
+                source.c.bank_id,
+                source.c.bank_name,
+                source.c.section_name,
+            )
+            .join(source, source.c.question_id == QbQuestion.id)
+            .where(
+                QbQuestion.deleted == 0,
+                QbQuestion.status == 'active',
+                QbQuestion.visibility == 'public',
+                and_(*[match_condition(term) for term in terms]),
+            )
+            # 题干命中排在仅选项或解析命中的前面，其余按题目 ID 保持同卷聚拢
+            .order_by(
+                case(
+                    (and_(*[QbQuestion.stem.ilike(f'%{term}%') for term in terms]), 0),
+                    else_=1,
+                ),
+                QbQuestion.id,
+            )
+        )
 
     async def get_by_material(self, db: AsyncSession, *, material_id: int) -> Sequence[dict[str, Any]]:
         """获取关联指定材料的所有题目"""
