@@ -147,6 +147,7 @@ class ResourceType(str, Enum):
     AGENT_SHENLUN = 'agent_shenlun'
     AGENT_GRADING = 'agents.grading'
     RENDER_BOOK = 'render_book'
+    SKILL = 'skill'
 
 
 class ReasonCode(str, Enum):

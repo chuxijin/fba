@@ -42,7 +42,8 @@ class CRUDSubscriptionTemplate(CRUDPlus[SubscriptionTemplate]):
             filters['kind__eq'] = kind
         if status is not None:
             filters['status__eq'] = status
-        return await self.select_order('display_order', 'asc', **filters)
+        stmt = await self.select_order('display_order', 'asc', **filters)
+        return stmt.where(~self.model.code.startswith('GBS_'))
 
 
 class CRUDTemplatePack(CRUDPlus[TemplatePack]):

@@ -145,7 +145,9 @@ class EntitlementPackService:
         :param obj: 更新参数
         :return:
         """
-        await EntitlementPackService.get(db, pk=pk)
+        pack = await EntitlementPackService.get(db, pk=pk)
+        from backend.app.access.service.sale_snapshot_service import ensure_sale_snapshot_writable
+        ensure_sale_snapshot_writable(pack.code)
         return await entitlement_pack_dao.update_model(db, pk, obj)
 
     @staticmethod
@@ -157,6 +159,9 @@ class EntitlementPackService:
         :param pk: 包 ID
         :return:
         """
+        pack = await EntitlementPackService.get(db, pk=pk)
+        from backend.app.access.service.sale_snapshot_service import ensure_sale_snapshot_writable
+        ensure_sale_snapshot_writable(pack.code)
         return await entitlement_pack_dao.delete_model(db, pk)
 
     @staticmethod
@@ -169,7 +174,9 @@ class EntitlementPackService:
         :param obj: 成员列表
         :return:
         """
-        await EntitlementPackService.get(db, pk=pack_id)
+        pack = await EntitlementPackService.get(db, pk=pack_id)
+        from backend.app.access.service.sale_snapshot_service import ensure_sale_snapshot_writable
+        ensure_sale_snapshot_writable(pack.code)
 
         codes = [item.entitlement_code for item in obj.items]
         entitlements = await entitlement_dao.get_by_codes(db, codes)

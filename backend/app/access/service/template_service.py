@@ -237,7 +237,9 @@ class SubscriptionTemplateService:
         :param obj: 更新参数
         :return:
         """
-        await SubscriptionTemplateService.get(db, pk=pk)
+        template = await SubscriptionTemplateService.get(db, pk=pk)
+        from backend.app.access.service.sale_snapshot_service import ensure_sale_snapshot_writable
+        ensure_sale_snapshot_writable(template.code)
         data = obj.model_dump(exclude_unset=True, exclude={'sale_period', 'tier_code'})
         if 'tier_code' in obj.model_fields_set:
             data['tier_id'] = await SubscriptionTemplateService._resolve_tier_id(db, obj.tier_code)
@@ -258,6 +260,9 @@ class SubscriptionTemplateService:
         :param pk: 模板 ID
         :return:
         """
+        template = await SubscriptionTemplateService.get(db, pk=pk)
+        from backend.app.access.service.sale_snapshot_service import ensure_sale_snapshot_writable
+        ensure_sale_snapshot_writable(template.code)
         return await subscription_template_dao.delete_model(db, pk)
 
     @staticmethod
@@ -270,7 +275,9 @@ class SubscriptionTemplateService:
         :param obj: 包编码列表
         :return:
         """
-        await SubscriptionTemplateService.get(db, pk=template_id)
+        template = await SubscriptionTemplateService.get(db, pk=template_id)
+        from backend.app.access.service.sale_snapshot_service import ensure_sale_snapshot_writable
+        ensure_sale_snapshot_writable(template.code)
         await SubscriptionTemplateService._sync_packs(db, template_id, obj.pack_codes)
 
     @staticmethod
