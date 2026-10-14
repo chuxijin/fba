@@ -22,6 +22,7 @@ from backend.app.question_bank.api.router import v1 as question_bank_v1
 from backend.app.question_bank_v2.api.router import v1 as question_bank_v2_v1
 from backend.app.question_generation.api.router import v1 as question_generation_v1
 from backend.app.sensitive_word.api.router import v1 as sensitive_word_v1
+from backend.app.skill.api.router import router_app as skill_v1
 from backend.app.social.api.router import v1 as social_v1
 from backend.app.study_plan.api.router import v1 as study_plan_v1
 from backend.app.task.api.router import v1 as task_v1
@@ -43,6 +44,7 @@ router.include_router(question_bank_v2_v1)
 router.include_router(question_generation_v1)
 router.include_router(gongkao_v1)
 router.include_router(sensitive_word_v1)
+router.include_router(skill_v1)
 router.include_router(halo_v1)
 router.include_router(invite_v1)
 router.include_router(learning_v1)

@@ -122,7 +122,7 @@ async def simulate_bot_activity() -> dict:
 
     自动创建新机器人用户并模拟已有机器人的刷题行为
     """
-    from backend.app.question_bank.service.bot_service import run_bot_simulation
+    from backend.app.question_bank_v2.service.bot_service import run_bot_simulation
 
     try:
         result = await run_bot_simulation()

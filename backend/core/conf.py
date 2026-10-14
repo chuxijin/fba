@@ -41,6 +41,9 @@ class Settings(BaseSettings):
 
     # 机器标识
     MACHINE_ID: str = 'unknown'
+    # 拼团新下单开关；关闭后已有付款、退款及持久化任务仍需处理。
+    PAYMENT_GROUP_BUY_ENABLE: bool = False
+    PAYMENT_GROUP_BUY_CHANNELS: list[Literal['virtual', 'hupijiao']] = []
 
     # FastAPI
     FASTAPI_API_V1_PATH: str = '/api/v1'
@@ -127,6 +130,12 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/sys/categories/tree',  # 系统分类树（公开接口）
         f'{FASTAPI_API_V1_PATH}/resources/hot',  # 热门资源（公开接口）
         f'{FASTAPI_API_V1_PATH}/qbank/banks',  # 题库列表（公开接口）
+        # 纯计算生成接口公开访问，残留登录凭证不应阻止游客练习。
+        f'{FASTAPI_API_V1_PATH}/gk/calculation-practice/catalog',
+        f'{FASTAPI_API_V1_PATH}/gk/calculation-practice/basic/generate',
+        f'{FASTAPI_API_V1_PATH}/gk/calculation-practice/fill-blank/generate',
+        f'{FASTAPI_API_V1_PATH}/gk/calculation-practice/data-practice/generate',
+        f'{FASTAPI_API_V1_PATH}/gk/calculation-practice/advanced/generate',
         f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',  # 百度网盘 OAuth 回调
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/login',  # 订单号直接登录
         f'{FASTAPI_API_V1_PATH}/actcode/agiso/verify',  # 验证订单号
@@ -134,6 +143,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/sms/login/sms',  # 短信验证码登录
         f'{FASTAPI_API_V1_PATH}/payment/pay/notify',  # 微信支付回调
         f'{FASTAPI_API_V1_PATH}/payment/pay/refund-notify',  # 微信退款回调
+        f'{FASTAPI_API_V1_PATH}/payment/pay/hupijiao/notify',  # 虎皮椒支付及退款回调
         f'{FASTAPI_API_V1_PATH}/invite/codes/share-config',  # 新增：分享有礼卡片配置免鉴权
         f'{FASTAPI_API_V1_PATH}/notify/send',  # 多渠道通知发送接口（免签放行，便于对接外部 Webhook 比如短信转发）
         f'{FASTAPI_API_V1_PATH}/notify/wecom/callback',  # 企业微信自建应用接收消息回调免鉴权
@@ -145,6 +155,10 @@ class Settings(BaseSettings):
         re.compile(
             rf'^{FASTAPI_API_V1_PATH}/webhook/inbound/structured/[^/]+$'
         ),  # Webhook 结构化入站（外部推送免鉴权）
+        re.compile(
+            rf'^{FASTAPI_API_V1_PATH}/oauth2/(wechat|github|google)/.*$'
+        ),  # 第三方登录与微信扫码授权免鉴权
+        re.compile(rf'^{FASTAPI_API_V1_PATH}/skill/.*$'),  # 开放平台业务接口自带 OpenAuth Bearer 校验
     ]
 
     # 用户安全
@@ -499,6 +513,15 @@ class Settings(BaseSettings):
     VIRTUAL_PAY_OFFERID: str = ''
     VIRTUAL_PAY_APPKEY: str = ''
     VIRTUAL_PAY_SANDBOX_APPKEY: str = ''
+
+    ##################################################
+    # [ App ] 虎皮椒支付（与微信虚拟支付并存）
+    ##################################################
+    HUPIJIAO_APPID: str = ''
+    HUPIJIAO_APPSECRET: str = Field(default='', repr=False)
+    HUPIJIAO_API_BASE_URL: str = 'https://api.xunhupay.com'
+    HUPIJIAO_NOTIFY_URL: str = ''
+    HUPIJIAO_RETURN_URL: str = ''
 
     ##################################################
     # OpenAI 向量化服务
