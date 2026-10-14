@@ -29,11 +29,49 @@ from backend.plugin.oauth2.crud.crud_user_social import user_social_dao
 from backend.plugin.oauth2.enums import UserSocialAuthType, UserSocialType
 from backend.plugin.oauth2.schema.user_social import CreateUserSocialParam
 from backend.plugin.oauth2.service.user_social_service import user_social_service
+from backend.utils.nickname import generate_default_nickname
 from backend.utils.timezone import timezone
 
 
 class OAuth2Service:
     """OAuth2 认证服务类"""
+
+    # 历史遗留的占位昵称：不具区分性，登录时会被替换成带随机后缀的默认昵称
+    PLACEHOLDER_NICKNAMES = frozenset({'微信用户', '微信测试考生'})
+
+    @staticmethod
+    def _resolve_nickname(nickname: str | None) -> str:
+        """
+        解析微信授权登录的昵称
+
+        微信 jscode2session 不返回昵称，小程序端也刻意不申请头像昵称权限；
+        因此客户端没给昵称时必须自己生成一个可区分的默认昵称，而不是写死「微信用户」。
+
+        :param nickname: 客户端授权得到的昵称
+        :return: 最终使用的昵称
+        """
+        return (nickname or '').strip() or generate_default_nickname()
+
+    @staticmethod
+    async def _replace_placeholder_nickname(*, db: AsyncSession, user: Any, nickname: str) -> None:
+        """
+        修复历史遗留的占位昵称
+
+        老账号在微信未授权昵称时会留下「微信用户」这种重复值，登录时顺手替换成可区分的默认昵称；
+        用户自己设置过的真实昵称永远不会被覆盖。
+
+        :param db: 数据库会话
+        :param user: 登录用户对象
+        :param nickname: 本次应当使用的昵称
+        :return:
+        """
+        current = (user.nickname or '').strip()
+        if current and current not in OAuth2Service.PLACEHOLDER_NICKNAMES:
+            return
+
+        await user_dao.update_nickname(db, user.id, nickname)
+        user.nickname = nickname
+        log.info(f'替换占位昵称为默认昵称: user_id={user.id} nickname={nickname}')
 
     @staticmethod
     def _normalize_avatar_url(avatar: str | None) -> str | None:
@@ -491,11 +529,11 @@ class OAuth2Service:
 
         user_info = {
             'username': f'wx_{openid[-8:]}',
-            'nickname': nickname or '微信用户',
+            'nickname': OAuth2Service._resolve_nickname(nickname),
             'avatar_url': avatar,
         }
 
-        return await OAuth2Service.login(
+        token_info = await OAuth2Service.login(
             db=db,
             response=response,
             background_tasks=background_tasks,
@@ -507,6 +545,14 @@ class OAuth2Service:
             nickname=user_info['nickname'],
             avatar=user_info['avatar_url'],
         )
+
+        # 老账号可能还停在「微信用户」这种占位昵称上，登录时一并修掉，保证能互相区分
+        await OAuth2Service._replace_placeholder_nickname(
+            db=db,
+            user=token_info.user,
+            nickname=user_info['nickname'],
+        )
+        return token_info
 
 
 oauth2_service: OAuth2Service = OAuth2Service()

@@ -1,0 +1,15 @@
+[plugin]
+summary = "开放平台授权中心"
+version = "0.1.0"
+description = "OAuth 2.0 授权服务端：用户将账号能力授权给第三方程序（skill/CLI/外部工具）"
+author = "fba"
+tags = ["auth"]
+database = ["postgresql"]
+
+[app]
+router = ["v1"]
+
+[settings]
+OPENAUTH_CODE_EXPIRE_SECONDS = 300
+OPENAUTH_ACCESS_TOKEN_EXPIRE_SECONDS = 7200
+OPENAUTH_REFRESH_TOKEN_EXPIRE_SECONDS = 2592000

@@ -1,0 +1,22 @@
+{
+  "version": "0.4.0",
+  "package_path": "skill-package",
+  "sha256": "8493619a14e5209035aca4c2f70223f30249b3498268c13f71008c6e20a242a5",
+  "files": {
+    "SKILL.md": "2033ba2409d1c828c344f9d6e3cb334b95ce0771ff937078970cdf6e8e027293",
+    "runtime.json": "0b894896f100c5b920b475be3a6e8381ab9639073e70e72bb3dc0bcca1fc28bb",
+    "references/auth.md": "4e18291ed8a4e4753c7074c32d11b610e049b9a5589e04bcc5a5e6d86f0ba648",
+    "references/calculation.md": "607e95d70d946def61400673b8ac19cf1e925ac49f4ce5223ad2cea3f3b3daaa",
+    "references/qbank.md": "c990a98a1780c6bded47d479d6377148689bff4c19a35d635f65db5b77e51145",
+    "lib/openauth.cjs": "a2783306199316a1ab191567ed92ae6ec7242b369ae01ceb26e2d1b9422569b4",
+    "lib/messages.cjs": "cf02a4326351af16457a1c2920523c1bdedb21d2850f27fb42555b62226549d6",
+    "lib/package.cjs": "03ddc71a6272c8dc2bfbeef9fe3b52d38edc674f3896458dd03c11ee20891583",
+    "lib/commands/calculation.cjs": "57f85e0c2a99e5f6cfcf276955fa71716f8fd599bb6be0d8c3984247c22aa759",
+    "lib/commands/qbank.cjs": "a780985a41bb7d4fef89a365c89602d0cd0c325d52888306523e78d3a984f6dc",
+    "scripts/youanshang.cjs": "a396ad0310c1cc6e03664beba82eeb81fcf2a43c8070afd28ae223c625f157a0",
+    "scripts/install.cjs": "786d0fea90ac0848d852f3287a60fd847457f5f1a9a5f5465c3b8a7eb23e6994",
+    "scripts/install.sh": "a1588a3722b6cca90317bdd7d44819ba8787912535f7ea6fecb1b3190fb9bd0c",
+    "scripts/uninstall.cjs": "d985beddbd979decb6637fea8ce84f028070428f7c6cd118970ae30c8226b279",
+    "scripts/uninstall.sh": "3889e5b26642d9595714c1d85e601ce8235d59e59999447dc4a5afa7c4a20a66"
+  }
+}

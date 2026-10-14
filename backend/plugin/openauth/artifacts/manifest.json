@@ -1,0 +1,37 @@
+{
+  "youanshang-skill.zip": {
+    "sha256": "8493619a14e5209035aca4c2f70223f30249b3498268c13f71008c6e20a242a5",
+    "files": [
+      "youanshang/SKILL.md",
+      "youanshang/runtime.json",
+      "youanshang/references/auth.md",
+      "youanshang/references/calculation.md",
+      "youanshang/references/qbank.md",
+      "youanshang/lib/openauth.cjs",
+      "youanshang/lib/messages.cjs",
+      "youanshang/lib/package.cjs",
+      "youanshang/lib/commands/calculation.cjs",
+      "youanshang/lib/commands/qbank.cjs",
+      "youanshang/scripts/youanshang.cjs",
+      "youanshang/scripts/install.cjs",
+      "youanshang/scripts/install.sh",
+      "youanshang/scripts/uninstall.cjs",
+      "youanshang/scripts/uninstall.sh"
+    ]
+  },
+  "openauth-web-integration.zip": {
+    "sha256": "de185eac7e4c2c855efc76f3892e45bf64a76637d2c138370674b34eb450ac5c",
+    "files": [
+      "web/app/pages/openauth/authorize.vue",
+      "web/app/pages/openauth/authorizations.vue",
+      "web/app/pages/openauth/revoke.vue",
+      "web/app/utils/openauth.ts",
+      "web/app/middleware/openauth.global.ts",
+      "web/app/plugins/analytics.client.ts",
+      "web/server/middleware/openauth-security.ts",
+      "web/tests/openauth.test.ts",
+      "web/tsconfig.openauth.json",
+      "LOCAL-QUICKSTART.md"
+    ]
+  }
+}
