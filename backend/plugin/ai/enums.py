@@ -15,3 +15,7 @@ class AIProviderType(IntEnum):
     mistral = 8
     openrouter = 9
     outlines = 10
+    #: 决策模型（Jev / System One 协议），**不是** OpenAI 兼容的 chat 路径，
+    #: 走 `app/question_bank_v2/service/jev_client.py` 自己直连。
+    #: 表里用它区分「这是决策模型还是对话模型」—— 两者的 api_host/调用方式完全不同。
+    decision_model = 11

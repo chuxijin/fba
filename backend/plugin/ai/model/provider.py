@@ -13,9 +13,12 @@ class AIProvider(Base):
     id: Mapped[id_key] = mapped_column(init=False)
     name: Mapped[str] = mapped_column(sa.String(256), comment='供应商名称')
     type: Mapped[int] = mapped_column(
-        comment='供应商类型（0:OpenAI 1:Anthropic 2:Gemini 3:Bedrock 4:Cerebras 5:Cohere 6:Groq 7:HuggingFace 8:Mistral 9:OpenRouter 10:Outlines）'  # noqa: E501
+        comment='供应商类型（0:OpenAI 1:Anthropic 2:Gemini 3:Bedrock 4:Cerebras 5:Cohere 6:Groq 7:HuggingFace 8:Mistral 9:OpenRouter 10:Outlines 11:决策模型）'  # noqa: E501
     )
     api_key: Mapped[str] = mapped_column(UniversalText, comment='API Key')
-    api_host: Mapped[str] = mapped_column(sa.String(512), comment='API Host')
+    api_host: Mapped[str] = mapped_column(
+        sa.String(512),
+        comment='API Host；决策模型存到完整 endpoint（含 /v1/systemone）',
+    )
     status: Mapped[int] = mapped_column(default=1, comment='角色状态（0停用 1正常）')
     remark: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='备注')
