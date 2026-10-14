@@ -112,6 +112,7 @@ downloads/
 references/
 tmp_render_fix/
 *体态*
+pelican-bicycle.svg
 # OC 调试脚本与题库导入数据表，不入库
 backend/print_sql.py
 backend/print_job_sql.py
