@@ -1,0 +1,9 @@
+{
+  "version": "0.4.0",
+  "api_base_url": "http://127.0.0.1:8000/api/v1/openauth",
+  "skill_base_url": "http://127.0.0.1:8000/api/v1/skill",
+  "authorize_url": "http://127.0.0.1:3000/openauth/authorize",
+  "client_id": "oac_gongkao_cli_dev",
+  "redirect_uri": "http://127.0.0.1:17888/callback",
+  "scopes": ["profile:read", "skill:use", "qbank:read"]
+}
