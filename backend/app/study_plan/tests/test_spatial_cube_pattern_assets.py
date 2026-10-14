@@ -3,7 +3,7 @@
 from collections import Counter
 from xml.etree import ElementTree as ET
 
-from backend.scripts.generate_spatial_cube_patterns import (
+from backend.scripts.paper.generate_spatial_cube_patterns import (
     build_assets,
     canonical_mask,
     canonical_masks,
