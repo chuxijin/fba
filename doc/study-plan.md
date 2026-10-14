@@ -478,10 +478,10 @@ pages/study/history              # 历史记录（含未完成提醒、完成耗
 | `backend/app/study_plan/service/template_service.py` | 模板实例化为 plan + items |
 | `backend/app/study_plan/utils/permission.py` | 灰度白名单 + 虚拟角色 |
 | `backend/app/question_bank/api/v1/session.py` | 题库 session API（submit/abandon endpoint 末尾挂 hook） |
-| `backend/scripts/insert_study_plan_menu.py` | 一次性脚本：录入 PC 管理后台学习规划菜单 |
-| `backend/scripts/bind_study_plan_roles.py` | 一次性脚本：创建学习规划角色并绑定菜单权限 |
-| `backend/scripts/prepare_study_plan_e2e.py` | 一次性脚本：准备真实账号端到端联调数据 |
-| `backend/scripts/instantiate_plan_for_user.py` | 一次性脚本：为指定用户实例化模板 |
+| `backend/scripts/seed/insert_study_plan_menu.py` | 一次性脚本：录入 PC 管理后台学习规划菜单 |
+| `backend/scripts/seed/bind_study_plan_roles.py` | 一次性脚本：创建学习规划角色并绑定菜单权限 |
+| `backend/scripts/seed/prepare_study_plan_e2e.py` | 一次性脚本：准备真实账号端到端联调数据 |
+| `backend/scripts/seed/instantiate_plan_for_user.py` | 一次性脚本：为指定用户实例化模板 |
 | `mini/src/pages/study/index.vue` | 学习规划驾驶舱：首页阶段计划、本周目标、学习日历弹层、考点目标 |
 | `mini/src/pages/study/item/index.vue` | 模块详情页（多态渲染） |
 | `mini/src/pages/study/overview/index.vue` | 总体规划（日历网格） |

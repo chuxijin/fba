@@ -198,13 +198,13 @@
 同步脚本：
 
 ```bash
-uv run python backend/scripts/configure_data_analysis_first_level.py --env-file backend/.env --execute
+uv run python backend/scripts/seed/configure_data_analysis_first_level.py --env-file backend/.env --execute
 ```
 
 生产环境使用：
 
 ```bash
-uv run python backend/scripts/configure_data_analysis_first_level.py --env-file backend/.env.prod --execute
+uv run python backend/scripts/seed/configure_data_analysis_first_level.py --env-file backend/.env.prod --execute
 ```
 
 ### 第 2 关：比较口径与变化表达
@@ -239,13 +239,13 @@ uv run python backend/scripts/configure_data_analysis_first_level.py --env-file 
 同步脚本：
 
 ```bash
-uv run python backend/scripts/configure_data_analysis_second_level.py --env-file backend/.env --execute
+uv run python backend/scripts/seed/configure_data_analysis_second_level.py --env-file backend/.env --execute
 ```
 
 生产环境使用：
 
 ```bash
-uv run python backend/scripts/configure_data_analysis_second_level.py --env-file backend/.env.prod --execute
+uv run python backend/scripts/seed/configure_data_analysis_second_level.py --env-file backend/.env.prod --execute
 ```
 
 ## 生成器约定

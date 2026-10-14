@@ -38,7 +38,7 @@
 ### 2.2 已验证
 
 - [x] `uv run python -m py_compile ...` 通过
-- [x] `uv run python backend/scripts/dump_openapi.py` 通过
+- [x] `uv run python backend/scripts/dev/dump_openapi.py` 通过
 - [x] `pnpm --filter @fba/api-sdk run gen:sdk` 通过
 - [x] `pnpm --filter @fba/api-sdk run build` 通过
 - [ ] `pnpm --dir mini run type-check` 未通过，阻断点为既有 `wrong-review` / `QuestionNotePanel` 类型问题，非本次番茄模块新增错误

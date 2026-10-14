@@ -53,8 +53,8 @@
 
 - `migrate.sh`: Perform automatic database migration
 
-- `scripts/format.sh`: Perform ruff format with preview
+- `backend/scripts/dev/format.sh`: Perform ruff format with preview
 
-- `scripts/lint.sh`: Perform prek formatting
+- `backend/scripts/dev/lint.sh`: Perform prek formatting
 
-- `scripts/export.sh`: Execute uv export dependency package
+- `backend/scripts/dev/export.sh`: Execute uv export dependency package

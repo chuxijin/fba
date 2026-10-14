@@ -127,7 +127,7 @@
 
 已新增后端菜单插入脚本：
 
-- `backend/scripts/insert_question_generation_menu.py`
+- `backend/scripts/seed/insert_question_generation_menu.py`
 
 脚本会在 `Gongkao` 父菜单下插入：
 
@@ -214,7 +214,7 @@
    执行脚本：
 
    ```bash
-   uv run python backend/scripts/insert_question_generation_menu.py
+   uv run python backend/scripts/seed/insert_question_generation_menu.py
    ```
 
 3. Celery 联调
