@@ -1,0 +1,23 @@
+{
+  "name": "gongkao-reformatter-extension",
+  "version": "1.0.0",
+  "description": "公考真题/模考考场标准重排器浏览器插件",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "tsc && node build.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.43"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.312",
+    "@types/node": "^22.13.0",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-plugin-static-copy": "^2.2.0"
+  }
+}

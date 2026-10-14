@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>公考内容排版</title>
+  <style>
+    :root {
+      --primary:       #1d68f2;
+      --primary-hover: #1656cb;
+      --primary-light: #eff6ff;
+      --green:         #07c160;
+      --green-hover:   #06ad56;
+      --success:       #10b981;
+      --warning:       #f59e0b;
+      --text-main:     #0f172a;
+      --text-body:     #334155;
+      --text-muted:    #64748b;
+      --text-subtle:   #94a3b8;
+      --bg:            #ffffff;
+      --surface:       #f8fafc;
+      --border:        #e2e8f0;
+      --border-light:  #f1f5f9;
+      --radius-sm:     8px;
+      --radius-md:     12px;
+      --radius-lg:     16px;
+      --shadow-sm:     0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md:     0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: transparent;
+      color: var(--text-main);
+      user-select: none;
+      overflow: hidden;
+      padding: 6px;
+    }
+
+    .popup-root {
+      background: var(--bg);
+      border-radius: 18px;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, .06),
+        0 4px 16px rgba(0, 0, 0, .10),
+        0 12px 32px rgba(0, 0, 0, .08);
+      overflow: hidden;
+    }
+
+    /* ── 主视图 ── */
+    #view-main {
+      padding: 14px 16px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* 顶栏 */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .logo {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .app-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      letter-spacing: -.2px;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .version-badge {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 5px;
+    }
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--success);
+      font-weight: 600;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 2px rgba(16,185,129,.2);
+      flex-shrink: 0;
+    }
+
+    /* Hero 状态卡 */
+    .hero-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      transition: border-color .2s;
+    }
+    .hero-card.active {
+      border-color: rgba(29,104,242,.3);
+      background: linear-gradient(135deg, #f0f7ff 0%, #f8fafc 100%);
+    }
+
+    /* 无内容状态 */
+    .hero-empty {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .hero-empty-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-body);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hero-empty-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* 有内容状态 */
+    .hero-ready { display: none; flex-direction: column; gap: 10px; }
+    .hero-ready-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .ready-dot-wrap {
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+    .ready-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 3px rgba(16,185,129,.2);
+    }
+    .hero-ready-info { flex: 1; min-width: 0; }
+    .ready-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--success);
+      margin-bottom: 2px;
+    }
+    .ready-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ready-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .btn-reformat {
+      width: 100%;
+      height: 36px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      box-shadow: 0 2px 8px rgba(29,104,242,.3);
+      transition: all .15s;
+    }
+    .btn-reformat:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    .btn-reformat:active { transform: translateY(0); }
+
+    /* 分割线 */
+    .divider {
+      height: 1px;
+      background: var(--border-light);
+    }
+
+    /* 题库快捷入口 */
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-subtle);
+      letter-spacing: .4px;
+      text-transform: uppercase;
+    }
+    .sites-row {
+      display: flex;
+      gap: 6px;
+    }
+    .site-chip {
+      flex: 1;
+      height: 30px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-body);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      text-decoration: none;
+      transition: all .15s;
+    }
+    .site-chip:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--primary-light);
+    }
+    .site-chip .chip-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--success);
+      flex-shrink: 0;
+    }
+
+    /* 账户底栏 */
+    .account-bar {
+      border-top: 1px solid var(--border-light);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: var(--bg);
+    }
+
+    /* 未登录 */
+    .acct-guest { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .acct-guest-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .acct-guest-info { flex: 1; min-width: 0; }
+    .acct-guest-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-body);
+    }
+    .acct-guest-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+    .btn-login {
+      height: 28px;
+      padding: 0 10px;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      transition: background .15s;
+    }
+    .btn-login:hover { background: var(--green-hover); }
+
+    /* 已登录 */
+    .acct-user { display: none; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .acct-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .acct-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .acct-user-info { flex: 1; min-width: 0; }
+    .acct-user-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .acct-quota {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+    .acct-quota-num {
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .btn-logout {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-subtle);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 7px;
+      border-radius: 5px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all .15s;
+    }
+    .btn-logout:hover { border-color: #fca5a5; color: #ef4444; background: #fff5f5; }
+
+    /* ── 扫码视图（整页覆盖） ── */
+    #view-scan {
+      display: none;
+      flex-direction: column;
+      min-height: 360px;
+    }
+    .scan-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .btn-back {
+      width: 26px;
+      height: 26px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 14px;
+      flex-shrink: 0;
+      transition: all .15s;
+    }
+    .btn-back:hover { border-color: var(--primary); color: var(--primary); }
+    .scan-header-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .scan-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 20px 16px;
+      gap: 14px;
+    }
+    .scan-qr-frame {
+      width: 148px;
+      height: 148px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    /* 四角装饰 */
+    .scan-qr-frame::before,
+    .scan-qr-frame::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-color: var(--primary);
+      border-style: solid;
+      pointer-events: none;
+    }
+    .scan-qr-frame::before { top: 6px; left: 6px; border-width: 2px 0 0 2px; border-radius: 3px 0 0 0; }
+    .scan-qr-frame::after  { bottom: 6px; right: 6px; border-width: 0 2px 2px 0; border-radius: 0 0 3px 0; }
+    #scan-qr-img { width: 100%; height: 100%; object-fit: cover; display: none; }
+    #scan-qr-loading {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+    .scan-text-block { text-align: center; }
+    .scan-main-hint {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-body);
+      margin-bottom: 4px;
+    }
+    .scan-sub-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .scan-footer {
+      padding: 0 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .scan-benefit-row {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+    }
+    .scan-benefit-chip {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--primary);
+      background: var(--primary-light);
+      border: 1px solid #bfdbfe;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    #btn-scan-mock {
+      height: 30px;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    #btn-scan-mock:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+    /* ── 登录分段选项卡 (Tab) ── */
+    .login-tab-bar {
+      display: flex;
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      margin: 10px 16px 0;
+      border: 1px solid var(--border);
+      gap: 3px;
+    }
+    .login-tab-btn {
+      flex: 1;
+      height: 28px;
+      border: none;
+      background: transparent;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .login-tab-btn:hover {
+      color: var(--text-main);
+    }
+    .login-tab-btn.active {
+      background: #ffffff;
+      color: var(--primary);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      font-weight: 700;
+    }
+
+    /* ── 账号密码登录表单面板 ── */
+    .pwd-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px 16px 14px;
+      min-height: 280px;
+    }
+    .pwd-form-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .pwd-input-group {
+      display: flex;
+      align-items: center;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0 10px;
+      height: 38px;
+      transition: all 0.15s;
+    }
+    .pwd-input-group:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(29, 104, 242, 0.12);
+    }
+    .pwd-input-icon {
+      font-size: 13px;
+      margin-right: 8px;
+      user-select: none;
+      opacity: 0.8;
+      flex-shrink: 0;
+    }
+    .pwd-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 12.5px;
+      color: var(--text-main);
+      background: transparent;
+      width: 100%;
+    }
+    .pwd-input::placeholder {
+      color: var(--text-subtle);
+    }
+    .pwd-toggle-btn {
+      border: none;
+      background: none;
+      cursor: pointer;
+      padding: 0 2px;
+      font-size: 12px;
+      opacity: 0.6;
+      transition: opacity 0.15s;
+      flex-shrink: 0;
+    }
+    .pwd-toggle-btn:hover {
+      opacity: 1;
+    }
+    .captcha-img-wrap {
+      height: 30px;
+      width: 86px;
+      border-radius: 4px;
+      overflow: hidden;
+      cursor: pointer;
+      background: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 6px;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+    .captcha-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .pwd-error-msg {
+      font-size: 11px;
+      color: #ef4444;
+      background: #fef2f2;
+      border: 1px solid #fee2e2;
+      padding: 6px 10px;
+      border-radius: 6px;
+      line-height: 1.4;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-pwd-login {
+      width: 100%;
+      height: 38px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(29, 104, 242, 0.28);
+      transition: all 0.15s;
+      margin-top: 4px;
+    }
+    .btn-pwd-login:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+    .btn-pwd-login:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    .pwd-dev-helper {
+      margin-top: 6px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .btn-dev-fill {
+      background: none;
+      border: none;
+      color: var(--text-subtle);
+      font-size: 10px;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .btn-dev-fill:hover {
+      color: var(--primary);
+    }
+    .pwd-footer-tips {
+      margin-top: 14px;
+    }
+
+    /* ── 底部导航栏 ── */
+    .footer-nav {
+      border-top: 1px solid var(--border-light);
+      display: flex;
+      align-items: center;
+      height: 38px;
+    }
+    .footer-nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      height: 100%;
+      font-size: 10px;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-decoration: none;
+      border: none;
+      background: none;
+      padding: 0;
+      transition: color .15s, background .15s;
+      border-radius: 0;
+    }
+    .footer-nav-item:hover {
+      color: var(--primary);
+      background: var(--primary-light);
+    }
+    .footer-nav-item.version {
+      color: var(--text-subtle);
+      font-size: 9px;
+      cursor: default;
+      letter-spacing: .2px;
+    }
+    .footer-nav-item.version:hover {
+      color: var(--text-subtle);
+      background: none;
+    }
+    .footer-nav-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border-light);
+      flex-shrink: 0;
+    }
+    .footer-nav-icon { font-size: 13px; line-height: 1; }
+</style>
+</head>
+<body>
+<div class="popup-root">
+
+  <!-- ══ 主视图 ══ -->
+  <div id="view-main">
+    <!-- 顶栏 -->
+    <div class="header">
+      <div class="header-left">
+        <img src="icons/icon32.png" alt="Logo" class="logo" />
+        <span class="app-name">公考内容排版</span>
+      </div>
+      <div class="header-right">
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          <span>服务正常</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hero 状态卡 -->
+    <div class="hero-card" id="hero-card">
+      <!-- 无内容（默认） -->
+      <div class="hero-empty" id="hero-empty">
+        <div class="hero-empty-title">
+          <span>🔍</span>
+          <span id="hero-empty-title-text">正在检测做题页面…</span>
+        </div>
+        <div class="hero-empty-desc" id="hero-empty-desc">
+          打开粉笔、华图或事考帮的做题页，页面右侧将自动出现排版卡片，点击即可一键生成 PDF 仿真卷。
+        </div>
+      </div>
+
+      <!-- 有内容（检测到题目） -->
+      <div class="hero-ready" id="hero-ready">
+        <div class="hero-ready-header">
+          <div class="ready-dot-wrap"><div class="ready-dot"></div></div>
+          <div class="hero-ready-info">
+            <div class="ready-label">试卷已就绪</div>
+            <div class="ready-title" id="ready-paper-title">试卷标题</div>
+            <div class="ready-meta" id="ready-paper-meta">—</div>
+          </div>
+        </div>
+        <button class="btn-reformat" id="btn-reformat">
+          📑 立即排版导出 (Word · PDF)
+        </button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- 题库快捷入口 -->
+    <div>
+      <div class="section-label" style="margin-bottom:7px;">支持题库 · 点击直达</div>
+      <div class="sites-row">
+        <a class="site-chip" data-url="https://spa.fenbi.com/ti/exam/home">
+          <span class="chip-dot"></span>粉笔题库
+        </a>
+        <a class="site-chip" data-url="https://v.huatu.com/">
+          <span class="chip-dot"></span>华图在线
+        </a>
+        <a class="site-chip" data-url="https://www.shikaobang.cn/">
+          <span class="chip-dot"></span>事考帮
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 账户底栏（固定在主视图底部，不随 gap 布局） -->
+  <div class="account-bar" id="account-bar">
+    <!-- 未登录 -->
+    <div class="acct-guest" id="acct-guest">
+      <div class="acct-guest-icon">👤</div>
+      <div class="acct-guest-info">
+        <div class="acct-guest-name">游客模式</div>
+        <div class="acct-guest-sub" id="guest-quota-sub">今日剩余 — 次试用</div>
+      </div>
+    </div>
+    <!-- 已登录 -->
+    <div class="acct-user" id="acct-user">
+      <div class="acct-avatar" id="acct-avatar-wrap">
+        <img id="acct-avatar-img" src="" alt="" style="display:none;" />
+        <span id="acct-avatar-fallback">👤</span>
+      </div>
+      <div class="acct-user-info">
+        <div class="acct-user-name" id="acct-user-name">用户</div>
+        <div class="acct-quota">
+          今日剩余 <span class="acct-quota-num" id="acct-quota-num">—</span> 次
+        </div>
+      </div>
+      <button class="btn-logout" id="btn-logout">退出</button>
+    </div>
+    <!-- 微信登录按钮（未登录时显示） -->
+    <button class="btn-login" id="btn-show-scan">
+      <span>💬</span>微信登录
+    </button>
+  </div>
+
+  <!-- 底部导航栏 -->
+  <div class="footer-nav" id="footer-nav">
+    <a class="footer-nav-item" id="footer-official" href="#" title="访问官方网站">
+      <span class="footer-nav-icon">🌐</span>
+      <span>访问官网</span>
+    </a>
+    <div class="footer-nav-sep"></div>
+    <div class="footer-nav-item version">
+      <span>v 1.0.0</span>
+    </div>
+    <div class="footer-nav-sep"></div>
+    <a class="footer-nav-item" id="footer-service" href="#" title="联系客服">
+      <span class="footer-nav-icon">💬</span>
+      <span>客服</span>
+    </a>
+    <div class="footer-nav-sep"></div>
+    <a class="footer-nav-item" id="footer-help" href="#" title="使用帮助">
+      <span class="footer-nav-icon">❓</span>
+      <span>帮助</span>
+    </a>
+  </div>
+
+  <!-- ══ 登录认证视图（整页切换，支持微信扫码 / 账号密码双模） ══ -->
+  <div id="view-scan">
+    <div class="scan-header">
+      <button class="btn-back" id="btn-back" title="返回">‹</button>
+      <span class="scan-header-title" id="scan-header-title">用户登录 · 题本互通</span>
+    </div>
+
+    <!-- 登录方式分段选项卡 -->
+    <div class="login-tab-bar">
+      <button type="button" class="login-tab-btn active" id="tab-scan">💬 微信扫码</button>
+      <button type="button" class="login-tab-btn" id="tab-pwd">🔑 账号密码</button>
+    </div>
+
+    <!-- 面板 1: 微信扫码登录 -->
+    <div id="panel-scan" style="display: flex; flex-direction: column; flex: 1;">
+      <div class="scan-body">
+        <div class="scan-qr-frame">
+          <img id="scan-qr-img" src="" alt="小程序码" />
+          <div id="scan-qr-loading">小程序码生成中…</div>
+        </div>
+        <div class="scan-text-block">
+          <div class="scan-main-hint" id="scan-main-hint">请使用微信扫描上方小程序码</div>
+          <div class="scan-sub-hint">扫码后在小程序内点击确认授权</div>
+        </div>
+      </div>
+      <div class="scan-footer">
+        <div class="scan-benefit-row">
+          <span class="scan-benefit-chip">📋 每日 15 次排版</span>
+          <span class="scan-benefit-chip">🔄 题本云端同步</span>
+        </div>
+        <button id="btn-scan-mock">⚡ 开发调试：模拟确认扫码</button>
+      </div>
+    </div>
+
+    <!-- 面板 2: 账号密码登录 -->
+    <div id="panel-pwd" class="pwd-body" style="display: none;">
+      <div class="pwd-form-wrap">
+        <div class="pwd-input-group">
+          <span class="pwd-input-icon">👤</span>
+          <input type="text" id="pwd-username" class="pwd-input" placeholder="请输入用户名 / 手机号" autocomplete="username" />
+        </div>
+        <div class="pwd-input-group">
+          <span class="pwd-input-icon">🔒</span>
+          <input type="password" id="pwd-password" class="pwd-input" placeholder="请输入登录密码" autocomplete="current-password" />
+          <button type="button" class="pwd-toggle-btn" id="btn-toggle-pwd" title="显示/隐藏密码">👁️</button>
+        </div>
+        <div class="pwd-input-group" id="pwd-captcha-group" style="display: none;">
+          <span class="pwd-input-icon">🛡️</span>
+          <input type="text" id="pwd-captcha" class="pwd-input" placeholder="验证码" maxlength="6" />
+          <div class="captcha-img-wrap" id="captcha-img-wrap" title="点击刷新验证码">
+            <img id="pwd-captcha-img" src="" alt="验证码" />
+            <span id="captcha-loading" style="display:none;">刷新中...</span>
+          </div>
+        </div>
+        <div class="pwd-error-msg" id="pwd-error-msg" style="display: none;"></div>
+        <button type="button" class="btn-pwd-login" id="btn-pwd-login">
+          <span id="pwd-login-text">立即登录</span>
+        </button>
+        <div class="pwd-dev-helper">
+          <button type="button" class="btn-dev-fill" id="btn-dev-fill" title="填入默认测试账号">一键填入测试账号</button>
+        </div>
+      </div>
+
+      <div class="pwd-footer-tips">
+        <div class="scan-benefit-row">
+          <span class="scan-benefit-chip">📋 尊享基础排版额度</span>
+          <span class="scan-benefit-chip">🔄 资产实时互通</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./popup/popup.ts" type="module"></script>
+</div><!-- .popup-root -->
+</body>
+</html>
