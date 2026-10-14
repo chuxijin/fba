@@ -113,6 +113,7 @@ class OrderCodeVerifyResult(SchemaBase):
     username: str | None = Field(None, description='已绑定的用户名')
     template_code: str | None = Field(None, description='订阅模板编码')
     template_name: str | None = Field(None, description='订阅模板名称')
+    tier_code: str | None = Field(None, description='商业会员档位编码')
     duration_days: int | None = Field(None, description='订阅时长天数')
     message: str = Field(description='提示信息')
 

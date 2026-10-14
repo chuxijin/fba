@@ -12,6 +12,7 @@ from starlette.background import BackgroundTasks
 
 from backend.app.access.constants import SubscriptionSource
 from backend.app.access.crud.crud_template import subscription_template_dao
+from backend.app.access.crud.crud_tier import membership_tier_dao
 from backend.app.access.model.subscription import Subscription
 from backend.app.access.service.subscription_service import subscription_service
 from backend.app.actcode.crud.crud_actcode import actcode_batch_dao, actcode_dao, actcode_usage_dao
@@ -543,6 +544,16 @@ class ActivateService:
                 message=exc.msg,
             )
 
+        resolved_name = (template.name if template else None) or batch.name or template_code
+        resolved_days = template.duration_days if template else None
+        # 档位编码存在 membership_tier 表（template 只有 tier_id），与模板服务同款取法
+        tier = (
+            await membership_tier_dao.select_model(db, template.tier_id)
+            if template is not None and template.tier_id is not None
+            else None
+        )
+        resolved_tier = tier.code if tier else None
+
         if bound_user:
             return OrderCodeVerifyResult(
                 valid=True,
@@ -551,8 +562,9 @@ class ActivateService:
                 can_login=True,
                 username=bound_user.username,
                 template_code=template_code,
-                template_name=template.name if template else None,
-                duration_days=template.duration_days if template else None,
+                template_name=resolved_name,
+                tier_code=resolved_tier,
+                duration_days=resolved_days,
                 message='订单号已绑定，可直接登录',
             )
 
@@ -566,8 +578,9 @@ class ActivateService:
                 can_login=False,
                 username=None,
                 template_code=template_code,
-                template_name=template.name if template else None,
-                duration_days=template.duration_days if template else None,
+                template_name=resolved_name,
+                tier_code=resolved_tier,
+                duration_days=resolved_days,
                 message=exc.msg,
             )
 
@@ -578,9 +591,10 @@ class ActivateService:
             can_login=True,
             username=None,
             template_code=template_code,
-            template_name=template.name if template else None,
-            duration_days=template.duration_days if template else None,
-            message=f'订单号有效，可开通 {template.name if template else template_code}',
+            template_name=resolved_name,
+            tier_code=resolved_tier,
+            duration_days=resolved_days,
+            message=f'订单号有效，可开通 {resolved_name}',
         )
 
 
