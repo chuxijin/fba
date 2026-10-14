@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from backend.common.schema import SchemaBase
 
 PayTransactionStatus = Literal['pending', 'paid', 'refund_pending', 'refunded', 'closed']
-PayType = Literal['jsapi', 'h5', 'virtual']
+PayType = Literal['jsapi', 'h5', 'virtual', 'hupijiao']
 PayOrderStatus = Literal['pending', 'paid', 'refund_pending', 'refunded', 'closed']
 PayOrderFulfillStatus = Literal['pending', 'fulfilled', 'failed', 'revoked']
 
@@ -56,9 +56,18 @@ class SubscriptionPrepayParam(SchemaBase):
     """订阅预下单参数"""
 
     template_code: str = Field(max_length=64, description='订阅模板编码')
-    wx_code: str = Field(description='微信小程序登录 code')
-    pay_type: Literal['virtual'] = Field(default='virtual', description='支付方式')
-    env: int = Field(default=0, description='虚拟支付环境：0 现网，1 沙箱')
+    wx_code: str | None = Field(default=None, description='微信小程序登录 code（虚拟支付必传）')
+    pay_type: Literal['virtual', 'hupijiao'] = Field(default='virtual', description='支付方式')
+    env: Literal[0, 1] = Field(default=0, description='虚拟支付环境：0 现网，1 沙箱；虎皮椒仅支持 0')
+
+    @model_validator(mode='after')
+    def validate_channel_params(self) -> Self:
+        """按选择的支付方式校验参数。"""
+        if self.pay_type == 'virtual' and not (self.wx_code and self.wx_code.strip()):
+            raise ValueError('虚拟支付必须提供微信小程序登录 code')
+        if self.pay_type == 'hupijiao' and self.env != 0:
+            raise ValueError('虎皮椒不支持微信虚拟支付沙箱环境')
+        return self
 
 
 class SubscriptionPrepayResult(SchemaBase):
@@ -84,6 +93,7 @@ class PaymentConfirmResult(SchemaBase):
     fulfill_status: PayOrderFulfillStatus = Field(description='发放状态')
     paid: bool = Field(description='是否已支付')
     fulfilled: bool = Field(description='是否已发放权益')
+    group_buy: dict[str, Any] | None = Field(default=None, description='拼团进度与奖励状态')
 
 
 class PayOrderListItem(SchemaBase):
@@ -93,6 +103,7 @@ class PayOrderListItem(SchemaBase):
 
     order_no: str = Field(description='业务订单号')
     biz_type: str = Field(description='业务类型')
+    purchase_mode: Literal['direct', 'group_buy'] = 'direct'
     item_code: str = Field(description='购买项编码')
     item_name: str = Field(description='购买项名称')
     amount: Decimal = Field(description='支付金额')

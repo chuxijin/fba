@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from backend.common.payment.base import PaymentProvider
+from backend.common.payment.providers.hupijiao import hupijiao_pay_provider
 from backend.common.payment.providers.wechat import wechat_pay_provider
 
 # 支付方式 → Provider 实例的注册表
 _PROVIDER_REGISTRY: dict[str, PaymentProvider] = {
     'jsapi': wechat_pay_provider,
     'h5': wechat_pay_provider,
+    'hupijiao': hupijiao_pay_provider,
 }
 
 
@@ -45,14 +47,19 @@ def register_provider(pay_type: str, provider: PaymentProvider) -> None:
     _PROVIDER_REGISTRY[pay_type] = provider
 
 
-def decrypt_callback(headers: dict, body: bytes) -> tuple[dict, PaymentProvider]:
+def decrypt_callback(headers: dict, body: bytes, *, pay_type: str | None = None) -> tuple[dict, PaymentProvider]:
     """
     解密支付回调通知（遍历去重 Provider 实例尝试解密）
 
     :param headers: HTTP 请求头
     :param body: 请求体原始字节
+    :param pay_type: 明确指定渠道时只使用该渠道验签，不允许回退
     :return: (回调数据, 使用的 Provider)
     """
+    if pay_type is not None:
+        provider = get_provider(pay_type)
+        return provider.decrypt_callback(headers=headers, body=body), provider
+
     seen: set[int] = set()
     errors_list: list[str] = []
     for provider in _PROVIDER_REGISTRY.values():

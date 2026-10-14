@@ -23,15 +23,24 @@ class CRUDPayTransaction(CRUDPlus[PayTransaction]):
         await db.flush()
         return transaction
 
-    async def get(self, db: AsyncSession, pk: int) -> PayTransaction | None:
+    async def get(self, db: AsyncSession, pk: int, *, for_update: bool = False) -> PayTransaction | None:
         """
         获取支付记录详情
 
         :param db: 数据库会话
         :param pk: 主键 ID
+        :param for_update: 是否锁定记录并刷新会话中的旧数据
         :return:
         """
-        return await self.select_model(db, pk)
+        if not for_update:
+            return await self.select_model(db, pk)
+        stmt = (
+            select(PayTransaction)
+            .where(PayTransaction.id == pk)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await db.execute(stmt)).scalars().first()
 
     async def get_by_transaction_no(self, db: AsyncSession, transaction_no: str) -> PayTransaction | None:
         """
@@ -46,7 +55,7 @@ class CRUDPayTransaction(CRUDPlus[PayTransaction]):
         return result.scalars().first()
 
     async def get_by_order_no(
-        self, db: AsyncSession, order_no: str, status: str | None = None
+        self, db: AsyncSession, order_no: str, status: str | None = None, *, for_update: bool = False
     ) -> PayTransaction | None:
         """
         通过业务订单号查询（取最新一条）
@@ -54,12 +63,15 @@ class CRUDPayTransaction(CRUDPlus[PayTransaction]):
         :param db: 数据库会话
         :param order_no: 业务订单号
         :param status: 状态过滤
+        :param for_update: 是否锁定记录并刷新会话中的旧数据
         :return:
         """
         stmt = select(PayTransaction).where(PayTransaction.order_no == order_no)
         if status:
             stmt = stmt.where(PayTransaction.status == status)
-        stmt = stmt.order_by(PayTransaction.created_time.desc())
+        stmt = stmt.order_by(PayTransaction.created_time.desc(), PayTransaction.id.desc()).limit(1)
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         result = await db.execute(stmt)
         return result.scalars().first()
 

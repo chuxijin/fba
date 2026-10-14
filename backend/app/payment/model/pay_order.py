@@ -33,6 +33,7 @@ class PayOrder(Base, UserMixin):
             name='ck_pay_order_fulfill_status',
         ),
         sa.CheckConstraint('amount >= 0', name='ck_pay_order_amount'),
+        sa.CheckConstraint("purchase_mode IN ('direct','group_buy')", name='ck_pay_order_purchase_mode'),
         {'comment': '支付业务订单表'},
     )
 
@@ -44,6 +45,9 @@ class PayOrder(Base, UserMixin):
     item_name: Mapped[str] = mapped_column(sa.String(256), comment='购买项名称快照')
     amount: Mapped[Decimal] = mapped_column(sa.Numeric(10, 2), comment='支付金额（元）')
     pay_type: Mapped[str] = mapped_column(sa.String(16), default='virtual', comment='支付方式')
+    purchase_mode: Mapped[str] = mapped_column(
+        sa.String(16), default='direct', server_default='direct', comment='购买方式'
+    )
     status: Mapped[str] = mapped_column(sa.String(16), default='pending', comment='支付状态')
     fulfill_status: Mapped[str] = mapped_column(sa.String(16), default='pending', comment='发放状态')
     trade_no: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='第三方交易号')
@@ -53,3 +57,6 @@ class PayOrder(Base, UserMixin):
     refunded_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='退款成功时间')
     closed_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='关闭时间')
     extra_data: Mapped[dict | None] = mapped_column(CompatibleJSONB, default=None, comment='扩展数据')
+    user_hidden_at: Mapped[datetime | None] = mapped_column(
+        TimeZone, default=None, comment='用户移除列表记录的时间，不删除交易'
+    )

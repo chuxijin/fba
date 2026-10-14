@@ -284,14 +284,36 @@ class VirtualPayProvider(PaymentProvider):
             status_value = int(status)
         except (TypeError, ValueError):
             status_value = -1
-        trade_state = 'SUCCESS' if status_value in (2, 3, 4) else str(status or '')
+        trade_state = {
+            0: 'NOTPAY',
+            1: 'NOTPAY',
+            2: 'SUCCESS',
+            3: 'SUCCESS',
+            4: 'SUCCESS',
+            5: 'REFUND_PROCESSING',
+            6: 'CLOSED',
+            7: 'REFUND_FAILED',
+            8: 'REFUNDED',
+        }.get(status_value, 'UNKNOWN')
         return {
             'order_no': order.get('order_id') or order_no,
             'trade_no': order.get('wxpay_order_id') or order.get('channel_order_id') or order.get('wx_order_id') or '',
             'trade_state': trade_state,
             'paid_time': order.get('paid_time') or None,
+            'total_fee': order.get('paid_fee', order.get('order_fee')),
+            'order_type': order.get('order_type'),
+            'env_type': order.get('env_type'),
             'raw_data': query_data,
         }
+
+    async def query_refund(self, *, order_no: str, refund_no: str, **kwargs) -> dict[str, Any]:
+        """按退款单查询；status=5 只有商户扣款，status=8 才是用户收款完成。"""
+        result = await self.query(order_no=refund_no, **kwargs)
+        order = result.get('order') or {}
+        if str(order.get('order_id')) != refund_no or order.get('order_type') not in (1, 8):
+            raise ValueError('微信退款查询单号或订单类型不匹配')
+        status = {5: 'PROCESSING', 7: 'FAILED', 8: 'SUCCESS'}.get(order.get('status'), 'UNKNOWN')
+        return {'refund_status': status, 'refund_fee': order.get('refund_fee'), 'raw_data': result}
 
     async def close(self, *, order_no: str, **kwargs) -> None:
         """
@@ -392,11 +414,11 @@ class VirtualPayProvider(PaymentProvider):
         :param event: 事件类型 (payment / refund)
         :return:
         """
-        if event == 'refund':
+        if event == 'refund' or callback_data.get('Event') == 'xpay_refund_notify':
             return {
                 'order_no': callback_data.get('OutTradeNo') or callback_data.get('MchOrderId', ''),
                 'trade_no': callback_data.get('WxpayRefundTransactionId', ''),
-                'refund_status': 'SUCCESS' if callback_data.get('RetCode') == '0' else 'FAIL',
+                'refund_status': 'SUCCESS' if str(callback_data.get('RetCode')) == '0' else 'FAILED',
             }
         # payment
         wechat_pay_info = callback_data.get('WeChatPayInfo', {})

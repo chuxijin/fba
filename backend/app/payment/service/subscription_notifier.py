@@ -53,6 +53,10 @@ class SubscriptionPaymentNotifier:
             return
         if order.biz_type != 'subscription_template':
             return
+        if getattr(order, 'purchase_mode', 'direct') == 'group_buy':
+            from backend.app.payment.service.group_buy_worker import group_buy_worker
+            await group_buy_worker.payment_event(db, order)
+            return
         if order.fulfill_status == 'fulfilled':
             return
 
@@ -101,6 +105,10 @@ class SubscriptionPaymentNotifier:
         """
         order = await pay_order_dao.get_by_order_no(db, order_no)
         if not order or order.biz_type != 'subscription_template':
+            return
+        if getattr(order, 'purchase_mode', 'direct') == 'group_buy':
+            from backend.app.payment.service.group_buy_worker import group_buy_worker
+            await group_buy_worker.refund_event(db, order)
             return
 
         await subscription_service.revoke_by_source(

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.access.constants import CommonStatus
 from backend.app.access.crud.crud_template import subscription_template_dao
 from backend.app.access.model.template import SubscriptionTemplate
+from backend.app.access.model.tier import MembershipTier
 from backend.app.payment.crud.crud_pay_order import pay_order_dao
 from backend.app.payment.schema.pay import (
     CreatePrepayParam,
@@ -118,7 +119,7 @@ class PayOrderService:
         *, db: AsyncSession, user_id: int, obj: SubscriptionPrepayParam
     ) -> SubscriptionPrepayResult:
         """
-        创建订阅套餐虚拟支付预下单
+        创建订阅套餐预下单，按支付方式选择渠道
 
         :param db: 数据库会话
         :param user_id: 用户 ID
@@ -129,13 +130,23 @@ class PayOrderService:
         if not template:
             raise errors.NotFoundError(msg='订阅套餐不存在')
         PayOrderService._ensure_template_saleable(template)
-        product_id = str((template.metadata_ or {}).get('virtual_product_id') or template.code)
-
-        openid, session_key = await PayOrderService._resolve_miniapp_session(
-            db,
-            user_id=user_id,
-            wx_code=obj.wx_code,
-        )
+        tier_id = getattr(template, 'tier_id', None)
+        tier = await db.get(MembershipTier, tier_id) if tier_id else None
+        openid = session_key = product_id = None
+        extra_data = {
+            'template_id': template.id,
+            'tier_code': tier.code if tier else None,
+            'duration_days': template.duration_days,
+            'price_cents': template.price_cents,
+        }
+        if obj.pay_type == 'virtual':
+            product_id = str((template.metadata_ or {}).get('virtual_product_id') or template.code)
+            openid, session_key = await PayOrderService._resolve_miniapp_session(
+                db,
+                user_id=user_id,
+                wx_code=obj.wx_code,
+            )
+            extra_data.update({'virtual_product_id': product_id, 'env': obj.env, 'openid': openid})
 
         amount = Decimal(int(template.price_cents)) / Decimal(100)
         order_no = PayOrderService._generate_order_no()
@@ -151,14 +162,7 @@ class PayOrderService:
                 'pay_type': obj.pay_type,
                 'status': 'pending',
                 'fulfill_status': 'pending',
-                'extra_data': {
-                    'template_id': template.id,
-                    'duration_days': template.duration_days,
-                    'price_cents': template.price_cents,
-                    'virtual_product_id': product_id,
-                    'env': obj.env,
-                    'openid': openid,
-                },
+                'extra_data': extra_data,
                 'created_by': user_id,
             },
         )
@@ -207,7 +211,7 @@ class PayOrderService:
             raise errors.ForbiddenError(msg='该订单不是订阅订单')
 
         openid = str((order.extra_data or {}).get('openid') or '')
-        if not openid and obj.wx_code:
+        if order.pay_type == 'virtual' and not openid and obj.wx_code:
             openid, _ = await PayOrderService._resolve_miniapp_session(
                 db,
                 user_id=user_id,
@@ -230,6 +234,10 @@ class PayOrderService:
             user_id=user_id,
             openid=openid or None,
         )
+        if getattr(order, 'purchase_mode', 'direct') == 'group_buy':
+            from backend.app.payment.service.group_buy_service import group_buy_service
+            summary = await group_buy_service.summary(db, order)
+            result['group_buy'] = summary.model_dump() if summary else None
         return PaymentConfirmResult(**result)
 
 

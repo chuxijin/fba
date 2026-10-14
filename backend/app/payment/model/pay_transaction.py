@@ -38,7 +38,7 @@ class PayTransaction(Base, UserMixin):
     transaction_no: Mapped[str] = mapped_column(sa.String(64), unique=True, comment='内部交易号')
     order_no: Mapped[str] = mapped_column(sa.String(64), comment='业务订单号')
     user_id: Mapped[int] = mapped_column(sa.BigInteger, comment='支付用户 ID')
-    pay_type: Mapped[str] = mapped_column(sa.String(16), comment='支付方式: jsapi/h5/virtual')
+    pay_type: Mapped[str] = mapped_column(sa.String(16), comment='支付方式: jsapi/h5/virtual/hupijiao')
     amount: Mapped[Decimal] = mapped_column(sa.Numeric(10, 2), comment='支付金额（元）')
     biz_type: Mapped[str] = mapped_column(sa.String(32), comment='业务类型')
     status: Mapped[str] = mapped_column(

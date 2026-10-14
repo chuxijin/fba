@@ -15,10 +15,10 @@ def test_close_payment_can_close_pending_pay_order_without_transaction(monkeypat
 
     order = SimpleNamespace(id=11, status='pending', extra_data={'env': 0})
 
-    async def fake_get_order(_db, _order_no):
+    async def fake_get_order(_db, _order_no, *, for_update: bool = False):
         return order
 
-    async def fake_get_transaction(_db, _order_no, status=None):
+    async def fake_get_transaction(_db, _order_no, status=None, *, for_update: bool = False):
         return None
 
     async def fake_update_order(_db, order_id, data):

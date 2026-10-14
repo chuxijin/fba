@@ -5,7 +5,7 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from backend.app.payment.schema.pay import (
     PayOrderListItem,
@@ -18,6 +18,7 @@ from backend.app.payment.schema.pay import (
 )
 from backend.app.payment.service.pay_order_service import pay_order_service
 from backend.app.payment.service.pay_service import pay_service
+from backend.common.log import log
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -104,7 +105,7 @@ async def subscription_prepay(
     db: CurrentSessionTransaction,
     obj: SubscriptionPrepayParam,
 ) -> ResponseSchemaModel[SubscriptionPrepayResult]:
-    """订阅套餐预下单，返回前端拉起虚拟支付所需参数"""
+    """订阅套餐预下单，按支付方式返回小程序支付参数或虎皮椒二维码、支付链接"""
     data = await pay_order_service.create_subscription_prepay(db=db, user_id=request.user.id, obj=obj)
     return response_base.success(data=data)
 
@@ -121,29 +122,49 @@ async def subscription_confirm(
 
 
 @router.post('/notify', summary='微信支付回调', response_model=None)
-async def pay_notify(request: Request, db: CurrentSessionTransaction) -> Response:
+async def pay_notify(request: Request, db: CurrentSession) -> Response:
     """微信支付结果通知，无需认证"""
     headers = dict(request.headers)
     body = await request.body()
 
     try:
-        await pay_service.handle_pay_callback(db=db, headers=headers, body=body)
+        async with db.begin():
+            await pay_service.handle_pay_callback(db=db, headers=headers, body=body)
         return _callback_success_response(body)
     except Exception as e:
         return _callback_fail_response(body, str(e))
 
 
 @router.post('/refund-notify', summary='微信退款回调', response_model=None)
-async def pay_refund_notify(request: Request, db: CurrentSessionTransaction) -> Response:
+async def pay_refund_notify(request: Request, db: CurrentSession) -> Response:
     """微信退款结果通知，无需认证"""
     headers = dict(request.headers)
     body = await request.body()
 
     try:
-        await pay_service.handle_refund_callback(db=db, headers=headers, body=body)
+        async with db.begin():
+            await pay_service.handle_refund_callback(db=db, headers=headers, body=body)
         return _callback_success_response(body)
     except Exception as e:
         return _callback_fail_response(body, str(e))
+
+
+@router.post('/hupijiao/notify', summary='虎皮椒支付及退款回调', response_model=None)
+async def hupijiao_notify(request: Request, db: CurrentSession) -> Response:
+    """仅使用虎皮椒验签，业务事务提交成功后才返回渠道要求的 success。"""
+    body = await request.body()
+    try:
+        async with db.begin():
+            await pay_service.handle_pay_callback(
+                db=db,
+                headers=dict(request.headers),
+                body=body,
+                pay_type='hupijiao',
+            )
+    except Exception as exc:
+        log.error(f'虎皮椒回调处理失败: {exc}')
+        return PlainTextResponse('fail', status_code=500)
+    return PlainTextResponse('success')
 
 
 @router.get('/query/{order_no}', summary='查询支付状态', dependencies=[DependsJwtAuth])
