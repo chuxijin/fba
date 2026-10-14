@@ -16,6 +16,7 @@ from backend.app.gongkao.api.v1 import (
     shizhen,
     user_profile,
 )
+from backend.app.gongkao.api.v1.calculation_practice import router as calculation_practice_router
 from backend.core.conf import settings
 
 v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH)
@@ -32,3 +33,4 @@ v1.include_router(dict_region.router, prefix='/gk/dict/region', tags=['地区字
 v1.include_router(dict_major.router, prefix='/gk/dict/major', tags=['专业目录'])
 v1.include_router(user_profile.router, prefix='/gk/profile', tags=['用户画像'])
 v1.include_router(practice_log.router, prefix='/gk/practice-logs', tags=['公考练习记录'])
+v1.include_router(calculation_practice_router, prefix='/gk/calculation-practice', tags=['公考计算练习'])
