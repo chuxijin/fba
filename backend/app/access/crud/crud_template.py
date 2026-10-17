@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 from collections.abc import Sequence
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.access.constants import CommonStatus, TemplateKind
 from backend.app.access.model.template import SubscriptionTemplate, TemplatePack
+from backend.app.access.model.tier import MembershipTier
+from backend.utils.timezone import timezone
 
 
 class CRUDSubscriptionTemplate(CRUDPlus[SubscriptionTemplate]):
@@ -44,6 +46,24 @@ class CRUDSubscriptionTemplate(CRUDPlus[SubscriptionTemplate]):
             filters['status__eq'] = status
         stmt = await self.select_order('display_order', 'asc', **filters)
         return stmt.where(~self.model.code.startswith('GBS_'))
+
+    async def get_sale_catalog(self, db: AsyncSession) -> Sequence[SubscriptionTemplate]:
+        """公开目录只包含当前可展示的标准/组合套餐，保留免费基础套餐"""
+        stmt = (
+            select(self.model)
+            .join(MembershipTier, self.model.tier_id == MembershipTier.id)
+            .where(
+                self.model.status == CommonStatus.ACTIVE,
+                self.model.kind.in_([TemplateKind.STANDARD, TemplateKind.BUNDLE]),
+                self.model.price_cents >= 0,
+                ~self.model.code.startswith('GBS_'),
+                MembershipTier.status == CommonStatus.ACTIVE,
+                or_(self.model.price_cents > 0, MembershipTier.is_paid.is_(False)),
+                or_(self.model.sale_period.is_(None), self.model.sale_period.contains(timezone.now())),
+            )
+            .order_by(self.model.display_order.asc(), self.model.id.asc())
+        )
+        return (await db.execute(stmt)).scalars().all()
 
 
 class CRUDTemplatePack(CRUDPlus[TemplatePack]):

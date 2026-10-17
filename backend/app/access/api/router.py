@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter
 
+from backend.app.access.api.v1.catalog import router as catalog_router
 from backend.app.access.api.v1.dashboard import router as dashboard_router
 from backend.app.access.api.v1.debug import router as debug_router
 from backend.app.access.api.v1.domain import router as domain_router
@@ -18,6 +19,7 @@ from backend.core.conf import settings
 
 v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH)
 
+v1.include_router(catalog_router, prefix='/access/catalog', tags=['公开订阅目录'])
 v1.include_router(dashboard_router, prefix='/access/dashboard', tags=['订阅总览'])
 v1.include_router(domain_router, prefix='/access/domains', tags=['领域字典'])
 v1.include_router(entitlement_router, prefix='/access/entitlements', tags=['权益字典'])
