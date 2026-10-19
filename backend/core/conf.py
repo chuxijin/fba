@@ -80,8 +80,8 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_TIMEOUT: int = 5  # redis 默认连接超时时间
-    REDIS_SOCKET_TIMEOUT: int = 5  # redis socket 连接超时时间
-    REDIS_CONNECT_TIMEOUT: int = 5  # redis 连接超时时间
+    REDIS_SOCKET_TIMEOUT: int = 5  # redis 命令读写超时时间（秒）
+    REDIS_CONNECT_TIMEOUT: int = 5  # redis TCP 连接超时时间（秒）
     REDIS_MAX_CONNECTIONS: int = 100  # 连接池上限
     REDIS_POOL_TIMEOUT: int = 20  # 等待空闲连接超时（秒）
 

@@ -74,11 +74,12 @@ def get_enabled_plugins(plugins: tuple[str, ...] | None = None) -> set[str]:
     enabled_plugins = set(plugin_names)
 
     current_redis_client = RedisCli()
-    run_await(current_redis_client.init)()
 
     try:
-        for plugin in plugin_names:
-            plugin_info = run_await(current_redis_client.get)(f'{settings.PLUGIN_REDIS_PREFIX}:{plugin}')
+        run_await(current_redis_client.init)()
+        cache_keys = [f'{settings.PLUGIN_REDIS_PREFIX}:{plugin}' for plugin in plugin_names]
+        plugin_infos = run_await(current_redis_client.mget_batched)(cache_keys)
+        for plugin, plugin_info in zip(plugin_names, plugin_infos, strict=True):
             if get_plugin_enable(plugin_info, StatusType.enable.value) != str(StatusType.enable.value):
                 enabled_plugins.discard(plugin)
     finally:
@@ -110,9 +111,9 @@ def parse_plugin_config() -> tuple[list[PluginEntry], list[PluginEntry]]:
 
     # 使用独立连接
     current_redis_client = RedisCli()
-    run_await(current_redis_client.init)()
 
     try:
+        run_await(current_redis_client.init)()
         # 清理未知插件信息
         exclude_keys = [f'{settings.PLUGIN_REDIS_PREFIX}:{key}' for key in plugins]
         run_await(current_redis_client.delete_by_prefix)(
@@ -120,14 +121,15 @@ def parse_plugin_config() -> tuple[list[PluginEntry], list[PluginEntry]]:
             exclude_keys=exclude_keys,
         )
 
-        for plugin in plugins:
+        plugin_infos = run_await(current_redis_client.mget_batched)(exclude_keys)
+        plugin_cache: dict[str, str] = {}
+        for plugin, plugin_cache_info in zip(plugins, plugin_infos, strict=True):
             plugin_config = load_plugin_config(plugin)
             plugin_type = validate_plugin_config(plugin, plugin_config)
 
             # 补充插件信息
             plugin_config['plugin']['name'] = plugin
             plugin_cache_key = f'{settings.PLUGIN_REDIS_PREFIX}:{plugin}'
-            plugin_cache_info = run_await(current_redis_client.get)(plugin_cache_key)
             plugin_config['plugin']['enable'] = get_plugin_enable(plugin_cache_info, StatusType.enable.value)
 
             if plugin_type == PluginLevelType.extend:
@@ -148,8 +150,11 @@ def parse_plugin_config() -> tuple[list[PluginEntry], list[PluginEntry]]:
                     )
                 )
 
-            # 缓存最新插件信息
-            run_await(current_redis_client.set)(plugin_cache_key, json.dumps(plugin_config, ensure_ascii=False))
+            plugin_cache[plugin_cache_key] = json.dumps(plugin_config, ensure_ascii=False)
+
+        # 一次写入已校验的插件配置，避免启动时按插件逐个往返远程 Redis。
+        if plugin_cache:
+            run_await(current_redis_client.mset)(plugin_cache)
 
         # 重置插件变更状态
         run_await(current_redis_client.delete)(f'{settings.PLUGIN_REDIS_PREFIX}:changed')
