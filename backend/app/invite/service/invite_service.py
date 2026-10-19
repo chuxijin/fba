@@ -19,11 +19,12 @@ from backend.app.invite.schema.invite import (
     CreateInviteCodeParam,
     CreateRewardRuleParam,
     GetInviteCodeDetail,
+    GetInviteRelationDetail,
     GetRewardRuleDetail,
     UpdateRewardRuleParam,
 )
-from backend.common.exception import errors
 from backend.common.events import publish
+from backend.common.exception import errors
 from backend.common.pagination import paging_data
 from backend.common.reward import dispatch_reward
 from backend.utils.timezone import timezone
@@ -284,7 +285,7 @@ class InviteService:
             inviter_user_id=inviter_user_id,
             invitee_user_id=invitee_user_id,
         )
-        return await paging_data(db, relation_select)
+        return await paging_data(db, relation_select, GetInviteRelationDetail)
 
     @staticmethod
     async def get_invite_stats(*, db: AsyncSession, user_id: int) -> dict[str, int]:

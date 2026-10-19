@@ -59,6 +59,7 @@ class GetInviteRelationDetail(SchemaBase):
     invite_code_id: int = Field(description='邀请码 ID')
     inviter_user_id: int = Field(description='邀请人用户 ID')
     invitee_user_id: int = Field(description='被邀请人用户 ID')
+    invitee_avatar: str | None = Field(None, description='被邀请人头像')
     inviter_reward_status: int = Field(description='邀请人奖励状态')
     invitee_reward_status: int = Field(description='被邀请人奖励状态')
     channel: str | None = Field(None, description='渠道来源')

@@ -4,6 +4,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
+from backend.app.admin.model.user import User
 from backend.app.invite.model import InviteCode, InviteRelation, InviteRewardRule
 from backend.app.invite.schema.invite import CreateRewardRuleParam
 from backend.utils.timezone import timezone
@@ -103,12 +104,15 @@ class CRUDInviteRelation(CRUDPlus[InviteRelation]):
         :param invitee_user_id: 被邀请人用户 ID
         :return:
         """
-        filters = {}
+        stmt = select(
+            *InviteRelation.__table__.columns,
+            User.avatar.label('invitee_avatar'),
+        ).outerjoin(User, User.id == InviteRelation.invitee_user_id)
         if inviter_user_id is not None:
-            filters['inviter_user_id__eq'] = inviter_user_id
+            stmt = stmt.where(InviteRelation.inviter_user_id == inviter_user_id)
         if invitee_user_id is not None:
-            filters['invitee_user_id__eq'] = invitee_user_id
-        return await self.select_order('created_time', 'desc', **filters)
+            stmt = stmt.where(InviteRelation.invitee_user_id == invitee_user_id)
+        return stmt.order_by(InviteRelation.created_time.desc(), InviteRelation.id.desc())
 
 
 class CRUDInviteRewardRule(CRUDPlus[InviteRewardRule]):

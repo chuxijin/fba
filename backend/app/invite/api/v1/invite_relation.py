@@ -4,9 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 
-from backend.app.invite.schema.invite import AcceptInviteParam, AcceptInviteResult
+from backend.app.invite.schema.invite import AcceptInviteParam, AcceptInviteResult, GetInviteRelationDetail
 from backend.app.invite.service.invite_service import invite_service
-from backend.common.pagination import DependsPagination
+from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -30,7 +30,7 @@ async def get_invite_relations_paginated(
     db: CurrentSession,
     inviter_user_id: Annotated[int | None, Query(description='邀请人用户 ID')] = None,
     invitee_user_id: Annotated[int | None, Query(description='被邀请人用户 ID')] = None,
-) -> ResponseModel:
+) -> ResponseSchemaModel[PageData[GetInviteRelationDetail]]:
     """查看邀请关系列表"""
     data = await invite_service.get_invite_list(
         db=db,
