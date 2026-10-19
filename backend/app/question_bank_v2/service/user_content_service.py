@@ -2,6 +2,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank_v2.crud.crud_composition import bank_item_dao
 from backend.app.question_bank_v2.crud.crud_practice import practice_session_dao
 from backend.app.question_bank_v2.crud.crud_question import question_dao
@@ -12,7 +13,6 @@ from backend.app.question_bank_v2.crud.crud_user_content import (
     question_note_vote_dao,
 )
 from backend.app.question_bank_v2.schema.user_content import (
-    ContentGroupNode,
     CreateFavoriteFolderParam,
     CreateQuestionFavoriteParam,
     CreateQuestionNoteParam,
@@ -67,11 +67,6 @@ class UserContentService:
             raise errors.NotFoundError(msg='收藏夹不存在')
         if folder.status != 'active':
             raise errors.ConflictError(msg='已归档收藏夹不能接收新收藏')
-
-    @staticmethod
-    def _build_groups(*, rows: list[dict[str, Any]], group_by: str) -> list[ContentGroupNode]:
-        """将知识点统计行组装成客户端分组"""
-        return [ContentGroupNode(id=row['id'], name=row['name'], count=int(row['count'] or 0)) for row in rows]
 
     @staticmethod
     def _favorite_detail(row: dict[str, Any] | None) -> GetQuestionFavoriteDetail:
@@ -299,6 +294,23 @@ class UserContentService:
         )
 
     @staticmethod
+    async def _resolve_domain_scope(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        domain_category_id: int | None,
+    ) -> tuple[int | None, list[int] | None]:
+        """收藏、笔记的概览与两种分组共用同一领域范围，空分类不回退到全量。"""
+        resolved = await knowledge_service.resolve_optional_domain_category_id(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        if resolved is None:
+            return None, None
+        return resolved, await category_dao.get_subtree_ids_by_path(db, resolved)
+
+    @staticmethod
     async def get_favorite_statistics(
         *,
         db: AsyncSession,
@@ -308,25 +320,30 @@ class UserContentService:
         domain_category_id: int | None = None,
     ) -> FavoriteStatistics:
         """获取收藏汇总及题库或知识点分组"""
-        stats = await question_favorite_dao.get_statistics(db, user_id=user_id)
+        resolved_domain_id, category_ids = await UserContentService._resolve_domain_scope(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        stats = await question_favorite_dao.get_statistics(db, user_id=user_id, domain_category_ids=category_ids)
         knowledge_system_ids = await UserContentService._resolve_knowledge_system_ids(
             db=db,
             user_id=user_id,
             group_by=group_by,
             knowledge_system_id=knowledge_system_id,
-            domain_category_id=domain_category_id,
+            domain_category_id=resolved_domain_id,
         )
         rows = await question_favorite_dao.get_group_counts(
             db,
             user_id=user_id,
             group_by=group_by,
             knowledge_system_ids=knowledge_system_ids,
+            domain_category_ids=category_ids,
         )
-        groups = (
-            UserContentService._build_groups(rows=rows, group_by=group_by)
-            if group_by == 'knowledge_point'
-            else await content_group_service.build_bank_tree(db=db, rows=rows, ungrouped_name='未归属题库')
-        )
+        if group_by == 'knowledge_point':
+            groups = await content_group_service.build_knowledge_tree(db=db, rows=rows)
+        else:
+            groups = await content_group_service.build_bank_tree(db=db, rows=rows, ungrouped_name='未归属题库')
         return FavoriteStatistics(
             total_count=int(stats['total_count'] or 0),
             folder_count=int(stats['folder_count'] or 0),
@@ -471,25 +488,30 @@ class UserContentService:
         domain_category_id: int | None = None,
     ) -> NoteStatistics:
         """获取笔记汇总及题库或知识点分组"""
-        stats = await question_note_dao.get_statistics(db, user_id=user_id)
+        resolved_domain_id, category_ids = await UserContentService._resolve_domain_scope(
+            db=db,
+            user_id=user_id,
+            domain_category_id=domain_category_id,
+        )
+        stats = await question_note_dao.get_statistics(db, user_id=user_id, domain_category_ids=category_ids)
         knowledge_system_ids = await UserContentService._resolve_knowledge_system_ids(
             db=db,
             user_id=user_id,
             group_by=group_by,
             knowledge_system_id=knowledge_system_id,
-            domain_category_id=domain_category_id,
+            domain_category_id=resolved_domain_id,
         )
         rows = await question_note_dao.get_group_counts(
             db,
             user_id=user_id,
             group_by=group_by,
             knowledge_system_ids=knowledge_system_ids,
+            domain_category_ids=category_ids,
         )
-        groups = (
-            UserContentService._build_groups(rows=rows, group_by=group_by)
-            if group_by == 'knowledge_point'
-            else await content_group_service.build_bank_tree(db=db, rows=rows, ungrouped_name='未归属题库')
-        )
+        if group_by == 'knowledge_point':
+            groups = await content_group_service.build_knowledge_tree(db=db, rows=rows)
+        else:
+            groups = await content_group_service.build_bank_tree(db=db, rows=rows, ungrouped_name='未归属题库')
         return NoteStatistics(
             **stats,
             groups=groups,

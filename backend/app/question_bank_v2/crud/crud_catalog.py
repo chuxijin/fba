@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Select, and_, case, select
+from sqlalchemy import Select, and_, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -12,6 +12,21 @@ from backend.app.question_bank_v2.model.catalog import QbBankCategory, QbCollect
 
 class CRUDCollection(CRUDPlus[QbCollection]):
     """题库合集数据库操作类"""
+
+    async def get_progress_scope_rows(
+        self, db: AsyncSession, collection_ids: Sequence[int], *, include_descendants: bool
+    ) -> list[dict[str, Any]]:
+        """一次读取请求根节点及公开启用目录，供批量展开合集作用域"""
+        condition = QbCollection.id.in_(collection_ids)
+        if include_descendants:
+            condition = or_(
+                condition,
+                and_(QbCollection.visibility == 'public', QbCollection.status == 'active'),
+            )
+        stmt = select(
+            QbCollection.id, QbCollection.parent_id, QbCollection.status, QbCollection.visibility
+        ).where(QbCollection.deleted == 0, condition)
+        return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
 
     async def get_subtree_ids(self, db: AsyncSession, root_id: int) -> list[int]:
         """获取合集及其全部后代合集 ID（公开且启用）"""
@@ -276,6 +291,7 @@ class CRUDCollectionBank(CRUDPlus[QbCollectionBank]):
         )
         stmt = (
             select(
+                QbCollectionBank.collection_id,
                 QbBank.id.label('bank_id'),
                 QbBankRevision.id.label('bank_revision_id'),
                 QbBankRevision.revision_no,

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, NoReturn
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -22,6 +23,19 @@ from backend.app.question_bank_v2.service.practice_schedule_service import (
 from backend.app.question_bank_v2.service.review_schedule_service import ReviewScheduleService
 from backend.app.question_bank_v2.service.wrong_review_service import WrongReviewService
 from backend.common.exception import errors
+
+
+class MappingResult:
+    """模拟 SQLAlchemy mappings() 结果"""
+
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+
+    def mappings(self) -> 'MappingResult':
+        return self
+
+    def all(self) -> list[dict[str, Any]]:
+        return self.rows
 
 
 class DummyDB:
@@ -817,3 +831,67 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
     # 按题库分组不解析知识体系，DAO 收到空列表；两种分组都带上同一份领域范围
     assert captured == [(7, 'bank', [], [1400, 1365])]
     assert statistics_scopes == [[1400, 1365], [1400, 1365]]
+
+
+def test_wrong_statistics_builds_knowledge_tree_and_keeps_external_flat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """题库来源的错题补知识体系父链，自主录入仍平铺挂在「自主录入」下"""
+
+    async def fake_domain_scope(**_: object) -> list[int]:
+        await asyncio.sleep(0)
+        return [1400, 1365]
+
+    async def fake_resolve_domain(**_: object) -> int:
+        await asyncio.sleep(0)
+        return 1400
+
+    async def fake_resolve_system_ids(**_: object) -> list[int]:
+        await asyncio.sleep(0)
+        return [2]
+
+    async def fake_statistics(_db: object, **_: object) -> dict[str, Any]:
+        await asyncio.sleep(0)
+        return {
+            'total_count': 2,
+            'active_count': 2,
+            'resolved_count': 0,
+            'wrong_occurrence_count': 2,
+            'due_count': 0,
+            'reviewed_count': 0,
+            'pending_review_count': 0,
+        }
+
+    async def fake_group_counts(_db: object, **_: object) -> list[dict[str, Any]]:
+        await asyncio.sleep(0)
+        return [
+            {'id': 3, 'name': '唯物论', 'count': 1, 'question_ids': [101], 'entry_scope': 'bank'},
+            {'id': 9, 'name': '手工录入点', 'count': 1, 'question_ids': [901], 'entry_scope': 'external'},
+        ]
+
+    monkeypatch.setattr(WrongReviewService, 'resolve_domain_scope', fake_domain_scope)
+    monkeypatch.setattr(
+        wrong_review_module.knowledge_service, 'resolve_domain_category_id', fake_resolve_domain
+    )
+    monkeypatch.setattr(
+        wrong_review_module.knowledge_service, 'resolve_system_ids', fake_resolve_system_ids
+    )
+    monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_statistics', fake_statistics)
+    monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_group_counts', fake_group_counts)
+
+    db = AsyncMock()
+    db.execute.side_effect = [
+        MappingResult([{'id': 3, 'name': '唯物论', 'parent_id': 2, 'path': '/1/2/3/', 'sort_order': 0}]),
+        MappingResult([
+            {'id': 1, 'name': '政治', 'parent_id': None, 'path': '/1/', 'sort_order': 0},
+            {'id': 2, 'name': '马原', 'parent_id': 1, 'path': '/1/2/', 'sort_order': 0},
+        ]),
+    ]
+
+    statistics = asyncio.run(
+        WrongReviewService.get_statistics(db=db, user_id=7, group_by='knowledge_point')
+    )
+
+    assert [group.name for group in statistics.groups] == ['马原', '自主录入']
+    assert statistics.groups[0].children[0].question_ids == [101]
+    assert statistics.groups[1].children[0].question_ids == [901]

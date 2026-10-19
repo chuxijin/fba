@@ -174,7 +174,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
 
         错题本本身是跨领域的全局账本，必须显式限定范围才不会把别的领域题目混进来。
         """
-        if not domain_category_ids:
+        if domain_category_ids is None:
             return stmt
 
         return stmt.where(
@@ -607,6 +607,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             if not knowledge_system_ids:
                 return []
             stmt = stmt.where(QbKnowledgePoint.system_id.in_(list(knowledge_system_ids)))
+            stmt = self._apply_domain_scope(stmt, domain_category_ids)
             stmt = stmt.group_by(
                 QbKnowledgePoint.id,
                 QbKnowledgePoint.name,
@@ -713,6 +714,17 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             )
         )
         stmt = self._apply_domain_scope(stmt, domain_category_ids)
+        if domain_category_ids is not None:
+            # 题目可能同时存在于多个领域；分组还必须限制最终展示的题库。
+            stmt = stmt.where(
+                exists(
+                    select(QbBankCategory.id).where(
+                        QbBankCategory.bank_id == QbBank.id,
+                        QbBankCategory.deleted == 0,
+                        QbBankCategory.category_id.in_(list(domain_category_ids)),
+                    )
+                )
+            )
         stmt = stmt.group_by(
             QbBank.id,
             QbBankItem.bank_revision_id,

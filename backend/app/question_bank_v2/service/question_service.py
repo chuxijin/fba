@@ -16,6 +16,7 @@ from backend.app.question_bank_v2.crud.crud_question import (
     question_explanation_dao,
 )
 from backend.app.question_bank_v2.crud.crud_statistics import question_statistics_dao
+from backend.app.question_bank_v2.model.question import QbQuestion
 from backend.app.question_bank_v2.schema.knowledge import GetKnowledgePointAssignmentDetail
 from backend.app.question_bank_v2.schema.material import GetQuestionMaterialDetail
 from backend.app.question_bank_v2.schema.question import (
@@ -326,6 +327,15 @@ class QuestionService:
         data.pop('explanations', None)
         data.pop('knowledge_points', None)
         data.pop('materials', None)
+        # ⚠️ `knowledge_system_id` 是 UpdateQuestionParam 上的**虚拟字段**（qbank_v2_question 表里
+        # 没有这一列），只用来给下面的 knowledge_service.replace() 传体系 ID。漏 pop 会让它混进
+        # UPDATE 语句 ⇒ `CompileError: Unconsumed column names: knowledge_system_id`。
+        # 加新虚拟字段时务必一并 pop。
+        data.pop('knowledge_system_id', None)
+        # ⚠️ 兜底：只把**表上真实存在的列**交给 UPDATE。以后再加虚拟字段，忘了 pop 也不会
+        # 把不存在的列名塞进 SQL（SQLAlchemy 会抛 CompileError，很难排查）。
+        table_columns = QbQuestion.__table__.columns
+        data = {k: v for k, v in data.items() if k in table_columns}
         if data:
             data['updated_by'] = updated_by
             await question_dao.update(db, pk, data)

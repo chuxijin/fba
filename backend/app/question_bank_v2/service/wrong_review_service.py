@@ -125,10 +125,9 @@ class WrongReviewService:
         return GetWrongQuestionListItem(**row)
 
     @staticmethod
-    async def get_domain_category_ids(*, db: AsyncSession, domain_category_id: int) -> list[int] | None:
-        """把领域根分类展开成含子分类的 ID 列表；为空时不过滤"""
-        category_ids = await category_dao.get_subtree_ids_by_path(db, domain_category_id)
-        return category_ids or None
+    async def get_domain_category_ids(*, db: AsyncSession, domain_category_id: int) -> list[int]:
+        """把领域根分类展开成含子分类的 ID 列表；无效分类保留空范围。"""
+        return await category_dao.get_subtree_ids_by_path(db, domain_category_id)
 
     @staticmethod
     async def resolve_domain_scope(
@@ -387,27 +386,26 @@ class WrongReviewService:
             domain_category_ids=domain_category_ids,
         )
         if group_by == 'knowledge_point':
-            bank_groups: list[ContentGroupNode] = []
-            external_groups: list[ContentGroupNode] = []
-            for row in rows:
-                node = ContentGroupNode(
-                    id=row['id'],
-                    name=row['name'],
-                    count=int(row['count'] or 0),
-                    question_ids=row.get('question_ids') or [],
-                )
-                if row.get('entry_scope') == 'external':
-                    external_groups.append(node)
-                else:
-                    bank_groups.append(node)
-            groups = bank_groups
-            if external_groups:
+            # 题库来源的错题按知识体系补全父链，外部录入的知识点不属于当前体系，保持平铺
+            bank_rows = [row for row in rows if row.get('entry_scope') != 'external']
+            external_rows = [row for row in rows if row.get('entry_scope') == 'external']
+            groups = await content_group_service.build_knowledge_tree(db=db, rows=bank_rows)
+            if external_rows:
+                external_nodes = [
+                    ContentGroupNode(
+                        id=row['id'],
+                        name=row['name'],
+                        count=int(row['count'] or 0),
+                        question_ids=row.get('question_ids') or [],
+                    )
+                    for row in external_rows
+                ]
                 groups.append(
                     ContentGroupNode(
                         id=0,
                         name='自主录入',
-                        count=sum(node.count for node in external_groups),
-                        children=external_groups,
+                        count=sum(node.count for node in external_nodes),
+                        children=external_nodes,
                     )
                 )
         else:

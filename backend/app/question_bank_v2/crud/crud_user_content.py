@@ -8,6 +8,7 @@ from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.admin.model.user import User
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
+from backend.app.question_bank_v2.model.catalog import QbBankCategory
 from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbQuestionKnowledgePoint
 from backend.app.question_bank_v2.model.practice import QbPracticeSessionItem
 from backend.app.question_bank_v2.model.question import QbQuestion
@@ -24,11 +25,35 @@ def _parse_question_ids(value: str | None) -> list[int]:
     return [int(question_id) for question_id in value.split(',')] if value else []
 
 
+def _content_domain_condition(
+    model: type[QbQuestionFavorite] | type[QbQuestionNote],
+    category_ids: Sequence[int],
+) -> Any:
+    """沿保存的题库上下文限定领域；旧记录无上下文时按题目所属题库回落。"""
+    saved_item = QbBankItem.__table__.alias('domain_saved_item')
+    has_saved_item = exists(select(saved_item.c.id).where(saved_item.c.id == model.bank_item_id).correlate(model))
+    return exists(
+        select(QbBankItem.id)
+        .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
+        .join(QbBank, QbBank.id == QbBankRevision.bank_id)
+        .join(QbBankCategory, QbBankCategory.bank_id == QbBank.id)
+        .where(
+            QbBankItem.question_id == model.question_id,
+            or_(QbBankItem.id == model.bank_item_id, ~has_saved_item),
+            QbBank.deleted == 0,
+            QbBankCategory.deleted == 0,
+            QbBankCategory.category_id.in_(list(category_ids)),
+        )
+        .correlate(model)
+    )
+
+
 async def _get_bank_group_counts(
     db: AsyncSession,
     *,
     model: type[QbQuestionFavorite] | type[QbQuestionNote],
     user_id: int,
+    domain_category_ids: Sequence[int] | None = None,
 ) -> list[dict[str, Any]]:
     """按题库和篇章统计用户内容"""
     saved_item = QbBankItem.__table__.alias('saved_content_bank_item')
@@ -104,6 +129,17 @@ async def _get_bank_group_counts(
         )
         .order_by(QbBankRevision.name, QbBankSection.name)
     )
+    if domain_category_ids is not None:
+        stmt = stmt.where(
+            QbBank.deleted == 0,
+            exists(
+                select(QbBankCategory.id).where(
+                    QbBankCategory.bank_id == QbBank.id,
+                    QbBankCategory.deleted == 0,
+                    QbBankCategory.category_id.in_(list(domain_category_ids)),
+                )
+            ),
+        )
     rows = []
     for row in (await db.execute(stmt)).mappings().all():
         result = dict(row)
@@ -120,6 +156,7 @@ async def _get_knowledge_group_counts(
     model: type[QbQuestionFavorite] | type[QbQuestionNote],
     user_id: int,
     knowledge_system_ids: Sequence[int],
+    domain_category_ids: Sequence[int] | None = None,
 ) -> list[dict[str, Any]]:
     """按知识点统计用户内容"""
     stmt = (
@@ -144,6 +181,8 @@ async def _get_knowledge_group_counts(
         .where(model.user_id == user_id, model.deleted == 0)
     )
     stmt = stmt.where(QbKnowledgePoint.system_id.in_(knowledge_system_ids))
+    if domain_category_ids is not None:
+        stmt = stmt.where(_content_domain_condition(model, domain_category_ids))
     stmt = stmt.group_by(QbKnowledgePoint.id, QbKnowledgePoint.name, QbKnowledgePoint.sort_order).order_by(
         QbKnowledgePoint.sort_order,
         QbKnowledgePoint.id,
@@ -348,26 +387,39 @@ class CRUDQuestionFavorite(CRUDPlus[QbQuestionFavorite]):
         )
         return {int(question_id): True for question_id in (await db.execute(stmt)).scalars().all()}
 
-    async def get_statistics(self, db: AsyncSession, *, user_id: int) -> dict[str, int]:
+    async def get_statistics(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        domain_category_ids: Sequence[int] | None = None,
+    ) -> dict[str, int]:
         """获取用户收藏汇总统计"""
-        total_count = (
-            select(func.count(QbQuestionFavorite.id))
-            .where(QbQuestionFavorite.user_id == user_id, QbQuestionFavorite.deleted == 0)
-            .scalar_subquery()
+        total_count = select(func.count(QbQuestionFavorite.id)).where(
+            QbQuestionFavorite.user_id == user_id, QbQuestionFavorite.deleted == 0
         )
-        folder_count = (
-            select(func.count(QbFavoriteFolder.id))
-            .where(
-                QbFavoriteFolder.user_id == user_id,
-                QbFavoriteFolder.deleted == 0,
-                QbFavoriteFolder.status == 'active',
+        folder_count = select(func.count(QbFavoriteFolder.id)).where(
+            QbFavoriteFolder.user_id == user_id,
+            QbFavoriteFolder.deleted == 0,
+            QbFavoriteFolder.status == 'active',
+        )
+        if domain_category_ids is not None:
+            condition = _content_domain_condition(QbQuestionFavorite, domain_category_ids)
+            total_count = total_count.where(condition)
+            folder_count = folder_count.where(
+                exists(
+                    select(QbQuestionFavorite.id).where(
+                        QbQuestionFavorite.folder_id == QbFavoriteFolder.id,
+                        QbQuestionFavorite.user_id == user_id,
+                        QbQuestionFavorite.deleted == 0,
+                        condition,
+                    )
+                )
             )
-            .scalar_subquery()
-        )
         result = await db.execute(
             select(
-                total_count.label('total_count'),
-                folder_count.label('folder_count'),
+                total_count.scalar_subquery().label('total_count'),
+                folder_count.scalar_subquery().label('folder_count'),
             )
         )
         return dict(result.mappings().one())
@@ -379,15 +431,22 @@ class CRUDQuestionFavorite(CRUDPlus[QbQuestionFavorite]):
         user_id: int,
         group_by: str,
         knowledge_system_ids: Sequence[int],
+        domain_category_ids: Sequence[int] | None = None,
     ) -> list[dict[str, Any]]:
         """获取收藏的题库或知识点分组统计"""
         if group_by == 'bank':
-            return await _get_bank_group_counts(db, model=QbQuestionFavorite, user_id=user_id)
+            return await _get_bank_group_counts(
+                db,
+                model=QbQuestionFavorite,
+                user_id=user_id,
+                domain_category_ids=domain_category_ids,
+            )
         return await _get_knowledge_group_counts(
             db,
             model=QbQuestionFavorite,
             user_id=user_id,
             knowledge_system_ids=knowledge_system_ids,
+            domain_category_ids=domain_category_ids,
         )
 
 
@@ -531,15 +590,22 @@ class CRUDQuestionNote(CRUDPlus[QbQuestionNote]):
         )
         return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
 
-    async def get_statistics(self, db: AsyncSession, *, user_id: int) -> dict[str, int]:
+    async def get_statistics(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        domain_category_ids: Sequence[int] | None = None,
+    ) -> dict[str, int]:
         """获取用户笔记汇总统计"""
-        result = await db.execute(
-            select(
-                func.count(QbQuestionNote.id).label('total_count'),
-                func.sum(case((QbQuestionNote.visibility == 'public', 1), else_=0)).label('public_count'),
-                func.sum(case((QbQuestionNote.is_featured.is_(True), 1), else_=0)).label('featured_count'),
-            ).where(QbQuestionNote.user_id == user_id, QbQuestionNote.deleted == 0)
-        )
+        stmt = select(
+            func.count(QbQuestionNote.id).label('total_count'),
+            func.sum(case((QbQuestionNote.visibility == 'public', 1), else_=0)).label('public_count'),
+            func.sum(case((QbQuestionNote.is_featured.is_(True), 1), else_=0)).label('featured_count'),
+        ).where(QbQuestionNote.user_id == user_id, QbQuestionNote.deleted == 0)
+        if domain_category_ids is not None:
+            stmt = stmt.where(_content_domain_condition(QbQuestionNote, domain_category_ids))
+        result = await db.execute(stmt)
         row = dict(result.mappings().one())
         return {key: int(value or 0) for key, value in row.items()}
 
@@ -550,15 +616,22 @@ class CRUDQuestionNote(CRUDPlus[QbQuestionNote]):
         user_id: int,
         group_by: str,
         knowledge_system_ids: Sequence[int],
+        domain_category_ids: Sequence[int] | None = None,
     ) -> list[dict[str, Any]]:
         """获取笔记的题库或知识点分组统计"""
         if group_by == 'bank':
-            return await _get_bank_group_counts(db, model=QbQuestionNote, user_id=user_id)
+            return await _get_bank_group_counts(
+                db,
+                model=QbQuestionNote,
+                user_id=user_id,
+                domain_category_ids=domain_category_ids,
+            )
         return await _get_knowledge_group_counts(
             db,
             model=QbQuestionNote,
             user_id=user_id,
             knowledge_system_ids=knowledge_system_ids,
+            domain_category_ids=domain_category_ids,
         )
 
 

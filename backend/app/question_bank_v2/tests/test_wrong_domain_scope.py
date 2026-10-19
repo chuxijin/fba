@@ -142,8 +142,32 @@ def test_group_counts_scopes_both_bank_and_external_groups() -> None:
 
     assert len(db.statements) == 2
     sql = db.sql()
-    assert sql.count('qbank_v2_bank_category.category_id IN (1400)') == 2
+    assert sql.count('qbank_v2_bank_category.category_id IN (1400)') == 3
     assert sql.count(RECORDED_DOMAIN_SQL) == 2
+
+
+def test_knowledge_groups_also_scope_recorded_domain() -> None:
+    db = _CapturingSession()
+    asyncio.run(
+        wrong_question_state_dao.get_group_counts(
+            db,
+            user_id=20,
+            group_by='knowledge_point',
+            knowledge_system_ids=[2],
+            domain_category_ids=[1400],
+        )
+    )
+    assert 'qbank_v2_bank_category.category_id IN (1400)' in db.sql()
+    assert RECORDED_DOMAIN_SQL in db.sql()
+
+
+def test_empty_domain_subtree_does_not_disable_filter() -> None:
+    stmt = wrong_question_state_dao.get_list_select(
+        user_id=20, status='active', entry_source=None, domain_category_ids=[]
+    )
+    sql = str(stmt.compile(compile_kwargs={'literal_binds': True}))
+    assert 'qbank_v2_bank_category' in sql
+    assert '1 != 1' in sql
 
 
 def test_dashboard_distributions_use_the_domain_scope() -> None:

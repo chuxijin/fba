@@ -21,14 +21,62 @@ def test_favorite_tags_are_trimmed_and_deduplicated() -> None:
     assert obj.tags == ['易错', '重点']
 
 
-def test_knowledge_groups_build_flat_nodes() -> None:
-    groups = UserContentService._build_groups(
-        group_by='knowledge_point',
-        rows=[{'id': 101, 'name': '阅读理解', 'count': 3}],
+class MappingResult:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+
+    def mappings(self) -> 'MappingResult':
+        return self
+
+    def all(self) -> list[dict]:
+        return self.rows
+
+
+def test_favorite_statistics_builds_knowledge_point_tree(monkeypatch: pytest.MonkeyPatch) -> None:
+    """按知识点统计要补出知识体系父链，不能把命中点平铺返回"""
+    dao_path = 'backend.app.question_bank_v2.service.user_content_service.question_favorite_dao'
+
+    async def fake_domain_scope(**_: object) -> tuple[int, list[int]]:
+        await asyncio.sleep(0)
+        return 1400, [1400]
+
+    async def fake_system_ids(**_: object) -> list[int]:
+        await asyncio.sleep(0)
+        return [2]
+
+    monkeypatch.setattr(UserContentService, '_resolve_domain_scope', fake_domain_scope)
+    monkeypatch.setattr(UserContentService, '_resolve_knowledge_system_ids', fake_system_ids)
+    monkeypatch.setattr(
+        f'{dao_path}.get_statistics',
+        AsyncMock(return_value={'total_count': 1, 'folder_count': 0}),
+    )
+    monkeypatch.setattr(
+        f'{dao_path}.get_group_counts',
+        AsyncMock(return_value=[{'id': 3, 'name': '唯物论', 'count': 1, 'question_ids': [101]}]),
     )
 
-    assert groups[0].id == 101
-    assert groups[0].count == 3
+    db = AsyncMock()
+    db.execute.side_effect = [
+        MappingResult([{'id': 3, 'name': '唯物论', 'parent_id': 2, 'path': '/1/2/3/', 'sort_order': 0}]),
+        MappingResult([
+            {'id': 1, 'name': '政治', 'parent_id': None, 'path': '/1/', 'sort_order': 0},
+            {'id': 2, 'name': '马原', 'parent_id': 1, 'path': '/1/2/', 'sort_order': 0},
+        ]),
+    ]
+
+    stats = asyncio.run(
+        UserContentService.get_favorite_statistics(
+            db=db,
+            user_id=7,
+            group_by='knowledge_point',
+        )
+    )
+
+    # 单一根「政治」下钻一层后，首屏直接是科目「马原」→「唯物论」
+    assert [group.name for group in stats.groups] == ['马原']
+    assert stats.groups[0].count == 1
+    assert stats.groups[0].children[0].name == '唯物论'
+    assert stats.groups[0].children[0].question_ids == [101]
 
 
 def test_existing_favorite_backfills_bank_item_context(monkeypatch: pytest.MonkeyPatch) -> None:
