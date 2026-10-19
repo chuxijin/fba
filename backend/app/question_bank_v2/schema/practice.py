@@ -41,7 +41,7 @@ class CreatePracticeSessionParam(SchemaBase):
     knowledge_point_ids: list[int] = Field(
         default_factory=list,
         max_length=100,
-        description='知识点 ID，默认包含其后代节点；必须全部属于同一知识体系',
+        description='知识点 ID，默认包含其后代节点；必须属于同一知识体系；custom 来源可仅按知识点组题',
     )
     include_knowledge_descendants: bool = Field(default=True, description='是否包含所选知识点的后代节点')
     question_types: list[QuestionType] = Field(default_factory=list, max_length=7, description='允许投递的题型')
@@ -78,8 +78,8 @@ class CreatePracticeSessionParam(SchemaBase):
             raise ValueError('按篇章筛选必须提供 bank_id')
         if self.favorite_folder_id is not None and self.source_type != 'favorite':
             raise ValueError('favorite_folder_id 仅适用于收藏来源')
-        if self.source_type == 'custom' and not self.question_ids:
-            raise ValueError('指定题目来源必须提供 question_ids')
+        if self.source_type == 'custom' and not self.question_ids and not self.knowledge_point_ids:
+            raise ValueError('自由组题必须提供 question_ids 或 knowledge_point_ids')
         if self.source_type != 'custom' and self.question_ids:
             raise ValueError('question_ids 仅适用于指定题目来源')
         if self.knowledge_system_id is not None and not self.knowledge_point_ids:

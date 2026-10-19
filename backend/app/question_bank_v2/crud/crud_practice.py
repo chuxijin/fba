@@ -35,6 +35,7 @@ from backend.app.question_bank_v2.model.review import (
     QbWrongQuestionState,
 )
 from backend.app.question_bank_v2.model.user_content import QbQuestionFavorite, QbQuestionNote
+from backend.core.conf import settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +78,36 @@ def build_region_filter(region: str | None) -> ColumnElement[bool] | None:
         QbBank.code.ilike(pattern),
         QbBankRevision.description.ilike(pattern),
     )
+
+
+def _random_order() -> Any:
+    """跨库随机排序表达式"""
+    return func.rand() if settings.DATABASE_TYPE == 'mysql' else func.random()
+
+
+def build_attempt_priority(
+    question_id_col: Any,
+    user_id: int | None,
+) -> tuple[ColumnElement[bool], Any] | None:
+    """
+    构建「未做优先 + 最久没练优先」所需的判定表达式
+
+    只统计真实作答事实（qbank_v2_question_attempt）：只打开没提交不算做过。
+
+    :param question_id_col: 与作答表 question_id 对齐的题目 ID 列
+    :param user_id: 当前用户，为空时不启用优先级
+    :return: (已做判定条件, 最近作答时间标量)；未启用时返回 None
+    """
+    if user_id is None:
+        return None
+    user_attempts = (
+        QbQuestionAttempt.user_id == user_id,
+        QbQuestionAttempt.question_id == question_id_col,
+        QbQuestionAttempt.deleted == 0,
+    )
+    attempted = select(QbQuestionAttempt.id).where(*user_attempts).exists()
+    last_submitted = select(func.max(QbQuestionAttempt.submitted_time)).where(*user_attempts).scalar_subquery()
+    return attempted, last_submitted
 
 
 class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
@@ -502,6 +533,8 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         shuffle: bool,
         limit: int,
         region: str | None = None,
+        user_id: int | None = None,
+        prioritize_unseen: bool = False,
     ) -> Sequence[QbBankItem]:
         """获取待投递的题库编排项"""
         filters = (
@@ -562,25 +595,133 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
             result = await db.execute(stmt.limit(limit))
             return result.scalars().all()
 
-        bounds_result = await db.execute(bounds_stmt.where(*filters))
+        return await self._sample_items_with_priority(
+            db,
+            base_stmt=base_stmt,
+            bounds_stmt=bounds_stmt.where(*filters),
+            limit=limit,
+            user_id=user_id if prioritize_unseen else None,
+        )
+
+    async def _sample_items_with_priority(
+        self,
+        db: AsyncSession,
+        *,
+        base_stmt: Select,
+        bounds_stmt: Select,
+        limit: int,
+        user_id: int | None = None,
+    ) -> Sequence[QbBankItem]:
+        """随机采样投递项：启用优先级时先取未做过的题，不足再按最久没练补齐"""
+        priority = build_attempt_priority(QbBankItem.question_id, user_id)
+        if priority is None:
+            return await self._sample_items_by_pivot(
+                db,
+                base_stmt=base_stmt,
+                bounds_stmt=bounds_stmt,
+                limit=limit,
+            )
+
+        attempted, last_submitted = priority
+        candidates = list(
+            await self._sample_items_by_pivot(
+                db,
+                base_stmt=base_stmt.where(~attempted),
+                bounds_stmt=bounds_stmt.where(~attempted),
+                limit=limit,
+            )
+        )
+        remaining = limit - len(candidates)
+        if remaining <= 0:
+            return candidates
+
+        # 新题不够时用做过的题补齐；集合已经被作用域与作答历史收窄，量级可控
+        priority_column = last_submitted.label('last_submitted_time')
+        seen_stmt = (
+            base_stmt.where(attempted)
+            .add_columns(priority_column)
+            .order_by(priority_column.asc(), _random_order())
+            .limit(remaining)
+        )
+        candidates.extend((await db.execute(seen_stmt)).scalars().all())
+        return candidates
+
+    async def _sample_items_by_pivot(
+        self,
+        db: AsyncSession,
+        *,
+        base_stmt: Select,
+        bounds_stmt: Select,
+        limit: int,
+    ) -> Sequence[QbBankItem]:
+        """按主键区间随机采样，避免对大表做全量随机排序"""
+        bounds_result = await db.execute(bounds_stmt)
         min_id, max_id = bounds_result.one()
         if min_id is None or max_id is None:
             return []
 
         randomizer = secrets.SystemRandom()
         pivot = randomizer.randint(min_id, max_id)
-        first_result = await db.execute(
-            base_stmt.where(QbBankItem.id >= pivot).order_by(QbBankItem.id).limit(limit)
+        candidates = list(
+            (
+                await db.execute(base_stmt.where(QbBankItem.id >= pivot).order_by(QbBankItem.id).limit(limit))
+            )
+            .scalars()
+            .all()
         )
-        candidates = list(first_result.scalars().all())
         remaining = limit - len(candidates)
         if remaining > 0:
-            second_result = await db.execute(
-                base_stmt.where(QbBankItem.id < pivot).order_by(QbBankItem.id).limit(remaining)
+            candidates.extend(
+                (
+                    await db.execute(
+                        base_stmt.where(QbBankItem.id < pivot).order_by(QbBankItem.id).limit(remaining)
+                    )
+                )
+                .scalars()
+                .all()
             )
-            candidates.extend(second_result.scalars().all())
         randomizer.shuffle(candidates)
         return candidates
+
+    async def _sample_rows_with_priority(
+        self,
+        db: AsyncSession,
+        *,
+        stmt: Select,
+        question_id_col: Any,
+        user_id: int | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """
+        随机抽取候选行，启用优先级时先取未做过的题，不足再按最久没练补齐
+
+        :param stmt: 已应用作用域筛选、尚未排序的候选查询
+        :param question_id_col: 与作答表 question_id 对齐的题目 ID 列
+        :param user_id: 当前用户；为空时退化为纯随机
+        :param limit: 需要抽取的数量
+        :return: 候选行映射
+        """
+        priority = build_attempt_priority(question_id_col, user_id)
+        if priority is None:
+            return list((await db.execute(stmt.order_by(_random_order()).limit(limit))).mappings().all())
+
+        attempted, last_submitted = priority
+        rows = list(
+            (await db.execute(stmt.where(~attempted).order_by(_random_order()).limit(limit))).mappings().all()
+        )
+        remaining = limit - len(rows)
+        if remaining <= 0:
+            return rows
+        rows.extend(
+            (
+                await db.execute(
+                    stmt.where(attempted).order_by(last_submitted.asc(), _random_order()).limit(remaining)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return rows
 
     async def get_user_candidates(  # noqa: C901
         self,
@@ -599,6 +740,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         shuffle: bool,
         limit: int,
         region: str | None = None,
+        prioritize_unseen: bool = False,
     ) -> list[PracticeCandidate]:
         """获取错题、收藏、笔记或指定题目来源的固定版本候选题"""
         if source_type == 'custom':
@@ -617,37 +759,71 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                     ),
                 )
                 .where(
-                    QbQuestion.id.in_(question_ids),
                     QbQuestion.status == 'active',
                     QbQuestion.deleted == 0,
                     or_(QbQuestion.visibility != 'private', QbQuestion.owner_id == user_id),
                 )
             )
+            if question_ids:
+                stmt = stmt.where(QbQuestion.id.in_(question_ids))
+            else:
+                # 无显式题目 ID 的自由组题必须限定知识点，不能退化为全量题目。
+                if not knowledge_point_ids:
+                    return []
+                placement_scope = (
+                    select(QbBankItem.id)
+                    .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
+                    .join(QbBank, QbBank.id == QbBankRevision.bank_id)
+                    .where(
+                        QbBankItem.question_id == QbQuestion.id,
+                        QbBankItem.deleted == 0,
+                        QbBankItem.is_active.is_(True),
+                        QbBankRevision.deleted == 0,
+                        QbBankRevision.status == 'published',
+                        QbBank.current_revision_id == QbBankRevision.id,
+                        QbBank.deleted == 0,
+                        QbBank.status == 'active',
+                    )
+                )
+                if bank_id is not None:
+                    placement_scope = placement_scope.where(QbBank.id == bank_id)
+                if year_start is not None:
+                    placement_scope = placement_scope.where(QbBankItem.exam_year >= year_start)
+                if year_end is not None:
+                    placement_scope = placement_scope.where(QbBankItem.exam_year <= year_end)
+                region_filter = build_region_filter(region)
+                if region_filter is not None:
+                    placement_scope = placement_scope.where(region_filter)
+                if bank_id is not None or year_start is not None or year_end is not None or region:
+                    stmt = stmt.where(placement_scope.exists())
             if question_types:
                 stmt = stmt.where(QbQuestion.question_type.in_(question_types))
             if knowledge_point_ids:
-                stmt = stmt.join(
-                    QbQuestionKnowledgePoint,
-                    and_(
+                stmt = stmt.where(
+                    select(QbQuestionKnowledgePoint.question_id).where(
                         QbQuestionKnowledgePoint.question_id == QbQuestion.id,
                         QbQuestionKnowledgePoint.knowledge_point_id.in_(knowledge_point_ids),
                         QbQuestionKnowledgePoint.deleted == 0,
-                    ),
-                ).distinct()
-            requested_order = {question_id: position for position, question_id in enumerate(question_ids)}
-            rows = list(
-                (
-                    await db.execute(
-                        stmt.order_by(
-                            case(requested_order, value=QbQuestion.id, else_=len(requested_order))
-                        ).limit(limit)
-                    )
+                    ).exists()
                 )
-                .mappings()
-                .all()
-            )
-            if shuffle:
-                secrets.SystemRandom().shuffle(rows)
+            if question_ids:
+                requested_order = {question_id: position for position, question_id in enumerate(question_ids)}
+                stmt = stmt.order_by(case(requested_order, value=QbQuestion.id, else_=len(requested_order)))
+                rows = list((await db.execute(stmt.limit(limit))).mappings().all())
+                if shuffle:
+                    secrets.SystemRandom().shuffle(rows)
+            elif shuffle:
+                # 启用未做优先时，两阶段的顺序本身已经是随机的，不再二次打乱
+                rows = await self._sample_rows_with_priority(
+                    db,
+                    stmt=stmt,
+                    question_id_col=QbQuestion.id,
+                    user_id=user_id if prioritize_unseen else None,
+                    limit=limit,
+                )
+            else:
+                stmt = stmt.order_by(QbQuestion.id)
+                rows = list((await db.execute(stmt.limit(limit))).mappings().all())
             candidate_question_ids = [int(row['question_id']) for row in rows]
             review_ranked = (
                 select(

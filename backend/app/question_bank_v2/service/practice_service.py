@@ -414,6 +414,9 @@ class PracticeService:
         if obj.source_type == 'favorite' and obj.favorite_folder_id is not None:
             return obj.source_type, f'favorite:folder:{obj.favorite_folder_id}'
         if obj.source_type == 'custom':
+            if not obj.question_ids and obj.knowledge_point_ids:
+                canonical = json.dumps(obj.knowledge_point_ids, separators=(',', ':'))
+                return 'knowledge_point', f'knowledge:{hashlib.sha256(canonical.encode()).hexdigest()[:16]}'
             canonical = json.dumps(obj.question_ids, separators=(',', ':'))
             return obj.source_type, f'custom:{hashlib.sha256(canonical.encode()).hexdigest()[:16]}'
         source_ref = obj.source_type
@@ -943,6 +946,9 @@ class PracticeService:
                 shuffle=obj.shuffle,
                 limit=obj.limit or 500,
                 region=obj.region,
+                user_id=user_id,
+                # 顺序练习要保持题库既定顺序，只有随机练习才做「未做优先」
+                prioritize_unseen=obj.shuffle,
             )
         else:
             # 用户内容来源的章节过滤与整库投递同口径：展开选中章节及其全部后代
@@ -970,10 +976,15 @@ class PracticeService:
                 shuffle=obj.shuffle,
                 limit=obj.limit or 500,
                 region=obj.region,
+                prioritize_unseen=obj.shuffle,
             )
         if not candidates:
             raise errors.RequestError(msg='当前条件下没有可投递题目')
-        if obj.source_type == 'custom' and len(candidates) != min(len(obj.question_ids), obj.limit or 500):
+        if (
+            obj.source_type == 'custom'
+            and obj.question_ids
+            and len(candidates) != min(len(obj.question_ids), obj.limit or 500)
+        ):
             raise errors.NotFoundError(msg='部分指定题目不存在、未发布或不可访问')
 
         if initial_decision is not None and initial_decision.reason_code in {
