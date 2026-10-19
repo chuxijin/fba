@@ -435,6 +435,8 @@ async def _label_one(
         'confidence': None,
         'status': 'failed',
         'note': '',
+        'engine_used': engine,
+        'fell_back': False,
     }
 
     try:
@@ -529,6 +531,23 @@ async def _label_one(
 
 # ============ 主入口 ============
 
+#: 主引擎出现这些状态时，认为它「没搞定」，交给兜底引擎重试同一题。
+#: - failed  调用炸了 / 返回不可解析
+#: - invalid 返回了不存在的知识点 id
+#: - abstain 模型主动弃权（System One 常见，表示选项里没有它敢选的）
+#: - skipped 置信度低于阈值（摇摆题，决策模型的典型失败形态）
+_FALLBACK_STATUSES = frozenset({'failed', 'invalid', 'abstain', 'skipped'})
+
+#: 用于在 note 里写中文结论，方便页面直接显示
+_STATUS_CN = {
+    'written': '已写入',
+    'dry_run': '已判定',
+    'skipped': '低置信跳过',
+    'abstain': '模型弃权',
+    'invalid': '非法输出',
+    'failed': '调用失败',
+}
+
 
 @dataclass
 class _Engine:
@@ -579,6 +598,105 @@ async def _init_engine(
     return _Engine(http=http, point_lines=point_lines, jev_settings=None, model=model, provider=provider)
 
 
+async def _init_fallback_engine(
+    db: AsyncSession,
+    *,
+    engine: str,
+    fallback_engine: str,
+    points: list[dict[str, Any]],
+    with_other: bool,
+    use_description: bool,
+    model_id: str | None,
+) -> _Engine | None:
+    """按需建兜底引擎：不需要降级、或没有可用兜底模型时返回 None。
+
+    兜底挂掉不该拖垮主流程，所以异常在这里被吞掉并降级能力直接关闭。
+    """
+    if fallback_engine == 'none' or fallback_engine == engine:
+        return None
+    try:
+        return await _init_engine(
+            db,
+            engine=fallback_engine,
+            points=points,
+            with_other=with_other,
+            use_description=use_description,
+            provider_id=None,
+            model_id=model_id,
+        )
+    except Exception as exc:
+        log.warning('兜底引擎 %s 初始化失败，本次不降级：%s', fallback_engine, exc)
+        return None
+
+
+async def _label_with_fallback(
+    *,
+    db: AsyncSession,
+    runner: _Engine,
+    engine: Engine,
+    fallback_runner: _Engine | None,
+    fallback_engine: str,
+    question: dict[str, Any],
+    point_by_id: dict[int, dict[str, Any]],
+    threshold: Decimal,
+    system_id: int,
+    user_id: int,
+    write: bool,
+) -> dict[str, Any]:
+    """跑一题；主引擎没搞定时用兜底引擎重试同一题，并合并成一条记录。"""
+    record = await _label_one(
+        db=db,
+        http=runner.http,
+        question=question,
+        point_by_id=point_by_id,
+        engine=engine,
+        threshold=threshold,
+        system_id=system_id,
+        user_id=user_id,
+        write=write,
+        jev_settings=runner.jev_settings,
+        point_lines=runner.point_lines,
+        model=runner.model,
+        provider=runner.provider,
+    )
+    if fallback_runner is None or record['status'] not in _FALLBACK_STATUSES:
+        return record
+
+    primary_cn = _STATUS_CN.get(record['status'], record['status'])
+    fb = await _label_one(
+        db=db,
+        http=fallback_runner.http,
+        question=question,
+        point_by_id=point_by_id,
+        engine=fallback_engine,
+        threshold=threshold,
+        system_id=system_id,
+        user_id=user_id,
+        write=write,
+        jev_settings=fallback_runner.jev_settings,
+        point_lines=fallback_runner.point_lines,
+        model=fallback_runner.model,
+        provider=fallback_runner.provider,
+    )
+    fallback_cn = _STATUS_CN.get(fb['status'], fb['status'])
+
+    # 兜底引擎判得更差（还是 failed/abstain）时保留主引擎的记录，只记下两边都试过了
+    if fb['status'] in {'failed', 'abstain'} and record['status'] != 'failed':
+        primary_note = record['note']
+        record['fell_back'] = True
+        record['note'] = (
+            f'[主引擎 {engine}：{primary_cn}，兜底 {fallback_engine} 也没搞定] {primary_note}'
+        ).strip()
+        return record
+
+    fb_note = fb['note']
+    fb['fell_back'] = True
+    fb['note'] = (
+        f'[主引擎 {engine}：{primary_cn}] → [兜底 {fallback_engine}：{fallback_cn}] {fb_note}'
+    ).strip()
+    return fb
+
+
 async def run_autolabel(
     db: AsyncSession,
     *,
@@ -600,11 +718,16 @@ async def run_autolabel(
     write: bool = False,
     provider_id: int | None = None,
     model_id: str | None = None,
+    fallback_engine: str = 'chat',
+    fallback_model_id: str | None = None,
     sleep: float = 0.05,
 ) -> dict[str, Any]:
     """跑一批 AI 标注，同步返回结果。
 
     `write=False` 是干跑（只统计不落库），**先干跑看一眼再落库**。
+
+    `fallback_engine` 指定主引擎没搞定时的兜底（`failed`/`invalid`/`abstain`/`skipped`），
+    传 `'none'` 关闭降级 —— 此时这些题会如实标成失败/弃权，留给人处理。
     """
     if not any([section_ids, bank_ids, question_ids]):
         msg = '必须至少指定章节、题库或题目之一，避免误伤全库'
@@ -643,6 +766,8 @@ async def run_autolabel(
         'write': write,
         'threshold': float(threshold_dec),
         'engine': engine,
+        # ⚠️ 兜底引擎此时还没初始化（下面才建），先记请求值，循环后按实际可用性回填
+        'fallback_engine': 'none' if fallback_engine == engine else fallback_engine,
         'items': [],
         'statistics': {},
         'elapsed_seconds': 0.0,
@@ -665,22 +790,30 @@ async def run_autolabel(
         provider_id=provider_id,
         model_id=model_id,
     )
+    # 兜底引擎按需初始化：只有真的发生降级才付出连接/解析成本
+    fallback_runner = await _init_fallback_engine(
+        db,
+        engine=engine,
+        fallback_engine=fallback_engine,
+        points=points,
+        with_other=with_other,
+        use_description=use_description,
+        model_id=fallback_model_id,
+    )
     try:
         for index, question in enumerate(questions, start=1):
-            record = await _label_one(
+            record = await _label_with_fallback(
                 db=db,
-                http=runner.http,
+                runner=runner,
+                engine=engine,
+                fallback_runner=fallback_runner,
+                fallback_engine=fallback_engine,
                 question=question,
                 point_by_id=point_by_id,
-                engine=engine,
                 threshold=threshold_dec,
                 system_id=system_id,
                 user_id=user_id,
                 write=write,
-                jev_settings=runner.jev_settings,
-                point_lines=runner.point_lines,
-                model=runner.model,
-                provider=runner.provider,
             )
             counters[record['status']] += 1
             # 干跑返回全部明细；落库时成功项只回显前 200 条，避免响应体过大
@@ -695,13 +828,20 @@ async def run_autolabel(
         if write:
             await db.commit()
         await runner.aclose()
+        if fallback_runner is not None:
+            await fallback_runner.aclose()
 
     result['items'] = items
     result['statistics'] = counters
+    # 回填实际生效的兜底引擎（初始化失败时会从 chat 退回 none）
+    result['fallback_engine'] = fallback_engine if fallback_runner is not None else 'none'
+    result['fell_back_count'] = sum(1 for r in items if r.get('fell_back'))
     result['elapsed_seconds'] = round(time.monotonic() - started, 2)
     log.info(
-        'AI 标注完成：引擎 %s，处理 %s 题，写入 %s，跳过 %s，耗时 %s 秒',
+        'AI 标注完成：引擎 %s（兜底 %s，降级 %s 题），处理 %s 题，写入 %s，跳过 %s，耗时 %s 秒',
         engine,
+        result['fallback_engine'],
+        result['fell_back_count'],
         result['processed'],
         counters['written'] or counters['dry_run'],
         counters['skipped'],
@@ -710,20 +850,49 @@ async def run_autolabel(
     return result
 
 
-async def list_decision_models(db: AsyncSession) -> list[dict[str, Any]]:
-    """给页面的模型下拉用：所有已启用的决策模型通道。"""
+async def _list_models(db: AsyncSession, *, decision: bool) -> list[dict[str, Any]]:
+    """模型下拉数据源。
+
+    `decision=True` 只取决策模型通道（`type=11`），`False` 取其余全部（对话模型）。
+    ⚠️ 两种引擎共用同一段 SQL，只靠 `want_decision` 翻转匹配方向，避免两份 SQL 走偏。
+    """
     sql = """
         SELECT p.id AS provider_id, p.name AS provider_name, p.api_host,
                m.model_id, m.id AS model_id_pk
         FROM ai_model m
         JOIN ai_provider p ON p.id = m.provider_id
-        WHERE p.type = :ptype AND p.status = 1 AND p.deleted = 0
-          AND m.status = 1 AND m.deleted = 0
+        WHERE p.status = 1 AND p.deleted = 0 AND m.status = 1 AND m.deleted = 0
+          AND (
+                (:want_decision AND p.type = CAST(:ptype AS SMALLINT))
+             OR ((NOT :want_decision) AND p.type != CAST(:ptype AS SMALLINT))
+          )
         ORDER BY p.id, m.id
     """
     rows = (
-        (await db.execute(text(sql), {'ptype': int(AIProviderType.decision_model)}))
+        (
+            await db.execute(
+                text(sql),
+                {
+                    'want_decision': decision,
+                    'ptype': int(AIProviderType.decision_model),
+                },
+            )
+        )
         .mappings()
         .all()
     )
     return [dict(row) for row in rows]
+
+
+async def list_decision_models(db: AsyncSession) -> list[dict[str, Any]]:
+    """给页面的模型下拉用：所有已启用的决策模型通道。"""
+    return await _list_models(db, decision=True)
+
+
+async def list_chat_models(db: AsyncSession) -> list[dict[str, Any]]:
+    """给页面的「对话模型」下拉用：所有已启用的非决策模型通道。
+
+    ⚠️ 之前兜底引擎是 `order_by(AIModel.id.desc()).limit(1)` 静默取 id 最大的那条，
+    用户根本不知道自己用的是哪个模型。现在页面可显式指定，走 `fallback_model_id`。
+    """
+    return await _list_models(db, decision=False)

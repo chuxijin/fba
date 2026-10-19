@@ -27,6 +27,20 @@ class AutolabelParam(SchemaBase):
     provider_id: int | None = Field(None, gt=0, description='AI 供应商 ID；留空自动取')
     model_id: str | None = Field(None, description='模型 ID；留空自动取')
 
+    # ---- 降级兜底 ----
+    fallback_engine: Literal['jev', 'chat', 'none'] = Field(
+        'chat',
+        description=(
+            '主引擎没搞定时的兜底：'
+            'jev→chat 表示决策模型失败/弃权/低置信时自动改用对话模型重试同一题；'
+            "'none' 表示不降级（保持只报失败，把题留给人）"
+        ),
+    )
+    fallback_model_id: str | None = Field(
+        None,
+        description='兜底引擎用的模型 ID；留空则自动取该类型下任意可用模型',
+    )
+
     # ---- 行为开关 ----
     threshold: float = Field(0.6, ge=0, le=1, description='低于此置信度直接丢弃')
     limit: int = Field(200, ge=1, le=2000, description='最多处理多少题（同步执行，上限 2000）')
@@ -61,6 +75,11 @@ class AutolabelItem(SchemaBase):
     confidence: float | None = None
     status: Literal['written', 'dry_run', 'skipped', 'abstain', 'invalid', 'failed']
     note: str = ''
+    engine_used: Literal['jev', 'chat'] | None = Field(
+        None,
+        description='实际判定用的引擎；与请求的 engine 不同说明发生了降级',
+    )
+    fell_back: bool = Field(False, description='主引擎没搞定、已由兜底引擎接管')
 
 
 class AutolabelBankSummary(SchemaBase):
@@ -80,6 +99,8 @@ class AutolabelResult(SchemaBase):
     write: bool
     threshold: float
     engine: str
+    fallback_engine: str = Field('none', description='实际生效的兜底引擎；none=未启用或初始化失败')
+    fell_back_count: int = Field(0, description='发生降级、由兜底引擎接管判定的题数')
     elapsed_seconds: float
     truncated: bool = Field(False, description='命中数超过 limit，本次只跑了一部分')
 
@@ -92,6 +113,10 @@ class DecisionModelItem(SchemaBase):
     api_host: str
     model_id: str
     model_id_pk: int
+
+
+class ChatModelItem(DecisionModelItem):
+    """对话模型下拉用，字段与决策模型完全一致（区分名字只为页面语义清晰）。"""
 
 
 class ChapterNode(SchemaBase):

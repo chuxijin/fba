@@ -25,6 +25,7 @@ from backend.app.question_bank_v2.schema.analytics import (
     GetBankProgressBrief,
     GetBankProgressDetail,
     GetBankWrongSectionCounts,
+    GetCollectionProgressBatch,
     GetCollectionProgressSummary,
     GetKnowledgePointTrends,
     GetPracticeRankList,
@@ -268,7 +269,7 @@ class AnalyticsService:
                 best[key] = (row['id'], row['session_key'])
         scopes: dict[tuple[Any, Any], dict[str, str]] = defaultdict(dict)
         for (section_id, question_type, mode), (_, session_key) in best.items():
-            scopes[(section_id, question_type)][mode] = session_key
+            scopes[section_id, question_type][mode] = session_key
         return [
             ResumableScope(
                 section_id=section_id,
@@ -398,38 +399,100 @@ class AnalyticsService:
         :param include_descendants: 是否包含子合集
         :return:
         """
-        collection = await collection_dao.get(db, collection_id)
-        if collection is None or collection.status != 'active':
-            raise errors.NotFoundError(msg='题库合集不存在')
-
-        collection_ids = (
-            await collection_dao.get_subtree_ids(db, collection_id)
-            if include_descendants
-            else [collection_id]
+        batch = await AnalyticsService.get_collection_progress_summaries(
+            db=db, user_id=user_id, collection_ids=[collection_id], include_descendants=include_descendants
         )
-        mounts = await collection_bank_dao.get_effective_bank_revisions(db, collection_ids)
+        return batch.items[0]
 
-        # 同一题库可挂多处：follow_latest 优先，其次 revision_no 最大
-        best: dict[int, dict[str, Any]] = {}
-        for mount in mounts:
-            bank_id = int(mount['bank_id'])
-            current = best.get(bank_id)
-            if current is None:
-                best[bank_id] = mount
-                continue
-            better = (
-                (bool(mount['follow_latest']), int(mount['revision_no']))
-                > (bool(current['follow_latest']), int(current['revision_no']))
-            )
-            if better:
-                best[bank_id] = mount
+    @staticmethod
+    async def get_collection_progress_summaries(
+        *, db: AsyncSession, user_id: int, collection_ids: list[int], include_descendants: bool = True
+    ) -> GetCollectionProgressBatch:
+        """批量展开合集并聚合进度，目录、挂载及用户进度各查询一次。"""
+        root_ids = list(dict.fromkeys(collection_ids))
+        if not root_ids:
+            return GetCollectionProgressBatch()
+        collections = await collection_dao.get_progress_scope_rows(
+            db, root_ids, include_descendants=include_descendants
+        )
+        collection_map = {int(row['id']): row for row in collections}
+        for root_id in root_ids:
+            root = collection_map.get(root_id)
+            if root is None or root['status'] != 'active':
+                raise errors.NotFoundError(msg='题库合集不存在')
 
-        revision_pairs = [(bank_id, int(m['bank_revision_id'])) for bank_id, m in best.items()]
+        scopes = AnalyticsService._build_collection_progress_scopes(
+            root_ids, collections, include_descendants=include_descendants
+        )
+        mounts = await collection_bank_dao.get_effective_bank_revisions(
+            db, list(dict.fromkeys(cid for scope in scopes.values() for cid in scope))
+        )
+        pairs_by_collection = AnalyticsService._get_collection_revision_pairs(scopes, mounts)
+        revision_pairs = list(dict.fromkeys(pair for pairs in pairs_by_collection.values() for pair in pairs))
         rows = await learning_analytics_dao.get_bank_progress_summary_rows(
             db, user_id=user_id, revision_pairs=revision_pairs,
         )
         row_map = {int(row['bank_revision_id']): row for row in rows}
+        return GetCollectionProgressBatch(items=[
+            AnalyticsService._build_collection_progress_summary(root_id, pairs_by_collection[root_id], row_map)
+            for root_id in root_ids
+        ])
 
+    @staticmethod
+    def _build_collection_progress_scopes(
+        root_ids: list[int], collections: list[dict[str, Any]], *, include_descendants: bool
+    ) -> dict[int, list[int]]:
+        """从共享目录展开各根的公开子树，并防止循环父子关系。"""
+        children: dict[int | None, list[int]] = defaultdict(list)
+        for row in collections:
+            if row['status'] == 'active' and row['visibility'] == 'public':
+                children[row['parent_id']].append(int(row['id']))
+        scopes: dict[int, list[int]] = {}
+        for root_id in root_ids:
+            scope: list[int] = []
+            seen: set[int] = set()
+            stack = [root_id]
+            while stack:
+                current = stack.pop()
+                if current in seen:
+                    continue
+                seen.add(current)
+                scope.append(current)
+                if include_descendants:
+                    stack.extend(children.get(current, []))
+            scopes[root_id] = scope
+        return scopes
+
+    @staticmethod
+    def _get_collection_revision_pairs(
+        scopes: dict[int, list[int]], mounts: list[dict[str, Any]]
+    ) -> dict[int, list[tuple[int, int]]]:
+        """分别选取各合集范围内每个题库的有效版本。"""
+        mounts_by_collection: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for mount in mounts:
+            mounts_by_collection[int(mount['collection_id'])].append(mount)
+
+        pairs_by_collection: dict[int, list[tuple[int, int]]] = {}
+        for root_id, scope in scopes.items():
+            # 同一题库可挂多处：follow_latest 优先，其次 revision_no 最大。
+            best: dict[int, dict[str, Any]] = {}
+            for cid in scope:
+                for mount in mounts_by_collection.get(cid, []):
+                    bank_id = int(mount['bank_id'])
+                    current = best.get(bank_id)
+                    if current is None or (
+                        (bool(mount['follow_latest']), int(mount['revision_no']))
+                        > (bool(current['follow_latest']), int(current['revision_no']))
+                    ):
+                        best[bank_id] = mount
+            pairs_by_collection[root_id] = [(bank_id, int(m['bank_revision_id'])) for bank_id, m in best.items()]
+        return pairs_by_collection
+
+    @staticmethod
+    def _build_collection_progress_summary(
+        collection_id: int, revision_pairs: list[tuple[int, int]], row_map: dict[int, dict[str, Any]]
+    ) -> GetCollectionProgressSummary:
+        """使用共享聚合结果构建单个合集摘要，重叠合集分别计算自己的作用域。"""
         banks: list[GetBankProgressBrief] = []
         totals = {'total_count': 0, 'answered_count': 0, 'correct_count': 0, 'wrong_count': 0}
         for bank_id, revision_id in revision_pairs:

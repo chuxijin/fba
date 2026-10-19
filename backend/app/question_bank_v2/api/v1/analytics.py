@@ -5,6 +5,8 @@ from fastapi import APIRouter, Path, Query, Request
 from backend.app.question_bank_v2.schema.analytics import (
     GetBankProgressDetail,
     GetBankWrongSectionCounts,
+    GetCollectionProgressBatch,
+    GetCollectionProgressBatchParam,
     GetCollectionProgressSummary,
     GetKnowledgePointTrends,
     GetPracticeRankList,
@@ -17,6 +19,23 @@ from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 
 router = APIRouter(dependencies=[DependsJwtAuth])
+
+
+@router.post(
+    '/collections/progress/summaries',
+    summary='批量获取合集内题库学习进度摘要',
+    name='qbank_v2_get_collection_progress_summaries',
+)
+async def get_collection_progress_summaries(
+    request: Request, db: CurrentSession, obj: GetCollectionProgressBatchParam
+) -> ResponseSchemaModel[GetCollectionProgressBatch]:
+    data = await analytics_service.get_collection_progress_summaries(
+        db=db,
+        user_id=request.user.id,
+        collection_ids=obj.collection_ids,
+        include_descendants=obj.include_descendants,
+    )
+    return response_base.success(data=data)
 
 
 @router.get(

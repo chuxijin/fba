@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -156,6 +156,15 @@ class PracticeRankItem(SchemaBase):
     value: Decimal = Field(ge=0, description='排名指标值')
 
 
+class GetCollectionProgressBatchParam(SchemaBase):
+    """批量读取合集进度参数"""
+
+    collection_ids: list[Annotated[int, Field(gt=0)]] = Field(
+        min_length=1, max_length=100, description='合集 ID 列表，最多 100 个，重复 ID 自动去重'
+    )
+    include_descendants: bool = Field(True, description='是否包含子合集')
+
+
 class GetCollectionProgressSummary(SchemaBase):
     """合集作用域下的题库进度摘要，供首页一次性渲染 tab 汇总与列表进度"""
 
@@ -167,6 +176,12 @@ class GetCollectionProgressSummary(SchemaBase):
     progress_rate: Decimal = Field(ge=0, le=1, description='完成率')
     accuracy_rate: Decimal = Field(ge=0, le=1, description='已判题正确率')
     banks: list[GetBankProgressBrief] = Field(default_factory=list, description='作用域内各题库进度')
+
+
+class GetCollectionProgressBatch(SchemaBase):
+    """批量合集进度，按请求 ID 顺序返回"""
+
+    items: list[GetCollectionProgressSummary] = Field(default_factory=list, description='各合集进度摘要')
 
 
 class GetPracticeRankList(SchemaBase):
