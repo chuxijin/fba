@@ -6,7 +6,8 @@ from pydantic import ConfigDict, Field
 
 from backend.app.vocab.schema.user_book import GetUserBookWithProgress
 from backend.app.vocab.schema.word import GetWordDetail
-from backend.common.fsrs import ReviewForecast as ReviewForecast, ReviewResult as ReviewResult
+from backend.common.fsrs import ReviewForecast as ReviewForecast
+from backend.common.fsrs import ReviewResult as ReviewResult
 from backend.common.schema import SchemaBase
 
 
@@ -51,6 +52,7 @@ class StudySessionWord(SchemaBase):
 
     word: GetWordDetail = Field(description='单词详情')
     is_new: bool = Field(description='是否新词')
+    is_starred: bool = Field(default=False, description='是否收藏')
     user_word_id: int | None = Field(None, description='用户单词状态 ID(已学过时有值)')
 
 

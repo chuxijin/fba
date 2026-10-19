@@ -58,7 +58,9 @@ class StudyService:
                 word = await word_dao.select_model(db, uw.word_id)
                 if word:
                     detail = await StudyService._build_word_detail(db, word)
-                    words.append(StudySessionWord(word=detail, is_new=False, user_word_id=uw.id))
+                    words.append(
+                        StudySessionWord(word=detail, is_new=False, is_starred=uw.is_starred, user_word_id=uw.id)
+                    )
             review_count = len(words)
 
         # 2. 新词（在 'all' 或 'learn' 模式下加载）
