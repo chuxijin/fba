@@ -5,7 +5,7 @@ from typing import Any
 
 import sqlalchemy as sa
 
-from sqlalchemy import Select, cast, delete, or_, select
+from sqlalchemy import Select, and_, cast, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy_crud_plus import CRUDPlus
@@ -51,6 +51,30 @@ class CRUDRenderBookJob(CRUDPlus[RenderBookJob]):
         await db.flush()
         return job
 
+    def _domain_condition(self, *, cat_id: int | None, kp_cat_id: int | None, bank_ids: set[int] | None) -> Any:
+        """优先使用任务领域标签，仅为无标签的历史任务回退题库归属。"""
+        conditions = []
+        recorded_cat = self.model.metadata_json['cat_id'].as_string()
+        recorded_kp_cat = self.model.metadata_json['kp_cat_id'].as_string()
+        if cat_id is not None:
+            conditions.append(cast(recorded_cat, sa.BigInteger) == cat_id)
+        if kp_cat_id is not None:
+            conditions.append(
+                and_(
+                    recorded_cat.is_(None) if cat_id is not None else sa.true(),
+                    cast(recorded_kp_cat, sa.BigInteger) == kp_cat_id,
+                )
+            )
+        if bank_ids:
+            conditions.append(
+                and_(
+                    recorded_cat.is_(None),
+                    recorded_kp_cat.is_(None),
+                    cast(self.model.metadata_json['bank_id'].as_string(), sa.BigInteger).in_(bank_ids),
+                )
+            )
+        return or_(*conditions)
+
     def build_list_stmt(
         self,
         *,
@@ -90,15 +114,7 @@ class CRUDRenderBookJob(CRUDPlus[RenderBookJob]):
                 | self.model.job_id.ilike(like_keyword)
             )
         if cat_id is not None or kp_cat_id is not None:
-            conditions = []
-            if cat_id is not None:
-                conditions.append(cast(self.model.metadata_json['cat_id'].as_string(), sa.BigInteger) == cat_id)
-            if kp_cat_id is not None:
-                conditions.append(cast(self.model.metadata_json['kp_cat_id'].as_string(), sa.BigInteger) == kp_cat_id)
-            if bank_ids:
-                conditions.append(cast(self.model.metadata_json['bank_id'].as_string(), sa.BigInteger).in_(bank_ids))
-            if conditions:
-                stmt = stmt.where(or_(*conditions))
+            stmt = stmt.where(self._domain_condition(cat_id=cat_id, kp_cat_id=kp_cat_id, bank_ids=bank_ids))
 
         return stmt.order_by(self.model.created_time.desc(), self.model.id.desc())
 
