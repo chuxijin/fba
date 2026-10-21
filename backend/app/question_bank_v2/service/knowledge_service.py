@@ -10,6 +10,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.cache.knowledge_cache import points_tree_cache
+from backend.app.question_bank_v2.cache.public_knowledge_cache import public_knowledge_cache
 from backend.app.question_bank_v2.crud.crud_bank import bank_revision_dao
 from backend.app.question_bank_v2.crud.crud_knowledge import knowledge_point_dao, knowledge_system_dao
 from backend.app.question_bank_v2.crud.crud_mastery import user_knowledge_mastery_dao
@@ -32,12 +33,14 @@ from backend.app.question_bank_v2.schema.knowledge import (
     GetKnowledgeSystemListItem,
     GetKnowledgeTreeDetail,
     KnowledgeMasteryRadarNode,
+    KnowledgePublicSnapshot,
     UpdateKnowledgePointParam,
     UpdateKnowledgeSystemParam,
 )
 from backend.app.question_bank_v2.service.access_service import bank_access_service
 from backend.app.question_bank_v2.service.knowledge_mastery_service import KnowledgeMasteryService
 from backend.common.exception import errors
+from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
 
 
@@ -387,15 +390,34 @@ class KnowledgeService:
             bank_pk = bank.id
             revision_id = revision.id
 
-        points = await knowledge_point_dao.get_all(db, system.id)
-        if root_id is not None and not any(item.id == root_id for item in points):
-            raise errors.NotFoundError(msg='知识点不存在或不属于当前知识体系')
-        progress = await knowledge_point_dao.get_progress(
+        # 刷新任务可能在请求结束后继续，必须独立创建会话，不能复用请求 db。
+        bind = db.bind
+
+        async def load_public() -> KnowledgePublicSnapshot:
+            async with async_db_session(bind=bind) as public_db:
+                points = await knowledge_point_dao.get_all(public_db, system.id, root_id=root_id)
+                if root_id is not None and not points:
+                    raise errors.NotFoundError(msg='知识点不存在或不属于当前知识体系')
+                counts = await knowledge_point_dao.get_question_counts(
+                    public_db, points=points, bank_revision_id=revision_id
+                )
+                return KnowledgePublicSnapshot(
+                    points=[GetKnowledgePointNode.model_validate(point, from_attributes=True) for point in points],
+                    counts=counts,
+                    fresh_until=0,
+                )
+
+        snapshot = await public_knowledge_cache.get(system.id, root_id, revision_id, factory=load_public)
+        points = snapshot.points
+        progress = {point_id: dict(counts) for point_id, counts in snapshot.counts.items()}
+        user_progress = await knowledge_point_dao.get_user_progress(
             db,
-            system_id=system.id,
+            points=points,
             bank_revision_id=revision_id,
             user_id=user_id,
         )
+        for point_id, data in user_progress.items():
+            progress.setdefault(point_id, {}).update(data)
         tree = KnowledgeService._build_tree(points=points, progress=progress, root_id=root_id)
         totals = progress.get(root_id or 0, {})
         return GetKnowledgeTreeDetail(

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from backend.app.question_bank_v2.cache import knowledge_invalidation  # noqa: F401
 from backend.common.enums import DataBaseType
 from backend.common.log import log
 from backend.common.model import MappedBase

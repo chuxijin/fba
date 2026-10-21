@@ -1,7 +1,8 @@
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Select, and_, func, select
+from opentelemetry import trace
+from sqlalchemy import BigInteger, Select, and_, case, column, func, select, values
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -15,6 +16,7 @@ from backend.app.question_bank_v2.model.statistics import QbUserBankItemProgress
 from backend.app.question_bank_v2.schema.knowledge import KnowledgePointAssignmentParam
 
 DEFAULT_KNOWLEDGE_SYSTEM_VERSION = 'default'
+tracer = trace.get_tracer(__name__)
 
 
 class CRUDKnowledgeSystem(CRUDPlus[QbKnowledgeSystem]):
@@ -95,12 +97,30 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
         stmt = select(QbKnowledgePoint).where(QbKnowledgePoint.id == pk, QbKnowledgePoint.deleted == 0)
         return (await db.execute(stmt)).scalars().first()
 
-    async def get_all(self, db: AsyncSession, system_id: int) -> Sequence[QbKnowledgePoint]:
+    async def get_all(
+        self, db: AsyncSession, system_id: int, *, root_id: int | None = None
+    ) -> Sequence[QbKnowledgePoint]:
         stmt = (
             select(QbKnowledgePoint)
             .where(QbKnowledgePoint.system_id == system_id, QbKnowledgePoint.deleted == 0)
             .order_by(QbKnowledgePoint.depth, QbKnowledgePoint.sort_order, QbKnowledgePoint.id)
         )
+        if root_id is not None:
+            subtree = (
+                select(QbKnowledgePoint.id)
+                .where(
+                    QbKnowledgePoint.id == root_id,
+                    QbKnowledgePoint.system_id == system_id,
+                    QbKnowledgePoint.deleted == 0,
+                )
+                .cte('point_subtree', recursive=True)
+            )
+            subtree = subtree.union_all(
+                select(QbKnowledgePoint.id)
+                .join(subtree, QbKnowledgePoint.parent_id == subtree.c.id)
+                .where(QbKnowledgePoint.system_id == system_id, QbKnowledgePoint.deleted == 0)
+            )
+            stmt = stmt.where(QbKnowledgePoint.id.in_(select(subtree.c.id)))
         return (await db.execute(stmt)).scalars().all()
 
     async def get_existing_ids(self, db: AsyncSession, point_ids: Sequence[int]) -> set[int]:
@@ -156,144 +176,232 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
         self,
         db: AsyncSession,
         *,
-        system_id: int,
+        points: Sequence[QbKnowledgePoint],
         bank_revision_id: int | None,
         user_id: int,
     ) -> dict[int, dict[str, Any]]:
-        """按知识点聚合题量与当前用户进度
+        """兼容调用：合并公共题量和实时用户进度。"""
+        progress = await self.get_question_counts(db, points=points, bank_revision_id=bank_revision_id)
+        user_progress = await self.get_user_progress(
+            db, points=points, bank_revision_id=bank_revision_id, user_id=user_id
+        )
+        for point_id, data in user_progress.items():
+            progress.setdefault(point_id, {}).update(data)
+        return progress
 
-        bank_revision_id 为空时不限定题库，跨全部启用的题库版本聚合，
-        供知识点详情页这类没有题库上下文的场景使用。
-        """
-        bank_item_filters = [
-            QbBankItem.is_active.is_(True),
-            QbBankItem.deleted == 0,
-        ]
+    @staticmethod
+    def _progress_scope(points: Sequence[Any], bank_revision_id: int | None) -> tuple[Any, list[Any]]:
+        """构造题量与个人统计共用的子树祖先关系和题库范围。"""
+        parent_by_id = {point.id: point.parent_id for point in points}
+        ancestor_pairs: list[tuple[int, int]] = []
+        for point_id in parent_by_id:
+            ancestor_pairs.append((0, point_id))
+            current = point_id
+            visited: set[int] = set()
+            while current in parent_by_id and current not in visited:
+                visited.add(current)
+                ancestor_pairs.append((current, point_id))
+                current = parent_by_id[current]
+        # 只传节点与祖先的少量关系；题目明细和逐题去重始终留在数据库。
+        ancestors = (
+            values(column('ancestor_id', BigInteger), column('point_id', BigInteger))
+            .data(ancestor_pairs)
+            .cte('point_ancestors')
+        )
+        bank_item_filters = [QbBankItem.is_active.is_(True), QbBankItem.deleted == 0]
         if bank_revision_id is not None:
             bank_item_filters.append(QbBankItem.bank_revision_id == bank_revision_id)
+        return ancestors, bank_item_filters
 
-        direct_stmt = (
+    async def get_question_counts(
+        self, db: AsyncSession, *, points: Sequence[Any], bank_revision_id: int | None
+    ) -> dict[int, dict[str, Any]]:
+        """公共题量，不连接任何用户表，可跨用户缓存。"""
+        if not points:
+            return {}
+        ancestors, bank_item_filters = self._progress_scope(points, bank_revision_id)
+        point_ids = [point.id for point in points]
+        direct_stmt = select(
+            QbQuestionKnowledgePoint.knowledge_point_id.label('point_id'),
+            (QbBankItem.id if bank_revision_id is not None else QbQuestionKnowledgePoint.question_id).label('item_id'),
+            QbQuestionKnowledgePoint.question_id,
+        ).where(
+            QbQuestionKnowledgePoint.knowledge_point_id.in_(point_ids),
+            QbQuestionKnowledgePoint.deleted == 0,
+        )
+        if bank_revision_id is not None:
+            direct_stmt = direct_stmt.join(
+                QbBankItem,
+                and_(QbBankItem.question_id == QbQuestionKnowledgePoint.question_id, *bank_item_filters),
+            )
+        else:
+            # EXISTS 避免同一道题在多个题库中出现时放大关联行数。
+            direct_stmt = direct_stmt.where(
+                select(QbBankItem.id)
+                .where(QbBankItem.question_id == QbQuestionKnowledgePoint.question_id, *bank_item_filters)
+                .exists()
+            )
+        direct = direct_stmt.distinct().cte('direct_questions')
+        tree_questions = (
+            select(ancestors.c.ancestor_id, direct.c.item_id, direct.c.question_id)
+            .join(direct, direct.c.point_id == ancestors.c.point_id)
+            .distinct()
+            .cte('tree_questions')
+        )
+        direct_counts = (
+            select(direct.c.point_id, func.count().label('direct_question_count'))
+            .group_by(direct.c.point_id)
+            .cte('direct_counts')
+        )
+        count_stmt = (
             select(
-                QbQuestionKnowledgePoint.knowledge_point_id,
-                func.count(
-                    func.distinct(QbBankItem.id if bank_revision_id is not None else QbBankItem.question_id)
-                ).label('direct_question_count'),
+                tree_questions.c.ancestor_id,
+                func.count().label('question_count'),
+                func.coalesce(func.max(direct_counts.c.direct_question_count), 0).label('direct_question_count'),
             )
-            .select_from(QbQuestionKnowledgePoint)
-            .join(
-                QbKnowledgePoint,
-                and_(
-                    QbKnowledgePoint.id == QbQuestionKnowledgePoint.knowledge_point_id,
-                    QbKnowledgePoint.system_id == system_id,
-                    QbKnowledgePoint.deleted == 0,
-                ),
+            .outerjoin(direct_counts, direct_counts.c.point_id == tree_questions.c.ancestor_id)
+            .group_by(tree_questions.c.ancestor_id)
+        )
+        with tracer.start_as_current_span('qbank.knowledge.question_counts') as span:
+            count_rows = (await db.execute(count_stmt)).mappings().all()
+            span.set_attribute('qbank.scope_points', len(points))
+            span.set_attribute('qbank.result_rows', len(count_rows))
+        return {int(row['ancestor_id']): dict(row) for row in count_rows}
+
+    async def get_user_progress(
+        self, db: AsyncSession, *, points: Sequence[Any], bank_revision_id: int | None, user_id: int
+    ) -> dict[int, dict[str, Any]]:
+        """实时个人作答与掌握度，不读取公共题量缓存中的用户数据。"""
+        if not points:
+            return {}
+        ancestors, bank_item_filters = self._progress_scope(points, bank_revision_id)
+        point_ids = [point.id for point in points]
+
+        # 从该用户已有进度出发；跨题库按最近有效作答判断，不能任取某个题项的进度。
+        item_column = (
+            QbUserBankItemProgress.bank_item_id if bank_revision_id is not None else QbUserBankItemProgress.question_id
+        )
+        scoped_progress = (
+            select(
+                item_column.label('item_id'),
+                QbUserBankItemProgress.last_is_correct,
+                func
+                .row_number()
+                .over(
+                    partition_by=item_column,
+                    order_by=(
+                        QbUserBankItemProgress.last_answered_time.desc().nulls_last(),
+                        QbUserBankItemProgress.id.desc(),
+                    ),
+                )
+                .label('position'),
             )
+            .select_from(QbUserBankItemProgress)
             .join(
                 QbBankItem,
+                and_(QbBankItem.id == QbUserBankItemProgress.bank_item_id, *bank_item_filters),
+            )
+            .where(
+                QbUserBankItemProgress.user_id == user_id,
+                QbUserBankItemProgress.deleted == 0,
+            )
+            .cte('scoped_progress')
+        )
+        user_questions = select(
+            QbQuestionKnowledgePoint.knowledge_point_id.label('point_id'),
+            scoped_progress.c.item_id,
+            scoped_progress.c.last_is_correct,
+        ).select_from(QbQuestionKnowledgePoint)
+        if bank_revision_id is not None:
+            user_questions = user_questions.join(
+                QbBankItem,
+                and_(QbBankItem.question_id == QbQuestionKnowledgePoint.question_id, *bank_item_filters),
+            )
+        user_questions = (
+            user_questions
+            .join(
+                scoped_progress,
                 and_(
-                    QbBankItem.question_id == QbQuestionKnowledgePoint.question_id,
-                    *bank_item_filters,
+                    scoped_progress.c.item_id
+                    == (QbBankItem.id if bank_revision_id is not None else QbQuestionKnowledgePoint.question_id),
+                    scoped_progress.c.position == 1,
                 ),
             )
-            .where(QbQuestionKnowledgePoint.deleted == 0)
-            .group_by(QbQuestionKnowledgePoint.knowledge_point_id)
-        )
-        direct_rows = (await db.execute(direct_stmt)).mappings().all()
-
-        point_rows = (
-            await db.execute(
-                select(QbKnowledgePoint.id, QbKnowledgePoint.parent_id).where(
-                    QbKnowledgePoint.system_id == system_id,
-                    QbKnowledgePoint.deleted == 0,
-                )
+            .where(
+                QbQuestionKnowledgePoint.knowledge_point_id.in_(point_ids),
+                QbQuestionKnowledgePoint.deleted == 0,
             )
-        ).all()
-        parent_by_id = dict(point_rows)
-        ancestor_cache: dict[int, tuple[int, ...]] = {}
+            .subquery()
+        )
+        user_tree = (
+            select(ancestors.c.ancestor_id, user_questions.c.item_id, user_questions.c.last_is_correct)
+            .select_from(ancestors)
+            .join(user_questions, user_questions.c.point_id == ancestors.c.point_id)
+            .distinct()
+            .cte('user_tree')
+        )
+        progress_stmt = select(
+            user_tree.c.ancestor_id,
+            func.count().label('answered_count'),
+            func.sum(case((user_tree.c.last_is_correct.is_(True), 1), else_=0)).label('correct_count'),
+        ).group_by(user_tree.c.ancestor_id)
+        with tracer.start_as_current_span('qbank.knowledge.user_progress') as span:
+            progress_rows = (await db.execute(progress_stmt)).mappings().all()
+            span.set_attribute('qbank.result_rows', len(progress_rows))
 
-        def ancestors(point_id: int) -> tuple[int, ...]:
-            if point_id in ancestor_cache:
-                return ancestor_cache[point_id]
-            chain: list[int] = []
-            current: int | None = point_id
-            visited: set[int] = set()
-            while current is not None and current not in visited:
-                visited.add(current)
-                chain.append(current)
-                current = parent_by_id.get(current)
-            ancestor_cache[point_id] = tuple(chain)
-            return ancestor_cache[point_id]
-
-        fact_stmt = (
+        user_mastery = (
             select(
-                QbQuestionKnowledgePoint.knowledge_point_id,
-                QbBankItem.id.label('bank_item_id'),
-                QbBankItem.question_id,
-                QbUserBankItemProgress.id.label('progress_id'),
-                QbUserBankItemProgress.last_is_correct,
-                QbUserQuestionMastery.id.label('mastery_id'),
-                QbUserQuestionMastery.state.label('mastery_state'),
+                QbQuestionKnowledgePoint.knowledge_point_id.label('point_id'),
+                (QbBankItem.id if bank_revision_id is not None else QbQuestionKnowledgePoint.question_id).label(
+                    'item_id'
+                ),
+                QbUserQuestionMastery.state,
                 QbUserQuestionMastery.mastery_score,
             )
             .select_from(QbQuestionKnowledgePoint)
             .join(
-                QbKnowledgePoint,
-                and_(
-                    QbKnowledgePoint.id == QbQuestionKnowledgePoint.knowledge_point_id,
-                    QbKnowledgePoint.system_id == system_id,
-                    QbKnowledgePoint.deleted == 0,
-                ),
-            )
-            .join(
-                QbBankItem,
-                and_(
-                    QbBankItem.question_id == QbQuestionKnowledgePoint.question_id,
-                    *bank_item_filters,
-                ),
-            )
-            .outerjoin(
-                QbUserBankItemProgress,
-                and_(
-                    QbUserBankItemProgress.user_id == user_id,
-                    QbUserBankItemProgress.bank_item_id == QbBankItem.id,
-                    QbUserBankItemProgress.deleted == 0,
-                ),
-            )
-            .outerjoin(
                 QbUserQuestionMastery,
                 and_(
+                    QbUserQuestionMastery.question_id == QbQuestionKnowledgePoint.question_id,
                     QbUserQuestionMastery.user_id == user_id,
-                    QbUserQuestionMastery.question_id == QbBankItem.question_id,
                     QbUserQuestionMastery.deleted == 0,
                 ),
             )
-            .where(QbQuestionKnowledgePoint.deleted == 0)
-        )
-        facts = (await db.execute(fact_stmt)).mappings().all()
-        # 限定单一题库版本时按编排项计数；跨题库聚合时同一道题会出现在多个题库，
-        # 必须按题目去重，否则题量和作答数会被重复计算。
-        dedupe_field = 'bank_item_id' if bank_revision_id is not None else 'question_id'
-        buckets: dict[int, dict[int, Any]] = {0: {}}
-        for fact in facts:
-            for ancestor_id in (*ancestors(int(fact['knowledge_point_id'])), 0):
-                buckets.setdefault(ancestor_id, {}).setdefault(int(fact[dedupe_field]), fact)
-
-        progress: dict[int, dict[str, Any]] = {}
-        for point_id, item_facts in buckets.items():
-            values = item_facts.values()
-            mastery_values = [fact['mastery_score'] for fact in values if fact['mastery_id'] is not None]
-            progress[point_id] = {
-                'question_count': len(item_facts),
-                'answered_count': sum(fact['progress_id'] is not None for fact in values),
-                'correct_count': sum(fact['last_is_correct'] is True for fact in values),
-                'mastered_count': sum(fact['mastery_state'] == 'mastered' for fact in values),
-                'mastery_sum': sum(mastery_values),
-                'mastery_sample_count': len(mastery_values),
-            }
-        for row in direct_rows:
-            progress.setdefault(int(row['knowledge_point_id']), {})['direct_question_count'] = int(
-                row['direct_question_count']
+            .where(
+                QbQuestionKnowledgePoint.knowledge_point_id.in_(point_ids),
+                QbQuestionKnowledgePoint.deleted == 0,
             )
+        )
+        if bank_revision_id is not None:
+            user_mastery = user_mastery.join(
+                QbBankItem,
+                and_(QbBankItem.question_id == QbQuestionKnowledgePoint.question_id, *bank_item_filters),
+            )
+        else:
+            user_mastery = user_mastery.where(
+                select(QbBankItem.id)
+                .where(QbBankItem.question_id == QbQuestionKnowledgePoint.question_id, *bank_item_filters)
+                .exists()
+            )
+        user_mastery = user_mastery.subquery()
+        mastery_tree = (
+            select(ancestors.c.ancestor_id, user_mastery.c.item_id, user_mastery.c.state, user_mastery.c.mastery_score)
+            .join(user_mastery, user_mastery.c.point_id == ancestors.c.point_id)
+            .distinct()
+            .cte('mastery_tree')
+        )
+        mastery_stmt = select(
+            mastery_tree.c.ancestor_id,
+            func.sum(case((mastery_tree.c.state == 'mastered', 1), else_=0)).label('mastered_count'),
+            func.sum(mastery_tree.c.mastery_score).label('mastery_sum'),
+            func.count().label('mastery_sample_count'),
+        ).group_by(mastery_tree.c.ancestor_id)
+        with tracer.start_as_current_span('qbank.knowledge.user_mastery') as span:
+            mastery_rows = (await db.execute(mastery_stmt)).mappings().all()
+            span.set_attribute('qbank.result_rows', len(mastery_rows))
+        progress: dict[int, dict[str, Any]] = {}
+        for row in (*progress_rows, *mastery_rows):
+            progress.setdefault(int(row['ancestor_id']), {}).update(row)
         return progress
 
 

@@ -16,6 +16,8 @@ from starlette_context.middleware import ContextMiddleware
 from starlette_context.plugins import RequestIdPlugin
 
 from backend import __version__
+from backend.app.question_bank_v2.cache.knowledge_invalidation import tasks as knowledge_invalidation_tasks
+from backend.app.question_bank_v2.cache.public_knowledge_cache import public_knowledge_cache
 from backend.common.cache.pubsub import cache_pubsub_manager
 from backend.common.exception.exception_handler import register_exception
 from backend.common.lifespan import lifespan_manager
@@ -84,6 +86,8 @@ async def register_init(app: FastAPI) -> AsyncGenerator[None, None]:
             await snowflake.shutdown()
 
         # 关闭 redis 连接
+        await public_knowledge_cache.close()
+        await asyncio.gather(*knowledge_invalidation_tasks, return_exceptions=True)
         await redis_client.aclose()
 
         # 释放数据库连接池

@@ -135,6 +135,14 @@ class GetKnowledgePointTreeResult(SchemaBase):
     points: list[GetKnowledgePointNode] = Field(default_factory=list, description='知识点树')
 
 
+class KnowledgePublicSnapshot(SchemaBase):
+    """缓存专用公共元数据，字段中不包含用户身份或进度。"""
+
+    points: list[GetKnowledgePointNode]
+    counts: dict[int, dict[str, int]]
+    fresh_until: float
+
+
 class KnowledgeMasteryRadarNode(SchemaBase):
     """知识点掌握度雷达图节点。"""
 
