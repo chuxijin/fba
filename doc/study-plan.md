@@ -48,6 +48,7 @@
 | D34 | 能力画像算法 | v1 采用正确率 75% + 速度 15% + 样本置信度 10% | 记录 `algorithm_version='ability_profile_v1'`，后续可升级 IRT/BKT |
 | D35 | AI 接入预留 | AI 读取同一组画像表，不新增核心事实表 | 未来仅在需要缓存 AI 报告时另加报告/快照表 |
 | D36 | 画像推荐计划项 | 首版不建推荐表，按画像实时生成计划项草稿 | API 返回 `strategy` / `strategy_version` / `reason_codes` / `payload`，后续可替换为 AI、缓存或人工干预策略 |
+| D37 | 错题复盘数据源 | V1 错题复盘已整体下线，统一使用 V2 复盘事件（`qbank_v2_question_review`）；D7/D12 中的 V1 表不再读写 | 归档说明见 `doc/archive/qbank-v1-wrong-review-retirement.md`；V1 三张表仅保留历史数据 |
 
 ---
 
@@ -227,9 +228,8 @@ UNIQUE (user_id, category_id, source_type)
 |---|---|
 | `sys_content` (`app_code='gongkao'`) | 复习/学习内容承载 |
 | `study_question` | 刷题题目源 |
-| `study_wrong_question_book` | 系统自动收录错题（错题复盘候选） |
-| `study_wrong_question_custom` | 用户自定义错题（错题复盘候选） |
-| `study_wrong_question_review` | 错题复盘记录（完成时写入） |
+| `qbank_v2_wrong_question_state` | 系统自动收录错题（错题复盘候选） |
+| `qbank_v2_question_review` | 错题复盘事件（`summary`=当时的错误思路，`review_data.prevention`=正确思路） |
 
 ### 2.3 配置项（`backend/core/conf.py`）
 ```python

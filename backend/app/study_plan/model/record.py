@@ -55,7 +55,7 @@ class StudyPlanRecord(Base):
     extra_data: Mapped[dict | None] = mapped_column(
         CompatibleJSONB,
         default=None,
-        comment='扩展数据（如错题复盘对应的 WrongQuestionReview ID 列表）',
+        comment='扩展数据（如错题复盘对应的 V2 复盘事件 ID 列表）',
     )
     completed_at: Mapped[datetime] = mapped_column(
         TimeZone,
