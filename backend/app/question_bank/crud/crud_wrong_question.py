@@ -474,7 +474,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         chapter_id: int | None = None,
         cat_bank_ids: set[int] | None = None,
         keyword: str | None = None,
-        exclude_reviewed: bool | None = None,
         is_mastered: bool | None = None,
     ) -> Select:
         """
@@ -486,7 +485,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
         :param chapter_id: 章节 ID(通过挂载筛选)
         :param cat_bank_ids: 分类子树展开后的题库 ID 集合(空集合表示该分类下无题库,直接返回空)
         :param keyword: 关键字搜索(搜索题干)
-        :param exclude_reviewed: 排除已复盘的错题
         :param is_mastered: 是否已掌握(基于 study_mastery_status,True=只看已掌握,False=只看未掌握含无记录)
         :return:
         """
@@ -535,19 +533,6 @@ class CRUDWrongQuestion(CRUDPlus[WrongQuestionBook]):
 
         if is_pinned is not None:
             stmt = stmt.where(WrongQuestionBook.is_pinned == is_pinned)
-
-        # 排除已复盘的错题
-        if exclude_reviewed is True:
-            from backend.app.question_bank.model.wrong_review import WrongQuestionReview
-
-            reviewed_subq = (
-                select(WrongQuestionReview.wrong_book_id)
-                .where(WrongQuestionReview.user_id == user_id)
-                .where(WrongQuestionReview.wrong_book_id.isnot(None))
-                .distinct()
-                .scalar_subquery()
-            )
-            stmt = stmt.where(WrongQuestionBook.id.notin_(reviewed_subq))
 
         # 是否已掌握(基于 study_mastery_status,按 user_id + question_id 关联)
         if is_mastered is not None:

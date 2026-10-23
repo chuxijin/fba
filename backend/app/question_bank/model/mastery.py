@@ -12,7 +12,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.common.model import Base, TimeZone, UserMixin, id_key
 
 if TYPE_CHECKING:
-    from .practice import WrongQuestionCustom
     from .question import Question
 
 
@@ -45,11 +44,11 @@ class WrongMasteryStatus(Base, UserMixin):
         default=None,
         comment='关联题库题目 ID',
     )
+    # V1 自主录入错题已下线，列保留仅用于历史数据兼容，不再关联已删除的模型
     custom_question_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
-        sa.ForeignKey('study_wrong_question_custom.id', ondelete='CASCADE'),
         default=None,
-        comment='关联自定义错题 ID',
+        comment='关联自定义错题 ID（历史列，V1 导入已下线）',
     )
     status: Mapped[str] = mapped_column(
         sa.String(16),
@@ -89,4 +88,3 @@ class WrongMasteryStatus(Base, UserMixin):
 
     # ============ 关系 ============
     question: Mapped[Question | None] = relationship(init=False, lazy='noload')
-    custom_question: Mapped[WrongQuestionCustom | None] = relationship(init=False, lazy='noload')

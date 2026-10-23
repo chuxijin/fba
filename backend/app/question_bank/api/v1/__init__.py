@@ -12,6 +12,7 @@ from backend.app.question_bank.api.v1.favorite import router as favorite_router
 from backend.app.question_bank.api.v1.home import router as home_router
 from backend.app.question_bank.api.v1.interaction import router as interaction_router
 from backend.app.question_bank.api.v1.knowledge_point import router as knowledge_point_router
+from backend.app.question_bank.api.v1.mastery import router as mastery_router
 from backend.app.question_bank.api.v1.material import router as material_router
 from backend.app.question_bank.api.v1.note import router as note_router
 from backend.app.question_bank.api.v1.parse import router as parse_router
@@ -22,8 +23,6 @@ from backend.app.question_bank.api.v1.upload import router as upload_router
 from backend.app.question_bank.api.v1.user_message import router as user_message_router
 from backend.app.question_bank.api.v1.user_settings import router as user_settings_router
 from backend.app.question_bank.api.v1.wrong_question import router as wrong_question_router
-from backend.app.question_bank.api.v1.wrong_review import router as wrong_review_router
-from backend.app.question_bank.api.v1.mastery import router as mastery_router
 
 router = APIRouter(prefix='/qbank')
 
@@ -47,5 +46,4 @@ router.include_router(favorite_router, prefix='/favorites', tags=['收藏'])
 router.include_router(knowledge_point_router, prefix='/knowledge-points', tags=['知识点'])
 router.include_router(upload_router, prefix='/upload', tags=['文件上传'])
 router.include_router(parse_router, prefix='/parse', tags=['文档提取'])
-router.include_router(wrong_review_router, prefix='/wrong-review', tags=['错题复盘'])
 router.include_router(mastery_router, prefix='/mastery', tags=['掌握状态'])

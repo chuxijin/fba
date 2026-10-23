@@ -8,8 +8,8 @@ from backend.app.question_bank.crud.crud_wrong_question import wrong_question_da
 from backend.app.question_bank.schema.wrong_question import (
     GetWrongQuestionDetail,
     GetWrongQuestionListItem,
-    WrongQuestionChapterCountItem,
     WrongQuestionAnswerCorrectParam,
+    WrongQuestionChapterCountItem,
     WrongQuestionGroupItem,
     WrongQuestionQueryParam,
 )
@@ -164,9 +164,7 @@ async def get_wrong_questions(
     # cat_id 通过分类子树展开为 bank_ids,与做题/收藏/笔记的领域语义保持一致
     cat_bank_ids: set[int] | None = None
     if query.cat_id is not None:
-        category_filter = await category_filter_service.get_question_filter(
-            db=db, cat_id=query.cat_id, kp_cat_id=None
-        )
+        category_filter = await category_filter_service.get_question_filter(db=db, cat_id=query.cat_id, kp_cat_id=None)
         cat_bank_ids = category_filter.bank_ids if category_filter else set()
 
     stmt = await wrong_question_dao.get_select(
@@ -176,7 +174,6 @@ async def get_wrong_questions(
         chapter_id=query.chapter_id,
         cat_bank_ids=cat_bank_ids,
         keyword=query.keyword,
-        exclude_reviewed=query.exclude_reviewed,
         is_mastered=query.is_mastered,
     )
     page_data = await paging_data(db, stmt, GetWrongQuestionListItem)
