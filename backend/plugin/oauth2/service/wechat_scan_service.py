@@ -10,9 +10,11 @@
 import base64
 import json
 import logging
+
 from uuid import uuid4
 
 import httpx
+
 from fastapi import BackgroundTasks, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -124,10 +126,14 @@ class WechatScanService:
           <rect width="280" height="280" fill="#f8fafc" rx="16"/>
           <rect x="20" y="20" width="240" height="240" fill="#ffffff" rx="12" stroke="#e2e8f0" stroke-width="2"/>
           <circle cx="140" cy="115" r="48" fill="#ecfdf5"/>
-          <path d="M125 115l10 10 25-25" stroke="#10b981" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          <text x="140" y="190" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="bold" fill="#0f172a">微信扫码快捷登录</text>
-          <text x="140" y="215" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#64748b">小程序授权直登 · 资产实时同步</text>
-          <text x="140" y="240" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#94a3b8">标识: {scene_id[:12]}</text>
+          <path d="M125 115l10 10 25-25" stroke="#10b981" stroke-width="6"
+                stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <text x="140" y="190" text-anchor="middle" font-family="sans-serif"
+                font-size="15" font-weight="bold" fill="#0f172a">微信扫码快捷登录</text>
+          <text x="140" y="215" text-anchor="middle" font-family="sans-serif"
+                font-size="11" fill="#64748b">小程序授权直登 · 资产实时同步</text>
+          <text x="140" y="240" text-anchor="middle" font-family="sans-serif"
+                font-size="10" fill="#94a3b8">标识: {scene_id[:12]}</text>
         </svg>"""
         b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
         return f"data:image/svg+xml;base64,{b64_svg}"
@@ -207,31 +213,35 @@ class WechatScanService:
         """
         开发与自动化测试专用：模拟手机微信扫码一键确认
         """
+        # 生产环境禁止使用：否则任何人无需真实微信授权即可拿到有效令牌
+        if settings.ENVIRONMENT == 'prod':
+            raise errors.NotFoundError(msg='扫码模拟接口仅用于开发与测试环境')
+
         redis_key = f"{SCAN_REDIS_PREFIX}{scene_id}"
         val = await redis_client.get(redis_key)
         if not val:
             raise errors.NotFoundError(msg="扫码场景已过期或不存在")
 
-        # 获取任意测试用户或超级管理员
+        # 必须解析到真实用户：不允许用不存在的 user_id 兜底签 token
+        if db is None:
+            raise errors.RequestError(msg='扫码模拟接口缺少数据库会话')
         user = None
-        if db is not None:
-            try:
-                if username:
-                    user = await user_dao.get_by_username(db, username)
-                if not user:
-                    from sqlalchemy import select
-                    from backend.app.admin.model import User
-                    res = await db.execute(select(User).limit(1))
-                    user = res.scalar_one_or_none()
-            except Exception as e:
-                logger.warning(f"获取测试用户失败，采用虚拟测试账号兜底: {e}")
-                user = None
+        if username:
+            user = await user_dao.get_by_username(db, username)
+        if not user:
+            from sqlalchemy import select
 
-        user_id = user.id if user else 9999
-        is_multi_login = user.is_multi_login if user else True
-        username_val = user.username if user else (username or "wx_test_student")
-        nickname_val = (user.nickname or user.username) if user else "微信测试考生"
-        avatar_val = (user.avatar or "") if user else ""
+            from backend.app.admin.model import User
+            res = await db.execute(select(User).limit(1))
+            user = res.scalar_one_or_none()
+        if user is None:
+            raise errors.NotFoundError(msg='未找到可用于模拟登录的测试用户')
+
+        user_id = user.id
+        is_multi_login = user.is_multi_login
+        username_val = user.username
+        nickname_val = user.nickname or user.username
+        avatar_val = user.avatar or ""
 
         from backend.common.security.token import create_access_token, create_refresh_token
 

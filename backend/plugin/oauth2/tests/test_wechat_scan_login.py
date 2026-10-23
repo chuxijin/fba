@@ -1,13 +1,33 @@
 # -*- coding: utf-8 -*-
 import pytest
+
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
 from backend.main import app
+from backend.tests.utils.db import async_test_engine
+
+
+async def _database_available() -> bool:
+    """探测测试数据库是否可用
+
+    mock 扫码确认现在必须落库解析真实用户（禁止用不存在的 user_id 签 token），
+    本地未准备测试库时该用例无法完成，直接跳过而不是伪造通过。
+    """
+    try:
+        async with async_test_engine.connect() as conn:
+            await conn.execute(text('select 1'))
+    except Exception:
+        return False
+    else:
+        return True
 
 
 @pytest.mark.anyio
-async def test_wechat_scan_login_full_lifecycle():
+async def test_wechat_scan_login_full_lifecycle() -> None:
     """测试微信小程序扫码登录全生命周期闭环"""
+    if not await _database_available():
+        pytest.skip('mock 扫码登录需要可用的测试数据库；当前环境连不上数据库')
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         # 1. 客户端请求生成二维码

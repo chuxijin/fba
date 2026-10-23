@@ -87,12 +87,14 @@ async def confirm_scan_login(
     description='无真机环境时一键模拟手机扫码确认，直接下发测试用户凭证',
 )
 async def mock_confirm_scan_login(
+    db: CurrentSessionTransaction,
     scene_id: Annotated[str, Body(description='场景唯一识别码')],
     username: Annotated[str | None, Body(description='指定登录的测试用户名')] = None,
 ) -> ResponseSchemaModel:
+    # 必须传入 db：否则服务层会退化到「用不存在的 user_id 签真 token」的兜底分支
     data = await wechat_scan_service.mock_confirm_scan(
         scene_id=scene_id,
         username=username,
+        db=db,
     )
     return response_base.success(data=data)
-
