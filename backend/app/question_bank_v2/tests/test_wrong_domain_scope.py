@@ -81,7 +81,8 @@ def test_domain_scope_is_absent_without_domain() -> None:
     sql = str(stmt.compile(compile_kwargs={'literal_binds': True}))
 
     assert 'qbank_v2_bank_category' not in sql
-    assert 'entry_metadata' not in sql
+    # 未设置领域时不应出现领域归属条件（列表仍会取 entry_metadata 里的章节名，属性值不算过滤条件）
+    assert RECORDED_DOMAIN_SQL not in sql
 
 
 def test_reviewed_and_plain_list_share_the_same_domain_scope() -> None:

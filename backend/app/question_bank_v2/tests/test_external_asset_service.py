@@ -54,7 +54,7 @@ def test_recognize_external_image_reuses_structured_vision(monkeypatch: pytest.M
             warnings=[],
         )
 
-    monkeypatch.setattr(service_module.wrong_review_recognition_service, 'recognize', fake_recognize)
+    monkeypatch.setattr(service_module.external_recognition_service, 'recognize', fake_recognize)
     result = asyncio.run(
         ExternalAssetService.recognize(
             db=None,

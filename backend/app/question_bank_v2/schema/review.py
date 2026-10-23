@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
+from backend.app.question_bank_v2.schema.material import GetQuestionMaterialDetail
 from backend.app.question_bank_v2.schema.question import (
     ContentFormat,
     QuestionAnswerParam,
@@ -26,6 +27,11 @@ EXTERNAL_ENTRY_SOURCES: tuple[str, ...] = ('manual', 'ocr', 'import')
 # 自主录入的错题没有题库归属，录入时把当时的领域写进 entry_metadata，列表按它做领域筛选。
 # 键名由服务端写、服务端读，客户端传入的同名键会被丢弃。
 ENTRY_METADATA_DOMAIN_KEY = 'domain_category_id'
+# entry_metadata 其余约定键：统一在 schema 定义，避免 service / crud 各写一份字面量
+ENTRY_METADATA_BATCH_KEY = 'import_batch_id'
+ENTRY_METADATA_SOURCE_SYSTEM_KEY = 'source_system'
+ENTRY_METADATA_EXTERNAL_KEY_KEY = 'external_key'
+ENTRY_METADATA_SECTION_KEY = 'section_name'
 
 
 class ExternalQuestionAssetParam(SchemaBase):
@@ -71,6 +77,25 @@ class RecognizeExternalWrongQuestionResult(SchemaBase):
     warnings: list[str] = Field(default_factory=list, description='识别警告')
 
 
+class ExternalMaterialParam(SchemaBase):
+    """外部错题附带的材料
+
+    传内联内容，由服务端创建材料实体、发布版本并建立题目关联；
+    客户端不需要也不应该预先创建材料。
+    """
+
+    link_key: str | None = Field(
+        None,
+        max_length=64,
+        description='同批次内的材料复用键：键相同只创建一份材料，供多道题共享',
+    )
+    title: str = Field(default='材料', min_length=1, max_length=255, description='材料标题')
+    content: str = Field(min_length=1, max_length=4_000_000, description='材料正文')
+    content_format: Literal['html', 'markdown', 'plain', 'json'] = Field(default='html', description='正文格式')
+    role: Literal['passage', 'prompt', 'reference', 'attachment'] = Field(default='passage', description='材料用途')
+    sort_order: int = Field(default=0, ge=0, description='材料展示顺序')
+
+
 class CreateExternalWrongQuestionParam(SchemaBase):
     """录入用户在外部遇到的错题参数"""
 
@@ -92,12 +117,20 @@ class CreateExternalWrongQuestionParam(SchemaBase):
         max_length=20,
         description='题干、选项或 OCR 来源资产',
     )
+    materials: list[ExternalMaterialParam] = Field(
+        default_factory=list,
+        max_length=5,
+        description='题目材料（篇章、资料等），服务端负责建材料实体并关联',
+    )
     source_system: str | None = Field(None, min_length=1, max_length=64, description='外部来源系统')
     external_key: str | None = Field(None, min_length=1, max_length=255, description='外部来源唯一键')
     source_url: str | None = Field(None, max_length=1024, description='外部来源地址')
     entry_metadata: dict[str, Any] = Field(default_factory=dict, description='OCR 置信度等采集上下文')
-    summary: str | None = Field(None, max_length=100_000, description='录入时的初步反思')
-    review_data: dict[str, Any] = Field(default_factory=dict, description='录入时的防错策略等结构化信息')
+    summary: str | None = Field(None, max_length=100_000, description='当时做题的错误思路')
+    review_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description='正确思路等结构化信息，约定键 prevention=正确的解题步骤',
+    )
     tag_ids: list[int] = Field(default_factory=list, max_length=20, description='录入时选择的复盘标签 ID')
     knowledge_point_ids: list[int] = Field(default_factory=list, max_length=50, description='录入时选择的知识点 ID')
 
@@ -122,6 +155,108 @@ class CreateExternalWrongQuestionParam(SchemaBase):
         return self
 
 
+class BatchImportItemResult(SchemaBase):
+    """批量录入中单条成功记录"""
+
+    external_key: str | None = Field(None, description='客户端外部来源唯一键')
+    question_id: int = Field(description='新建的稳定题目 ID')
+    wrong_state_id: int = Field(description='新建的错题状态 ID')
+
+
+class BatchImportFailure(SchemaBase):
+    """批量录入中单条失败记录"""
+
+    index: int = Field(ge=0, description='在请求数组中的下标')
+    external_key: str | None = Field(None, description='客户端外部来源唯一键')
+    reason: str = Field(description='失败原因，可直接展示给用户')
+
+
+class BatchImportResult(SchemaBase):
+    """批量录入结果：逐条独立成败，单条失败不影响其余题目入库"""
+
+    import_batch_id: str = Field(description='本次导入批次 ID，用于整批撤销')
+    total: int = Field(ge=0, description='请求总条数')
+    succeeded: int = Field(ge=0, description='成功条数')
+    failed: int = Field(ge=0, description='失败条数')
+    items: list[BatchImportItemResult] = Field(default_factory=list, description='成功记录')
+    failures: list[BatchImportFailure] = Field(default_factory=list, description='失败记录')
+
+
+class BatchUndoResult(SchemaBase):
+    """批次撤销结果"""
+
+    import_batch_id: str = Field(description='被撤销的导入批次 ID')
+    deleted_states: int = Field(ge=0, description='移除的错题本状态数')
+    deleted_questions: int = Field(ge=0, description='清理的私有题目数')
+    deleted_reviews: int = Field(ge=0, description='清理的复盘事件数')
+    deleted_materials: int = Field(default=0, ge=0, description='回收的孤儿材料数')
+
+
+class ImportHistoryBatchItem(SchemaBase):
+    """一次批量导入的聚合记录"""
+
+    import_batch_id: str = Field(description='导入批次 ID')
+    source: str | None = Field(None, description='导入时记录的来源（试卷名）')
+    total: int = Field(ge=0, description='该批次题目总数')
+    active: int = Field(ge=0, description='仍在错题本中的数量')
+    first_time: datetime = Field(description='批次首个题目的创建时间')
+    last_time: datetime = Field(description='批次最后一个题目的创建时间')
+
+
+class ImportHistorySingleItem(SchemaBase):
+    """无批次的单条外部录入（散题）"""
+
+    id: int = Field(description='错题状态 ID')
+    question_id: int = Field(description='稳定题目 ID')
+    entry_source: WrongEntrySource = Field(description='录入来源')
+    source: str | None = Field(None, description='录入时记录的来源')
+    stem: str = Field(description='题干')
+    created_time: datetime = Field(description='创建时间')
+
+
+class ImportHistoryResult(SchemaBase):
+    """导入记录：批量导入按批次聚合，散题按条列出"""
+
+    batches: list[ImportHistoryBatchItem] = Field(default_factory=list, description='批量导入批次')
+    singles: list[ImportHistorySingleItem] = Field(default_factory=list, description='散题')
+
+
+class ImportBatchPage(SchemaBase):
+    """批量导入批次的游标分页结果"""
+
+    items: list[ImportHistoryBatchItem] = Field(default_factory=list, description='当前页批次')
+    next_cursor: str | None = Field(None, description='下一页游标；空表示没有更多')
+    has_more: bool = Field(default=False, description='是否还有更多')
+
+
+class ImportSinglePage(SchemaBase):
+    """散题的游标分页结果"""
+
+    items: list[ImportHistorySingleItem] = Field(default_factory=list, description='当前页散题')
+    next_cursor: str | None = Field(None, description='下一页游标；空表示没有更多')
+    has_more: bool = Field(default=False, description='是否还有更多')
+
+
+class WrongCollectionItem(SchemaBase):
+    """错题集合：题库 / 导入批次 / 无批次散题"""
+
+    collection_type: Literal['bank', 'import', 'single'] = Field(description='集合类型')
+    collection_id: str = Field(default='', description='集合标识：题库 ID 或导入批次 ID；散题为空')
+    title: str = Field(description='集合名称')
+    total: int = Field(ge=0, description='集合内错题总数')
+    reviewed: int = Field(ge=0, description='已复盘数')
+    pending: int = Field(ge=0, description='待复盘数')
+    last_time: datetime | None = Field(None, description='最近错题时间')
+
+
+class WrongCollectionPage(SchemaBase):
+    """错题集合列表（游标分页）"""
+
+    items: list[WrongCollectionItem] = Field(default_factory=list, description='当前页集合')
+    next_cursor: str | None = Field(None, description='下一页游标；空表示没有更多')
+    has_more: bool = Field(default=False, description='是否还有更多')
+
+
 class CreateQuestionReviewParam(SchemaBase):
     """提交一次错题复盘参数
 
@@ -132,8 +267,11 @@ class CreateQuestionReviewParam(SchemaBase):
     idempotency_key: str = Field(min_length=8, max_length=128, description='客户端复盘提交幂等键')
     source_attempt_id: int | None = Field(None, gt=0, description='本次复盘关联的作答事实 ID')
     duration_ms: int = Field(default=0, ge=0, le=86_400_000, description='复盘用时毫秒')
-    summary: str | None = Field(None, max_length=100_000, description='学习者复盘总结')
-    review_data: dict[str, Any] = Field(default_factory=dict, description='防错策略等结构化内容')
+    summary: str | None = Field(None, max_length=100_000, description='当时做题的错误思路')
+    review_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description='正确思路等结构化内容，约定键 prevention=正确的解题步骤',
+    )
     tag_ids: list[int] = Field(default_factory=list, max_length=20, description='复盘标签 ID')
     knowledge_point_ids: list[int] = Field(default_factory=list, max_length=50, description='知识点 ID')
 
@@ -195,6 +333,7 @@ class GetWrongQuestionListItem(SchemaBase):
     last_rating: int | None = Field(None, ge=1, le=4, description='最近派生重练等级')
     next_practice_time: datetime | None = Field(None, description='下次重练时间')
     mastery_state: MasteryState = Field(default='new', description='掌握状态，供差异化导出')
+    section_name: str | None = Field(None, description='原试卷章节/模块名（导入时记录），用于答题卡分组')
 
 
 class GetWrongQuestionDetail(GetWrongQuestionListItem):
@@ -205,6 +344,7 @@ class GetWrongQuestionDetail(GetWrongQuestionListItem):
     bank_name: str | None = Field(None, description='来源题库名称')
     section_name: str | None = Field(None, description='来源篇章名称')
     resolve_threshold: int = Field(ge=1, description='移出错题本还需达到的连对次数')
+    materials: list[GetQuestionMaterialDetail] = Field(default_factory=list, description='题目材料')
 
 
 class GetQuestionReviewDetail(SchemaBase):
@@ -216,8 +356,11 @@ class GetQuestionReviewDetail(SchemaBase):
     source_attempt_id: int | None = Field(None, description='关联作答事实 ID')
     event_type: Literal['capture', 'review'] = Field(description='事件类型')
     duration_ms: int = Field(ge=0, description='复盘用时毫秒')
-    summary: str | None = Field(None, description='学习者复盘总结')
-    review_data: dict[str, Any] = Field(default_factory=dict, description='防错策略等结构化内容')
+    summary: str | None = Field(None, description='当时做题的错误思路')
+    review_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description='正确思路等结构化内容，约定键 prevention=正确的解题步骤',
+    )
     tag_ids: list[int] = Field(default_factory=list, description='复盘标签 ID')
     knowledge_point_ids: list[int] = Field(default_factory=list, description='知识点 ID')
     reviewed_time: datetime = Field(description='复盘发生时间')

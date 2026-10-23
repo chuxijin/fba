@@ -150,8 +150,9 @@ def test_v2_openapi_routes_and_names_are_unique() -> None:
     paths = {path: operations for path, operations in spec['paths'].items() if '/qbank-v2/' in path}
     operation_ids = [operation['operationId'] for operations in paths.values() for operation in operations.values()]
 
-    assert len(paths) == 90
-    assert len(operation_ids) == 122
+    # 快照式数量守卫：新增/删除 V2 路由时同步更新这里的数字
+    assert len(paths) == 109
+    assert len(operation_ids) == 142
     assert '/api/v1/qbank-v2/sessions' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/response' in paths
@@ -209,13 +210,15 @@ def test_practice_history_aggregates_are_scoped_to_current_user() -> None:
     assert sql.count('qbank_v2_practice_session.user_id = 42') >= 3
 
 
-def test_interaction_list_requires_question_scope() -> None:
+def test_interaction_list_supports_global_scope() -> None:
+    """交互定义列表允许不传题目 ID 做全量查询（管理端维护用，路由本身受 RBAC 保护）"""
     app = FastAPI()
     app.include_router(question_bank_v2_router)
     operation = app.openapi()['paths']['/api/v1/qbank-v2/questions/interactions']['get']
     question_id = next(item for item in operation['parameters'] if item['name'] == 'question_id')
 
-    assert question_id['required'] is True
+    assert question_id['required'] is False
+    assert '不传返回全部' in question_id['description']
 
 
 def test_growing_user_lists_use_cursor_pagination() -> None:
@@ -235,7 +238,6 @@ def test_growing_user_lists_use_cursor_pagination() -> None:
         '/api/v1/qbank-v2/banks/{pk}/revisions',
         '/api/v1/qbank-v2/collections/{pk}/banks',
         '/api/v1/qbank-v2/materials/{pk}/revisions',
-        '/api/v1/qbank-v2/materials/{pk}/revisions/{revision_id}/anchors',
         '/api/v1/qbank-v2/materials/{pk}/questions',
     )
 
@@ -243,6 +245,14 @@ def test_growing_user_lists_use_cursor_pagination() -> None:
         parameters = {item['name'] for item in spec['paths'][path]['get']['parameters']}
         assert {'cursor', 'size'} <= parameters
         assert 'offset' not in parameters
+
+    # 锚点接口是刻意的例外：响应仍用 CursorPageData 保持前端模型统一，
+    # 但单版本锚点数量有限，后端直接全量返回（has_more=False），因此不接受 cursor/size
+    anchor_operation = spec['paths']['/api/v1/qbank-v2/materials/{pk}/revisions/{revision_id}/anchors']['get']
+    anchor_params = {item['name'] for item in anchor_operation['parameters']}
+    assert {'pk', 'revision_id'} <= anchor_params
+    assert 'cursor' not in anchor_params
+    assert 'size' not in anchor_params
 
 
 def test_composition_outline_documents_paged_items() -> None:
@@ -551,3 +561,29 @@ def test_practice_session_page_reports_total_only_on_first_page() -> None:
     source = Path('backend/app/question_bank_v2/api/v1/practice.py').read_text(encoding='utf-8')
     assert 'if not page_params.cursor:' in source
     assert 'select_from(stmt.order_by(None).subquery())' in source
+
+
+def test_wrong_import_and_collection_endpoints() -> None:
+    """扩展导入相关端点与集合/导入记录查询应保持注册且参数齐全"""
+    app = FastAPI()
+    app.include_router(question_bank_v2_router)
+    spec = app.openapi()
+
+    expected = {
+        '/api/v1/qbank-v2/wrong-questions/collections': 'get',
+        '/api/v1/qbank-v2/wrong-questions/import-history/batches': 'get',
+        '/api/v1/qbank-v2/wrong-questions/import-history/singles': 'get',
+        '/api/v1/qbank-v2/wrong-questions/import-batches/{import_batch_id}': 'delete',
+        '/api/v1/qbank-v2/wrong-questions/external': 'post',
+    }
+    for path, method in expected.items():
+        assert path in spec['paths'], path
+        assert method in spec['paths'][path], (path, method)
+
+    list_params = {item['name'] for item in spec['paths']['/api/v1/qbank-v2/wrong-questions']['get']['parameters']}
+    assert {'review_state', 'bank_id', 'import_batch_id', 'external_unbatched'} <= list_params
+
+    collection_params = {
+        item['name'] for item in spec['paths']['/api/v1/qbank-v2/wrong-questions/collections']['get']['parameters']
+    }
+    assert {'mode', 'cursor', 'size', 'domain_category_id'} <= collection_params

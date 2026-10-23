@@ -4,13 +4,13 @@ import uuid
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.question_bank.service.wrong_review_recognition_service import wrong_review_recognition_service
 from backend.app.question_bank_v2.crud.crud_asset import asset_dao
 from backend.app.question_bank_v2.schema.review import (
     GetExternalQuestionAssetUploadResult,
     RecognizeExternalWrongQuestionParam,
     RecognizeExternalWrongQuestionResult,
 )
+from backend.app.question_bank_v2.service.external_recognition_service import external_recognition_service
 from backend.common.exception import errors
 from backend.plugin.oss.service.storage_service import storage_service
 from backend.utils.file_ops import upload_file_verify
@@ -20,9 +20,7 @@ class ExternalAssetService:
     """用户外部错题图片托管与结构化识别服务"""
 
     @staticmethod
-    async def upload_image(
-        *, db: AsyncSession, user_id: int, file: UploadFile
-    ) -> GetExternalQuestionAssetUploadResult:
+    async def upload_image(*, db: AsyncSession, user_id: int, file: UploadFile) -> GetExternalQuestionAssetUploadResult:
         upload_file_verify(file)
         mime_type = str(file.content_type or '').lower()
         if not mime_type.startswith('image/'):
@@ -61,7 +59,7 @@ class ExternalAssetService:
     async def recognize(
         *, db: AsyncSession, obj: RecognizeExternalWrongQuestionParam
     ) -> RecognizeExternalWrongQuestionResult:
-        result = await wrong_review_recognition_service.recognize(db=db, images=obj.images)
+        result = await external_recognition_service.recognize(db=db, images=obj.images)
         return RecognizeExternalWrongQuestionResult(
             stem=result.stem,
             options=[item.model_dump() for item in result.options],

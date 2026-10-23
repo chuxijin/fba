@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, String, and_, case, cast, exists, func, or_, select
+from sqlalchemy import BigInteger, String, and_, case, cast, exists, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import aggregate_strings
 from sqlalchemy_crud_plus import CRUDPlus
@@ -26,6 +26,7 @@ from backend.app.question_bank_v2.model.review import (
 from backend.app.question_bank_v2.model.statistics import QbUserQuestionMastery
 from backend.app.question_bank_v2.schema.review import (
     ENTRY_METADATA_DOMAIN_KEY,
+    ENTRY_METADATA_SECTION_KEY,
     EXTERNAL_ENTRY_SOURCES,
     ExternalQuestionAssetParam,
 )
@@ -99,6 +100,8 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 QbQuestion.stem,
                 QbQuestion.content_format,
                 QbQuestion.question_type,
+                # 导入时记录的原试卷章节/模块名，供详情页答题卡按章节分组
+                QbWrongQuestionState.entry_metadata[ENTRY_METADATA_SECTION_KEY].as_string().label('section_name'),
                 func.coalesce(QbUserQuestionMastery.state, 'new').label('mastery_state'),
             )
             .join(
@@ -159,7 +162,11 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             )
         )
         recorded_domain = cast(metadata_column[ENTRY_METADATA_DOMAIN_KEY].as_string(), BigInteger)
-        return or_(exists(bank_in_domain), recorded_domain.in_(category_ids))
+        # 未记录领域的自主录入（历史数据、扩展导入时拿不到领域）不参与领域过滤：
+        # 与写侧「拿不到领域就不写、保持不过滤语义」保持一致，
+        # 否则这些题会被领域条件整体排除，表现为「导入成功但列表里看不到」。
+        domain_unrecorded = metadata_column[ENTRY_METADATA_DOMAIN_KEY].as_string().is_(None)
+        return or_(exists(bank_in_domain), recorded_domain.in_(category_ids), domain_unrecorded)
 
     @classmethod
     def _apply_domain_scope(
@@ -197,13 +204,43 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         entry_source: str | None,
         entry_scope: str | None = None,
         domain_category_ids: Sequence[int] | None = None,
+        import_batch_id: str | None = None,
+        bank_id: int | None = None,
+        external_unbatched: bool = False,
+        review_state: str | None = None,
     ) -> Any:
         """构建用户错题游标分页查询"""
         stmt = self._list_stmt().where(QbWrongQuestionState.user_id == user_id)
         if status is not None:
             stmt = stmt.where(QbWrongQuestionState.status == status)
+        if review_state == 'reviewed':
+            # 已复盘：有过复盘记录
+            stmt = stmt.where(QbWrongQuestionState.review_count > 0)
+        elif review_state == 'pending':
+            # 待复盘：尚无复盘记录（与集合统计口径一致）
+            stmt = stmt.where(QbWrongQuestionState.review_count == 0)
         if entry_source is not None:
             stmt = stmt.where(QbWrongQuestionState.entry_source == entry_source)
+        if import_batch_id is not None:
+            # 按导入批次收窄：用于「导入记录」里展开某一批的题目
+            stmt = stmt.where(
+                QbWrongQuestionState.entry_metadata['import_batch_id'].as_string() == import_batch_id
+            )
+        if bank_id is not None:
+            # 按题库收窄：集合详情页看某个题库下的错题
+            stmt = stmt.where(
+                QbWrongQuestionState.source_bank_item_id.in_(
+                    select(QbBankItem.id)
+                    .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
+                    .where(QbBankRevision.bank_id == bank_id)
+                )
+            )
+        if external_unbatched:
+            # 无批次的散题集合
+            stmt = stmt.where(
+                QbWrongQuestionState.entry_source.in_(EXTERNAL_ENTRY_SOURCES),
+                QbWrongQuestionState.entry_metadata['import_batch_id'].as_string().is_(None),
+            )
         stmt = self._apply_entry_scope(stmt, entry_scope)
         stmt = self._apply_domain_scope(stmt, domain_category_ids)
         return stmt.order_by(
@@ -777,6 +814,122 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 }
             )
         return rows
+
+    async def get_collection_counts(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        domain_category_ids: Sequence[int] | None = None,
+    ) -> list[dict[str, Any]]:
+        """按集合统计错题：题库、导入批次、无批次散题三类集合
+
+        集合是「已复盘 / 待复盘」两页共用的分组单位：
+        题库来源按题库分组，自己导入/录入的按导入批次分组，无批次的归为散题集合。
+        """
+        reviewed_flag = case((QbWrongQuestionState.review_count > 0, 1), else_=0)
+        base_filters = (
+            QbWrongQuestionState.user_id == user_id,
+            QbWrongQuestionState.deleted == 0,
+            # 与集合详情页口径保持一致：只统计仍在错题本中的题（已掌握有独立入口）
+            QbWrongQuestionState.status == 'active',
+        )
+
+        bank_stmt = (
+            select(
+                QbBank.id.label('bank_id'),
+                func.min(QbBankRevision.name).label('title'),
+                func.count().label('total'),
+                func.sum(reviewed_flag).label('reviewed'),
+                func.max(QbWrongQuestionState.last_wrong_time).label('last_time'),
+            )
+            .select_from(QbWrongQuestionState)
+            .join(QbBankItem, QbBankItem.id == QbWrongQuestionState.source_bank_item_id)
+            .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
+            .join(QbBank, QbBank.id == QbBankRevision.bank_id)
+            .where(*base_filters, QbWrongQuestionState.source_bank_item_id.is_not(None))
+            .group_by(QbBank.id)
+        )
+        bank_stmt = self._apply_domain_scope(bank_stmt, domain_category_ids)
+
+        batch_expr = QbWrongQuestionState.entry_metadata['import_batch_id'].as_string()
+        batch_stmt = (
+            select(
+                batch_expr.label('batch_id'),
+                func.min(QbWrongQuestionState.entry_metadata['source'].as_string()).label('title'),
+                func.count().label('total'),
+                func.sum(reviewed_flag).label('reviewed'),
+                func.max(QbWrongQuestionState.last_wrong_time).label('last_time'),
+            )
+            .where(*base_filters, batch_expr.is_not(None))
+            .group_by(literal_column('1'))
+        )
+        batch_stmt = self._apply_domain_scope(batch_stmt, domain_category_ids)
+
+        single_stmt = (
+            select(
+                func.count().label('total'),
+                func.sum(reviewed_flag).label('reviewed'),
+                func.max(QbWrongQuestionState.last_wrong_time).label('last_time'),
+            )
+            .where(
+                *base_filters,
+                QbWrongQuestionState.entry_source.in_(EXTERNAL_ENTRY_SOURCES),
+                batch_expr.is_(None),
+                QbWrongQuestionState.source_bank_item_id.is_(None),
+            )
+        )
+        single_stmt = self._apply_domain_scope(single_stmt, domain_category_ids)
+
+        collections: list[dict[str, Any]] = []
+
+        for row in (await db.execute(bank_stmt)).mappings().all():
+            total = int(row['total'] or 0)
+            reviewed = int(row['reviewed'] or 0)
+            collections.append(
+                {
+                    'collection_id': str(int(row["bank_id"])),
+                    'collection_type': 'bank',
+                    'title': row['title'] or '未知题库',
+                    'total': total,
+                    'reviewed': reviewed,
+                    'pending': max(total - reviewed, 0),
+                    'last_time': row['last_time'],
+                }
+            )
+
+        for row in (await db.execute(batch_stmt)).mappings().all():
+            total = int(row['total'] or 0)
+            reviewed = int(row['reviewed'] or 0)
+            collections.append(
+                {
+                    'collection_id': str(row["batch_id"]),
+                    'collection_type': 'import',
+                    'title': row['title'] or '未命名导入批次',
+                    'total': total,
+                    'reviewed': reviewed,
+                    'pending': max(total - reviewed, 0),
+                    'last_time': row['last_time'],
+                }
+            )
+
+        single_row = (await db.execute(single_stmt)).mappings().first()
+        if single_row is not None and int(single_row['total'] or 0) > 0:
+            total = int(single_row['total'] or 0)
+            reviewed = int(single_row['reviewed'] or 0)
+            collections.append(
+                {
+                    'collection_id': '',
+                    'collection_type': 'single',
+                    'title': '单条录入',
+                    'total': total,
+                    'reviewed': reviewed,
+                    'pending': max(total - reviewed, 0),
+                    'last_time': single_row['last_time'],
+                }
+            )
+
+        return collections
 
 
 class CRUDUserQuestionMastery(CRUDPlus[QbUserQuestionMastery]):

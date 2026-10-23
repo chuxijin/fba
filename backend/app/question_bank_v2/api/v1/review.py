@@ -3,6 +3,8 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, File, Path, Query, Request, UploadFile
 
 from backend.app.question_bank_v2.schema.review import (
+    BatchImportResult,
+    BatchUndoResult,
     CreateExternalWrongQuestionParam,
     CreateQuestionReviewParam,
     CreateReviewTagParam,
@@ -13,11 +15,14 @@ from backend.app.question_bank_v2.schema.review import (
     GetWrongQuestionDetail,
     GetWrongQuestionListItem,
     GetWrongReviewDashboard,
+    ImportBatchPage,
+    ImportSinglePage,
     MasteryState,
     RecognizeExternalWrongQuestionParam,
     RecognizeExternalWrongQuestionResult,
     SubmitQuestionReviewResult,
     UpdateWrongStateParam,
+    WrongCollectionPage,
     WrongEntryScope,
     WrongEntrySource,
     WrongQuestionStatistics,
@@ -90,6 +95,13 @@ async def get_wrong_questions(
     entry_source: Annotated[WrongEntrySource | None, Query(description='首次录入来源')] = None,
     entry_scope: Annotated[WrongEntryScope | None, Query(description='题库错题或自主录入')] = None,
     domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
+    import_batch_id: Annotated[str | None, Query(min_length=8, max_length=64, description='导入批次 ID')] = None,
+    bank_id: Annotated[int | None, Query(gt=0, description='题库 ID；用于集合详情')] = None,
+    external_unbatched: Annotated[bool, Query(description='只看无批次的散题')] = False,  # noqa: FBT002 - FastAPI 查询参数按位置声明
+    review_state: Annotated[
+        Literal['reviewed', 'pending'] | None,
+        Query(description='复盘子状态：reviewed=已复盘，pending=未复盘'),
+    ] = None,
  ) -> ResponseSchemaModel[CursorPageData[GetWrongQuestionListItem]]:
     """系统内答错与外部录入使用同一列表模型"""
     domain_category_ids = await wrong_review_service.resolve_domain_scope(
@@ -103,6 +115,10 @@ async def get_wrong_questions(
         entry_source=entry_source,
         entry_scope=entry_scope,
         domain_category_ids=domain_category_ids,
+        import_batch_id=import_batch_id,
+        bank_id=bank_id,
+        external_unbatched=external_unbatched,
+        review_state=review_state,
     )
     return response_base.success(data=await cursor_paging_data(db, stmt, GetWrongQuestionListItem))
 
@@ -216,14 +232,115 @@ async def get_wrong_review_dashboard(
     return response_base.success(data=data)
 
 
-@router.post('/external', summary='录入外部错题', name='qbank_v2_capture_external_wrong_question')
+@router.post('/external', summary='录入外部错题（单条或批量数组）', name='qbank_v2_capture_external_wrong_question')
 async def capture_external_wrong_question(
     request: Request,
     db: CurrentSessionTransaction,
-    obj: CreateExternalWrongQuestionParam,
-) -> ResponseSchemaModel[GetWrongQuestionDetail]:
-    """将手工、OCR 或导入题统一创建为可重练的用户私有题目"""
-    data = await wrong_review_service.capture_external(db=db, user_id=request.user.id, obj=obj)
+    obj: CreateExternalWrongQuestionParam | list[CreateExternalWrongQuestionParam],
+) -> ResponseSchemaModel[GetWrongQuestionDetail] | ResponseSchemaModel[BatchImportResult]:
+    """将手工、OCR 或导入题统一创建为可重练的用户私有题目
+
+    请求体既可以是单个对象（兼容小程序现有调用），也可以是对象数组：
+    数组形态下逐条独立成败，单条失败不影响其余题目入库，并回传批次 ID 便于整批撤销。
+    """
+    if isinstance(obj, list):
+        # 分片提交时客户端用请求头带上同一个批次 ID，保证多片共享同一批次便于整批撤销
+        header_batch = (request.headers.get('x-import-batch-id') or '').strip()
+        batch_id = header_batch if 8 <= len(header_batch) <= 64 else None
+        data = await wrong_review_service.capture_external_batch(
+            db=db,
+            user_id=request.user.id,
+            items=obj,
+            import_batch_id=batch_id,
+        )
+    else:
+        data = await wrong_review_service.capture_external(db=db, user_id=request.user.id, obj=obj)
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/collections',
+    summary='错题集合列表（题库/导入批次/散题）',
+    name='qbank_v2_get_wrong_collections',
+)
+async def get_wrong_collections(
+    request: Request,
+    db: CurrentSession,
+    mode: Annotated[Literal['pending', 'reviewed'], Query(description='排序侧重：待复盘数或已复盘数')] = 'pending',
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
+    cursor: Annotated[str | None, Query(description='上一页返回的 next_cursor')] = None,
+    size: Annotated[int, Query(ge=1, le=100, description='每页数量')] = 20,
+) -> ResponseSchemaModel[WrongCollectionPage]:
+    """把错题按「集合」聚合：题库来源按题库、自己导入的按批次、无批次的归散题"""
+    data = await wrong_review_service.get_collections_page(
+        db=db,
+        user_id=request.user.id,
+        mode=mode,
+        domain_category_id=domain_category_id,
+        cursor=cursor,
+        size=size,
+    )
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/import-history/batches',
+    summary='导入记录：批量导入批次（游标分页）',
+    name='qbank_v2_get_wrong_import_batches',
+)
+async def get_wrong_import_batches(
+    request: Request,
+    db: CurrentSession,
+    cursor: Annotated[str | None, Query(description='上一页返回的 next_cursor')] = None,
+    size: Annotated[int, Query(ge=1, le=100, description='每页数量')] = 20,
+) -> ResponseSchemaModel[ImportBatchPage]:
+    """按批次聚合的导入记录，游标为批次内最大状态 ID"""
+    data = await wrong_review_service.get_import_batches_page(
+        db=db,
+        user_id=request.user.id,
+        cursor=cursor,
+        size=size,
+    )
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/import-history/singles',
+    summary='导入记录：散题（游标分页）',
+    name='qbank_v2_get_wrong_import_singles',
+)
+async def get_wrong_import_singles(
+    request: Request,
+    db: CurrentSession,
+    cursor: Annotated[str | None, Query(description='上一页返回的 next_cursor')] = None,
+    size: Annotated[int, Query(ge=1, le=100, description='每页数量')] = 20,
+) -> ResponseSchemaModel[ImportSinglePage]:
+    """无批次的外部录入错题，游标为错题状态 ID"""
+    data = await wrong_review_service.get_import_singles_page(
+        db=db,
+        user_id=request.user.id,
+        cursor=cursor,
+        size=size,
+    )
+    return response_base.success(data=data)
+
+
+@router.delete(
+    '/import-batches/{import_batch_id}',
+    summary='撤销一次错题导入批次',
+    name='qbank_v2_undo_import_batch',
+)
+async def undo_import_wrong_question_batch(
+    request: Request,
+    db: CurrentSessionTransaction,
+    import_batch_id: Annotated[str, Path(min_length=8, max_length=64, description='导入批次 ID')],
+) -> ResponseSchemaModel[BatchUndoResult]:
+    """按批次撤销扩展导入的错题：软删该批次的错题状态、私有题目与复盘事件"""
+    data = await wrong_review_service.undo_import_batch(
+        db=db,
+        user_id=request.user.id,
+        import_batch_id=import_batch_id,
+    )
     return response_base.success(data=data)
 
 
@@ -274,6 +391,21 @@ async def update_wrong_question_state(
         user_id=request.user.id,
         wrong_state_id=wrong_state_id,
         obj=obj,
+    )
+    return response_base.success(data=data)
+
+
+@router.delete('/{wrong_state_id}', summary='删除单条错题', name='qbank_v2_delete_wrong_question')
+async def delete_wrong_question(
+    request: Request,
+    db: CurrentSessionTransaction,
+    wrong_state_id: Annotated[int, Path(gt=0, description='错题状态 ID')],
+) -> ResponseSchemaModel[BatchUndoResult]:
+    """删除单条错题（散题撤销）：软删错题状态、私有题目与复盘事件"""
+    data = await wrong_review_service.delete_external_wrong_question(
+        db=db,
+        user_id=request.user.id,
+        wrong_state_id=wrong_state_id,
     )
     return response_base.success(data=data)
 

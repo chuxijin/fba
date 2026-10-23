@@ -38,6 +38,33 @@ class MappingResult:
         return self.rows
 
 
+class _EmptyResult:
+    """db.execute 的空结果桩：供无数据依赖的单元测试使用"""
+
+    rowcount = 0
+
+    def scalars(self) -> '_EmptyResult':
+        return self
+
+    def mappings(self) -> '_EmptyResult':
+        return self
+
+    def all(self) -> list[Any]:
+        return []
+
+    def first(self) -> None:
+        return None
+
+    def scalar(self) -> None:
+        return None
+
+    def scalar_one_or_none(self) -> None:
+        return None
+
+    def __iter__(self) -> 'Any':
+        return iter([])
+
+
 class DummyDB:
     """提供服务单元测试所需的最小异步会话接口"""
 
@@ -50,6 +77,10 @@ class DummyDB:
 
     def add(self, instance: object) -> None:
         self.added.append(instance)
+
+    async def execute(self, *_args: object, **_kwargs: object) -> _EmptyResult:
+        # 默认返回空结果：掌握度快照这类依赖真实数据的副作用在单元测试中不参与断言
+        return _EmptyResult()
 
 
 def _new_mastery() -> SimpleNamespace:
@@ -214,7 +245,7 @@ def test_wrong_answer_creates_state_and_schedules_first_retry(monkeypatch: pytes
         ReviewScheduleService.apply_attempt(
             db=DummyDB(),
             attempt=harness.attempt(attempt_id=101, is_correct=False, duration_ms=9000, now=now),
-            session_item=SimpleNamespace(bank_item_id=17),
+            session_item=SimpleNamespace(bank_item_id=17, max_score=Decimal('1.00')),
         )
     )
 
@@ -240,7 +271,7 @@ def test_unreviewed_question_needs_full_streak_to_leave_wrong_book(monkeypatch: 
             ReviewScheduleService.apply_attempt(
                 db=db,
                 attempt=harness.attempt(attempt_id=200 + index, is_correct=True, duration_ms=4000, now=now),
-                session_item=SimpleNamespace(bank_item_id=17),
+                session_item=SimpleNamespace(bank_item_id=17, max_score=Decimal('1.00')),
                 resolve_threshold=3,
             )
         )
@@ -251,7 +282,7 @@ def test_unreviewed_question_needs_full_streak_to_leave_wrong_book(monkeypatch: 
         ReviewScheduleService.apply_attempt(
             db=db,
             attempt=harness.attempt(attempt_id=210, is_correct=True, duration_ms=3000, now=now),
-            session_item=SimpleNamespace(bank_item_id=17),
+            session_item=SimpleNamespace(bank_item_id=17, max_score=Decimal('1.00')),
             resolve_threshold=3,
         )
     )
@@ -272,7 +303,7 @@ def test_reviewed_question_leaves_wrong_book_after_single_correct(monkeypatch: p
         ReviewScheduleService.apply_attempt(
             db=DummyDB(),
             attempt=harness.attempt(attempt_id=300, is_correct=True, duration_ms=4000, now=now),
-            session_item=SimpleNamespace(bank_item_id=17),
+            session_item=SimpleNamespace(bank_item_id=17, max_score=Decimal('1.00')),
             resolve_threshold=3,
         )
     )
@@ -301,7 +332,7 @@ def test_relapse_reactivates_state_and_clears_resolved_time(monkeypatch: pytest.
         ReviewScheduleService.apply_attempt(
             db=DummyDB(),
             attempt=harness.attempt(attempt_id=400, is_correct=False, duration_ms=2000, now=now),
-            session_item=SimpleNamespace(bank_item_id=17),
+            session_item=SimpleNamespace(bank_item_id=17, max_score=Decimal('1.00')),
         )
     )
 
@@ -325,7 +356,7 @@ def test_wrong_retry_without_bank_context_preserves_original_source(monkeypatch:
         ReviewScheduleService.apply_attempt(
             db=DummyDB(),
             attempt=harness.attempt(attempt_id=450, is_correct=False, duration_ms=2000, now=now),
-            session_item=SimpleNamespace(bank_item_id=None),
+            session_item=SimpleNamespace(bank_item_id=None, max_score=Decimal('1.00')),
         )
     )
 
@@ -342,7 +373,7 @@ def test_external_question_without_bank_context_still_syncs(monkeypatch: pytest.
         ReviewScheduleService.apply_attempt(
             db=DummyDB(),
             attempt=harness.attempt(attempt_id=500, is_correct=True, duration_ms=3000, now=now),
-            session_item=SimpleNamespace(bank_item_id=None),
+            session_item=SimpleNamespace(bank_item_id=None, max_score=Decimal('1.00')),
             resolve_threshold=3,
         )
     )

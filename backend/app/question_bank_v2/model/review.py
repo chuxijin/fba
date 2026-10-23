@@ -272,11 +272,11 @@ class QbQuestionReview(Base, UserMixin):
     )
     event_type: Mapped[str] = mapped_column(sa.String(16), default='review', comment='capture/review')
     duration_ms: Mapped[int] = mapped_column(sa.BigInteger, default=0, comment='复盘用时毫秒')
-    summary: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='学习者复盘总结')
+    summary: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='当时做题的错误思路')
     review_data: Mapped[dict[str, Any]] = mapped_column(
         CompatibleJSONB,
         default_factory=dict,
-        comment='防错策略等可扩展结构化内容',
+        comment='正确思路等可扩展结构化内容，约定键 prevention=正确的解题步骤',
     )
     reviewed_time: Mapped[datetime] = mapped_column(
         TimeZone,

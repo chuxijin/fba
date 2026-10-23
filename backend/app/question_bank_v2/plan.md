@@ -200,11 +200,11 @@ celery 生成后落对象存储，完成时发站内信带下载链接。PDF 走
 ├─ 题目 + 我的错答(last_wrong_response) + 答案解析
 ├─ 状态条 掌握状态 · 连对 N/M · 下次重练时间
 ├─ 复盘时间线 → GET /{id}/events
-├─ 本次复盘表单 错因标签 + 知识点 + 总结 + 防错策略   ★ 无评分控件
+├─ 本次复盘表单 错因标签 + 知识点 + 当时的错误思路 + 正确思路   ★ 无评分控件
 └─ 提交 → POST /{id}/reviews
 ```
 
-待迁移的 V1 页面（~3000 行）：`custom-import.vue`、`recognition-preview.vue`、`review-single.vue`。
+V1 页面已全部迁移到 V2：`custom-import.vue`、`recognition-preview.vue`、`review-single.vue` 均调用 V2 接口；V1 复盘模块本身已删除，归档说明见 `doc/archive/qbank-v1-wrong-review-retirement.md`。
 
 「回顾错题模式」**不需要新页面** —— 就是 `createSession({source_type:'wrong'})`，复用现有 session 页。
 
