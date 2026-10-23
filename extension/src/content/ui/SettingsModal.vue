@@ -313,21 +313,32 @@
           </div>
 
           <!-- 4. 账户状态与免登录体验说明 -->
-          <div class="gk-account-status-card">
-            <div v-if="isLoggedIn" class="gk-status-header">
-              <span class="gk-status-tag logged">👤 已登录：{{ userName || '题本学员' }}</span>
-              <span class="gk-quota-pill logged">专享充裕基础额度</span>
-            </div>
-            <div v-else class="gk-status-header">
-              <span class="gk-status-tag unlogged">⚠️ 当前未登录</span>
-              <span class="gk-quota-pill unlogged">今日免登录体验: {{ remainingQuota }} / 5 次</span>
-            </div>
-            <div class="gk-status-desc">
-              {{ isLoggedIn
-                ? '已关联微信小程序【我的题本】，尊享高频模考导出额度与 5分钱/张 考场双面打印特权。'
-                : '未登录状态每日仅可导出 5 次标准考场卷。手机扫码登录微信小程序【我的题本】，立享更充裕的高额基础额度，并享 5分钱/张 考场专用纸双面打印。'
-              }}
-            </div>
+          <div class="gk-account-status-card" aria-live="polite" :aria-busy="accountState.status === 'loading' || (accountState.status === 'ready' && accountState.refreshing)">
+            <template v-if="accountState.status !== 'ready'">
+              <div class="gk-status-header">
+                <span class="gk-status-tag">{{ accountState.status === 'loading' ? '正在确认账户…' : '暂时无法确认账户' }}</span>
+                <button v-if="accountState.status === 'error'" type="button" class="gk-count-pill" @click="accountStore.refresh()">重试</button>
+              </div>
+              <div class="gk-status-desc">{{ accountState.status === 'loading' ? '正在获取今日额度' : accountState.message }}</div>
+            </template>
+            <template v-else>
+              <div v-if="isLoggedIn" class="gk-status-header">
+                <span class="gk-status-tag logged">👤 已登录：{{ userName || '题本学员' }}</span>
+                <span class="gk-quota-pill logged">{{ quotaHint }}</span>
+                <button v-if="accountState.refreshError" type="button" class="gk-count-pill" :title="accountState.refreshError" @click="accountStore.refresh()">重试</button>
+              </div>
+              <div v-else class="gk-status-header">
+                <span class="gk-status-tag unlogged">⚠️ 当前未登录</span>
+                <span class="gk-quota-pill unlogged">{{ quotaHint }}</span>
+                <button v-if="accountState.refreshError" type="button" class="gk-count-pill" :title="accountState.refreshError" @click="accountStore.refresh()">重试</button>
+              </div>
+              <div class="gk-status-desc">
+                {{ isLoggedIn
+                  ? '已关联微信小程序【我的题本】，尊享高频模考导出额度与 5分钱/张 考场双面打印特权。'
+                  : `未登录状态每日可导出 ${dailyLimit} 次标准考场卷。手机扫码登录微信小程序【我的题本】，立享更充裕的高额基础额度，并享 5分钱/张 考场专用纸双面打印。`
+                }}
+              </div>
+            </template>
           </div>
 
           <!-- 底注特性 -->
@@ -363,7 +374,7 @@
             </button>
           </div>
           <div class="gk-footer-hint">
-            {{ isLoggedIn ? '已登录 · 国考 1:1 标准考场版，支持 5分钱/张 快速双面打印' : '当前未登录 · 仅可每日 5 次，登录微信小程序立享更多额度' }}
+            {{ accountHint }}
           </div>
         </div>
       </template>
@@ -441,7 +452,16 @@
                   {{ currentExportTarget === 'computer_download' ? '考场标准试卷已排版就绪并开始下载！' : '试卷已生成完毕，请手机微信扫码！' }}
                 </div>
                 <div class="gk-banner-desc">
-                  《{{ paperTitle }}》{{ currentExportTarget === 'computer_download' ? '（已自动拉起浏览器下载，请在保存目录查看 PDF）' : '' }}
+                  <template v-if="currentExportTarget === 'computer_download'">
+                    《{{ paperTitle }}》已提交浏览器下载。
+                    <template v-if="savedPath">
+                      保存位置：<code style="display:inline-block;max-width:100%;overflow-wrap:anywhere;background:#f1f5f9;border-radius:4px;padding:1px 5px;font-size:12px;color:#334155;">{{ savedPath }}</code>
+                    </template>
+                    <template v-else>
+                      若在下载目录里找不到文件，请检查浏览器是否弹出了「保存位置」对话框，或已开启「下载前询问每个文件的保存位置」。
+                    </template>
+                  </template>
+                  <template v-else>《{{ paperTitle }}》</template>
                 </div>
               </div>
             </div>
@@ -450,7 +470,7 @@
             <div class="gk-card-section">
               <div class="gk-card-section-title">
                 <span>📌 使用说明与额度规则</span>
-                <span class="gk-quota-pill">{{ isLoggedIn ? '已登录 · 尊享基础额度' : `今日免登录剩余 ${remainingQuota} / 5 次` }}</span>
+                <span class="gk-quota-pill">{{ quotaHint }}</span>
               </div>
               <div class="gk-card-section-text">
                 • <strong>免登录体验</strong>：未登录状态每日仅可导出 5 次标准考场卷。<br />
@@ -479,7 +499,7 @@
               <div class="gk-miniapp-lead-info">
                 <div class="gk-miniapp-lead-title">📱 微信扫码 · 登录【我的题本】</div>
                 <ul class="gk-miniapp-lead-list">
-                  <li>试卷自动同步至小程序，<strong>立享高额基础导出额度</strong></li>
+                  <li>扫码登录后<strong>享有更高导出额度</strong>，并可在小程序找回本次导出的试卷</li>
                   <li>一键直连合作打印商：<strong>5 分钱/张</strong>、全真考场专用纸双面胶装</li>
                   <li>手机端随时刷题、背题与复盘错题</li>
                 </ul>
@@ -532,7 +552,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { RenderTypographySettings, DEFAULT_TYPOGRAPHY_SETTINGS, UnifiedPaper, MistakePageMeta } from '../../adapters'
-import { fetchCurrentQuota, getStoredToken, getStoredUser } from '../../utils/auth'
+import { accountStore, AccountState } from '../../utils/account-state'
 
 const props = defineProps<{
   modelValue: boolean
@@ -551,9 +571,21 @@ const logoUrl = typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome
 const viewMode = ref<'setting' | 'loading' | 'delivery' | 'error'>('setting')
 
 // 账户与额度状态
-const isLoggedIn = ref(false)
-const userName = ref('')
-const remainingQuota = ref(5)
+const accountState = ref<AccountState>({ status: 'loading' })
+const isLoggedIn = computed(() => accountState.value.status === 'ready' && accountState.value.quota.is_logged_in)
+const userName = computed(() => accountState.value.status === 'ready'
+  ? accountState.value.quota.user?.nickname || accountState.value.quota.user?.username || '题本学员' : '')
+const remainingQuota = computed(() => accountState.value.status === 'ready' ? accountState.value.quota.remaining_quota : null)
+const dailyLimit = computed(() => accountState.value.status === 'ready' ? accountState.value.quota.daily_limit : null)
+const quotaHint = computed(() => accountState.value.status === 'loading' ? '正在确认账户…'
+  : accountState.value.status === 'error' ? '账户与额度暂时不可用'
+  : accountState.value.refreshing ? '额度更新中…'
+  : accountState.value.refreshError ? '额度更新失败，请重试'
+  : `今日${isLoggedIn.value ? '' : '免登录'}剩余 ${remainingQuota.value} / ${dailyLimit.value} 次`)
+const accountHint = computed(() => accountState.value.status !== 'ready' ? quotaHint.value
+  : isLoggedIn.value ? '已登录 · 国考 1:1 标准考场版，支持 5分钱/张 快速双面打印'
+  : `当前未登录 · 每日 ${dailyLimit.value} 次，登录微信小程序立享更多额度`)
+let unsubscribeAccount: (() => void) | null = null
 
 // 基础排版设置
 const settings = reactive<RenderTypographySettings>({
@@ -575,6 +607,7 @@ let progressTimer: any = null
 
 // 交付与异常参数
 const qrCodeUrl = ref('')
+const savedPath = ref('')
 const errorMessage = ref('')
 
 // 计算属性：当前试卷基础信息
@@ -856,10 +889,10 @@ function showLoading(target: 'computer_download' | 'mobile_sync') {
   startProgress()
 }
 
-function showDelivery(options: { qrCodeUrl?: string; remainingQuota?: number }) {
+function showDelivery(options: { qrCodeUrl?: string; savedPath?: string; remainingQuota?: number }) {
   stopProgress()
   if (options.qrCodeUrl) qrCodeUrl.value = options.qrCodeUrl
-  if (options.remainingQuota !== undefined) remainingQuota.value = options.remainingQuota
+  savedPath.value = options.savedPath || ''
   viewMode.value = 'delivery'
 }
 
@@ -925,38 +958,19 @@ function getStepStatus(step: number) {
   return '排队中'
 }
 
-// 账户与真实额度动态同步
-async function syncAuthState() {
-  try {
-    const quotaInfo = await fetchCurrentQuota()
-    isLoggedIn.value = quotaInfo.is_logged_in
-    if (quotaInfo.is_logged_in) {
-      userName.value = quotaInfo.user?.nickname || quotaInfo.user?.username || '题本学员'
-      remainingQuota.value = quotaInfo.remaining_quota
-    } else {
-      userName.value = ''
-      remainingQuota.value = quotaInfo.remaining_quota
-    }
-  } catch (e) {
-    console.warn('[SettingsModal] 同步额度失败:', e)
-  }
-}
-
-// 监听弹窗显示，每次打开弹窗均主动拉取最新真实额度
+// 只在弹窗可见时订阅并请求，避免挂载和打开重复拉取。
 watch(
   () => props.modelValue,
   (val) => {
+    unsubscribeAccount?.()
+    unsubscribeAccount = null
     if (val) {
-      syncAuthState()
+      unsubscribeAccount = accountStore.subscribe((state) => { accountState.value = state })
+      void accountStore.refresh()
     }
-  }
+  },
+  { immediate: true }
 )
-
-function handleStorageChange(changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) {
-  if (areaName === 'local' && (changes.fba_auth_token || changes.fba_auth_user)) {
-    syncAuthState()
-  }
-}
 
 // 全局 Esc 键监听
 function onKeyDown(e: KeyboardEvent) {
@@ -972,19 +986,13 @@ function onKeyDown(e: KeyboardEvent) {
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown, true)
   document.addEventListener('keydown', onKeyDown, true)
-  syncAuthState()
-  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    chrome.storage.onChanged.addListener(handleStorageChange)
-  }
 })
 
 onUnmounted(() => {
   stopProgress()
   window.removeEventListener('keydown', onKeyDown, true)
   document.removeEventListener('keydown', onKeyDown, true)
-  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    chrome.storage.onChanged.removeListener(handleStorageChange)
-  }
+  unsubscribeAccount?.()
 })
 
 defineExpose({

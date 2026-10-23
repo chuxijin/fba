@@ -16,6 +16,9 @@ import {
   backfillPaperAnswers,
   setCachedKeypointTree,
   fenbiSession,
+  buildWrongImportItems,
+  IDLE_IMPORT_STATE,
+  ImportState,
 } from '../adapters'
 import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
@@ -27,7 +30,6 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
  * 3. 调度适配器流水线 (preparePaperForExport) 并分发排版交付
  */
 ;(function () {
-  console.log('[公考内容排版] Content Script 启动')
 
   // 1. 注入主页面网络拦截器 Main World Script
   injectScript(chrome.runtime.getURL('injected.js'))
@@ -41,6 +43,16 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
   // 华图与事考帮临时中间状态
   let huatuLatestPractice: any = null
+
+  /**
+   * 本页已成功导入过的错题键。
+   * 后端对 (user_id, idempotency_key) 有唯一约束，重复提交会因幂等冲突失败，
+   * 这里先做一层本地过滤，避免用户二次点击时看到一排无意义的失败。
+   */
+  const importedWrongKeys = new Set<string>()
+
+  /** 最近一次成功导入的批次 ID，供「撤销本次导入」使用 */
+  let lastImportBatchId = ''
 
   // 3. 挂载 Vue 悬浮卡片与交互弹窗
   function initUi() {
@@ -59,6 +71,8 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
         onRequestQuickPrint: () => handleExport(DEFAULT_TYPOGRAPHY_SETTINGS, 'mobile_sync'),
         onDoExport: (settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync') =>
           handleExport(settings, target),
+        onImportWrong: () => handleImportWrongQuestions(),
+        onUndoImport: () => handleUndoImportBatch(),
       })
 
       // 挂载后立即同步试卷状态给悬浮卡片
@@ -110,7 +124,6 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
         const resolvedPaper = fenbiSession.handleNetworkPayload(url, data, DEFAULT_TYPOGRAPHY_SETTINGS)
         if (resolvedPaper && resolvedPaper.total_questions > 0) {
-          console.log('[ContentScript] 🎉 粉笔会话聚合试卷:', resolvedPaper.title, `(${resolvedPaper.total_questions}题, 错题: ${resolvedPaper.metadata?.totalWrong || 0}题)`)
           currentUnifiedPaper = resolvedPaper
           currentPaperPageUrl = location.href
           uiApp?.setPaper(currentUnifiedPaper)
@@ -189,14 +202,14 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
   function handleRouteUrlChange(newUrl: string) {
     if (newUrl === lastRouteUrl && currentPaperPageUrl === newUrl) return
-    console.log('[ContentScript] SPA 路由切换:', lastRouteUrl, '->', newUrl)
     lastRouteUrl = newUrl
 
     fenbiSession.reset()
     currentCapturedRaw = null
     currentUnifiedPaper = null
     currentPaperPageUrl = newUrl
-    uiApp?.setPaperInfo('', 0)
+    importedWrongKeys.clear()
+    uiApp?.resetPaper()
 
     setTimeout(() => {
       resolveActivePaperLive(true).catch(() => {})
@@ -205,6 +218,20 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
   // 6. 监听 Popup 弹窗指令
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    // 后台分片导入的进度回传
+    if (msg.type === 'IMPORT_PROGRESS') {
+      const payload = msg.payload || {}
+      uiApp?.setImportState({
+        status: 'running',
+        done: Number(payload.done || 0),
+        total: Number(payload.total || 0),
+        imported: Number(payload.imported || 0),
+        failed: Number(payload.failed || 0),
+        skipped: 0,
+      })
+      sendResponse({ success: true })
+      return true
+    }
     if (msg.type === 'CHECK_STATUS') {
       const activePaper = currentUnifiedPaper || fenbiSession.getPaper()
       if (activePaper && activePaper.total_questions > 0) {
@@ -310,7 +337,6 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
         return true
       }
     } catch (e: any) {
-      console.warn('[ContentScript] 即时感知异常:', e)
     }
 
     return false
@@ -336,7 +362,6 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
     // 1. 错题场景：内聚错题聚合引擎（自动完成多源ID、跨页嗅探与全量要素补全）
     if (isMistake || mistakeMeta) {
       const targetLimit = settings.questionLimit || 10
-      console.log(`[ContentScript] 正在聚合错题数据 (目标: ${targetLimit} 题)...`)
       const fetchedMistakePaper = await fetchMistakeQuestionsByCount({
         keypointId: mistakeMeta?.keypointId,
         keypointName: mistakeMeta?.keypointName,
@@ -424,7 +449,6 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
     // 兜底：若经过过滤未匹配到错题（例如全对或无作答对错标记），保留原试卷
     if (newSections.length === 0) {
-      console.warn('[ContentScript] 未过滤到具体错题，保留全卷')
       return paper
     }
 
@@ -480,6 +504,7 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
           uiApp?.showDelivery({
             qrCodeUrl: response.qrCodeUrl,
+            savedPath: response.savedPath,
             remainingQuota: response.remainingQuota !== undefined ? response.remainingQuota : undefined,
           })
         }
@@ -491,6 +516,168 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
         uiApp?.showError(err?.message || '导出异常，请稍后重试')
       }
     }
+  }
+
+  /**
+   * 把当前页面的错题导入到后端「错题待复盘」队列。
+   *
+   * 数据来源：当前页已捕获的 UnifiedPaper 中 is_wrong === true 的题目。
+   * 答案只从已拦截到的解析数据里补齐（backfillPaperAnswers 纯内存，不发起外发请求），
+   * 没有答案的题目在后端必填校验下无法成立，按跳过处理。
+   */
+  async function handleImportWrongQuestions() {
+    const setState = (state: ImportState) => uiApp?.setImportState(state)
+
+    try {
+      if (!currentUnifiedPaper || currentUnifiedPaper.total_questions === 0) {
+        await resolveActivePaperLive(true).catch(() => {})
+      }
+
+      const activePaper = currentUnifiedPaper
+      if (!activePaper || activePaper.total_questions === 0) {
+        setState({ ...IDLE_IMPORT_STATE, status: 'error', message: '未捕获到当前页面题目，请按 F5 刷新后重试' })
+        return
+      }
+
+      let paper: UnifiedPaper = activePaper
+      try {
+        paper = await backfillPaperAnswers(paper)
+      } catch {}
+
+      const built = buildWrongImportItems(paper)
+      // 过滤掉本页已经成功导入过的题（后端幂等键重复会报错，这里提前挡掉）
+      const items = built.items.filter((item) => !importedWrongKeys.has(item.external_key))
+      const alreadyImported = built.items.length - items.length
+      const skipped = built.skipped
+
+      if (items.length === 0) {
+        setState({
+          ...IDLE_IMPORT_STATE,
+          status: alreadyImported > 0 ? 'done' : 'error',
+          total: built.items.length,
+          imported: alreadyImported,
+          skipped: skipped.length,
+          message:
+            alreadyImported > 0
+              ? '本页错题已全部导入过，可到小程序查看'
+              : skipped.length > 0
+                ? `没有可导入的错题：${skipped.length} 道缺少答案或题干`
+                : '当前页面没有检测到错题',
+        })
+        return
+      }
+
+      setState({ ...IDLE_IMPORT_STATE, status: 'running', total: items.length, skipped: skipped.length })
+
+      if (!chrome.runtime?.id) {
+        setState({ ...IDLE_IMPORT_STATE, status: 'error', message: '检测到插件刚刚更新，请按 F5 刷新页面后重试' })
+        return
+      }
+
+      chrome.runtime.sendMessage(
+        { type: 'IMPORT_WRONG_QUESTIONS', payload: { items, paperTitle: paper.title } },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            setState({ ...IDLE_IMPORT_STATE, status: 'error', message: '通信异常，请按 F5 刷新页面后重试' })
+            return
+          }
+          if (!response || !response.success) {
+            setState({
+              ...IDLE_IMPORT_STATE,
+              status: 'error',
+              total: items.length,
+              skipped: skipped.length,
+              message: response?.error || '导入失败，请稍后重试',
+            })
+            return
+          }
+
+          const imported = Number(Math.max(Number(response.imported || 0), alreadyImported))
+          const failed = Number(response.failed || 0)
+          if (typeof response.importBatchId === 'string' && response.importBatchId) {
+            lastImportBatchId = response.importBatchId
+          }
+          if (Array.isArray(response.importedKeys)) {
+            for (const key of response.importedKeys) {
+              if (typeof key === 'string' && key) importedWrongKeys.add(key)
+            }
+          }
+          // 整批都是「已导入过」：把键记下来，避免同页反复点击重复请求
+          if (Array.isArray(response.duplicateKeys)) {
+            for (const key of response.duplicateKeys) {
+              if (typeof key === 'string' && key) importedWrongKeys.add(key)
+            }
+          }
+
+          if (response.allDuplicates) {
+            setState({
+              status: 'done',
+              done: items.length,
+              total: items.length,
+              imported: 0,
+              failed: 0,
+              skipped: skipped.length + alreadyImported,
+              message: '本页错题之前已导入过，可到小程序「待复盘错题」查看',
+            })
+            return
+          }
+
+          setState({
+            status: failed > 0 && imported === 0 ? 'error' : 'done',
+            done: items.length,
+            total: items.length,
+            imported,
+            failed,
+            skipped: skipped.length + alreadyImported,
+            message: response.error || undefined,
+            batchId: typeof response.importBatchId === 'string' ? response.importBatchId : undefined,
+          })
+        }
+      )
+    } catch (err: any) {
+      if (err?.message?.includes('Extension context invalidated')) {
+        setState({ ...IDLE_IMPORT_STATE, status: 'error', message: '检测到插件刚刚更新，请按 F5 刷新页面后重试' })
+      } else {
+        setState({ ...IDLE_IMPORT_STATE, status: 'error', message: err?.message || '导入异常，请稍后重试' })
+      }
+    }
+  }
+
+  /**
+   * 撤销上一次导入（按批次整批软删）
+   */
+  async function handleUndoImportBatch() {
+    const batchId = lastImportBatchId
+    if (!batchId) {
+      uiApp?.setImportState({ ...IDLE_IMPORT_STATE, status: 'error', message: '没有可撤销的导入批次' })
+      return
+    }
+
+    uiApp?.setImportState({
+      ...IDLE_IMPORT_STATE,
+      status: 'running',
+      total: 1,
+      message: '正在撤销本次导入…',
+    })
+
+    chrome.runtime.sendMessage({ type: 'UNDO_IMPORT_BATCH', payload: { importBatchId: batchId } }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.success) {
+        uiApp?.setImportState({
+          ...IDLE_IMPORT_STATE,
+          status: 'error',
+          message: response?.error || '撤销失败，请稍后重试',
+        })
+        return
+      }
+      lastImportBatchId = ''
+      importedWrongKeys.clear()
+      uiApp?.setImportState({
+        ...IDLE_IMPORT_STATE,
+        status: 'done',
+        imported: 0,
+        message: `已撤销 ${Number(response.deletedStates || 0)} 道错题`,
+      })
+    })
   }
 
   function injectScript(src: string) {

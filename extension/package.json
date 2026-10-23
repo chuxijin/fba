@@ -1,12 +1,13 @@
 {
   "name": "gongkao-reformatter-extension",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "公考真题/模考考场标准重排器浏览器插件",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "tsc && node build.js",
+    "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

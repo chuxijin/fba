@@ -7,7 +7,6 @@ import { adaptShikaobangPaper } from './index'
  */
 export async function fetchShikaobangPaperActively(settings: RenderTypographySettings): Promise<UnifiedPaper | null> {
   const href = location.href
-  console.log('[事考帮主动嗅探] 正在即时感知当前页面:', href)
 
   // 1. 尝试从当前 URL 提取参数
   let paperId: string | undefined = undefined
@@ -34,7 +33,6 @@ export async function fetchShikaobangPaperActively(settings: RenderTypographySet
       }
     }
   } catch (err) {
-    console.warn('[事考帮主动嗅探] 读取 Performance 失败:', err)
   }
 
   // 场景 A: 试卷场景 (含 paper_id)
@@ -72,7 +70,6 @@ export async function fetchShikaobangPaperActively(settings: RenderTypographySet
         }
       }
     } catch (err) {
-      console.warn('[事考帮主动嗅探] 试卷接口请求失败:', err)
     }
   }
 
@@ -124,7 +121,6 @@ export async function fetchShikaobangPaperActively(settings: RenderTypographySet
         }
       }
     } catch (err) {
-      console.warn('[事考帮主动嗅探] 练习接口请求失败:', err)
     }
   }
 

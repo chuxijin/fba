@@ -1,19 +1,16 @@
 import {
-  getStoredToken,
-  getStoredUser,
   saveAuthSession,
-  clearAuthSession,
+  logoutAuthSession,
   fetchScanQrcode,
   pollScanStatus,
   mockConfirmScan,
   fetchCaptcha,
   loginWithPassword,
-  fetchCurrentQuota,
+  sendAuthMessage,
   CaptchaResult,
-  QuotaInfo,
 } from '../utils/auth'
-
-const BACKEND_BASE = 'http://127.0.0.1:8000'
+import { accountStore, AccountState } from '../utils/account-state'
+import { BACKEND_BASE, LOCAL_SITE_ORIGINS, type QuotaInfo, type TokenInfo, type UserInfo } from '../utils/auth-protocol'
 
 document.addEventListener('DOMContentLoaded', async () => {
   // ── 视图容器 ──
@@ -21,6 +18,56 @@ document.addEventListener('DOMContentLoaded', async () => {
   const viewScan   = document.getElementById('view-scan')!
   const accountBar = document.getElementById('account-bar')!
   const footerNav  = document.getElementById('footer-nav')!
+  const diagnostics = document.getElementById('auth-diagnostics') as HTMLDetailsElement
+  const diagnosticReport = document.getElementById('auth-diagnostics-report')!
+  const btnDiagnose = document.getElementById('btn-auth-diagnose') as HTMLButtonElement
+  const btnCopyReport = document.getElementById('btn-auth-copy') as HTMLButtonElement
+  const btnReconnect = document.getElementById('btn-auth-reconnect') as HTMLButtonElement
+
+  async function diagnoseAuth() {
+    if (btnDiagnose.disabled) return
+    btnDiagnose.disabled = true
+    btnCopyReport.disabled = true
+    btnCopyReport.textContent = '复制检查结果'
+    diagnosticReport.textContent = '正在检查登录同步…'
+    try {
+      const response = await sendAuthMessage<{ report: string }>({ type: 'GET_AUTH_DIAGNOSTICS' }, '检查超时，请重新加载扩展后重试', 12000)
+      if (typeof response.report !== 'string') throw new Error('登录同步检查响应无效')
+      diagnosticReport.textContent = response.report
+    } catch (error) {
+      diagnosticReport.textContent = error instanceof Error ? error.message : '检查失败，请重试'
+    } finally {
+      btnDiagnose.disabled = false
+      btnCopyReport.disabled = false
+    }
+  }
+  diagnostics.addEventListener('toggle', () => { if (diagnostics.open) void diagnoseAuth() })
+  btnDiagnose.addEventListener('click', () => { void diagnoseAuth() })
+  btnReconnect.addEventListener('click', async () => {
+    btnReconnect.disabled = true
+    btnDiagnose.disabled = true
+    btnCopyReport.disabled = true
+    diagnosticReport.textContent = '正在重新连接已打开的官网并验证登录…'
+    try {
+      const response = await sendAuthMessage<{ data: QuotaInfo }>({ type: 'RECONNECT_SITE_AUTH' }, '同步超时，请检查后端连接后重试')
+      if (!response.data?.is_logged_in) throw new Error('未读取到有效登录。请保持已登录的本地官网打开，再检查下方连接状态。')
+      await syncAuth()
+      btnDiagnose.disabled = false
+      await diagnoseAuth()
+    } catch (error) {
+      diagnosticReport.textContent = error instanceof Error ? error.message : '同步失败，请重试'
+    } finally {
+      btnReconnect.disabled = false
+      btnDiagnose.disabled = false
+      btnCopyReport.disabled = false
+    }
+  })
+  btnCopyReport.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(diagnosticReport.textContent || '')
+      btnCopyReport.textContent = '已复制'
+    } catch { btnCopyReport.textContent = '请选中上方文字复制' }
+  })
 
   // ── 主视图 DOM ──
   const heroCard        = document.getElementById('hero-card')!
@@ -35,6 +82,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── 账户底栏 DOM ──
   const acctGuest     = document.getElementById('acct-guest')!
   const acctUser      = document.getElementById('acct-user')!
+  const acctStatusTitle = document.getElementById('acct-status-title')!
+  const acctStatusDesc = document.getElementById('acct-status-desc')!
+  const btnAuthRetry = document.getElementById('btn-auth-retry')!
+  const btnQuotaRetry = document.getElementById('btn-quota-retry')!
+  const acctQuotaLabel = document.getElementById('acct-quota-label')!
+  const acctQuotaSuffix = document.getElementById('acct-quota-suffix')!
   const guestQuotaSub = document.getElementById('guest-quota-sub')!
   const btnShowScan   = document.getElementById('btn-show-scan')!
   const acctAvatarImg     = document.getElementById('acct-avatar-img') as HTMLImageElement
@@ -72,7 +125,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnDevFill      = document.getElementById('btn-dev-fill')!
 
   let currentSceneId = ''
-  let pollTimer: ReturnType<typeof setInterval> | null = null
+  let pollTimer: ReturnType<typeof setTimeout> | null = null
+  let scanGeneration = 0
   let currentCaptcha: CaptchaResult | null = null
 
   // ── 视图切换 ──
@@ -80,6 +134,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     viewMain.style.display   = 'flex'
     accountBar.style.display = 'flex'
     footerNav.style.display  = 'flex'
+    diagnostics.style.display = 'block'
     viewScan.style.display   = 'none'
     stopPolling()
   }
@@ -88,6 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     viewMain.style.display   = 'none'
     accountBar.style.display = 'none'
     footerNav.style.display  = 'none'
+    diagnostics.style.display = 'none'
     viewScan.style.display   = 'flex'
   }
 
@@ -99,9 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       panelScan.style.display = 'flex'
       panelPwd.style.display = 'none'
       if (scanHeaderTitle) scanHeaderTitle.textContent = '微信扫一扫授权登录'
-      if (!currentSceneId) {
-        startScanLogin()
-      }
+      void startScanLogin()
     } else {
       tabScan.classList.remove('active')
       tabPwd.classList.add('active')
@@ -206,9 +260,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         BACKEND_BASE
       )
 
-      await saveAuthSession(res.token, res.user)
-      showMainView()
-      await syncAuth()
+      await completeLogin(res.token, res.user)
     } catch (err: any) {
       showPwdError(err?.message || '登录失败，请检查账号密码')
       if (currentCaptcha?.is_enabled) {
@@ -259,9 +311,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ── 用户身份同步 ──
-  async function syncAuth() {
-    stopPolling()
-    const quotaInfo = await fetchCurrentQuota(BACKEND_BASE)
+  function syncAuth() {
+    return accountStore.refresh()
+  }
+
+  async function completeLogin(token: TokenInfo, user?: UserInfo) {
+    await saveAuthSession(token, user)
+    showMainView()
+    await syncAuth()
+  }
+
+  function renderAccount(state: AccountState) {
+    accountBar.dataset.state = state.status
+    accountBar.setAttribute('aria-busy', String(state.status === 'loading' || (state.status === 'ready' && state.refreshing)))
+    btnQuotaRetry.style.display = state.status === 'ready' && state.refreshError ? 'block' : 'none'
+    btnQuotaRetry.title = state.status === 'ready' ? state.refreshError || '' : ''
+    if (state.status !== 'ready') {
+      acctGuest.style.display = 'none'
+      acctUser.style.display = 'none'
+      btnShowScan.style.display = 'none'
+      acctStatusTitle.textContent = state.status === 'loading' ? '正在确认账户…' : '暂时无法确认账户'
+      acctStatusDesc.textContent = state.status === 'loading' ? '正在获取今日额度' : state.message
+      return
+    }
+    const quotaInfo = state.quota
+    const quotaStatus = state.refreshing ? '额度更新中…' : state.refreshError ? '额度更新失败' : ''
 
     if (quotaInfo.is_logged_in) {
       // ─ 已登录态 ─
@@ -282,19 +356,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         acctAvatarFallback.style.display = 'inline'
       }
 
-      acctQuotaNum.textContent = String(quotaInfo.remaining_quota ?? '—')
+      acctQuotaLabel.textContent = quotaStatus || '今日剩余 '
+      acctQuotaNum.textContent = quotaStatus ? '' : String(quotaInfo.remaining_quota)
+      acctQuotaSuffix.textContent = quotaStatus ? '' : ' 次'
     } else {
       // ─ 未登录态 ─
       acctGuest.style.display   = 'flex'
       btnShowScan.style.display = 'flex'
       acctUser.style.display    = 'none'
 
-      guestQuotaSub.textContent = `今日剩余 ${quotaInfo.remaining_quota} 次试用`
+      guestQuotaSub.textContent = quotaStatus || `今日剩余 ${quotaInfo.remaining_quota} 次试用`
     }
   }
 
   // ── 扫码登录流程 ──
   async function startScanLogin() {
+    stopPolling()
+    const version = scanGeneration
     showScanView()
     scanQrImg.style.display   = 'none'
     scanQrLoading.style.display = 'block'
@@ -303,35 +381,44 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       const qrData = await fetchScanQrcode(BACKEND_BASE)
+      if (version !== scanGeneration) return
       currentSceneId = qrData.scene_id
       scanQrImg.src = qrData.qrcode_data_url
       scanQrImg.style.display    = 'block'
       scanQrLoading.style.display = 'none'
 
-      // 2s 轮询
-      stopPolling()
-      pollTimer = setInterval(async () => {
-        if (!currentSceneId) return
-        try {
-          const res = await pollScanStatus(currentSceneId, BACKEND_BASE)
-          if (res.status === 'CONFIRMED' && res.token) {
-            stopPolling()
-            await saveAuthSession(res.token, res.user)
-            showMainView()
-            await syncAuth()
-          } else if (res.status === 'EXPIRED') {
-            stopPolling()
-            scanMainHint.textContent = '二维码已过期，请点击重新获取'
-          }
-        } catch { /* ignore */ }
-      }, 2000)
+      scheduleScanPoll(version)
     } catch (err: any) {
-      scanQrLoading.textContent = `生成失败：${err?.message || '请重试'}`
+      if (version === scanGeneration) scanQrLoading.textContent = `生成失败：${err?.message || '请重试'}`
     }
   }
 
+  function scheduleScanPoll(version: number) {
+    pollTimer = setTimeout(async () => {
+      if (version !== scanGeneration || !currentSceneId) return
+      try {
+        const res = await pollScanStatus(currentSceneId, BACKEND_BASE)
+        if (version !== scanGeneration) return
+        if (res.status === 'CONFIRMED' && res.token) {
+          stopPolling()
+          await completeLogin(res.token, res.user)
+          return
+        }
+        if (res.status === 'EXPIRED') {
+          stopPolling()
+          scanMainHint.textContent = '二维码已过期，请点击重新获取'
+          return
+        }
+      } catch { /* 下轮重试，避免并发轮询 */ }
+      if (version === scanGeneration) scheduleScanPoll(version)
+    }, 2000)
+  }
+
   function stopPolling() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+    scanGeneration++
+    currentSceneId = ''
+    if (pollTimer) clearTimeout(pollTimer)
+    pollTimer = null
   }
 
   // 点击失效二维码重新拉取
@@ -342,7 +429,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── 事件绑定 ──
   btnShowScan.addEventListener('click', () => {
     switchLoginTab('scan')
-    startScanLogin()
   })
 
   btnBack.addEventListener('click', () => {
@@ -352,15 +438,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   btnScanMock.addEventListener('click', async () => {
     if (!currentSceneId) return
+    const version = scanGeneration
+    const sceneId = currentSceneId
     btnScanMock.textContent = '确认中…'
     try {
-      await mockConfirmScan(currentSceneId, BACKEND_BASE)
-      const res = await pollScanStatus(currentSceneId, BACKEND_BASE)
+      await mockConfirmScan(sceneId, BACKEND_BASE)
+      if (version !== scanGeneration) return
+      const res = await pollScanStatus(sceneId, BACKEND_BASE)
+      if (version !== scanGeneration) return
       if (res.status === 'CONFIRMED' && res.token) {
         stopPolling()
-        await saveAuthSession(res.token, res.user)
-        showMainView()
-        await syncAuth()
+        await completeLogin(res.token, res.user)
       }
     } catch (e: any) {
       alert(`模拟扫码失败: ${e?.message || e}`)
@@ -370,9 +458,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   btnLogout.addEventListener('click', async () => {
-    await clearAuthSession()
-    await syncAuth()
+    try { await logoutAuthSession() }
+    catch (error) { alert(`已退出本地登录，${error instanceof Error ? error.message : '服务端暂时不可用'}`) }
+    finally { await syncAuth() }
   })
+  btnAuthRetry.addEventListener('click', () => { void syncAuth() })
+  btnQuotaRetry.addEventListener('click', () => { void syncAuth() })
 
   // 题库链接直达
   document.querySelectorAll('.site-chip').forEach((chip) => {
@@ -385,9 +476,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 底部导航链接
   const footerLinks: Record<string, string> = {
-    'footer-official': 'https://gongkao.ai',       // 替换为正式官网地址
-    'footer-service':  'https://gongkao.ai/service',
-    'footer-help':     'https://gongkao.ai/help',
+    'footer-official': LOCAL_SITE_ORIGINS[0]!,
+    'footer-service':  `${LOCAL_SITE_ORIGINS[0]}/service`,
+    'footer-help':     `${LOCAL_SITE_ORIGINS[0]}/help`,
   }
   Object.entries(footerLinks).forEach(([id, url]) => {
     document.getElementById(id)?.addEventListener('click', (e) => {
@@ -397,7 +488,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   // ── 初始化 ──
-  await syncAuth()
+  const unsubscribeAccount = accountStore.subscribe(renderAccount)
+  window.addEventListener('pagehide', () => {
+    unsubscribeAccount()
+    stopPolling()
+  }, { once: true })
+  void syncAuth()
 
   // ── 页面内容检测 ──
   try {

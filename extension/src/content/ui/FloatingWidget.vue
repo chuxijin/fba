@@ -21,6 +21,26 @@
           快速打印
         </button>
 
+        <!-- 副按钮 3: 导入错题库（仅在检测到错题时出现） -->
+        <button
+          v-if="wrongCount > 0"
+          class="gk-float-btn-import"
+          :class="importButtonClass"
+          :disabled="importing"
+          :title="importTitle"
+          @click="handleImportClick"
+        >
+          {{ importButtonText }}
+        </button>
+
+        <!-- 导入结果 / 失败原因轻提示 -->
+        <div v-if="importHint" class="gk-float-import-hint" :class="`is-${importState.status}`">
+          <span>{{ importHint }}</span>
+          <button v-if="canUndo" class="gk-float-undo-link" @click="$emit('undoImport')">
+            撤销本次导入
+          </button>
+        </div>
+
         <!-- 辅助按钮: 建议反馈 -->
         <button class="gk-float-btn-ghost" @click="$emit('feedback')">
           💬 建议反馈
@@ -53,19 +73,77 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { IDLE_IMPORT_STATE, ImportState } from '../../adapters'
 
-const props = defineProps<{
-  paperTitle: string
-  questionCount: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    paperTitle: string
+    questionCount: number
+    wrongCount?: number
+    importState?: ImportState
+  }>(),
+  {
+    wrongCount: 0,
+    importState: () => ({ ...IDLE_IMPORT_STATE }),
+  }
+)
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'startReformat'): void
   (e: 'quickPrint'): void
   (e: 'feedback'): void
+  (e: 'importWrong'): void
+  (e: 'undoImport'): void
 }>()
 
 const isCollapsed = ref(false)
 const isReady = computed(() => props.questionCount > 0 || Boolean(props.paperTitle))
-const logoUrl = typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('icons/icon48.png') : ''
+const logoUrl =
+  typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('icons/icon48.png') : ''
+
+const importing = computed(() => props.importState.status === 'running')
+
+const importButtonText = computed(() => {
+  const state = props.importState
+  if (state.status === 'running') {
+    return state.done > 0 ? `⏳ 正在导入 ${state.done}/${state.total}…` : `⏳ 正在导入 ${state.total} 道…`
+  }
+  if (state.status === 'done') {
+    return `✅ 已导入 ${state.imported} 道错题`
+  }
+  if (state.status === 'error') {
+    return '⚠️ 导入失败，点击重试'
+  }
+  return `📥 导入错题库（${props.wrongCount} 题）`
+})
+
+const importButtonClass = computed(() => `is-${props.importState.status}`)
+
+/** 仅当上一批导入成功且拿到批次 ID 时，才提供整批撤销 */
+const canUndo = computed(
+  () => props.importState.status === 'done' && Boolean(props.importState.batchId)
+)
+
+const importTitle = computed(() => {
+  const state = props.importState
+  if (state.status === 'running') return '正在逐题导入到「错题待复盘」，请稍候'
+  if (state.status === 'done') return '可在微信小程序「我的题本 → 待复盘错题」中查看'
+  if (state.status === 'error') return state.message || '导入失败，请重试'
+  return `把当前页面的 ${props.wrongCount} 道错题导入到「错题待复盘」`
+})
+
+const importHint = computed(() => {
+  const state = props.importState
+  if (state.status === 'error') return state.message || '导入失败，请稍后重试'
+  if (state.status !== 'done') return ''
+  const extras: string[] = []
+  if (state.skipped > 0) extras.push(`跳过 ${state.skipped} 道（缺答案或题干）`)
+  if (state.failed > 0) extras.push(`失败 ${state.failed} 道`)
+  return extras.length > 0 ? extras.join('，') : '可到小程序「待复盘错题」查看'
+})
+
+function handleImportClick() {
+  if (importing.value) return
+  emit('importWrong')
+}
 </script>

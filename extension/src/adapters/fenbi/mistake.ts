@@ -126,7 +126,6 @@ export function parseMistakePageMeta(url: string, pageTitle: string = ''): Mista
       }
     }
   } catch (e) {
-    console.warn('[MistakeAdapter] 解析错题 URL 异常:', e)
   }
 
   return null
@@ -224,7 +223,6 @@ export async function fetchKeypointTree(): Promise<any> {
       return data
     }
   } catch (e) {
-    console.warn(`[MistakeAdapter] 请求 keypoint-tree (${prefix}) 异常:`, e)
   }
   return null
 }
@@ -414,7 +412,6 @@ export async function fetchMistakeQuestionsByCount(options: {
         if (onProgress) onProgress(Math.min(loadedCount, targetCount), targetCount)
       }
     } catch (e) {
-      console.warn(`[MistakeAdapter] 分批拉取错题解析 (${prefix}) 异常:`, e)
     }
   }
 

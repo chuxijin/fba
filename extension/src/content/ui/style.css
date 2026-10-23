@@ -153,6 +153,97 @@
   border-color: #bfdbfe;
 }
 
+/* 副按钮: 导入错题库（仅检测到错题时出现） */
+.gk-float-btn-import {
+  width: 100%;
+  height: 38px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.gk-float-btn-import:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.18);
+}
+
+.gk-float-btn-import:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.gk-float-btn-import:disabled {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+.gk-float-btn-import.is-done {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+  color: #047857;
+}
+
+.gk-float-btn-import.is-error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.gk-float-btn-import.is-error:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.18);
+}
+
+/* 导入结果轻提示 */
+.gk-float-import-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 6px 9px;
+  border-radius: 7px;
+  text-align: left;
+  word-break: break-word;
+}
+
+.gk-float-import-hint.is-done {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+}
+
+.gk-float-import-hint.is-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+/* 结果提示行内的撤销入口 */
+.gk-float-undo-link {
+  margin-left: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.gk-float-undo-link:hover {
+  color: #92400e;
+}
+
 /* 底部品牌与版本 */
 .gk-float-footer {
   margin-top: 14px;

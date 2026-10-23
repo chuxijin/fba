@@ -262,10 +262,24 @@
       justify-content: space-between;
       gap: 8px;
       background: var(--bg);
+      min-height: 49px;
+      box-sizing: border-box;
     }
 
+    .acct-pending { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .account-bar[data-state="loading"] .acct-guest,
+    .account-bar[data-state="loading"] .acct-user,
+    .account-bar[data-state="loading"] .btn-login,
+    .account-bar[data-state="error"] .acct-guest,
+    .account-bar[data-state="error"] .acct-user,
+    .account-bar[data-state="error"] .btn-login { display: none; }
+    .account-bar[data-state="ready"] .acct-pending { display: none; }
+    #btn-auth-retry { display: none; }
+    #btn-quota-retry { display: none; }
+    .account-bar[data-state="error"] #btn-auth-retry { display: block; }
+
     /* 未登录 */
-    .acct-guest { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .acct-guest { display: none; align-items: center; gap: 8px; flex: 1; min-width: 0; }
     .acct-guest-icon {
       width: 28px;
       height: 28px;
@@ -651,6 +665,11 @@
       margin-top: 14px;
     }
 
+    .auth-diagnostics { padding: 8px 14px; border-top: 1px solid var(--border-light); font-size: 11px; color: var(--text-main); }
+    .auth-diagnostics summary { cursor: pointer; color: var(--text-muted); }
+    .auth-diagnostics pre { max-height: 210px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; user-select: text; }
+    .auth-diagnostics-actions { display: flex; gap: 12px; }
+
     /* ── 底部导航栏 ── */
     .footer-nav {
       border-top: 1px solid var(--border-light);
@@ -767,7 +786,15 @@
   </div>
 
   <!-- 账户底栏（固定在主视图底部，不随 gap 布局） -->
-  <div class="account-bar" id="account-bar">
+  <div class="account-bar" id="account-bar" data-state="loading" aria-busy="true" aria-live="polite">
+    <div class="acct-pending" id="acct-pending" role="status">
+      <div class="acct-guest-icon">👤</div>
+      <div class="acct-guest-info">
+        <div class="acct-guest-name" id="acct-status-title">正在确认账户…</div>
+        <div class="acct-guest-sub" id="acct-status-desc">正在获取今日额度</div>
+      </div>
+      <button class="btn-logout" id="btn-auth-retry">重试</button>
+    </div>
     <!-- 未登录 -->
     <div class="acct-guest" id="acct-guest">
       <div class="acct-guest-icon">👤</div>
@@ -785,7 +812,7 @@
       <div class="acct-user-info">
         <div class="acct-user-name" id="acct-user-name">用户</div>
         <div class="acct-quota">
-          今日剩余 <span class="acct-quota-num" id="acct-quota-num">—</span> 次
+          <span id="acct-quota-label">今日剩余 </span><span class="acct-quota-num" id="acct-quota-num">—</span><span id="acct-quota-suffix"> 次</span>
         </div>
       </div>
       <button class="btn-logout" id="btn-logout">退出</button>
@@ -794,7 +821,18 @@
     <button class="btn-login" id="btn-show-scan">
       <span>💬</span>微信登录
     </button>
+    <button class="btn-logout" id="btn-quota-retry">重试</button>
   </div>
+
+  <details class="auth-diagnostics" id="auth-diagnostics">
+    <summary>登录同步检查</summary>
+    <pre id="auth-diagnostics-report" role="status" aria-live="polite">展开后检查官网、扩展与后端的连接状态。</pre>
+    <div class="auth-diagnostics-actions">
+      <button class="btn-logout" id="btn-auth-reconnect" type="button">从官网同步</button>
+      <button class="btn-logout" id="btn-auth-diagnose" type="button">重新检查</button>
+      <button class="btn-logout" id="btn-auth-copy" type="button" disabled>复制检查结果</button>
+    </div>
+  </details>
 
   <!-- 底部导航栏 -->
   <div class="footer-nav" id="footer-nav">
@@ -804,7 +842,7 @@
     </a>
     <div class="footer-nav-sep"></div>
     <div class="footer-nav-item version">
-      <span>v 1.0.0</span>
+      <span>v 1.0.2</span>
     </div>
     <div class="footer-nav-sep"></div>
     <a class="footer-nav-item" id="footer-service" href="#" title="联系客服">

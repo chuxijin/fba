@@ -255,12 +255,6 @@ class FenbiSessionManager {
       ;(window as any).__FENBI_MOCK_WRONG_ORDERS__ = Array.from(this.wrongOrders)
     }
 
-    console.log('[粉笔适配器] 🎯 答题卡分析就绪:', {
-      wrongOrders: Array.from(this.wrongOrders),
-      wrongKeysCount: this.wrongKeys.size,
-      wrongIdsCount: this.wrongIds.size,
-      userAnswersCount: this.userAnswers.length,
-    })
   }
 
   /**
@@ -351,7 +345,6 @@ class FenbiSessionManager {
 
     if (wrongOrders.size === 0) return paper
 
-    console.log('[粉笔适配器] 🎯 从当前页面 DOM 答题卡捕获到错题题号:', Array.from(wrongOrders))
 
     let actualCount = 0
     for (const sec of paper.sections) {

@@ -7,7 +7,6 @@ import { adaptHuatuPaper } from './index'
  */
 export async function fetchHuatuPaperActively(settings: RenderTypographySettings): Promise<UnifiedPaper | null> {
   const href = location.href
-  console.log('[华图主动嗅探] 正在即时感知当前页面:', href)
 
   // 1. 从当前 URL 或 Hash 中提取练习/试卷 ID
   let practiceId: string | undefined = undefined
@@ -43,10 +42,8 @@ export async function fetchHuatuPaperActively(settings: RenderTypographySettings
       }
     }
   } catch (err) {
-    console.warn('[华图主动嗅探] 读取 Performance 失败:', err)
   }
 
-  console.log('[华图主动嗅探] 识别到当前华图练习标识:', practiceId || '(未识别到成套ID)')
 
   if (!practiceId) {
     return null
@@ -75,7 +72,6 @@ export async function fetchHuatuPaperActively(settings: RenderTypographySettings
     })
 
     if (!practiceResp.ok) {
-      console.warn('[华图主动嗅探] 请求 practices 失败，状态码:', practiceResp.status)
       return null
     }
 
@@ -84,7 +80,6 @@ export async function fetchHuatuPaperActively(settings: RenderTypographySettings
 
     const questionIds: (number | string)[] = practiceData.questions || []
     if (!Array.isArray(questionIds) || questionIds.length === 0) {
-      console.warn('[华图主动嗅探] 练习中无题目 ID 列表')
       return null
     }
 

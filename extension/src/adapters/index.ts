@@ -4,6 +4,7 @@
 
 export * from './types'
 export * from './common'
+export * from './importer'
 
 // 题库命名空间导出
 import * as fenbi from './fenbi'

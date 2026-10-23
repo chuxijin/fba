@@ -1,25 +1,32 @@
 {
   "manifest_version": 3,
   "name": "公考内容排版",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "一键将粉笔、华图等公考题库网页内容排版为国考 1:1 标准考场卷 (B5道林纸/仿宋/防断页/双面打印)，支持下载电脑与快速扫码打印",
   "permissions": [
     "storage",
     "downloads",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "*://*.fenbi.com/*",
     "*://*.fbstatic.cn/*",
     "*://*.huatu.com/*",
     "*://*.shikaobang.cn/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["site-auth.js"],
+      "run_at": "document_start"
+    },
     {
       "matches": [
         "*://*.fenbi.com/*",

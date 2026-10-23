@@ -6,8 +6,6 @@
  * 3. 绝不掺杂任何特定平台的业务逻辑与错题算法，100% 原始数据直接派发给 Content Script
  */
 ;(function () {
-  const SCRIPT_TAG = '[公考网络嗅探引擎]'
-  console.log(`${SCRIPT_TAG} 网络请求拦截与 SPA 路由感知系统已就绪`)
 
   // ==========================================
   // 1. Hook History API & SPA 路由感知

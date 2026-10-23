@@ -4,9 +4,13 @@
     <FloatingWidget
       :paper-title="paperInfo.title"
       :question-count="paperInfo.questionCount"
+      :wrong-count="wrongCount"
+      :import-state="importState"
       @start-reformat="handleStartReformat"
       @quick-print="handleQuickPrint"
       @feedback="handleFeedback"
+      @import-wrong="handleImportWrong"
+      @undo-import="handleUndoImport"
     />
 
     <!-- 2. 设置与交付弹窗 -->
@@ -24,12 +28,22 @@
 import { ref, reactive } from 'vue'
 import FloatingWidget from './FloatingWidget.vue'
 import SettingsModal from './SettingsModal.vue'
-import { UnifiedPaper, RenderTypographySettings, MistakePageMeta, parseMistakePageMeta } from '../../adapters'
+import {
+  UnifiedPaper,
+  RenderTypographySettings,
+  MistakePageMeta,
+  parseMistakePageMeta,
+  countWrongQuestions,
+  IDLE_IMPORT_STATE,
+  ImportState,
+} from '../../adapters'
 
 const emit = defineEmits<{
   (e: 'requestReformat'): void
   (e: 'requestQuickPrint'): void
   (e: 'doExport', settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync'): void
+  (e: 'importWrong'): void
+  (e: 'undoImport'): void
 }>()
 
 const isModalVisible = ref(false)
@@ -42,10 +56,15 @@ const paperInfo = reactive({
   questionCount: 0,
 })
 
+/** 当前试卷里可导入的错题数量（0 时悬浮窗不显示导入按钮） */
+const wrongCount = ref(0)
+const importState = ref<ImportState>({ ...IDLE_IMPORT_STATE })
+
 function setPaper(paper: UnifiedPaper) {
   currentPaper.value = paper
   paperInfo.title = paper.title
   paperInfo.questionCount = paper.total_questions
+  wrongCount.value = countWrongQuestions(paper)
 
   // 解析错题元数据
   const parsed = parseMistakePageMeta(location.href, paper.title)
@@ -63,6 +82,20 @@ function setPaperInfo(title: string, count: number) {
   paperInfo.questionCount = count
 }
 
+/** 试卷信息被清空（SPA 路由切换）时同步复位导入能力 */
+function resetPaper() {
+  currentPaper.value = null
+  paperInfo.title = ''
+  paperInfo.questionCount = 0
+  wrongCount.value = 0
+  mistakeMeta.value = null
+  importState.value = { ...IDLE_IMPORT_STATE }
+}
+
+function setImportState(state: ImportState) {
+  importState.value = { ...state }
+}
+
 function openModal() {
   isModalVisible.value = true
 }
@@ -76,7 +109,7 @@ function showLoading(target: 'computer_download' | 'mobile_sync') {
   modalRef.value?.showLoading(target)
 }
 
-function showDelivery(options: { qrCodeUrl?: string; remainingQuota?: number }) {
+function showDelivery(options: { qrCodeUrl?: string; savedPath?: string; remainingQuota?: number }) {
   modalRef.value?.showDelivery(options)
 }
 
@@ -96,6 +129,14 @@ function handleFeedback() {
   alert('如遇到排版或试卷识别问题，请在微信小程序【我的题本】中点击“意见反馈”，我们将第一时间为您解决！')
 }
 
+function handleImportWrong() {
+  emit('importWrong')
+}
+
+function handleUndoImport() {
+  emit('undoImport')
+}
+
 function onModalExport(settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync') {
   emit('doExport', settings, target)
 }
@@ -103,6 +144,8 @@ function onModalExport(settings: RenderTypographySettings, target: 'computer_dow
 defineExpose({
   setPaper,
   setPaperInfo,
+  setImportState,
+  resetPaper,
   openModal,
   closeModal,
   showLoading,

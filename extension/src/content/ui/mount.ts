@@ -1,15 +1,17 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import rawCss from './style.css?inline'
-import { UnifiedPaper, RenderTypographySettings } from '../../adapters'
+import { UnifiedPaper, RenderTypographySettings, ImportState } from '../../adapters'
 
 export interface ReformatterAppInstance {
   setPaper(paper: UnifiedPaper): void
   setPaperInfo(title: string, count: number): void
+  setImportState(state: ImportState): void
+  resetPaper(): void
   openModal(): void
   closeModal(): void
   showLoading(target: 'computer_download' | 'mobile_sync'): void
-  showDelivery(options: { qrCodeUrl?: string; remainingQuota?: number }): void
+  showDelivery(options: { qrCodeUrl?: string; savedPath?: string; remainingQuota?: number }): void
   showError(msg: string): void
 }
 
@@ -20,6 +22,8 @@ export function mountReformatterApp(handlers: {
   onRequestReformat: () => Promise<void> | void
   onRequestQuickPrint: () => Promise<void> | void
   onDoExport: (settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync') => Promise<void> | void
+  onImportWrong?: () => Promise<void> | void
+  onUndoImport?: () => Promise<void> | void
 }): ReformatterAppInstance {
   // 1. 查找或创建挂载宿主容器
   let host = document.getElementById('gongkao-reformatter-shadow-host')
@@ -58,6 +62,8 @@ export function mountReformatterApp(handlers: {
     onRequestReformat: handlers.onRequestReformat,
     onRequestQuickPrint: handlers.onRequestQuickPrint,
     onDoExport: handlers.onDoExport,
+    onImportWrong: handlers.onImportWrong,
+    onUndoImport: handlers.onUndoImport,
   })
 
   const appInstance = app.mount(appContainer) as any
@@ -65,6 +71,8 @@ export function mountReformatterApp(handlers: {
   return {
     setPaper: (paper) => appInstance.setPaper(paper),
     setPaperInfo: (title, count) => appInstance.setPaperInfo(title, count),
+    setImportState: (state) => appInstance.setImportState(state),
+    resetPaper: () => appInstance.resetPaper(),
     openModal: () => appInstance.openModal(),
     closeModal: () => appInstance.closeModal(),
     showLoading: (target) => appInstance.showLoading(target),

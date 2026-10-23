@@ -28,7 +28,6 @@ export function parseHuatuMistakePageMeta(url: string, pageTitle: string = ''): 
       platform: 'huatu',
     }
   } catch (err) {
-    console.warn('[华图错题] 解析 URL 异常:', err)
     return null
   }
 }
