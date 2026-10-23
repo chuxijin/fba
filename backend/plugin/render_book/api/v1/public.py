@@ -39,6 +39,7 @@ from backend.plugin.render_book.schema.public_reformat import (
 from backend.plugin.render_book.service.adapters import adapt_gongkao_payload
 from backend.plugin.render_book.service.adapters.practice_adapter import adapt_practice_payload
 from backend.plugin.render_book.service.docx_engine import docx_render_engine
+from backend.plugin.render_book.service.public_auth_service import get_public_user
 from backend.plugin.render_book.service.quota_service import render_book_quota_service
 from backend.plugin.render_book.utils.template_catalog import TEMPLATES_ROOT
 from backend.utils.request_parse import get_request_ip
@@ -98,20 +99,6 @@ def build_clean_paper_and_filenames(
         }
 
 
-def _extract_user_id(request: Request) -> int | None:
-    """从请求头提取当前登录用户 ID"""
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token_str = auth_header.split(' ', 1)[1].strip()
-        try:
-            from backend.common.security.jwt import jwt_decode
-            payload = jwt_decode(token_str)
-            return int(payload.user_id)
-        except Exception as e:
-            log.warning(f'解析用户 Token 失败: {e}')
-    return None
-
-
 async def _get_trial_policy_limit(db: AsyncSession) -> int:
     """从 resource_rule 动态获取未付费/试看的每日限制"""
     try:
@@ -135,7 +122,14 @@ async def get_public_quota(
     db: CurrentSession,
 ) -> ResponseSchemaModel[dict]:
     client_ip = get_request_ip(request)
-    user_id = _extract_user_id(request)
+    user = await get_public_user(request=request)
+    user_id = user.id if user else None
+    user_info = {
+        'id': user.id,
+        'username': user.username,
+        'nickname': user.nickname,
+        'avatar': str(user.avatar) if user.avatar else None,
+    } if user else None
     trial_limit = await _get_trial_policy_limit(db)
     now = timezone.now()
     today_str = now.strftime('%Y-%m-%d')
@@ -168,6 +162,7 @@ async def get_public_quota(
                     data={
                         'client_ip': client_ip,
                         'is_logged_in': True,
+                        'user': user_info,
                         'daily_limit': limit,
                         'used_count': used,
                         'remaining_quota': remaining,
@@ -190,6 +185,7 @@ async def get_public_quota(
             data={
                 'client_ip': client_ip,
                 'is_logged_in': True,
+                'user': user_info,
                 'daily_limit': trial_limit,
                 'used_count': used_count,
                 'remaining_quota': remaining,
@@ -223,7 +219,9 @@ async def public_reformat_paper(
     payload: PublicReformatRequest,
     db: CurrentSession,
 ) -> ResponseSchemaModel[PublicReformatResponseData]:
-    user_id = _extract_user_id(request)
+    user = await get_public_user(request=request)
+    user_id = user.id if user else None
+    client_ip = get_request_ip(request)
     now = timezone.now()
     today_str = now.strftime('%Y-%m-%d')
     trial_limit = await _get_trial_policy_limit(db)
@@ -241,7 +239,6 @@ async def public_reformat_paper(
             source_ref=quota_source_ref,
         )
     else:
-        client_ip = get_request_ip(request)
         guest_key = f'access:trial:guest_ip:{client_ip}:render_book:1:{today_str}'
         used_val = await redis_client.get(guest_key)
         used_count = int(used_val) if used_val else 0

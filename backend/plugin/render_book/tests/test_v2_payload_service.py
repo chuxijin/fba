@@ -42,10 +42,15 @@ def test_v2_private_external_wrong_question_builds_render_payload(monkeypatch: p
         await asyncio.sleep(0)
         return {}, []
 
+    async def fake_load_latest_reviews(**_kwargs: Any) -> dict[int, dict[str, str]]:
+        await asyncio.sleep(0)
+        return {101: {'summary': '当时没注意单位换算', 'prevention': '先统一单位再代入公式'}}
+
     monkeypatch.setattr(V2RenderPayloadService, '_load_questions', fake_load_questions)
     monkeypatch.setattr(V2RenderPayloadService, '_load_knowledge_points', fake_load_knowledge_points)
     monkeypatch.setattr(V2RenderPayloadService, '_load_contexts', fake_load_contexts)
     monkeypatch.setattr(V2RenderPayloadService, '_load_materials', fake_load_materials)
+    monkeypatch.setattr(V2RenderPayloadService, '_load_latest_reviews', fake_load_latest_reviews)
 
     payload = RenderJobCreate(
         template_key='wrong_question',
@@ -63,5 +68,7 @@ def test_v2_private_external_wrong_question_builds_render_payload(monkeypatch: p
     assert question.answer_text == 'A'
     assert question.analysis_text == '用户填写的解析'
     assert question.knowledge_points == ['数量关系']
+    assert question.wrong_thought == '当时没注意单位换算'
+    assert question.correct_thought == '先统一单位再代入公式'
     assert question.bank_id is None
     assert result.metadata['question_ids'] == [101]

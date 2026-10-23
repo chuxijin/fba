@@ -12,7 +12,7 @@ from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRe
 from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbQuestionKnowledgePoint
 from backend.app.question_bank_v2.model.material import QbMaterialRevision, QbQuestionMaterial
 from backend.app.question_bank_v2.model.question import QbQuestion, QbQuestionAnswer, QbQuestionExplanation
-from backend.app.question_bank_v2.model.review import QbWrongQuestionState
+from backend.app.question_bank_v2.model.review import QbQuestionReview, QbWrongQuestionState
 from backend.app.question_bank_v2.model.user_content import QbQuestionFavorite, QbQuestionNote
 from backend.plugin.render_book.schema.payload import (
     RenderBookMeta,
@@ -524,6 +524,35 @@ class RenderPayloadService:
         return result
 
     @staticmethod
+    async def _load_latest_reviews(
+        *, db: AsyncSession, user_id: int, question_ids: list[int]
+    ) -> dict[int, dict[str, str]]:
+        """读取每道错题最近一次复盘，导出错题本时自动填入错误思路与正确思路"""
+        if not question_ids or db is None:
+            return {}
+        stmt = (
+            select(QbQuestionReview.question_id, QbQuestionReview.summary, QbQuestionReview.review_data)
+            .where(
+                QbQuestionReview.user_id == user_id,
+                QbQuestionReview.question_id.in_(question_ids),
+                QbQuestionReview.event_type == 'review',
+                QbQuestionReview.deleted == 0,
+            )
+            .order_by(QbQuestionReview.reviewed_time.desc(), QbQuestionReview.id.desc())
+        )
+        latest: dict[int, dict[str, str]] = {}
+        for row in (await db.execute(stmt)).mappings():
+            question_id = int(row['question_id'])
+            if question_id in latest:
+                continue
+            review_data = dict(row['review_data'] or {})
+            latest[question_id] = {
+                'summary': str(row['summary'] or '').strip(),
+                'prevention': str(review_data.get('prevention') or '').strip(),
+            }
+        return latest
+
+    @staticmethod
     async def _load_contexts(
         *, db: AsyncSession, question_ids: list[int], bank_id: int | None, section_id: int | None
     ) -> dict[int, dict[str, Any]]:
@@ -632,6 +661,20 @@ class RenderPayloadService:
         )
         material_links, materials = await cls._load_materials(db=db, question_ids=question_ids)
 
+        metadata_source = payload.metadata.get('source_type')
+        if metadata_source in {'wrong', 'favorite', 'note'}:
+            source_type = metadata_source
+        elif payload.template_key == 'wrong_question':
+            source_type = 'wrong'
+        else:
+            source_type = 'placement'
+        review_user_id = payload.metadata.get('user_id')
+        reviews = (
+            await cls._load_latest_reviews(db=db, user_id=review_user_id, question_ids=question_ids)
+            if source_type == 'wrong' and isinstance(review_user_id, int)
+            else {}
+        )
+
         book_kind = cls.resolve_book_kind(payload)
         content_mode, answer_layout, delivery_mode = cls.resolve_export_config(payload)
         solution_mode = cls.resolve_solution_mode(payload)
@@ -678,6 +721,8 @@ class RenderPayloadService:
                 chapter_id=context.get('section_id'),
                 chapter_name=context.get('section_name'),
                 material_ids=material_links.get(question_id, []),
+                wrong_thought=reviews.get(question_id, {}).get('summary') or None,
+                correct_thought=reviews.get(question_id, {}).get('prevention') or None,
                 tags=[QUESTION_TYPE_LABELS.get(type_code, type_code)],
             )
             section_map.setdefault(
