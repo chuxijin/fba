@@ -11,6 +11,7 @@ import base64
 import json
 import logging
 
+from http.cookies import SimpleCookie
 from uuid import uuid4
 
 import httpx
@@ -19,7 +20,12 @@ from fastapi import BackgroundTasks, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_user import user_dao
+from backend.app.admin.schema.token import GetLoginToken
+from backend.app.admin.service.auth_service import auth_service
+from backend.common.context import ctx
 from backend.common.exception import errors
+from backend.common.security.client import LoginClientType, refresh_cookie_key, set_refresh_cookie
+from backend.common.security.jwt import jwt_decode
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 from backend.plugin.oauth2.service.oauth2_service import oauth2_service
@@ -72,7 +78,9 @@ class WechatScanService:
             return token
 
     @staticmethod
-    async def generate_scan_qrcode(page: str = "pages/index/index") -> dict:
+    async def generate_scan_qrcode(
+        page: str = 'pages/index/index', *, client_type: LoginClientType = LoginClientType.web
+    ) -> dict:
         """
         生成带有唯一 scene_id 的微信官方小程序码
         """
@@ -80,7 +88,12 @@ class WechatScanService:
         redis_key = f"{SCAN_REDIS_PREFIX}{scene_id}"
 
         # 初始状态设为 PENDING
-        init_state = {"status": "PENDING", "created_at": settings.DATETIME_TIMEZONE}
+        if client_type not in {LoginClientType.web, LoginClientType.extension, LoginClientType.admin}:
+            raise errors.RequestError(msg='该客户端不支持电脑扫码登录')
+        init_state = {
+            'status': 'PENDING', 'client_type': client_type.value,
+            'session_info': {'ip': ctx.ip, 'os': ctx.os, 'browser': ctx.browser, 'device': ctx.device},
+        }
         await redis_client.set(redis_key, json.dumps(init_state), ex=DEFAULT_EXPIRES_SECONDS)
 
         try:
@@ -139,7 +152,9 @@ class WechatScanService:
         return f"data:image/svg+xml;base64,{b64_svg}"
 
     @staticmethod
-    async def get_scan_status(scene_id: str) -> dict:
+    async def get_scan_status(
+        scene_id: str, *, response: Response, client_type: LoginClientType = LoginClientType.web
+    ) -> dict:
         """插件端轮询检查扫码状态"""
         redis_key = f"{SCAN_REDIS_PREFIX}{scene_id}"
         val = await redis_client.get(redis_key)
@@ -147,11 +162,17 @@ class WechatScanService:
             return {"status": "EXPIRED", "msg": "二维码已失效或过期，请刷新"}
 
         data = json.loads(val)
+        if data.get('client_type') != client_type:
+            raise errors.RequestError(msg='扫码客户端不匹配，请刷新二维码')
         status = data.get("status", "PENDING")
 
         if status == "CONFIRMED":
             # 确认登录后，返回 Token 并清理临时 Redis 锁
-            await redis_client.delete(redis_key)
+            if await redis_client.getdel(redis_key) != val:
+                return {'status': 'EXPIRED', 'msg': '二维码已被领取，请重新扫码'}
+            refresh_token = data['refresh_token']
+            payload = jwt_decode(refresh_token)
+            set_refresh_cookie(response, client_type, refresh_token, payload.expire_time)
             return {
                 "status": "CONFIRMED",
                 "token": data.get("token"),
@@ -171,36 +192,56 @@ class WechatScanService:
         nickname: str | None = None,
         avatar: str | None = None,
     ) -> bool:
+        async with redis_client.lock(f'{SCAN_REDIS_PREFIX}{scene_id}:lock', timeout=60, blocking_timeout=10):
+            return await WechatScanService._confirm_scan(
+                db=db, background_tasks=background_tasks, scene_id=scene_id,
+                code=code, nickname=nickname, avatar=avatar,
+            )
+
+    @staticmethod
+    async def _save_scan_result(scene_id: str, token_info: GetLoginToken, response: Response) -> None:
+        cookies = SimpleCookie()
+        for cookie in response.headers.getlist('set-cookie'):
+            cookies.load(cookie)
+        refresh_token = cookies[refresh_cookie_key(token_info.client_type)].value
+        confirmed = {
+            'status': 'CONFIRMED', 'client_type': str(token_info.client_type),
+            'token': token_info.model_dump(mode='json'), 'refresh_token': refresh_token,
+            'user': token_info.user.model_dump(mode='json', include={'id', 'username', 'nickname', 'avatar'}),
+        }
+        await redis_client.set(f'{SCAN_REDIS_PREFIX}{scene_id}', json.dumps(confirmed), ex=120)
+
+    @staticmethod
+    async def _confirm_scan(
+        *, db: AsyncSession, background_tasks: BackgroundTasks, scene_id: str, code: str,
+        nickname: str | None = None, avatar: str | None = None,
+    ) -> bool:
         """小程序端扫码后确认授权登录"""
         redis_key = f"{SCAN_REDIS_PREFIX}{scene_id}"
         val = await redis_client.get(redis_key)
         if not val:
             raise errors.NotFoundError(msg="扫码场景已过期或不存在，请在电脑端重新刷新二维码")
+        scene = json.loads(val)
+        if scene.get('status') == 'CONFIRMED':
+            return True
+        if not scene.get('client_type'):
+            raise errors.RequestError(msg='二维码版本已更新，请在电脑端刷新')
+        client_type = LoginClientType(scene['client_type'])
+        # 目标端刷新 Cookie 交给电脑轮询领取，不能写进手机的确认响应。
+        login_response = Response()
 
         # 调取微信标准登录流程，创建/关联用户并生成 Token
         token_info = await oauth2_service.wechat_miniapp_login(
             db=db,
-            response=response,
+            response=login_response,
             background_tasks=background_tasks,
             code=code,
             nickname=nickname,
             avatar=avatar,
+            client_type=client_type,
+            session_info=scene.get('session_info'),
         )
-
-        # 回传给浏览器展示的真实账号资料，必须取登录结果里的昵称，
-        # 否则扫码端会显示「微信用户」而库里是自动生成的默认昵称，两边对不上
-        user_info = {
-            "nickname": token_info.user.nickname,
-            "avatar": str(token_info.user.avatar) if token_info.user.avatar else (avatar or ""),
-        }
-
-        # 更新 Redis 状态为 CONFIRMED
-        confirmed_data = {
-            "status": "CONFIRMED",
-            "token": token_info.model_dump(),
-            "user": user_info,
-        }
-        await redis_client.set(redis_key, json.dumps(confirmed_data), ex=120)
+        await WechatScanService._save_scan_result(scene_id, token_info, login_response)
         return True
 
     @staticmethod
@@ -237,43 +278,20 @@ class WechatScanService:
         if user is None:
             raise errors.NotFoundError(msg='未找到可用于模拟登录的测试用户')
 
-        user_id = user.id
-        is_multi_login = user.is_multi_login
-        username_val = user.username
-        nickname_val = user.nickname or user.username
-        avatar_val = user.avatar or ""
-
-        from backend.common.security.token import create_access_token, create_refresh_token
-
-        access_token_data = await create_access_token(user_id, multi_login=is_multi_login)
-        refresh_token_data = await create_refresh_token(
-            access_token_data.session_uuid,
-            user_id,
-            multi_login=is_multi_login,
-        )
-
-        token_dict = {
-            "access_token": access_token_data.access_token,
-            "access_token_expire_time": access_token_data.access_token_expire_time.isoformat(),
-            "refresh_token": refresh_token_data.refresh_token,
-            "refresh_token_expire_time": refresh_token_data.refresh_token_expire_time.isoformat(),
-            "token_type": "Bearer",
-        }
-
-        user_dict = {
-            "id": user_id,
-            "username": username_val,
-            "nickname": nickname_val,
-            "avatar": avatar_val,
-        }
-
-        confirmed_data = {
-            "status": "CONFIRMED",
-            "token": token_dict,
-            "user": user_dict,
-        }
-        await redis_client.set(redis_key, json.dumps(confirmed_data), ex=120)
-        return {"status": "CONFIRMED", "user": user_dict}
+        async with redis_client.lock(f'{redis_key}:lock', timeout=60, blocking_timeout=10):
+            current = await redis_client.get(redis_key)
+            if not current:
+                raise errors.NotFoundError(msg='扫码场景已过期')
+            scene = json.loads(current)
+            if scene.get('status') == 'CONFIRMED':
+                return {'status': 'CONFIRMED', 'user': scene['user']}
+            response = Response()
+            token_info = await auth_service.issue_login_token(
+                db=db, response=response, user=user,
+                client_type=LoginClientType(scene['client_type']), session_info=scene.get('session_info'),
+            )
+            await WechatScanService._save_scan_result(scene_id, token_info, response)
+        return {'status': 'CONFIRMED', 'user': {'id': user.id, 'username': user.username}}
 
 
 wechat_scan_service = WechatScanService()

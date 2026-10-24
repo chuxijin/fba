@@ -5,7 +5,7 @@ from fastapi.security import HTTPBasicCredentials
 from pyrate_limiter import Duration, Rate
 from starlette.background import BackgroundTasks
 
-from backend.app.admin.schema.token import GetLoginToken, GetNewToken, GetSwaggerToken
+from backend.app.admin.schema.token import GetLoginToken, GetNewToken, GetSwaggerToken, RefreshTokenParam
 from backend.app.admin.schema.user import AuthLoginParam, AuthRegisterParam
 from backend.app.admin.service.auth_service import auth_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -61,8 +61,21 @@ async def get_codes(db: CurrentSession, request: Request) -> ResponseSchemaModel
 
 
 @router.post('/refresh', summary='刷新 token')
-async def refresh_token(db: CurrentSession, request: Request, response: Response) -> ResponseSchemaModel[GetNewToken]:
-    data = await auth_service.refresh_token(db=db, request=request, response=response)
+async def refresh_token(
+    db: CurrentSession, request: Request, response: Response, obj: RefreshTokenParam | None = None
+) -> ResponseSchemaModel[GetNewToken]:
+    data = await auth_service.refresh_token(db=db, request=request, response=response, obj=obj)
+    return response_base.success(data=data)
+
+
+@router.post(
+    '/extension-session', summary='官网换取插件独立会话',
+    dependencies=[Depends(RateLimiter(Rate(10, Duration.MINUTE)))],
+)
+async def exchange_extension_session(
+    db: CurrentSessionTransaction, request: Request, response: Response
+) -> ResponseSchemaModel[GetLoginToken]:
+    data = await auth_service.exchange_extension_session(db=db, request=request, response=response)
     return response_base.success(data=data)
 
 

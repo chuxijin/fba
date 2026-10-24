@@ -29,6 +29,7 @@ class StateMiddleware(BaseHTTPMiddleware):
         ctx.os = ua_info.os
         ctx.browser = ua_info.browser
         ctx.device = ua_info.device
+        ctx.client_type = request.headers.get('X-Client-Type')
 
         response = await call_next(request)
 

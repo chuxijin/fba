@@ -9,6 +9,7 @@ from pyrate_limiter import Duration, Rate
 from starlette.responses import RedirectResponse
 
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
+from backend.common.security.client import get_login_client_type
 from backend.core.conf import settings
 from backend.database.db import CurrentSessionTransaction
 from backend.database.redis import redis_client
@@ -27,7 +28,7 @@ async def get_github_oauth2_url() -> ResponseSchemaModel[str]:
 
     await redis_client.set(
         f'{settings.OAUTH2_STATE_REDIS_PREFIX}:{state}',
-        json.dumps({'type': UserSocialAuthType.login.value}),
+        json.dumps({'type': UserSocialAuthType.login.value, 'client_type': get_login_client_type().value}),
         ex=settings.OAUTH2_STATE_EXPIRE_SECONDS,
     )
 
@@ -67,6 +68,8 @@ async def github_oauth2_callback(  # ruff:ignore[missing-return-type-undocumente
         return RedirectResponse(url=settings.OAUTH2_FRONTEND_BINDING_REDIRECT_URI)
 
     # 登录流程
-    return RedirectResponse(
+    redirect = RedirectResponse(
         url=f'{settings.OAUTH2_FRONTEND_LOGIN_REDIRECT_URI}?access_token={data.access_token}&session_uuid={data.session_uuid}',
     )
+    redirect.raw_headers.extend((key, value) for key, value in response.raw_headers if key == b'set-cookie')
+    return redirect

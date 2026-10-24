@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Body, Query, Response
 
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
+from backend.common.security.client import get_login_client_type
 from backend.database.db import CurrentSessionTransaction
 from backend.plugin.oauth2.service.oauth2_service import oauth2_service
 from backend.plugin.oauth2.service.wechat_scan_service import wechat_scan_service
@@ -39,7 +40,7 @@ async def wechat_miniapp_login(
 async def get_scan_qrcode(
     page: Annotated[str, Query(description='小程序接收扫码的页面路径')] = 'pages/index/index',
 ) -> ResponseSchemaModel:
-    data = await wechat_scan_service.generate_scan_qrcode(page=page)
+    data = await wechat_scan_service.generate_scan_qrcode(page=page, client_type=get_login_client_type())
     return response_base.success(data=data)
 
 
@@ -49,9 +50,12 @@ async def get_scan_qrcode(
     description='浏览器插件端轻量轮询检测扫码确认状态，已确认时返回登录 Token',
 )
 async def check_scan_status(
+    response: Response,
     scene_id: Annotated[str, Query(description='场景唯一识别码')],
 ) -> ResponseSchemaModel:
-    data = await wechat_scan_service.get_scan_status(scene_id=scene_id)
+    data = await wechat_scan_service.get_scan_status(
+        scene_id=scene_id, response=response, client_type=get_login_client_type(),
+    )
     return response_base.success(data=data)
 
 

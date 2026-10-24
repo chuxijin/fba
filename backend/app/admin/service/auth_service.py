@@ -6,23 +6,30 @@ from starlette.background import BackgroundTask, BackgroundTasks
 from backend.app.admin.crud.crud_menu import menu_dao
 from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.model import User
-from backend.app.admin.schema.token import GetLoginToken, GetNewToken
+from backend.app.admin.schema.token import GetLoginToken, GetNewToken, RefreshTokenParam
 from backend.app.admin.schema.user import AuthLoginParam, AuthRegisterParam, SmsLoginParam
 from backend.app.admin.service.login_log_service import login_log_service
 from backend.app.admin.service.user_password_history_service import password_security_service
 from backend.app.admin.utils.password_security import password_verify
 from backend.common.context import ctx
+from backend.common.dataclasses import TokenPayload
 from backend.common.enums import LoginLogStatusType, StatusType
 from backend.common.events import publish
 from backend.common.exception import errors
 from backend.common.i18n import t
 from backend.common.log import log
 from backend.common.response.response_code import CustomErrorCode
-from backend.common.security.jwt import jwt_decode
+from backend.common.security.client import (
+    LoginClientType,
+    get_login_client_type,
+    refresh_cookie_key,
+    set_refresh_cookie,
+)
+from backend.common.security.jwt import jwt_authentication, jwt_decode
 from backend.common.security.token import (
     create_access_token,
     create_new_token,
-    create_refresh_token,
+    create_token_pair,
     get_token,
     revoke_token,
 )
@@ -52,6 +59,8 @@ class AuthService:
         background_tasks: BackgroundTasks | None = None,
         password_expire_days_remaining: int | None = None,
         success_msg: str | None = None,
+        client_type: LoginClientType | None = None,
+        session_info: dict | None = None,
     ) -> GetLoginToken:
         """
         基于现有用户签发登录令牌
@@ -62,33 +71,31 @@ class AuthService:
         :param background_tasks: 后台任务
         :param password_expire_days_remaining: 密码到期剩余天数
         :param success_msg: 登录成功日志
+        :param client_type: 登录目标客户端，默认读取当前请求
+        :param session_info: 扫码发起端的会话信息
         :return:
         """
+        client_type = LoginClientType(client_type or get_login_client_type())
+        if not user.status:
+            raise errors.AuthorizationError(msg='用户已被锁定，请联系管理员')
+        if client_type == LoginClientType.admin and not user.is_staff:
+            raise errors.AuthorizationError(msg='该账号没有后台登录权限')
         await user_dao.update_login_time(db, user.username)
         await db.refresh(user)
 
-        access_token_data = await create_access_token(
+        token_data = await create_token_pair(
             user.id,
             multi_login=user.is_multi_login,
+            client_type=client_type,
             username=user.username,
             nickname=user.nickname,
             last_login_time=timezone.to_str(user.last_login_time),
-            ip=ctx.ip,
-            os=ctx.os,
-            browser=ctx.browser,
-            device=ctx.device,
+            **{key: value or '未知' for key, value in (
+                session_info or {'ip': ctx.ip, 'os': ctx.os, 'browser': ctx.browser, 'device': ctx.device}
+            ).items()},
         )
-        refresh_token_data = await create_refresh_token(
-            access_token_data.session_uuid,
-            user.id,
-            multi_login=user.is_multi_login,
-        )
-        response.set_cookie(
-            key=settings.COOKIE_REFRESH_TOKEN_KEY,
-            value=refresh_token_data.refresh_token,
-            max_age=settings.COOKIE_REFRESH_TOKEN_EXPIRE_SECONDS,
-            expires=timezone.to_utc(refresh_token_data.refresh_token_expire_time),
-            httponly=True,
+        set_refresh_cookie(
+            response, client_type, token_data.new_refresh_token, token_data.new_refresh_token_expire_time,
         )
 
         if background_tasks is not None:
@@ -104,9 +111,11 @@ class AuthService:
         await publish('user.logged_in', user_id=user.id)
 
         return GetLoginToken(
-            access_token=access_token_data.access_token,
-            access_token_expire_time=access_token_data.access_token_expire_time,
-            session_uuid=access_token_data.session_uuid,
+            access_token=token_data.new_access_token,
+            access_token_expire_time=token_data.new_access_token_expire_time,
+            session_uuid=token_data.session_uuid,
+            client_type=client_type,
+            refresh_token=token_data.new_refresh_token if client_type == LoginClientType.extension else None,
             password_expire_days_remaining=password_expire_days_remaining,
             user=user,  # type: ignore[arg-type]
         )
@@ -144,7 +153,11 @@ class AuthService:
         :param obj: 登录凭证
         :return:
         """
+        if settings.ENVIRONMENT == 'prod':
+            raise errors.NotFoundError(msg='生产环境不提供调试登录')
         user, _ = await self.user_verify(db=db, username=obj.username, password=obj.password)
+        if not user.is_staff:
+            raise errors.AuthorizationError(msg='调试登录仅对管理员开放')
         await user_dao.update_login_time(db, obj.username)
         access_token_data = await create_access_token(
             user.id,
@@ -239,16 +252,16 @@ class AuthService:
         return list(codes)
 
     @staticmethod
-    async def refresh_token(*, db: AsyncSession, request: Request, response: Response) -> GetNewToken:
-        """
-        刷新令牌
-
-        :param db: 数据库会话
-        :param request: FastAPI 请求对象
-        :param response: FastAPI 响应对象
-        :return:
-        """
-        refresh_token = request.cookies.get(settings.COOKIE_REFRESH_TOKEN_KEY)
+    def _refresh_credentials(
+        request: Request, obj: RefreshTokenParam | None,
+    ) -> tuple[str, TokenPayload, LoginClientType]:
+        """选择当前端的凭据，并校验调用者仍持有对应会话，禁止串端或换账号续期。"""
+        client_type = get_login_client_type(request)
+        refresh_token = request.cookies.get(refresh_cookie_key(client_type))
+        if obj and obj.refresh_token:
+            if client_type != LoginClientType.extension:
+                raise errors.RequestError(msg='此客户端请使用刷新 Cookie')
+            refresh_token = obj.refresh_token
         if not refresh_token:
             raise errors.TokenError(
                 msg=auth_reason_message(TokenAuthReason.refresh_expired.value),
@@ -256,6 +269,28 @@ class AuthService:
             )
 
         token_payload = jwt_decode(refresh_token, verify_exp=False)
+        if token_payload.client_type != client_type:
+            raise errors.TokenError(
+                msg=auth_reason_message(TokenInvalidReason.policy_changed.value),
+                data=auth_reason_data(TokenInvalidReason.policy_changed.value),
+            )
+        expected_session = request.headers.get('X-Session-ID')
+        if request.headers.get('Authorization'):
+            access_payload = jwt_decode(get_token(request), verify_exp=False)
+            expected_session = access_payload.session_uuid
+        if expected_session and expected_session != token_payload.session_uuid:
+            raise errors.TokenError(
+                msg=auth_reason_message(TokenInvalidReason.session_replaced.value),
+                data=auth_reason_data(TokenInvalidReason.session_replaced.value),
+            )
+        return refresh_token, token_payload, client_type
+
+    @staticmethod
+    async def refresh_token(
+        *, db: AsyncSession, request: Request, response: Response, obj: RefreshTokenParam | None = None
+    ) -> GetNewToken:
+        """轮换原会话的凭据，保持客户端类型及会话 ID 不变。"""
+        refresh_token, token_payload, client_type = AuthService._refresh_credentials(request, obj)
 
         invalid_reason = await get_token_invalid_reason(token_payload.user_id, token_payload.session_uuid)
         if invalid_reason:
@@ -274,6 +309,8 @@ class AuthService:
             raise errors.NotFoundError(msg='用户不存在')
         if not user.status:
             raise errors.AuthorizationError(msg='用户已被锁定, 请联系统管理员')
+        if client_type == LoginClientType.admin and not user.is_staff:
+            raise errors.AuthorizationError(msg='该账号没有后台登录权限')
         new_token = await create_new_token(
             refresh_token,
             token_payload.session_uuid,
@@ -282,26 +319,37 @@ class AuthService:
             # extra info
             username=user.username,
             nickname=user.nickname,
-            last_login_time=timezone.to_str(user.last_login_time),
-            ip=ctx.ip,
-            os=ctx.os,
-            browser=ctx.browser,
-            device_type=ctx.device,
+            ip=ctx.ip or '未知',
+            os=ctx.os or '未知',
+            browser=ctx.browser or '未知',
+            device=ctx.device or '未知',
         )
-        response.set_cookie(
-            key=settings.COOKIE_REFRESH_TOKEN_KEY,
-            value=new_token.new_refresh_token,
-            max_age=settings.COOKIE_REFRESH_TOKEN_EXPIRE_SECONDS,
-            expires=timezone.to_utc(new_token.new_refresh_token_expire_time),
-            httponly=True,
-        )
+        set_refresh_cookie(response, client_type, new_token.new_refresh_token, new_token.new_refresh_token_expire_time)
 
         data = GetNewToken(
             access_token=new_token.new_access_token,
             access_token_expire_time=new_token.new_access_token_expire_time,
             session_uuid=new_token.session_uuid,
+            client_type=client_type,
+            refresh_token=new_token.new_refresh_token if client_type == LoginClientType.extension else None,
         )
         return data
+
+    async def exchange_extension_session(
+        self, *, db: AsyncSession, request: Request, response: Response
+    ) -> GetLoginToken:
+        """已登录官网为插件签发独立会话；不把官网凭据直接作为插件凭据。"""
+        token = get_token(request)
+        user_info = await jwt_authentication(token)
+        source = jwt_decode(token)
+        if source.client_type != LoginClientType.web or get_login_client_type(request) != LoginClientType.extension:
+            raise errors.ForbiddenError(msg='仅支持官网登录换取插件会话')
+        user = await user_dao.get(db, user_info.id)
+        if not user:
+            raise errors.NotFoundError(msg='用户不存在')
+        return await self.issue_login_token(
+            db=db, response=response, user=user, client_type=LoginClientType.extension,
+        )
 
     @staticmethod
     async def logout(*, request: Request, response: Response) -> None:
@@ -312,13 +360,26 @@ class AuthService:
         :param response: FastAPI 响应对象
         :return:
         """
+        client_type = get_login_client_type(request)
         try:
             token = get_token(request)
             token_payload = jwt_decode(token, verify_exp=False)
+            if token_payload.client_type is not None and token_payload.client_type != client_type:
+                raise errors.TokenError(msg='登录客户端不匹配')
         except errors.TokenError:
             return
-        finally:
-            response.delete_cookie(settings.COOKIE_REFRESH_TOKEN_KEY)
+
+        # 旧标签页的退出不能删除刚登录的新会话的同端 Cookie。
+        cookie_key = refresh_cookie_key(client_type)
+        cookie = request.cookies.get(cookie_key)
+        if cookie:
+            try:
+                cookie_payload = jwt_decode(cookie, verify_exp=False)
+            except errors.TokenError:
+                pass
+            else:
+                if cookie_payload.session_uuid == token_payload.session_uuid:
+                    response.delete_cookie(cookie_key)
 
         await revoke_token(
             token_payload.user_id,

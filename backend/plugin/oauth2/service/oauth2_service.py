@@ -14,15 +14,13 @@ from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.model import User
 from backend.app.admin.schema.token import GetLoginToken
 from backend.app.admin.schema.user import AddOAuth2UserParam
-from backend.app.admin.service.login_log_service import login_log_service
+from backend.app.admin.service.auth_service import auth_service
 from backend.app.admin.service.user_service import user_service
 from backend.common.context import ctx
-from backend.common.enums import LoginLogStatusType
-from backend.common.events import publish
 from backend.common.exception import errors
 from backend.common.i18n import t
 from backend.common.log import log
-from backend.common.security.token import create_access_token, create_refresh_token
+from backend.common.security.client import LoginClientType
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 from backend.plugin.oauth2.crud.crud_user_social import user_social_dao
@@ -30,7 +28,6 @@ from backend.plugin.oauth2.enums import UserSocialAuthType, UserSocialType
 from backend.plugin.oauth2.schema.user_social import CreateUserSocialParam
 from backend.plugin.oauth2.service.user_social_service import user_social_service
 from backend.utils.nickname import generate_default_nickname
-from backend.utils.timezone import timezone
 
 
 class OAuth2Service:
@@ -196,10 +193,11 @@ class OAuth2Service:
                 path='avatar/wechat',
                 use_signed_url=False,
             )
-            return uploaded_url
         except Exception as exc:
             log.warning(f'上传微信头像到 OSS 失败，使用原始头像地址: {exc!s}')
             return avatar_url
+        else:
+            return uploaded_url
         finally:
             upload_file.file.close()
 
@@ -243,6 +241,8 @@ class OAuth2Service:
         nickname: str | None = None,
         email: str | None = None,
         avatar: str | None = None,
+        client_type: LoginClientType | None = None,
+        session_info: dict | None = None,
     ) -> GetLoginToken:
         """
         OAuth2 用户登录
@@ -258,6 +258,8 @@ class OAuth2Service:
         :param nickname: 昵称
         :param email: 邮箱
         :param avatar: 头像地址
+        :param client_type: 登录目标客户端
+        :param session_info: 扫码发起端信息
         :return:
         """
         if not sid and not openid:
@@ -338,66 +340,21 @@ class OAuth2Service:
                 user_id=sys_user.id,
                 avatar=original_avatar_url,
             )
-        should_update_avatar = False
-        if uploaded_avatar_url:
-            if not sys_user.avatar:
-                should_update_avatar = True
-            elif (
+        if uploaded_avatar_url and (
+            not sys_user.avatar or (
                 original_avatar_url
                 and sys_user.avatar == original_avatar_url
                 and uploaded_avatar_url != original_avatar_url
-            ):
-                should_update_avatar = True
-        if should_update_avatar:
+            )
+        ):
             await user_dao.update_avatar(db, sys_user.id, uploaded_avatar_url)
             sys_user.avatar = uploaded_avatar_url
 
-        # 创建 token
-        access_token_data = await create_access_token(
-            sys_user.id,
-            multi_login=sys_user.is_multi_login,
-            # extra info
-            username=sys_user.username,
-            nickname=sys_user.nickname,
-            last_login_time=timezone.to_str(timezone.now()),
-            ip=ctx.ip,
-            os=ctx.os,
-            browser=ctx.browser,
-            device=ctx.device,
-        )
-        refresh_token_data = await create_refresh_token(
-            access_token_data.session_uuid,
-            sys_user.id,
-            multi_login=sys_user.is_multi_login,
-        )
-        await user_dao.update_login_time(db, sys_user.username)
-        await db.refresh(sys_user)
-        background_tasks.add_task(
-            login_log_service.create,
-            user_uuid=sys_user.uuid,
-            username=sys_user.username,
-            login_time=timezone.now(),
-            status=LoginLogStatusType.success.value,
-            msg=t('success.login.oauth2_success'),
+        data = await auth_service.issue_login_token(
+            db=db, response=response, user=sys_user, background_tasks=background_tasks,
+            success_msg=t('success.login.oauth2_success'), client_type=client_type, session_info=session_info,
         )
         await redis_client.delete(f'{settings.LOGIN_CAPTCHA_REDIS_PREFIX}:{ctx.ip}')
-
-        # 发布登录事件
-        await publish('user.logged_in', user_id=sys_user.id)
-
-        response.set_cookie(
-            key=settings.COOKIE_REFRESH_TOKEN_KEY,
-            value=refresh_token_data.refresh_token,
-            max_age=settings.COOKIE_REFRESH_TOKEN_EXPIRE_SECONDS,
-            expires=timezone.to_utc(refresh_token_data.refresh_token_expire_time),
-            httponly=True,
-        )
-        data = GetLoginToken(
-            access_token=access_token_data.access_token,
-            access_token_expire_time=access_token_data.access_token_expire_time,
-            session_uuid=access_token_data.session_uuid,
-            user=sys_user,  # type: ignore
-        )
         return data
 
     async def login_or_binding(
@@ -478,6 +435,7 @@ class OAuth2Service:
             nickname=nickname,
             email=email,
             avatar=avatar,
+            client_type=LoginClientType(state_info.get('client_type', LoginClientType.admin)),
         )
 
     @staticmethod
@@ -489,6 +447,8 @@ class OAuth2Service:
         code: str,
         nickname: str | None = None,
         avatar: str | None = None,
+        client_type: LoginClientType = LoginClientType.miniapp,
+        session_info: dict | None = None,
     ) -> GetLoginToken:
         """
         微信小程序授权业务逻辑
@@ -499,6 +459,8 @@ class OAuth2Service:
         :param code: 微信 jscode
         :param nickname: 昵称
         :param avatar: 头像
+        :param client_type: 登录目标客户端；扫码登录从服务端场景读取
+        :param session_info: 扫码发起端信息
         :return:
         """
         appid = getattr(settings, 'WX_MINIAPP_APPID', '')
@@ -544,6 +506,8 @@ class OAuth2Service:
             username=user_info['username'],
             nickname=user_info['nickname'],
             avatar=user_info['avatar_url'],
+            client_type=client_type,
+            session_info=session_info,
         )
 
         # 老账号可能还停在「微信用户」这种占位昵称上，登录时一并修掉，保证能互相区分

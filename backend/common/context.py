@@ -19,6 +19,7 @@ class TypedContextProtocol(Protocol):
     os: str | None
     browser: str | None
     device: str | None
+    client_type: str | None
 
     permission: str | None
     language: str

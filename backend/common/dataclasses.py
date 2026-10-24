@@ -60,6 +60,7 @@ class TokenPayload:
     user_id: int
     session_uuid: str
     expire_time: datetime
+    client_type: str | None = None
 
 
 @dataclasses.dataclass

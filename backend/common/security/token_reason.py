@@ -26,7 +26,7 @@ class TokenAuthReason(StrEnum):
 
 
 TOKEN_AUTH_REASON_MESSAGES: dict[str, str] = {
-    TokenInvalidReason.session_replaced.value: '账号已在其他设备登录，请重新登录',
+    TokenInvalidReason.session_replaced.value: '当前端已在其他位置登录，请重新登录',
     TokenInvalidReason.logout.value: '登录状态已失效，请重新登录',
     TokenInvalidReason.password_changed.value: '密码已变更，请重新登录',
     TokenInvalidReason.admin_revoked.value: '登录状态已被管理员撤销，请重新登录',

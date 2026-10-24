@@ -125,6 +125,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/auth/login',
         f'{FASTAPI_API_V1_PATH}/auth/refresh',
         f'{FASTAPI_API_V1_PATH}/auth/logout',
+        f'{FASTAPI_API_V1_PATH}/auth/extension-session',  # 显式校验官网来源 Token 后换发插件会话
         f'{FASTAPI_API_V1_PATH}/auth/wx-login',  # 统一微信登录
         f'{FASTAPI_API_V1_PATH}/auth/test-login',  # 统一测试登录
         f'{FASTAPI_API_V1_PATH}/sys/categories/tree',  # 系统分类树（公开接口）
@@ -307,6 +308,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/baidupan/oauth/callback',
     ]
     OPERA_LOG_REDACT_KEYS: list[str] = [
+        'refresh_token',
         'password',
         'old_password',
         'new_password',

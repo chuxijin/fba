@@ -23,7 +23,7 @@ from backend.common.exception import errors
 from backend.common.pagination import paging_data
 from backend.common.response.response_code import CustomErrorCode
 from backend.common.security.jwt import jwt_decode
-from backend.common.security.token import get_token, revoke_user_tokens
+from backend.common.security.token import enforce_single_session_per_client, get_token, revoke_user_tokens
 from backend.common.security.token_reason import TokenInvalidReason
 from backend.core.conf import settings
 from backend.database.redis import redis_client
@@ -204,17 +204,16 @@ class UserService:
                 token = get_token(request)
                 token_payload = jwt_decode(token)
                 if pk == request.user.id:
-                    # 系统管理员修改自身时，除当前 token 外，其他 token 失效
+                    # 关闭例外后各端保留一个会话，当前端优先保留操作者的会话
                     if not new_multi_login:
-                        await revoke_user_tokens(
+                        await enforce_single_session_per_client(
                             user.id,
-                            exclude_session_uuid=token_payload.session_uuid,
-                            reason=TokenInvalidReason.policy_changed,
+                            current_session_uuid=token_payload.session_uuid,
                         )
                 else:
-                    # 系统管理员修改他人时，他人 token 全部失效
+                    # 修改他人时，各端保留最新会话
                     if not new_multi_login:
-                        await revoke_user_tokens(user.id, reason=TokenInvalidReason.policy_changed)
+                        await enforce_single_session_per_client(user.id)
             case _:
                 raise errors.RequestError(msg='权限类型不存在')
 

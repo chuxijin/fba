@@ -92,6 +92,7 @@ async def get_online_sessions(  # ruff:ignore[complex-structure]
             GetTokenDetail(
                 id=token_payload.user_id,
                 session_uuid=token_payload.session_uuid,
+                client_type=token_payload.client_type,
                 username=info.get('username', '未知'),
                 nickname=info.get('nickname', '未知'),
                 ip=info.get('ip', '未知'),

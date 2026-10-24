@@ -12,8 +12,10 @@ from backend.app.admin.schema.user import GetUserInfoWithRelationDetail
 from backend.common.context import ctx
 from backend.common.dataclasses import TokenPayload
 from backend.common.exception import errors
+from backend.common.security.client import LoginClientType
 from backend.common.security.token_reason import (
     TokenAuthReason,
+    TokenInvalidReason,
     auth_reason_data,
     auth_reason_message,
     get_token_invalid_reason,
@@ -52,6 +54,9 @@ def jwt_decode(token: str, *, verify_exp: bool = True) -> TokenPayload:
         session_uuid = payload.get('session_uuid')
         user_id = payload.get('sub')
         expire = payload.get('exp')
+        client_type = payload.get('client_type')
+        if client_type is not None:
+            client_type = LoginClientType(client_type).value
         if not session_uuid or not user_id or not expire:
             raise errors.TokenError(
                 msg=auth_reason_message(TokenAuthReason.token_invalid.value),
@@ -73,6 +78,7 @@ def jwt_decode(token: str, *, verify_exp: bool = True) -> TokenPayload:
         user_id=int(user_id),
         session_uuid=session_uuid,
         expire_time=timezone.from_datetime(timezone.to_utc(expire)),
+        client_type=client_type,
     )
 
 
@@ -143,6 +149,12 @@ async def jwt_authentication(token: str) -> GetUserInfoWithRelationDetail:
         raise errors.TokenError(
             msg=auth_reason_message(invalid_reason),
             data=auth_reason_data(invalid_reason),
+        )
+
+    if token_payload.client_type is None and settings.ENVIRONMENT == 'prod':
+        raise errors.TokenError(
+            msg=auth_reason_message(TokenInvalidReason.policy_changed.value),
+            data=auth_reason_data(TokenInvalidReason.policy_changed.value),
         )
 
     if token_payload.expire_time <= timezone.now():
