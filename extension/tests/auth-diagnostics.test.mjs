@@ -13,7 +13,7 @@ function environment() {
     scripting: { async executeScript() { return [{ frameId: 0, result: true }] } },
     tabs: {
       async query() { return [{ id: 1, url: 'http://localhost:3000/' }] },
-      async sendMessage() { return { bridgeVersion: 3, siteDetected: true, hasSiteToken: true, lastSync: 'success' } },
+      async sendMessage() { return { bridgeVersion: 4, siteDetected: true, hasSiteToken: true, lastSync: 'success' } },
     },
   }
   globalThis.fetch = async (url) => new Response(JSON.stringify({ code: 200, data: url.endsWith('/quota')
@@ -27,7 +27,7 @@ test('检查真实链路状态，报告不包含凭据或个人资料且不改�
   const before = structuredClone(data)
   const report = await collectAuthDiagnostics()
   assert.match(report, /后端 http:\/\/127.0.0.1:8000：已确认登录/)
-  assert.match(report, /页面桥接：已注入 v3；官网脚本：已握手/)
+  assert.match(report, /页面桥接：已注入 v4；官网脚本：已握手/)
   assert.match(report, /最近同步：成功/)
   assert.equal(report.includes('private-'), false)
   assert.deepEqual(data, before)

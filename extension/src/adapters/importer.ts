@@ -169,34 +169,47 @@ export function collectWrongQuestions(paper: UnifiedPaper): UnifiedQuestion[] {
  * 问题：原站靠 CSS class 控制图片尺寸，这些 class 在我们这边没有对应样式，
  * 于是富文本渲染时图片会被拉满整行（选项里、解析里都撑破排版）。
  *
- * 决策：**尊重图片原始尺寸，只设上限**——
- *  - 去掉 class/style/width/height 等外部排版信息，避免站点样式残留
- *  - 统一 width:auto + max-width:100%：小图按原尺寸显示，大图才缩到容器宽
- *  - height:auto 保持原始宽高比，不会被拉伸变形
- *  - 按用途区分显示方式：选项内联居中，题干/解析独行
+ * 保留像素尺寸和公式的行内语义，移除站点 class 与全宽拉伸样式。
+ * 原站只提供图片 URL 时，由客户端加载图片后读取自然尺寸。
  */
 function normalizeRichTextImages(
   html: string,
   context: 'stem' | 'option' | 'explanation'
 ): string {
   const text = String(html || '')
-  if (!text.includes('<img'))
+  if (!/<img\b/i.test(text))
     return text
 
-  const layout = context === 'option'
-    ? 'display:inline-block;vertical-align:middle;margin:0 4px;'
-    : 'display:block;margin:8px 0;'
-  const sizing = `width:auto!important;max-width:100%!important;height:auto!important;${layout}`
-
   return text.replace(/<img\b[^>]*>/gi, (tag) => {
+    const attrs: Record<string, string> = {}
+    for (const match of tag.matchAll(/\s([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
+      attrs[match[1].toLowerCase()] = match[2] ?? match[3] ?? match[4]
+    }
+    const dimension = (name: string) => {
+      const styleValue = attrs.style?.match(new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*([^;]+)`, 'i'))?.[1]
+      for (const value of [styleValue?.replace(/!important/gi, '').trim(), attrs[name]]) {
+        if (value && /^\d+(?:\.\d+)?(?:px)?$/i.test(value) && parseFloat(value) > 0)
+          return parseFloat(value)
+      }
+      return undefined
+    }
+    const width = dimension('width')
+    const height = dimension('height')
+    const formula = attrs.flag?.toLowerCase() === 'tex' || Boolean(attrs['data-latex'])
+      || /\/accessories\/formulas\b|\/formulas\?latex=/i.test(attrs.src || '')
+    const inline = context === 'option' || formula || attrs['data-image-layout'] === 'inline'
+      || /(?:^|;)\s*display\s*:\s*inline(?:-block)?\b/i.test(attrs.style || '')
+      || Boolean(width && height && width <= 120 && height <= 60)
+    const layout = inline
+      ? 'display:inline-block;vertical-align:middle;margin:0 2px;'
+      : 'display:block;margin:8px 0;'
+    const sizing = `${width ? `width:${width}px;` : ''}max-width:100%;height:auto;${layout}`
     const cleaned = tag
-      .replace(/\sclass\s*=\s*("[^"]*"|'[^']*')/gi, '')
-      .replace(/\sstyle\s*=\s*("[^"]*"|'[^']*')/gi, '')
-      .replace(/\swidth\s*=\s*("[^"]*"|'[^']*'|\d+)/gi, '')
-      .replace(/\sheight\s*=\s*("[^"]*"|'[^']*'|\d+)/gi, '')
-      .replace(/\sloading\s*=\s*("[^"]*"|'[^']*')/gi, '')
+      .replace(/\s(?:class|style|width|height|loading)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
       .replace(/\s*\/?>$/, '')
-    return `${cleaned} style="${sizing}">`
+    const dimensions = `${width ? ` width="${width}"` : ''}${height ? ` height="${height}"` : ''}`
+    const markers = `${formula && !attrs.flag ? ' flag="tex"' : ''}${inline && !attrs['data-image-layout'] ? ' data-image-layout="inline"' : ''}`
+    return `${cleaned}${dimensions}${markers} style="${sizing}">`
   })
 }
 

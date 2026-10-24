@@ -26,7 +26,7 @@ test('重载扩展导致旧页面上下文失效时返回失败，诊断不包�
   })
   const event = new Event('message')
   Object.assign(event, { source: window, origin: 'http://localhost:3000', data: {
-    channel: 'fba-site-auth-v1', direction: 'site-to-extension', type: 'SITE_AUTH_LOGIN', id: 'login-1', accessToken: 'private-test-token',
+    channel: protocol.SITE_AUTH_CHANNEL, direction: 'site-to-extension', type: 'SITE_AUTH_LOGIN', id: 'login-1', accessToken: 'private-test-token',
   } })
   window.dispatchEvent(event)
   assert.equal(messages.at(-1).success, false)
@@ -61,6 +61,6 @@ test('桥接重复注入保持单个监听器，页面会话只通过扩展内�
   for (const listener of listeners) listener({ type: 'SITE_AUTH_READ_SESSION' }, {}, (data) => { session = data })
   assert.equal(session.accessToken, 'private-cookie')
   assert.equal(session.origin, 'http://localhost:3000')
-  assert.equal(session.bridgeVersion, 3)
+  assert.equal(session.bridgeVersion, protocol.AUTH_BRIDGE_VERSION)
   assert.equal(JSON.stringify(posted).includes('private-cookie'), false)
 })

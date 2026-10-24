@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "tsc && node build.js",
+    "build:prod": "tsc && node build.js --api=https://api.yzxj.vip",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
@@ -22,3 +23,4 @@
     "vite-plugin-static-copy": "^2.2.0"
   }
 }
+

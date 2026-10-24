@@ -1,7 +1,9 @@
 import { UnifiedPaper, RenderTypographySettings } from '../adapters/types'
 import { WrongImportItem } from '../adapters/importer'
+import { fenbiReportRoute } from '../adapters/fenbi/report'
+import type { PracticeReportPayload } from '../adapters/fenbi/report'
 import {
-  requestCurrentQuota, getAuthSession, isTokenExpired, clearAuthSessionIfCurrent,
+  requestCurrentQuota, getRequestAuthSession, isTokenExpired, clearAuthSessionIfCurrent,
   STORAGE_KEY_QUOTA_REVISION, QuotaInfo,
   STORAGE_KEY_TOKEN, STORAGE_KEY_USER,
 } from '../utils/auth'
@@ -62,6 +64,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'IMPORT_PRACTICE_REPORT') {
+    const route = fenbiReportRoute(sender.url || '')
+    if (sender.frameId !== 0 || !route || message.payload?.source_key !== route.key) {
+      sendResponse({ success:false, error:'请从当前粉笔结算页面导入记录' })
+      return false
+    }
+    handleImportPracticeReport(message.payload)
+      .then(data => sendResponse({ success:true, ...data }))
+      .catch(error => sendResponse({ success:false, error:error.message }))
+    return true
+  }
+
   if (message.type === 'UNDO_IMPORT_BATCH') {
     handleUndoImportBatch(message.payload?.importBatchId)
       .then((res) => sendResponse({ success: true, ...res }))
@@ -71,6 +85,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 })
 
 let quotaRequest: Promise<QuotaInfo> | null = null
+async function handleImportPracticeReport(payload: PracticeReportPayload) {
+  const session = await getRequestAuthSession(BACKEND_BASE_URL)
+  const accessToken = session.token?.access_token
+  if (!accessToken) throw new Error('请先在插件中登录，再导入练习记录')
+  if (isTokenExpired(session.token)) {
+    await clearAuthSessionIfCurrent(accessToken)
+    throw new Error('登录已过期，请重新登录后再导入')
+  }
+  const response = await fetch(`${BACKEND_BASE_URL}/api/v1/gk/practice-logs/import-report`, {
+    method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${accessToken}` }, body:JSON.stringify(payload),
+  })
+  const body = await response.json().catch(() => null)
+  if (response.status === 401 || body?.code === 401) {
+    await clearAuthSessionIfCurrent(accessToken)
+    throw new Error('登录已过期，请重新登录')
+  }
+  if (!response.ok || (body?.code != null && body.code !== 200)) throw new Error(describeBackendError(body, response.status))
+  if (!body?.data?.record?.id) throw new Error('服务端未返回记录，请重试确认导入状态')
+  return body.data
+}
 chrome.storage.onChanged.addListener((changes, area) => {
   // 凭据变化由 requestCurrentQuota 重读并重试，后来的视图复用该请求。
   // 导出扣减必须另取最新额度，避免复用扣减前已经开始的查询。
@@ -115,7 +149,7 @@ async function handleImportWrongQuestions(
   const items = Array.isArray(payload?.items) ? payload.items : []
   if (items.length === 0) throw new Error('没有可导入的错题')
 
-  const session = await getAuthSession()
+  const session = await getRequestAuthSession(BACKEND_BASE_URL)
   const accessToken = session.token?.access_token
   if (!accessToken) throw new Error('请先在插件中登录，再导入错题库')
   if (isTokenExpired(session.token)) {
@@ -196,7 +230,7 @@ async function handleUndoImportBatch(importBatchId?: string) {
   const batchId = String(importBatchId || '').trim()
   if (!batchId) throw new Error('缺少导入批次 ID，无法撤销')
 
-  const session = await getAuthSession()
+  const session = await getRequestAuthSession(BACKEND_BASE_URL)
   const accessToken = session.token?.access_token
   if (!accessToken) throw new Error('请先登录后再撤销')
   if (isTokenExpired(session.token)) {
@@ -311,7 +345,7 @@ async function handleRenderAndExport(payload: {
 
 
     // 1. 读取本地登录凭据 (若已登录则享有每日高额特权)
-    const session = await getAuthSession()
+    const session = await getRequestAuthSession(BACKEND_BASE_URL)
     const accessToken = session.token?.access_token
     if (accessToken && isTokenExpired(session.token)) {
       await clearAuthSessionIfCurrent(accessToken)

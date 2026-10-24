@@ -1,12 +1,16 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import rawCss from './style.css?inline'
+import reportCss from './practice-report.css?inline'
+import type { PracticeReportPayload } from '../../adapters/fenbi/report'
 import { UnifiedPaper, RenderTypographySettings, ImportState } from '../../adapters'
 
 export interface ReformatterAppInstance {
   setPaper(paper: UnifiedPaper): void
   setPaperInfo(title: string, count: number): void
   setImportState(state: ImportState): void
+  setReportDraft(draft: PracticeReportPayload): void
+  setReportStatus(status: string, message?: string): void
   resetPaper(): void
   openModal(): void
   closeModal(): void
@@ -24,6 +28,8 @@ export function mountReformatterApp(handlers: {
   onDoExport: (settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync') => Promise<void> | void
   onImportWrong?: () => Promise<void> | void
   onUndoImport?: () => Promise<void> | void
+  onImportReport?: () => Promise<void> | void
+  onSaveReport?: (draft: PracticeReportPayload) => Promise<void> | void
 }): ReformatterAppInstance {
   // 1. 查找或创建挂载宿主容器
   let host = document.getElementById('gongkao-reformatter-shadow-host')
@@ -50,7 +56,7 @@ export function mountReformatterApp(handlers: {
 
   // 3. 注入全量设计系统 CSS (内部受控，外部完全不污染且不受干扰)
   const styleEl = document.createElement('style')
-  styleEl.textContent = rawCss
+  styleEl.textContent = `${rawCss}\n${reportCss}`
   shadowRoot.appendChild(styleEl)
 
   // 4. 创建 Vue 容器并挂载
@@ -64,6 +70,8 @@ export function mountReformatterApp(handlers: {
     onDoExport: handlers.onDoExport,
     onImportWrong: handlers.onImportWrong,
     onUndoImport: handlers.onUndoImport,
+    onImportReport: handlers.onImportReport,
+    onSaveReport: handlers.onSaveReport,
   })
 
   const appInstance = app.mount(appContainer) as any
@@ -72,6 +80,8 @@ export function mountReformatterApp(handlers: {
     setPaper: (paper) => appInstance.setPaper(paper),
     setPaperInfo: (title, count) => appInstance.setPaperInfo(title, count),
     setImportState: (state) => appInstance.setImportState(state),
+    setReportDraft: (draft) => appInstance.setReportDraft(draft),
+    setReportStatus: (status, message) => appInstance.setReportStatus(status, message),
     resetPaper: () => appInstance.resetPaper(),
     openModal: () => appInstance.openModal(),
     closeModal: () => appInstance.closeModal(),

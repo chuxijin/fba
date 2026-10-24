@@ -1,9 +1,9 @@
 import {
-  AuthApiError, getAuthSession, saveAuthSession, clearAuthSessionIfCurrent, getTokenFingerprint,
+  AuthApiError, getAuthSession, getRequestAuthSession, saveAuthSession, clearAuthSessionIfCurrent, getTokenFingerprint,
   getSignOutState, requestAuthApi, STORAGE_KEY_SIGNED_OUT, STORAGE_KEY_SIGNED_OUT_TOKEN,
 } from './auth'
 import {
-  AUTH_BRIDGE_VERSION, getTokenExpiry, isAccessToken, isSiteAuthMessage, isTrustedSite,
+  AUTH_BRIDGE_VERSION, getTokenSessionId, isAccessToken, isSiteAuthMessage, isTrustedSite,
   LOCAL_SITE_ORIGINS, SITE_URL_PATTERNS, withTimeout, type SiteAuthMessage, type TokenInfo, type UserInfo,
 } from './auth-protocol'
 
@@ -43,41 +43,51 @@ async function applySiteAuth(message: SiteAuthMessage) {
   const session = await getAuthSession()
   const before = session.token?.access_token
   if (message.type === 'SITE_AUTH_LOGOUT') {
-    const pendingToken = pendingLoginToken()
-    // 不相关的迟到退出不能取消正在校验的新登录。
-    if (pendingToken && pendingToken !== message.expectedToken) return session
-    if (message.expectedToken !== before && !pendingToken) {
-      if (!before && bootstrapRequest && message.expectedToken) authRevision++
-      return session
-    }
-    authRevision++
-    if (before && message.expectedToken === before) {
-      await endSession(before)
-    }
-    return getAuthSession()
+    // 官网退出只取消尚未完成的换票，不撤销已建立的插件会话。
+    if (pendingLoginToken() === message.expectedToken || (!before && bootstrapRequest)) authRevision++
+    return session
   }
   const accessToken = message.type === 'SITE_AUTH_LOGIN' ? message.accessToken : before
   if (!accessToken) return session
-  if (message.type === 'SITE_AUTH_LOGIN') {
-    const logout = await getSignOutState()
-    if (logout.signedOut && logout.fingerprint === await getTokenFingerprint(accessToken)) {
-      return { ...await getAuthSession(), rejectedToken: accessToken }
-    }
-  }
+  const sourceSession = message.type === 'SITE_AUTH_LOGIN'
+    ? getTokenSessionId(accessToken) || await getTokenFingerprint(accessToken) : undefined
+  const logout = await getSignOutState()
+  const sameSource = sourceSession !== undefined && sourceSession === session.sourceSession
+  // 被踢/主动退出后，同一个官网会话的被动握手不能重新创建插件会话。
+  if (sameSource && !before) return session
+  if (message.type === 'SITE_AUTH_LOGIN' && logout.signedOut &&
+      (sameSource || logout.fingerprint === await getTokenFingerprint(accessToken))) return session
   try {
-    const user = await validateSiteToken(accessToken)
-    const current = await getAuthSession()
-    if (revision !== authRevision || current.token?.access_token !== before) return current
-    const expiry = getTokenExpiry({ access_token: accessToken })
-    if (before !== accessToken || JSON.stringify(current.user) !== JSON.stringify(user)) {
-      await saveAuthSession({ access_token: accessToken,
-        access_token_expire_time: expiry === null ? undefined : new Date(expiry).toISOString() }, user)
+    if (message.type === 'SITE_AUTH_GET' || sameSource) {
+      const current = await getRequestAuthSession()
+      if (!current.token) return current
+      try {
+        await validateSiteToken(current.token.access_token)
+      } catch (error) {
+        if (!(error instanceof AuthApiError && error.unauthorized)) throw error
+        await clearAuthSessionIfCurrent(current.token.access_token)
+      }
+      return getAuthSession()
     }
+    const issued = await requestAuthApi<TokenInfo & { user: UserInfo }>('/auth/extension-session', {
+      method: 'POST', headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!issued.access_token || !issued.refresh_token || issued.client_type !== 'extension' || !issued.user?.id) {
+      throw new Error('插件登录响应无效')
+    }
+    const current = await getAuthSession()
+    if (revision !== authRevision || current.token?.access_token !== before) {
+      await requestAuthApi('/auth/logout', {
+        method: 'POST', headers: { Authorization: `Bearer ${issued.access_token}` },
+      }).catch(() => {})
+      return current
+    }
+    const { user, ...token } = issued
+    await saveAuthSession(token, user, sourceSession)
     return getAuthSession()
   } catch (error) {
     if (revision !== authRevision) return getAuthSession()
     if (error instanceof AuthApiError && error.unauthorized) {
-      if (before === accessToken) await clearAuthSessionIfCurrent(accessToken)
       return { ...await getAuthSession(), rejectedToken: accessToken }
     }
     throw error
@@ -95,7 +105,7 @@ export async function logoutExtension(expectedToken: string): Promise<void> {
 async function endSession(accessToken: string): Promise<void> {
   const fingerprint = await getTokenFingerprint(accessToken)
   if ((await getAuthSession()).token?.access_token !== accessToken) return
-  // 先清本地并同步官网，再撤销后端；断网时也不会恢复刚退出的会话。
+  // 只撤销插件会话；保留来源标识，阻止同一个官网会话被动重建插件登录。
   await chrome.storage.local.set({ [STORAGE_KEY_SIGNED_OUT]: true, [STORAGE_KEY_SIGNED_OUT_TOKEN]: fingerprint })
   await clearAuthSessionIfCurrent(accessToken)
   try {
@@ -182,6 +192,5 @@ export function bootstrapSiteSession(): Promise<void> {
 }
 
 export function publicSession(session: Awaited<ReturnType<typeof getAuthSession>> & { rejectedToken?: string }) {
-  return { token: session.token ? { access_token: session.token.access_token } as TokenInfo : null,
-    user: session.user, rejectedToken: session.rejectedToken }
+  return { loggedIn: !!session.token, user: session.user, rejectedToken: session.rejectedToken }
 }

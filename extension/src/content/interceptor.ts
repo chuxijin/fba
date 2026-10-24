@@ -1,3 +1,5 @@
+import { findFenbiReportHistory, fenbiReportRoute } from '../adapters/fenbi/report'
+
 /**
  * 网页主环境通用网络请求嗅探器 (运行于宿主页面的 MAIN 世界)
  * 职责极度单一纯粹 (KISS 原则):
@@ -150,6 +152,19 @@
 
   // 监听来自 Content Script 的主动试卷包重发请求
   window.addEventListener('message', (event) => {
+    if (event.source !== window || event.origin !== location.origin) return
+    if (event.data?.source === 'GONGKAO_REPORT_HISTORY_REQUEST' && fenbiReportRoute(location.href)) {
+      const requestId = String(event.data.requestId || '')
+      if (!/^[a-zA-Z0-9-]{8,80}$/.test(requestId)) return
+      const requestedUrl = location.href
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 20000)
+      void findFenbiReportHistory(requestedUrl, originalFetch.bind(window), controller.signal)
+        .then(item => window.postMessage({ source:'GONGKAO_REPORT_HISTORY_RESULT', requestId, pageUrl:requestedUrl, item }, location.origin))
+        .catch(() => window.postMessage({ source:'GONGKAO_REPORT_HISTORY_RESULT', requestId, pageUrl:requestedUrl, item:null }, location.origin))
+        .finally(() => clearTimeout(timer))
+      return
+    }
     if (event.data?.source === 'GONGKAO_CONTENT_REQUEST_EXAM') {
       for (const item of cachedPayloads) {
         window.postMessage(

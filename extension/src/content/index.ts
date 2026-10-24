@@ -21,6 +21,8 @@ import {
   ImportState,
 } from '../adapters'
 import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
+import { buildFenbiPracticeReport, fenbiReportRoute, readFenbiReportModules } from '../adapters/fenbi/report'
+import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/report'
 
 /**
  * 试卷排版 Content Script 核心枢纽 (遵循 KISS 极简架构)
@@ -40,6 +42,10 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
   let currentCapturedRaw: any = null
   let currentPaperPageUrl: string = ''
   let lastRouteUrl: string = location.href
+  let reportSolution: any = null
+  const reportHistory = new Map<string, FenbiHistoryItem>()
+  let reportPreparing = false
+  let reportSaving = false
 
   // 华图与事考帮临时中间状态
   let huatuLatestPractice: any = null
@@ -53,6 +59,64 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
   /** 最近一次成功导入的批次 ID，供「撤销本次导入」使用 */
   let lastImportBatchId = ''
+
+  async function getReportHistory(href: string): Promise<FenbiHistoryItem | null> {
+    const route = fenbiReportRoute(href)
+    if (!route) return null
+    if (reportHistory.has(route.key)) return reportHistory.get(route.key)!
+    return new Promise(resolve => {
+      const requestId = crypto.randomUUID()
+      const finish = (item: FenbiHistoryItem|null) => {
+        clearTimeout(timer)
+        window.removeEventListener('message', listener)
+        resolve(item)
+      }
+      const listener = (event: MessageEvent) => {
+        if (event.source !== window || event.origin !== location.origin || event.data?.source !== 'GONGKAO_REPORT_HISTORY_RESULT'
+          || event.data.requestId !== requestId || event.data.pageUrl !== href) return
+        const item = event.data.item
+        finish(item?.exerciseKey === route.key ? item : null)
+      }
+      const timer = setTimeout(() => finish(null), 22000)
+      window.addEventListener('message', listener)
+      window.postMessage({ source:'GONGKAO_REPORT_HISTORY_REQUEST', requestId }, location.origin)
+    })
+  }
+
+  async function preparePracticeReport() {
+    if (reportPreparing || reportSaving) return
+    reportPreparing = true
+    const href = location.href
+    try {
+      window.postMessage({ source:'GONGKAO_CONTENT_REQUEST_EXAM' }, location.origin)
+      await new Promise(resolve => setTimeout(resolve, 100))
+      if (location.href !== href) return
+      const modules = readFenbiReportModules(document)
+      // 先确认报告完整，再查询日期，避免在题目尚未就绪时遍历历史。
+      const draft = buildFenbiPracticeReport(href, reportSolution, modules)
+      const history = await getReportHistory(href)
+      if (location.href !== href) return
+      uiApp?.setReportDraft(buildFenbiPracticeReport(href, reportSolution, draft.modules, history))
+    } catch (error:any) {
+      if (location.href === href) uiApp?.setReportStatus('error', error?.message || '读取报告失败')
+    } finally { reportPreparing = false }
+  }
+
+  async function savePracticeReport(draft: PracticeReportPayload) {
+    if (reportSaving || draft.source_key !== fenbiReportRoute(location.href)?.key) return
+    reportSaving = true
+    const href = location.href
+    uiApp?.setReportStatus('saving')
+    try {
+      const result = await chrome.runtime.sendMessage({ type:'IMPORT_PRACTICE_REPORT', payload:draft })
+      if (!result?.success) throw new Error(result?.error || '导入失败')
+      if (location.href === href) uiApp?.setReportStatus('done', result.created
+        ? '导入成功，可在小程序「练习数据 → 导入/手动记录」查看三级明细和对比。'
+        : '这份报告已导入，无需重复保存。可在小程序「练习数据」中查看或编辑。')
+    } catch (error:any) {
+      if (location.href === href) uiApp?.setReportStatus('error', error?.message || '导入失败，请重试')
+    } finally { reportSaving = false }
+  }
 
   // 3. 挂载 Vue 悬浮卡片与交互弹窗
   function initUi() {
@@ -73,6 +137,8 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
           handleExport(settings, target),
         onImportWrong: () => handleImportWrongQuestions(),
         onUndoImport: () => handleUndoImportBatch(),
+        onImportReport: () => preparePracticeReport(),
+        onSaveReport: (draft) => savePracticeReport(draft),
       })
 
       // 挂载后立即同步试卷状态给悬浮卡片
@@ -95,6 +161,7 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 
   // 4. 监听来自 injected.js 的透明网络拦截与 SPA 路由消息
   window.addEventListener('message', (event) => {
+    if (event.source !== window || event.origin !== location.origin) return
     if (event.data?.source !== 'GONGKAO_REFORMATTER_INTERCEPTOR') return
 
     if (event.data?.type === 'SPA_ROUTE_CHANGED') {
@@ -117,6 +184,16 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
         location.href.includes('fenbi.com')
 
       if (isFenbi) {
+        const payload = data?.data || data
+        if (lowerUrl.includes('/combine/exercise/getsolution') && payload?.exerciseId === fenbiReportRoute(location.href)?.key)
+          reportSolution = payload
+        if (lowerUrl.includes('/getexercisebriefhistory')) {
+          for (const item of payload?.historyItems || []) {
+            if (item.exerciseKey) reportHistory.set(item.exerciseKey, {
+              exerciseKey:item.exerciseKey, updatedTime:item.updatedTime, score:item.score, fullScore:item.fullScore,
+            })
+          }
+        }
         if (lowerUrl.includes('/keypoint-tree')) {
           setCachedKeypointTree(data)
           return
@@ -205,6 +282,7 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
     lastRouteUrl = newUrl
 
     fenbiSession.reset()
+    reportSolution = null
     currentCapturedRaw = null
     currentUnifiedPaper = null
     currentPaperPageUrl = newUrl

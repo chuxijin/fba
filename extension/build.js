@@ -4,6 +4,18 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const directory = dirname(fileURLToPath(import.meta.url))
+
+/**
+ * 后端基址注入：
+ *   node build.js                        → http://127.0.0.1:8000（本地联调）
+ *   node build.js --api=https://api.yzxj.vip  → 生产
+ * 也可用环境变量 VITE_API_BASE_URL 覆盖。
+ */
+const apiArg = process.argv.find((arg) => arg.startsWith('--api='))
+const apiBase = (apiArg ? apiArg.slice('--api='.length) : process.env.VITE_API_BASE_URL || '').trim()
+  || 'http://127.0.0.1:8000'
+console.log(`[Build] 后端基址: ${apiBase}`)
+
 const targets = [
   { entry: 'popup.html', output: 'assets/[name]-[hash].js', vue: true, public: true },
   { entry: 'background/index.ts', output: 'background.js' },
@@ -20,7 +32,10 @@ async function runBuild() {
       root: resolve(directory, 'src'),
       publicDir: target.public ? resolve(directory, 'public') : false,
       plugins: target.vue ? [vue()] : [],
-      define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+      define: {
+        'process.env.NODE_ENV': JSON.stringify('production'),
+        __API_BASE__: JSON.stringify(apiBase),
+      },
       build: {
         outDir: resolve(directory, 'dist'),
         emptyOutDir: !!target.public,

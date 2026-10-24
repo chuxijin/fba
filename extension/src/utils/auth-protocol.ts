@@ -1,12 +1,19 @@
 /** 官网、content script 和后台共用的认证契约，不依赖存储或网络。 */
-export const BACKEND_BASE = 'http://127.0.0.1:8000'
+declare const __API_BASE__: string | undefined
+
+/**
+ * 后端基址：由构建参数注入（`node build.js --api=https://api.yzxj.vip`）。
+ * 未注入时回落到本地开发地址，保证 `pnpm run build` 依旧是本地联调版本。
+ */
+const injectedApiBase = typeof __API_BASE__ === 'string' ? __API_BASE__.trim() : ''
+export const BACKEND_BASE = injectedApiBase || 'http://127.0.0.1:8000'
 export const LOCAL_SITE_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
 export const SITE_URL_PATTERNS = LOCAL_SITE_ORIGINS.map((origin) => {
   const { protocol, hostname } = new URL(origin)
   return `${protocol}//${hostname}/*`
 })
-export const SITE_AUTH_CHANNEL = 'fba-site-auth-v1'
-export const AUTH_BRIDGE_VERSION = 3
+export const SITE_AUTH_CHANNEL = 'fba-site-auth-v2'
+export const AUTH_BRIDGE_VERSION = 4
 export const AUTH_REQUEST_TIMEOUT = 10000
 export const AUTH_MESSAGE_TIMEOUT = 30000
 export const AUTH_RECHECK_INTERVAL = 60000
@@ -26,6 +33,17 @@ export interface TokenInfo {
   refresh_token?: string
   refresh_token_expire_time?: string
   token_type?: string
+  session_uuid?: string
+  client_type?: 'admin' | 'web' | 'miniapp' | 'extension'
+}
+
+/** 会话标识在 access token 刷新前后保持一致。仅用于前端同步去重，鉴权仍由后端完成。 */
+export function getTokenSessionId(accessToken: string): string | null {
+  try {
+    const part = accessToken.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/')
+    const payload = JSON.parse(atob(part))
+    return typeof payload.session_uuid === 'string' ? payload.session_uuid : null
+  } catch { return null }
 }
 
 export interface QuotaInfo {

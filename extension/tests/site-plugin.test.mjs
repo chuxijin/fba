@@ -26,6 +26,7 @@ function setup(t, initial) {
   const broadcasts = []
   const context = {
     window, location: { ...location, href: `${location.origin}/` }, document, crypto: webcrypto, atob,
+    navigator: { locks: { request: async (_name, callback) => callback() } },
     exports: {}, require: () => protocol,
     defineNuxtPlugin: (fn) => fn(), useCookie: (key) => key === 'web_token' ? token : { value: null },
     watch: (_ref, callback) => callbacks.push(callback), refreshCookie() {},
@@ -39,30 +40,30 @@ function setup(t, initial) {
   function incoming(data) {
     const event = new Event('message')
     Object.assign(event, { source: window, origin: location.origin, data: {
-      channel: 'fba-site-auth-v1', direction: 'extension-to-site', ...data,
+      channel: protocol.SITE_AUTH_CHANNEL, direction: 'extension-to-site', ...data,
     } })
     window.dispatchEvent(event)
   }
-  return { token, messages, incoming, window, document, broadcasts }
+  return { token, messages, incoming, window, document, broadcasts, context }
 }
 
-test('官网启动时导入扩展会话，不产生循环同步', async (t) => {
+test('官网不采纳插件访问凭据，保持两个客户端的会话隔离', async (t) => {
   const site = setup(t)
   // Nuxt useCookie 在首次访问且没有 Cookie 时返回 undefined，而不是 null。
   assert.equal(site.token.value, undefined)
   const request = site.messages.at(-1)
   site.incoming({ id: request.id, success: true, state: { token: { access_token: 'extension-token' }, user: { nickname: '用户' } } })
-  assert.equal(site.token.value, 'extension-token')
+  assert.equal(site.token.value, undefined)
   const count = site.messages.length
   site.incoming({ id: request.id, success: true, state: { token: { access_token: 'old' } } })
-  assert.equal(site.token.value, 'extension-token')
+  assert.equal(site.token.value, undefined)
   assert.equal(site.messages.length, count)
 })
-test('已明确退出的官网也能接收新会话，仅清除明确被拒绝的当前凭据', (t) => {
+test('插件自身的新登录与失效通知不会重建已退出的官网会话', (t) => {
   const site = setup(t, null)
   let request = site.messages.at(-1)
   site.incoming({ id: request.id, success: true, state: { token: { access_token: 'new-token' } } })
-  assert.equal(site.token.value, 'new-token')
+  assert.equal(site.token.value, null)
   site.incoming({ type: 'changed' })
   request = site.messages.at(-1)
   site.incoming({ id: request.id, success: true, state: { rejectedToken: 'new-token', token: null } })
@@ -79,13 +80,14 @@ test('官网登录/退出发送明确事件，旧响应不覆盖新账号', (t) 
   assert.equal(site.messages.at(-1).type, 'SITE_AUTH_LOGOUT')
   assert.equal(site.messages.at(-1).expectedToken, 'new-account')
 })
-test('扩展退出通知使官网清除会话', (t) => {
-  const site = setup(t, 'extension-token')
+test('扩展退出通知不清除官网会话，也不触发相互重登', (t) => {
+  const site = setup(t, 'site-token')
+  const count = site.messages.length
   site.incoming({ type: 'changed' })
   const request = site.messages.at(-1)
-  assert.equal(request.type, 'SITE_AUTH_GET')
+  assert.equal(site.messages.length, count)
   site.incoming({ id: request.id, success: true, state: { token: null, user: null } })
-  assert.equal(site.token.value, null)
+  assert.equal(site.token.value, 'site-token')
 })
 
 test('启动、available 和资料事件在同一握手进行中时不会重复发送登录请求', (t) => {
@@ -101,4 +103,32 @@ test('其他标签页 Cookie 变更时直接同步，未等待 Nuxt 的异步 re
   Object.defineProperty(site.document, 'cookie', { get: () => 'web_token=new-token', configurable: true })
   site.broadcasts[0].onmessage()
   assert.equal(site.token.value, 'new-token')
+})
+
+test('官网只为自然过期续期，携带原会话凭据并保存自己的新 Token', async (t) => {
+  const site = setup(t, 'site-old')
+  const calls = []
+  site.context.$fetch = async (url, options) => {
+    calls.push([url, options])
+    if (url.endsWith('/refresh')) return { code: 200, data: { access_token: 'site-new' } }
+    throw { statusCode: 401, data: { data: { refreshable: true } } }
+  }
+  site.window.dispatchEvent(new Event('focus'))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(site.token.value, 'site-new')
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1][1].headers.authorization, 'Bearer site-old')
+})
+
+test('同端被替换时清理官网会话，不用刷新抢回登录', async (t) => {
+  const site = setup(t, 'replaced-site')
+  let calls = 0
+  site.context.$fetch = async () => {
+    calls++
+    throw { statusCode: 401, data: { data: { refreshable: false, auth_reason: 'session_replaced' } } }
+  }
+  site.window.dispatchEvent(new Event('focus'))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(calls, 1)
+  assert.equal(site.token.value, null)
 })

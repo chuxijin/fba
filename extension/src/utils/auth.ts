@@ -18,6 +18,7 @@ export const STORAGE_KEY_QUOTA_REVISION = 'fba_quota_revision'
 export const STORAGE_KEY_ACCOUNT_CACHE = 'fba_account_cache'
 export const STORAGE_KEY_SIGNED_OUT = 'fba_auth_signed_out'
 export const STORAGE_KEY_SIGNED_OUT_TOKEN = 'fba_auth_signed_out_token'
+export const STORAGE_KEY_SITE_SESSION = 'fba_auth_site_session'
 
 export async function getSignOutState(): Promise<{ signedOut: boolean; fingerprint?: string }> {
   const data = await chrome.storage.local.get([STORAGE_KEY_SIGNED_OUT, STORAGE_KEY_SIGNED_OUT_TOKEN])
@@ -45,6 +46,7 @@ export class AuthApiError extends Error {
 export async function requestAuthApi<T>(path: string, options: RequestInit = {}, serverBase = BACKEND_BASE): Promise<T> {
   const response = await fetch(`${serverBase.replace(/\/+$/, '')}/api/v1${path}`, {
     ...options, signal: options.signal || AbortSignal.timeout(AUTH_REQUEST_TIMEOUT),
+    headers: { ...options.headers, 'X-Client-Type': 'extension' },
   })
   const result = await response.json().catch(() => null)
   if ([response.status, result?.code].some((code) => code === 401 || code === 403)) {
@@ -69,24 +71,28 @@ interface AuthSession {
   user: UserInfo | null
   cache?: AccountCache
   quotaRevision?: string
+  sourceSession?: string
 }
 
 export async function getAuthSession(): Promise<AuthSession> {
   if (typeof chrome !== 'undefined' && chrome.storage?.local) {
     const data = await chrome.storage.local.get([
       STORAGE_KEY_TOKEN, STORAGE_KEY_USER, STORAGE_KEY_ACCOUNT_CACHE, STORAGE_KEY_QUOTA_REVISION,
+      STORAGE_KEY_SITE_SESSION,
     ])
     return {
       token: data[STORAGE_KEY_TOKEN] || null,
       user: data[STORAGE_KEY_USER] || null,
       cache: data[STORAGE_KEY_ACCOUNT_CACHE],
       quotaRevision: data[STORAGE_KEY_QUOTA_REVISION],
+      sourceSession: data[STORAGE_KEY_SITE_SESSION] || undefined,
     }
   }
   return {
     token: JSON.parse(localStorage.getItem(STORAGE_KEY_TOKEN) || 'null'),
     user: JSON.parse(localStorage.getItem(STORAGE_KEY_USER) || 'null'),
     cache: JSON.parse(localStorage.getItem(STORAGE_KEY_ACCOUNT_CACHE) || 'null'),
+    sourceSession: localStorage.getItem(STORAGE_KEY_SITE_SESSION) || undefined,
   }
 }
 
@@ -145,7 +151,7 @@ export async function clearAuthSessionIfCurrent(accessToken: string): Promise<vo
 /**
  * 保存登录成功后的凭据与用户信息
  */
-export async function saveAuthSession(token: TokenInfo, user?: UserInfo): Promise<void> {
+export async function saveAuthSession(token: TokenInfo, user?: UserInfo, sourceSession?: string): Promise<void> {
   if (typeof chrome !== 'undefined' && chrome.storage?.local) {
     await chrome.storage.local.set({
       [STORAGE_KEY_TOKEN]: token,
@@ -153,12 +159,49 @@ export async function saveAuthSession(token: TokenInfo, user?: UserInfo): Promis
       [STORAGE_KEY_ACCOUNT_CACHE]: null,
       [STORAGE_KEY_SIGNED_OUT]: false,
       [STORAGE_KEY_SIGNED_OUT_TOKEN]: null,
+      [STORAGE_KEY_SITE_SESSION]: sourceSession || null,
     })
   } else {
     localStorage.setItem(STORAGE_KEY_TOKEN, JSON.stringify(token))
     localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user || {}))
     localStorage.removeItem(STORAGE_KEY_ACCOUNT_CACHE)
+    if (sourceSession) localStorage.setItem(STORAGE_KEY_SITE_SESSION, sourceSession)
+    else localStorage.removeItem(STORAGE_KEY_SITE_SESSION)
   }
+}
+
+let refreshPending: Promise<AuthSession> | null = null
+
+/** 后台统一续期插件自己的会话；旧请求不覆盖后来登录的账号。 */
+export async function getRequestAuthSession(serverBase = BACKEND_BASE): Promise<AuthSession> {
+  const session = await getAuthSession()
+  if (!session.token || !isTokenExpired(session.token)) return session
+  if (!session.token.refresh_token) {
+    await clearAuthSessionIfCurrent(session.token.access_token)
+    return getAuthSession()
+  }
+  if (refreshPending) return refreshPending
+  const task = (async () => {
+    try {
+      const token = await requestAuthApi<TokenInfo>('/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token!.access_token}` },
+        body: JSON.stringify({ refresh_token: session.token!.refresh_token }),
+      }, serverBase)
+      if (!token.access_token || !token.refresh_token || token.client_type !== 'extension') {
+        throw new Error('插件刷新响应无效')
+      }
+      if ((await getAuthSession()).token?.access_token === session.token!.access_token) {
+        await saveAuthSession(token, session.user || undefined, session.sourceSession)
+      }
+    } catch (error) {
+      if (!(error instanceof AuthApiError && error.unauthorized)) throw error
+      await clearAuthSessionIfCurrent(session.token!.access_token)
+    }
+    return getAuthSession()
+  })()
+  refreshPending = task
+  try { return await task } finally { if (refreshPending === task) refreshPending = null }
 }
 
 /**
@@ -263,6 +306,9 @@ export async function loginWithPassword(
   const token: TokenInfo = {
     access_token: data.access_token,
     access_token_expire_time: data.access_token_expire_time,
+    refresh_token: data.refresh_token,
+    session_uuid: data.session_uuid,
+    client_type: data.client_type,
   }
   const rawUser = data.user || {}
   const user: UserInfo = {
@@ -288,7 +334,7 @@ export async function fetchCurrentQuota(serverBase = BACKEND_BASE): Promise<Quot
 /** 仅由 background（或无扩展 API 的预览环境）调用。 */
 export async function requestCurrentQuota(serverBase = BACKEND_BASE): Promise<QuotaInfo> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const session = await getAuthSession()
+    const session = await getRequestAuthSession(serverBase)
     const accessToken = session.token?.access_token
     if (accessToken && isTokenExpired(session.token)) {
       await clearAuthSessionIfCurrent(accessToken)

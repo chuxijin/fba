@@ -495,7 +495,7 @@
 
             <!-- 4. 微信小程序生态引流 -->
             <div class="gk-miniapp-lead">
-              <img class="gk-miniapp-lead-img" :src="qrCodeUrl || 'http://127.0.0.1:8000/api/v1/render-books/public/minicode/demo'" alt="小程序码" />
+              <img class="gk-miniapp-lead-img" :src="qrCodeUrl || `${BACKEND_BASE}/api/v1/render-books/public/minicode/demo`" alt="小程序码" />
               <div class="gk-miniapp-lead-info">
                 <div class="gk-miniapp-lead-title">📱 微信扫码 · 登录【我的题本】</div>
                 <ul class="gk-miniapp-lead-list">
@@ -553,6 +553,7 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { RenderTypographySettings, DEFAULT_TYPOGRAPHY_SETTINGS, UnifiedPaper, MistakePageMeta } from '../../adapters'
 import { accountStore, AccountState } from '../../utils/account-state'
+import { BACKEND_BASE } from '../../utils/auth-protocol'
 
 const props = defineProps<{
   modelValue: boolean
@@ -1002,3 +1003,5 @@ defineExpose({
   close,
 })
 </script>
+
+

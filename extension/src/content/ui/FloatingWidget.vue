@@ -42,6 +42,10 @@
         </div>
 
         <!-- 辅助按钮: 建议反馈 -->
+        <button v-if="reportAvailable" class="gk-float-btn-import" @click="$emit('importReport')">
+          导入练习记录
+        </button>
+
         <button class="gk-float-btn-ghost" @click="$emit('feedback')">
           💬 建议反馈
         </button>
@@ -80,10 +84,12 @@ const props = withDefaults(
     paperTitle: string
     questionCount: number
     wrongCount?: number
+    reportAvailable?: boolean
     importState?: ImportState
   }>(),
   {
     wrongCount: 0,
+    reportAvailable: false,
     importState: () => ({ ...IDLE_IMPORT_STATE }),
   }
 )
@@ -94,6 +100,7 @@ const emit = defineEmits<{
   (e: 'feedback'): void
   (e: 'importWrong'): void
   (e: 'undoImport'): void
+  (e: 'importReport'): void
 }>()
 
 const isCollapsed = ref(false)

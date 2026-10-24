@@ -6,11 +6,13 @@
       :question-count="paperInfo.questionCount"
       :wrong-count="wrongCount"
       :import-state="importState"
+      :report-available="reportAvailable"
       @start-reformat="handleStartReformat"
       @quick-print="handleQuickPrint"
       @feedback="handleFeedback"
       @import-wrong="handleImportWrong"
       @undo-import="handleUndoImport"
+      @import-report="handleImportReport"
     />
 
     <!-- 2. 设置与交付弹窗 -->
@@ -21,6 +23,7 @@
       :mistake-meta="mistakeMeta"
       @export="onModalExport"
     />
+    <PracticeReportImport v-if="reportVisible" :draft="reportDraft" :status="reportStatus" :message="reportMessage" @close="reportVisible = false" @retry="handleImportReport" @save="emit('saveReport', $event)" />
   </div>
 </template>
 
@@ -28,6 +31,9 @@
 import { ref, reactive } from 'vue'
 import FloatingWidget from './FloatingWidget.vue'
 import SettingsModal from './SettingsModal.vue'
+import PracticeReportImport from './PracticeReportImport.vue'
+import { fenbiReportRoute } from '../../adapters/fenbi/report'
+import type { PracticeReportPayload } from '../../adapters/fenbi/report'
 import {
   UnifiedPaper,
   RenderTypographySettings,
@@ -44,6 +50,8 @@ const emit = defineEmits<{
   (e: 'doExport', settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync'): void
   (e: 'importWrong'): void
   (e: 'undoImport'): void
+  (e: 'importReport'): void
+  (e: 'saveReport', draft: PracticeReportPayload): void
 }>()
 
 const isModalVisible = ref(false)
@@ -59,6 +67,26 @@ const paperInfo = reactive({
 /** 当前试卷里可导入的错题数量（0 时悬浮窗不显示导入按钮） */
 const wrongCount = ref(0)
 const importState = ref<ImportState>({ ...IDLE_IMPORT_STATE })
+const reportAvailable = ref(Boolean(fenbiReportRoute(location.href)))
+const reportVisible = ref(false)
+const reportDraft = ref<PracticeReportPayload|null>(null)
+const reportStatus = ref('idle')
+const reportMessage = ref('')
+
+function handleImportReport() {
+  reportVisible.value = true
+  reportDraft.value = null
+  setReportStatus('loading')
+  emit('importReport')
+}
+function setReportDraft(draft: PracticeReportPayload) {
+  reportDraft.value = draft
+  setReportStatus('ready')
+}
+function setReportStatus(status: string, message = '') {
+  reportStatus.value = status
+  reportMessage.value = message
+}
 
 function setPaper(paper: UnifiedPaper) {
   currentPaper.value = paper
@@ -84,6 +112,9 @@ function setPaperInfo(title: string, count: number) {
 
 /** 试卷信息被清空（SPA 路由切换）时同步复位导入能力 */
 function resetPaper() {
+  reportAvailable.value = Boolean(fenbiReportRoute(location.href))
+  reportVisible.value = false
+  reportDraft.value = null
   currentPaper.value = null
   paperInfo.title = ''
   paperInfo.questionCount = 0
@@ -142,6 +173,8 @@ function onModalExport(settings: RenderTypographySettings, target: 'computer_dow
 }
 
 defineExpose({
+  setReportDraft,
+  setReportStatus,
   setPaper,
   setPaperInfo,
   setImportState,
