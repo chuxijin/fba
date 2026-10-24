@@ -35,6 +35,7 @@ from backend.app.question_bank_v2.model.review import (
     QbWrongQuestionState,
 )
 from backend.app.question_bank_v2.model.user_content import QbQuestionFavorite, QbQuestionNote
+from backend.app.question_bank_v2.schema.review import ENTRY_METADATA_SECTION_KEY
 from backend.core.conf import settings
 
 
@@ -46,6 +47,27 @@ class PracticeCandidate:
     bank_item_id: int | None
     max_score: Decimal
     display_config: dict[str, Any]
+
+
+def _session_section_name(session_id: int) -> ColumnElement[str | None]:
+    """题库章节优先；自主导入题回退到会话所属用户保存的原卷章节"""
+    imported_section = (
+        select(QbWrongQuestionState.entry_metadata[ENTRY_METADATA_SECTION_KEY].as_string())
+        .join(
+            QbPracticeSession,
+            and_(
+                QbPracticeSession.id == session_id,
+                QbPracticeSession.user_id == QbWrongQuestionState.user_id,
+            ),
+        )
+        .where(
+            QbWrongQuestionState.question_id == QbPracticeSessionItem.question_id,
+            QbWrongQuestionState.deleted == 0,
+        )
+        .correlate(QbPracticeSessionItem)
+        .scalar_subquery()
+    )
+    return func.coalesce(QbBankSection.name, func.nullif(func.trim(imported_section), '')).label('section_name')
 
 
 def _filter_values(value: str | Sequence[str] | None) -> list[str]:
@@ -339,7 +361,7 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
                 QbPracticeSessionItem.question_id,
                 QbPracticeSessionItem.bank_item_id,
                 QbBankItem.section_id,
-                QbBankSection.name.label('section_name'),
+                _session_section_name(session_id),
                 QbPracticeSessionItem.max_score,
                 QbPracticeSessionResponse.status.label('response_status'),
                 QbPracticeSessionResponse.is_correct,
@@ -1199,7 +1221,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 QbPracticeSessionItem.bank_item_id,
                 QbBankItem.exam_year,
                 QbBankItem.section_id,
-                QbBankSection.name.label('section_name'),
+                _session_section_name(session_id),
                 QbPracticeSessionItem.max_score,
                 QbPracticeSessionItem.display_config,
                 QbQuestion.question_type,

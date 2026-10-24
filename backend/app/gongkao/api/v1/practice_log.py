@@ -8,6 +8,8 @@ from fastapi import APIRouter, Path, Query, Request
 from backend.app.gongkao.schema.practice_log import (
     CreatePracticeLogParam,
     GetPracticeLogDetail,
+    ImportPracticeReportParam,
+    ImportPracticeReportResult,
     UpdatePracticeLogParam,
 )
 from backend.app.gongkao.schema.practice_log_vision import (
@@ -52,7 +54,6 @@ async def get_practice_log_list(
 @router.post(
     '',
     summary='创建练习记录',
-    response_model=ResponseSchemaModel[GetPracticeLogDetail],
 )
 async def create_practice_log(
     request: Request,
@@ -66,7 +67,6 @@ async def create_practice_log(
 @router.get(
     '/trends',
     summary='获取练习趋势',
-    response_model=ResponseSchemaModel,
 )
 async def get_practice_log_trends(
     request: Request,
@@ -80,7 +80,6 @@ async def get_practice_log_trends(
 @router.post(
     '/import-vision',
     summary='AI 智能导入练习记录',
-    response_model=ResponseSchemaModel[ImportPracticeLogVisionResult],
 )
 async def import_practice_log_vision(
     request: Request,
@@ -91,10 +90,31 @@ async def import_practice_log_vision(
     return response_base.success(data=data)
 
 
+@router.post('/import-report', summary='导入外部练习报告')
+async def import_practice_report(
+    request: Request, db: CurrentSessionTransaction, obj: ImportPracticeReportParam
+) -> ResponseSchemaModel[ImportPracticeReportResult]:
+    data = await practice_log_service.import_report(db=db, user_id=request.user.id, obj=obj)
+    return response_base.success(data=data)
+
+
+@router.get('/comparisons', summary='按科目、模块及直属子模块对比练习')
+async def get_practice_comparisons(
+    request: Request,
+    db: CurrentSession,
+    start_date: Annotated[date | None, Query(description='开始日期')] = None,
+    end_date: Annotated[date | None, Query(description='结束日期')] = None,
+    source_platform: Annotated[str | None, Query(pattern='^(manual|ai|fenbi)$')] = None,
+) -> ResponseSchemaModel:
+    data = await practice_log_service.get_comparisons(
+        db=db, user_id=request.user.id, start_date=start_date, end_date=end_date, source_platform=source_platform
+    )
+    return response_base.success(data=data)
+
+
 @router.get(
-    '/{pk}',
+    '/{pk:int}',
     summary='获取练习记录详情',
-    response_model=ResponseSchemaModel[GetPracticeLogDetail],
 )
 async def get_practice_log(
     request: Request,
@@ -106,9 +126,8 @@ async def get_practice_log(
 
 
 @router.put(
-    '/{pk}',
+    '/{pk:int}',
     summary='更新练习记录',
-    response_model=ResponseSchemaModel[GetPracticeLogDetail],
 )
 async def update_practice_log(
     request: Request,
@@ -121,9 +140,8 @@ async def update_practice_log(
 
 
 @router.delete(
-    '/{pk}',
+    '/{pk:int}',
     summary='删除练习记录',
-    response_model=ResponseModel,
 )
 async def delete_practice_log(
     request: Request,
