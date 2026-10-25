@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.model.practice import QbQuestionAttempt
 from backend.app.question_bank_v2.model.question import QbQuestion
+from backend.app.question_bank_v2.utils.external_practice import online_attempt_condition
 
 MIN_VALID_ATTEMPTS = 50
 RECALCULATE_INTERVAL = 10
@@ -59,6 +60,7 @@ class DifficultyService:
     @staticmethod
     async def recalculate(*, db: AsyncSession, question_id: int) -> Decimal | None:
         valid_scope = (
+            online_attempt_condition(),
             QbQuestionAttempt.question_id == question_id,
             QbQuestionAttempt.is_correct.is_not(None),
             QbQuestionAttempt.duration_ms.is_not(None),
@@ -66,36 +68,39 @@ class DifficultyService:
             QbQuestionAttempt.deleted == 0,
         )
         row = (
-            await db.execute(
-                select(
-                    func.count(QbQuestionAttempt.id).label('valid_attempts'),
-                    func.sum(case((QbQuestionAttempt.is_correct.is_(True), 1), else_=0)).label(
-                        'valid_correct'
-                    ),
-                    func.avg(QbQuestionAttempt.duration_ms).label('avg_duration_ms'),
-                    func.percentile_cont(0.5)
-                    .within_group(QbQuestionAttempt.duration_ms)
-                    .label('median_duration_ms'),
-                ).where(*valid_scope)
+            (
+                await db.execute(
+                    select(
+                        func.count(QbQuestionAttempt.id).label('valid_attempts'),
+                        func.sum(case((QbQuestionAttempt.is_correct.is_(True), 1), else_=0)).label('valid_correct'),
+                        func.avg(QbQuestionAttempt.duration_ms).label('avg_duration_ms'),
+                        func
+                        .percentile_cont(0.5)
+                        .within_group(QbQuestionAttempt.duration_ms)
+                        .label('median_duration_ms'),
+                    ).where(*valid_scope)
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         difficulty = compute_difficulty(
             valid_attempts=int(row['valid_attempts'] or 0),
             valid_correct=int(row['valid_correct'] or 0),
-            valid_avg_duration_ms=Decimal(str(row['avg_duration_ms']))
-            if row['avg_duration_ms'] is not None
-            else None,
+            valid_avg_duration_ms=Decimal(str(row['avg_duration_ms'])) if row['avg_duration_ms'] is not None else None,
             median_duration_ms=Decimal(str(row['median_duration_ms']))
             if row['median_duration_ms'] is not None
             else None,
         )
         question = (
-            await db.execute(
-                select(QbQuestion)
-                .where(QbQuestion.id == question_id, QbQuestion.deleted == 0)
-                .with_for_update()
+            (
+                await db.execute(
+                    select(QbQuestion).where(QbQuestion.id == question_id, QbQuestion.deleted == 0).with_for_update()
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if question is not None:
             question.difficulty = difficulty
             await db.flush()

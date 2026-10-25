@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select
 
+from backend.app.question_bank_v2.utils.external_practice import online_attempt_condition, online_session_condition
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,7 +54,6 @@ class PracticeDataResetResult:
 
 
 class PracticeDataResetService:
-
     @staticmethod
     async def reset_user_practice_data(
         *,
@@ -61,35 +62,37 @@ class PracticeDataResetService:
     ) -> PracticeDataResetResult:
         r = PracticeDataResetResult()
 
-        r.review_count += await _exec(db, delete(QbQuestionReviewKnowledgePoint).where(
-            QbQuestionReviewKnowledgePoint.review_id.in_(
-                select(QbQuestionReview.id).where(QbQuestionReview.user_id == user_id)
-            )
-        ))
-        r.review_count += await _exec(db, delete(QbQuestionReviewTag).where(
-            QbQuestionReviewTag.review_id.in_(
-                select(QbQuestionReview.id).where(QbQuestionReview.user_id == user_id)
-            )
-        ))
-        r.review_count += await _exec(db, delete(QbQuestionReview).where(
-            QbQuestionReview.user_id == user_id
-        ))
+        r.review_count += await _exec(
+            db,
+            delete(QbQuestionReviewKnowledgePoint).where(
+                QbQuestionReviewKnowledgePoint.review_id.in_(
+                    select(QbQuestionReview.id).where(QbQuestionReview.user_id == user_id)
+                )
+            ),
+        )
+        r.review_count += await _exec(
+            db,
+            delete(QbQuestionReviewTag).where(
+                QbQuestionReviewTag.review_id.in_(
+                    select(QbQuestionReview.id).where(QbQuestionReview.user_id == user_id)
+                )
+            ),
+        )
+        r.review_count += await _exec(db, delete(QbQuestionReview).where(QbQuestionReview.user_id == user_id))
 
-        r.wrong_state_count = await _exec(db, delete(QbWrongQuestionState).where(
-            QbWrongQuestionState.user_id == user_id
-        ))
+        r.wrong_state_count = await _exec(
+            db, delete(QbWrongQuestionState).where(QbWrongQuestionState.user_id == user_id)
+        )
 
-        r.user_tag_count = await _exec(db, delete(QbReviewTag).where(
-            QbReviewTag.user_id.isnot(None), QbReviewTag.user_id == user_id
-        ))
+        r.user_tag_count = await _exec(
+            db, delete(QbReviewTag).where(QbReviewTag.user_id.isnot(None), QbReviewTag.user_id == user_id)
+        )
 
-        r.evaluation_count = await _exec(db, delete(QbEvaluationRun).where(
-            QbEvaluationRun.user_id == user_id
-        ))
+        r.evaluation_count = await _exec(db, delete(QbEvaluationRun).where(QbEvaluationRun.user_id == user_id))
 
-        r.attempt_count += await _exec(db, delete(QbQuestionAttemptAsset).where(
-            QbQuestionAttemptAsset.created_by == user_id
-        ))
+        r.attempt_count += await _exec(
+            db, delete(QbQuestionAttemptAsset).where(QbQuestionAttemptAsset.created_by == user_id)
+        )
         r.attempt_knowledge_snapshot_count = await _exec(
             db,
             delete(QbQuestionAttemptKnowledgePoint).where(QbQuestionAttemptKnowledgePoint.user_id == user_id),
@@ -98,37 +101,48 @@ class PracticeDataResetService:
         # 删除顺序不可调整：qbank_v2_user_bank_item_progress.last_attempt_id 以 RESTRICT 指向
         # qbank_v2_question_attempt(user_id, question_id, id)（约束 fk_qbv2_ubip_last_attempt），
         # 必须在删除作答事实之前清掉这张进度表，否则整批删除会被外键挡下。
-        r.bank_progress_count = await _exec(db, delete(QbUserBankItemProgress).where(
-            QbUserBankItemProgress.user_id == user_id
-        ))
+        r.bank_progress_count = await _exec(
+            db, delete(QbUserBankItemProgress).where(QbUserBankItemProgress.user_id == user_id)
+        )
 
-        r.attempt_count += await _exec(db, delete(QbQuestionAttempt).where(QbQuestionAttempt.user_id == user_id))
+        r.attempt_count += await _exec(
+            db,
+            delete(QbQuestionAttempt).where(
+                QbQuestionAttempt.user_id == user_id,
+                online_attempt_condition(),
+            ),
+        )
 
-        user_session_ids = select(QbPracticeSession.id).where(QbPracticeSession.user_id == user_id)
-        r.attempt_count += await _exec(db, delete(QbPracticeSessionResponse).where(
-            QbPracticeSessionResponse.session_id.in_(user_session_ids)
-        ))
-        r.attempt_count += await _exec(db, delete(QbPracticeSessionItem).where(
-            QbPracticeSessionItem.session_id.in_(user_session_ids)
-        ))
+        user_session_ids = select(QbPracticeSession.id).where(
+            QbPracticeSession.user_id == user_id,
+            online_session_condition(),
+        )
+        r.attempt_count += await _exec(
+            db, delete(QbPracticeSessionResponse).where(QbPracticeSessionResponse.session_id.in_(user_session_ids))
+        )
+        r.attempt_count += await _exec(
+            db, delete(QbPracticeSessionItem).where(QbPracticeSessionItem.session_id.in_(user_session_ids))
+        )
 
-        r.session_count = await _exec(db, delete(QbPracticeSession).where(
-            QbPracticeSession.user_id == user_id
-        ))
+        r.session_count = await _exec(
+            db,
+            delete(QbPracticeSession).where(
+                QbPracticeSession.user_id == user_id,
+                online_session_condition(),
+            ),
+        )
 
-        r.mastery_count = await _exec(db, delete(QbUserQuestionMastery).where(
-            QbUserQuestionMastery.user_id == user_id
-        ))
+        r.mastery_count = await _exec(db, delete(QbUserQuestionMastery).where(QbUserQuestionMastery.user_id == user_id))
         r.knowledge_mastery_count = await _exec(
             db,
             delete(QbUserKnowledgeMastery).where(QbUserKnowledgeMastery.user_id == user_id),
         )
-        r.practice_stats_count = await _exec(db, delete(QbUserPracticeStatistics).where(
-            QbUserPracticeStatistics.user_id == user_id
-        ))
-        r.daily_stats_count = await _exec(db, delete(QbUserDailyStatistics).where(
-            QbUserDailyStatistics.user_id == user_id
-        ))
+        r.practice_stats_count = await _exec(
+            db, delete(QbUserPracticeStatistics).where(QbUserPracticeStatistics.user_id == user_id)
+        )
+        r.daily_stats_count = await _exec(
+            db, delete(QbUserDailyStatistics).where(QbUserDailyStatistics.user_id == user_id)
+        )
 
         await db.flush()
         return r

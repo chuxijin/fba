@@ -71,6 +71,6 @@ class GongkaoPracticeModule(Base):
         sa.BigInteger,
         sa.ForeignKey('gongkao_practice_module.id', ondelete='CASCADE'),
         default=None,
-        comment='所属模块，直属子模块以外不再递归',
+        comment='所属模块或子模块，可关联细分题型',
     )
     unanswered_count: Mapped[int | None] = mapped_column(default=None, comment='未答题数，未知时为空')

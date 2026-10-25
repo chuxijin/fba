@@ -18,6 +18,7 @@ from backend.app.gongkao.schema.practice_log_vision import (
 )
 from backend.app.gongkao.service.practice_log_service import practice_log_service
 from backend.app.gongkao.service.practice_log_vision_service import practice_log_vision_service
+from backend.app.question_bank_v2.schema.external_practice import GetImportedPracticeDetail
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -122,6 +123,16 @@ async def get_practice_log(
     pk: Annotated[int, Path(description='练习记录 ID')],
 ) -> ResponseSchemaModel[GetPracticeLogDetail]:
     data = await practice_log_service.get(db=db, user_id=request.user.id, pk=pk)
+    return response_base.success(data=data)
+
+
+@router.get('/{pk:int}/questions', summary='获取导入练习的逐题内容、历史作答与完整度')
+async def get_practice_log_questions(
+    request: Request,
+    db: CurrentSession,
+    pk: Annotated[int, Path(gt=0, description='练习记录 ID')],
+) -> ResponseSchemaModel[GetImportedPracticeDetail]:
+    data = await practice_log_service.get_question_details(db=db, user_id=request.user.id, pk=pk)
     return response_base.success(data=data)
 
 

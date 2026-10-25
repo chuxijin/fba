@@ -397,6 +397,9 @@ class CaptureHarness:
         self.expected = SimpleNamespace(id=31)
         # 录入时所在的领域：None 表示账号还没设过领域
         self.domain_category_id: int | None = 1400
+        # 内容指纹命中的已有私有题：非空时不应再新建题目
+        self.reusable: SimpleNamespace | None = None
+        self.answer_question_ids: list[int] = []
 
     async def resolve_domain_category_id(self, **_kwargs: object) -> int | None:
         await asyncio.sleep(0)
@@ -410,9 +413,14 @@ class CaptureHarness:
         self.question_create.update(kwargs)
         return SimpleNamespace(id=11)
 
-    async def upsert_answer(self, *_args: object, **_kwargs: object) -> None:
+    async def upsert_answer(self, *_args: object, **kwargs: Any) -> None:
         await asyncio.sleep(0)
         self.answer_upserts += 1
+        self.answer_question_ids.append(kwargs['question_id'])
+
+    async def find_reusable_question(self, *_args: object, **_kwargs: object) -> SimpleNamespace | None:
+        await asyncio.sleep(0)
+        return self.reusable
 
     async def replace_knowledge_points(self, _db: object, **kwargs: Any) -> None:
         await asyncio.sleep(0)
@@ -442,6 +450,11 @@ class CaptureHarness:
         monkeypatch.setattr(WrongReviewService, '_validate_assets', self.no_op)
         monkeypatch.setattr(WrongReviewService, 'get_detail', self.get_detail)
         monkeypatch.setattr(wrong_review_module.question_dao, 'create', self.create_question)
+        monkeypatch.setattr(
+            wrong_review_module.external_practice_dao,
+            'find_reusable_question',
+            self.find_reusable_question,
+        )
         monkeypatch.setattr(wrong_review_module.question_answer_dao, 'upsert', self.upsert_answer)
         monkeypatch.setattr(wrong_review_module.question_explanation_dao, 'replace', self.no_op)
         monkeypatch.setattr(
@@ -499,6 +512,51 @@ def test_external_capture_is_private_and_practiceable(monkeypatch: pytest.Monkey
     assert harness.wrong_state_data['next_practice_time'] is not None
     # 该参数包含知识点，属于录入时同步完成复盘
     assert [event['event_type'] for event in harness.review_events] == ['capture', 'review']
+
+
+def test_external_capture_reuses_existing_question_by_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    """内容一致的题已存在时直接复用，错题导入与刷题记录共用同一份题目"""
+    harness = CaptureHarness()
+    harness.reusable = SimpleNamespace(id=77)
+    harness.patch(monkeypatch)
+
+    asyncio.run(WrongReviewService.capture_external(db=DummyDB(), user_id=7, obj=harness.build_param()))
+
+    assert harness.question_create == {}
+    assert harness.answer_question_ids == [77]
+    assert harness.wrong_state_data['question_id'] == 77
+
+
+def test_external_capture_reuse_with_existing_state_returns_detail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同内容题已在错题本里时返回原状态，但补齐本次导入带来的答案内容"""
+    harness = CaptureHarness()
+    harness.reusable = SimpleNamespace(id=77)
+    harness.patch(monkeypatch)
+
+    async def find_state(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=31)
+
+    async def get_state(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=31, question_id=77, entry_metadata={})
+
+    async def get_question(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=77)
+
+    monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_by_question', find_state)
+    monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get', get_state)
+    monkeypatch.setattr(wrong_review_module.question_dao, 'get', get_question)
+
+    result = asyncio.run(WrongReviewService.capture_external(db=DummyDB(), user_id=7, obj=harness.build_param()))
+
+    assert result is harness.expected
+    assert harness.question_create == {}
+    assert harness.wrong_state_data == {}
+    assert harness.answer_question_ids == [77]
 
 
 def test_external_capture_records_entry_domain(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -832,12 +890,8 @@ def test_wrong_statistics_scopes_knowledge_groups_to_default_system(monkeypatch:
         captured.append((user_id, group_by, list(knowledge_system_ids), domain_category_ids))
         return []
 
-    monkeypatch.setattr(
-        wrong_review_module.knowledge_service, 'resolve_domain_category_id', fake_resolve_domain
-    )
-    monkeypatch.setattr(
-        wrong_review_module.knowledge_service, 'resolve_system_ids', fake_resolve_system_ids
-    )
+    monkeypatch.setattr(wrong_review_module.knowledge_service, 'resolve_domain_category_id', fake_resolve_domain)
+    monkeypatch.setattr(wrong_review_module.knowledge_service, 'resolve_system_ids', fake_resolve_system_ids)
     monkeypatch.setattr(WrongReviewService, 'resolve_domain_scope', fake_domain_scope)
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_statistics', fake_statistics)
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_group_counts', fake_group_counts)
@@ -901,12 +955,8 @@ def test_wrong_statistics_builds_knowledge_tree_and_keeps_external_flat(
         ]
 
     monkeypatch.setattr(WrongReviewService, 'resolve_domain_scope', fake_domain_scope)
-    monkeypatch.setattr(
-        wrong_review_module.knowledge_service, 'resolve_domain_category_id', fake_resolve_domain
-    )
-    monkeypatch.setattr(
-        wrong_review_module.knowledge_service, 'resolve_system_ids', fake_resolve_system_ids
-    )
+    monkeypatch.setattr(wrong_review_module.knowledge_service, 'resolve_domain_category_id', fake_resolve_domain)
+    monkeypatch.setattr(wrong_review_module.knowledge_service, 'resolve_system_ids', fake_resolve_system_ids)
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_statistics', fake_statistics)
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_group_counts', fake_group_counts)
 
@@ -919,9 +969,7 @@ def test_wrong_statistics_builds_knowledge_tree_and_keeps_external_flat(
         ]),
     ]
 
-    statistics = asyncio.run(
-        WrongReviewService.get_statistics(db=db, user_id=7, group_by='knowledge_point')
-    )
+    statistics = asyncio.run(WrongReviewService.get_statistics(db=db, user_id=7, group_by='knowledge_point'))
 
     assert [group.name for group in statistics.groups] == ['马原', '自主录入']
     assert statistics.groups[0].children[0].question_ids == [101]

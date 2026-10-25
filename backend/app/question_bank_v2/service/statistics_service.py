@@ -12,6 +12,7 @@ from backend.app.question_bank_v2.service.difficulty_service import (
     difficulty_service,
     should_recalculate_difficulty,
 )
+from backend.app.question_bank_v2.utils.external_practice import is_external_practice
 
 
 class StatisticsService:
@@ -25,6 +26,8 @@ class StatisticsService:
         max_score: Decimal,
     ) -> None:
         """在作答事务内同步维护题目、用户累计和每日统计"""
+        if is_external_practice(getattr(attempt, 'grading_result', None)):
+            return
         is_first_practice_today = await user_daily_statistics_dao.apply_attempt(db, attempt=attempt)
         await user_practice_statistics_dao.apply_attempt(
             db,
@@ -52,6 +55,8 @@ class StatisticsService:
         max_score: Decimal,
     ) -> None:
         """只补写延迟产生的判分维度，避免重复累计一次提交"""
+        if is_external_practice(getattr(attempt, 'grading_result', None)):
+            return
         await user_daily_statistics_dao.apply_delayed_grade(db, attempt=attempt)
         await user_practice_statistics_dao.apply_delayed_grade(db, attempt=attempt)
         question_statistics = await question_statistics_dao.apply_delayed_grade(

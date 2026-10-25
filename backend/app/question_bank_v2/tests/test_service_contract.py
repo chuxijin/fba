@@ -151,8 +151,8 @@ def test_v2_openapi_routes_and_names_are_unique() -> None:
     operation_ids = [operation['operationId'] for operations in paths.values() for operation in operations.values()]
 
     # 快照式数量守卫：新增/删除 V2 路由时同步更新这里的数字
-    assert len(paths) == 109
-    assert len(operation_ids) == 142
+    assert len(paths) == 110
+    assert len(operation_ids) == 143
     assert '/api/v1/qbank-v2/sessions' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/response' in paths
@@ -571,6 +571,7 @@ def test_wrong_import_and_collection_endpoints() -> None:
 
     expected = {
         '/api/v1/qbank-v2/wrong-questions/collections': 'get',
+        '/api/v1/qbank-v2/wrong-questions/sections': 'get',
         '/api/v1/qbank-v2/wrong-questions/import-history/batches': 'get',
         '/api/v1/qbank-v2/wrong-questions/import-history/singles': 'get',
         '/api/v1/qbank-v2/wrong-questions/import-batches/{import_batch_id}': 'delete',
@@ -581,7 +582,7 @@ def test_wrong_import_and_collection_endpoints() -> None:
         assert method in spec['paths'][path], (path, method)
 
     list_params = {item['name'] for item in spec['paths']['/api/v1/qbank-v2/wrong-questions']['get']['parameters']}
-    assert {'review_state', 'bank_id', 'import_batch_id', 'external_unbatched'} <= list_params
+    assert {'review_state', 'bank_id', 'import_batch_id', 'external_unbatched', 'section_name'} <= list_params
 
     collection_params = {
         item['name'] for item in spec['paths']['/api/v1/qbank-v2/wrong-questions/collections']['get']['parameters']

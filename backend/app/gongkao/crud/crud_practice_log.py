@@ -17,15 +17,27 @@ class CRUDPracticeLog(CRUDPlus[GongkaoPracticeLog]):
     async def get(self, db: AsyncSession, pk: int) -> GongkaoPracticeLog | None:
         return await self.select_model(db, pk)
 
-    async def get_by_user(self, db: AsyncSession, pk: int, user_id: int) -> GongkaoPracticeLog | None:
-        return await self.select_model_by_column(db, id=pk, user_id=user_id)
+    async def get_by_user(
+        self, db: AsyncSession, pk: int, user_id: int, *, for_update: bool = False
+    ) -> GongkaoPracticeLog | None:
+        stmt = select(self.model).where(self.model.id == pk, self.model.user_id == user_id, self.model.deleted == 0)
+        if for_update:
+            stmt = stmt.with_for_update()
+        return (await db.execute(stmt)).scalar_one_or_none()
 
     async def get_by_source(
         self, db: AsyncSession, *, user_id: int, source_platform: str, source_key: str
     ) -> GongkaoPracticeLog | None:
-        return await self.select_model_by_column(
-            db, user_id=user_id, source_platform=source_platform, source_key=source_key
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.user_id == user_id,
+                self.model.source_platform == source_platform,
+                self.model.source_key == source_key,
+            )
+            .with_for_update()
         )
+        return (await db.execute(stmt)).scalar_one_or_none()
 
     async def get_comparison_records(
         self,
@@ -63,7 +75,7 @@ class CRUDPracticeLog(CRUDPlus[GongkaoPracticeLog]):
     async def create(
         self, db: AsyncSession, obj: CreatePracticeLogParam, user_id: int, created_by: int
     ) -> GongkaoPracticeLog:
-        data = obj.model_dump(exclude={'modules'})
+        data = obj.model_dump(exclude={'modules', 'questions'})
         data['user_id'] = user_id
         data['created_by'] = created_by
         if data.get('total_questions', 0) > 0:
@@ -135,16 +147,21 @@ class CRUDPracticeModule(CRUDPlus[GongkaoPracticeModule]):
             pending_children.append((module, values.get('children') or []))
         await db.flush()
         next_seq = max((module.seq_no for module in created), default=-1) + 1
-        for parent, children in pending_children:
-            for child in children:
-                data = dict(child)
-                data['seq_no'] = next_seq
-                next_seq += 1
-                data['accuracy_rate'] = round(data['correct_count'] / data['total_questions'] * 100, 2)
-                module = self.model(log_id=log_id, parent_id=parent.id, **data)
-                db.add(module)
-                created.append(module)
-        await db.flush()
+        while pending_children:
+            next_children = []
+            for parent, children in pending_children:
+                for child in children:
+                    data = {key: value for key, value in child.items() if key != 'children'}
+                    data['seq_no'] = next_seq
+                    next_seq += 1
+                    data['accuracy_rate'] = round(data['correct_count'] / data['total_questions'] * 100, 2)
+                    module = self.model(log_id=log_id, parent_id=parent.id, **data)
+                    db.add(module)
+                    created.append(module)
+                    if child.get('children'):
+                        next_children.append((module, child['children']))
+            await db.flush()
+            pending_children = next_children
         return created
 
     async def delete_by_log_id(self, db: AsyncSession, log_id: int) -> int:

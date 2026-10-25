@@ -32,6 +32,8 @@ ENTRY_METADATA_BATCH_KEY = 'import_batch_id'
 ENTRY_METADATA_SOURCE_SYSTEM_KEY = 'source_system'
 ENTRY_METADATA_EXTERNAL_KEY_KEY = 'external_key'
 ENTRY_METADATA_SECTION_KEY = 'section_name'
+# 章节筛选的虚拟值：题库错题可回退到题库章节，仍无章节的外部题归入此项
+UNSECTIONED_SECTION_NAME = '__unsectioned__'
 
 
 class ExternalQuestionAssetParam(SchemaBase):
@@ -255,6 +257,20 @@ class WrongCollectionPage(SchemaBase):
     items: list[WrongCollectionItem] = Field(default_factory=list, description='当前页集合')
     next_cursor: str | None = Field(None, description='下一页游标；空表示没有更多')
     has_more: bool = Field(default=False, description='是否还有更多')
+
+
+class GetWrongSectionFacet(SchemaBase):
+    """集合内按原试卷章节/模块统计的题量"""
+
+    section_name: str = Field(description='章节或模块名，如「政治理论」')
+    total: int = Field(ge=0, description='该章节的题量')
+
+
+class GetWrongSectionFacetsResult(SchemaBase):
+    """集合章节筛选项"""
+
+    total: int = Field(ge=0, description='集合内全部题量（含未标章节）')
+    items: list[GetWrongSectionFacet] = Field(default_factory=list, description='章节及题量列表')
 
 
 class CreateQuestionReviewParam(SchemaBase):

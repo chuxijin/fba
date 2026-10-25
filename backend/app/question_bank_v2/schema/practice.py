@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -97,7 +97,7 @@ class GetPracticeSessionItem(SchemaBase):
     section_id: int | None = Field(None, description='来源章节 ID')
     section_name: str | None = Field(None, description='来源章节名称')
     exam_year: int | None = Field(None, description='试题年份')
-    max_score: Decimal = Field(ge=Decimal(0), description='本次作答满分')
+    max_score: Decimal | None = Field(ge=Decimal(0), description='本次作答满分；导入来源未提供时为空')
     display_config: dict[str, Any] = Field(default_factory=dict, description='本次投递展示配置')
     question_type: str = Field(description='题型')
     stem: str = Field(description='题干内容')
@@ -128,13 +128,14 @@ class GetPracticeSessionDetail(SchemaBase):
     source_ref: str | None = Field(None, description='组题来源稳定引用')
     title_snapshot: str | None = Field(None, description='会话标题快照')
     status: str = Field(description='会话状态')
-    started_time: datetime = Field(description='开始时间')
+    started_time: datetime | None = Field(description='实际开始时间；仅有日期的导入记录为空')
+    practiced_at: date | None = None
     submitted_time: datetime | None = Field(None, description='交卷时间')
     expires_time: datetime | None = Field(None, description='会话过期时间')
     total_items: int = Field(ge=0, description='投递题数')
     answered_items: int = Field(ge=0, description='已答题数')
     correct_items: int = Field(ge=0, description='答对题数')
-    score: Decimal = Field(ge=Decimal(0), description='当前得分')
+    score: Decimal | None = Field(ge=Decimal(0), description='当前得分；导入来源未提供时为空')
     delivery_config: dict[str, Any] = Field(default_factory=dict, description='投递参数快照')
     source_snapshot: dict[str, Any] = Field(default_factory=dict, description='组题来源快照')
     materials: list[GetDeliveredMaterialDetail] = Field(default_factory=list, description='本次会话去重后的材料内容')
@@ -246,8 +247,8 @@ class GetPracticeSolutionDetail(SchemaBase):
 
     session_item_id: int = Field(description='会话题目 ID')
     question_id: int = Field(description='题目稳定身份 ID')
-    answer_data: dict[str, Any] = Field(description='结构化标准答案')
-    grading_method: str = Field(description='标准判分方式')
+    answer_data: dict[str, Any] | None = Field(description='结构化标准答案；导入缺失时为空')
+    grading_method: str | None = Field(description='标准判分方式')
     grading_config: dict[str, Any] = Field(default_factory=dict, description='判分配置')
     explanations: list[PracticeExplanationDetail] = Field(default_factory=list, description='已发布解析')
 
@@ -282,9 +283,9 @@ class PracticeReportItem(SchemaBase):
     section_id: int | None = Field(None, description='来源章节 ID')
     section_name: str | None = Field(None, description='来源章节名称')
     status: PracticeAnswerCardStatus = Field(description='答题卡状态')
-    duration_ms: int = Field(ge=0, description='累计有效作答时长毫秒')
+    duration_ms: int | None = Field(ge=0, description='累计有效作答时长毫秒，导入未知时为空')
     score: Decimal | None = Field(None, ge=0, description='本题得分')
-    max_score: Decimal = Field(ge=0, description='本题满分')
+    max_score: Decimal | None = Field(ge=0, description='本题满分，导入未知时为空')
 
 
 class GetPracticeSessionReport(SchemaBase):
@@ -305,10 +306,13 @@ class GetPracticeSessionReport(SchemaBase):
     pending_items: int = Field(ge=0, description='已提交待判题数')
     unanswered_items: int = Field(ge=0, description='未答题数')
     accuracy_rate: Decimal = Field(ge=0, le=1, description='已判题正确率')
-    score: Decimal = Field(ge=0, description='当前总得分')
-    total_score: Decimal = Field(ge=0, description='整场满分')
-    total_duration_ms: int = Field(ge=0, description='累计有效作答时长毫秒')
-    started_time: datetime = Field(description='开始时间')
+    score: Decimal | None = Field(ge=0, description='当前总得分')
+    total_score: Decimal | None = Field(ge=0, description='整场满分')
+    total_duration_ms: int | None = Field(ge=0, description='累计有效作答时长毫秒')
+    started_time: datetime | None = Field(description='实际开始时间；导入仅有日期时为空')
+    practiced_at: date | None = None
+    accuracy_basis: Literal['graded_questions', 'all_questions'] = 'graded_questions'
+    source_snapshot: dict[str, Any] = Field(default_factory=dict)
     submitted_time: datetime | None = Field(None, description='交卷时间')
     items: list[PracticeReportItem] = Field(default_factory=list, description='答题卡')
     wrong_question_ids: list[int] = Field(default_factory=list, description='错题稳定身份 ID')
@@ -323,9 +327,9 @@ class GetPracticeSessionSolutionItem(SchemaBase):
     response_data: Any | None = Field(None, description='用户最终答案')
     is_correct: bool | None = Field(None, description='是否正确')
     score: Decimal | None = Field(None, ge=0, description='本题得分')
-    max_score: Decimal = Field(ge=0, description='本题满分')
+    max_score: Decimal | None = Field(ge=0, description='本题满分')
     grading_status: str | None = Field(None, description='判分状态')
-    answer_data: dict[str, Any] = Field(description='结构化标准答案')
-    grading_method: str = Field(description='标准判分方式')
+    answer_data: dict[str, Any] | None = Field(description='结构化标准答案；导入缺失时为空')
+    grading_method: str | None = Field(description='标准判分方式')
     grading_config: dict[str, Any] = Field(default_factory=dict, description='判分配置')
     explanations: list[PracticeExplanationDetail] = Field(default_factory=list, description='已发布解析')

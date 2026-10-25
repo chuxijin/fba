@@ -42,6 +42,7 @@ from backend.app.question_bank_v2.schema.analytics import (
 )
 from backend.app.question_bank_v2.service.access_service import bank_access_service
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
+from backend.app.question_bank_v2.utils.external_practice import online_attempt_condition
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
@@ -230,29 +231,33 @@ class AnalyticsService:
         每个维度聚合存在进行中会话的练习模式，供前端判断入口显示“继续”还是“开始”。
         """
         rows = (
-            await db.execute(
-                select(
-                    QbPracticeSession.id,
-                    QbPracticeSession.mode,
-                    QbPracticeSession.session_key,
-                    QbPracticeSession.source_snapshot,
-                    QbPracticeSession.delivery_config,
-                )
-                .join(
-                    QbBankRevision,
-                    and_(
-                        QbBankRevision.id == QbPracticeSession.bank_revision_id,
-                        QbBankRevision.deleted == 0,
-                    ),
-                )
-                .where(
-                    QbPracticeSession.user_id == user_id,
-                    QbPracticeSession.deleted == 0,
-                    QbPracticeSession.status.in_(('created', 'in_progress')),
-                    QbBankRevision.bank_id == bank_id,
+            (
+                await db.execute(
+                    select(
+                        QbPracticeSession.id,
+                        QbPracticeSession.mode,
+                        QbPracticeSession.session_key,
+                        QbPracticeSession.source_snapshot,
+                        QbPracticeSession.delivery_config,
+                    )
+                    .join(
+                        QbBankRevision,
+                        and_(
+                            QbBankRevision.id == QbPracticeSession.bank_revision_id,
+                            QbBankRevision.deleted == 0,
+                        ),
+                    )
+                    .where(
+                        QbPracticeSession.user_id == user_id,
+                        QbPracticeSession.deleted == 0,
+                        QbPracticeSession.status.in_(('created', 'in_progress')),
+                        QbBankRevision.bank_id == bank_id,
+                    )
                 )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         best: dict[tuple[Any, Any, str], tuple[int, str]] = {}
         for row in rows:
             source = dict(row['source_snapshot'] or {})
@@ -305,7 +310,8 @@ class AnalyticsService:
         }
         # 未归入篇章的题型进度
         unsectioned_qt_counts, unsectioned_qt_progress = AnalyticsService._build_type_data(
-            type_rows=type_rows, section_id=None,
+            type_rows=type_rows,
+            section_id=None,
         )
         # 全库级别题型进度 = 所有 type_rows 汇总
         all_qt_counts: dict[str, int] = {}
@@ -430,13 +436,17 @@ class AnalyticsService:
         pairs_by_collection = AnalyticsService._get_collection_revision_pairs(scopes, mounts)
         revision_pairs = list(dict.fromkeys(pair for pairs in pairs_by_collection.values() for pair in pairs))
         rows = await learning_analytics_dao.get_bank_progress_summary_rows(
-            db, user_id=user_id, revision_pairs=revision_pairs,
+            db,
+            user_id=user_id,
+            revision_pairs=revision_pairs,
         )
         row_map = {int(row['bank_revision_id']): row for row in rows}
-        return GetCollectionProgressBatch(items=[
-            AnalyticsService._build_collection_progress_summary(root_id, pairs_by_collection[root_id], row_map)
-            for root_id in root_ids
-        ])
+        return GetCollectionProgressBatch(
+            items=[
+                AnalyticsService._build_collection_progress_summary(root_id, pairs_by_collection[root_id], row_map)
+                for root_id in root_ids
+            ]
+        )
 
     @staticmethod
     def _build_collection_progress_scopes(
@@ -509,7 +519,8 @@ class AnalyticsService:
                     **counts,
                     progress_rate=AnalyticsService._rate(counts['answered_count'], counts['total_count']),
                     accuracy_rate=AnalyticsService._rate(
-                        counts['correct_count'], counts['correct_count'] + counts['wrong_count'],
+                        counts['correct_count'],
+                        counts['correct_count'] + counts['wrong_count'],
                     ),
                 )
             )
@@ -519,7 +530,8 @@ class AnalyticsService:
             **totals,
             progress_rate=AnalyticsService._rate(totals['answered_count'], totals['total_count']),
             accuracy_rate=AnalyticsService._rate(
-                totals['correct_count'], totals['correct_count'] + totals['wrong_count'],
+                totals['correct_count'],
+                totals['correct_count'] + totals['wrong_count'],
             ),
             banks=banks,
         )
@@ -736,9 +748,9 @@ class AnalyticsService:
 
         practiced_at = sa.cast(QbQuestionAttempt.submitted_time, sa.Date).label('practiced_at')
         attempt_count_col = sa.func.count(QbQuestionAttempt.id).label('attempt_count')
-        correct_count_col = sa.func.sum(
-            sa.case((QbQuestionAttempt.is_correct.is_(True), 1), else_=0)
-        ).label('correct_count')
+        correct_count_col = sa.func.sum(sa.case((QbQuestionAttempt.is_correct.is_(True), 1), else_=0)).label(
+            'correct_count'
+        )
         avg_duration_col = sa.func.avg(QbQuestionAttempt.duration_ms).label('avg_duration_ms')
 
         stmt = (
@@ -777,6 +789,7 @@ class AnalyticsService:
             )
             .where(
                 QbQuestionAttempt.user_id == user_id,
+                online_attempt_condition(),
                 QbQuestionAttempt.deleted == 0,
                 QbQuestionAttempt.grading_status == 'graded',
                 QbQuestionAttempt.submitted_time >= start_datetime,

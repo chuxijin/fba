@@ -36,6 +36,7 @@ from backend.app.question_bank_v2.model.review import (
 )
 from backend.app.question_bank_v2.model.user_content import QbQuestionFavorite, QbQuestionNote
 from backend.app.question_bank_v2.schema.review import ENTRY_METADATA_SECTION_KEY
+from backend.app.question_bank_v2.utils.external_practice import online_session_condition
 from backend.core.conf import settings
 
 
@@ -250,17 +251,16 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
         user_session_ids = select(QbPracticeSession.id).where(
             QbPracticeSession.user_id == user_id,
             QbPracticeSession.deleted == 0,
+            online_session_condition(),
         )
         response_stats = (
             select(
                 QbPracticeSessionResponse.session_id,
                 func.count(
-                    case(
-                        (
-                            QbPracticeSessionResponse.status.in_({'submitted', 'graded', 'review_required'}),
-                            QbPracticeSessionResponse.id,
-                        )
-                    )
+                    case((
+                        QbPracticeSessionResponse.status.in_({'submitted', 'graded', 'review_required'}),
+                        QbPracticeSessionResponse.id,
+                    ))
                 ).label('answered_items'),
                 func.count(case((QbPracticeSessionResponse.is_correct.is_not(None), 1))).label('graded_items'),
                 func.count(case((QbPracticeSessionResponse.is_correct.is_(True), 1))).label('correct_items'),
@@ -325,7 +325,7 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
             )
             .outerjoin(response_stats, response_stats.c.session_id == QbPracticeSession.id)
             .outerjoin(score_stats, score_stats.c.session_id == QbPracticeSession.id)
-            .where(QbPracticeSession.user_id == user_id, QbPracticeSession.deleted == 0)
+            .where(QbPracticeSession.user_id == user_id, QbPracticeSession.deleted == 0, online_session_condition())
             .order_by(QbPracticeSession.created_time.desc(), QbPracticeSession.id.desc())
         )
         if statuses := _filter_values(status):
@@ -488,32 +488,32 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
     async def refresh_aggregates(self, db: AsyncSession, session: QbPracticeSession) -> None:
         """从当前作答投影重算会话缓存，并在全部判分完成后结束待判状态"""
         row = (
-            await db.execute(
-                select(
-                    func.count(
-                        case(
-                            (
+            (
+                await db.execute(
+                    select(
+                        func.count(
+                            case((
                                 QbPracticeSessionResponse.status.in_({'submitted', 'graded', 'review_required'}),
                                 QbPracticeSessionResponse.id,
-                            )
-                        )
-                    ).label('answered_items'),
-                    func.count(case((QbPracticeSessionResponse.is_correct.is_(True), 1))).label('correct_items'),
-                    func.coalesce(func.sum(QbPracticeSessionResponse.score), 0).label('score'),
-                    func.count(
-                        case(
-                            (
+                            ))
+                        ).label('answered_items'),
+                        func.count(case((QbPracticeSessionResponse.is_correct.is_(True), 1))).label('correct_items'),
+                        func.coalesce(func.sum(QbPracticeSessionResponse.score), 0).label('score'),
+                        func.count(
+                            case((
                                 QbPracticeSessionResponse.grading_status.in_({'pending', 'review_required', 'failed'}),
                                 QbPracticeSessionResponse.id,
-                            )
-                        )
-                    ).label('pending_items'),
-                ).where(
-                    QbPracticeSessionResponse.session_id == session.id,
-                    QbPracticeSessionResponse.deleted == 0,
+                            ))
+                        ).label('pending_items'),
+                    ).where(
+                        QbPracticeSessionResponse.session_id == session.id,
+                        QbPracticeSessionResponse.deleted == 0,
+                    )
                 )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         session.answered_items = int(row['answered_items'])
         session.correct_items = int(row['correct_items'])
         session.score = Decimal(row['score'])
@@ -660,7 +660,8 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         # 新题不够时用做过的题补齐；集合已经被作用域与作答历史收窄，量级可控
         priority_column = last_submitted.label('last_submitted_time')
         seen_stmt = (
-            base_stmt.where(attempted)
+            base_stmt
+            .where(attempted)
             .add_columns(priority_column)
             .order_by(priority_column.asc(), _random_order())
             .limit(remaining)
@@ -685,20 +686,14 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         randomizer = secrets.SystemRandom()
         pivot = randomizer.randint(min_id, max_id)
         candidates = list(
-            (
-                await db.execute(base_stmt.where(QbBankItem.id >= pivot).order_by(QbBankItem.id).limit(limit))
-            )
+            (await db.execute(base_stmt.where(QbBankItem.id >= pivot).order_by(QbBankItem.id).limit(limit)))
             .scalars()
             .all()
         )
         remaining = limit - len(candidates)
         if remaining > 0:
             candidates.extend(
-                (
-                    await db.execute(
-                        base_stmt.where(QbBankItem.id < pivot).order_by(QbBankItem.id).limit(remaining)
-                    )
-                )
+                (await db.execute(base_stmt.where(QbBankItem.id < pivot).order_by(QbBankItem.id).limit(remaining)))
                 .scalars()
                 .all()
             )
@@ -728,18 +723,12 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
             return list((await db.execute(stmt.order_by(_random_order()).limit(limit))).mappings().all())
 
         attempted, last_submitted = priority
-        rows = list(
-            (await db.execute(stmt.where(~attempted).order_by(_random_order()).limit(limit))).mappings().all()
-        )
+        rows = list((await db.execute(stmt.where(~attempted).order_by(_random_order()).limit(limit))).mappings().all())
         remaining = limit - len(rows)
         if remaining <= 0:
             return rows
         rows.extend(
-            (
-                await db.execute(
-                    stmt.where(attempted).order_by(last_submitted.asc(), _random_order()).limit(remaining)
-                )
-            )
+            (await db.execute(stmt.where(attempted).order_by(last_submitted.asc(), _random_order()).limit(remaining)))
             .mappings()
             .all()
         )
@@ -822,11 +811,13 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 stmt = stmt.where(QbQuestion.question_type.in_(question_types))
             if knowledge_point_ids:
                 stmt = stmt.where(
-                    select(QbQuestionKnowledgePoint.question_id).where(
+                    select(QbQuestionKnowledgePoint.question_id)
+                    .where(
                         QbQuestionKnowledgePoint.question_id == QbQuestion.id,
                         QbQuestionKnowledgePoint.knowledge_point_id.in_(knowledge_point_ids),
                         QbQuestionKnowledgePoint.deleted == 0,
-                    ).exists()
+                    )
+                    .exists()
                 )
             if question_ids:
                 requested_order = {question_id: position for position, question_id in enumerate(question_ids)}
@@ -853,7 +844,8 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                     QbQuestionReview.question_id,
                     QbQuestionReview.summary,
                     QbQuestionReview.review_data,
-                    func.row_number()
+                    func
+                    .row_number()
                     .over(
                         partition_by=QbQuestionReview.question_id,
                         order_by=(QbQuestionReview.reviewed_time.desc(), QbQuestionReview.id.desc()),
@@ -878,65 +870,73 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 .where(review_ranked.c.review_rank == 1)
                 .subquery()
             )
-            latest_review_rows = (
-                await db.execute(select(latest_reviews))
-            ).mappings().all()
-            latest_review_map = {
-                int(row['question_id']): row for row in latest_review_rows
-            }
+            latest_review_rows = (await db.execute(select(latest_reviews))).mappings().all()
+            latest_review_map = {int(row['question_id']): row for row in latest_review_rows}
 
             history_rows = (
-                await db.execute(
-                    select(
-                        QbQuestionReview.id,
-                        QbQuestionReview.question_id,
-                        QbQuestionReview.summary,
-                        QbQuestionReview.review_data,
-                        QbQuestionReview.reviewed_time,
-                    )
-                    .where(
-                        QbQuestionReview.user_id == user_id,
-                        QbQuestionReview.question_id.in_(candidate_question_ids),
-                        QbQuestionReview.event_type == 'review',
-                        QbQuestionReview.deleted == 0,
-                    )
-                    .order_by(
-                        QbQuestionReview.question_id,
-                        QbQuestionReview.reviewed_time.desc(),
-                        QbQuestionReview.id.desc(),
+                (
+                    await db.execute(
+                        select(
+                            QbQuestionReview.id,
+                            QbQuestionReview.question_id,
+                            QbQuestionReview.summary,
+                            QbQuestionReview.review_data,
+                            QbQuestionReview.reviewed_time,
+                        )
+                        .where(
+                            QbQuestionReview.user_id == user_id,
+                            QbQuestionReview.question_id.in_(candidate_question_ids),
+                            QbQuestionReview.event_type == 'review',
+                            QbQuestionReview.deleted == 0,
+                        )
+                        .order_by(
+                            QbQuestionReview.question_id,
+                            QbQuestionReview.reviewed_time.desc(),
+                            QbQuestionReview.id.desc(),
+                        )
                     )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
             history_review_ids = [int(row['id']) for row in history_rows]
             history_tag_rows = (
-                await db.execute(
-                    select(QbQuestionReviewTag.review_id, QbReviewTag.name)
-                    .join(QbReviewTag, QbReviewTag.id == QbQuestionReviewTag.tag_id)
-                    .where(
-                        QbQuestionReviewTag.review_id.in_(history_review_ids),
-                        QbQuestionReviewTag.deleted == 0,
-                        QbReviewTag.deleted == 0,
+                (
+                    await db.execute(
+                        select(QbQuestionReviewTag.review_id, QbReviewTag.name)
+                        .join(QbReviewTag, QbReviewTag.id == QbQuestionReviewTag.tag_id)
+                        .where(
+                            QbQuestionReviewTag.review_id.in_(history_review_ids),
+                            QbQuestionReviewTag.deleted == 0,
+                            QbReviewTag.deleted == 0,
+                        )
                     )
-                )
-            ).all() if history_review_ids else []
+                ).all()
+                if history_review_ids
+                else []
+            )
             history_tag_names: dict[int, list[str]] = {}
             for review_id, name in history_tag_rows:
                 history_tag_names.setdefault(int(review_id), []).append(name)
 
             history_knowledge_rows = (
-                await db.execute(
-                    select(QbQuestionReviewKnowledgePoint.review_id, QbKnowledgePoint.name)
-                    .join(
-                        QbKnowledgePoint,
-                        QbKnowledgePoint.id == QbQuestionReviewKnowledgePoint.knowledge_point_id,
+                (
+                    await db.execute(
+                        select(QbQuestionReviewKnowledgePoint.review_id, QbKnowledgePoint.name)
+                        .join(
+                            QbKnowledgePoint,
+                            QbKnowledgePoint.id == QbQuestionReviewKnowledgePoint.knowledge_point_id,
+                        )
+                        .where(
+                            QbQuestionReviewKnowledgePoint.review_id.in_(history_review_ids),
+                            QbQuestionReviewKnowledgePoint.deleted == 0,
+                            QbKnowledgePoint.deleted == 0,
+                        )
                     )
-                    .where(
-                        QbQuestionReviewKnowledgePoint.review_id.in_(history_review_ids),
-                        QbQuestionReviewKnowledgePoint.deleted == 0,
-                        QbKnowledgePoint.deleted == 0,
-                    )
-                )
-            ).all() if history_review_ids else []
+                ).all()
+                if history_review_ids
+                else []
+            )
             history_knowledge_names: dict[int, list[str]] = {}
             for review_id, name in history_knowledge_rows:
                 history_knowledge_names.setdefault(int(review_id), []).append(name)
@@ -944,37 +944,39 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
             for row in history_rows:
                 review_id = int(row['id'])
                 review_data = dict(row['review_data'] or {})
-                review_history.setdefault(int(row['question_id']), []).append(
-                    {
-                        'summary': row['summary'],
-                        'prevention': review_data.get('prevention', ''),
-                        'tag_names': history_tag_names.get(review_id, []),
-                        'knowledge_point_names': history_knowledge_names.get(review_id, []),
-                        'reviewed_time': row['reviewed_time'].isoformat(),
-                    }
-                )
+                review_history.setdefault(int(row['question_id']), []).append({
+                    'summary': row['summary'],
+                    'prevention': review_data.get('prevention', ''),
+                    'tag_names': history_tag_names.get(review_id, []),
+                    'knowledge_point_names': history_knowledge_names.get(review_id, []),
+                    'reviewed_time': row['reviewed_time'].isoformat(),
+                })
 
             wrong_attempt_rows = (
-                await db.execute(
-                    select(
-                        QbQuestionAttempt.question_id,
-                        QbQuestionAttempt.attempt_no,
-                        QbQuestionAttempt.response_data,
-                        QbQuestionAttempt.submitted_time,
-                    )
-                    .where(
-                        QbQuestionAttempt.user_id == user_id,
-                        QbQuestionAttempt.question_id.in_(candidate_question_ids),
-                        QbQuestionAttempt.is_correct.is_(False),
-                        QbQuestionAttempt.deleted == 0,
-                    )
-                    .order_by(
-                        QbQuestionAttempt.question_id,
-                        QbQuestionAttempt.submitted_time.desc(),
-                        QbQuestionAttempt.id.desc(),
+                (
+                    await db.execute(
+                        select(
+                            QbQuestionAttempt.question_id,
+                            QbQuestionAttempt.attempt_no,
+                            QbQuestionAttempt.response_data,
+                            QbQuestionAttempt.submitted_time,
+                        )
+                        .where(
+                            QbQuestionAttempt.user_id == user_id,
+                            QbQuestionAttempt.question_id.in_(candidate_question_ids),
+                            QbQuestionAttempt.is_correct.is_(False),
+                            QbQuestionAttempt.deleted == 0,
+                        )
+                        .order_by(
+                            QbQuestionAttempt.question_id,
+                            QbQuestionAttempt.submitted_time.desc(),
+                            QbQuestionAttempt.id.desc(),
+                        )
                     )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
             wrong_answer_history: dict[int, list[dict[str, Any]]] = {}
             for row in wrong_attempt_rows:
                 response_data = row['response_data']
@@ -984,13 +986,11 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                     and response_data.get('viewed') is True
                 ):
                     continue
-                wrong_answer_history.setdefault(int(row['question_id']), []).append(
-                    {
-                        'answer': response_data,
-                        'attempt_no': row['attempt_no'],
-                        'submitted_time': row['submitted_time'].isoformat(),
-                    }
-                )
+                wrong_answer_history.setdefault(int(row['question_id']), []).append({
+                    'answer': response_data,
+                    'attempt_no': row['attempt_no'],
+                    'submitted_time': row['submitted_time'].isoformat(),
+                })
 
             tag_rows = (
                 await db.execute(
@@ -1048,15 +1048,13 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 if wrong_answer_history.get(question_id):
                     display_config['wrong_answer_history'] = wrong_answer_history[question_id]
                 if latest_review is not None:
-                    display_config.update(
-                        {
-                            'review_summary': latest_review['summary'],
-                            'review_prevention': review_data.get('prevention', ''),
-                            'review_tag_names': tag_names.get(question_id, []),
-                            'review_knowledge_point_names': knowledge_names.get(question_id, []),
-                            'review_history': review_history.get(question_id, []),
-                        }
-                    )
+                    display_config.update({
+                        'review_summary': latest_review['summary'],
+                        'review_prevention': review_data.get('prevention', ''),
+                        'review_tag_names': tag_names.get(question_id, []),
+                        'review_knowledge_point_names': knowledge_names.get(question_id, []),
+                        'review_history': review_history.get(question_id, []),
+                    })
                 candidates.append(
                     PracticeCandidate(
                         question_id=question_id,
@@ -1339,6 +1337,7 @@ class CRUDPracticeSessionResponse(CRUDPlus[QbPracticeSessionResponse]):
             .where(
                 QbPracticeSession.user_id == user_id,
                 QbPracticeSession.deleted == 0,
+                online_session_condition(),
                 QbPracticeSessionResponse.deleted == 0,
                 QbPracticeSessionResponse.status.in_({'submitted', 'graded', 'review_required'}),
                 QbPracticeSessionResponse.last_submitted_time >= since,

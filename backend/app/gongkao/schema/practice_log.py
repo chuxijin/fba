@@ -4,6 +4,10 @@ from urllib.parse import urlparse
 
 from pydantic import ConfigDict, Field, model_validator
 
+from backend.app.question_bank_v2.schema.external_practice import (
+    ImportPracticeDetailResult,
+    ImportPracticeQuestionParam,
+)
 from backend.common.schema import SchemaBase
 
 
@@ -27,8 +31,13 @@ class PracticeModuleValues(SchemaBase):
         return self
 
 
+class CreatePracticeTopicParam(PracticeModuleValues):
+    model_config = ConfigDict(extra='forbid')
+
+
 class CreatePracticeSubModuleParam(PracticeModuleValues):
     model_config = ConfigDict(extra='forbid')
+    children: list[CreatePracticeTopicParam] = Field(default_factory=list, max_length=100, description='细分题型')
 
 
 class CreatePracticeModuleParam(PracticeModuleValues):
@@ -68,6 +77,9 @@ class ImportPracticeReportParam(CreatePracticeLogParam):
     source_url: str = Field(max_length=512, description='原始报告页面')
     source_updated_at: datetime | None = Field(None, description='平台更新时间（含时区）')
     time_source: Literal['history_updated', 'manual'] = 'manual'
+    questions: list[ImportPracticeQuestionParam] | None = Field(
+        None, min_length=1, max_length=500, description='逐题明细；允许分批补全，题号保持原卷顺序'
+    )
 
     @model_validator(mode='after')
     def validate_report(self) -> Self:
@@ -87,6 +99,35 @@ class ImportPracticeReportParam(CreatePracticeLogParam):
             raise ValueError('一级模块正确数与整卷不一致')
         return self
 
+    @model_validator(mode='after')
+    def validate_questions(self) -> Self:
+        if self.questions is None:
+            return self
+        keys = [item.source_question_key for item in self.questions]
+        positions = [item.position for item in self.questions]
+        if len(keys) != len(set(keys)) or len(positions) != len(set(positions)):
+            raise ValueError('同一报告的题目标识和题号不能重复')
+        if max(positions) > self.total_questions:
+            raise ValueError('原卷题号不能超过报告总题数')
+        paths: set[tuple[str, ...]] = {(module.module_name,) for module in self.modules}
+        paths.update((module.module_name, child.module_name) for module in self.modules for child in module.children)
+        paths.update(
+            (module.module_name, child.module_name, topic.module_name)
+            for module in self.modules
+            for child in module.children
+            for topic in child.children
+        )
+        if any(tuple(item.module_path) not in paths for item in self.questions):
+            raise ValueError('逐题题型路径必须存在于本次报告的模块统计中')
+        materials = {}
+        for item in self.questions:
+            for material in item.materials:
+                value = (material.title, material.content, material.content_format)
+                if material.link_key in materials and materials[material.link_key] != value:
+                    raise ValueError('同一材料引用键不能对应不同内容')
+                materials[material.link_key] = value
+        return self
+
 
 class UpdatePracticeLogParam(SchemaBase):
     material_type: Literal['exam', 'practice', 'special'] | None = None
@@ -103,10 +144,14 @@ class UpdatePracticeLogParam(SchemaBase):
     modules: list[UpdatePracticeModuleParam] | None = Field(None, max_length=100)
 
 
-class GetPracticeSubModuleDetail(PracticeModuleValues):
+class GetPracticeTopicDetail(PracticeModuleValues):
     model_config = ConfigDict(from_attributes=True)
     id: int
     accuracy_rate: float | None = None
+
+
+class GetPracticeSubModuleDetail(GetPracticeTopicDetail):
+    children: list[GetPracticeTopicDetail] = Field(default_factory=list)
 
 
 class GetPracticeModuleDetail(GetPracticeSubModuleDetail):
@@ -145,4 +190,6 @@ class GetPracticeLogListItem(GetPracticeLogDetail):
 
 class ImportPracticeReportResult(SchemaBase):
     created: bool
+    enriched: bool = False
     record: GetPracticeLogDetail
+    practice: ImportPracticeDetailResult | None = None

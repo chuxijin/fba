@@ -49,12 +49,14 @@ from backend.app.question_bank_v2.schema.practice import (
 )
 from backend.app.question_bank_v2.schema.question import CollectQuestionsParam, CollectQuestionsResult
 from backend.app.question_bank_v2.service.access_service import BankAccessService, bank_access_service
+from backend.app.question_bank_v2.service.external_practice_import_service import external_practice_import_service
 from backend.app.question_bank_v2.service.grading_service import practice_grading_service
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.preference_service import preference_service
 from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
 from backend.app.question_bank_v2.service.reward_service import PracticeReward, practice_reward_service
 from backend.app.question_bank_v2.service.statistics_service import statistics_service
+from backend.app.question_bank_v2.utils.external_practice import EXTERNAL_SESSION_PREFIX, is_external_practice
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.utils.timezone import timezone
@@ -162,6 +164,8 @@ class PracticeService:
         session = await practice_session_dao.get_detail(db, session_key, user_id)
         if session is None:
             raise errors.NotFoundError(msg='练习会话不存在')
+        if is_external_practice(session['source_snapshot']):
+            return await external_practice_import_service.session_detail(db=db, session=session)
         if session['status'] in {'created', 'in_progress'}:
             session_model = await practice_session_dao.get_by_key(db, session_key, user_id=user_id, for_update=True)
             if session_model is not None:
@@ -218,6 +222,8 @@ class PracticeService:
         )
         if session is None:
             raise errors.NotFoundError(msg='练习会话不存在')
+        if is_external_practice(session.source_snapshot):
+            raise errors.ConflictError(msg='请通过导入练习记录入口删除此历史会话')
         session.status = 'cancelled'
         session.deleted = session.id
         session.deleted_time = timezone.now()
@@ -245,6 +251,8 @@ class PracticeService:
         session = await practice_session_dao.get_detail(db, session_key, user_id)
         if session is None:
             raise errors.NotFoundError(msg='练习会话不存在')
+        if is_external_practice(session.get('source_snapshot')):
+            return await external_practice_import_service.session_report(db=db, session=session)
         if session['status'] in {'created', 'in_progress'}:
             session_model = await practice_session_dao.get_by_key(db, session_key, user_id=user_id, for_update=True)
             if session_model is not None:
@@ -315,6 +323,8 @@ class PracticeService:
         session = await practice_session_dao.get_by_key(db, session_key, user_id=user_id)
         if session is None:
             raise errors.NotFoundError(msg='练习会话不存在')
+        if is_external_practice(getattr(session, 'source_snapshot', None)):
+            return await external_practice_import_service.session_solutions(db=db, session=session)
         if getattr(session, 'status', None) in {'created', 'in_progress'}:
             await PracticeService._expire_if_due(db=db, session=session)
         if session.status not in {'submitted', 'graded', 'expired'}:
@@ -360,6 +370,8 @@ class PracticeService:
     @staticmethod
     async def _ensure_session_open(*, db: AsyncSession, session: QbPracticeSession) -> None:
         """校验会话仍允许写入答案"""
+        if is_external_practice(getattr(session, 'source_snapshot', None)):
+            raise errors.ConflictError(msg='导入历史作答只读，重练请创建新的练习会话')
         if session.status not in {'created', 'in_progress'}:
             raise errors.ConflictError(msg='当前会话已结束，不能继续作答')
         if await PracticeService._expire_if_due(db=db, session=session):
@@ -384,8 +396,7 @@ class PracticeService:
             and list(source_snapshot.get('question_ids') or []) == obj.question_ids
             and list(source_snapshot.get('knowledge_point_ids') or []) == obj.knowledge_point_ids
             and (
-                obj.knowledge_system_id is None
-                or source_snapshot.get('knowledge_system_id') == obj.knowledge_system_id
+                obj.knowledge_system_id is None or source_snapshot.get('knowledge_system_id') == obj.knowledge_system_id
             )
             and session.mode == obj.mode
             and (obj.title is None or getattr(session, 'title_snapshot', None) == obj.title)
@@ -553,9 +564,16 @@ class PracticeService:
             session_item_id=session_item.id,
             for_update=True,
         )
-        if session.mode in {'exam', 'mock'} and response is not None and response.status in {
-            'submitted', 'graded', 'review_required',
-        }:
+        if (
+            session.mode in {'exam', 'mock'}
+            and response is not None
+            and response.status
+            in {
+                'submitted',
+                'graded',
+                'review_required',
+            }
+        ):
             raise errors.ConflictError(msg='考试或模考题目不能重复提交')
         if response is not None and obj.save_version is not None and response.save_version != obj.save_version:
             raise errors.ConflictError(msg='答案版本已变化，请刷新后重试')
@@ -685,6 +703,12 @@ class PracticeService:
             session_item_id=session_item_id,
             for_update=False,
         )
+        if is_external_practice(getattr(session, 'source_snapshot', None)):
+            return GetPracticeSolutionDetail(
+                session_item_id=session_item.id,
+                question_id=session_item.question_id,
+                **external_practice_import_service.solution_data(session_item.display_config['external_practice']),
+            )
         response = await practice_response_dao.get(
             db,
             session_id=session.id,
@@ -859,6 +883,8 @@ class PracticeService:
         obj: CreatePracticeSessionParam,
     ) -> GetPracticeSessionDetail:
         """校验来源准入后创建练习会话"""
+        if obj.session_key and obj.session_key.startswith(EXTERNAL_SESSION_PREFIX):
+            raise errors.RequestError(msg='该会话标识前缀保留给外部历史导入')
         session_key = obj.session_key or uuid.uuid4().hex
         if obj.session_key is not None:
             existing_detail = await PracticeService._get_idempotent_session(
