@@ -21,8 +21,9 @@ import {
   ImportState,
 } from '../adapters'
 import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
-import { buildFenbiPracticeReport, fenbiReportRoute, readFenbiReportModules } from '../adapters/fenbi/report'
-import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/report'
+import { buildFenbiPracticeQuestions, buildFenbiPracticeReport, buildReportModules, fenbiReportRoute, readFenbiReportModules } from '../adapters/fenbi/report'
+import { FenbiReportCache } from '../adapters/fenbi/report-cache'
+import type { PracticeReportPayload, ReportModule } from '../adapters/fenbi/report'
 
 /**
  * 试卷排版 Content Script 核心枢纽 (遵循 KISS 极简架构)
@@ -33,8 +34,8 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
  */
 ;(function () {
 
-  // 1. 注入主页面网络拦截器 Main World Script
-  injectScript(chrome.runtime.getURL('injected.js'))
+  // 1. MAIN 世界拦截器由 manifest 在 document_start 注入。
+  // 此时页面可能尚无根节点，不再插入 script，也避免重复包装网络和路由。
 
   // 2. 运行时核心状态
   let uiApp: ReformatterAppInstance | null = null
@@ -42,8 +43,7 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
   let currentCapturedRaw: any = null
   let currentPaperPageUrl: string = ''
   let lastRouteUrl: string = location.href
-  let reportSolution: any = null
-  const reportHistory = new Map<string, FenbiHistoryItem>()
+  const reportCache = new FenbiReportCache()
   let reportPreparing = false
   let reportSaving = false
 
@@ -60,27 +60,38 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
   /** 最近一次成功导入的批次 ID，供「撤销本次导入」使用 */
   let lastImportBatchId = ''
 
-  async function getReportHistory(href: string): Promise<FenbiHistoryItem | null> {
-    const route = fenbiReportRoute(href)
-    if (!route) return null
-    if (reportHistory.has(route.key)) return reportHistory.get(route.key)!
+  /** 只让 MAIN 世界重播内存缓存；收到完成通知即可读取，不等待粉笔网络请求。 */
+  async function replayCapturedReport(href: string): Promise<void> {
     return new Promise(resolve => {
       const requestId = crypto.randomUUID()
-      const finish = (item: FenbiHistoryItem|null) => {
+      const finish = () => {
         clearTimeout(timer)
         window.removeEventListener('message', listener)
-        resolve(item)
+        resolve()
       }
       const listener = (event: MessageEvent) => {
-        if (event.source !== window || event.origin !== location.origin || event.data?.source !== 'GONGKAO_REPORT_HISTORY_RESULT'
+        if (event.source !== window || event.origin !== location.origin || event.data?.source !== 'GONGKAO_CONTENT_REPLAY_DONE'
           || event.data.requestId !== requestId || event.data.pageUrl !== href) return
-        const item = event.data.item
-        finish(item?.exerciseKey === route.key ? item : null)
+        finish()
       }
-      const timer = setTimeout(() => finish(null), 22000)
+      const timer = setTimeout(finish, 500)
       window.addEventListener('message', listener)
-      window.postMessage({ source:'GONGKAO_REPORT_HISTORY_REQUEST', requestId }, location.origin)
+      window.postMessage({ source:'GONGKAO_CONTENT_REQUEST_EXAM', requestId }, location.origin)
     })
+  }
+
+  /** 先读已缓存的完整统计树，页面 DOM 仅作本地兜底。 */
+  function resolveReportModules(solution: any, moduleNodes: any[]): ReportModule[] {
+    const answers: any[] = Object.values(solution?.userAnswers || {})
+    const correct = answers.filter(a => Number(a?.status) === 1).length
+    const matches = (modules: ReportModule[]) => modules.length > 0
+      && modules.every(module => Number.isInteger(module.total_questions) && module.total_questions > 0)
+      && modules.reduce((sum, module) => sum + module.total_questions, 0) === answers.length
+      && modules.reduce((sum, module) => sum + module.correct_count, 0) === correct
+    const cachedModules = buildReportModules(moduleNodes)
+    if (matches(cachedModules)) return cachedModules
+    const domModules = readFenbiReportModules(document)
+    return matches(domModules) ? domModules : cachedModules.length ? cachedModules : domModules
   }
 
   async function preparePracticeReport() {
@@ -88,15 +99,18 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
     reportPreparing = true
     const href = location.href
     try {
-      window.postMessage({ source:'GONGKAO_CONTENT_REQUEST_EXAM' }, location.origin)
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await replayCapturedReport(href)
       if (location.href !== href) return
-      const modules = readFenbiReportModules(document)
-      // 先确认报告完整，再查询日期，避免在题目尚未就绪时遍历历史。
-      const draft = buildFenbiPracticeReport(href, reportSolution, modules)
-      const history = await getReportHistory(href)
-      if (location.href !== href) return
-      uiApp?.setReportDraft(buildFenbiPracticeReport(href, reportSolution, draft.modules, history))
+      const { solution, staticSolution, details, moduleNodes, history } = reportCache.read(href)
+      if (!solution) throw new Error('当前页面尚未捕获练习报告数据，请在粉笔中打开本次练习的报告后重新读取')
+      const modules = resolveReportModules(solution, moduleNodes)
+      const payload = buildFenbiPracticeReport(href, solution, modules, history)
+      if (!staticSolution) throw new Error('当前页面尚未捕获本卷逐题解析，请在粉笔中打开题目解析后重新读取')
+      const questions = buildFenbiPracticeQuestions({ solution, staticSolution, details, modules })
+      if (questions.length !== payload.total_questions)
+        throw new Error(`当前页面逐题明细不完整（${questions.length}/${payload.total_questions}），请在粉笔中加载完整解析后重新读取`)
+      payload.questions = questions
+      uiApp?.setReportDraft(payload)
     } catch (error:any) {
       if (location.href === href) uiApp?.setReportStatus('error', error?.message || '读取报告失败')
     } finally { reportPreparing = false }
@@ -111,8 +125,10 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
       const result = await chrome.runtime.sendMessage({ type:'IMPORT_PRACTICE_REPORT', payload:draft })
       if (!result?.success) throw new Error(result?.error || '导入失败')
       if (location.href === href) uiApp?.setReportStatus('done', result.created
-        ? '导入成功，可在小程序「练习数据 → 导入/手动记录」查看三级明细和对比。'
-        : '这份报告已导入，无需重复保存。可在小程序「练习数据」中查看或编辑。')
+        ? '导入成功，可在小程序「练习数据 → 导入/手动记录」查看细分题型明细和对比。'
+        : result.enriched
+          ? '已为原记录补充数学运算细分题型，可在小程序「练习数据」中查看和对比。'
+          : '这份报告已导入，原记录已保留。仅在原统计一致且缺少题型明细时自动补充。')
     } catch (error:any) {
       if (location.href === href) uiApp?.setReportStatus('error', error?.message || '导入失败，请重试')
     } finally { reportSaving = false }
@@ -120,6 +136,7 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
 
   // 3. 挂载 Vue 悬浮卡片与交互弹窗
   function initUi() {
+    if (uiApp) return
     try {
       uiApp = mountReformatterApp({
         onRequestReformat: async () => {
@@ -156,7 +173,7 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     initUi()
   } else {
-    window.addEventListener('load', initUi)
+    document.addEventListener('DOMContentLoaded', initUi, { once: true })
   }
 
   // 4. 监听来自 injected.js 的透明网络拦截与 SPA 路由消息
@@ -184,16 +201,7 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
         location.href.includes('fenbi.com')
 
       if (isFenbi) {
-        const payload = data?.data || data
-        if (lowerUrl.includes('/combine/exercise/getsolution') && payload?.exerciseId === fenbiReportRoute(location.href)?.key)
-          reportSolution = payload
-        if (lowerUrl.includes('/getexercisebriefhistory')) {
-          for (const item of payload?.historyItems || []) {
-            if (item.exerciseKey) reportHistory.set(item.exerciseKey, {
-              exerciseKey:item.exerciseKey, updatedTime:item.updatedTime, score:item.score, fullScore:item.fullScore,
-            })
-          }
-        }
+        reportCache.capture(url, data, event.data.pageUrl || location.href)
         if (lowerUrl.includes('/keypoint-tree')) {
           setCachedKeypointTree(data)
           return
@@ -282,7 +290,6 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
     lastRouteUrl = newUrl
 
     fenbiSession.reset()
-    reportSolution = null
     currentCapturedRaw = null
     currentUnifiedPaper = null
     currentPaperPageUrl = newUrl
@@ -758,10 +765,4 @@ import type { FenbiHistoryItem, PracticeReportPayload } from '../adapters/fenbi/
     })
   }
 
-  function injectScript(src: string) {
-    const s = document.createElement('script')
-    s.src = src
-    s.onload = () => s.remove()
-    ;(document.head || document.documentElement).appendChild(s)
-  }
 })()

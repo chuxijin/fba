@@ -1,5 +1,3 @@
-import { findFenbiReportHistory, fenbiReportRoute } from '../adapters/fenbi/report'
-
 /**
  * 网页主环境通用网络请求嗅探器 (运行于宿主页面的 MAIN 世界)
  * 职责极度单一纯粹 (KISS 原则):
@@ -71,11 +69,13 @@ import { findFenbiReportHistory, fenbiReportRoute } from '../adapters/fenbi/repo
   }
 
   // 缓存最近拦截到的网络数据流供重发
-  const cachedPayloads: Array<{ url: string; data: any; timestamp: number }> = []
+  const cachedPayloads: Array<{ url: string; data: any; pageUrl: string; timestamp: number }> = []
 
-  function dispatchRawData(url: string, data: any) {
+  function dispatchRawData(url: string, data: any, pageUrl: string) {
     if (!data) return
-    const entry = { url, data, timestamp: Date.now() }
+    const entry = { url, data, pageUrl, timestamp: Date.now() }
+    const previous = cachedPayloads.findIndex(item => item.url === url && item.pageUrl === pageUrl)
+    if (previous >= 0) cachedPayloads.splice(previous, 1)
     cachedPayloads.push(entry)
     if (cachedPayloads.length > 30) cachedPayloads.shift()
 
@@ -91,8 +91,8 @@ import { findFenbiReportHistory, fenbiReportRoute } from '../adapters/fenbi/repo
         type: 'RAW_API_INTERCEPTED',
         url,
         data,
-        pageUrl: window.location.href,
-        timestamp: Date.now(),
+        pageUrl,
+        timestamp: entry.timestamp,
       },
       '*'
     )
@@ -103,6 +103,7 @@ import { findFenbiReportHistory, fenbiReportRoute } from '../adapters/fenbi/repo
   // ==========================================
   const originalFetch = window.fetch
   window.fetch = async function (...args) {
+    const pageUrl = window.location.href
     const response = await originalFetch.apply(this, args)
     try {
       const input = args[0]
@@ -119,7 +120,7 @@ import { findFenbiReportHistory, fenbiReportRoute } from '../adapters/fenbi/repo
         const clone = response.clone()
         clone
           .json()
-          .then((data) => dispatchRawData(url, data))
+          .then((data) => dispatchRawData(url, data, pageUrl))
           .catch(() => {})
       }
     } catch (e) {}
@@ -133,38 +134,30 @@ import { findFenbiReportHistory, fenbiReportRoute } from '../adapters/fenbi/repo
   const originalXhrSend = XMLHttpRequest.prototype.send
 
   XMLHttpRequest.prototype.open = function (...args: any[]) {
-    ;(this as any)._url = args[1]
+    ;(this as any)._url = String(args[1])
     return originalXhrOpen.apply(this, args as any)
   }
 
   XMLHttpRequest.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
+    const pageUrl = window.location.href
     this.addEventListener('load', function () {
       try {
         const url = (this as any)._url || ''
-        if (isTargetExamUrl(url) && this.responseText) {
-          const data = JSON.parse(this.responseText)
-          dispatchRawData(url, data)
-        }
+        if (!isTargetExamUrl(url)) return
+        // responseType=json 时访问 responseText 会抛错，必须直接读取 response 对象。
+        const data = this.responseType === 'json'
+          ? this.response
+          : (!this.responseType || this.responseType === 'text') && this.responseText
+            ? JSON.parse(this.responseText) : null
+        dispatchRawData(url, data, pageUrl)
       } catch (e) {}
     })
     return originalXhrSend.call(this, body)
   }
 
-  // 监听来自 Content Script 的主动试卷包重发请求
+  // 只重播页面已收到的缓存，不替页面请求报告、解析或历史接口。
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.origin !== location.origin) return
-    if (event.data?.source === 'GONGKAO_REPORT_HISTORY_REQUEST' && fenbiReportRoute(location.href)) {
-      const requestId = String(event.data.requestId || '')
-      if (!/^[a-zA-Z0-9-]{8,80}$/.test(requestId)) return
-      const requestedUrl = location.href
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 20000)
-      void findFenbiReportHistory(requestedUrl, originalFetch.bind(window), controller.signal)
-        .then(item => window.postMessage({ source:'GONGKAO_REPORT_HISTORY_RESULT', requestId, pageUrl:requestedUrl, item }, location.origin))
-        .catch(() => window.postMessage({ source:'GONGKAO_REPORT_HISTORY_RESULT', requestId, pageUrl:requestedUrl, item:null }, location.origin))
-        .finally(() => clearTimeout(timer))
-      return
-    }
     if (event.data?.source === 'GONGKAO_CONTENT_REQUEST_EXAM') {
       for (const item of cachedPayloads) {
         window.postMessage(
@@ -173,11 +166,15 @@ import { findFenbiReportHistory, fenbiReportRoute } from '../adapters/fenbi/repo
             type: 'RAW_API_INTERCEPTED',
             url: item.url,
             data: item.data,
-            pageUrl: window.location.href,
+            pageUrl: item.pageUrl,
             timestamp: item.timestamp,
           },
           '*'
         )
+      }
+      const requestId = String(event.data.requestId || '')
+      if (/^[a-zA-Z0-9-]{8,80}$/.test(requestId)) {
+        window.postMessage({ source: 'GONGKAO_CONTENT_REPLAY_DONE', requestId, pageUrl: location.href }, location.origin)
       }
     }
   })

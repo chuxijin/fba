@@ -72,7 +72,7 @@ class FenbiSessionManager {
     // A. 答题卡 / 模考成绩报告包 (getReport / getSolution)
     // 纯粹静默捕获，100% 杜绝插件主动发起 fetch 请求
     // ==========================================
-    if (isReportOrSolutionApi || (hasSheetTraits && !hasRealQuestions)) {
+    if (!hasRealQuestions && (isReportOrSolutionApi || hasSheetTraits)) {
       this.answerSheet = payload
       this.parseAnswerSheet(payload)
 
@@ -89,6 +89,10 @@ class FenbiSessionManager {
     if (hasRealQuestions) {
       this.staticPaper = payload
       this.staticPaperUrl = url
+      if (payload.userAnswers || payload.sheet?.userAnswers) {
+        this.answerSheet = payload
+        this.parseAnswerSheet(payload)
+      }
       return this.buildAggregatedPaper(settings)
     }
 
