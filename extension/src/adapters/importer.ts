@@ -48,6 +48,8 @@ export interface WrongImportItem {
   question_type: 'single_choice' | 'multiple_choice' | 'fill_blank'
   options: WrongImportOption[]
   answer: { answer_data: { correct: string | string[] }; grading_method: 'exact' | 'set' }
+  /** 用户当时的作答；供错题本回显，不参与判分 */
+  wrong_response?: string | string[]
   explanations: { content: string; is_default: boolean }[]
   /** 材料：服务端据此创建材料实体并关联，不再拼进题干 */
   materials?: WrongImportMaterial[]
@@ -254,6 +256,16 @@ function splitAnswerCodes(answer?: string): string[] {
   return tokens
 }
 
+/** 考生作答转成后端快照：单选保留字符串，多选拆成数组 */
+function buildWrongResponse(answer?: string): string | string[] | undefined {
+  const tokens = String(answer ?? '')
+    .split(/[,，、\s;；/|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (tokens.length === 0) return undefined
+  return tokens.length === 1 ? tokens[0] : tokens
+}
+
 /**
  * 题干不再拼装材料。
  * 材料走 materials 字段，由服务端建材料实体并关联，供多题共享、可版本化。
@@ -350,6 +362,7 @@ export function buildWrongImportItems(paper: UnifiedPaper): ImportBuildResult {
     }
 
     const materials = buildMaterials(question)
+    const wrongResponse = buildWrongResponse(question.user_answer)
 
     items.push({
       // 稳定幂等键：同一个页面同一道题重复导入时保持不变
@@ -360,6 +373,7 @@ export function buildWrongImportItems(paper: UnifiedPaper): ImportBuildResult {
       question_type: questionType,
       options,
       answer: { answer_data: { correct: answerData }, grading_method: gradingMethod },
+      ...(wrongResponse !== undefined ? { wrong_response: wrongResponse } : {}),
       explanations: analysis
         ? [{ content: normalizeRichTextImages(analysis, 'explanation'), is_default: true }]
         : [],

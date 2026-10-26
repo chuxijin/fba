@@ -1,6 +1,59 @@
 import { UnifiedQuestion, RenderTypographySettings } from '../types'
 import { applyNegativeKeywordsBold } from '../common'
 
+const OPTION_CODES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+/**
+ * 标准化考生作答。
+ *
+ * 粉笔原始作答常见为选项下标 "0" / "1,2"，也兼容已经转好的 "A" / "A,B"；
+ * 统一成字母后，错题导入才能把「我选的」带回后端展示。
+ */
+export function formatUserAnswerChoice(raw: unknown): string {
+  if (raw === null || raw === undefined) return ''
+  if (Array.isArray(raw)) {
+    return raw.map((item) => formatUserAnswerChoice(item)).filter(Boolean).join(',')
+  }
+  if (typeof raw === 'object') {
+    const choice = (raw as any).choice ?? (raw as any).answer
+    return formatUserAnswerChoice(choice)
+  }
+  const text = String(raw).trim()
+  if (!text) return ''
+  // "AB" 这类连续多选题作答拆成 "A,B"
+  if (/^[A-H]{2,}$/i.test(text)) return text.toUpperCase().split('').join(',')
+  return text
+    .split(/[,，、\s;；/|]+/)
+    .map((part) => {
+      const token = part.trim()
+      if (!token) return ''
+      if (/^\d+$/.test(token)) {
+        const index = parseInt(token, 10)
+        return OPTION_CODES[index] || token
+      }
+      return /^[A-Za-z]$/.test(token) ? token.toUpperCase() : token
+    })
+    .filter(Boolean)
+    .join(',')
+}
+
+/** 取题目自带作答，缺失时再按题目 key / ID 从答题卡映射里找 */
+export function pickUserAnswer(
+  direct: unknown,
+  answerMap: unknown,
+  keys: Array<string | number>
+): unknown {
+  if (direct !== undefined && direct !== null && direct !== '') return direct
+  if (!answerMap) return undefined
+  for (const key of keys) {
+    const text = String(key ?? '').trim()
+    if (!text) continue
+    const value = answerMap instanceof Map ? answerMap.get(text) : (answerMap as any)[text]
+    if (value !== undefined && value !== null && value !== '') return value
+  }
+  return undefined
+}
+
 /**
  * 标准化解析参考答案（兼容对象 choice、字符串与数字索引）
  */
@@ -116,6 +169,7 @@ export function normalizeFenbiQuestion(
     analysis: analysis || undefined,
     material: materialHtml,
     source,
+    user_answer: formatUserAnswerChoice(raw.userAnswer ?? raw.user_answer ?? raw.myAnswer) || undefined,
   }
 }
 

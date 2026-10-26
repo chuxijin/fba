@@ -14,7 +14,8 @@ const directory = dirname(fileURLToPath(import.meta.url))
 const apiArg = process.argv.find((arg) => arg.startsWith('--api='))
 const apiBase = (apiArg ? apiArg.slice('--api='.length) : process.env.VITE_API_BASE_URL || '').trim()
   || 'http://127.0.0.1:8000'
-console.log(`[Build] 后端基址: ${apiBase}`)
+const isProd = apiBase.includes('yzxj.vip') || (!apiBase.includes('127.0.0.1') && !apiBase.includes('localhost'))
+console.log(`[Build] 后端基址: ${apiBase} (环境: ${isProd ? '生产 prod' : '开发 dev'})`)
 
 const targets = [
   { entry: 'popup.html', output: 'assets/[name]-[hash].js', vue: true, public: true },
@@ -33,8 +34,9 @@ async function runBuild() {
       publicDir: target.public ? resolve(directory, 'public') : false,
       plugins: target.vue ? [vue()] : [],
       define: {
-        'process.env.NODE_ENV': JSON.stringify('production'),
+        'process.env.NODE_ENV': JSON.stringify(isProd ? 'production' : 'development'),
         __API_BASE__: JSON.stringify(apiBase),
+        __IS_PROD__: JSON.stringify(isProd),
       },
       build: {
         outDir: resolve(directory, 'dist'),

@@ -16,12 +16,7 @@
           开始排版
         </button>
 
-        <!-- 副按钮 2: 快速打印 -->
-        <button class="gk-float-btn-main" @click="$emit('quickPrint')">
-          快速打印
-        </button>
-
-        <!-- 副按钮 3: 导入错题库（仅在检测到错题时出现） -->
+        <!-- 副按钮 2: 导入错题库（仅在检测到错题时出现） -->
         <button
           v-if="wrongCount > 0"
           class="gk-float-btn-import"
@@ -96,7 +91,6 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'startReformat'): void
-  (e: 'quickPrint'): void
   (e: 'feedback'): void
   (e: 'importWrong'): void
   (e: 'undoImport'): void
@@ -113,15 +107,15 @@ const importing = computed(() => props.importState.status === 'running')
 const importButtonText = computed(() => {
   const state = props.importState
   if (state.status === 'running') {
-    return state.done > 0 ? `⏳ 正在导入 ${state.done}/${state.total}…` : `⏳ 正在导入 ${state.total} 道…`
+    return state.done > 0 ? `⏳ 导入中 ${state.done}/${state.total}…` : `⏳ 正在导入…`
   }
   if (state.status === 'done') {
-    return `✅ 已导入 ${state.imported} 道错题`
+    return `✅ 已导入 ${state.imported} 题`
   }
   if (state.status === 'error') {
-    return '⚠️ 导入失败，点击重试'
+    return '⚠️ 导入失败重试'
   }
-  return `📥 导入错题库（${props.wrongCount} 题）`
+  return `📥 导入错题（${props.wrongCount} 题）`
 })
 
 const importButtonClass = computed(() => `is-${props.importState.status}`)

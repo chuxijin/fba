@@ -12,6 +12,11 @@ import {
 import { accountStore, AccountState } from '../utils/account-state'
 import { BACKEND_BASE, LOCAL_SITE_ORIGINS, type QuotaInfo, type TokenInfo, type UserInfo } from '../utils/auth-protocol'
 
+declare const __IS_PROD__: boolean | undefined
+const isProdMode = typeof __IS_PROD__ === 'boolean'
+  ? __IS_PROD__
+  : (BACKEND_BASE.includes('yzxj.vip') || (!BACKEND_BASE.includes('127.0.0.1') && !BACKEND_BASE.includes('localhost')))
+
 document.addEventListener('DOMContentLoaded', async () => {
   // ── 视图容器 ──
   const viewMain   = document.getElementById('view-main')!
@@ -24,8 +29,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnCopyReport = document.getElementById('btn-auth-copy') as HTMLButtonElement
   const btnReconnect = document.getElementById('btn-auth-reconnect') as HTMLButtonElement
 
+  if (diagnostics) {
+    diagnostics.style.display = isProdMode ? 'none' : 'block'
+  }
+
   async function diagnoseAuth() {
-    if (btnDiagnose.disabled) return
+    if (!diagnostics || isProdMode || btnDiagnose.disabled) return
     btnDiagnose.disabled = true
     btnCopyReport.disabled = true
     btnCopyReport.textContent = '复制检查结果'
@@ -41,33 +50,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnCopyReport.disabled = false
     }
   }
-  diagnostics.addEventListener('toggle', () => { if (diagnostics.open) void diagnoseAuth() })
-  btnDiagnose.addEventListener('click', () => { void diagnoseAuth() })
-  btnReconnect.addEventListener('click', async () => {
-    btnReconnect.disabled = true
-    btnDiagnose.disabled = true
-    btnCopyReport.disabled = true
-    diagnosticReport.textContent = '正在重新连接已打开的官网并验证登录…'
-    try {
-      const response = await sendAuthMessage<{ data: QuotaInfo }>({ type: 'RECONNECT_SITE_AUTH' }, '同步超时，请检查后端连接后重试')
-      if (!response.data?.is_logged_in) throw new Error('未读取到有效登录。请保持已登录的本地官网打开，再检查下方连接状态。')
-      await syncAuth()
-      btnDiagnose.disabled = false
-      await diagnoseAuth()
-    } catch (error) {
-      diagnosticReport.textContent = error instanceof Error ? error.message : '同步失败，请重试'
-    } finally {
-      btnReconnect.disabled = false
-      btnDiagnose.disabled = false
-      btnCopyReport.disabled = false
-    }
-  })
-  btnCopyReport.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(diagnosticReport.textContent || '')
-      btnCopyReport.textContent = '已复制'
-    } catch { btnCopyReport.textContent = '请选中上方文字复制' }
-  })
+
+  if (!isProdMode && diagnostics) {
+    diagnostics.addEventListener('toggle', () => { if (diagnostics.open) void diagnoseAuth() })
+    btnDiagnose?.addEventListener('click', () => { void diagnoseAuth() })
+    btnReconnect?.addEventListener('click', async () => {
+      btnReconnect.disabled = true
+      btnDiagnose.disabled = true
+      btnCopyReport.disabled = true
+      diagnosticReport.textContent = '正在重新连接已打开的官网并验证登录…'
+      try {
+        const response = await sendAuthMessage<{ data: QuotaInfo }>({ type: 'RECONNECT_SITE_AUTH' }, '同步超时，请检查后端连接后重试')
+        if (!response.data?.is_logged_in) throw new Error('未读取到有效登录。请保持已登录的本地官网打开，再检查下方连接状态。')
+        await syncAuth()
+        btnDiagnose.disabled = false
+        await diagnoseAuth()
+      } catch (error) {
+        diagnosticReport.textContent = error instanceof Error ? error.message : '同步失败，请重试'
+      } finally {
+        btnReconnect.disabled = false
+        btnDiagnose.disabled = false
+        btnCopyReport.disabled = false
+      }
+    })
+    btnCopyReport?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(diagnosticReport.textContent || '')
+        btnCopyReport.textContent = '已复制'
+      } catch { btnCopyReport.textContent = '请选中上方文字复制' }
+    })
+  }
 
   // ── 主视图 DOM ──
   const heroCard        = document.getElementById('hero-card')!
@@ -134,7 +146,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     viewMain.style.display   = 'flex'
     accountBar.style.display = 'flex'
     footerNav.style.display  = 'flex'
-    diagnostics.style.display = 'block'
+    if (diagnostics) {
+      diagnostics.style.display = isProdMode ? 'none' : 'block'
+    }
     viewScan.style.display   = 'none'
     stopPolling()
   }
@@ -143,7 +157,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     viewMain.style.display   = 'none'
     accountBar.style.display = 'none'
     footerNav.style.display  = 'none'
-    diagnostics.style.display = 'none'
+    if (diagnostics) {
+      diagnostics.style.display = 'none'
+    }
     viewScan.style.display   = 'flex'
   }
 

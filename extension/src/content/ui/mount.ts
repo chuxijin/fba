@@ -24,7 +24,7 @@ export interface ReformatterAppInstance {
  */
 export function mountReformatterApp(handlers: {
   onRequestReformat: () => Promise<void> | void
-  onRequestQuickPrint: () => Promise<void> | void
+  onRequestQuickPrint?: () => Promise<void> | void
   onDoExport: (settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync') => Promise<void> | void
   onImportWrong?: () => Promise<void> | void
   onUndoImport?: () => Promise<void> | void

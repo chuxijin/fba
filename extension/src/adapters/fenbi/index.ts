@@ -1,7 +1,13 @@
 import { UnifiedPaper, UnifiedSection, UnifiedQuestion, RenderTypographySettings, DEFAULT_TYPOGRAPHY_SETTINGS } from '../types'
 import { extractFenbiPaperFromDom } from './dom'
 import { getActiveTikuPrefix, getGlobalSolutionsPool } from './mistake'
-import { normalizeFenbiQuestion, formatFenbiPaperTitle, formatAnswerChoice } from './normalize'
+import {
+  normalizeFenbiQuestion,
+  formatFenbiPaperTitle,
+  formatAnswerChoice,
+  formatUserAnswerChoice,
+  pickUserAnswer,
+} from './normalize'
 
 /**
  * 粉笔 (fenbi.com) 真实接口试卷数据精准归一化适配器
@@ -90,6 +96,11 @@ export function adaptFenbiPaper(raw: any, settings: RenderTypographySettings): U
         // 统一归一化
         const normQ = normalizeFenbiQuestion(rawQ, currentOrder, settings, materialHtml)
         const qidNum = Number(normQ.question_id || normQ.id)
+        // 答题卡里的考生作答优先写回题目，错题导入时才能带上「我选的」
+        const userAnswer = formatUserAnswerChoice(
+          pickUserAnswer(qNode.userAnswer ?? qNode.user_answer, raw.userAnswersMap, [qKey, qidNum])
+        )
+        if (userAnswer) normQ.user_answer = userAnswer
 
         // 综合判定是否为错题 (核心: state === -1)
         const isWrong =
@@ -138,6 +149,10 @@ export function adaptFenbiPaper(raw: any, settings: RenderTypographySettings): U
       const normQ = normalizeFenbiQuestion(rawQ, currentOrder, settings)
       const qidNum = Number(normQ.question_id || normQ.id)
       const qKey = String(rawQ.globalId || rawQ.key || rawQ.id || '')
+      const userAnswer = formatUserAnswerChoice(
+        pickUserAnswer(undefined, raw.userAnswersMap, [qKey, qidNum])
+      )
+      if (userAnswer) normQ.user_answer = userAnswer
 
       const isWrong =
         (qidNum && wrongIds.has(qidNum)) ||

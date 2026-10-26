@@ -8,7 +8,6 @@
       :import-state="importState"
       :report-available="reportAvailable"
       @start-reformat="handleStartReformat"
-      @quick-print="handleQuickPrint"
       @feedback="handleFeedback"
       @import-wrong="handleImportWrong"
       @undo-import="handleUndoImport"
@@ -46,7 +45,6 @@ import {
 
 const emit = defineEmits<{
   (e: 'requestReformat'): void
-  (e: 'requestQuickPrint'): void
   (e: 'doExport', settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync'): void
   (e: 'importWrong'): void
   (e: 'undoImport'): void
@@ -150,10 +148,6 @@ function showError(msg: string) {
 
 function handleStartReformat() {
   emit('requestReformat')
-}
-
-function handleQuickPrint() {
-  emit('requestQuickPrint')
 }
 
 function handleFeedback() {

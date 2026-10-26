@@ -33,7 +33,7 @@
 
 /* 展开态：精致竖版卡片 */
 .gk-float-card {
-  width: 146px;
+  width: 156px;
   background: #ffffff;
   border-radius: 16px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.06);
@@ -161,13 +161,17 @@
   color: #047857;
   border: 1px solid #a7f3d0;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -209,10 +213,13 @@
 .gk-float-import-hint {
   font-size: 11px;
   line-height: 1.45;
-  padding: 6px 9px;
+  padding: 6px 8px;
   border-radius: 7px;
-  text-align: left;
-  word-break: break-word;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .gk-float-import-hint.is-done {
