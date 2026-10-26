@@ -48,6 +48,7 @@ web/
 windows/
 
 # === 项目特定 ===
+.tmp_sync/
 config.json
 *-firebase-adminsdk-*.json
 static/

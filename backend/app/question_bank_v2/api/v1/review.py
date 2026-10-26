@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, File, Path, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Path, Query, Request, UploadFile
 
 from backend.app.question_bank_v2.schema.review import (
     BatchImportResult,
@@ -14,6 +14,8 @@ from backend.app.question_bank_v2.schema.review import (
     GetReviewTagDetail,
     GetWrongQuestionDetail,
     GetWrongQuestionListItem,
+    GetWrongQuestionOutlineItem,
+    GetWrongQuestionSummaryItem,
     GetWrongReviewDashboard,
     GetWrongSectionFacetsResult,
     ImportBatchPage,
@@ -23,11 +25,12 @@ from backend.app.question_bank_v2.schema.review import (
     RecognizeExternalWrongQuestionResult,
     SubmitQuestionReviewResult,
     UpdateWrongStateParam,
+    WrongBrowseMode,
     WrongCollectionPage,
     WrongEntryScope,
-    WrongEntrySource,
+    WrongQuestionFilters,
+    WrongQuestionListQuery,
     WrongQuestionStatistics,
-    WrongStateStatus,
 )
 from backend.app.question_bank_v2.service.external_asset_service import external_asset_service
 from backend.app.question_bank_v2.service.wrong_review_service import wrong_review_service
@@ -92,38 +95,13 @@ async def create_review_tag(
 async def get_wrong_questions(
     request: Request,
     db: CurrentSession,
-    status: Annotated[WrongStateStatus | None, Query(description='错题状态；空表示全部')] = 'active',
-    entry_source: Annotated[WrongEntrySource | None, Query(description='首次录入来源')] = None,
-    entry_scope: Annotated[WrongEntryScope | None, Query(description='题库错题或自主录入')] = None,
-    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
-    import_batch_id: Annotated[str | None, Query(min_length=8, max_length=64, description='导入批次 ID')] = None,
-    bank_id: Annotated[int | None, Query(gt=0, description='题库 ID；用于集合详情')] = None,
-    external_unbatched: Annotated[bool, Query(description='只看无批次的散题')] = False,  # noqa: FBT002 - FastAPI 查询参数按位置声明
-    review_state: Annotated[
-        Literal['reviewed', 'pending'] | None,
-        Query(description='复盘子状态：reviewed=已复盘，pending=未复盘'),
-    ] = None,
-    section_name: Annotated[str | None, Query(max_length=100, description='集合内按原试卷章节/模块筛选')] = None,
-) -> ResponseSchemaModel[CursorPageData[GetWrongQuestionListItem]]:
-    """系统内答错与外部录入使用同一列表模型"""
-    domain_category_ids = await wrong_review_service.resolve_domain_scope(
-        db=db,
-        user_id=request.user.id,
-        domain_category_id=domain_category_id,
-    )
-    stmt = wrong_review_service.get_list_select(
-        user_id=request.user.id,
-        status=status,
-        entry_source=entry_source,
-        entry_scope=entry_scope,
-        domain_category_ids=domain_category_ids,
-        import_batch_id=import_batch_id,
-        bank_id=bank_id,
-        external_unbatched=external_unbatched,
-        review_state=review_state,
-        section_name=section_name,
-    )
-    return response_base.success(data=await cursor_paging_data(db, stmt, GetWrongQuestionListItem))
+    query: Annotated[WrongQuestionListQuery, Depends()],
+) -> ResponseSchemaModel[
+    CursorPageData[GetWrongQuestionListItem | GetWrongQuestionSummaryItem | GetWrongQuestionOutlineItem]
+]:
+    """默认兼容原列表；摘要和答题卡共用筛选及游标，但只返回各自需要的字段。"""
+    data = await wrong_review_service.get_list_page(db=db, user_id=request.user.id, query=query)
+    return response_base.success(data=data)
 
 
 @router.get('/statistics', summary='获取错题统计', name='qbank_v2_get_wrong_question_statistics')
@@ -202,7 +180,7 @@ async def get_pending_review_wrong_questions(
     entry_scope: Annotated[WrongEntryScope | None, Query(description='题库错题或自主录入')] = None,
     domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
 ) -> ResponseSchemaModel[CursorPageData[GetWrongQuestionListItem]]:
-    """仍在错题本且从未复盘的题；复盘一次即自动出队"""
+    """仍在错题本且从未复盘，或上次复盘后又答错的题；完成本次复盘即出队"""
     domain_category_ids = await wrong_review_service.resolve_domain_scope(
         db=db,
         user_id=request.user.id,
@@ -267,7 +245,7 @@ async def capture_external_wrong_question(
 async def get_wrong_collections(
     request: Request,
     db: CurrentSession,
-    mode: Annotated[Literal['pending', 'reviewed'], Query(description='排序侧重：待复盘数或已复盘数')] = 'pending',
+    mode: Annotated[WrongBrowseMode, Query(description='浏览状态：待复盘、已复盘或已掌握')] = 'pending',
     domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
     cursor: Annotated[str | None, Query(description='上一页返回的 next_cursor')] = None,
     size: Annotated[int, Query(ge=1, le=100, description='每页数量')] = 20,
@@ -286,36 +264,19 @@ async def get_wrong_collections(
 
 @router.get(
     '/sections',
-    summary='获取集合章节筛选及题量',
+    summary='获取错题章节及题量（支持跨集合）',
     name='qbank_v2_get_wrong_question_sections',
 )
 async def get_wrong_question_sections(
     request: Request,
     db: CurrentSession,
-    status: Annotated[WrongStateStatus | None, Query(description='错题状态；空表示全部')] = 'active',
-    entry_source: Annotated[WrongEntrySource | None, Query(description='首次录入来源')] = None,
-    entry_scope: Annotated[WrongEntryScope | None, Query(description='题库错题或自主录入')] = None,
-    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
-    import_batch_id: Annotated[str | None, Query(min_length=8, max_length=64, description='导入批次 ID')] = None,
-    bank_id: Annotated[int | None, Query(gt=0, description='题库 ID；用于集合详情')] = None,
-    external_unbatched: Annotated[bool, Query(description='只看无批次的散题')] = False,  # noqa: FBT002
-    review_state: Annotated[
-        Literal['reviewed', 'pending'] | None,
-        Query(description='复盘子状态：reviewed=已复盘，pending=未复盘'),
-    ] = None,
+    filters: Annotated[WrongQuestionFilters, Depends()],
 ) -> ResponseSchemaModel[GetWrongSectionFacetsResult]:
-    """用于集合详情页右上角的章节筛选，返回各章节在当前集合内的题量"""
+    """返回当前状态和领域的章节题量；不传集合参数时跨集合汇总同名章节"""
     data = await wrong_review_service.get_sections(
         db=db,
         user_id=request.user.id,
-        status=status,
-        entry_source=entry_source,
-        entry_scope=entry_scope,
-        domain_category_id=domain_category_id,
-        import_batch_id=import_batch_id,
-        bank_id=bank_id,
-        external_unbatched=external_unbatched,
-        review_state=review_state,
+        filters=filters,
     )
     return response_base.success(data=data)
 
@@ -457,12 +418,16 @@ async def get_wrong_question_review_events(
     request: Request,
     db: CurrentSession,
     wrong_state_id: Annotated[int, Path(gt=0, description='错题状态 ID')],
+    event_type: Annotated[
+        Literal['capture', 'review'] | None, Query(description='事件类型；不传返回完整时间线，review 只返回复盘笔记')
+    ] = None,
 ) -> ResponseSchemaModel[CursorPageData[GetQuestionReviewDetail]]:
     """分页返回录入和复盘事件，按发生时间倒序"""
     stmt = await wrong_review_service.get_review_events_select(
         db=db,
         user_id=request.user.id,
         wrong_state_id=wrong_state_id,
+        event_type=event_type,
     )
     page_data = await cursor_paging_data(
         db,

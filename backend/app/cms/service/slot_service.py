@@ -15,6 +15,7 @@ from backend.app.cms.schema.slot import (
     GetSlotDetail,
     UpdateSlotParam,
 )
+from backend.app.cms.service.share_service import normalize_share_slot
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
 from backend.utils.timezone import timezone
@@ -189,7 +190,7 @@ class SlotService:
         if existing:
             raise errors.RequestError(msg='业务码已存在')
 
-        data = obj.model_dump()
+        data = normalize_share_slot(obj.model_dump())
         data['created_by'] = user_id
         slot = CmsSlot(**data)
         db.add(slot)
@@ -218,6 +219,11 @@ class SlotService:
         data = obj.model_dump(exclude_unset=True)
         if not data:
             return 0
+        if data.get('slot_type', slot.slot_type) == 'share':
+            merged = {key: getattr(slot, key) for key in CreateSlotParam.model_fields}
+            merged.update(data)
+            data = normalize_share_slot(merged)
+            data.pop('code', None)
         count = await cms_slot_dao.update_model(db, pk, data)
         return count
 
@@ -233,6 +239,11 @@ class SlotService:
         slot = await cms_slot_dao.select_model(db, pk)
         if not slot:
             raise errors.NotFoundError(msg='运营位不存在')
+        if slot.slot_type == 'share':
+            # 保留接管标记，删除最后一条分享素材也不会让旧 INVITE 参数重新生效。
+            return await cms_slot_dao.update_model(
+                db, pk, {'deleted': slot.id, 'deleted_time': timezone.now(), 'status': 2}
+            )
         return await cms_slot_dao.delete_model(db, pk)
 
     @staticmethod

@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import String, and_, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
@@ -1353,25 +1353,39 @@ class CRUDPracticeSessionResponse(CRUDPlus[QbPracticeSessionResponse]):
 class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
     """不可变题目提交事实数据库操作类"""
 
-    async def get_wrong_by_question(
+    async def get_latest_wrong_response(
         self,
         db: AsyncSession,
         *,
         user_id: int,
         question_id: int,
-    ) -> list[QbQuestionAttempt]:
-        """获取用户某道题的错误作答事实，按最近时间倒序"""
+    ) -> dict[str, Any] | None:
+        """仅取最近一次有效错误答案，不加载整道题的作答历史。"""
+        # SQLite 把 JSON 布尔值提取为 1，使用 json_type 区分 true 与数字 1；
+        # 其他数据库比较 JSON 文本，避免布尔强转把字符串 "true" 也当作浏览标记。
+        viewed_true = (
+            func.json_type(QbQuestionAttempt.response_data, '$.viewed') == 'true'
+            if db.get_bind().dialect.name == 'sqlite'
+            else cast(QbQuestionAttempt.response_data['viewed'], String) == 'true'
+        )
+        memorize_view = and_(
+            func.coalesce(QbQuestionAttempt.response_data['mode'].as_string() == 'memorize', False),
+            func.coalesce(viewed_true, False),
+        )
         stmt = (
-            select(QbQuestionAttempt)
+            select(QbQuestionAttempt.response_data)
             .where(
                 QbQuestionAttempt.user_id == user_id,
                 QbQuestionAttempt.question_id == question_id,
                 QbQuestionAttempt.is_correct.is_(False),
                 QbQuestionAttempt.deleted == 0,
+                ~memorize_view,
             )
             .order_by(QbQuestionAttempt.submitted_time.desc(), QbQuestionAttempt.id.desc())
+            .limit(1)
         )
-        return list((await db.execute(stmt)).scalars().all())
+        row = (await db.execute(stmt)).mappings().first()
+        return dict(row) if row is not None else None
 
     async def get(
         self,

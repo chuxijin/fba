@@ -4,12 +4,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
 
+from backend.app.cms.schema.share import ShareCatalog
 from backend.app.cms.schema.slot import GetActiveSlot, ReportSlotActionParam
+from backend.app.cms.service.share_service import share_service
 from backend.app.cms.service.slot_service import slot_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.database.db import CurrentSession
 
 router = APIRouter(prefix='/cms', tags=['内容运营位'])
+
+
+@router.get('/share-config', summary='获取公开分享素材配置')
+async def get_share_config(db: CurrentSession) -> ResponseSchemaModel[ShareCatalog]:
+    return response_base.success(data=await share_service.catalog(db))
 
 
 @router.get('/slots/active', summary='获取场景下命中的运营位列表')

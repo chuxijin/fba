@@ -7,10 +7,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.cms.model import CmsSlot, CmsSlotLog
+from backend.app.cms.schema.share import SHARE_SCENES
 
 
 class CRUDCmsSlot(CRUDPlus[CmsSlot]):
     """内容运营位数据库操作类"""
+
+    async def get_share_slots(self, db: AsyncSession) -> list[CmsSlot]:
+        stmt = (
+            select(CmsSlot)
+            .where(CmsSlot.slot_type == 'share', CmsSlot.scene.in_([f'share.{scene}' for scene in SHARE_SCENES]))
+            .order_by(CmsSlot.priority.desc(), CmsSlot.id.asc())
+        )
+        return list((await db.execute(stmt)).scalars().all())
 
     async def get_by_code(self, db: AsyncSession, code: str) -> CmsSlot | None:
         """
@@ -60,7 +69,7 @@ class CRUDCmsSlot(CRUDPlus[CmsSlot]):
         :param keyword: 关键词(匹配 code/name/title)
         :return:
         """
-        stmt = select(CmsSlot)
+        stmt = select(CmsSlot).where(CmsSlot.deleted == 0)
 
         conditions = []
         if status is not None:
@@ -128,7 +137,7 @@ class CRUDCmsSlotLog(CRUDPlus[CmsSlotLog]):
             .group_by(CmsSlotLog.action)
         )
         rows = (await db.execute(stmt)).all()
-        return {action: cnt for action, cnt in rows}
+        return dict(rows)
 
 
 cms_slot_dao: CRUDCmsSlot = CRUDCmsSlot(CmsSlot)

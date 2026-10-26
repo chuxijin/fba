@@ -15,9 +15,10 @@ from backend.app.cms.service.stats_service import stats_service
 from backend.common.pagination import DependsPagination
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
+from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession
 
-router = APIRouter(prefix='/cms/admin', tags=['内容运营位-管理端'])
+router = APIRouter(prefix='/cms/admin', tags=['内容运营位-管理端'], dependencies=[DependsRBAC])
 
 
 @router.post('/slots', summary='创建运营位', dependencies=[DependsJwtAuth])

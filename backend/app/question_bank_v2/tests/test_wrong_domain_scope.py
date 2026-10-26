@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from backend.app.question_bank_v2.crud.crud_review import wrong_question_state_dao
+from backend.app.question_bank_v2.schema.review import WrongQuestionFilters
 
 # 自主录入的领域归属：entry_metadata 里的领域键被取成整数后与领域子树求交集
 RECORDED_DOMAIN_SQL = "CAST(qbank_v2_wrong_question_state.entry_metadata['domain_category_id'] AS BIGINT)"
@@ -90,8 +91,7 @@ def test_reviewed_and_plain_list_share_the_same_domain_scope() -> None:
     list_sql = str(
         wrong_question_state_dao.get_list_select(
             user_id=20,
-            status='active',
-            entry_source=None,
+            filters=WrongQuestionFilters(),
             domain_category_ids=[1, 8],
         ).compile(compile_kwargs={'literal_binds': True})
     )
@@ -163,9 +163,7 @@ def test_knowledge_groups_also_scope_recorded_domain() -> None:
 
 
 def test_empty_domain_subtree_does_not_disable_filter() -> None:
-    stmt = wrong_question_state_dao.get_list_select(
-        user_id=20, status='active', entry_source=None, domain_category_ids=[]
-    )
+    stmt = wrong_question_state_dao.get_list_select(user_id=20, filters=WrongQuestionFilters(), domain_category_ids=[])
     sql = str(stmt.compile(compile_kwargs={'literal_binds': True}))
     assert 'qbank_v2_bank_category' in sql
     assert '1 != 1' in sql

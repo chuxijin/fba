@@ -62,6 +62,8 @@ from backend.app.question_bank_v2.schema.review import (
     GetReviewTagDetail,
     GetWrongQuestionDetail,
     GetWrongQuestionListItem,
+    GetWrongQuestionOutlineItem,
+    GetWrongQuestionSummaryItem,
     GetWrongReviewDashboard,
     GetWrongSectionFacet,
     GetWrongSectionFacetsResult,
@@ -73,6 +75,8 @@ from backend.app.question_bank_v2.schema.review import (
     UpdateWrongStateParam,
     WrongCollectionItem,
     WrongCollectionPage,
+    WrongQuestionFilters,
+    WrongQuestionListQuery,
     WrongQuestionStatistics,
     WrongReviewDistributionItem,
 )
@@ -85,6 +89,7 @@ from backend.app.question_bank_v2.service.preference_service import preference_s
 from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
 from backend.app.question_bank_v2.utils.external_practice import question_content_digest
 from backend.common.exception import errors
+from backend.common.pagination import cursor_paging_data
 from backend.utils.timezone import timezone
 
 DASHBOARD_WINDOW_DAYS = 30
@@ -205,64 +210,48 @@ class WrongReviewService:
         return await WrongReviewService.get_domain_category_ids(db=db, domain_category_id=resolved)
 
     @staticmethod
-    def get_list_select(
+    async def get_list_page(
         *,
+        db: AsyncSession,
         user_id: int,
-        status: str | None = 'active',
-        entry_source: str | None = None,
-        entry_scope: str | None = None,
-        domain_category_ids: Sequence[int] | None = None,
-        import_batch_id: str | None = None,
-        bank_id: int | None = None,
-        external_unbatched: bool = False,
-        review_state: str | None = None,
-        section_name: str | None = None,
-    ) -> Any:
-        """构建当前用户统一错题列表查询"""
-        return wrong_question_state_dao.get_list_select(
-            user_id=user_id,
-            status=status,
-            entry_source=entry_source,
-            entry_scope=entry_scope,
-            domain_category_ids=domain_category_ids,
-            import_batch_id=import_batch_id,
-            bank_id=bank_id,
-            external_unbatched=external_unbatched,
-            review_state=review_state,
-            section_name=section_name,
+        query: WrongQuestionListQuery,
+    ) -> dict[str, Any]:
+        """同一范围和游标下按固定视图投影，仅在需要时读取题干与掌握度。"""
+        domain_category_ids = await WrongReviewService.resolve_domain_scope(
+            db=db, user_id=user_id, domain_category_id=query.domain_category_id
         )
+        stmt = wrong_question_state_dao.get_list_select(
+            user_id=user_id,
+            filters=query,
+            domain_category_ids=domain_category_ids,
+            section_name=query.section_name,
+            view=query.view,
+        )
+        schema = {
+            'full': GetWrongQuestionListItem,
+            'summary': GetWrongQuestionSummaryItem,
+            'outline': GetWrongQuestionOutlineItem,
+        }[query.view]
+        return await cursor_paging_data(db, stmt, schema)
 
     @staticmethod
     async def get_sections(
         *,
         db: AsyncSession,
         user_id: int,
-        status: str | None = 'active',
-        entry_source: str | None = None,
-        entry_scope: str | None = None,
-        import_batch_id: str | None = None,
-        bank_id: int | None = None,
-        external_unbatched: bool = False,
-        review_state: str | None = None,
-        domain_category_id: int | None = None,
+        filters: WrongQuestionFilters,
     ) -> GetWrongSectionFacetsResult:
-        """返回当前集合的章节筛选项及各章节题量"""
+        """返回当前浏览范围的章节及题量；集合参数为空时跨集合汇总"""
         domain_category_ids = await WrongReviewService.resolve_domain_scope(
             db=db,
             user_id=user_id,
-            domain_category_id=domain_category_id,
+            domain_category_id=filters.domain_category_id,
         )
         total, rows = await wrong_question_state_dao.get_section_counts(
             db,
             user_id=user_id,
-            status=status,
-            entry_source=entry_source,
-            entry_scope=entry_scope,
+            filters=filters,
             domain_category_ids=domain_category_ids,
-            import_batch_id=import_batch_id,
-            bank_id=bank_id,
-            external_unbatched=external_unbatched,
-            review_state=review_state,
         )
         return GetWrongSectionFacetsResult(
             total=total,
@@ -314,23 +303,18 @@ class WrongReviewService:
         row = await wrong_question_state_dao.get_detail_row(db, pk=wrong_state_id, user_id=user_id)
         if row is None:
             raise errors.NotFoundError(msg='错题不存在')
-        wrong_attempts = await question_attempt_dao.get_wrong_by_question(
+        last_wrong = await question_attempt_dao.get_latest_wrong_response(
             db,
             user_id=user_id,
             question_id=int(row['question_id']),
         )
-        for attempt in wrong_attempts:
-            response_data = attempt.response_data
-            if (
-                isinstance(response_data, dict)
-                and response_data.get('mode') == 'memorize'
-                and response_data.get('viewed') is True
-            ):
-                continue
-            row['last_wrong_response'] = response_data
-            break
-        preference = await preference_service.get(db=db, user_id=user_id)
-        threshold = 1 if row['review_count'] > 0 else preference.mastery_threshold
+        if last_wrong is not None:
+            row['last_wrong_response'] = last_wrong['response_data']
+        if row['review_count'] > 0:
+            threshold = 1
+        else:
+            preference = await preference_service.get(db=db, user_id=user_id)
+            threshold = preference.mastery_threshold
 
         # 材料：错题详情要能展示题干上方的篇章材料
         material_rows = await question_material_dao.get_all(db, int(row['question_id']))
@@ -348,6 +332,7 @@ class WrongReviewService:
         db: AsyncSession,
         user_id: int,
         wrong_state_id: int,
+        event_type: str | None = None,
     ) -> Any:
         """校验归属并构建一道错题的复盘时间线查询"""
         if await wrong_question_state_dao.get(db, wrong_state_id, user_id=user_id) is None:
@@ -355,6 +340,7 @@ class WrongReviewService:
         return question_review_dao.get_by_wrong_state_select(
             user_id=user_id,
             wrong_state_id=wrong_state_id,
+            event_type=event_type,
         )
 
     @staticmethod
@@ -443,6 +429,7 @@ class WrongReviewService:
         )
         return GetWrongReviewDashboard(
             reviewed_count=statistics['reviewed_count'],
+            active_reviewed_count=statistics.get('active_reviewed_count', 0),
             pending_review_count=statistics['pending_review_count'],
             review_event_count=event_count,
             reason_distribution=[WrongReviewDistributionItem(**row) for row in reason_rows],
@@ -614,17 +601,19 @@ class WrongReviewService:
             user_id=user_id,
             keys=[(obj.source_system, obj.external_key) for obj in items if obj.source_system and obj.external_key],
         )
+        recorded_domain_id = await WrongReviewService._resolve_recorded_domain_id(db=db, user_id=user_id)
 
         for index, obj in enumerate(items):
-            # 每条题用独立缓存，savepoint 释放后再并入共享缓存：
+            # 每条题从已成功条目的缓存快照开始，savepoint 释放后再并入共享缓存：
             # 失败条目创建的材料已随 savepoint 回滚，不能留在缓存里被后续题目引用
-            item_cache: dict[str, tuple[int, int]] = {}
+            item_cache = material_cache.copy()
             try:
                 async with db.begin_nested():
-                    detail = await WrongReviewService.capture_external(
+                    captured = await WrongReviewService._capture_external(
                         db=db,
                         user_id=user_id,
                         obj=obj,
+                        recorded_domain_id=recorded_domain_id,
                         import_batch_id=batch_id,
                         material_cache=item_cache,
                         existing_lookup=existing_lookup,
@@ -632,14 +621,8 @@ class WrongReviewService:
                 material_cache.update(item_cache)
                 # 同批次内重复的键后续也能命中，避免建出第二份
                 if obj.source_system and obj.external_key:
-                    existing_lookup[obj.source_system, obj.external_key] = detail.id
-                succeeded_items.append(
-                    BatchImportItemResult(
-                        external_key=obj.external_key,
-                        question_id=detail.question_id,
-                        wrong_state_id=detail.id,
-                    )
-                )
+                    existing_lookup[obj.source_system, obj.external_key] = captured.wrong_state_id
+                succeeded_items.append(captured)
             except IntegrityError:
                 failures.append(
                     BatchImportFailure(
@@ -842,7 +825,7 @@ class WrongReviewService:
         """错题集合列表：题库 / 导入批次 / 散题
 
         统一按最近错题时间倒序（最新的在最上面）；时间相同再按当前页签的
-        待复盘/已复盘题数、集合 ID 降序。集合数量量级很小，排序与分页在内存中完成。
+        当前状态题数、集合 ID 降序。已掌握按移出时间排序；集合数量量级很小，排序与分页在内存中完成。
         """
         page_size = max(1, min(int(size or COLLECTION_PAGE_SIZE), COLLECTION_MAX_PAGE_SIZE))
         domain_category_ids = await WrongReviewService.resolve_domain_scope(
@@ -853,15 +836,16 @@ class WrongReviewService:
         rows = await wrong_question_state_dao.get_collection_counts(
             db=db,
             user_id=user_id,
+            status='resolved' if mode == 'mastered' else 'active',
             domain_category_ids=domain_category_ids,
         )
 
-        sort_field = 'pending' if mode != 'reviewed' else 'reviewed'
-        # 两个页签各自只保留「有该类题目」的集合
+        sort_field = {'pending': 'pending', 'reviewed': 'reviewed', 'mastered': 'mastered'}[mode]
+        # 三个页签各自只保留「有该类题目」的集合。
         rows = [row for row in rows if int(row[sort_field]) > 0]
         rows.sort(
             key=lambda row: (
-                row['last_time'] or datetime.min.replace(tzinfo=timezone),
+                row['last_time'] or datetime.min.replace(tzinfo=timezone.tz_info),
                 int(row[sort_field]),
                 row['collection_id'],
             ),
@@ -874,6 +858,13 @@ class WrongReviewService:
 
         return WrongCollectionPage(
             items=[WrongCollectionItem(**row) for row in page_rows],
+            total=await wrong_question_state_dao.get_browse_total(
+                db,
+                user_id=user_id,
+                status='resolved' if mode == 'mastered' else 'active',
+                review_state=None if mode == 'mastered' else mode,
+                domain_category_ids=domain_category_ids,
+            ),
             next_cursor=str(offset + page_size) if has_more else None,
             has_more=has_more,
         )
@@ -1560,8 +1551,9 @@ class WrongReviewService:
         user_id: int,
         wrong_state_id: int,
         obj: CreateExternalWrongQuestionParam,
+        recorded_domain_id: int | None,
         material_cache: dict[str, tuple[int, int]] | None = None,
-    ) -> None:
+    ) -> QbWrongQuestionState:
         """重复录入时给已有错题补缺失内容；知识点需先校验，此处只补题目内容"""
         state = await wrong_question_state_dao.get(
             db,
@@ -1570,10 +1562,10 @@ class WrongReviewService:
             for_update=True,
         )
         if state is None:
-            return
+            raise errors.NotFoundError(msg='错题不存在')
         question = await question_dao.get(db, state.question_id)
         if question is None:
-            return
+            raise errors.NotFoundError(msg='错题不存在')
         await WrongReviewService._fill_missing_content(
             db=db,
             user_id=user_id,
@@ -1588,13 +1580,17 @@ class WrongReviewService:
             if value not in (None, '') and not metadata.get(key):
                 metadata[key] = value
                 changed = True
-        recorded_domain_id = await WrongReviewService._resolve_recorded_domain_id(db=db, user_id=user_id)
         if recorded_domain_id is not None and not metadata.get(ENTRY_METADATA_DOMAIN_KEY):
             metadata[ENTRY_METADATA_DOMAIN_KEY] = int(recorded_domain_id)
+            changed = True
+        # 旧版本导入没有保存作答快照：重复导入时补上，不覆盖已有作答记录
+        if obj.wrong_response is not None and state.last_wrong_response is None:
+            state.last_wrong_response = obj.wrong_response
             changed = True
         if changed:
             state.entry_metadata = metadata
             await db.flush()
+        return state
 
     @staticmethod
     async def capture_external(
@@ -1606,9 +1602,34 @@ class WrongReviewService:
         material_cache: dict[str, tuple[int, int]] | None = None,
         existing_lookup: dict[tuple[str, str], int] | None = None,
     ) -> GetWrongQuestionDetail:
+        """单条录入在共用写入核心之后装配一次详情。"""
+        recorded_domain_id = await WrongReviewService._resolve_recorded_domain_id(db=db, user_id=user_id)
+        captured = await WrongReviewService._capture_external(
+            db=db,
+            user_id=user_id,
+            obj=obj,
+            recorded_domain_id=recorded_domain_id,
+            import_batch_id=import_batch_id,
+            material_cache=material_cache,
+            existing_lookup=existing_lookup,
+        )
+        return await WrongReviewService.get_detail(db=db, user_id=user_id, wrong_state_id=captured.wrong_state_id)
+
+    @staticmethod
+    async def _capture_external(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        obj: CreateExternalWrongQuestionParam,
+        recorded_domain_id: int | None,
+        import_batch_id: str | None = None,
+        material_cache: dict[str, tuple[int, int]] | None = None,
+        existing_lookup: dict[tuple[str, str], int] | None = None,
+    ) -> BatchImportItemResult:
         """将用户外部错题统一录入为可重练的私有题目
 
         existing_lookup 由批量导入预先查好（一次 IN 查询），避免逐题扫描用户错题表。
+        批量与单条共用写入，只返回已有 ID，批量不逐题回读完整详情。
         """
         existing_state_id = await WrongReviewService._resolve_existing_state_id(
             db=db,
@@ -1618,16 +1639,17 @@ class WrongReviewService:
         )
         if existing_state_id is not None:
             # 外部 key 已存在时也补齐这次导入带来的答案/解析/材料，避免重复导入丢内容
-            await WrongReviewService._fill_existing_state_content(
+            state = await WrongReviewService._fill_existing_state_content(
                 db=db,
                 user_id=user_id,
                 wrong_state_id=existing_state_id,
                 obj=obj,
+                recorded_domain_id=recorded_domain_id,
                 material_cache=material_cache,
             )
-            return await WrongReviewService.get_detail(
-                db=db,
-                user_id=user_id,
+            return BatchImportItemResult(
+                external_key=obj.external_key,
+                question_id=state.question_id,
                 wrong_state_id=existing_state_id,
             )
 
@@ -1641,7 +1663,6 @@ class WrongReviewService:
 
         # 自主录入的错题没有题库归属，把录入当时的领域记进 entry_metadata，
         # 之后按领域筛选待复盘/错题列表时才有依据（拿不到领域时不写，保持不过滤语义）
-        recorded_domain_id = await WrongReviewService._resolve_recorded_domain_id(db=db, user_id=user_id)
         entry_metadata = dict(obj.entry_metadata)
         if recorded_domain_id is not None:
             entry_metadata[ENTRY_METADATA_DOMAIN_KEY] = int(recorded_domain_id)
@@ -1667,11 +1688,12 @@ class WrongReviewService:
             )
             if existing_state_id is not None:
                 # 复用题目命中已有错题时，仍要把新导入的解析/材料补进去
-                await WrongReviewService._fill_existing_state_content(
+                state = await WrongReviewService._fill_existing_state_content(
                     db=db,
                     user_id=user_id,
                     wrong_state_id=existing_state_id,
                     obj=obj,
+                    recorded_domain_id=recorded_domain_id,
                     material_cache=material_cache,
                 )
                 await WrongReviewService._merge_knowledge_points(
@@ -1680,9 +1702,9 @@ class WrongReviewService:
                     question_id=question.id,
                     knowledge_point_ids=obj.knowledge_point_ids,
                 )
-                return await WrongReviewService.get_detail(
-                    db=db,
-                    user_id=user_id,
+                return BatchImportItemResult(
+                    external_key=obj.external_key,
+                    question_id=state.question_id,
                     wrong_state_id=existing_state_id,
                 )
         await WrongReviewService._write_question_content(
@@ -1712,6 +1734,7 @@ class WrongReviewService:
                 'wrong_count': 1,
                 'first_wrong_time': now,
                 'last_wrong_time': now,
+                'last_wrong_response': obj.wrong_response,
                 'next_practice_time': next_practice_time(level=0, now=now),
                 'created_by': user_id,
             },
@@ -1766,9 +1789,9 @@ class WrongReviewService:
             wrong_state.review_count = 1
             wrong_state.last_reviewed_time = now
             await db.flush()
-        return await WrongReviewService.get_detail(
-            db=db,
-            user_id=user_id,
+        return BatchImportItemResult(
+            external_key=obj.external_key,
+            question_id=question.id,
             wrong_state_id=wrong_state.id,
         )
 

@@ -53,9 +53,7 @@ class ResumableScope(SchemaBase):
     section_id: int | None = Field(None, description='篇章 ID；None 表示题库整卷维度')
     question_type: str | None = Field(None, description='题型；None 表示全题型维度')
     modes: list[str] = Field(default_factory=list, description='存在进行中会话的练习模式')
-    session_keys: dict[str, str] = Field(
-        default_factory=dict, description='各练习模式下最近一条进行中会话的幂等标识'
-    )
+    session_keys: dict[str, str] = Field(default_factory=dict, description='各练习模式下最近一条进行中会话的幂等标识')
 
 
 class GetBankProgressDetail(BankProgressSummary):
@@ -66,9 +64,7 @@ class GetBankProgressDetail(BankProgressSummary):
     bank_name: str = Field(description='题库名称')
     unsectioned: BankProgressSummary = Field(description='未归入篇章的题目进度')
     sections: list[BankSectionProgress] = Field(default_factory=list, description='篇章进度树')
-    resumable_scopes: list[ResumableScope] = Field(
-        default_factory=list, description='当前可续接的进行中会话维度'
-    )
+    resumable_scopes: list[ResumableScope] = Field(default_factory=list, description='当前可续接的进行中会话维度')
 
 
 class GetBankProgressBrief(SchemaBase):
@@ -201,6 +197,8 @@ class KnowledgePointTrendPoint(SchemaBase):
     correct_count: int = Field(ge=0, description='正确数')
     accuracy: float = Field(ge=0, le=100, description='正确率百分比')
     avg_seconds: float | None = Field(None, description='平均每题用时秒')
+    timed_attempt_count: int = Field(0, ge=0, description='有计时的作答题数')
+    total_duration_ms: int | None = Field(None, ge=0, description='有计时作答的累计耗时毫秒')
 
 
 class KnowledgePointTrendModule(SchemaBase):

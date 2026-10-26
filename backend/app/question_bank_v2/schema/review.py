@@ -1,5 +1,9 @@
+import re
+
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
+from html import unescape
 from typing import Any, Literal
 
 from pydantic import Field, model_validator
@@ -13,12 +17,15 @@ from backend.app.question_bank_v2.schema.question import (
     QuestionType,
 )
 from backend.app.question_bank_v2.schema.user_content import ContentGroupNode
+from backend.common.pagination import CursorPageData
 from backend.common.schema import SchemaBase
 
 WrongEntrySource = Literal['attempt', 'manual', 'ocr', 'import']
 WrongEntryScope = Literal['all', 'bank', 'external']
 WrongStateStatus = Literal['active', 'resolved', 'suspended']
 WrongStateAction = Literal['resolve', 'reopen', 'suspend', 'resume', 'pin', 'unpin']
+WrongBrowseMode = Literal['pending', 'reviewed', 'mastered']
+WrongQuestionListView = Literal['full', 'summary', 'outline']
 MasteryState = Literal['new', 'learning', 'review', 'mastered', 'suspended']
 ReviewTagType = Literal['reason', 'method', 'other']
 QuestionAssetRole = Literal['stem', 'option', 'explanation', 'attachment', 'ocr_source', 'other']
@@ -34,6 +41,31 @@ ENTRY_METADATA_EXTERNAL_KEY_KEY = 'external_key'
 ENTRY_METADATA_SECTION_KEY = 'section_name'
 # 章节筛选的虚拟值：题库错题可回退到题库章节，仍无章节的外部题归入此项
 UNSECTIONED_SECTION_NAME = '__unsectioned__'
+
+
+class WrongQuestionFilters(SchemaBase):
+    """错题列表和章节统计共用的请求筛选，不包含用户身份和已展开的领域范围。"""
+
+    status: WrongStateStatus | None = Field(default='active', description='错题状态；空表示全部')
+    entry_source: WrongEntrySource | None = Field(None, description='首次录入来源')
+    entry_scope: WrongEntryScope | None = Field(None, description='题库错题或自主录入')
+    domain_category_id: int | None = Field(None, gt=0, description='领域分类 ID；不传取用户当前领域')
+    import_batch_id: str | None = Field(None, min_length=8, max_length=64, description='导入批次 ID')
+    bank_id: int | None = Field(None, gt=0, description='题库 ID；用于集合详情')
+    external_unbatched: bool = Field(default=False, description='只看无批次的散题')
+    unassigned: bool = Field(default=False, description='只看无题库来源和导入批次的系统错题')
+    review_state: Literal['reviewed', 'pending'] | None = Field(
+        None, description='复盘子状态：reviewed=已复盘，pending=待复盘（含复盘后再次答错）'
+    )
+
+
+class WrongQuestionListQuery(WrongQuestionFilters):
+    """列表在共享范围上补充章节筛选与固定响应视图。"""
+
+    section_name: str | None = Field(None, max_length=160, description='按章节/模块筛选；不传集合参数时跨集合')
+    view: WrongQuestionListView = Field(
+        default='full', description='full=兼容完整列表，summary=列表摘要，outline=仅 ID 和章节（答题卡）'
+    )
 
 
 class ExternalQuestionAssetParam(SchemaBase):
@@ -109,6 +141,10 @@ class CreateExternalWrongQuestionParam(SchemaBase):
     options: list[QuestionOption] = Field(default_factory=list, max_length=20, description='有序选项')
     default_score: Decimal = Field(default=Decimal('1.00'), ge=0, description='默认分值')
     answer: QuestionAnswerParam = Field(description='权威答案；录入后即可进入刷题系统重练')
+    wrong_response: Any | None = Field(
+        None,
+        description='用户当时的作答快照；仅用于错题本回显，不参与判分',
+    )
     explanations: list[QuestionExplanationParam] = Field(
         default_factory=list,
         max_length=20,
@@ -223,44 +259,40 @@ class ImportHistoryResult(SchemaBase):
     singles: list[ImportHistorySingleItem] = Field(default_factory=list, description='散题')
 
 
-class ImportBatchPage(SchemaBase):
+class ImportBatchPage(CursorPageData[ImportHistoryBatchItem]):
     """批量导入批次的游标分页结果"""
 
-    items: list[ImportHistoryBatchItem] = Field(default_factory=list, description='当前页批次')
-    next_cursor: str | None = Field(None, description='下一页游标；空表示没有更多')
     has_more: bool = Field(default=False, description='是否还有更多')
 
 
-class ImportSinglePage(SchemaBase):
+class ImportSinglePage(CursorPageData[ImportHistorySingleItem]):
     """散题的游标分页结果"""
 
-    items: list[ImportHistorySingleItem] = Field(default_factory=list, description='当前页散题')
-    next_cursor: str | None = Field(None, description='下一页游标；空表示没有更多')
     has_more: bool = Field(default=False, description='是否还有更多')
 
 
 class WrongCollectionItem(SchemaBase):
     """错题集合：题库 / 导入批次 / 无批次散题"""
 
-    collection_type: Literal['bank', 'import', 'single'] = Field(description='集合类型')
+    collection_type: Literal['bank', 'import', 'single', 'unassigned'] = Field(description='集合类型')
     collection_id: str = Field(default='', description='集合标识：题库 ID 或导入批次 ID；散题为空')
     title: str = Field(description='集合名称')
     total: int = Field(ge=0, description='集合内错题总数')
     reviewed: int = Field(ge=0, description='已复盘数')
     pending: int = Field(ge=0, description='待复盘数')
+    mastered: int = Field(default=0, ge=0, description='已掌握数')
     last_time: datetime | None = Field(None, description='最近错题时间')
 
 
-class WrongCollectionPage(SchemaBase):
+class WrongCollectionPage(CursorPageData[WrongCollectionItem]):
     """错题集合列表（游标分页）"""
 
-    items: list[WrongCollectionItem] = Field(default_factory=list, description='当前页集合')
-    next_cursor: str | None = Field(None, description='下一页游标；空表示没有更多')
+    total: int = Field(default=0, ge=0, description='当前状态和领域的错题总数，不累加可能重叠的集合')
     has_more: bool = Field(default=False, description='是否还有更多')
 
 
 class GetWrongSectionFacet(SchemaBase):
-    """集合内按原试卷章节/模块统计的题量"""
+    """当前浏览范围按原试卷章节/模块统计的题量"""
 
     section_name: str = Field(description='章节或模块名，如「政治理论」')
     total: int = Field(ge=0, description='该章节的题量')
@@ -269,7 +301,7 @@ class GetWrongSectionFacet(SchemaBase):
 class GetWrongSectionFacetsResult(SchemaBase):
     """集合章节筛选项"""
 
-    total: int = Field(ge=0, description='集合内全部题量（含未标章节）')
+    total: int = Field(ge=0, description='当前浏览范围全部题量（含未标章节）')
     items: list[GetWrongSectionFacet] = Field(default_factory=list, description='章节及题量列表')
 
 
@@ -323,6 +355,31 @@ class GetReviewTagDetail(SchemaBase):
     color: str | None = Field(None, description='展示颜色')
     sort_order: int = Field(description='展示顺序')
     is_active: bool = Field(description='是否可选')
+
+
+class GetWrongQuestionOutlineItem(SchemaBase):
+    """答题卡只读取 ID 和章节，不携带题干、掌握度或其他列表字段。"""
+
+    id: int = Field(description='错题状态 ID')
+    section_name: str | None = Field(None, description='原试卷章节/模块名，供答题卡分组')
+
+
+class GetWrongQuestionSummaryItem(GetWrongQuestionOutlineItem):
+    """列表卡片需要的摘要与状态字段。"""
+
+    stem_preview: str = Field(max_length=161, description='去标签后的单行题干摘要，最多 160 字及省略号')
+    status: WrongStateStatus = Field(description='错题当前状态')
+    wrong_count: int = Field(ge=0, description='累计错误次数')
+    review_count: int = Field(ge=0, description='已复盘次数')
+
+    @model_validator(mode='before')
+    @classmethod
+    def build_preview(cls, data: Any) -> Any:
+        """仅转换 SQL 内部题干列，避免响应再次验证时把比较符当 HTML 清除。"""
+        if isinstance(data, Mapping) and '_stem' in data:
+            text = ' '.join(unescape(re.sub(r'<[^>]+>', ' ', str(data['_stem'] or ''))).split())
+            return {**data, 'stem_preview': f'{text[:160]}…' if len(text) > 160 else text}
+        return data
 
 
 class GetWrongQuestionListItem(SchemaBase):
@@ -406,6 +463,7 @@ class WrongQuestionStatistics(SchemaBase):
     resolved_count: int = Field(ge=0, description='已移出错题本数')
     due_count: int = Field(ge=0, description='当前到期重练数')
     reviewed_count: int = Field(ge=0, description='已复盘错题数')
+    active_reviewed_count: int = Field(default=0, ge=0, description='仍在错题本中的已复盘错题数')
     pending_review_count: int = Field(ge=0, description='待复盘错题数')
     wrong_occurrence_count: int = Field(ge=0, description='累计错误发生次数')
     groups: list[ContentGroupNode] = Field(default_factory=list, description='题库或知识点分组')
@@ -427,6 +485,7 @@ class GetWrongReviewDashboard(SchemaBase):
     """
 
     reviewed_count: int = Field(ge=0, description='已复盘错题数')
+    active_reviewed_count: int = Field(default=0, ge=0, description='已复盘浏览入口题量，仅统计活跃错题')
     pending_review_count: int = Field(ge=0, description='待复盘错题数')
     review_event_count: int = Field(ge=0, description='统计窗口内复盘事件数')
     reason_distribution: list[WrongReviewDistributionItem] = Field(default_factory=list, description='错因分布')

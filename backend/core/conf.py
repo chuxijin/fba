@@ -146,6 +146,7 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/payment/pay/refund-notify',  # 微信退款回调
         f'{FASTAPI_API_V1_PATH}/payment/pay/hupijiao/notify',  # 虎皮椒支付及退款回调
         f'{FASTAPI_API_V1_PATH}/invite/codes/share-config',  # 新增：分享有礼卡片配置免鉴权
+        f'{FASTAPI_API_V1_PATH}/cms/share-config',  # 公开分享素材，忽略过期的可选登录态
         f'{FASTAPI_API_V1_PATH}/notify/send',  # 多渠道通知发送接口（免签放行，便于对接外部 Webhook 比如短信转发）
         f'{FASTAPI_API_V1_PATH}/notify/wecom/callback',  # 企业微信自建应用接收消息回调免鉴权
     ]

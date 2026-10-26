@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.app.question_bank_v2.crud.crud_review import question_review_dao
 from backend.app.question_bank_v2.schema.review import (
     CreateExternalWrongQuestionParam,
     CreateQuestionReviewParam,
@@ -559,6 +560,51 @@ def test_external_capture_reuse_with_existing_state_returns_detail(
     assert harness.answer_question_ids == [77]
 
 
+def test_external_capture_keeps_user_wrong_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    """导入时必须把用户当时作答落进错题快照，详情页才能回显上次错答"""
+    harness = CaptureHarness()
+    harness.patch(monkeypatch)
+    obj = harness.build_param().model_copy(update={'wrong_response': ['B', 'D']})
+
+    asyncio.run(WrongReviewService.capture_external(db=DummyDB(), user_id=7, obj=obj))
+
+    assert harness.wrong_state_data['last_wrong_response'] == ['B', 'D']
+
+
+@pytest.mark.parametrize(('stored', 'expected'), [(None, 'B'), ('A', 'A')])
+def test_external_reimport_backfills_only_missing_wrong_response(
+    monkeypatch: pytest.MonkeyPatch,
+    stored: str | None,
+    expected: str,
+) -> None:
+    """重复导入只补旧版本缺失的作答快照，不能覆盖已有作答记录"""
+    harness = CaptureHarness()
+    harness.reusable = SimpleNamespace(id=77)
+    harness.patch(monkeypatch)
+    state = SimpleNamespace(id=31, question_id=77, entry_metadata={}, last_wrong_response=stored)
+
+    async def find_state(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=31)
+
+    async def get_state(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        await asyncio.sleep(0)
+        return state
+
+    async def get_question(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        await asyncio.sleep(0)
+        return SimpleNamespace(id=77)
+
+    monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get_by_question', find_state)
+    monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get', get_state)
+    monkeypatch.setattr(wrong_review_module.question_dao, 'get', get_question)
+    obj = harness.build_param().model_copy(update={'wrong_response': 'B'})
+
+    asyncio.run(WrongReviewService.capture_external(db=DummyDB(), user_id=7, obj=obj))
+
+    assert state.last_wrong_response == expected
+
+
 def test_external_capture_records_entry_domain(monkeypatch: pytest.MonkeyPatch) -> None:
     """自主录入没有题库归属，必须把录入时的领域写进 entry_metadata 才能按领域复盘"""
     harness = CaptureHarness()
@@ -640,9 +686,25 @@ def test_external_capture_without_review_content_stays_pending(monkeypatch: pyte
 # --- 复盘事件 ---
 
 
-def test_review_does_not_touch_wrong_book_or_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
-    """复盘只累加计数，不改错题本状态、不推进重练排期"""
+@pytest.mark.parametrize(
+    ('initial_count', 'status', 'summary', 'review_data'),
+    [
+        (0, 'active', '选项混淆', {}),
+        (1, 'active', None, {'prevention': '先列出题干约束，再排除不满足条件的选项'}),
+        (2, 'resolved', None, {'prevention': '补充一个更简洁的解法'}),
+    ],
+)
+def test_review_does_not_touch_wrong_book_or_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+    initial_count: int,
+    status: str,
+    summary: str | None,
+    review_data: dict[str, Any],
+) -> None:
+    """首次与多次复盘都追加记录；再次复盘可只补正确思路，已掌握状态和排期保持不变"""
     wrong_state = _new_wrong_state(
+        review_count=initial_count,
+        status=status,
         next_practice_time=datetime(2026, 7, 30, tzinfo=UTC),
         practice_level=2,
     )
@@ -679,17 +741,36 @@ def test_review_does_not_touch_wrong_book_or_schedule(monkeypatch: pytest.Monkey
             db=DummyDB(),
             user_id=7,
             wrong_state_id=31,
-            obj=CreateQuestionReviewParam(idempotency_key='review-00001', summary='选项混淆'),
+            obj=CreateQuestionReviewParam(
+                idempotency_key='review-00001', summary=summary, review_data=review_data, tag_ids=[]
+            ),
         )
     )
 
     assert created['event_type'] == 'review'
-    assert wrong_state.review_count == 1
+    assert created['summary'] == summary
+    assert created['review_data'] == review_data
+    assert wrong_state.review_count == initial_count + 1
     assert wrong_state.last_reviewed_time is not None
-    assert wrong_state.status == 'active'
+    assert wrong_state.status == status
     assert wrong_state.practice_level == 2
     assert result.next_practice_time == datetime(2026, 7, 30, tzinfo=UTC)
-    assert result.review_count == 1
+    assert result.review_count == initial_count + 1
+
+
+@pytest.mark.parametrize('event_type', [None, 'capture', 'review'])
+def test_review_history_filter_keeps_owner_and_stable_pagination(event_type: str | None) -> None:
+    """完整时间线仍兼容录入事件；只看复盘时过滤在服务端分页前完成，不改变归属和稳定倒序"""
+    stmt = question_review_dao.get_by_wrong_state_select(user_id=7, wrong_state_id=31, event_type=event_type)
+    sql = str(stmt.compile(compile_kwargs={'literal_binds': True}))
+    assert 'qbank_v2_question_review.user_id = 7' in sql
+    assert 'qbank_v2_question_review.wrong_state_id = 31' in sql
+    assert 'qbank_v2_question_review.deleted = 0' in sql
+    assert 'ORDER BY qbank_v2_question_review.reviewed_time DESC, qbank_v2_question_review.id DESC' in sql
+    if event_type is None:
+        assert 'qbank_v2_question_review.event_type =' not in sql
+    else:
+        assert f"qbank_v2_question_review.event_type = '{event_type}'" in sql
 
 
 def test_resolved_question_still_accepts_review(monkeypatch: pytest.MonkeyPatch) -> None:

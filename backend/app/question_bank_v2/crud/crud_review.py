@@ -25,11 +25,14 @@ from backend.app.question_bank_v2.model.review import (
 )
 from backend.app.question_bank_v2.model.statistics import QbUserQuestionMastery
 from backend.app.question_bank_v2.schema.review import (
+    ENTRY_METADATA_BATCH_KEY,
     ENTRY_METADATA_DOMAIN_KEY,
     ENTRY_METADATA_SECTION_KEY,
     EXTERNAL_ENTRY_SOURCES,
     UNSECTIONED_SECTION_NAME,
     ExternalQuestionAssetParam,
+    WrongQuestionFilters,
+    WrongQuestionListView,
 )
 
 
@@ -86,6 +89,18 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             func.trim(QbWrongQuestionState.entry_metadata[ENTRY_METADATA_SECTION_KEY].as_string()),
             '',
         )
+        saved_section = (
+            select(QbBankSection.name)
+            .select_from(QbBankItem)
+            .join(QbBankSection, and_(QbBankSection.id == QbBankItem.section_id, QbBankSection.deleted == 0))
+            .where(
+                QbBankItem.id == QbWrongQuestionState.source_bank_item_id,
+                QbBankItem.question_id == QbWrongQuestionState.question_id,
+                QbBankItem.deleted == 0,
+            )
+            .limit(1)
+            .scalar_subquery()
+        )
         bank_section = (
             select(QbBankSection.name)
             .select_from(QbBankItem)
@@ -104,7 +119,11 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             .limit(1)
             .scalar_subquery()
         )
-        return func.coalesce(stored, func.nullif(func.trim(bank_section), ''))
+        return func.coalesce(
+            stored,
+            func.nullif(func.trim(saved_section), ''),
+            func.nullif(func.trim(bank_section), ''),
+        )
 
     @staticmethod
     def _pending_review_expr() -> Any:
@@ -118,9 +137,13 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         )
 
     @staticmethod
-    def _list_stmt() -> Any:
-        return (
-            select(
+    def _batch_id_expr() -> Any:
+        return func.nullif(func.trim(QbWrongQuestionState.entry_metadata[ENTRY_METADATA_BATCH_KEY].as_string()), '')
+
+    @staticmethod
+    def _list_stmt(view: WrongQuestionListView = 'full') -> Any:
+        if view == 'full':
+            columns = [
                 QbWrongQuestionState.id,
                 QbWrongQuestionState.question_id,
                 QbWrongQuestionState.entry_source,
@@ -142,7 +165,21 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 # 原试卷章节优先，题库来源回退到题库章节，供详情页答题卡分组
                 CRUDWrongQuestionState._section_name_expr().label('section_name'),
                 func.coalesce(QbUserQuestionMastery.state, 'new').label('mastery_state'),
-            )
+            ]
+        else:
+            columns = [
+                QbWrongQuestionState.id,
+                CRUDWrongQuestionState._section_name_expr().label('section_name'),
+            ]
+            if view == 'summary':
+                columns.extend([
+                    QbQuestion.stem.label('_stem'),
+                    QbWrongQuestionState.status,
+                    QbWrongQuestionState.wrong_count,
+                    QbWrongQuestionState.review_count,
+                ])
+        stmt = (
+            select(*columns)
             .join(
                 QbQuestion,
                 and_(
@@ -150,7 +187,10 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                     QbQuestion.deleted == 0,
                 ),
             )
-            .outerjoin(
+            .where(QbWrongQuestionState.deleted == 0)
+        )
+        if view == 'full':
+            stmt = stmt.outerjoin(
                 QbUserQuestionMastery,
                 and_(
                     QbUserQuestionMastery.user_id == QbWrongQuestionState.user_id,
@@ -158,8 +198,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                     QbUserQuestionMastery.deleted == 0,
                 ),
             )
-            .where(QbWrongQuestionState.deleted == 0)
-        )
+        return stmt
 
     @staticmethod
     def _apply_entry_scope(stmt: Any, entry_scope: str | None) -> Any:
@@ -238,84 +277,78 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         stmt: Any,
         *,
         user_id: int,
-        status: str | None,
-        entry_source: str | None,
-        entry_scope: str | None,
+        filters: WrongQuestionFilters,
         domain_category_ids: Sequence[int] | None,
-        import_batch_id: str | None,
-        bank_id: int | None,
-        external_unbatched: bool,
-        review_state: str | None,
-        section_name: str | None,
+        section_name: str | None = None,
     ) -> Any:
         """错题列表与章节筛选共用的过滤条件"""
-        stmt = stmt.where(QbWrongQuestionState.user_id == user_id)
-        if status is not None:
-            stmt = stmt.where(QbWrongQuestionState.status == status)
-        if review_state == 'reviewed':
+        stmt = stmt.where(QbWrongQuestionState.user_id == user_id, QbWrongQuestionState.deleted == 0)
+        if filters.status is not None:
+            stmt = stmt.where(QbWrongQuestionState.status == filters.status)
+        if filters.review_state == 'reviewed':
             # 已复盘：有过复盘记录
             stmt = stmt.where(QbWrongQuestionState.review_count > 0)
-        elif review_state == 'pending':
+        elif filters.review_state == 'pending':
             # 待复盘：尚无复盘记录，或复盘后再次做错
             stmt = stmt.where(self._pending_review_expr())
-        if entry_source is not None:
-            stmt = stmt.where(QbWrongQuestionState.entry_source == entry_source)
-        if import_batch_id is not None:
+        if filters.entry_source is not None:
+            stmt = stmt.where(QbWrongQuestionState.entry_source == filters.entry_source)
+        if filters.import_batch_id is not None:
             # 按导入批次收窄：用于「导入记录」里展开某一批的题目
-            stmt = stmt.where(QbWrongQuestionState.entry_metadata['import_batch_id'].as_string() == import_batch_id)
-        if bank_id is not None:
+            stmt = stmt.where(self._batch_id_expr() == filters.import_batch_id)
+        if filters.bank_id is not None:
             # 按题库收窄：集合详情页看某个题库下的错题
             stmt = stmt.where(
                 QbWrongQuestionState.source_bank_item_id.in_(
                     select(QbBankItem.id)
                     .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
-                    .where(QbBankRevision.bank_id == bank_id)
+                    .where(QbBankRevision.bank_id == filters.bank_id)
                 )
             )
-        if external_unbatched:
+        if filters.external_unbatched:
             # 无批次的散题集合
             stmt = stmt.where(
                 QbWrongQuestionState.entry_source.in_(EXTERNAL_ENTRY_SOURCES),
-                QbWrongQuestionState.entry_metadata['import_batch_id'].as_string().is_(None),
+                self._batch_id_expr().is_(None),
+                QbWrongQuestionState.source_bank_item_id.is_(None),
             )
-        if section_name is not None:
-            # 集合内按原试卷模块（如「政治理论」「数量关系」）筛选
-            section_expr = self._section_name_expr()
-            if section_name == UNSECTIONED_SECTION_NAME:
-                stmt = stmt.where(section_expr.is_(None))
-            else:
-                stmt = stmt.where(section_expr == section_name)
-        stmt = self._apply_entry_scope(stmt, entry_scope)
+        if filters.unassigned:
+            stmt = stmt.where(
+                QbWrongQuestionState.entry_source.not_in(EXTERNAL_ENTRY_SOURCES),
+                QbWrongQuestionState.source_bank_item_id.is_(None),
+                self._batch_id_expr().is_(None),
+            )
+        stmt = self._apply_section_filter(stmt, section_name)
+        stmt = self._apply_entry_scope(stmt, filters.entry_scope)
         return self._apply_domain_scope(stmt, domain_category_ids)
+
+    def _apply_section_filter(self, stmt: Any, section_name: str | None) -> Any:
+        if section_name is None:
+            return stmt
+        section_expr = self._section_name_expr()
+        condition = section_expr.is_(None) if section_name == UNSECTIONED_SECTION_NAME else section_expr == section_name
+        return stmt.where(condition)
 
     def get_list_select(
         self,
         *,
         user_id: int,
-        status: str | None,
-        entry_source: str | None,
-        entry_scope: str | None = None,
+        filters: WrongQuestionFilters,
         domain_category_ids: Sequence[int] | None = None,
-        import_batch_id: str | None = None,
-        bank_id: int | None = None,
-        external_unbatched: bool = False,
-        review_state: str | None = None,
         section_name: str | None = None,
+        view: WrongQuestionListView = 'full',
     ) -> Any:
         """构建用户错题游标分页查询"""
         stmt = self._apply_list_filters(
-            self._list_stmt(),
+            self._list_stmt(view),
             user_id=user_id,
-            status=status,
-            entry_source=entry_source,
-            entry_scope=entry_scope,
+            filters=filters,
             domain_category_ids=domain_category_ids,
-            import_batch_id=import_batch_id,
-            bank_id=bank_id,
-            external_unbatched=external_unbatched,
-            review_state=review_state,
             section_name=section_name,
         )
+        if view != 'full':
+            # 游标编码仍需要排序键；响应 Schema 会过滤这些内部字段。
+            stmt = stmt.add_columns(QbWrongQuestionState.is_pinned, QbWrongQuestionState.last_wrong_time)
         return stmt.order_by(
             QbWrongQuestionState.is_pinned.desc(),
             QbWrongQuestionState.last_wrong_time.desc().nullslast(),
@@ -327,33 +360,24 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         db: AsyncSession,
         *,
         user_id: int,
-        status: str | None,
-        entry_source: str | None,
-        entry_scope: str | None = None,
+        filters: WrongQuestionFilters,
         domain_category_ids: Sequence[int] | None = None,
-        import_batch_id: str | None = None,
-        bank_id: int | None = None,
-        external_unbatched: bool = False,
-        review_state: str | None = None,
     ) -> tuple[int, list[dict[str, Any]]]:
         """按原试卷模块统计当前集合的题量，供集合详情页章节筛选"""
         section_expr = self._section_name_expr()
-        stmt = select(
-            section_expr.label('section_name'),
-            func.count().label('total'),
-        ).select_from(QbWrongQuestionState)
+        stmt = (
+            select(
+                section_expr.label('section_name'),
+                func.count().label('total'),
+            )
+            .select_from(QbWrongQuestionState)
+            .join(QbQuestion, and_(QbQuestion.id == QbWrongQuestionState.question_id, QbQuestion.deleted == 0))
+        )
         stmt = self._apply_list_filters(
             stmt,
             user_id=user_id,
-            status=status,
-            entry_source=entry_source,
-            entry_scope=entry_scope,
+            filters=filters,
             domain_category_ids=domain_category_ids,
-            import_batch_id=import_batch_id,
-            bank_id=bank_id,
-            external_unbatched=external_unbatched,
-            review_state=review_state,
-            section_name=None,
         )
         rows = (await db.execute(stmt.group_by(section_expr))).mappings().all()
         total = sum(int(row['total']) for row in rows)
@@ -366,6 +390,30 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         ]
         items.sort(key=lambda item: (-item['total'], item['section_name']))
         return total, items
+
+    async def get_browse_total(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        status: str,
+        review_state: str | None,
+        domain_category_ids: Sequence[int] | None,
+    ) -> int:
+        """浏览总数取同一题目查询，不累加可能重叠的集合，也不只计算当前页。"""
+        scoped = (
+            self
+            .get_list_select(
+                user_id=user_id,
+                filters=WrongQuestionFilters(status=status, review_state=review_state),
+                domain_category_ids=domain_category_ids,
+                view='outline',
+            )
+            .with_only_columns(QbWrongQuestionState.id, maintain_column_froms=True)
+            .order_by(None)
+            .subquery()
+        )
+        return int((await db.execute(select(func.count()).select_from(scoped))).scalar_one())
 
     def get_reviewed_list_select(
         self,
@@ -429,17 +477,10 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
 
         口径：仍活跃且从未复盘，或上次复盘后又重新答错的题才需要再次复盘。
         """
-        stmt = self._list_stmt().where(
-            QbWrongQuestionState.user_id == user_id,
-            QbWrongQuestionState.status == 'active',
-            self._pending_review_expr(),
-        )
-        stmt = self._apply_entry_scope(stmt, entry_scope)
-        stmt = self._apply_domain_scope(stmt, domain_category_ids)
-        return stmt.order_by(
-            QbWrongQuestionState.is_pinned.desc(),
-            QbWrongQuestionState.last_wrong_time.desc().nullslast(),
-            QbWrongQuestionState.id.desc(),
+        return self.get_list_select(
+            user_id=user_id,
+            filters=WrongQuestionFilters(entry_scope=entry_scope, review_state='pending'),
+            domain_category_ids=domain_category_ids,
         )
 
     async def get_detail_row(
@@ -536,44 +577,48 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         domain_category_ids: Sequence[int] | None = None,
     ) -> dict[str, int]:
         """获取用户错题状态汇总"""
-        stmt = select(
-            func.count(QbWrongQuestionState.id).label('total_count'),
-            func.sum(case((QbWrongQuestionState.status == 'active', 1), else_=0)).label('active_count'),
-            func.sum(case((QbWrongQuestionState.status == 'resolved', 1), else_=0)).label('resolved_count'),
-            func.coalesce(func.sum(QbWrongQuestionState.wrong_count), 0).label('wrong_occurrence_count'),
-            func.sum(case((QbWrongQuestionState.review_count > 0, 1), else_=0)).label('reviewed_count'),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            QbWrongQuestionState.status == 'active',
-                            or_(
-                                QbWrongQuestionState.review_count == 0,
-                                and_(
-                                    QbWrongQuestionState.last_reviewed_time.is_not(None),
-                                    QbWrongQuestionState.last_wrong_time > QbWrongQuestionState.last_reviewed_time,
-                                ),
+        stmt = (
+            select(
+                func.count(QbWrongQuestionState.id).label('total_count'),
+                func.sum(case((QbWrongQuestionState.status == 'active', 1), else_=0)).label('active_count'),
+                func.sum(case((QbWrongQuestionState.status == 'resolved', 1), else_=0)).label('resolved_count'),
+                func.coalesce(func.sum(QbWrongQuestionState.wrong_count), 0).label('wrong_occurrence_count'),
+                func.sum(case((QbWrongQuestionState.review_count > 0, 1), else_=0)).label('reviewed_count'),
+                func.sum(
+                    case(
+                        (and_(QbWrongQuestionState.status == 'active', QbWrongQuestionState.review_count > 0), 1),
+                        else_=0,
+                    )
+                ).label('active_reviewed_count'),
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                QbWrongQuestionState.status == 'active',
+                                self._pending_review_expr(),
                             ),
+                            1,
                         ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label('pending_review_count'),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            QbWrongQuestionState.status == 'active',
-                            QbWrongQuestionState.next_practice_time.is_not(None),
-                            QbWrongQuestionState.next_practice_time <= now,
+                        else_=0,
+                    )
+                ).label('pending_review_count'),
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                QbWrongQuestionState.status == 'active',
+                                QbWrongQuestionState.next_practice_time.is_not(None),
+                                QbWrongQuestionState.next_practice_time <= now,
+                            ),
+                            1,
                         ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label('due_count'),
-        ).where(QbWrongQuestionState.user_id == user_id, QbWrongQuestionState.deleted == 0)
+                        else_=0,
+                    )
+                ).label('due_count'),
+            )
+            .where(QbWrongQuestionState.user_id == user_id, QbWrongQuestionState.deleted == 0)
+            .join(QbQuestion, and_(QbQuestion.id == QbWrongQuestionState.question_id, QbQuestion.deleted == 0))
+        )
         # 计数必须和列表用同一套领域口径，否则会出现「列表 3 条、角标 28」
         stmt = self._apply_domain_scope(stmt, domain_category_ids)
         row = (await db.execute(stmt)).mappings().one()
@@ -924,6 +969,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         db: AsyncSession,
         *,
         user_id: int,
+        status: str = 'active',
         domain_category_ids: Sequence[int] | None = None,
     ) -> list[dict[str, Any]]:
         """按集合统计错题：题库、导入批次、无批次散题三类集合
@@ -932,12 +978,17 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         题库来源按题库分组，自己导入/录入的按导入批次分组，无批次的归为散题集合。
         """
         reviewed_flag = case((QbWrongQuestionState.review_count > 0, 1), else_=0)
-        pending_flag = case((self._pending_review_expr(), 1), else_=0)
+        pending_flag = case((and_(QbWrongQuestionState.status == 'active', self._pending_review_expr()), 1), else_=0)
+        last_time = func.max(
+            QbWrongQuestionState.resolved_time if status == 'resolved' else QbWrongQuestionState.last_wrong_time
+        )
         base_filters = (
             QbWrongQuestionState.user_id == user_id,
             QbWrongQuestionState.deleted == 0,
-            # 与集合详情页口径保持一致：只统计仍在错题本中的题（已掌握有独立入口）
-            QbWrongQuestionState.status == 'active',
+            QbWrongQuestionState.status == status,
+            exists(
+                select(QbQuestion.id).where(QbQuestion.id == QbWrongQuestionState.question_id, QbQuestion.deleted == 0)
+            ),
         )
 
         bank_stmt = (
@@ -947,7 +998,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 func.count().label('total'),
                 func.sum(reviewed_flag).label('reviewed'),
                 func.sum(pending_flag).label('pending'),
-                func.max(QbWrongQuestionState.last_wrong_time).label('last_time'),
+                last_time.label('last_time'),
             )
             .select_from(QbWrongQuestionState)
             .join(QbBankItem, QbBankItem.id == QbWrongQuestionState.source_bank_item_id)
@@ -958,7 +1009,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         )
         bank_stmt = self._apply_domain_scope(bank_stmt, domain_category_ids)
 
-        batch_expr = QbWrongQuestionState.entry_metadata['import_batch_id'].as_string()
+        batch_expr = self._batch_id_expr()
         batch_stmt = (
             select(
                 batch_expr.label('batch_id'),
@@ -966,7 +1017,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 func.count().label('total'),
                 func.sum(reviewed_flag).label('reviewed'),
                 func.sum(pending_flag).label('pending'),
-                func.max(QbWrongQuestionState.last_wrong_time).label('last_time'),
+                last_time.label('last_time'),
             )
             .where(*base_filters, batch_expr.is_not(None))
             .group_by(literal_column('1'))
@@ -977,7 +1028,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             func.count().label('total'),
             func.sum(reviewed_flag).label('reviewed'),
             func.sum(pending_flag).label('pending'),
-            func.max(QbWrongQuestionState.last_wrong_time).label('last_time'),
+            last_time.label('last_time'),
         ).where(
             *base_filters,
             QbWrongQuestionState.entry_source.in_(EXTERNAL_ENTRY_SOURCES),
@@ -985,6 +1036,19 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             QbWrongQuestionState.source_bank_item_id.is_(None),
         )
         single_stmt = self._apply_domain_scope(single_stmt, domain_category_ids)
+
+        unassigned_stmt = select(
+            func.count().label('total'),
+            func.sum(reviewed_flag).label('reviewed'),
+            func.sum(pending_flag).label('pending'),
+            last_time.label('last_time'),
+        ).where(
+            *base_filters,
+            QbWrongQuestionState.entry_source.not_in(EXTERNAL_ENTRY_SOURCES),
+            batch_expr.is_(None),
+            QbWrongQuestionState.source_bank_item_id.is_(None),
+        )
+        unassigned_stmt = self._apply_domain_scope(unassigned_stmt, domain_category_ids)
 
         collections: list[dict[str, Any]] = []
 
@@ -999,6 +1063,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 'total': total,
                 'reviewed': reviewed,
                 'pending': pending,
+                'mastered': total if status == 'resolved' else 0,
                 'last_time': row['last_time'],
             })
 
@@ -1013,6 +1078,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 'total': total,
                 'reviewed': reviewed,
                 'pending': pending,
+                'mastered': total if status == 'resolved' else 0,
                 'last_time': row['last_time'],
             })
 
@@ -1028,7 +1094,22 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 'total': total,
                 'reviewed': reviewed,
                 'pending': pending,
+                'mastered': total if status == 'resolved' else 0,
                 'last_time': single_row['last_time'],
+            })
+
+        unassigned_row = (await db.execute(unassigned_stmt)).mappings().first()
+        if unassigned_row is not None and int(unassigned_row['total'] or 0) > 0:
+            total = int(unassigned_row['total'])
+            collections.append({
+                'collection_id': '',
+                'collection_type': 'unassigned',
+                'title': '未归集错题',
+                'total': total,
+                'reviewed': int(unassigned_row['reviewed'] or 0),
+                'pending': int(unassigned_row['pending'] or 0),
+                'mastered': total if status == 'resolved' else 0,
+                'last_time': unassigned_row['last_time'],
             })
 
         return collections
@@ -1102,9 +1183,10 @@ class CRUDQuestionReview(CRUDPlus[QbQuestionReview]):
         *,
         user_id: int,
         wrong_state_id: int,
+        event_type: str | None = None,
     ) -> Any:
         """构建一道错题的事件时间线游标查询"""
-        return (
+        stmt = (
             select(QbQuestionReview)
             .where(
                 QbQuestionReview.user_id == user_id,
@@ -1113,6 +1195,9 @@ class CRUDQuestionReview(CRUDPlus[QbQuestionReview]):
             )
             .order_by(QbQuestionReview.reviewed_time.desc(), QbQuestionReview.id.desc())
         )
+        if event_type is not None:
+            stmt = stmt.where(QbQuestionReview.event_type == event_type)
+        return stmt
 
     async def get_link_ids_batch(
         self,

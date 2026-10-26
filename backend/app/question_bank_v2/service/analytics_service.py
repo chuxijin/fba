@@ -752,6 +752,8 @@ class AnalyticsService:
             'correct_count'
         )
         avg_duration_col = sa.func.avg(QbQuestionAttempt.duration_ms).label('avg_duration_ms')
+        timed_attempt_count_col = sa.func.count(QbQuestionAttempt.duration_ms).label('timed_attempt_count')
+        total_duration_col = sa.func.sum(QbQuestionAttempt.duration_ms).label('total_duration_ms')
 
         stmt = (
             select(
@@ -762,6 +764,8 @@ class AnalyticsService:
                 attempt_count_col,
                 correct_count_col,
                 avg_duration_col,
+                timed_attempt_count_col,
+                total_duration_col,
             )
             .select_from(QbQuestionAttempt)
             .join(
@@ -819,7 +823,8 @@ class AnalyticsService:
             cor_count = int(row['correct_count'] or 0)
             accuracy = round(cor_count * 100.0 / att_count, 1) if att_count > 0 else 0.0
             avg_ms = float(row['avg_duration_ms'] or 0)
-            avg_seconds = round(avg_ms / 1000.0, 1) if avg_ms > 0 else None
+            timed_count = int(row['timed_attempt_count'])
+            avg_seconds = round(avg_ms / 1000.0, 1) if timed_count > 0 else None
 
             modules[kp_id].points.append(
                 KnowledgePointTrendPoint(
@@ -828,6 +833,8 @@ class AnalyticsService:
                     correct_count=cor_count,
                     accuracy=accuracy,
                     avg_seconds=avg_seconds,
+                    timed_attempt_count=timed_count,
+                    total_duration_ms=int(row['total_duration_ms']) if row['total_duration_ms'] is not None else None,
                 )
             )
 
