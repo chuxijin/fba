@@ -13,6 +13,7 @@ from sqlalchemy.dialects import sqlite
 from backend.app.question_bank_v2.crud.crud_review import wrong_question_state_dao
 from backend.app.question_bank_v2.schema.review import WrongQuestionFilters
 from backend.app.question_bank_v2.service.wrong_review_service import WrongReviewService
+from backend.utils.timezone import timezone
 
 
 class QueryResult:
@@ -64,7 +65,8 @@ class BrowseDB:
                 wrong_count INTEGER DEFAULT 1, correct_streak INTEGER DEFAULT 0,
                 first_wrong_time TEXT, last_wrong_time TEXT, last_practice_time TEXT,
                 is_pinned INTEGER DEFAULT 0, review_count INTEGER, last_reviewed_time TEXT,
-                practice_level INTEGER DEFAULT 0, last_rating INTEGER, next_practice_time TEXT, resolved_time TEXT
+                practice_level INTEGER DEFAULT 0, last_rating INTEGER, next_practice_time TEXT, resolved_time TEXT,
+                created_time TEXT
             );
             INSERT INTO qbank_v2_bank VALUES (1), (2);
             INSERT INTO qbank_v2_bank_revision VALUES (1,1,'试卷甲',0), (2,2,'试卷乙',0);
@@ -223,3 +225,69 @@ async def test_dashboard_browse_counter_does_not_include_mastered_or_deleted_que
     assert statistics['pending_review_count'] == 3
     assert statistics['resolved_count'] == 2
     assert statistics['reviewed_count'] > statistics['active_reviewed_count']
+
+
+@pytest.mark.parametrize(
+    ('since', 'expected_ids'),
+    [(None, {1, 3, 7}), ('2026-10-19T00:00:00Z', {3}), ('2026-09-26T00:00:00Z', {1, 3, 7})],
+)
+async def test_time_window_keeps_collections_sections_and_questions_consistent(
+    db: BrowseDB, monkeypatch: pytest.MonkeyPatch, since: str | None, expected_ids: set[int]
+) -> None:
+    """滚动时间窗口与领域、待复盘状态组合过滤，分组题量不累加重叠集合。"""
+    monkeypatch.setattr(WrongReviewService, 'resolve_domain_scope', AsyncMock(return_value=[1400]))
+    filters = WrongQuestionFilters(review_state='pending', since=since)
+    params = {'user_id': 7, 'filters': filters, 'domain_category_ids': [1400]}
+    for view in ['full', 'summary', 'outline']:
+        rows = (await db.execute(wrong_question_state_dao.get_list_select(**params, view=view))).all()
+        assert {row['id'] for row in rows} == expected_ids
+    total, sections = await wrong_question_state_dao.get_section_counts(db, **params)
+    assert total == len(expected_ids)
+    assert sum(row['total'] for row in sections) == total
+    page = await WrongReviewService.get_collections_page(db=db, user_id=7, since=filters.since)
+    assert page.total == total
+    for group in page.items:
+        extra: dict[str, Any] = {}
+        if group.collection_type == 'bank':
+            extra['bank_id'] = int(group.collection_id)
+        elif group.collection_type == 'import':
+            extra['import_batch_id'] = group.collection_id
+        elif group.collection_type == 'single':
+            extra['external_unbatched'] = True
+        else:
+            extra['unassigned'] = True
+        rows = (
+            await db.execute(
+                wrong_question_state_dao.get_list_select(**{**params, 'filters': filters.model_copy(update=extra)})
+            )
+        ).all()
+        assert len(rows) == group.pending
+
+
+async def test_time_window_includes_boundary_relapse_and_recorded_time_fallback(db: BrowseDB) -> None:
+    """边界包含等于下界的记录，近期再错以最新时间为准，旧录入可回退到创建时间。"""
+    db.connection.executescript("""
+        UPDATE qbank_v2_wrong_question_state SET last_wrong_time = '2026-10-19 12:00:00.000000' WHERE id = 1;
+        UPDATE qbank_v2_wrong_question_state
+        SET last_wrong_time = NULL, first_wrong_time = NULL, created_time = '2026-10-24 12:00:00.000000' WHERE id = 7;
+        UPDATE qbank_v2_wrong_question_state
+        SET last_wrong_time = '2026-10-19 11:59:59', first_wrong_time = '2026-10-25 12:00:00' WHERE id = 4;
+    """)
+    filters = WrongQuestionFilters(review_state='pending', since=datetime(2026, 10, 19, 12, tzinfo=timezone.tz_info))
+    rows = (
+        await db.execute(
+            wrong_question_state_dao.get_list_select(user_id=7, filters=filters, domain_category_ids=[1400])
+        )
+    ).all()
+    assert {row['id'] for row in rows} == {1, 3, 7}
+    batch_rows = (
+        await db.execute(
+            wrong_question_state_dao.get_list_select(
+                user_id=7,
+                filters=filters.model_copy(update={'import_batch_id': 'batch-aaaa'}),
+                section_name='数量关系',
+                domain_category_ids=[1400],
+            )
+        )
+    ).all()
+    assert [row['id'] for row in batch_rows] == [3]

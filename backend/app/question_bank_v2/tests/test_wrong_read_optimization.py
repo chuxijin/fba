@@ -2,6 +2,7 @@ import json
 
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, get_args
 from unittest.mock import AsyncMock
@@ -64,7 +65,8 @@ def read_db() -> Iterator[ReadDB]:
         connection.exec_driver_sql("""
             CREATE TABLE qbank_v2_question_attempt (
                 id INTEGER, user_id INTEGER, question_id INTEGER, is_correct INTEGER,
-                deleted INTEGER, submitted_time TEXT, response_data TEXT
+                deleted INTEGER, submitted_time TEXT, response_data TEXT,
+                attempt_no INTEGER, duration_ms INTEGER
             )
         """)
         yield ReadDB(connection)
@@ -106,10 +108,19 @@ def test_light_views_keep_scope_order_and_real_cursor_pagination(read_db: ReadDB
             assert 'qbank_v2_user_question_mastery' not in str(stmt)
         if view == 'outline':
             assert 'qbank_v2_question.stem' not in str(stmt)
-            assert all(set(row) == {'id', 'section_name'} for row in rows)
+            assert all(set(row) == {'id', 'section_name', 'module_group'} for row in rows)
         if view == 'summary':
             assert all(
-                set(row) == {'id', 'section_name', 'stem_preview', 'status', 'wrong_count', 'review_count'}
+                set(row)
+                == {
+                    'id',
+                    'section_name',
+                    'module_group',
+                    'stem_preview',
+                    'status',
+                    'wrong_count',
+                    'review_count',
+                }
                 for row in rows
             )
 
@@ -138,6 +149,25 @@ def test_light_payload_sizes_are_bounded_for_long_stems(read_db: ReadDB) -> None
     print(f'相同 5 道长题干的未压缩 JSON 响应字节数：{sizes}')
 
 
+async def test_wrong_history_reads_all_valid_attempts_with_duration(read_db: ReadDB) -> None:
+    rows = [
+        (1, 7, 101, 0, 0, '2026-10-25 12:00:00', json.dumps('A'), 1, 12000),
+        (2, 7, 101, 0, 0, '2026-10-26 12:00:00', json.dumps('B'), 2, None),
+        (3, 7, 101, 0, 0, '2026-10-27 12:00:00', json.dumps({'mode': 'memorize', 'viewed': True}), 3, 9000),
+        (4, 8, 101, 0, 0, '2026-10-27 12:00:00', json.dumps('other-user'), 1, 1000),
+        (5, 7, 101, 0, 5, '2026-10-27 12:00:00', json.dumps('deleted'), 4, 1000),
+        (6, 7, 101, 1, 0, '2026-10-27 12:00:00', json.dumps('correct'), 5, 1000),
+    ]
+    read_db.connection.exec_driver_sql('INSERT INTO qbank_v2_question_attempt VALUES (?,?,?,?,?,?,?,?,?)', rows)
+    history = await question_attempt_dao.get_wrong_answer_history(read_db, user_id=7, question_id=101)
+    assert [row['response_data'] for row in history] == ['B', 'A']
+    assert history[0]['attempt_no'] == 2
+    assert history[0]['duration_ms'] is None
+    assert history[1]['duration_ms'] == 12000
+    assert len(read_db.statements) == 1
+    assert len(read_db.statements[0].selected_columns) == 4
+
+
 @pytest.mark.parametrize(
     'response',
     [
@@ -148,28 +178,20 @@ def test_light_payload_sizes_are_bounded_for_long_stems(read_db: ReadDB) -> None
         {'mode': 'memorize', 'viewed': 1},
     ],
 )
-async def test_latest_wrong_reads_one_valid_response_and_excludes_only_json_true(
-    read_db: ReadDB, response: Any
-) -> None:
-    # 最新的两条是背题浏览标记，不能压过真正作答；同时间按 ID 决定最近记录。
+async def test_wrong_history_excludes_only_json_true_memorize_marker(read_db: ReadDB, response: Any) -> None:
     rows = [
-        (1, 7, 101, 0, 0, '2026-10-25 12:00:00', json.dumps('A')),
-        (2, 7, 101, 0, 0, '2026-10-25 12:00:00', json.dumps(response)),
-        (3, 7, 101, 0, 0, '2026-10-26 12:00:00', json.dumps({'mode': 'memorize', 'viewed': True})),
-        (4, 8, 101, 0, 0, '2026-10-27 12:00:00', json.dumps('other-user')),
-        (5, 7, 101, 0, 5, '2026-10-27 12:00:00', json.dumps('deleted')),
-        (6, 7, 101, 1, 0, '2026-10-27 12:00:00', json.dumps('correct')),
+        (1, 7, 101, 0, 0, '2026-10-25 12:00:00', json.dumps('A'), 1, 12000),
+        (2, 7, 101, 0, 0, '2026-10-26 12:00:00', json.dumps(response), 2, 15000),
+        (3, 7, 101, 0, 0, '2026-10-27 12:00:00', json.dumps({'mode': 'memorize', 'viewed': True}), 3, 9000),
     ]
-    read_db.connection.exec_driver_sql('INSERT INTO qbank_v2_question_attempt VALUES (?,?,?,?,?,?,?)', rows)
-    result = await question_attempt_dao.get_latest_wrong_response(read_db, user_id=7, question_id=101)
-    assert result == {'response_data': response}
-    assert len(read_db.statements) == 1
-    assert len(read_db.statements[0].selected_columns) == 1
-    assert read_db.statements[0]._limit_clause.value == 1
+    read_db.connection.exec_driver_sql('INSERT INTO qbank_v2_question_attempt VALUES (?,?,?,?,?,?,?,?,?)', rows)
+    history = await question_attempt_dao.get_wrong_answer_history(read_db, user_id=7, question_id=101)
+    assert [row['response_data'] for row in history] == [response, 'A']
+    assert history[0]['duration_ms'] == 15000
 
 
-async def test_latest_wrong_does_not_invent_response_without_valid_attempt(read_db: ReadDB) -> None:
-    assert await question_attempt_dao.get_latest_wrong_response(read_db, user_id=7, question_id=101) is None
+async def test_wrong_history_is_empty_without_valid_attempt(read_db: ReadDB) -> None:
+    assert await question_attempt_dao.get_wrong_answer_history(read_db, user_id=7, question_id=101) == []
 
 
 @pytest.mark.parametrize(('review_count', 'threshold'), [(0, 3), (1, 1)])
@@ -181,13 +203,45 @@ async def test_detail_only_reads_preference_when_threshold_depends_on_it(
     row['review_count'] = review_count
     preference = AsyncMock(return_value=SimpleNamespace(mastery_threshold=3))
     monkeypatch.setattr(wrong_question_state_dao, 'get_detail_row', AsyncMock(return_value=row))
-    monkeypatch.setattr(question_attempt_dao, 'get_latest_wrong_response', AsyncMock(return_value=None))
+    monkeypatch.setattr(question_attempt_dao, 'get_wrong_answer_history', AsyncMock(return_value=[]))
     monkeypatch.setattr(review_module.question_material_dao, 'get_all', AsyncMock(return_value=[]))
     monkeypatch.setattr(review_module.preference_service, 'get', preference)
 
     detail = await WrongReviewService.get_detail(db=read_db, user_id=7, wrong_state_id=row['id'])
     assert detail.resolve_threshold == threshold
     assert preference.await_count == (0 if review_count else 1)
+
+
+async def test_detail_exposes_wrong_history_and_latest_duration(
+    read_db: ReadDB, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stmt = wrong_question_state_dao.get_list_select(user_id=7, filters=WrongQuestionFilters())
+    row = dict(read_db.connection.execute(stmt).mappings().first())
+    row['review_count'] = 1
+    history = [
+        {
+            'response_data': 'B',
+            'attempt_no': 2,
+            'submitted_time': datetime(2026, 10, 26, 4, 0, tzinfo=UTC),
+            'duration_ms': 15000,
+        },
+        {
+            'response_data': 'A',
+            'attempt_no': 1,
+            'submitted_time': datetime(2026, 10, 25, 4, 0, tzinfo=UTC),
+            'duration_ms': 12000,
+        },
+    ]
+    monkeypatch.setattr(wrong_question_state_dao, 'get_detail_row', AsyncMock(return_value=row))
+    monkeypatch.setattr(question_attempt_dao, 'get_wrong_answer_history', AsyncMock(return_value=history))
+    monkeypatch.setattr(review_module.question_material_dao, 'get_all', AsyncMock(return_value=[]))
+
+    detail = await WrongReviewService.get_detail(db=read_db, user_id=7, wrong_state_id=row['id'])
+    assert detail.last_wrong_response == 'B'
+    assert detail.last_wrong_duration_ms == 15000
+    assert [item.answer for item in detail.wrong_answer_history] == ['B', 'A']
+    assert detail.wrong_answer_history[0].duration_ms == 15000
+    assert detail.wrong_answer_history[1].attempt_no == 1
 
 
 class BatchDB(DummyDB):
@@ -285,6 +339,47 @@ def api_client(monkeypatch: pytest.MonkeyPatch, read_db: ReadDB) -> Iterator[Tes
         yield client
 
 
+def test_section_list_orders_by_module_group_then_recent_time(read_db: ReadDB) -> None:
+    paths = {
+        3: ['数量关系', '数学运算', '工程问题'],
+        4: ['数量关系', '数字推理'],
+        14: ['数量关系', '数字推理', '多级数列'],
+    }
+    for state_id, module_path in paths.items():
+        raw = read_db.connection.exec_driver_sql(
+            'SELECT entry_metadata FROM qbank_v2_wrong_question_state WHERE id = ?', (state_id,)
+        ).scalar_one()
+        metadata = json.loads(raw)
+        metadata['module_path'] = module_path
+        read_db.connection.exec_driver_sql(
+            'UPDATE qbank_v2_wrong_question_state SET entry_metadata = ? WHERE id = ?',
+            (json.dumps(metadata), state_id),
+        )
+
+    stmt = wrong_question_state_dao.get_list_select(
+        user_id=7,
+        filters=WrongQuestionFilters(status='active'),
+        domain_category_ids=[1400],
+        section_name='数量关系',
+        view='summary',
+    )
+    rows = read_db.connection.execute(stmt).mappings().all()
+    # 二级分类相同的题必须连续，路径层级不同也不能被拆开；无路径题排最后。
+    assert [row['id'] for row in rows] == [14, 4, 3, 1]
+    assert [row['module_group'] for row in rows] == ['数字推理', '数字推理', '数学运算', None]
+
+    # 游标分页不能把 JSON 数组放进排序键，否则会触发 unhashable 错误。
+    page_rows = []
+    bookmark = None
+    while True:
+        page = select_page(read_db.connection, stmt, per_page=2, page=bookmark)
+        page_rows.extend(GetWrongQuestionSummaryItem.model_validate(row._mapping) for row in page)
+        if not page.paging.has_next:
+            break
+        bookmark = page.paging.bookmark_next
+    assert [row.id for row in page_rows] == [14, 4, 3, 1]
+
+
 @pytest.mark.parametrize('view', ['full', 'summary', 'outline'])
 def test_api_view_query_is_flat_and_scope_matches_sections(api_client: TestClient, view: str) -> None:
     params = {'review_state': 'pending', 'bank_id': 1, 'domain_category_id': 1400}
@@ -295,9 +390,9 @@ def test_api_view_query_is_flat_and_scope_matches_sections(api_client: TestClien
     assert [row['id'] for row in body['data']['items']] == [1]
     keys = set(body['data']['items'][0])
     if view == 'outline':
-        assert keys == {'id', 'section_name'}
+        assert keys == {'id', 'section_name', 'module_group'}
     elif view == 'summary':
-        assert keys == {'id', 'section_name', 'stem_preview', 'status', 'wrong_count', 'review_count'}
+        assert keys == {'id', 'section_name', 'module_group', 'stem_preview', 'status', 'wrong_count', 'review_count'}
     else:
         assert 'stem' in keys and 'first_wrong_time' in keys
     sections = api_client.get('/wrong-questions/sections', params=params)
@@ -323,3 +418,25 @@ def test_summary_preserves_decoded_comparison_symbols_through_response_validatio
 )
 def test_shared_query_validation_still_rejects_invalid_filters(api_client: TestClient, params: dict[str, Any]) -> None:
     assert api_client.get('/wrong-questions', params=params).status_code == 422
+
+
+@pytest.mark.parametrize('view', ['full', 'summary', 'outline'])
+def test_api_time_filter_matches_collection_counts_and_sections(api_client: TestClient, view: str) -> None:
+    params = {'review_state': 'pending', 'since': '2026-10-19T00:00:00Z', 'domain_category_id': 1400}
+    response = api_client.get('/wrong-questions', params={**params, 'view': view, 'import_batch_id': 'batch-aaaa'})
+    assert response.status_code == 200
+    assert [row['id'] for row in response.json()['data']['items']] == [3]
+    sections = api_client.get('/wrong-questions/sections', params=params)
+    assert sections.status_code == 200
+    assert sections.json()['data'] == {'total': 1, 'items': [{'section_name': '数量关系', 'total': 1}]}
+    collections = api_client.get('/wrong-questions/collections', params={**params, 'mode': 'pending'})
+    assert collections.status_code == 200
+    assert collections.json()['data']['total'] == 1
+    groups = [(row['collection_id'], row['pending']) for row in collections.json()['data']['items']]
+    assert groups == [('batch-aaaa', 1)]
+
+
+@pytest.mark.parametrize('endpoint', ['', '/sections', '/collections', '/pending-review'])
+@pytest.mark.parametrize('since', ['yesterday', '2026-10-19T00:00:00', '2026-02-30T00:00:00Z'])
+def test_api_rejects_invalid_or_timezone_less_time_filter(api_client: TestClient, endpoint: str, since: str) -> None:
+    assert api_client.get(f'/wrong-questions{endpoint}', params={'since': since}).status_code == 422

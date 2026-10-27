@@ -6,7 +6,7 @@ from decimal import Decimal
 from html import unescape
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import AwareDatetime, Field, model_validator
 
 from backend.app.question_bank_v2.schema.material import GetQuestionMaterialDetail
 from backend.app.question_bank_v2.schema.question import (
@@ -39,8 +39,17 @@ ENTRY_METADATA_BATCH_KEY = 'import_batch_id'
 ENTRY_METADATA_SOURCE_SYSTEM_KEY = 'source_system'
 ENTRY_METADATA_EXTERNAL_KEY_KEY = 'external_key'
 ENTRY_METADATA_SECTION_KEY = 'section_name'
+# 原试卷模块路径（如 ["判断推理", "图形推理", "数量规律"]），用于章节内按题型聚拢
+ENTRY_METADATA_MODULE_PATH_KEY = 'module_path'
 # 章节筛选的虚拟值：题库错题可回退到题库章节，仍无章节的外部题归入此项
 UNSECTIONED_SECTION_NAME = '__unsectioned__'
+REVIEW_THOUGHT_REQUIRED_MESSAGE = '请至少记录一种思路（错误思路或正确解法）'
+
+
+def has_review_thought(summary: str | None, review_data: Mapping[str, Any]) -> bool:
+    """错误思路与正确解法任选其一，标签或知识点不能替代思路记录。"""
+    prevention = review_data.get('prevention')
+    return bool(summary and summary.strip()) or (isinstance(prevention, str) and bool(prevention.strip()))
 
 
 class WrongQuestionFilters(SchemaBase):
@@ -54,6 +63,7 @@ class WrongQuestionFilters(SchemaBase):
     bank_id: int | None = Field(None, gt=0, description='题库 ID；用于集合详情')
     external_unbatched: bool = Field(default=False, description='只看无批次的散题')
     unassigned: bool = Field(default=False, description='只看无题库来源和导入批次的系统错题')
+    since: AwareDatetime | None = Field(None, description='最近答错或录入时间下界（含），ISO 8601 时间需带时区')
     review_state: Literal['reviewed', 'pending'] | None = Field(
         None, description='复盘子状态：reviewed=已复盘，pending=待复盘（含复盘后再次答错）'
     )
@@ -324,8 +334,10 @@ class CreateQuestionReviewParam(SchemaBase):
     knowledge_point_ids: list[int] = Field(default_factory=list, max_length=50, description='知识点 ID')
 
     @model_validator(mode='after')
-    def deduplicate_links(self) -> 'CreateQuestionReviewParam':
-        """去重复盘标签和知识点"""
+    def validate_content(self) -> 'CreateQuestionReviewParam':
+        """校验至少一种思路，并去重复盘标签和知识点。"""
+        if not has_review_thought(self.summary, self.review_data):
+            raise ValueError(REVIEW_THOUGHT_REQUIRED_MESSAGE)
         self.tag_ids = list(dict.fromkeys(self.tag_ids))
         self.knowledge_point_ids = list(dict.fromkeys(self.knowledge_point_ids))
         return self
@@ -362,6 +374,7 @@ class GetWrongQuestionOutlineItem(SchemaBase):
 
     id: int = Field(description='错题状态 ID')
     section_name: str | None = Field(None, description='原试卷章节/模块名，供答题卡分组')
+    module_group: str | None = Field(None, description='原试卷模块二级分类，用于章节内按题型聚拢')
 
 
 class GetWrongQuestionSummaryItem(GetWrongQuestionOutlineItem):
@@ -407,6 +420,16 @@ class GetWrongQuestionListItem(SchemaBase):
     next_practice_time: datetime | None = Field(None, description='下次重练时间')
     mastery_state: MasteryState = Field(default='new', description='掌握状态，供差异化导出')
     section_name: str | None = Field(None, description='原试卷章节/模块名（导入时记录），用于答题卡分组')
+    module_group: str | None = Field(None, description='原试卷模块二级分类（导入时记录），用于章节内按题型聚拢')
+
+
+class GetWrongAnswerHistoryItem(SchemaBase):
+    """错题详情中的一次错误作答历史"""
+
+    answer: Any | None = Field(None, description='当次错误答案快照')
+    attempt_no: int = Field(ge=1, description='同题第几次提交')
+    submitted_time: datetime = Field(description='提交时间')
+    duration_ms: int | None = Field(None, ge=0, description='当次作答用时毫秒')
 
 
 class GetWrongQuestionDetail(GetWrongQuestionListItem):
@@ -418,6 +441,10 @@ class GetWrongQuestionDetail(GetWrongQuestionListItem):
     section_name: str | None = Field(None, description='来源篇章名称')
     resolve_threshold: int = Field(ge=1, description='移出错题本还需达到的连对次数')
     materials: list[GetQuestionMaterialDetail] = Field(default_factory=list, description='题目材料')
+    last_wrong_duration_ms: int | None = Field(None, ge=0, description='最近一次错误作答用时毫秒')
+    wrong_answer_history: list[GetWrongAnswerHistoryItem] = Field(
+        default_factory=list, description='错误作答历史，最近一次在前'
+    )
 
 
 class GetQuestionReviewDetail(SchemaBase):
@@ -476,6 +503,9 @@ class WrongReviewDistributionItem(SchemaBase):
     name: str = Field(description='展示名称')
     color: str | None = Field(None, description='展示颜色')
     count: int = Field(ge=0, description='出现次数')
+    children: list['WrongReviewDistributionItem'] = Field(
+        default_factory=list, description='有复盘记录的下级模块或考点；次数按复盘事件去重向上汇总'
+    )
 
 
 class GetWrongReviewDashboard(SchemaBase):

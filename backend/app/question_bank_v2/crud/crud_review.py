@@ -27,6 +27,7 @@ from backend.app.question_bank_v2.model.statistics import QbUserQuestionMastery
 from backend.app.question_bank_v2.schema.review import (
     ENTRY_METADATA_BATCH_KEY,
     ENTRY_METADATA_DOMAIN_KEY,
+    ENTRY_METADATA_MODULE_PATH_KEY,
     ENTRY_METADATA_SECTION_KEY,
     EXTERNAL_ENTRY_SOURCES,
     UNSECTIONED_SECTION_NAME,
@@ -141,7 +142,35 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         return func.nullif(func.trim(QbWrongQuestionState.entry_metadata[ENTRY_METADATA_BATCH_KEY].as_string()), '')
 
     @staticmethod
-    def _list_stmt(view: WrongQuestionListView = 'full') -> Any:
+    def _wrong_time_expr() -> Any:
+        """优先最近答错时间，历史录入缺失时回退到首次答错或创建时间。"""
+        return func.coalesce(
+            QbWrongQuestionState.last_wrong_time,
+            QbWrongQuestionState.first_wrong_time,
+            QbWrongQuestionState.created_time,
+        )
+
+    @staticmethod
+    def _module_path_expr() -> Any:
+        """原试卷模块路径；导入时按最新一次练习快照写入，缺失时为空。"""
+        return QbWrongQuestionState.entry_metadata[ENTRY_METADATA_MODULE_PATH_KEY]
+
+    @staticmethod
+    def _module_group_expr() -> Any:
+        """模块路径二级分类，如“判断推理/图形推理”，用于章节内聚拢题型。"""
+        return CRUDWrongQuestionState._module_path_expr()[1].as_string()
+
+    @staticmethod
+    def _module_group_rank_expr() -> Any:
+        """缺失二级分类的题排在最后，避免游标排序键出现 NULL。"""
+        return case((CRUDWrongQuestionState._module_group_expr().is_(None), 1), else_=0)
+
+    @staticmethod
+    def _module_group_order_expr() -> Any:
+        return func.coalesce(CRUDWrongQuestionState._module_group_expr(), '')
+
+    @staticmethod
+    def _list_stmt(view: WrongQuestionListView = 'full', *, include_module_group: bool = False) -> Any:
         if view == 'full':
             columns = [
                 QbWrongQuestionState.id,
@@ -178,6 +207,13 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                     QbWrongQuestionState.wrong_count,
                     QbWrongQuestionState.review_count,
                 ])
+        if include_module_group:
+            # 只取二级分类文本，避免把 JSON 数组放进游标分页的唯一性计算。
+            columns.extend([
+                CRUDWrongQuestionState._module_group_expr().label('module_group'),
+                CRUDWrongQuestionState._module_group_rank_expr().label('_module_group_rank'),
+                CRUDWrongQuestionState._module_group_order_expr().label('_module_group_order'),
+            ])
         stmt = (
             select(*columns)
             .join(
@@ -291,6 +327,8 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         elif filters.review_state == 'pending':
             # 待复盘：尚无复盘记录，或复盘后再次做错
             stmt = stmt.where(self._pending_review_expr())
+        if filters.since is not None:
+            stmt = stmt.where(self._wrong_time_expr() >= filters.since)
         if filters.entry_source is not None:
             stmt = stmt.where(QbWrongQuestionState.entry_source == filters.entry_source)
         if filters.import_batch_id is not None:
@@ -338,9 +376,14 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         section_name: str | None = None,
         view: WrongQuestionListView = 'full',
     ) -> Any:
-        """构建用户错题游标分页查询"""
+        """构建用户错题游标分页查询
+
+        章节内先把相同模块路径的题排在一起，方便按图形推理、逻辑判断等题型浏览；
+        其他入口仍按最近答错时间排序。
+        """
+        include_module_group = section_name is not None
         stmt = self._apply_list_filters(
-            self._list_stmt(view),
+            self._list_stmt(view, include_module_group=include_module_group),
             user_id=user_id,
             filters=filters,
             domain_category_ids=domain_category_ids,
@@ -349,11 +392,18 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         if view != 'full':
             # 游标编码仍需要排序键；响应 Schema 会过滤这些内部字段。
             stmt = stmt.add_columns(QbWrongQuestionState.is_pinned, QbWrongQuestionState.last_wrong_time)
-        return stmt.order_by(
-            QbWrongQuestionState.is_pinned.desc(),
+        order_by = [QbWrongQuestionState.is_pinned.desc()]
+        if include_module_group:
+            # 按二级分类排序，避免路径层级不同导致同一题型被拆到两段。
+            order_by.extend([
+                self._module_group_rank_expr().asc(),
+                self._module_group_order_expr().asc(),
+            ])
+        order_by.extend([
             QbWrongQuestionState.last_wrong_time.desc().nullslast(),
             QbWrongQuestionState.id.desc(),
-        )
+        ])
+        return stmt.order_by(*order_by)
 
     async def get_section_counts(
         self,
@@ -399,13 +449,14 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         status: str,
         review_state: str | None,
         domain_category_ids: Sequence[int] | None,
+        since: datetime | None = None,
     ) -> int:
         """浏览总数取同一题目查询，不累加可能重叠的集合，也不只计算当前页。"""
         scoped = (
             self
             .get_list_select(
                 user_id=user_id,
-                filters=WrongQuestionFilters(status=status, review_state=review_state),
+                filters=WrongQuestionFilters(status=status, review_state=review_state, since=since),
                 domain_category_ids=domain_category_ids,
                 view='outline',
             )
@@ -414,6 +465,32 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             .subquery()
         )
         return int((await db.execute(select(func.count()).select_from(scoped))).scalar_one())
+
+    @staticmethod
+    def _review_knowledge_subtree(knowledge_point_id: int) -> Any:
+        """按稳定知识点 ID 展开同一启用体系的子孙，不依赖历史物化路径格式。"""
+        subtree = (
+            select(QbKnowledgePoint.id, QbKnowledgePoint.system_id)
+            .join(QbKnowledgeSystem, QbKnowledgeSystem.id == QbKnowledgePoint.system_id)
+            .where(
+                QbKnowledgePoint.id == knowledge_point_id,
+                QbKnowledgePoint.deleted == 0,
+                QbKnowledgeSystem.deleted == 0,
+                QbKnowledgeSystem.status == 'active',
+            )
+            .cte('review_knowledge_subtree', recursive=True)
+        )
+        return subtree.union(
+            select(QbKnowledgePoint.id, QbKnowledgePoint.system_id)
+            .join(
+                subtree,
+                and_(
+                    QbKnowledgePoint.parent_id == subtree.c.id,
+                    QbKnowledgePoint.system_id == subtree.c.system_id,
+                ),
+            )
+            .where(QbKnowledgePoint.deleted == 0)
+        )
 
     def get_reviewed_list_select(
         self,
@@ -449,14 +526,17 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 )
             )
         if knowledge_point_id is not None:
+            subtree = self._review_knowledge_subtree(knowledge_point_id)
             stmt = stmt.where(
                 exists(
                     select(QbQuestionReviewKnowledgePoint.id)
                     .join(QbQuestionReview, QbQuestionReview.id == QbQuestionReviewKnowledgePoint.review_id)
                     .where(
                         QbQuestionReview.wrong_state_id == QbWrongQuestionState.id,
+                        QbQuestionReview.user_id == user_id,
                         QbQuestionReview.deleted == 0,
-                        QbQuestionReviewKnowledgePoint.knowledge_point_id == knowledge_point_id,
+                        QbQuestionReview.event_type == 'review',
+                        QbQuestionReviewKnowledgePoint.knowledge_point_id.in_(select(subtree.c.id)),
                         QbQuestionReviewKnowledgePoint.deleted == 0,
                     )
                 )
@@ -472,6 +552,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         user_id: int,
         entry_scope: str | None,
         domain_category_ids: Sequence[int] | None = None,
+        since: datetime | None = None,
     ) -> Any:
         """构建待复盘队列游标分页查询
 
@@ -479,7 +560,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         """
         return self.get_list_select(
             user_id=user_id,
-            filters=WrongQuestionFilters(entry_scope=entry_scope, review_state='pending'),
+            filters=WrongQuestionFilters(entry_scope=entry_scope, review_state='pending', since=since),
             domain_category_ids=domain_category_ids,
         )
 
@@ -641,11 +722,14 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 QbWrongQuestionState,
                 QbWrongQuestionState.id == QbQuestionReview.wrong_state_id,
             )
+            .join(QbQuestion, and_(QbQuestion.id == QbQuestionReview.question_id, QbQuestion.deleted == 0))
             .where(
                 QbQuestionReview.user_id == user_id,
                 QbQuestionReview.deleted == 0,
                 QbQuestionReview.event_type == 'review',
                 QbQuestionReview.reviewed_time >= since,
+                QbWrongQuestionState.user_id == user_id,
+                QbWrongQuestionState.deleted == 0,
             )
         )
         review_scope_stmt = self._apply_domain_scope(
@@ -681,37 +765,69 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             .mappings()
             .all()
         ]
+        # 祖先关系完全从 parent_id 展开；同一次复盘选择父级和多个子点时，父级只计一次。
+        ancestors = (
+            select(
+                QbKnowledgePoint.id.label('point_id'),
+                QbKnowledgePoint.id.label('ancestor_id'),
+                QbKnowledgePoint.parent_id,
+                QbKnowledgePoint.system_id,
+            )
+            .where(
+                QbKnowledgePoint.system_id.in_(list(knowledge_system_ids) or [0]),
+                QbKnowledgePoint.deleted == 0,
+            )
+            .cte('review_point_ancestors', recursive=True)
+        )
+        parent = QbKnowledgePoint.__table__.alias('review_point_parent')
+        ancestors = ancestors.union(
+            select(ancestors.c.point_id, parent.c.id, parent.c.parent_id, parent.c.system_id).join(
+                parent,
+                and_(
+                    parent.c.id == ancestors.c.parent_id,
+                    parent.c.system_id == ancestors.c.system_id,
+                    parent.c.deleted == 0,
+                ),
+            )
+        )
         knowledge_rows_select = (
             select(
                 QbKnowledgePoint.id,
                 QbKnowledgePoint.name,
-                func.count(QbQuestionReviewKnowledgePoint.id).label('count'),
+                QbKnowledgePoint.parent_id,
+                QbKnowledgePoint.sort_order,
+                QbKnowledgeSystem.name.label('system_name'),
+                func.count(func.distinct(review_scope.c.id)).label('count'),
             )
             .select_from(QbQuestionReviewKnowledgePoint)
             .join(review_scope, review_scope.c.id == QbQuestionReviewKnowledgePoint.review_id)
             .join(
-                QbKnowledgePoint,
-                and_(
-                    QbKnowledgePoint.id == QbQuestionReviewKnowledgePoint.knowledge_point_id,
-                    QbKnowledgePoint.deleted == 0,
-                ),
+                ancestors,
+                ancestors.c.point_id == QbQuestionReviewKnowledgePoint.knowledge_point_id,
             )
-            .where(QbQuestionReviewKnowledgePoint.deleted == 0)
-        )
-        knowledge_rows_select = knowledge_rows_select.where(
-            QbKnowledgePoint.system_id.in_(list(knowledge_system_ids) or [0])
+            .join(QbKnowledgePoint, QbKnowledgePoint.id == ancestors.c.ancestor_id)
+            .join(QbKnowledgeSystem, QbKnowledgeSystem.id == QbKnowledgePoint.system_id)
+            .where(
+                QbQuestionReviewKnowledgePoint.deleted == 0,
+                QbKnowledgeSystem.deleted == 0,
+                QbKnowledgeSystem.status == 'active',
+            )
         )
         knowledge_rows = [
             dict(row)
             for row in (
                 await db.execute(
-                    knowledge_rows_select
-                    .group_by(QbKnowledgePoint.id, QbKnowledgePoint.name)
-                    .order_by(
-                        func.count(QbQuestionReviewKnowledgePoint.id).desc(),
+                    knowledge_rows_select.group_by(
+                        QbKnowledgePoint.id,
+                        QbKnowledgePoint.name,
+                        QbKnowledgePoint.parent_id,
+                        QbKnowledgePoint.sort_order,
+                        QbKnowledgeSystem.name,
+                    ).order_by(
+                        func.count(func.distinct(review_scope.c.id)).desc(),
+                        QbKnowledgePoint.sort_order,
                         QbKnowledgePoint.id,
                     )
-                    .limit(20)
                 )
             )
             .mappings()
@@ -971,6 +1087,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         user_id: int,
         status: str = 'active',
         domain_category_ids: Sequence[int] | None = None,
+        since: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """按集合统计错题：题库、导入批次、无批次散题三类集合
 
@@ -982,14 +1099,16 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         last_time = func.max(
             QbWrongQuestionState.resolved_time if status == 'resolved' else QbWrongQuestionState.last_wrong_time
         )
-        base_filters = (
+        base_filters = [
             QbWrongQuestionState.user_id == user_id,
             QbWrongQuestionState.deleted == 0,
             QbWrongQuestionState.status == status,
             exists(
                 select(QbQuestion.id).where(QbQuestion.id == QbWrongQuestionState.question_id, QbQuestion.deleted == 0)
             ),
-        )
+        ]
+        if since is not None:
+            base_filters.append(self._wrong_time_expr() >= since)
 
         bank_stmt = (
             select(

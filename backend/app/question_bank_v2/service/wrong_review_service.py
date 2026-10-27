@@ -48,8 +48,11 @@ from backend.app.question_bank_v2.schema.review import (
     ENTRY_METADATA_BATCH_KEY,
     ENTRY_METADATA_DOMAIN_KEY,
     ENTRY_METADATA_EXTERNAL_KEY_KEY,
+    ENTRY_METADATA_MODULE_PATH_KEY,
+    ENTRY_METADATA_SECTION_KEY,
     ENTRY_METADATA_SOURCE_SYSTEM_KEY,
     EXTERNAL_ENTRY_SOURCES,
+    REVIEW_THOUGHT_REQUIRED_MESSAGE,
     BatchImportFailure,
     BatchImportItemResult,
     BatchImportResult,
@@ -79,6 +82,7 @@ from backend.app.question_bank_v2.schema.review import (
     WrongQuestionListQuery,
     WrongQuestionStatistics,
     WrongReviewDistributionItem,
+    has_review_thought,
 )
 from backend.app.question_bank_v2.schema.user_content import ContentGroupNode
 from backend.app.question_bank_v2.service.content_group_service import content_group_service
@@ -284,12 +288,14 @@ class WrongReviewService:
         user_id: int,
         entry_scope: str | None = None,
         domain_category_ids: Sequence[int] | None = None,
+        since: datetime | None = None,
     ) -> Any:
         """构建待复盘队列查询"""
         return wrong_question_state_dao.get_pending_review_list_select(
             user_id=user_id,
             entry_scope=entry_scope,
             domain_category_ids=domain_category_ids,
+            since=since,
         )
 
     @staticmethod
@@ -303,13 +309,23 @@ class WrongReviewService:
         row = await wrong_question_state_dao.get_detail_row(db, pk=wrong_state_id, user_id=user_id)
         if row is None:
             raise errors.NotFoundError(msg='错题不存在')
-        last_wrong = await question_attempt_dao.get_latest_wrong_response(
+        wrong_history = await question_attempt_dao.get_wrong_answer_history(
             db,
             user_id=user_id,
             question_id=int(row['question_id']),
         )
-        if last_wrong is not None:
-            row['last_wrong_response'] = last_wrong['response_data']
+        if wrong_history:
+            row['last_wrong_response'] = wrong_history[0]['response_data']
+            row['last_wrong_duration_ms'] = wrong_history[0]['duration_ms']
+        row['wrong_answer_history'] = [
+            {
+                'answer': item['response_data'],
+                'attempt_no': item['attempt_no'],
+                'submitted_time': item['submitted_time'],
+                'duration_ms': item['duration_ms'],
+            }
+            for item in wrong_history
+        ]
         if row['review_count'] > 0:
             threshold = 1
         else:
@@ -433,8 +449,40 @@ class WrongReviewService:
             pending_review_count=statistics['pending_review_count'],
             review_event_count=event_count,
             reason_distribution=[WrongReviewDistributionItem(**row) for row in reason_rows],
-            knowledge_point_distribution=[WrongReviewDistributionItem(**row, color=None) for row in knowledge_rows],
+            knowledge_point_distribution=WrongReviewService._build_knowledge_distribution(knowledge_rows),
         )
+
+    @staticmethod
+    def _build_knowledge_distribution(rows: Sequence[dict[str, Any]]) -> list[WrongReviewDistributionItem]:
+        """把已去重汇总的节点接回父链，只展开知识体系总节点，不展开单个大模块。"""
+        nodes = {
+            int(row['id']): WrongReviewDistributionItem(
+                id=int(row['id']), name=str(row['name']), count=int(row['count']), color=None
+            )
+            for row in rows
+            if int(row['count']) > 0
+        }
+        roots: list[WrongReviewDistributionItem] = []
+        system_names: dict[int, str] = {}
+        for row in rows:
+            point_id = int(row['id'])
+            if point_id not in nodes:
+                continue
+            parent_id = row.get('parent_id')
+            if parent_id is None:
+                roots.append(nodes[point_id])
+                system_names[point_id] = str(row.get('system_name') or '')
+            elif int(parent_id) in nodes:
+                nodes[int(parent_id)].children.append(nodes[point_id])
+
+        core_modules = {'判断推理', '资料分析', '言语理解', '数量关系', '常识判断', '政治理论'}
+        modules: list[WrongReviewDistributionItem] = []
+        for root in roots:
+            if root.name == system_names[root.id] and root.name not in core_modules:
+                modules.extend(root.children)
+            else:
+                modules.append(root)
+        return sorted(modules, key=lambda item: (-item.count, item.id))
 
     @staticmethod
     async def get_statistics(
@@ -819,6 +867,7 @@ class WrongReviewService:
         user_id: int,
         mode: str = 'pending',
         domain_category_id: int | None = None,
+        since: datetime | None = None,
         cursor: str | None = None,
         size: int = COLLECTION_PAGE_SIZE,
     ) -> WrongCollectionPage:
@@ -838,6 +887,7 @@ class WrongReviewService:
             user_id=user_id,
             status='resolved' if mode == 'mastered' else 'active',
             domain_category_ids=domain_category_ids,
+            since=since,
         )
 
         sort_field = {'pending': 'pending', 'reviewed': 'reviewed', 'mastered': 'mastered'}[mode]
@@ -864,6 +914,7 @@ class WrongReviewService:
                 status='resolved' if mode == 'mastered' else 'active',
                 review_state=None if mode == 'mastered' else mode,
                 domain_category_ids=domain_category_ids,
+                since=since,
             ),
             next_cursor=str(offset + page_size) if has_more else None,
             has_more=has_more,
@@ -1545,6 +1596,23 @@ class WrongReviewService:
         )
 
     @staticmethod
+    async def _module_path_metadata(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        question_id: int,
+        section_name: str | None = None,
+    ) -> dict[str, Any]:
+        """从最近一次练习快照补原试卷模块路径，供章节内按题型聚拢。"""
+        module_path = await question_attempt_dao.get_latest_module_path(
+            db,
+            user_id=user_id,
+            question_id=question_id,
+            section_name=section_name,
+        )
+        return {ENTRY_METADATA_MODULE_PATH_KEY: module_path} if module_path else {}
+
+    @staticmethod
     async def _fill_existing_state_content(
         *,
         db: AsyncSession,
@@ -1583,6 +1651,16 @@ class WrongReviewService:
         if recorded_domain_id is not None and not metadata.get(ENTRY_METADATA_DOMAIN_KEY):
             metadata[ENTRY_METADATA_DOMAIN_KEY] = int(recorded_domain_id)
             changed = True
+        if not metadata.get(ENTRY_METADATA_MODULE_PATH_KEY):
+            module_metadata = await WrongReviewService._module_path_metadata(
+                db=db,
+                user_id=user_id,
+                question_id=state.question_id,
+                section_name=metadata.get(ENTRY_METADATA_SECTION_KEY),
+            )
+            if module_metadata:
+                metadata.update(module_metadata)
+                changed = True
         # 旧版本导入没有保存作答快照：重复导入时补上，不覆盖已有作答记录
         if obj.wrong_response is not None and state.last_wrong_response is None:
             state.last_wrong_response = obj.wrong_response
@@ -1680,6 +1758,15 @@ class WrongReviewService:
             user_id=user_id,
             obj=obj,
         )
+        if not entry_metadata.get(ENTRY_METADATA_MODULE_PATH_KEY):
+            entry_metadata.update(
+                await WrongReviewService._module_path_metadata(
+                    db=db,
+                    user_id=user_id,
+                    question_id=question.id,
+                    section_name=entry_metadata.get(ENTRY_METADATA_SECTION_KEY),
+                )
+            )
         if reused:
             existing_state_id = await WrongReviewService._find_state_id_by_question(
                 db=db,
@@ -1887,6 +1974,8 @@ class WrongReviewService:
         复盘只记录反思，不改错题本状态、不推进重练排期 —— 那条线由客观作答驱动。
         已移出错题本的题仍可复盘，方便考前回顾时补记录。
         """
+        if not has_review_thought(obj.summary, obj.review_data):
+            raise errors.RequestError(msg=REVIEW_THOUGHT_REQUIRED_MESSAGE)
         existing_result = await WrongReviewService._get_idempotent_review_result(
             db=db,
             user_id=user_id,

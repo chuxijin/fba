@@ -10,6 +10,7 @@ import pytest
 
 from backend.app.question_bank_v2.crud.crud_review import question_review_dao
 from backend.app.question_bank_v2.schema.review import (
+    REVIEW_THOUGHT_REQUIRED_MESSAGE,
     CreateExternalWrongQuestionParam,
     CreateQuestionReviewParam,
 )
@@ -258,6 +259,34 @@ def test_wrong_answer_creates_state_and_schedules_first_retry(monkeypatch: pytes
     assert harness.created['next_practice_time'] == next_practice_time(level=0, now=now)
     assert harness.mastery.attempt_count == 1
     assert harness.mastery.state == 'learning'
+
+
+def test_wrong_answer_stores_original_module_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """首次答错时把原试卷模块路径写进错题状态，供章节内按题型聚拢"""
+    now = datetime(2026, 7, 27, 12, tzinfo=UTC)
+    harness = AttemptHarness()
+    harness.patch(monkeypatch)
+
+    asyncio.run(
+        ReviewScheduleService.apply_attempt(
+            db=DummyDB(),
+            attempt=harness.attempt(attempt_id=102, is_correct=False, duration_ms=9000, now=now),
+            session_item=SimpleNamespace(
+                bank_item_id=17,
+                max_score=Decimal('1.00'),
+                display_config={
+                    'section_name': '判断推理',
+                    'external_practice': {'module_path': ['判断推理', '图形推理', '数量规律']},
+                },
+            ),
+        )
+    )
+
+    assert harness.created is not None
+    assert harness.created['entry_metadata'] == {
+        'section_name': '判断推理',
+        'module_path': ['判断推理', '图形推理', '数量规律'],
+    }
 
 
 def test_unreviewed_question_needs_full_streak_to_leave_wrong_book(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -687,9 +716,37 @@ def test_external_capture_without_review_content_stays_pending(monkeypatch: pyte
 
 
 @pytest.mark.parametrize(
+    ('summary', 'review_data'),
+    [(None, {}), (' \n ', {'prevention': '\t '}), (None, {'prevention': 123}), ('', {'note': '其他内容'})],
+)
+def test_review_requires_at_least_one_thought(summary: str | None, review_data: dict[str, Any]) -> None:
+    """标签、知识点和其他扩展字段不能替代错误思路或正确解法。"""
+    with pytest.raises(ValueError, match=REVIEW_THOUGHT_REQUIRED_MESSAGE):
+        CreateQuestionReviewParam(
+            idempotency_key='review-empty',
+            summary=summary,
+            review_data=review_data,
+            tag_ids=[1],
+            knowledge_point_ids=[88],
+        )
+
+
+async def test_review_service_rejects_empty_thought_before_writing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """内部调用绕过 Schema 构造时，服务也不能追加没有思路的复盘。"""
+    lookup = AsyncMock()
+    monkeypatch.setattr(WrongReviewService, '_get_idempotent_review_result', lookup)
+    obj = CreateQuestionReviewParam.model_construct(idempotency_key='review-empty', tag_ids=[1])
+    with pytest.raises(errors.RequestError, match=REVIEW_THOUGHT_REQUIRED_MESSAGE):
+        await WrongReviewService.submit_review(db=DummyDB(), user_id=7, wrong_state_id=31, obj=obj)
+    lookup.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
     ('initial_count', 'status', 'summary', 'review_data'),
     [
         (0, 'active', '选项混淆', {}),
+        (0, 'active', None, {'prevention': '先记录正确解法'}),
+        (0, 'active', '错误步骤', {'prevention': '正确步骤'}),
         (1, 'active', None, {'prevention': '先列出题干约束，再排除不满足条件的选项'}),
         (2, 'resolved', None, {'prevention': '补充一个更简洁的解法'}),
     ],
@@ -701,7 +758,7 @@ def test_review_does_not_touch_wrong_book_or_schedule(
     summary: str | None,
     review_data: dict[str, Any],
 ) -> None:
-    """首次与多次复盘都追加记录；再次复盘可只补正确思路，已掌握状态和排期保持不变"""
+    """首次与多次复盘均可任选一种思路，追加记录且不改变已掌握状态或排期。"""
     wrong_state = _new_wrong_state(
         review_count=initial_count,
         status=status,
@@ -793,7 +850,7 @@ def test_resolved_question_still_accepts_review(monkeypatch: pytest.MonkeyPatch)
                 db=DummyDB(),
                 user_id=7,
                 wrong_state_id=31,
-                obj=CreateQuestionReviewParam(idempotency_key='review-00002'),
+                obj=CreateQuestionReviewParam(idempotency_key='review-00002', summary='补记错误思路'),
             )
         )
 
@@ -818,7 +875,7 @@ def test_review_retry_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
             db=DummyDB(),
             user_id=7,
             wrong_state_id=31,
-            obj=CreateQuestionReviewParam(idempotency_key='review-00001'),
+            obj=CreateQuestionReviewParam(idempotency_key='review-00001', summary='同一份思路'),
         )
     )
 

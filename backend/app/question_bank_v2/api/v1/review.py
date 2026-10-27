@@ -1,6 +1,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Path, Query, Request, UploadFile
+from pydantic import AwareDatetime
 
 from backend.app.question_bank_v2.schema.review import (
     BatchImportResult,
@@ -179,6 +180,7 @@ async def get_pending_review_wrong_questions(
     db: CurrentSession,
     entry_scope: Annotated[WrongEntryScope | None, Query(description='题库错题或自主录入')] = None,
     domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
+    since: Annotated[AwareDatetime | None, Query(description='最近答错或录入时间下界（含），需带时区')] = None,
 ) -> ResponseSchemaModel[CursorPageData[GetWrongQuestionListItem]]:
     """仍在错题本且从未复盘，或上次复盘后又答错的题；完成本次复盘即出队"""
     domain_category_ids = await wrong_review_service.resolve_domain_scope(
@@ -190,6 +192,7 @@ async def get_pending_review_wrong_questions(
         user_id=request.user.id,
         entry_scope=entry_scope,
         domain_category_ids=domain_category_ids,
+        since=since,
     )
     return response_base.success(data=await cursor_paging_data(db, stmt, GetWrongQuestionListItem))
 
@@ -247,6 +250,7 @@ async def get_wrong_collections(
     db: CurrentSession,
     mode: Annotated[WrongBrowseMode, Query(description='浏览状态：待复盘、已复盘或已掌握')] = 'pending',
     domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取用户当前领域')] = None,
+    since: Annotated[AwareDatetime | None, Query(description='最近答错或录入时间下界（含），需带时区')] = None,
     cursor: Annotated[str | None, Query(description='上一页返回的 next_cursor')] = None,
     size: Annotated[int, Query(ge=1, le=100, description='每页数量')] = 20,
 ) -> ResponseSchemaModel[WrongCollectionPage]:
@@ -256,6 +260,7 @@ async def get_wrong_collections(
         user_id=request.user.id,
         mode=mode,
         domain_category_id=domain_category_id,
+        since=since,
         cursor=cursor,
         size=size,
     )

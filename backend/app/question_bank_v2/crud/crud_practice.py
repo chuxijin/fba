@@ -960,6 +960,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                             QbQuestionAttempt.attempt_no,
                             QbQuestionAttempt.response_data,
                             QbQuestionAttempt.submitted_time,
+                            QbQuestionAttempt.duration_ms,
                         )
                         .where(
                             QbQuestionAttempt.user_id == user_id,
@@ -990,6 +991,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                     'answer': response_data,
                     'attempt_no': row['attempt_no'],
                     'submitted_time': row['submitted_time'].isoformat(),
+                    'duration_ms': row['duration_ms'],
                 })
 
             tag_rows = (
@@ -1353,14 +1355,51 @@ class CRUDPracticeSessionResponse(CRUDPlus[QbPracticeSessionResponse]):
 class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
     """不可变题目提交事实数据库操作类"""
 
-    async def get_latest_wrong_response(
+    async def get_latest_module_path(
         self,
         db: AsyncSession,
         *,
         user_id: int,
         question_id: int,
-    ) -> dict[str, Any] | None:
-        """仅取最近一次有效错误答案，不加载整道题的作答历史。"""
+        section_name: str | None = None,
+    ) -> list[str] | None:
+        """取最近一次练习快照里的原试卷模块路径，供错题按题型聚拢"""
+        module_path = QbPracticeSessionItem.display_config['external_practice']['module_path']
+        stmt = (
+            select(module_path)
+            .join(
+                QbPracticeSessionItem,
+                and_(
+                    QbPracticeSessionItem.id == QbQuestionAttempt.session_item_id,
+                    QbPracticeSessionItem.deleted == 0,
+                ),
+            )
+            .where(
+                QbQuestionAttempt.user_id == user_id,
+                QbQuestionAttempt.question_id == question_id,
+                QbQuestionAttempt.deleted == 0,
+                module_path.is_not(None),
+            )
+        )
+        if section_name:
+            stmt = stmt.where(module_path[0].as_string() == section_name)
+        value = (
+            await db.execute(
+                stmt.order_by(QbQuestionAttempt.submitted_time.desc(), QbQuestionAttempt.id.desc()).limit(1)
+            )
+        ).scalar_one_or_none()
+        if isinstance(value, list) and value:
+            return [str(item) for item in value]
+        return None
+
+    async def get_wrong_answer_history(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        question_id: int,
+    ) -> list[dict[str, Any]]:
+        """按最近提交倒序返回有效错误作答，供错题详情展示错选历史。"""
         # SQLite 把 JSON 布尔值提取为 1，使用 json_type 区分 true 与数字 1；
         # 其他数据库比较 JSON 文本，避免布尔强转把字符串 "true" 也当作浏览标记。
         viewed_true = (
@@ -1373,7 +1412,12 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
             func.coalesce(viewed_true, False),
         )
         stmt = (
-            select(QbQuestionAttempt.response_data)
+            select(
+                QbQuestionAttempt.response_data,
+                QbQuestionAttempt.attempt_no,
+                QbQuestionAttempt.submitted_time,
+                QbQuestionAttempt.duration_ms,
+            )
             .where(
                 QbQuestionAttempt.user_id == user_id,
                 QbQuestionAttempt.question_id == question_id,
@@ -1382,10 +1426,9 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
                 ~memorize_view,
             )
             .order_by(QbQuestionAttempt.submitted_time.desc(), QbQuestionAttempt.id.desc())
-            .limit(1)
         )
-        row = (await db.execute(stmt)).mappings().first()
-        return dict(row) if row is not None else None
+        rows = (await db.execute(stmt)).mappings().all()
+        return [dict(row) for row in rows]
 
     async def get(
         self,

@@ -11,6 +11,10 @@ from backend.app.question_bank_v2.crud.crud_statistics import user_bank_item_pro
 from backend.app.question_bank_v2.model.practice import QbPracticeSessionItem, QbQuestionAttempt
 from backend.app.question_bank_v2.model.review import QbWrongQuestionState
 from backend.app.question_bank_v2.model.statistics import QbUserQuestionMastery
+from backend.app.question_bank_v2.schema.review import (
+    ENTRY_METADATA_MODULE_PATH_KEY,
+    ENTRY_METADATA_SECTION_KEY,
+)
 from backend.app.question_bank_v2.service.knowledge_mastery_service import knowledge_mastery_service
 from backend.app.question_bank_v2.service.practice_schedule_service import (
     derive_rating,
@@ -73,6 +77,38 @@ class ReviewScheduleService:
         wrong_state.last_duration_ms = attempt.duration_ms
 
     @staticmethod
+    def _attempt_metadata(session_item: QbPracticeSessionItem) -> dict[str, object]:
+        """从投递快照提取原试卷章节路径，供错题浏览按题型聚拢。"""
+        raw_display = getattr(session_item, 'display_config', None)
+        display = raw_display if isinstance(raw_display, dict) else {}
+        external = display.get('external_practice') if isinstance(display.get('external_practice'), dict) else {}
+        raw_path = external.get('module_path')
+        module_path = [str(item) for item in raw_path if str(item).strip()] if isinstance(raw_path, list) else []
+        section_name = str(display.get('section_name') or (module_path[0] if module_path else '')).strip()
+        metadata: dict[str, object] = {}
+        if section_name:
+            metadata[ENTRY_METADATA_SECTION_KEY] = section_name
+        if module_path:
+            metadata[ENTRY_METADATA_MODULE_PATH_KEY] = module_path
+        return metadata
+
+    @staticmethod
+    def _merge_attempt_metadata(
+        wrong_state: QbWrongQuestionState,
+        session_item: QbPracticeSessionItem,
+    ) -> None:
+        """只补缺失的章节路径，保留错题最初导入时的归属。"""
+        raw_metadata = getattr(wrong_state, 'entry_metadata', None)
+        metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+        changed = False
+        for key, value in ReviewScheduleService._attempt_metadata(session_item).items():
+            if value and not metadata.get(key):
+                metadata[key] = value
+                changed = True
+        if changed:
+            wrong_state.entry_metadata = metadata
+
+    @staticmethod
     async def _sync_wrong_state(
         *,
         db: AsyncSession,
@@ -89,6 +125,8 @@ class ReviewScheduleService:
             for_update=True,
         )
         now = attempt.submitted_time
+        if wrong_state is not None:
+            ReviewScheduleService._merge_attempt_metadata(wrong_state, session_item)
 
         if attempt.is_correct is False:
             mastery.state = 'learning'
@@ -101,6 +139,7 @@ class ReviewScheduleService:
                         'source_attempt_id': attempt.id,
                         'source_bank_item_id': session_item.bank_item_id,
                         'entry_source': 'attempt',
+                        'entry_metadata': ReviewScheduleService._attempt_metadata(session_item),
                         'status': 'active',
                         'wrong_count': 1,
                         'first_wrong_time': now,
