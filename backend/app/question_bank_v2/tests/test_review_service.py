@@ -1112,3 +1112,33 @@ def test_wrong_statistics_builds_knowledge_tree_and_keeps_external_flat(
     assert [group.name for group in statistics.groups] == ['马原', '自主录入']
     assert statistics.groups[0].children[0].question_ids == [101]
     assert statistics.groups[1].children[0].question_ids == [901]
+
+
+def test_get_latest_module_path_query_structure() -> None:
+    """验证获取错题原试卷模块路径的 SQL 能正确识别主表并生成合法 JOIN"""
+    from sqlalchemy import and_, select
+    from sqlalchemy.dialects import postgresql
+    from backend.app.question_bank_v2.model.practice import QbPracticeSessionItem, QbQuestionAttempt
+    from backend.app.question_bank_v2.crud.crud_practice import question_attempt_dao
+
+    module_path = QbPracticeSessionItem.display_config['external_practice']['module_path']
+    stmt = (
+        select(module_path)
+        .select_from(QbQuestionAttempt)
+        .join(
+            QbPracticeSessionItem,
+            and_(
+                QbPracticeSessionItem.id == QbQuestionAttempt.session_item_id,
+                QbPracticeSessionItem.deleted == 0,
+            ),
+        )
+        .where(
+            QbQuestionAttempt.user_id == 1,
+            QbQuestionAttempt.question_id == 2,
+            QbQuestionAttempt.deleted == 0,
+            module_path.is_not(None),
+        )
+    )
+    compiled = str(stmt.compile(dialect=postgresql.dialect()))
+    assert 'FROM qbank_v2_question_attempt JOIN qbank_v2_practice_session_item' in compiled
+

@@ -1367,6 +1367,7 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
         module_path = QbPracticeSessionItem.display_config['external_practice']['module_path']
         stmt = (
             select(module_path)
+            .select_from(QbQuestionAttempt)
             .join(
                 QbPracticeSessionItem,
                 and_(
