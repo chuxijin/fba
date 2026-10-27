@@ -60,3 +60,34 @@ def test_ensure_question_reuses_private_question_with_same_content(
     assert captured['content_hash'] == import_digest(
         item.model_dump(mode='json', include={'stem', 'content_format', 'question_type', 'options'})
     )
+
+
+def test_question_content_digest_normalizes_html_tags_and_whitespace() -> None:
+    """验证题干与选项带有 <b>/<strong>/<u>/&nbsp; 与不带时计算出的内容指纹完全一致"""
+    from backend.app.question_bank_v2.utils.external_practice import question_content_digest
+
+    raw_stem = '<p>2026年1月，全会举行。下列说法不正确的是（\xa0 \xa0 ）。</p>'
+    bold_stem = '<p>2026年1月，全会举行。下列说法<b>不正确</b>的是（&nbsp; &nbsp; ）。</p>'
+    options = [
+        {'option_code': 'A', 'content': '选项内容 A'},
+        {'option_code': 'B', 'content': '选项内容 <strong>B</strong>'},
+    ]
+    options_clean = [
+        {'option_code': 'A', 'content': '选项内容 A'},
+        {'option_code': 'B', 'content': '选项内容 B'},
+    ]
+
+    hash1 = question_content_digest(
+        stem=raw_stem,
+        content_format='html',
+        question_type='single_choice',
+        options=options_clean,
+    )
+    hash2 = question_content_digest(
+        stem=bold_stem,
+        content_format='html',
+        question_type='single_choice',
+        options=options,
+    )
+    assert hash1 == hash2
+

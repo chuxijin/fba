@@ -215,6 +215,15 @@ function normalizeRichTextImages(
   })
 }
 
+/**
+ * 剥离纯视觉排版标签（如否定词加粗注入的 <b>/<strong>），
+ * 确保错题入库题干与做题记录的原生题干一致。
+ */
+export function stripTypographyTags(html: string): string {
+  if (!html) return ''
+  return html.replace(/<\/?(?:b|strong)\b[^>]*>/gi, '')
+}
+
 /** 选项归一化：兼容 string[] 与 { key, value }[] 两种形态 */
 function normalizeOptions(raw: UnifiedQuestion['options']): WrongImportOption[] {
   if (!Array.isArray(raw)) return []
@@ -239,7 +248,7 @@ function normalizeOptions(raw: UnifiedQuestion['options']): WrongImportOption[] 
 
   return normalized.map((option, index) => ({
     ...option,
-    content: normalizeRichTextImages(option.content, 'option'),
+    content: normalizeRichTextImages(stripTypographyTags(option.content), 'option'),
     sort_order: index,
   }))
 }
@@ -271,7 +280,8 @@ function buildWrongResponse(answer?: string): string | string[] | undefined {
  * 材料走 materials 字段，由服务端建材料实体并关联，供多题共享、可版本化。
  */
 function buildStem(question: UnifiedQuestion): string {
-  return normalizeRichTextImages(String(question.stem || '').trim(), 'stem')
+  const cleaned = stripTypographyTags(String(question.stem || '').trim())
+  return normalizeRichTextImages(cleaned, 'stem')
 }
 
 /**

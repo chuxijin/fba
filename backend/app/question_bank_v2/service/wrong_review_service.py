@@ -1810,11 +1810,23 @@ class WrongReviewService:
             question_id=question.id,
             for_update=True,
         )
+        source_attempt_stmt = (
+            select(QbQuestionAttempt.id)
+            .where(
+                QbQuestionAttempt.user_id == user_id,
+                QbQuestionAttempt.question_id == question.id,
+                QbQuestionAttempt.deleted == 0,
+            )
+            .order_by(QbQuestionAttempt.submitted_time.desc(), QbQuestionAttempt.id.desc())
+            .limit(1)
+        )
+        source_attempt_id = (await db.execute(source_attempt_stmt)).scalar_one_or_none()
         wrong_state = await wrong_question_state_dao.create(
             db,
             {
                 'user_id': user_id,
                 'question_id': question.id,
+                'source_attempt_id': source_attempt_id,
                 'entry_source': obj.entry_source,
                 'entry_metadata': entry_metadata,
                 'status': 'active',
@@ -1833,6 +1845,7 @@ class WrongReviewService:
                 'user_id': user_id,
                 'question_id': question.id,
                 'wrong_state_id': wrong_state.id,
+                'source_attempt_id': source_attempt_id,
                 'event_type': 'capture',
                 'duration_ms': 0,
                 'summary': None,
