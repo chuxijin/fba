@@ -66,7 +66,14 @@ def read_db() -> Iterator[ReadDB]:
             CREATE TABLE qbank_v2_question_attempt (
                 id INTEGER, user_id INTEGER, question_id INTEGER, is_correct INTEGER,
                 deleted INTEGER, submitted_time TEXT, response_data TEXT,
-                attempt_no INTEGER, duration_ms INTEGER
+                attempt_no INTEGER, duration_ms INTEGER, session_id INTEGER,
+                annotations TEXT DEFAULT '[]'
+            )
+        """)
+        connection.exec_driver_sql("""
+            CREATE TABLE qbank_v2_practice_session (
+                id INTEGER, user_id INTEGER, mode TEXT, source_type TEXT,
+                delivery_config TEXT, deleted INTEGER DEFAULT 0
             )
         """)
         yield ReadDB(connection)
@@ -158,14 +165,62 @@ async def test_wrong_history_reads_all_valid_attempts_with_duration(read_db: Rea
         (5, 7, 101, 0, 5, '2026-10-27 12:00:00', json.dumps('deleted'), 4, 1000),
         (6, 7, 101, 1, 0, '2026-10-27 12:00:00', json.dumps('correct'), 5, 1000),
     ]
-    read_db.connection.exec_driver_sql('INSERT INTO qbank_v2_question_attempt VALUES (?,?,?,?,?,?,?,?,?)', rows)
+    read_db.connection.exec_driver_sql(
+        'INSERT INTO qbank_v2_question_attempt '
+        '(id,user_id,question_id,is_correct,deleted,submitted_time,response_data,attempt_no,duration_ms) '
+        'VALUES (?,?,?,?,?,?,?,?,?)',
+        rows,
+    )
     history = await question_attempt_dao.get_wrong_answer_history(read_db, user_id=7, question_id=101)
     assert [row['response_data'] for row in history] == ['B', 'A']
     assert history[0]['attempt_no'] == 2
     assert history[0]['duration_ms'] is None
     assert history[1]['duration_ms'] == 12000
     assert len(read_db.statements) == 1
-    assert len(read_db.statements[0].selected_columns) == 4
+    assert len(read_db.statements[0].selected_columns) == 6
+    assert [row['attempt_id'] for row in history] == [2, 1]
+    assert all(row['annotations'] == [] for row in history)
+
+
+async def test_history_pairs_each_answer_with_its_snapshot_and_filters_temporary_sessions(read_db: ReadDB) -> None:
+    contexts = [
+        ('practice', 'bank', {}, 1, True),  # A hidden formal session still has its snapshot.
+        ('practice', 'wrong', {}, 0, False),
+        ('practice', 'favorite', {}, 0, False),
+        ('practice', 'note', {}, 0, False),
+        ('practice', 'custom', {'annotations_enabled': False}, 0, False),
+        ('memorize', 'bank', {}, 0, False),
+        ('exam', 'bank', {}, 0, True),
+    ]
+    for index, (mode, source, config, deleted, _) in enumerate(contexts, 1):
+        read_db.connection.exec_driver_sql(
+            'INSERT INTO qbank_v2_practice_session VALUES (?,?,?,?,?,?)',
+            (index, 7, mode, source, json.dumps(config), deleted),
+        )
+        read_db.connection.exec_driver_sql(
+            'INSERT INTO qbank_v2_question_attempt VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            (
+                index,
+                7,
+                101,
+                0,
+                0,
+                '2026-10-25 12:00:00',
+                json.dumps(f'answer-{index}'),
+                index,
+                index * 1000,
+                index,
+                json.dumps([{'note': f'snapshot-{index}'}]),
+            ),
+        )
+    history = await question_attempt_dao.get_wrong_answer_history(read_db, user_id=7, question_id=101)
+    assert [row['attempt_id'] for row in history] == list(range(len(contexts), 0, -1))
+    for row in history:
+        index = row['attempt_id']
+        assert row['response_data'] == f'answer-{index}'
+        assert row['duration_ms'] == index * 1000
+        assert row['annotations'] == ([{'note': f'snapshot-{index}'}] if contexts[index - 1][4] else [])
+    assert len(read_db.statements) == 1
 
 
 @pytest.mark.parametrize(
@@ -184,7 +239,12 @@ async def test_wrong_history_excludes_only_json_true_memorize_marker(read_db: Re
         (2, 7, 101, 0, 0, '2026-10-26 12:00:00', json.dumps(response), 2, 15000),
         (3, 7, 101, 0, 0, '2026-10-27 12:00:00', json.dumps({'mode': 'memorize', 'viewed': True}), 3, 9000),
     ]
-    read_db.connection.exec_driver_sql('INSERT INTO qbank_v2_question_attempt VALUES (?,?,?,?,?,?,?,?,?)', rows)
+    read_db.connection.exec_driver_sql(
+        'INSERT INTO qbank_v2_question_attempt '
+        '(id,user_id,question_id,is_correct,deleted,submitted_time,response_data,attempt_no,duration_ms) '
+        'VALUES (?,?,?,?,?,?,?,?,?)',
+        rows,
+    )
     history = await question_attempt_dao.get_wrong_answer_history(read_db, user_id=7, question_id=101)
     assert [row['response_data'] for row in history] == [response, 'A']
     assert history[0]['duration_ms'] == 15000
@@ -220,12 +280,26 @@ async def test_detail_exposes_wrong_history_and_latest_duration(
     row['review_count'] = 1
     history = [
         {
+            'attempt_id': 92,
             'response_data': 'B',
             'attempt_no': 2,
             'submitted_time': datetime(2026, 10, 26, 4, 0, tzinfo=UTC),
             'duration_ms': 15000,
+            'annotations': [
+                {
+                    'id': 'mark_example',
+                    'target': 'stem',
+                    'segment': 0,
+                    'start': 0,
+                    'end': 2,
+                    'quote': '至少',
+                    'text_hash': '12345678',
+                    'note': '当次判断',
+                }
+            ],
         },
         {
+            'attempt_id': 91,
             'response_data': 'A',
             'attempt_no': 1,
             'submitted_time': datetime(2026, 10, 25, 4, 0, tzinfo=UTC),
@@ -242,6 +316,10 @@ async def test_detail_exposes_wrong_history_and_latest_duration(
     assert [item.answer for item in detail.wrong_answer_history] == ['B', 'A']
     assert detail.wrong_answer_history[0].duration_ms == 15000
     assert detail.wrong_answer_history[1].attempt_no == 1
+    assert detail.wrong_answer_history[0].attempt_id == 92
+    assert detail.wrong_answer_history[0].annotations[0].note == '当次判断'
+    assert detail.wrong_answer_history[1].attempt_id == 91
+    assert detail.wrong_answer_history[1].annotations == []
 
 
 async def test_detail_returns_published_explanations_with_default_first(

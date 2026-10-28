@@ -320,10 +320,12 @@ class WrongReviewService:
             row['last_wrong_duration_ms'] = wrong_history[0]['duration_ms']
         row['wrong_answer_history'] = [
             {
+                'attempt_id': item.get('attempt_id'),
                 'answer': item['response_data'],
                 'attempt_no': item['attempt_no'],
                 'submitted_time': item['submitted_time'],
                 'duration_ms': item['duration_ms'],
+                'annotations': item.get('annotations') or [],
             }
             for item in wrong_history
         ]

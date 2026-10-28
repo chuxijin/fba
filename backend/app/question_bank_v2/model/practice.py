@@ -301,6 +301,9 @@ class QbQuestionAttempt(Base):
         default=None,
         comment='作答时的题目内容哈希，用于审计',
     )
+    annotations: Mapped[list[dict[str, Any]]] = mapped_column(
+        CompatibleJSONB, default_factory=list, comment='提交时的用户文字标注快照'
+    )
     session_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         default=None,

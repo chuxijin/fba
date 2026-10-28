@@ -49,6 +49,7 @@ class CreatePracticeSessionParam(SchemaBase):
     year_end: int | None = Field(None, ge=1900, le=2100, description='试题结束年份')
     region: str | None = Field(None, max_length=100, description='地区关键字，模糊匹配题库名称、编码和描述')
     mode: PracticeMode = Field(default='practice', description='练习模式')
+    annotations_enabled: bool = Field(default=True, description='入口标注开关；临时自选重练关闭，其他场景规则优先')
     duration_minutes: int | None = Field(
         None,
         gt=0,

@@ -1,5 +1,6 @@
 """Question bank V2 ORM model exports."""
 
+from .annotation import QbQuestionAnnotation
 from .asset import (
     QbAsset,
     QbAssetLocation,
@@ -71,6 +72,7 @@ __all__ = [
     'QbPracticeSessionItem',
     'QbPracticeSessionResponse',
     'QbQuestion',
+    'QbQuestionAnnotation',
     'QbQuestionAnswer',
     'QbQuestionAsset',
     'QbQuestionAttempt',

@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, Field, model_validator
 
+from backend.app.question_bank_v2.schema.annotation import TextAnnotation
 from backend.app.question_bank_v2.schema.material import GetQuestionMaterialDetail
 from backend.app.question_bank_v2.schema.question import (
     ContentFormat,
@@ -426,10 +427,12 @@ class GetWrongQuestionListItem(SchemaBase):
 class GetWrongAnswerHistoryItem(SchemaBase):
     """错题详情中的一次错误作答历史"""
 
+    attempt_id: int | None = Field(None, gt=0, description='当次作答标识')
     answer: Any | None = Field(None, description='当次错误答案快照')
     attempt_no: int = Field(ge=1, description='同题第几次提交')
     submitted_time: datetime = Field(description='提交时间')
     duration_ms: int | None = Field(None, ge=0, description='当次作答用时毫秒')
+    annotations: list[TextAnnotation] = Field(default_factory=list, description='当次提交时的只读标注快照')
 
 
 class GetWrongQuestionExplanationItem(SchemaBase):

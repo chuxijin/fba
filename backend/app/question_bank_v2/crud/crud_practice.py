@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import String, and_, case, cast, func, or_, select
+from sqlalchemy import String, and_, case, cast, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
@@ -36,6 +36,10 @@ from backend.app.question_bank_v2.model.review import (
 )
 from backend.app.question_bank_v2.model.user_content import QbQuestionFavorite, QbQuestionNote
 from backend.app.question_bank_v2.schema.review import ENTRY_METADATA_SECTION_KEY
+from backend.app.question_bank_v2.utils.annotation_policy import (
+    PERSISTENT_ANNOTATION_MODES,
+    TEMPORARY_ANNOTATION_SOURCES,
+)
 from backend.app.question_bank_v2.utils.external_practice import online_session_condition
 from backend.core.conf import settings
 
@@ -1412,12 +1416,29 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
             func.coalesce(QbQuestionAttempt.response_data['mode'].as_string() == 'memorize', False),
             func.coalesce(viewed_true, False),
         )
+        annotations_enabled = and_(
+            QbPracticeSession.mode.in_(PERSISTENT_ANNOTATION_MODES),
+            QbPracticeSession.source_type.not_in(TEMPORARY_ANNOTATION_SOURCES),
+            func.coalesce(QbPracticeSession.delivery_config['annotations_enabled'].as_boolean(), True).is_(True),
+        )
         stmt = (
             select(
+                QbQuestionAttempt.id.label('attempt_id'),
                 QbQuestionAttempt.response_data,
                 QbQuestionAttempt.attempt_no,
                 QbQuestionAttempt.submitted_time,
                 QbQuestionAttempt.duration_ms,
+                case(
+                    (annotations_enabled, QbQuestionAttempt.annotations),
+                    else_=literal([], type_=QbQuestionAttempt.annotations.type),
+                ).label('annotations'),
+            )
+            .outerjoin(
+                QbPracticeSession,
+                and_(
+                    QbPracticeSession.id == QbQuestionAttempt.session_id,
+                    QbPracticeSession.user_id == user_id,
+                ),
             )
             .where(
                 QbQuestionAttempt.user_id == user_id,

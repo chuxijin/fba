@@ -403,6 +403,7 @@ class PracticeService:
             and bool(delivery_config.get('shuffle')) == obj.shuffle
             and delivery_config.get('requested_limit') == obj.limit
             and delivery_config.get('requested_duration_minutes') == obj.duration_minutes
+            and delivery_config.get('annotations_enabled', True) == obj.annotations_enabled
             and list(delivery_config.get('question_types') or []) == obj.question_types
             and delivery_config.get('year_start') == obj.year_start
             and delivery_config.get('year_end') == obj.year_end
@@ -630,6 +631,16 @@ class PracticeService:
             response.graded_time = now if grade.grading_status == 'graded' else None
             await db.flush()
 
+        from backend.app.question_bank_v2.crud.crud_annotation import question_annotation_dao
+        from backend.app.question_bank_v2.utils.annotation_policy import persistent_annotations_enabled
+
+        annotations = (
+            await question_annotation_dao.get_document(
+                db, user_id=user_id, question_id=session_item.question_id, context_key=f'item:{session_item.id}'
+            )
+            if persistent_annotations_enabled(session)
+            else None
+        )
         attempt_no = await question_attempt_dao.get_next_attempt_no(db, session_item.id)
         attempt = await question_attempt_dao.create(
             db,
@@ -639,6 +650,7 @@ class PracticeService:
                 'response_data': obj.response_data,
                 'session_id': session.id,
                 'session_item_id': session_item.id,
+                'annotations': [dict(mark) for mark in annotations.annotations] if annotations else [],
                 'attempt_no': attempt_no,
                 'is_correct': grade.is_correct,
                 'score': grade.score,
@@ -1067,6 +1079,7 @@ class PracticeService:
                     'shuffle': obj.shuffle,
                     'requested_limit': obj.limit,
                     'requested_duration_minutes': obj.duration_minutes,
+                    'annotations_enabled': obj.annotations_enabled,
                     'question_types': obj.question_types,
                     'year_start': obj.year_start,
                     'year_end': obj.year_end,

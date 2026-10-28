@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from backend.app.question_bank_v2.api.v1.analytics import router as analytics_router
+from backend.app.question_bank_v2.api.v1.annotation import router as annotation_router
 from backend.app.question_bank_v2.api.v1.autolabel import router as autolabel_router
 from backend.app.question_bank_v2.api.v1.bank import router as bank_router
 from backend.app.question_bank_v2.api.v1.catalog import router as catalog_router
@@ -24,6 +25,7 @@ router.include_router(catalog_router, prefix='/collections', tags=['题库合集
 router.include_router(composition_router, prefix='/banks', tags=['题库编排 V2'])
 router.include_router(collection_router, prefix='/questions', tags=['题目采集 V2'])
 router.include_router(interaction_router, prefix='/questions', tags=['交互题 V2'])
+router.include_router(annotation_router, prefix='/questions', tags=['个人题目标注 V2'])
 # 公开检索必须排在题目管理路由之前，否则 /questions/search 会被 /questions/{pk} 抢先匹配
 router.include_router(question_search_router, prefix='/questions', tags=['题目检索 V2'])
 router.include_router(question_router, prefix='/questions', tags=['题目 V2'])
