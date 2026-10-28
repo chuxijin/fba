@@ -432,11 +432,22 @@ class GetWrongAnswerHistoryItem(SchemaBase):
     duration_ms: int | None = Field(None, ge=0, description='当次作答用时毫秒')
 
 
+class GetWrongQuestionExplanationItem(SchemaBase):
+    """错题详情中的一版解析"""
+
+    content: str = Field(description='解析内容')
+    explanation_type: str = Field(description='解析类型')
+    is_default: bool = Field(description='是否默认解析')
+
+
 class GetWrongQuestionDetail(GetWrongQuestionListItem):
     """用户错题详情"""
 
     answer_data: Any | None = Field(None, description='权威答案')
     explanation: str | None = Field(None, description='默认解析')
+    explanations: list[GetWrongQuestionExplanationItem] = Field(
+        default_factory=list, description='已发布解析，默认解析在前；与练习看解析口径一致'
+    )
     bank_name: str | None = Field(None, description='来源题库名称')
     section_name: str | None = Field(None, description='来源篇章名称')
     resolve_threshold: int = Field(ge=1, description='移出错题本还需达到的连对次数')

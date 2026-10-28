@@ -363,6 +363,26 @@ class CRUDQuestionExplanation(CRUDPlus[QbQuestionExplanation]):
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    async def get_published_by_question(self, db: AsyncSession, question_id: int) -> list[dict[str, Any]]:
+        """按题读取已发布解析，默认解析在前。
+
+        只取展示需要的三列，且把 `status` 过滤下推到 SQL，避免把草稿解析带给学习者。
+        """
+        stmt = (
+            select(
+                QbQuestionExplanation.content,
+                QbQuestionExplanation.explanation_type,
+                QbQuestionExplanation.is_default,
+            )
+            .where(
+                QbQuestionExplanation.question_id == question_id,
+                QbQuestionExplanation.deleted == 0,
+                QbQuestionExplanation.status == 'published',
+            )
+            .order_by(QbQuestionExplanation.is_default.desc(), QbQuestionExplanation.id)
+        )
+        return [dict(row) for row in (await db.execute(stmt)).mappings().all()]
+
     async def get_all_by_questions(
         self,
         db: AsyncSession,

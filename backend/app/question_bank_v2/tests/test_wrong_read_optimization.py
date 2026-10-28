@@ -244,6 +244,33 @@ async def test_detail_exposes_wrong_history_and_latest_duration(
     assert detail.wrong_answer_history[1].attempt_no == 1
 
 
+async def test_detail_returns_published_explanations_with_default_first(
+    read_db: ReadDB, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """错题详情与练习看解析同口径：返回全部已发布解析，默认解析在前，草稿不外泄"""
+    stmt = wrong_question_state_dao.get_list_select(user_id=7, filters=WrongQuestionFilters())
+    row = dict(read_db.connection.execute(stmt).mappings().first())
+    row['review_count'] = 1
+    qid = int(row['question_id'])
+    read_db.connection.exec_driver_sql(
+        """INSERT INTO qbank_v2_question_explanation
+           (id,question_id,content,explanation_type,is_default,status,created_by,deleted)
+           VALUES (1,?,'官方解析','official',0,'published',7,0),
+                  (2,?,'默认解析','default',1,'published',7,0),
+                  (3,?,'草稿解析','ai',0,'draft',7,0)""",
+        (qid, qid, qid),
+    )
+    monkeypatch.setattr(wrong_question_state_dao, 'get_detail_row', AsyncMock(return_value=row))
+    monkeypatch.setattr(question_attempt_dao, 'get_wrong_answer_history', AsyncMock(return_value=[]))
+    monkeypatch.setattr(review_module.question_material_dao, 'get_all', AsyncMock(return_value=[]))
+
+    detail = await WrongReviewService.get_detail(db=read_db, user_id=7, wrong_state_id=row['id'])
+    assert [(item.explanation_type, item.is_default) for item in detail.explanations] == [
+        ('default', True),
+        ('official', False),
+    ]
+
+
 class BatchDB(DummyDB):
     @asynccontextmanager
     async def begin_nested(self) -> Any:

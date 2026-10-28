@@ -11,17 +11,41 @@ from backend.app.question_bank_v2.model.practice import QbPracticeSession, QbQue
 EXTERNAL_PRACTICE_ORIGIN = 'external_practice'
 EXTERNAL_SESSION_PREFIX = 'external-'
 
-_DIGEST_TAG_RE = re.compile(r'</?(?:b|strong|u)\b[^>]*>', re.IGNORECASE)
-_DIGEST_SPACE_RE = re.compile(r'[\s\u00a0\xa0]+')
+_DIGEST_TAG_RE = re.compile(r'</?(?:b|strong)\b[^>]*>', re.IGNORECASE)
+_UNDERLINE_TAG_RE = re.compile(r'<u[^>]*>[\s\u00a0\xa0&nbsp;]*</u>', re.IGNORECASE)
+_BLANK_RE = re.compile(r'_{2,}')
+_SPACE_RE = re.compile(r'[\s\u00a0\xa0]+')
+_IMG_TAG_RE = re.compile(r'<img\b[^>]*>', re.IGNORECASE)
+_FENBI_DOMAIN_RE = re.compile(r'(?:fb\.)?fenbike\.cn')
+
+
+def _clean_img_tag(match: re.Match) -> str:
+    tag = match.group(0)
+    src_match = re.search(r'src=["\']([^"\']+)["\']', tag, re.IGNORECASE)
+    if not src_match:
+        return '<img>'
+    src = src_match.group(1)
+    src = _FENBI_DOMAIN_RE.sub('fb.fbstatic.cn', src)
+    flag_match = re.search(r'flag=["\']([^"\']+)["\']', tag, re.IGNORECASE)
+    flag_attr = f' flag="{flag_match.group(1)}"' if flag_match else ''
+    return f'<img src="{src}"{flag_attr}>'
 
 
 def normalize_content_for_digest(text: str) -> str:
-    """对题干和选项文本进行归一化清洗，消除纯排版标签和空白符差异对题目指纹的影响"""
+    """对题干和选项文本进行归一化清洗，消除排版标签、填空下划线和图片属性差异对题目指纹的影响"""
     if not text:
         return ''
-    cleaned = _DIGEST_TAG_RE.sub('', text)
+    # 1. 统一挖空下划线：<u>空白</u> 与 连续下划线统一为 ______
+    cleaned = _UNDERLINE_TAG_RE.sub('______', text)
+    cleaned = _BLANK_RE.sub('______', cleaned)
+    # 2. 剥离 b, strong 视觉强调标签以及可能剩余的 u 标签
+    cleaned = _DIGEST_TAG_RE.sub('', cleaned)
+    cleaned = re.sub(r'</?u\b[^>]*>', '', cleaned, flags=re.IGNORECASE)
+    # 3. 规范化 img 标签（消除内联 style/width/height 差异与域名混淆）
+    cleaned = _IMG_TAG_RE.sub(_clean_img_tag, cleaned)
+    # 4. 统一空白符与实体
     cleaned = cleaned.replace('&nbsp;', ' ')
-    cleaned = _DIGEST_SPACE_RE.sub(' ', cleaned).strip()
+    cleaned = _SPACE_RE.sub(' ', cleaned).strip()
     return cleaned
 
 

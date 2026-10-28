@@ -1,3 +1,5 @@
+import { normalizeInlineSymbols } from './normalize'
+
 export interface ReportModule {
   module_name: string
   total_questions: number
@@ -258,12 +260,12 @@ export function buildFenbiPracticeQuestions(input: {
   solutions.forEach((item, index) => {
     const key = String(item?.globalId || '')
     const user = userAnswers[key]
-    const stem = String(item?.content || '').trim()
+    const stem = normalizeInlineSymbols(String(item?.content || '').trim())
     if (!key || !user || !stem) return
     const optionTexts: string[] = Array.isArray(item?.accessories?.[0]?.options) ? item.accessories[0].options : []
     const options: PracticeReportOption[] = []
     optionTexts.forEach((content, order) => {
-      const text = String(content || '').trim()
+      const text = normalizeInlineSymbols(String(content || '').trim())
       if (text && order < OPTION_CODES.length) options.push({ option_code: OPTION_CODES[order], content: text, sort_order: order })
     })
     if (options.length < 2) return

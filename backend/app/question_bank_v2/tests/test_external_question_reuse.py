@@ -91,3 +91,27 @@ def test_question_content_digest_normalizes_html_tags_and_whitespace() -> None:
     )
     assert hash1 == hash2
 
+
+def test_question_content_digest_normalizes_underlines_and_images() -> None:
+    """验证填空题 <u> 占位符与 ______、图片 style/域名差异时计算出的内容指纹完全一致"""
+    from backend.app.question_bank_v2.utils.external_practice import question_content_digest
+
+    raw_stem = '<p>发展生态。<u>\xa0 \xa0 \xa0 \xa0\xa0</u>。有<img flag="tex" src="//fb.fenbike.cn/formulas?latex=123"></p>'
+    norm_stem = '<p>发展生态。______。有<img flag="tex" src="//fb.fbstatic.cn/formulas?latex=123" data-image-layout="inline" style="max-width:100%;height:auto;display:inline-block;"></p>'
+    options = [{'option_code': 'A', 'content': '选项 A'}]
+
+    hash1 = question_content_digest(
+        stem=raw_stem,
+        content_format='html',
+        question_type='single_choice',
+        options=options,
+    )
+    hash2 = question_content_digest(
+        stem=norm_stem,
+        content_format='html',
+        question_type='single_choice',
+        options=options,
+    )
+    assert hash1 == hash2
+
+

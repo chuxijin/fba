@@ -64,6 +64,7 @@ from backend.app.question_bank_v2.schema.review import (
     GetQuestionReviewDetail,
     GetReviewTagDetail,
     GetWrongQuestionDetail,
+    GetWrongQuestionExplanationItem,
     GetWrongQuestionListItem,
     GetWrongQuestionOutlineItem,
     GetWrongQuestionSummaryItem,
@@ -336,10 +337,23 @@ class WrongReviewService:
         material_rows = await question_material_dao.get_all(db, int(row['question_id']))
         materials = [GetQuestionMaterialDetail(**item) for item in material_rows]
 
+        # 解析：与练习看解析同口径，返回全部已发布版本（默认解析在前），
+        # `explanation` 字段继续保留为默认解析文本，老客户端不受影响。
+        explanation_rows = await question_explanation_dao.get_published_by_question(db, int(row['question_id']))
+        explanations = [
+            GetWrongQuestionExplanationItem(
+                content=item['content'],
+                explanation_type=item['explanation_type'],
+                is_default=bool(item['is_default']),
+            )
+            for item in explanation_rows
+        ]
+
         return GetWrongQuestionDetail(
             **row,
             resolve_threshold=max(1, threshold - row['correct_streak']),
             materials=materials,
+            explanations=explanations,
         )
 
     @staticmethod
