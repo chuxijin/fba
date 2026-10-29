@@ -516,6 +516,7 @@ class Settings(BaseSettings):
     VIRTUAL_PAY_OFFERID: str = ''
     VIRTUAL_PAY_APPKEY: str = ''
     VIRTUAL_PAY_SANDBOX_APPKEY: str = ''
+    VIRTUAL_PAY_ENV: int = 0
 
     ##################################################
     # [ App ] 虎皮椒支付（与微信虚拟支付并存）

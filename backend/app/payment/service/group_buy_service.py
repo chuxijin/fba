@@ -295,7 +295,9 @@ class GroupBuyService:
     @staticmethod
     async def reserve_order(db: AsyncSession, *, code: str, user_id: int, obj: GroupBuyPrepayParam) -> PayOrder:
         GroupBuyService.ensure_open()
-        if settings.ENVIRONMENT == 'prod' and obj.env != 0:
+        if getattr(settings, 'VIRTUAL_PAY_ENV', None) == 0:
+            obj.env = 0
+        elif settings.ENVIRONMENT == 'prod' and obj.env != 0:
             raise errors.ForbiddenError(msg='生产拼团只允许现网付款')
         team = await group_buy_dao.team(db, code)
         if not team:

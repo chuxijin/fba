@@ -67,6 +67,18 @@ class VirtualPayProvider(PaymentProvider):
             digestmod=hashlib.sha256,
         ).hexdigest()
 
+    def _resolve_env(self, env: int | None = None) -> int:
+        """
+        获取当前生效的虚拟支付环境（0=现网, 1=沙箱）
+
+        优先读取环境变量 settings.VIRTUAL_PAY_ENV；
+        若未配置则回退到入参 env（默认为 0）。
+        """
+        configured_env = getattr(settings, 'VIRTUAL_PAY_ENV', None)
+        if configured_env is not None:
+            return int(configured_env)
+        return int(env or 0)
+
     def _get_appkey(self, env: int = 0) -> str:
         """
         获取对应环境的 appkey
@@ -74,7 +86,8 @@ class VirtualPayProvider(PaymentProvider):
         :param env: 0=现网, 1=沙箱
         :return:
         """
-        appkey = settings.VIRTUAL_PAY_SANDBOX_APPKEY if env == 1 else settings.VIRTUAL_PAY_APPKEY
+        resolved_env = self._resolve_env(env)
+        appkey = settings.VIRTUAL_PAY_SANDBOX_APPKEY if resolved_env == 1 else settings.VIRTUAL_PAY_APPKEY
         if not appkey:
             raise ValueError('微信虚拟支付 AppKey 未配置')
         return appkey
@@ -142,6 +155,7 @@ class VirtualPayProvider(PaymentProvider):
         :param env: 环境
         :return:
         """
+        env = self._resolve_env(env)
         session = await self._get_session()
         appkey = self._get_appkey(env)
         body_str = json.dumps(body, separators=(',', ':'))
@@ -191,7 +205,7 @@ class VirtualPayProvider(PaymentProvider):
         openid = kwargs.get('openid')
         session_key = kwargs.get('session_key')
         product_id = str(kwargs.get('product_id') or order_no)
-        env = kwargs.get('env', 0)
+        env = self._resolve_env(kwargs.get('env'))
 
         if not offerid:
             raise ValueError('微信虚拟支付 OfferID 未配置')
@@ -248,7 +262,7 @@ class VirtualPayProvider(PaymentProvider):
         :param order_no: 商户订单号
         :return:
         """
-        env = int(kwargs.get('env') or 0)
+        env = self._resolve_env(kwargs.get('env'))
         openid = kwargs.get('openid')
         if not openid:
             raise ValueError('虚拟支付查询必须提供 openid')
@@ -261,6 +275,9 @@ class VirtualPayProvider(PaymentProvider):
         result = await self._call_xpay_api('/xpay/query_order', body, env=env)
 
         if result.get('errcode', 0) != 0:
+            if result.get('errcode') == 268490002 or '数据不存在' in str(result.get('errmsg', '')):
+                log.info(f'虚拟支付订单未在微信侧生成(视为未支付): order_no={order_no}')
+                return {'errcode': 0, 'order': {'order_id': order_no, 'status': 0}}
             log.error(f'虚拟支付查询失败: order_no={order_no}, result={result}')
             raise RuntimeError(f'虚拟支付查询失败: {result.get("errmsg", "unknown")}')
 
@@ -346,7 +363,7 @@ class VirtualPayProvider(PaymentProvider):
         :param reason: 退款原因
         :return:
         """
-        env = int(kwargs.get('env') or 0)
+        env = self._resolve_env(kwargs.get('env'))
         body = {
             'app_id': settings.WX_MINIAPP_APPID,
             'out_trade_no': order_no,
@@ -439,6 +456,7 @@ class VirtualPayProvider(PaymentProvider):
         :param env: 环境
         :return:
         """
+        env = self._resolve_env(env)
         body = {
             'order_id': order_no,
             'env': env,
