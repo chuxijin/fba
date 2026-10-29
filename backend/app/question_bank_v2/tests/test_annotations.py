@@ -66,6 +66,63 @@ def test_annotation_range_and_material_validation() -> None:
         AnnotationContext(session_key='abcdefgh')
 
 
+def test_annotation_colors_preserve_legacy_yellow_and_validate_the_palette() -> None:
+    assert TextAnnotation(**mark()).color == 'yellow'
+    for color in ('yellow', 'green', 'blue', 'pink', 'purple'):
+        assert TextAnnotation(**mark(color=color)).model_dump()['color'] == color
+    for color in ('orange', '#facc15', 'background:red', None):
+        with pytest.raises(ValidationError):
+            TextAnnotation(**mark(color=color))
+
+
+@pytest.mark.asyncio
+async def test_color_round_trip_preserves_the_original_attempt_snapshot(
+    harness: tuple[DB, SimpleNamespace, SimpleNamespace],
+) -> None:
+    db, document, attempt = harness
+    result = await module.annotation_service.save(
+        db=db,
+        user_id=7,
+        question_id=77,
+        obj=SaveAnnotationsParam(
+            context_key='review:91', save_version=1, source='wrong', annotations=[mark(color='green')]
+        ),
+    )
+    assert result.annotations[0].color == 'green'
+    assert document.annotations[0]['color'] == 'green'
+    assert result.original_annotations[0].color == 'yellow'
+    assert attempt.annotations[0]['color'] == 'yellow'
+    restored = await module.annotation_service.get(
+        db=db, user_id=7, question_id=77, obj=AnnotationContext(source='wrong')
+    )
+    assert restored.annotations[0].color == 'green'
+    assert restored.original_annotations[0].color == 'yellow'
+
+
+@pytest.mark.asyncio
+async def test_legacy_yellow_retry_remains_idempotent_but_a_stale_color_change_conflicts(
+    harness: tuple[DB, SimpleNamespace, SimpleNamespace],
+) -> None:
+    db, document, _ = harness
+    document.annotations[0].pop('color')
+    result = await module.annotation_service.save(
+        db=db,
+        user_id=7,
+        question_id=77,
+        obj=SaveAnnotationsParam(context_key='review:91', save_version=0, annotations=[mark()]),
+    )
+    assert result.save_version == 1
+    assert result.annotations[0].color == 'yellow'
+    assert 'color' not in document.annotations[0]
+    with pytest.raises(errors.ConflictError):
+        await module.annotation_service.save(
+            db=db,
+            user_id=7,
+            question_id=77,
+            obj=SaveAnnotationsParam(context_key='review:91', save_version=0, annotations=[mark(color='blue')]),
+        )
+
+
 @pytest.mark.asyncio
 async def test_review_edits_preserve_original_attempt_snapshot(
     harness: tuple[DB, SimpleNamespace, SimpleNamespace],
@@ -170,6 +227,7 @@ async def test_answer_submission_copies_annotation_snapshot(
     harness: tuple[DB, SimpleNamespace, SimpleNamespace], monkeypatch: pytest.MonkeyPatch, source_type: str
 ) -> None:
     db, document, _ = harness
+    document.annotations[0]['color'] = 'green'
     session = SimpleNamespace(
         id=71,
         mode='exam',
@@ -214,8 +272,10 @@ async def test_answer_submission_copies_annotation_snapshot(
         db=db, session_key='abcdefgh', user_id=7, session_item_id=81, obj=SubmitPracticeItemParam(response_data='A')
     )
     document.annotations[0]['note'] = '后来改动'
+    document.annotations[0]['color'] = 'pink'
     if source_type == 'bank':
         assert saved['annotations'][0]['note'] == '不是恰好'
+        assert saved['annotations'][0]['color'] == 'green'
     else:
         assert saved['annotations'] == []
         module.question_annotation_dao.get_document.assert_not_awaited()

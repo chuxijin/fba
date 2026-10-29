@@ -18,6 +18,9 @@ class TextAnnotation(SchemaBase):
     quote: str = Field(min_length=1, max_length=5000)
     text_hash: str = Field(pattern=r'^[0-9a-f]{8}$')
     note: str = Field(default='', max_length=500)
+    color: Literal['yellow', 'green', 'blue', 'pink', 'purple'] = Field(
+        default='yellow', description='个人高亮颜色；旧标注默认黄色'
+    )
 
     @model_validator(mode='after')
     def validate_range(self) -> 'TextAnnotation':

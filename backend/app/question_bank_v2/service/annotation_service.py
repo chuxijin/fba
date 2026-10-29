@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.question_bank_v2.crud.crud_annotation import question_annotation_dao
 from backend.app.question_bank_v2.crud.crud_practice import practice_session_dao
 from backend.app.question_bank_v2.model.annotation import QbQuestionAnnotation
-from backend.app.question_bank_v2.schema.annotation import AnnotationContext, GetAnnotationsDetail, SaveAnnotationsParam
+from backend.app.question_bank_v2.schema.annotation import (
+    AnnotationContext,
+    GetAnnotationsDetail,
+    SaveAnnotationsParam,
+    TextAnnotation,
+)
 from backend.app.question_bank_v2.service.user_content_service import user_content_service
 from backend.app.question_bank_v2.utils.annotation_policy import persistent_annotations_enabled
 from backend.common.exception import errors
@@ -100,8 +105,11 @@ class AnnotationService:
         )
         version = document.save_version if document else 0
         data = [item.model_dump() for item in obj.annotations]
-        # A repeated save after a lost response is idempotent; different stale edits conflict.
-        if document and document.annotations == data:
+        # 旧文档补齐默认颜色后比较，丢失响应的黄色重试仍幂等；颜色变化仍检查版本。
+        current = (
+            [TextAnnotation.model_validate(item).model_dump() for item in document.annotations] if document else []
+        )
+        if document and current == data:
             return GetAnnotationsDetail(
                 owner_key=f'user:{user_id}',
                 context_key=key,
