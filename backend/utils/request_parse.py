@@ -88,10 +88,13 @@ async def parse_ip_info(request: Request) -> IpInfo:
     """
     country, region, city = None, None, None
     ip = get_request_ip(request)
-    location = await redis_client.get(f'{settings.IP_LOCATION_REDIS_PREFIX}:{ip}')
-    if location:
-        country, region, city = location.split('|')
-        return IpInfo(ip=ip, country=country, region=region, city=city)
+    try:
+        location = await redis_client.get(f'{settings.IP_LOCATION_REDIS_PREFIX}:{ip}')
+        if location:
+            country, region, city = location.split('|')
+            return IpInfo(ip=ip, country=country, region=region, city=city)
+    except Exception as e:
+        log.warning(f'Redis 获取 IP 属地缓存失败，降级解析: {e}')
 
     location_info = None
     if settings.IP_LOCATION_PARSE == 'online':
@@ -103,11 +106,14 @@ async def parse_ip_info(request: Request) -> IpInfo:
         country = location_info.get('country')
         region = location_info.get('regionName')
         city = location_info.get('city')
-        await redis_client.set(
-            f'{settings.IP_LOCATION_REDIS_PREFIX}:{ip}',
-            f'{country}|{region}|{city}',
-            ex=settings.IP_LOCATION_EXPIRE_SECONDS,
-        )
+        try:
+            await redis_client.set(
+                f'{settings.IP_LOCATION_REDIS_PREFIX}:{ip}',
+                f'{country}|{region}|{city}',
+                ex=settings.IP_LOCATION_EXPIRE_SECONDS,
+            )
+        except Exception as e:
+            log.warning(f'Redis 写入 IP 属地缓存失败: {e}')
     return IpInfo(ip=ip, country=country, region=region, city=city)
 
 
