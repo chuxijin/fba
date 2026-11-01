@@ -888,7 +888,7 @@ class SessionService:
         )
 
         log.info(
-            'Session created: id=%d user=%d type=%s total=%d',
+            'Session created: id={} user={} type={} total={}',
             new_session.id,
             user_id,
             session_type,
@@ -1733,7 +1733,7 @@ class SessionService:
             }
 
         log.info(
-            'Session submitted: id=%d user=%d completed=%d correct=%d wrong=%d score=%s reward_exp=%s check_in=%s',
+            'Session submitted: id={} user={} completed={} correct={} wrong={} score={} reward_exp={} check_in={}',
             session_id,
             user_id,
             completed_count,

@@ -1,6 +1,9 @@
+import re
+
 from collections.abc import Sequence
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.common.cache.decorator import cache_invalidate, cached
@@ -15,6 +18,44 @@ from backend.plugin.dict.schema.dict_data import CreateDictDataParam, DeleteDict
 
 class DictDataService:
     """字典数据服务类"""
+
+    @staticmethod
+    async def _validate_exam_target(
+        db: AsyncSession, obj: CreateDictDataParam | UpdateDictDataParam, code: str, existing: DictData | None = None,
+    ) -> None:
+        from pydantic import ValidationError
+
+        from backend.app.question_bank_v2.schema.study_goal import EXAM_TARGET_DICT_CODE, ExamTargetConfig
+        from backend.app.question_bank_v2.service.study_goal_service import study_goal_service
+
+        if (
+            existing is not None
+            and getattr(existing, 'type_code', None) == EXAM_TARGET_DICT_CODE
+            and code != EXAM_TARGET_DICT_CODE
+        ):
+            raise errors.RequestError(msg='备考目标不可改为其他字典类型；请停用或新增字典数据')
+        if code != EXAM_TARGET_DICT_CODE:
+            return
+        if re.fullmatch(r'[a-z0-9_]{1,32}', obj.value) is None:
+            raise errors.RequestError(msg='备考目标编码只允许小写字母、数字和下划线，最多32字符')
+        if db is not None and db.get_bind().dialect.name == 'postgresql':
+            # 同类目录写入很少；事务锁避免两次并发录入绕过编码查重，无需新增索引/字段。
+            await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('dict:study_exam_target'))"))
+        duplicates = await dict_data_dao.get_by_value_and_type_code(db, obj.value, code)
+        if any(item.id != getattr(existing, 'id', None) for item in duplicates):
+            raise errors.ConflictError(msg='备考目标编码已存在')
+        if existing is not None and existing.value != obj.value:
+            raise errors.RequestError(msg='备考目标编码为稳定引用，不可修改；请新增另一目标')
+        extra = obj.extra if 'extra' in obj.model_fields_set or existing is None else existing.extra
+        if not extra and obj.status == 0:
+            return
+        try:
+            config = ExamTargetConfig.model_validate(extra)
+        except ValidationError as exc:
+            raise errors.RequestError(msg='备考目标扩展配置不合法，请检查科目、年度与模块配额') from exc
+        # 资源已下线时仍可停用目标，但非空配置的结构必须有效。
+        if obj.status != 0:
+            await study_goal_service.validate_config(db=db, config=config)
 
     @staticmethod
     @cached(namespace=settings.CACHE_DICT_REDIS_PREFIX, key='pk')
@@ -103,6 +144,7 @@ class DictDataService:
         dict_type = await dict_type_dao.get(db, obj.type_id)
         if not dict_type:
             raise errors.NotFoundError(msg='字典类型不存在')
+        await DictDataService._validate_exam_target(db, obj, dict_type.code)
         dict_data = await dict_data_dao.get_by_label_and_type_code(db, obj.label, dict_type.code)
         if dict_data:
             raise errors.ConflictError(msg='字典数据已存在')
@@ -125,6 +167,7 @@ class DictDataService:
         dict_type = await dict_type_dao.get(db, obj.type_id)
         if not dict_type:
             raise errors.NotFoundError(msg='字典类型不存在')
+        await DictDataService._validate_exam_target(db, obj, dict_type.code, dict_data)
         if dict_data.label != obj.label or dict_data.type_code != dict_type.code:
             new_dict_data = await dict_data_dao.get_by_label_and_type_code(db, obj.label, dict_type.code)
             if new_dict_data and new_dict_data.id != pk:

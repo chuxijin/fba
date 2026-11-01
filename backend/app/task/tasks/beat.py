@@ -48,6 +48,10 @@ def get_local_beat_schedule() -> dict[str, dict[str, Any]]:
             'task': 'db_log:delete_filesync_data_older_than_30_days',
             'schedule': TzAwareCrontab('0', '2'),
         },
+        '结算 V2 到时练习': {
+            'task': 'qbank_v2:expire_practice_sessions',
+            'schedule': 60.0,
+        },
         '更新用户每日排名': {
             'task': 'qbank:update_daily_user_ranks',
             'schedule': TzAwareCrontab('5', '0'),

@@ -8,8 +8,8 @@ from pydantic import ConfigDict, Field, field_serializer, field_validator, model
 
 from backend.common.schema import SchemaBase
 
-ShareScene = Literal['default', 'home', 'invite', 'resource', 'group_buy', 'ability']
-SHARE_SCENES = ('default', 'home', 'invite', 'resource', 'group_buy', 'ability')
+ShareScene = Literal['default', 'home', 'invite', 'resource', 'group_buy', 'ability', 'bank']
+SHARE_SCENES = ('default', 'home', 'invite', 'resource', 'group_buy', 'ability', 'bank')
 SHARE_VARIABLES = {
     'default': {'brand'},
     'home': {'brand'},
@@ -17,6 +17,7 @@ SHARE_VARIABLES = {
     'resource': {'brand', 'resource_title'},
     'group_buy': {'brand', 'product_name', 'people'},
     'ability': {'brand'},
+    'bank': {'brand', 'bank_title', 'question_count', 'content_type'},
 }
 
 

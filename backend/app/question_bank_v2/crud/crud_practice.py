@@ -34,6 +34,7 @@ from backend.app.question_bank_v2.model.review import (
     QbReviewTag,
     QbWrongQuestionState,
 )
+from backend.app.question_bank_v2.model.statistics import QbQuestionStatistics
 from backend.app.question_bank_v2.model.user_content import QbQuestionFavorite, QbQuestionNote
 from backend.app.question_bank_v2.schema.review import ENTRY_METADATA_SECTION_KEY
 from backend.app.question_bank_v2.utils.annotation_policy import (
@@ -41,6 +42,7 @@ from backend.app.question_bank_v2.utils.annotation_policy import (
     TEMPORARY_ANNOTATION_SOURCES,
 )
 from backend.app.question_bank_v2.utils.external_practice import online_session_condition
+from backend.app.question_bank_v2.utils.practice_lock import lock_practice_user
 from backend.core.conf import settings
 
 
@@ -156,7 +158,9 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
         if user_id is not None:
             stmt = stmt.where(QbPracticeSession.user_id == user_id)
         if for_update:
-            stmt = stmt.with_for_update()
+            if user_id is not None:
+                await lock_practice_user(db, user_id)
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         result = await db.execute(stmt)
         return result.scalars().first()
 
@@ -168,6 +172,7 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
         user_id: int,
         session_item_id: int,
         for_update: bool = False,
+        include_hidden: bool = False,
     ) -> tuple[QbPracticeSession, QbPracticeSessionItem] | None:
         """获取当前用户会话中的投递题目"""
         stmt = (
@@ -183,11 +188,13 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
             .where(
                 QbPracticeSession.session_key == session_key,
                 QbPracticeSession.user_id == user_id,
-                QbPracticeSession.deleted == 0,
             )
         )
+        if not include_hidden:
+            stmt = stmt.where(QbPracticeSession.deleted == 0)
         if for_update:
-            stmt = stmt.with_for_update()
+            await lock_practice_user(db, user_id)
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         result = await db.execute(stmt)
         row = result.first()
         return (row[0], row[1]) if row is not None else None
@@ -484,6 +491,8 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
 
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> QbPracticeSession:
         """创建练习会话"""
+        # 创建后会读取会话并取用户锁，必须在INSERT获得User外键共享锁之前取写锁。
+        await lock_practice_user(db, data['user_id'])
         session = QbPracticeSession(**data)
         db.add(session)
         await db.flush()
@@ -756,8 +765,13 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         limit: int,
         region: str | None = None,
         prioritize_unseen: bool = False,
+        exclude_question_ids: Sequence[int] = (),
+        high_error: bool = False,
+        knowledge_point_role: str | None = None,
     ) -> list[PracticeCandidate]:
         """获取错题、收藏、笔记或指定题目来源的固定版本候选题"""
+        if high_error and (source_type != 'custom' or question_ids or not knowledge_point_ids):
+            return []
         if source_type == 'custom':
             stmt = (
                 select(
@@ -813,22 +827,39 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                     stmt = stmt.where(placement_scope.exists())
             if question_types:
                 stmt = stmt.where(QbQuestion.question_type.in_(question_types))
-            if knowledge_point_ids:
-                stmt = stmt.where(
-                    select(QbQuestionKnowledgePoint.question_id)
-                    .where(
-                        QbQuestionKnowledgePoint.question_id == QbQuestion.id,
-                        QbQuestionKnowledgePoint.knowledge_point_id.in_(knowledge_point_ids),
-                        QbQuestionKnowledgePoint.deleted == 0,
-                    )
-                    .exists()
+            if exclude_question_ids:
+                stmt = stmt.where(QbQuestion.id.not_in(exclude_question_ids))
+            if high_error:
+                # 使用平台聚合统计，不读取其他用户的错题/作答内容；至少20次判分、错误率不低于40%。
+                stmt = stmt.join(QbQuestionStatistics, QbQuestionStatistics.question_id == QbQuestion.id).where(
+                    QbQuestionStatistics.deleted == 0,
+                    QbQuestionStatistics.graded_count >= 20,
+                    QbQuestionStatistics.correct_rate <= Decimal('0.6'),
+                    QbQuestion.visibility != 'private',
+                    placement_scope.exists(),
                 )
+            if knowledge_point_ids:
+                knowledge_filters = [
+                    QbQuestionKnowledgePoint.question_id == QbQuestion.id,
+                    QbQuestionKnowledgePoint.knowledge_point_id.in_(knowledge_point_ids),
+                    QbQuestionKnowledgePoint.deleted == 0,
+                ]
+                if knowledge_point_role is not None:
+                    knowledge_filters.append(QbQuestionKnowledgePoint.role == knowledge_point_role)
+                stmt = stmt.where(select(QbQuestionKnowledgePoint.question_id).where(*knowledge_filters).exists())
             if question_ids:
                 requested_order = {question_id: position for position, question_id in enumerate(question_ids)}
                 stmt = stmt.order_by(case(requested_order, value=QbQuestion.id, else_=len(requested_order)))
                 rows = list((await db.execute(stmt.limit(limit))).mappings().all())
                 if shuffle:
                     secrets.SystemRandom().shuffle(rows)
+            elif high_error:
+                stmt = stmt.order_by(
+                    QbQuestionStatistics.correct_rate.asc(),
+                    QbQuestionStatistics.graded_count.desc(),
+                    QbQuestion.id.asc(),
+                )
+                rows = list((await db.execute(stmt.limit(limit))).mappings().all())
             elif shuffle:
                 # 启用未做优先时，两阶段的顺序本身已经是随机的，不再二次打乱
                 rows = await self._sample_rows_with_priority(
@@ -1217,6 +1248,17 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
 
     async def get_all(self, db: AsyncSession, session_id: int) -> list[dict[str, Any]]:
         """获取会话投递题目，不返回标准答案与解析"""
+        latest_attempt_id = (
+            select(QbQuestionAttempt.id)
+            .where(
+                QbQuestionAttempt.session_item_id == QbPracticeSessionItem.id,
+                QbQuestionAttempt.deleted == 0,
+            )
+            .order_by(QbQuestionAttempt.attempt_no.desc())
+            .limit(1)
+            .correlate(QbPracticeSessionItem)
+            .scalar_subquery()
+        )
         stmt = (
             select(
                 QbPracticeSessionItem.id,
@@ -1240,6 +1282,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 QbPracticeSessionResponse.is_flagged,
                 QbPracticeSessionResponse.duration_ms,
                 QbPracticeSessionResponse.save_version,
+                latest_attempt_id.label('latest_attempt_id'),
             )
             .select_from(QbPracticeSessionItem)
             .join(
@@ -1359,6 +1402,24 @@ class CRUDPracticeSessionResponse(CRUDPlus[QbPracticeSessionResponse]):
 class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
     """不可变题目提交事实数据库操作类"""
 
+    async def get_submission(
+        self, db: AsyncSession, *, session_item_id: int, submission_key: str
+    ) -> QbQuestionAttempt | None:
+        """在持有会话写锁时查单次提交凭据；旧客户端使用版本号派生的键。"""
+        return (
+            (
+                await db.execute(
+                    select(QbQuestionAttempt).where(
+                        QbQuestionAttempt.session_item_id == session_item_id,
+                        QbQuestionAttempt.deleted == 0,
+                        QbQuestionAttempt.grading_result['_submission']['key'].as_string() == submission_key,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+
     async def get_latest_module_path(
         self,
         db: AsyncSession,
@@ -1403,6 +1464,7 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
         *,
         user_id: int,
         question_id: int,
+        related_question_ids: Sequence[int] = (),
     ) -> list[dict[str, Any]]:
         """按最近提交倒序返回有效错误作答，供错题详情展示错选历史。"""
         # SQLite 把 JSON 布尔值提取为 1，使用 json_type 区分 true 与数字 1；
@@ -1442,7 +1504,7 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
             )
             .where(
                 QbQuestionAttempt.user_id == user_id,
-                QbQuestionAttempt.question_id == question_id,
+                QbQuestionAttempt.question_id.in_([question_id, *related_question_ids]),
                 QbQuestionAttempt.is_correct.is_(False),
                 QbQuestionAttempt.deleted == 0,
                 ~memorize_view,

@@ -540,7 +540,7 @@ class OpenListClient(BaseDriveClient):
         :return:
         """
         self.logger.warning(
-            'OpenList 不支持直接转存分享源，source_type=%s, source_id=%s',
+            'OpenList 不支持直接转存分享源，source_type={}, source_id={}',
             params.source_type,
             params.source_id,
         )

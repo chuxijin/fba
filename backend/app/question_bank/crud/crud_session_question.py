@@ -82,7 +82,7 @@ class CRUDSessionQuestion(CRUDPlus[SessionQuestion]):
         inserted_count = result.rowcount if result.rowcount is not None else -1
         if inserted_count >= 0 and inserted_count < len(rows):
             log.warning(
-                'SessionQuestion batch_create skipped duplicates: session_id=%s inserted=%s skipped=%s',
+                'SessionQuestion batch_create skipped duplicates: session_id={} inserted={} skipped={}',
                 session_id,
                 inserted_count,
                 len(rows) - inserted_count,

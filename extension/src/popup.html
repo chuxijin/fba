@@ -477,7 +477,7 @@
       padding: 3px 8px;
       border-radius: 4px;
     }
-    #btn-scan-mock {
+    #btn-scan-retry {
       height: 30px;
       background: var(--surface);
       border: 1px dashed var(--border);
@@ -487,7 +487,7 @@
       cursor: pointer;
       transition: all .15s;
     }
-    #btn-scan-mock:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+    #btn-scan-retry:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
 
     /* ── 登录分段选项卡 (Tab) ── */
     .login-tab-bar {
@@ -649,17 +649,6 @@
       margin-top: 6px;
       display: flex;
       justify-content: flex-end;
-    }
-    .btn-dev-fill {
-      background: none;
-      border: none;
-      color: var(--text-subtle);
-      font-size: 10px;
-      cursor: pointer;
-      text-decoration: underline;
-    }
-    .btn-dev-fill:hover {
-      color: var(--primary);
     }
     .pwd-footer-tips {
       margin-top: 14px;
@@ -836,21 +825,16 @@
 
   <!-- 底部导航栏 -->
   <div class="footer-nav" id="footer-nav">
-    <a class="footer-nav-item" id="footer-official" href="#" title="访问官方网站">
-      <span class="footer-nav-icon">🌐</span>
-      <span>访问官网</span>
-    </a>
-    <div class="footer-nav-sep"></div>
     <div class="footer-nav-item version">
-      <span>v 1.0.2</span>
+      <span id="extension-version"></span>
     </div>
     <div class="footer-nav-sep"></div>
-    <a class="footer-nav-item" id="footer-service" href="#" title="联系客服">
+    <a class="footer-nav-item" id="footer-service" href="support.html#feedback" title="提交意见反馈或查看处理回复">
       <span class="footer-nav-icon">💬</span>
-      <span>客服</span>
+      <span>意见反馈</span>
     </a>
     <div class="footer-nav-sep"></div>
-    <a class="footer-nav-item" id="footer-help" href="#" title="使用帮助">
+    <a class="footer-nav-item" id="footer-help" href="support.html#help" title="使用帮助">
       <span class="footer-nav-icon">❓</span>
       <span>帮助</span>
     </a>
@@ -883,10 +867,10 @@
       </div>
       <div class="scan-footer">
         <div class="scan-benefit-row">
-          <span class="scan-benefit-chip">📋 每日 15 次排版</span>
-          <span class="scan-benefit-chip">🔄 题本云端同步</span>
+          <span class="scan-benefit-chip">📋 额度以账号实际权益为准</span>
+          <span class="scan-benefit-chip">🔄 登录后查看我的题本</span>
         </div>
-        <button id="btn-scan-mock">⚡ 开发调试：模拟确认扫码</button>
+        <button id="btn-scan-retry" type="button">重新获取二维码</button>
       </div>
     </div>
 
@@ -914,15 +898,12 @@
         <button type="button" class="btn-pwd-login" id="btn-pwd-login">
           <span id="pwd-login-text">立即登录</span>
         </button>
-        <div class="pwd-dev-helper">
-          <button type="button" class="btn-dev-fill" id="btn-dev-fill" title="填入默认测试账号">一键填入测试账号</button>
-        </div>
       </div>
 
       <div class="pwd-footer-tips">
         <div class="scan-benefit-row">
-          <span class="scan-benefit-chip">📋 尊享基础排版额度</span>
-          <span class="scan-benefit-chip">🔄 资产实时互通</span>
+          <span class="scan-benefit-chip">📋 额度以账号实际权益为准</span>
+          <span class="scan-benefit-chip">🔄 独立插件登录会话</span>
         </div>
       </div>
     </div>

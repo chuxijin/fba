@@ -58,30 +58,9 @@ export function pickUserAnswer(
  * 标准化解析参考答案（兼容对象 choice、字符串与数字索引）
  */
 export function formatAnswerChoice(rawAnswer: any): string {
-  if (typeof rawAnswer === 'string') {
-    if (/^\d+$/.test(rawAnswer)) {
-      const idx = parseInt(rawAnswer, 10)
-      return ['A', 'B', 'C', 'D', 'E', 'F'][idx] || rawAnswer
-    }
-    return rawAnswer.trim().toUpperCase()
-  }
-  if (typeof rawAnswer === 'number') {
-    return ['A', 'B', 'C', 'D', 'E', 'F'][rawAnswer] || String(rawAnswer)
-  }
-  if (rawAnswer && typeof rawAnswer === 'object') {
-    const choice = rawAnswer.choice ?? rawAnswer.answer ?? rawAnswer.correct ?? rawAnswer.val
-    if (typeof choice === 'number') {
-      return ['A', 'B', 'C', 'D', 'E', 'F'][choice] || String(choice)
-    }
-    if (typeof choice === 'string') {
-      if (/^\d+$/.test(choice)) {
-        const idx = parseInt(choice, 10)
-        return ['A', 'B', 'C', 'D', 'E', 'F'][idx] || choice
-      }
-      return choice.trim().toUpperCase()
-    }
-  }
-  return ''
+  const choice = rawAnswer && typeof rawAnswer === 'object' && !Array.isArray(rawAnswer)
+    ? rawAnswer.choice ?? rawAnswer.answer ?? rawAnswer.correct ?? rawAnswer.val : rawAnswer
+  return formatUserAnswerChoice(choice)
 }
 
 /**
@@ -104,7 +83,9 @@ export function extractQuestionOptions(raw: any): string[] {
   }
 
   // 3. 去除可能混入的 A. / B. / A、等冗余选项前缀
-  return optionsList.map((opt) => opt.replace(/^[A-Da-d][\.\、\s\:\：\s]*/, '').trim())
+  return optionsList.map((opt, index) =>
+    opt.replace(new RegExp(`^${OPTION_CODES[index]}(?:[.、:：]\\s*|\\s+(?!\\s*[+*/=<>×÷^−-]))`, 'i'), '').trim(),
+  )
 }
 
 /**
@@ -114,7 +95,7 @@ export function normalizeInlineSymbols(html: string): string {
   if (!html) return ''
   return html
     // 1. 保护填空挖空：将 <u> 内包含的空白/&nbsp;占位符转换为公考标准下划线
-    .replace(/<u[^>]*>[\s\u00a0\xa0&nbsp;]*<\/u>/gi, '______')
+    .replace(/<u\b[^>]*>(?:\s|\u00a0|&nbsp;)*<\/u>/gi, '______')
     // 2. 域名智能解密替换：将 fenbike.cn 纠偏为 fbstatic.cn 以免获取加密混淆图片
     .replace(/fb\.fenbike\.cn/g, 'fb.fbstatic.cn')
     .replace(/fenbike\.cn/g, 'fbstatic.cn')
@@ -145,7 +126,7 @@ export function normalizeFenbiQuestion(
   }
 
   // 2. 选项清洗
-  const options = extractQuestionOptions(raw)
+  const options = extractQuestionOptions(raw).map(normalizeInlineSymbols)
 
   // 3. 参考答案标准化映射 (兼容 choice: 1 -> 'B')
   const answer = formatAnswerChoice(raw.correctAnswer ?? raw.answer)
@@ -157,10 +138,13 @@ export function normalizeFenbiQuestion(
   const source = raw.source || raw.paperName || fallbackSource || undefined
 
   const qid = Number(raw.id || raw.questionId || raw.globalId || orderNum)
+  const sourceQuestionKey = raw.globalId ?? raw.questionId ?? raw.id ?? raw.key
 
   return {
     id: qid,
     question_id: qid,
+    ...(sourceQuestionKey != null && String(sourceQuestionKey).trim()
+      ? { source_question_key: String(sourceQuestionKey).trim() } : {}),
     order_num: orderNum,
     type: raw.type === 1 ? 'single_choice' : String(raw.type || 'single_choice'),
     stem,

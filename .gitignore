@@ -120,3 +120,11 @@ backend/print_sql.py
 backend/print_job_sql.py
 backend/test_stats.py
 backend/app/question_bank_v2/*.xlsx
+render-delivery-*.txt
+scripts/phone-dev-network.ps1
+skills/fba_work/**/runs/
+skills/fba_work/**/archive/
+skills/fba_work/**/legacy-scratch/
+skills/fba_work/**/work/
+
+

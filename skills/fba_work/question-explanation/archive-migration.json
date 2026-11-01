@@ -1,0 +1,2468 @@
+{
+  "migrated_at": "2026-11-01T12:05:50.031658+08:00",
+  "repository": "D:/100_Work/101_Program/Proj/fba",
+  "mapping": [
+    {
+      "kind": "dir",
+      "from": "scratch/season41",
+      "to": "skills/fba_work/question-explanation/runs/20261101-season41"
+    },
+    {
+      "kind": "dir",
+      "from": "scratch/season7",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261027-31"
+    },
+    {
+      "kind": "file",
+      "from": "scratch/prepare_batches.py",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261026/prepare_batches.py"
+    },
+    {
+      "kind": "file",
+      "from": "scratch/validate_final.py",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261026/validate_final.py"
+    },
+    {
+      "kind": "file",
+      "from": "scratch/write_batch.py",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261026/write_batch.py"
+    },
+    {
+      "kind": "file",
+      "from": "scratch/build_prod_sync.py",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261026/build_prod_sync.py"
+    },
+    {
+      "kind": "file",
+      "from": "scratch/prod_sync.sql",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261026/prod_sync.sql"
+    },
+    {
+      "kind": "file",
+      "from": "scratch/prod_sync_map.json",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261026/prod_sync_map.json"
+    },
+    {
+      "kind": "dir",
+      "from": "scratch/batches",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261026/batches"
+    },
+    {
+      "kind": "dir",
+      "from": "scratch/final",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261026/final"
+    },
+    {
+      "kind": "file",
+      "from": "米李720题_待修52题.md",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261027-31/米李720题_待修52题.md"
+    },
+    {
+      "kind": "file",
+      "from": "米李720题_临时10题预览.html",
+      "to": "skills/fba_work/question-explanation/archive/legacy-20261027-31/米李720题_临时10题预览.html"
+    }
+  ],
+  "total_files_migrated": 260,
+  "hash_verification": {
+    "all_equal": true,
+    "failed": []
+  },
+  "sources_still_present": [],
+  "deleted_debug_logs": [
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_build_dirty.out.txt",
+      "bytes": 586,
+      "sha256": "2dcdc9c5c945f3c48f4fa491bd15c5304fa964d34c62e289b293f2d535320e0e"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_inspect2.out.txt",
+      "bytes": 5895,
+      "sha256": "83cf33842766c60d6190311433e85f6b4d04cc5662e0af2771fbaff99784800d"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_inspect3.out.txt",
+      "bytes": 9230,
+      "sha256": "137ea4d70ce4551eefc466742f7dd76395a15ce72fbbac86a21bac5312f6e3ed"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_neg.out.txt",
+      "bytes": 4462,
+      "sha256": "7326851d39baeb5512819aa0e045d2e018fb9bb0fec42d9fc2e7a9778d8f86b3"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_pick.out.txt",
+      "bytes": 9340,
+      "sha256": "635ebc6b916c96c54b4a3be7cc5a08e83d41f89692b302472a12e99d3948097b"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan2.out.txt",
+      "bytes": 1108,
+      "sha256": "520f1227dd0128272077112dcf9b4ee9b75c2d545b63756b8fb7d84e5b24b849"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan3.out.txt",
+      "bytes": 4140,
+      "sha256": "21c9b4e00ecc7c5b58a0a8ddf5a88294e3dcbfe3fd41f16eeadbd62ac0721ab1"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan3b.out.txt",
+      "bytes": 547,
+      "sha256": "7d883f2ad1a59441409b517c4795ba27e1203c84e494754ba41562a5a32240f5"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan4.out.txt",
+      "bytes": 333,
+      "sha256": "76748687922edd23725cf1efdf4a386cb9cd8085783183ebe5f55424233af139"
+    },
+    {
+      "path": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_split.out.txt",
+      "bytes": 3746,
+      "sha256": "2e6266aa63499dc1ccb71cbabc1e854230d94d90276f05506c2b5ed6e741316d"
+    }
+  ],
+  "deleted_debug_logs_count": 10,
+  "files": [
+    {
+      "source": "scratch/season41/final.json",
+      "destination": "skills/fba_work/question-explanation/runs/20261101-season41/final.json",
+      "bytes_before": 21634,
+      "sha256_before": "7f23535531b6ac1d03c3ac281ab6c19c36fc24418263f35593c957bbbaeb87c8",
+      "bytes_after": 21634,
+      "sha256_after": "7f23535531b6ac1d03c3ac281ab6c19c36fc24418263f35593c957bbbaeb87c8",
+      "verified": true
+    },
+    {
+      "source": "scratch/season41/q104096_option_d.png",
+      "destination": "skills/fba_work/question-explanation/runs/20261101-season41/q104096_option_d.png",
+      "bytes_before": 479,
+      "sha256_before": "0231af4c40c2028bbfe1806847dd56416aace5e19f39a313648d3ca1f5582a4a",
+      "bytes_after": 479,
+      "sha256_after": "0231af4c40c2028bbfe1806847dd56416aace5e19f39a313648d3ca1f5582a4a",
+      "verified": true
+    },
+    {
+      "source": "scratch/season41/README.md",
+      "destination": "skills/fba_work/question-explanation/runs/20261101-season41/README.md",
+      "bytes_before": 1414,
+      "sha256_before": "2ef3785c5557ed9a22f3b4c04f99eb2c9f984b7cea09d24460319aae2296e3e3",
+      "bytes_after": 1414,
+      "sha256_after": "2ef3785c5557ed9a22f3b4c04f99eb2c9f984b7cea09d24460319aae2296e3e3",
+      "verified": true
+    },
+    {
+      "source": "scratch/season41/source.json",
+      "destination": "skills/fba_work/question-explanation/runs/20261101-season41/source.json",
+      "bytes_before": 51951,
+      "sha256_before": "cfd390ddb494c361e70699ca2fa009a2ee110f23d255bdb20668df6ad2364c66",
+      "bytes_after": 51951,
+      "sha256_after": "cfd390ddb494c361e70699ca2fa009a2ee110f23d255bdb20668df6ad2364c66",
+      "verified": true
+    },
+    {
+      "source": "scratch/season41/sync.sql",
+      "destination": "skills/fba_work/question-explanation/runs/20261101-season41/sync.sql",
+      "bytes_before": 99947,
+      "sha256_before": "37107ac88979fa9e1724871d4153c185d5d6ea94c71d4e0d30534dbccccd522f",
+      "bytes_after": 99947,
+      "sha256_after": "37107ac88979fa9e1724871d4153c185d5d6ea94c71d4e0d30534dbccccd522f",
+      "verified": true
+    },
+    {
+      "source": "scratch/season41/validate_and_build.py",
+      "destination": "skills/fba_work/question-explanation/runs/20261101-season41/validate_and_build.py",
+      "bytes_before": 8390,
+      "sha256_before": "dc24447140f3ef3846fa954f9ef43870e503bb8179bfc3dcd6c034a6a1717883",
+      "bytes_after": 8390,
+      "sha256_after": "dc24447140f3ef3846fa954f9ef43870e503bb8179bfc3dcd6c034a6a1717883",
+      "verified": true
+    },
+    {
+      "source": "scratch/season41/validation.json",
+      "destination": "skills/fba_work/question-explanation/runs/20261101-season41/validation.json",
+      "bytes_before": 321,
+      "sha256_before": "b7feae68843fda60717019fa65e8489c5d9e8c0ee4f89e855376878d685834d8",
+      "bytes_after": 321,
+      "sha256_after": "b7feae68843fda60717019fa65e8489c5d9e8c0ee4f89e855376878d685834d8",
+      "verified": true
+    },
+    {
+      "source": "scratch/season41/verify.json",
+      "destination": "skills/fba_work/question-explanation/runs/20261101-season41/verify.json",
+      "bytes_before": 923,
+      "sha256_before": "bbe7d31ff07dc55e1f871b792d23ac3f0532fe0bb372836c3dd72ce67bbaa154",
+      "bytes_after": 923,
+      "sha256_after": "bbe7d31ff07dc55e1f871b792d23ac3f0532fe0bb372836c3dd72ce67bbaa154",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/batch_01.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/batch_01.json",
+      "bytes_before": 57343,
+      "sha256_before": "2c2056cac6cdb16445a93677c0a64403760a2618e84a395aebe5faed3c6d3445",
+      "bytes_after": 57343,
+      "sha256_after": "2c2056cac6cdb16445a93677c0a64403760a2618e84a395aebe5faed3c6d3445",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/batch_02.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/batch_02.json",
+      "bytes_before": 27423,
+      "sha256_before": "8c20e34be206a856c6d36976860159a20da0e1c3a0d05b5faabad9be7f1951ed",
+      "bytes_after": 27423,
+      "sha256_after": "8c20e34be206a856c6d36976860159a20da0e1c3a0d05b5faabad9be7f1951ed",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/batch_03.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/batch_03.json",
+      "bytes_before": 51044,
+      "sha256_before": "251029d4973b085432ed91f68a17a22c7c50c8c5dfbe3d5a9839bb470dc2458c",
+      "bytes_after": 51044,
+      "sha256_after": "251029d4973b085432ed91f68a17a22c7c50c8c5dfbe3d5a9839bb470dc2458c",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/batch_04.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/batch_04.json",
+      "bytes_before": 46728,
+      "sha256_before": "92e651285a4bd2a0499e42f9349a04e7e2ef136393564de6d44569b1f94239c1",
+      "bytes_after": 46728,
+      "sha256_after": "92e651285a4bd2a0499e42f9349a04e7e2ef136393564de6d44569b1f94239c1",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/batch_05.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/batch_05.json",
+      "bytes_before": 41247,
+      "sha256_before": "a448de0ffa65738523d3e0375df334cf4e3b232c1b34bc28ad46514984e80d43",
+      "bytes_after": 41247,
+      "sha256_after": "a448de0ffa65738523d3e0375df334cf4e3b232c1b34bc28ad46514984e80d43",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_mi6_set5.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_mi6_set5.py",
+      "bytes_before": 22195,
+      "sha256_before": "2ed726d55065840be4fbc6f8e2eb1b2e739134977f9e8e25b79d3720b9c49d68",
+      "bytes_after": 22195,
+      "sha256_after": "2ed726d55065840be4fbc6f8e2eb1b2e739134977f9e8e25b79d3720b9c49d68",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_mi6_short.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_mi6_short.py",
+      "bytes_before": 3436,
+      "sha256_before": "8c3dc77517a124cf8a26be930754db0210a992035da387e994d7a0def1946746",
+      "bytes_after": 3436,
+      "sha256_after": "8c3dc77517a124cf8a26be930754db0210a992035da387e994d7a0def1946746",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_mi6_short_fix.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_mi6_short_fix.py",
+      "bytes_before": 3099,
+      "sha256_before": "2d88284f6a862c4166634a79543db89e44653e3480bb1549f22461559c63802e",
+      "bytes_after": 3099,
+      "sha256_after": "2d88284f6a862c4166634a79543db89e44653e3480bb1549f22461559c63802e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_mili720_short.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_mili720_short.py",
+      "bytes_before": 3167,
+      "sha256_before": "66ea2d16d66325538bb83deb812610c3e818f251a8139279f9b28a669d442bb2",
+      "bytes_after": 3167,
+      "sha256_after": "66ea2d16d66325538bb83deb812610c3e818f251a8139279f9b28a669d442bb2",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_prod_sync_season10.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_prod_sync_season10.py",
+      "bytes_before": 3836,
+      "sha256_before": "07c3acb412d8259ca107ac35a5b1c1364a1af96f6069558b1759276a1f392377",
+      "bytes_after": 3836,
+      "sha256_after": "07c3acb412d8259ca107ac35a5b1c1364a1af96f6069558b1759276a1f392377",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_prod_sync_season6.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_prod_sync_season6.py",
+      "bytes_before": 3832,
+      "sha256_before": "709d23a35d905b7725889d5ba7346f2a33f5f791ae2cdb49486d996a95d11a29",
+      "bytes_after": 3832,
+      "sha256_after": "709d23a35d905b7725889d5ba7346f2a33f5f791ae2cdb49486d996a95d11a29",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_prod_sync_season7.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_prod_sync_season7.py",
+      "bytes_before": 3832,
+      "sha256_before": "63509782093edcad4523cf55a9f0b6389fb11f67e76f17311ae155a872c4f3e9",
+      "bytes_after": 3832,
+      "sha256_after": "63509782093edcad4523cf55a9f0b6389fb11f67e76f17311ae155a872c4f3e9",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_prod_sync_season8.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_prod_sync_season8.py",
+      "bytes_before": 3832,
+      "sha256_before": "acc181fcdc86a84e6745d2096eb7803515b34999e0f1163b59a67ae69980c80b",
+      "bytes_after": 3832,
+      "sha256_after": "acc181fcdc86a84e6745d2096eb7803515b34999e0f1163b59a67ae69980c80b",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_prod_sync_season9.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_prod_sync_season9.py",
+      "bytes_before": 3833,
+      "sha256_before": "82695d156afed36b78494dc8e88a174a8cfd7c05d915b634dac814773e2beb95",
+      "bytes_after": 3833,
+      "sha256_after": "82695d156afed36b78494dc8e88a174a8cfd7c05d915b634dac814773e2beb95",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/build_xiao193_short.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/build_xiao193_short.py",
+      "bytes_before": 3185,
+      "sha256_before": "22e89d30686aa0075c565886135148b760af4fd56d9e0e6b043cee153d6622d6",
+      "bytes_after": 3185,
+      "sha256_after": "22e89d30686aa0075c565886135148b760af4fd56d9e0e6b043cee153d6622d6",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/convert_export.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/convert_export.py",
+      "bytes_before": 1796,
+      "sha256_before": "d0ba6763ea0565c0f7b8286922c6d071adfb3803c3635712ab7b821420ef811e",
+      "bytes_after": 1796,
+      "sha256_after": "d0ba6763ea0565c0f7b8286922c6d071adfb3803c3635712ab7b821420ef811e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/convert_season10.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/convert_season10.py",
+      "bytes_before": 1660,
+      "sha256_before": "9fb08270596a1cf7ca799f303f63a41cdd6456e5e64d6114d553be74939f5081",
+      "bytes_after": 1660,
+      "sha256_after": "9fb08270596a1cf7ca799f303f63a41cdd6456e5e64d6114d553be74939f5081",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/convert_season6.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/convert_season6.py",
+      "bytes_before": 1657,
+      "sha256_before": "44a66555c21feecd79f575d8656e8386e7167cdded7a1c53b25889ad50401f6a",
+      "bytes_after": 1657,
+      "sha256_after": "44a66555c21feecd79f575d8656e8386e7167cdded7a1c53b25889ad50401f6a",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/convert_season8.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/convert_season8.py",
+      "bytes_before": 1657,
+      "sha256_before": "73f66aa28d49b5bc528cacb836aa535c3161fedffd36c908c71df8dabe9a7fea",
+      "bytes_after": 1657,
+      "sha256_after": "73f66aa28d49b5bc528cacb836aa535c3161fedffd36c908c71df8dabe9a7fea",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/convert_season9.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/convert_season9.py",
+      "bytes_before": 1658,
+      "sha256_before": "eda4a97e6a9f5209321cfef0f078fcfe9adfa0bbc8ec3197924687ef644bec38",
+      "bytes_after": 1658,
+      "sha256_after": "eda4a97e6a9f5209321cfef0f078fcfe9adfa0bbc8ec3197924687ef644bec38",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/final_01.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/final_01.json",
+      "bytes_before": 26988,
+      "sha256_before": "3b09d0d4361d83400e1efb9c511ada210b726b3665a38380f4565177cecd2d7f",
+      "bytes_after": 26988,
+      "sha256_after": "3b09d0d4361d83400e1efb9c511ada210b726b3665a38380f4565177cecd2d7f",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/final_02.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/final_02.json",
+      "bytes_before": 12597,
+      "sha256_before": "5a531994c517afbb74620d3a800d0f3ea802f49fc97311fa6d48c06d89c65ca1",
+      "bytes_after": 12597,
+      "sha256_after": "5a531994c517afbb74620d3a800d0f3ea802f49fc97311fa6d48c06d89c65ca1",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/final_03.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/final_03.json",
+      "bytes_before": 25314,
+      "sha256_before": "12429137ceade2639207580dcd1e368debe1c92fe020ab71564b1fa0165637ff",
+      "bytes_after": 25314,
+      "sha256_after": "12429137ceade2639207580dcd1e368debe1c92fe020ab71564b1fa0165637ff",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/final_04.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/final_04.json",
+      "bytes_before": 22061,
+      "sha256_before": "c17e8bab578277557bc8ac49668a81cdc56b3c04fdc6bf320ab25bc061f82513",
+      "bytes_after": 22061,
+      "sha256_after": "c17e8bab578277557bc8ac49668a81cdc56b3c04fdc6bf320ab25bc061f82513",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/final_05.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/final_05.json",
+      "bytes_before": 19864,
+      "sha256_before": "833bd0b395df180756175b3238b1eaa7b5409ece349b0595557b6a299541beb3",
+      "bytes_after": 19864,
+      "sha256_after": "833bd0b395df180756175b3238b1eaa7b5409ece349b0595557b6a299541beb3",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_answercheck.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_answercheck.py",
+      "bytes_before": 1492,
+      "sha256_before": "24742a554bf81da683025cc1e2459ca6c4579d353d70b8bf4f1792a8a0e478c7",
+      "bytes_after": 1492,
+      "sha256_after": "24742a554bf81da683025cc1e2459ca6c4579d353d70b8bf4f1792a8a0e478c7",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_export.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_export.json",
+      "bytes_before": 476508,
+      "sha256_before": "0a19f05b5bdbb7604a9176b4fdce3a70afbe533b0acc772b1bfae7cee8e8ff62",
+      "bytes_after": 476508,
+      "sha256_after": "0a19f05b5bdbb7604a9176b4fdce3a70afbe533b0acc772b1bfae7cee8e8ff62",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_final第1套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_final第1套.json",
+      "bytes_before": 29661,
+      "sha256_before": "97de6eb50c981fa27e82021772bef437129e23843587e11f98936c4ece0431db",
+      "bytes_after": 29661,
+      "sha256_after": "97de6eb50c981fa27e82021772bef437129e23843587e11f98936c4ece0431db",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_final第2套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_final第2套.json",
+      "bytes_before": 36884,
+      "sha256_before": "9d0b1792c33c1fb28c6af4020cfc976454bb5bda6f93188e4a470c594748ca8d",
+      "bytes_after": 36884,
+      "sha256_after": "9d0b1792c33c1fb28c6af4020cfc976454bb5bda6f93188e4a470c594748ca8d",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_final第3套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_final第3套.json",
+      "bytes_before": 34817,
+      "sha256_before": "3928bbf89553f673df4da89ca9d506dbcdf895288b380c1e9a14ea5659a5ec5f",
+      "bytes_after": 34817,
+      "sha256_after": "3928bbf89553f673df4da89ca9d506dbcdf895288b380c1e9a14ea5659a5ec5f",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_final第4套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_final第4套.json",
+      "bytes_before": 36628,
+      "sha256_before": "83845278ab7a3d5773e66a30cfbb50610d5b5fe6c66f34529727354d748933de",
+      "bytes_after": 36628,
+      "sha256_after": "83845278ab7a3d5773e66a30cfbb50610d5b5fe6c66f34529727354d748933de",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_final第5套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_final第5套.json",
+      "bytes_before": 40692,
+      "sha256_before": "5fab510ac15b00c9438cd9e5164d90e42f0d11667e947b4060a99d9351d46aea",
+      "bytes_after": 40692,
+      "sha256_after": "5fab510ac15b00c9438cd9e5164d90e42f0d11667e947b4060a99d9351d46aea",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_final第6套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_final第6套.json",
+      "bytes_before": 34568,
+      "sha256_before": "aaa72e51501bceb9db3581ce448bb7d6d6dfdacad5229638eb10398cba4b3594",
+      "bytes_after": 34568,
+      "sha256_after": "aaa72e51501bceb9db3581ce448bb7d6d6dfdacad5229638eb10398cba4b3594",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_final补5题.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_final补5题.json",
+      "bytes_before": 5558,
+      "sha256_before": "84f3c51fe6f84b4267deb9782bd20b7f3323b8e6be8c5cf250b9af378b5c7908",
+      "bytes_after": 5558,
+      "sha256_after": "84f3c51fe6f84b4267deb9782bd20b7f3323b8e6be8c5cf250b9af378b5c7908",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_prepare.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_prepare.py",
+      "bytes_before": 1879,
+      "sha256_before": "972e25abaca536f7e1c1dbf2dd887b1673e389d585d6c300f4cb3df29c0a7537",
+      "bytes_after": 1879,
+      "sha256_after": "972e25abaca536f7e1c1dbf2dd887b1673e389d585d6c300f4cb3df29c0a7537",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_scan.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_scan.py",
+      "bytes_before": 2240,
+      "sha256_before": "872c2074ceb7c94ac06cb57fc9d7390086dd6e9f48a1a6a099ba5284f343e9ef",
+      "bytes_after": 2240,
+      "sha256_after": "872c2074ceb7c94ac06cb57fc9d7390086dd6e9f48a1a6a099ba5284f343e9ef",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_set第1套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_set第1套.json",
+      "bytes_before": 75257,
+      "sha256_before": "724c5db874196286e8dfab2388f7b14ec9cb489067856116f6df912676d9c314",
+      "bytes_after": 75257,
+      "sha256_after": "724c5db874196286e8dfab2388f7b14ec9cb489067856116f6df912676d9c314",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_set第2套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_set第2套.json",
+      "bytes_before": 69395,
+      "sha256_before": "06a1319d21328cd1918ed87d951090e12f3bc97ea1f089127d4cc3889e2fe015",
+      "bytes_after": 69395,
+      "sha256_after": "06a1319d21328cd1918ed87d951090e12f3bc97ea1f089127d4cc3889e2fe015",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_set第3套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_set第3套.json",
+      "bytes_before": 76923,
+      "sha256_before": "661258cbaf592e8546a7f1053734c7cfdf13f121154319b42aa0ec8d9be43726",
+      "bytes_after": 76923,
+      "sha256_after": "661258cbaf592e8546a7f1053734c7cfdf13f121154319b42aa0ec8d9be43726",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_set第4套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_set第4套.json",
+      "bytes_before": 75182,
+      "sha256_before": "77fb46ed71b0718bfd45258a3bfacd099c2c5148d4ba7467e32a563c0aaabbb9",
+      "bytes_after": 75182,
+      "sha256_after": "77fb46ed71b0718bfd45258a3bfacd099c2c5148d4ba7467e32a563c0aaabbb9",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_set第5套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_set第5套.json",
+      "bytes_before": 78858,
+      "sha256_before": "17496b5815bdbed3e1ab1f8aa96bf2c1875a93ba33999f9d83787c7514f990dd",
+      "bytes_after": 78858,
+      "sha256_after": "17496b5815bdbed3e1ab1f8aa96bf2c1875a93ba33999f9d83787c7514f990dd",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_set第6套.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_set第6套.json",
+      "bytes_before": 73196,
+      "sha256_before": "c2ccf4e99eb9e683020da86bbcfeaca269fcb65fccd2cee994898425a1d25774",
+      "bytes_after": 73196,
+      "sha256_after": "c2ccf4e99eb9e683020da86bbcfeaca269fcb65fccd2cee994898425a1d25774",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mi6_trunc.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mi6_trunc.py",
+      "bytes_before": 1162,
+      "sha256_before": "19b1c6f7a87ece45efeb80c381305b4ce8ac5d4b1dff74ef34ebe42215f10673",
+      "bytes_after": 1162,
+      "sha256_after": "19b1c6f7a87ece45efeb80c381305b4ce8ac5d4b1dff74ef34ebe42215f10673",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_all_final.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_all_final.json",
+      "bytes_before": 806595,
+      "sha256_before": "49a4bc3fd323c9178cc9acd6f04d672ed01505f558bbf572d5a1b0e8ee0109e0",
+      "bytes_after": 806595,
+      "sha256_after": "49a4bc3fd323c9178cc9acd6f04d672ed01505f558bbf572d5a1b0e8ee0109e0",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_01_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_01_in.json",
+      "bytes_before": 60072,
+      "sha256_before": "a1d53b77dce60c27802f1de6493a95b5a86cd154930d234af1fcc6fd2136735f",
+      "bytes_after": 60072,
+      "sha256_after": "a1d53b77dce60c27802f1de6493a95b5a86cd154930d234af1fcc6fd2136735f",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_01_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_01_out.json",
+      "bytes_before": 23584,
+      "sha256_before": "d3f62d6b04831c6ce0c7178e60e471ef6e7126931e644f21f8696d83c92c8557",
+      "bytes_after": 23584,
+      "sha256_after": "d3f62d6b04831c6ce0c7178e60e471ef6e7126931e644f21f8696d83c92c8557",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_02_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_02_in.json",
+      "bytes_before": 58802,
+      "sha256_before": "fd119d885ed974612db6b072845e915f248b6b93a19d27acc884b9dda92b5b30",
+      "bytes_after": 58802,
+      "sha256_after": "fd119d885ed974612db6b072845e915f248b6b93a19d27acc884b9dda92b5b30",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_02_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_02_out.json",
+      "bytes_before": 19334,
+      "sha256_before": "13d617d352f0a61d02373a09d3ca240cbf72bebb31bbc656917d048de58f1780",
+      "bytes_after": 19334,
+      "sha256_after": "13d617d352f0a61d02373a09d3ca240cbf72bebb31bbc656917d048de58f1780",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_03_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_03_in.json",
+      "bytes_before": 66395,
+      "sha256_before": "4f64f4e87008d74301af4a359d649d3127e9778ccfda7d635728a8e2277fdd8e",
+      "bytes_after": 66395,
+      "sha256_after": "4f64f4e87008d74301af4a359d649d3127e9778ccfda7d635728a8e2277fdd8e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_03_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_03_out.json",
+      "bytes_before": 27692,
+      "sha256_before": "e418d09a95d19240f9de53c76c43d64677fa26154ab64affdfffbcb9fb47d831",
+      "bytes_after": 27692,
+      "sha256_after": "e418d09a95d19240f9de53c76c43d64677fa26154ab64affdfffbcb9fb47d831",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_04_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_04_in.json",
+      "bytes_before": 64751,
+      "sha256_before": "a26ca3e3e23f3a1c4cf8288ca9175dabcdbe77a8f9719bc62e450270c30c448f",
+      "bytes_after": 64751,
+      "sha256_after": "a26ca3e3e23f3a1c4cf8288ca9175dabcdbe77a8f9719bc62e450270c30c448f",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_04_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_04_out.json",
+      "bytes_before": 24779,
+      "sha256_before": "f2c6c22e6698e923ffdcfb241802d14866ff9098e677c08ae7cadee9256ed775",
+      "bytes_after": 24779,
+      "sha256_after": "f2c6c22e6698e923ffdcfb241802d14866ff9098e677c08ae7cadee9256ed775",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_05_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_05_in.json",
+      "bytes_before": 58209,
+      "sha256_before": "7c0b2182bc8be5e33c5f481cfb4309caaac0f02695f0d7d76710649311513d82",
+      "bytes_after": 58209,
+      "sha256_after": "7c0b2182bc8be5e33c5f481cfb4309caaac0f02695f0d7d76710649311513d82",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_05_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_05_out.json",
+      "bytes_before": 22903,
+      "sha256_before": "200b18b7d73f8141df11f6f03c684cbf093829bc9e7562a7098a1008b392e45c",
+      "bytes_after": 22903,
+      "sha256_after": "200b18b7d73f8141df11f6f03c684cbf093829bc9e7562a7098a1008b392e45c",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_06_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_06_in.json",
+      "bytes_before": 62052,
+      "sha256_before": "4090e2f3e3efe4de80a72345a68ace770f75a5fcd2eb68a25ffe9dd9f0903187",
+      "bytes_after": 62052,
+      "sha256_after": "4090e2f3e3efe4de80a72345a68ace770f75a5fcd2eb68a25ffe9dd9f0903187",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_06_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_06_out.json",
+      "bytes_before": 23267,
+      "sha256_before": "45f9521295c25c0819d4d1486b50e85d2e9a8028c9535348328db1e8929a42a4",
+      "bytes_after": 23267,
+      "sha256_after": "45f9521295c25c0819d4d1486b50e85d2e9a8028c9535348328db1e8929a42a4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_07_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_07_in.json",
+      "bytes_before": 54487,
+      "sha256_before": "fadc53cc68ddda6d8d1acfdaac1ea0fdffd771b56309f3948743bc323716f2b5",
+      "bytes_after": 54487,
+      "sha256_after": "fadc53cc68ddda6d8d1acfdaac1ea0fdffd771b56309f3948743bc323716f2b5",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_07_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_07_out.json",
+      "bytes_before": 18784,
+      "sha256_before": "72f6d9e33861e1ed1effc2ea9ff15e4d31b0c9319401428e7ff6e18fb9407dfc",
+      "bytes_after": 18784,
+      "sha256_after": "72f6d9e33861e1ed1effc2ea9ff15e4d31b0c9319401428e7ff6e18fb9407dfc",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_08_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_08_in.json",
+      "bytes_before": 51487,
+      "sha256_before": "440c951d74f629f919ebc8a85dc33fb5d5d0590f5f427219d6caca23c2290a4f",
+      "bytes_after": 51487,
+      "sha256_after": "440c951d74f629f919ebc8a85dc33fb5d5d0590f5f427219d6caca23c2290a4f",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_08_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_08_out.json",
+      "bytes_before": 18903,
+      "sha256_before": "f09b4a9c067fe523aea3551bc90e76cb90fa116c509f8865e8810d505e9fad2e",
+      "bytes_after": 18903,
+      "sha256_after": "f09b4a9c067fe523aea3551bc90e76cb90fa116c509f8865e8810d505e9fad2e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_09_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_09_in.json",
+      "bytes_before": 53868,
+      "sha256_before": "f73d48c0ae3cbe6971d616389929ba0ebcde99f4cc6f06bf7afaba003368c7ea",
+      "bytes_after": 53868,
+      "sha256_after": "f73d48c0ae3cbe6971d616389929ba0ebcde99f4cc6f06bf7afaba003368c7ea",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_09_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_09_out.json",
+      "bytes_before": 19880,
+      "sha256_before": "b67f4825eaccaf47776be30eb072c461e911e51f93e33bf7bffcf1c0c8dd92c6",
+      "bytes_after": 19880,
+      "sha256_after": "b67f4825eaccaf47776be30eb072c461e911e51f93e33bf7bffcf1c0c8dd92c6",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_10_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_10_in.json",
+      "bytes_before": 52161,
+      "sha256_before": "11577318c3a7736011c1c79966463cd3ae74fdd9447eb7005e998a899ab5810a",
+      "bytes_after": 52161,
+      "sha256_after": "11577318c3a7736011c1c79966463cd3ae74fdd9447eb7005e998a899ab5810a",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_10_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_10_out.json",
+      "bytes_before": 20357,
+      "sha256_before": "d54ab7e24b56ae5b112ce0d45e064f8636f7eb3bd4bfacb243b6179ba825326a",
+      "bytes_after": 20357,
+      "sha256_after": "d54ab7e24b56ae5b112ce0d45e064f8636f7eb3bd4bfacb243b6179ba825326a",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_11_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_11_in.json",
+      "bytes_before": 52853,
+      "sha256_before": "152770e8882e53ec96fcb7735088b2fa691a7e29338521b62bf746d01160b884",
+      "bytes_after": 52853,
+      "sha256_after": "152770e8882e53ec96fcb7735088b2fa691a7e29338521b62bf746d01160b884",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_11_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_11_out.json",
+      "bytes_before": 20546,
+      "sha256_before": "5d4574f4e37969ff4a34841383edfc3976a4ef44c14c8a72ec25a6621e094edf",
+      "bytes_after": 20546,
+      "sha256_after": "5d4574f4e37969ff4a34841383edfc3976a4ef44c14c8a72ec25a6621e094edf",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_12_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_12_in.json",
+      "bytes_before": 50132,
+      "sha256_before": "4416e47be6a8646abc27cc3e70be6ddb5eae4ddac7199e37e2a8d8777f84ce10",
+      "bytes_after": 50132,
+      "sha256_after": "4416e47be6a8646abc27cc3e70be6ddb5eae4ddac7199e37e2a8d8777f84ce10",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_12_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_12_out.json",
+      "bytes_before": 19423,
+      "sha256_before": "51b89cbcdd98b07f5d8e9adefe4d0fcb950cca7715781474892bb6952ba776d4",
+      "bytes_after": 19423,
+      "sha256_after": "51b89cbcdd98b07f5d8e9adefe4d0fcb950cca7715781474892bb6952ba776d4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_13_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_13_in.json",
+      "bytes_before": 52707,
+      "sha256_before": "47d0302d7aff96b932a7de56e873ef6e5ea21819be39503a6095d67b7fa0c3f0",
+      "bytes_after": 52707,
+      "sha256_after": "47d0302d7aff96b932a7de56e873ef6e5ea21819be39503a6095d67b7fa0c3f0",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_13_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_13_out.json",
+      "bytes_before": 20474,
+      "sha256_before": "c5b266c02eb71378ac08317a3b1e14202067e1a9efdb551e828c81bc924fa074",
+      "bytes_after": 20474,
+      "sha256_after": "c5b266c02eb71378ac08317a3b1e14202067e1a9efdb551e828c81bc924fa074",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_14_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_14_in.json",
+      "bytes_before": 50102,
+      "sha256_before": "d107e30b903ca315d0aea70048e8bc7b99ece0ff1289548ad7d9264b3e786640",
+      "bytes_after": 50102,
+      "sha256_after": "d107e30b903ca315d0aea70048e8bc7b99ece0ff1289548ad7d9264b3e786640",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_14_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_14_out.json",
+      "bytes_before": 20275,
+      "sha256_before": "25b0d62e277cb30dc6c58c2b5fc981caee1352ae844f1cc957eccb2f3e2184ff",
+      "bytes_after": 20275,
+      "sha256_after": "25b0d62e277cb30dc6c58c2b5fc981caee1352ae844f1cc957eccb2f3e2184ff",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_15_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_15_in.json",
+      "bytes_before": 50721,
+      "sha256_before": "f74e3a0bc9096a8a8b3e9e1c9327bfa0a57b2344317db301fde512af5cc6c6f4",
+      "bytes_after": 50721,
+      "sha256_after": "f74e3a0bc9096a8a8b3e9e1c9327bfa0a57b2344317db301fde512af5cc6c6f4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_15_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_15_out.json",
+      "bytes_before": 18934,
+      "sha256_before": "7be8a62805100808c0165ec5d94d09743449590429b6a172f760f62eba183711",
+      "bytes_after": 18934,
+      "sha256_after": "7be8a62805100808c0165ec5d94d09743449590429b6a172f760f62eba183711",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_16_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_16_in.json",
+      "bytes_before": 52109,
+      "sha256_before": "dbf645426be3d7dcb6933e93b88c85fb5577aa388308a5cf950abb7ee51da66e",
+      "bytes_after": 52109,
+      "sha256_after": "dbf645426be3d7dcb6933e93b88c85fb5577aa388308a5cf950abb7ee51da66e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_16_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_16_out.json",
+      "bytes_before": 22242,
+      "sha256_before": "d1bc1119f360925efe63660a8a4f2945447571c2e31f64bd404d122b7274c268",
+      "bytes_after": 22242,
+      "sha256_after": "d1bc1119f360925efe63660a8a4f2945447571c2e31f64bd404d122b7274c268",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_17_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_17_in.json",
+      "bytes_before": 57819,
+      "sha256_before": "b0f41f2c10872a655bdf1ec533adb0d8048ae6e56354dae2ef73dc91ad67dbc4",
+      "bytes_after": 57819,
+      "sha256_after": "b0f41f2c10872a655bdf1ec533adb0d8048ae6e56354dae2ef73dc91ad67dbc4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_17_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_17_out.json",
+      "bytes_before": 19997,
+      "sha256_before": "521c42328299ce206167dd6617492e3a9eb5cae95655e85aae585b0b18b0e85c",
+      "bytes_after": 19997,
+      "sha256_after": "521c42328299ce206167dd6617492e3a9eb5cae95655e85aae585b0b18b0e85c",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_18_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_18_in.json",
+      "bytes_before": 53241,
+      "sha256_before": "14a52b5e7a87cce37c7343f6dc9a5c93c251205408db1c12430d90be4fc75ec2",
+      "bytes_after": 53241,
+      "sha256_after": "14a52b5e7a87cce37c7343f6dc9a5c93c251205408db1c12430d90be4fc75ec2",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_18_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_18_out.json",
+      "bytes_before": 21164,
+      "sha256_before": "58d3474785977e79b4194d685177df4b91ecfccf4c3c460c13dd1145903be616",
+      "bytes_after": 21164,
+      "sha256_after": "58d3474785977e79b4194d685177df4b91ecfccf4c3c460c13dd1145903be616",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_19_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_19_in.json",
+      "bytes_before": 46940,
+      "sha256_before": "51be0ab1aedfda1c70035d8da876d0d86a09d0508e016f98e0abff4184036504",
+      "bytes_after": 46940,
+      "sha256_after": "51be0ab1aedfda1c70035d8da876d0d86a09d0508e016f98e0abff4184036504",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_19_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_19_out.json",
+      "bytes_before": 20920,
+      "sha256_before": "6018442f3cd30e4ad41a09235584fd87d5ea8822ac0650ed1a9d9adc3d9440d4",
+      "bytes_after": 20920,
+      "sha256_after": "6018442f3cd30e4ad41a09235584fd87d5ea8822ac0650ed1a9d9adc3d9440d4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_20_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_20_in.json",
+      "bytes_before": 48734,
+      "sha256_before": "2b9fc31434e48b99c416fe353df8c0d4b73e651f1bc18d088fa332d2f2796f1b",
+      "bytes_after": 48734,
+      "sha256_after": "2b9fc31434e48b99c416fe353df8c0d4b73e651f1bc18d088fa332d2f2796f1b",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_20_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_20_out.json",
+      "bytes_before": 20441,
+      "sha256_before": "5a12fd88622fc4984c7a5a0c943b93472049b8376f0ed73f253c2709b6819bfe",
+      "bytes_after": 20441,
+      "sha256_after": "5a12fd88622fc4984c7a5a0c943b93472049b8376f0ed73f253c2709b6819bfe",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_21_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_21_in.json",
+      "bytes_before": 53057,
+      "sha256_before": "9b275ebd8da771559335f40506ed656be8949315281b6ab540ddb798dbc0eb2c",
+      "bytes_after": 53057,
+      "sha256_after": "9b275ebd8da771559335f40506ed656be8949315281b6ab540ddb798dbc0eb2c",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_21_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_21_out.json",
+      "bytes_before": 19698,
+      "sha256_before": "7dfb0e2aba92e7886fda04bdf3acd5050c4c26307b2b15e2c3ceadeab99eb536",
+      "bytes_after": 19698,
+      "sha256_after": "7dfb0e2aba92e7886fda04bdf3acd5050c4c26307b2b15e2c3ceadeab99eb536",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_22_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_22_in.json",
+      "bytes_before": 49944,
+      "sha256_before": "1edde801162d4493562919a1d7033b3a6619dc3f9f4bf602bd440f09efd691fd",
+      "bytes_after": 49944,
+      "sha256_after": "1edde801162d4493562919a1d7033b3a6619dc3f9f4bf602bd440f09efd691fd",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_22_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_22_out.json",
+      "bytes_before": 19223,
+      "sha256_before": "3706767f3e2094c0df9e2aa447ea7d06e2d3c82d0ec4f213bdf091edbf90f08b",
+      "bytes_after": 19223,
+      "sha256_after": "3706767f3e2094c0df9e2aa447ea7d06e2d3c82d0ec4f213bdf091edbf90f08b",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_23_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_23_in.json",
+      "bytes_before": 54866,
+      "sha256_before": "b3dbe0a9bc413ee8fe334cbb3410c339c7171299323f3ad50a69674a0a1ed586",
+      "bytes_after": 54866,
+      "sha256_after": "b3dbe0a9bc413ee8fe334cbb3410c339c7171299323f3ad50a69674a0a1ed586",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_23_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_23_out.json",
+      "bytes_before": 20572,
+      "sha256_before": "bfa2f278b11c5d25363e66112eb6d37058b699cddddbd7111fbffe53efbd1ed0",
+      "bytes_after": 20572,
+      "sha256_after": "bfa2f278b11c5d25363e66112eb6d37058b699cddddbd7111fbffe53efbd1ed0",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_24_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_24_in.json",
+      "bytes_before": 53216,
+      "sha256_before": "d6570680c596877692033086eb5520abd6a9e15396f763ed35744ee1c9370aa4",
+      "bytes_after": 53216,
+      "sha256_after": "d6570680c596877692033086eb5520abd6a9e15396f763ed35744ee1c9370aa4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_24_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_24_out.json",
+      "bytes_before": 18742,
+      "sha256_before": "6ea7311b521021dd15b4e53194756feb99e7b20d46d5ff381eb706feff211ad3",
+      "bytes_after": 18742,
+      "sha256_after": "6ea7311b521021dd15b4e53194756feb99e7b20d46d5ff381eb706feff211ad3",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_25_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_25_in.json",
+      "bytes_before": 51217,
+      "sha256_before": "d6d4b435c43e8bc983ffcb4fa771d81180d0fb60e1d6bbfd248379f6eab538e2",
+      "bytes_after": 51217,
+      "sha256_after": "d6d4b435c43e8bc983ffcb4fa771d81180d0fb60e1d6bbfd248379f6eab538e2",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_25_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_25_out.json",
+      "bytes_before": 18730,
+      "sha256_before": "48aaaed229805de0a6587ba019ca3a264c83de186e663a138b4b0c6b28be6772",
+      "bytes_after": 18730,
+      "sha256_after": "48aaaed229805de0a6587ba019ca3a264c83de186e663a138b4b0c6b28be6772",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_26_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_26_in.json",
+      "bytes_before": 54610,
+      "sha256_before": "1c49c4986e8c2ff0fcc87ae1cc68ed716435f5ad8673840d259b3e81a4f0a3a4",
+      "bytes_after": 54610,
+      "sha256_after": "1c49c4986e8c2ff0fcc87ae1cc68ed716435f5ad8673840d259b3e81a4f0a3a4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_26_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_26_out.json",
+      "bytes_before": 20154,
+      "sha256_before": "047770292a7efc5994a3f3f875539a50f47bdcda3532a2db6fce9576ca3aa83e",
+      "bytes_after": 20154,
+      "sha256_after": "047770292a7efc5994a3f3f875539a50f47bdcda3532a2db6fce9576ca3aa83e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_27_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_27_in.json",
+      "bytes_before": 51195,
+      "sha256_before": "7e0942066750d52d1128a8b6997ca7f6a80bade820b7a1d751ce8c990add0623",
+      "bytes_after": 51195,
+      "sha256_after": "7e0942066750d52d1128a8b6997ca7f6a80bade820b7a1d751ce8c990add0623",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_27_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_27_out.json",
+      "bytes_before": 20145,
+      "sha256_before": "59f55368c25f89303ade5755c78ab1871522ef08d75d5b0f78a9e0b792f2cbe5",
+      "bytes_after": 20145,
+      "sha256_after": "59f55368c25f89303ade5755c78ab1871522ef08d75d5b0f78a9e0b792f2cbe5",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_28_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_28_in.json",
+      "bytes_before": 61210,
+      "sha256_before": "6fa70b7995cf5732f129456df9622d0c4d35dfa6ab551dfb6cba8d90df4465b1",
+      "bytes_after": 61210,
+      "sha256_after": "6fa70b7995cf5732f129456df9622d0c4d35dfa6ab551dfb6cba8d90df4465b1",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_28_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_28_out.json",
+      "bytes_before": 20406,
+      "sha256_before": "15ac2ff7816255f0fd94e89ca31eae405e71fb213a4b87f8ddd598e9c876e2ac",
+      "bytes_after": 20406,
+      "sha256_after": "15ac2ff7816255f0fd94e89ca31eae405e71fb213a4b87f8ddd598e9c876e2ac",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_29_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_29_in.json",
+      "bytes_before": 56124,
+      "sha256_before": "0f55bb02a05a67d3c740cfa346ffd9a72f50f3324938623d9b30576510d0f5a2",
+      "bytes_after": 56124,
+      "sha256_after": "0f55bb02a05a67d3c740cfa346ffd9a72f50f3324938623d9b30576510d0f5a2",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_29_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_29_out.json",
+      "bytes_before": 19798,
+      "sha256_before": "70fd438a02f94e258fd83c5c9193cfaa8647fb66c8b573945d1218ba932c692c",
+      "bytes_after": 19798,
+      "sha256_after": "70fd438a02f94e258fd83c5c9193cfaa8647fb66c8b573945d1218ba932c692c",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_30_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_30_in.json",
+      "bytes_before": 52409,
+      "sha256_before": "30e5be86ae1537d2ddfa4aad42545025ec445996aefa24a8d4d568087c428f4b",
+      "bytes_after": 52409,
+      "sha256_after": "30e5be86ae1537d2ddfa4aad42545025ec445996aefa24a8d4d568087c428f4b",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_30_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_30_out.json",
+      "bytes_before": 19840,
+      "sha256_before": "c1d98204580d379c2ac1415916b1b807fefaf43d599476937b484c7e04b82d11",
+      "bytes_after": 19840,
+      "sha256_after": "c1d98204580d379c2ac1415916b1b807fefaf43d599476937b484c7e04b82d11",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_31_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_31_in.json",
+      "bytes_before": 44060,
+      "sha256_before": "27dfeb4071d225bb03b418623aa539e9ec1ad7bb556c30b5bc38b89221ad3a19",
+      "bytes_after": 44060,
+      "sha256_after": "27dfeb4071d225bb03b418623aa539e9ec1ad7bb556c30b5bc38b89221ad3a19",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_31_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_31_out.json",
+      "bytes_before": 18504,
+      "sha256_before": "6cd275f41f33b9726c4caba946578223e10cea0ce106f4623ce9de52d806b0fd",
+      "bytes_after": 18504,
+      "sha256_after": "6cd275f41f33b9726c4caba946578223e10cea0ce106f4623ce9de52d806b0fd",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_32_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_32_in.json",
+      "bytes_before": 39409,
+      "sha256_before": "5b84c3c2282dd8af2903b5eddec74a8dc583f0f8285ef191b67b9ac7d3fa5bf1",
+      "bytes_after": 39409,
+      "sha256_after": "5b84c3c2282dd8af2903b5eddec74a8dc583f0f8285ef191b67b9ac7d3fa5bf1",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_32_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_32_out.json",
+      "bytes_before": 18096,
+      "sha256_before": "48cce3212f1aeeaae626dbd322a81674b39877c7100a9999258c50e11eec5145",
+      "bytes_after": 18096,
+      "sha256_after": "48cce3212f1aeeaae626dbd322a81674b39877c7100a9999258c50e11eec5145",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_33_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_33_in.json",
+      "bytes_before": 47462,
+      "sha256_before": "ceaf7fe9ecba565f63a4c52783c3f3e797a8e90e6d6c6bc5b8003c315f949067",
+      "bytes_after": 47462,
+      "sha256_after": "ceaf7fe9ecba565f63a4c52783c3f3e797a8e90e6d6c6bc5b8003c315f949067",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_33_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_33_out.json",
+      "bytes_before": 18106,
+      "sha256_before": "30ddd0ad5851a2d9eb99a45f60ee6e26ee03d2de9c3591f52947427634a796e4",
+      "bytes_after": 18106,
+      "sha256_after": "30ddd0ad5851a2d9eb99a45f60ee6e26ee03d2de9c3591f52947427634a796e4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_34_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_34_in.json",
+      "bytes_before": 37068,
+      "sha256_before": "8efa8c1533e374c58152504e30b86e48605c4a519f2c3186f6097ce7c155ec75",
+      "bytes_after": 37068,
+      "sha256_after": "8efa8c1533e374c58152504e30b86e48605c4a519f2c3186f6097ce7c155ec75",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_34_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_34_out.json",
+      "bytes_before": 21576,
+      "sha256_before": "50569eeb746d385c16ea48267196244b9f7d3377955ad4c65eb8e12801623345",
+      "bytes_after": 21576,
+      "sha256_after": "50569eeb746d385c16ea48267196244b9f7d3377955ad4c65eb8e12801623345",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_35_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_35_in.json",
+      "bytes_before": 42216,
+      "sha256_before": "b606823589c754fb4d174cb5e79349c07a4ca437a3c9a8350e56f2d8a682a970",
+      "bytes_after": 42216,
+      "sha256_after": "b606823589c754fb4d174cb5e79349c07a4ca437a3c9a8350e56f2d8a682a970",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_35_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_35_out.json",
+      "bytes_before": 20125,
+      "sha256_before": "08417f3668235303e097c52f0748eea32b51b8922de2358cba51ca27571561ba",
+      "bytes_after": 20125,
+      "sha256_after": "08417f3668235303e097c52f0748eea32b51b8922de2358cba51ca27571561ba",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_36_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_36_in.json",
+      "bytes_before": 44610,
+      "sha256_before": "bd98adc758808f4abc7a7ef92dfaa15453351ade7814c17af61f3433412fb73d",
+      "bytes_after": 44610,
+      "sha256_after": "bd98adc758808f4abc7a7ef92dfaa15453351ade7814c17af61f3433412fb73d",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_36_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_36_out.json",
+      "bytes_before": 18530,
+      "sha256_before": "3c0517068ef5cbf67858f338d3f696fa63aaddf19e840c2cb581aff11ae6963a",
+      "bytes_after": 18530,
+      "sha256_after": "3c0517068ef5cbf67858f338d3f696fa63aaddf19e840c2cb581aff11ae6963a",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_37_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_37_in.json",
+      "bytes_before": 25510,
+      "sha256_before": "3b9f8a61c586de197cce0aa28df58e1c0a6a27b2c3fa23be1498b945db4e9c07",
+      "bytes_after": 25510,
+      "sha256_after": "3b9f8a61c586de197cce0aa28df58e1c0a6a27b2c3fa23be1498b945db4e9c07",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_batches/batch_37_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_batches/batch_37_out.json",
+      "bytes_before": 13338,
+      "sha256_before": "11d96f71acc821dece3a942c0951f809bc09294ee0ad18b5d8b082e88c78d2b9",
+      "bytes_after": 13338,
+      "sha256_after": "11d96f71acc821dece3a942c0951f809bc09294ee0ad18b5d8b082e88c78d2b9",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_build_dirty.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_build_dirty.out.txt",
+      "bytes_before": 586,
+      "sha256_before": "2dcdc9c5c945f3c48f4fa491bd15c5304fa964d34c62e289b293f2d535320e0e",
+      "bytes_after": 586,
+      "sha256_after": "2dcdc9c5c945f3c48f4fa491bd15c5304fa964d34c62e289b293f2d535320e0e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_build_dirty.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_build_dirty.py",
+      "bytes_before": 2291,
+      "sha256_before": "4745046fc4b9776fa26a7384d7077350bffc2ab2054d2764244ce8bee45cfead",
+      "bytes_after": 2291,
+      "sha256_after": "4745046fc4b9776fa26a7384d7077350bffc2ab2054d2764244ce8bee45cfead",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_build_fix.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_build_fix.py",
+      "bytes_before": 3198,
+      "sha256_before": "ebec72c43f8df2c0c8d053fcd126752367ad173f4897ea20061bc00660ee7fd4",
+      "bytes_after": 3198,
+      "sha256_after": "ebec72c43f8df2c0c8d053fcd126752367ad173f4897ea20061bc00660ee7fd4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_dirty_batches/batch_01_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_dirty_batches/batch_01_in.json",
+      "bytes_before": 56219,
+      "sha256_before": "1cf0ac8a7942c4ff69b1c5498dcad3e3d1eea0d8492402fcac5fc91fea4756ad",
+      "bytes_after": 56219,
+      "sha256_after": "1cf0ac8a7942c4ff69b1c5498dcad3e3d1eea0d8492402fcac5fc91fea4756ad",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_dirty_batches/batch_01_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_dirty_batches/batch_01_out.json",
+      "bytes_before": 17840,
+      "sha256_before": "0e0153389ba0d7943d28be276452732bd48d46a2c4927b4bb18a06cc9e771156",
+      "bytes_after": 17840,
+      "sha256_after": "0e0153389ba0d7943d28be276452732bd48d46a2c4927b4bb18a06cc9e771156",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_dirty_batches/batch_02_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_dirty_batches/batch_02_in.json",
+      "bytes_before": 45738,
+      "sha256_before": "f49a0c9872c204e7b4aedf73d32ccb108be67d5d54208166f99c8fee6d57b9e4",
+      "bytes_after": 45738,
+      "sha256_after": "f49a0c9872c204e7b4aedf73d32ccb108be67d5d54208166f99c8fee6d57b9e4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_dirty_batches/batch_02_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_dirty_batches/batch_02_out.json",
+      "bytes_before": 17549,
+      "sha256_before": "0787a1bd9ede19a336f36c787c6e0698a865ea73d0b72d6aca49b4232c8c6291",
+      "bytes_after": 17549,
+      "sha256_after": "0787a1bd9ede19a336f36c787c6e0698a865ea73d0b72d6aca49b4232c8c6291",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_dirty_batches/batch_03_in.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_dirty_batches/batch_03_in.json",
+      "bytes_before": 35806,
+      "sha256_before": "dc2465ca6b34d83409fa7420408a01084456ab1fc2077202f05c29600cbedf4d",
+      "bytes_after": 35806,
+      "sha256_after": "dc2465ca6b34d83409fa7420408a01084456ab1fc2077202f05c29600cbedf4d",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_dirty_batches/batch_03_out.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_dirty_batches/batch_03_out.json",
+      "bytes_before": 17131,
+      "sha256_before": "22cc6cd794b8027194fbad08f5ed6a76f58861beaa5d3e1f8343c7b691b071cd",
+      "bytes_after": 17131,
+      "sha256_after": "22cc6cd794b8027194fbad08f5ed6a76f58861beaa5d3e1f8343c7b691b071cd",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_dirty_ids.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_dirty_ids.json",
+      "bytes_before": 416,
+      "sha256_before": "e5ac90299fadad2ca6fa35d2ee037726f4118212e37620c86377485ed174a566",
+      "bytes_after": 416,
+      "sha256_after": "e5ac90299fadad2ca6fa35d2ee037726f4118212e37620c86377485ed174a566",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_dirty_list.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_dirty_list.py",
+      "bytes_before": 3057,
+      "sha256_before": "146b794a0ae1c1ef69cd55443fecfd8dcc9db6b13630766de03b1c780fed5c08",
+      "bytes_after": 3057,
+      "sha256_after": "146b794a0ae1c1ef69cd55443fecfd8dcc9db6b13630766de03b1c780fed5c08",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_export.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_export.json",
+      "bytes_before": 2803095,
+      "sha256_before": "7d8e56d2b9e833282a8c6df5c51ecc70200b77ba9e7561a505b4e81342904f52",
+      "bytes_after": 2803095,
+      "sha256_after": "7d8e56d2b9e833282a8c6df5c51ecc70200b77ba9e7561a505b4e81342904f52",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_final.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_final.json",
+      "bytes_before": 753772,
+      "sha256_before": "56a39bab0c08a5828019fb737a8ddda55e16fc6a869426d4f0c04582de2fde6c",
+      "bytes_after": 753772,
+      "sha256_after": "56a39bab0c08a5828019fb737a8ddda55e16fc6a869426d4f0c04582de2fde6c",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_fix_final.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_fix_final.json",
+      "bytes_before": 52826,
+      "sha256_before": "a7d31e835976ef12316c1c0720f70e5b19c1922e134f88e1502901e37c092831",
+      "bytes_after": 52826,
+      "sha256_after": "a7d31e835976ef12316c1c0720f70e5b19c1922e134f88e1502901e37c092831",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_flat.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_flat.json",
+      "bytes_before": 2681223,
+      "sha256_before": "d9681418cfdd3230840da221ed64d924f42c03cc0e1aea37422df1df78400c2a",
+      "bytes_after": 2681223,
+      "sha256_after": "d9681418cfdd3230840da221ed64d924f42c03cc0e1aea37422df1df78400c2a",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_inspect.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_inspect.py",
+      "bytes_before": 528,
+      "sha256_before": "c89f2f8dd834e5401119c8098ef9a88d77e910bfa0409f989bd1db868405ffbe",
+      "bytes_after": 528,
+      "sha256_after": "c89f2f8dd834e5401119c8098ef9a88d77e910bfa0409f989bd1db868405ffbe",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_inspect2.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_inspect2.out.txt",
+      "bytes_before": 5895,
+      "sha256_before": "83cf33842766c60d6190311433e85f6b4d04cc5662e0af2771fbaff99784800d",
+      "bytes_after": 5895,
+      "sha256_after": "83cf33842766c60d6190311433e85f6b4d04cc5662e0af2771fbaff99784800d",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_inspect2.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_inspect2.py",
+      "bytes_before": 523,
+      "sha256_before": "1162873a7816210e76344853feab967d9067a7e84713bd042d7e8655d8fb39fa",
+      "bytes_after": 523,
+      "sha256_after": "1162873a7816210e76344853feab967d9067a7e84713bd042d7e8655d8fb39fa",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_inspect3.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_inspect3.out.txt",
+      "bytes_before": 9230,
+      "sha256_before": "137ea4d70ce4551eefc466742f7dd76395a15ce72fbbac86a21bac5312f6e3ed",
+      "bytes_after": 9230,
+      "sha256_after": "137ea4d70ce4551eefc466742f7dd76395a15ce72fbbac86a21bac5312f6e3ed",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_inspect3.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_inspect3.py",
+      "bytes_before": 498,
+      "sha256_before": "380a9949028221d225e2c412663b9fb5497d6204195e1d2cb750300ddc984611",
+      "bytes_after": 498,
+      "sha256_after": "380a9949028221d225e2c412663b9fb5497d6204195e1d2cb750300ddc984611",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_merge.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_merge.py",
+      "bytes_before": 2447,
+      "sha256_before": "77c44a39c743ae066b2916e31b0c170475ab0b309bde22a89bc89ea30ae39ad7",
+      "bytes_after": 2447,
+      "sha256_after": "77c44a39c743ae066b2916e31b0c170475ab0b309bde22a89bc89ea30ae39ad7",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_neg.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_neg.out.txt",
+      "bytes_before": 4462,
+      "sha256_before": "7326851d39baeb5512819aa0e045d2e018fb9bb0fec42d9fc2e7a9778d8f86b3",
+      "bytes_after": 4462,
+      "sha256_after": "7326851d39baeb5512819aa0e045d2e018fb9bb0fec42d9fc2e7a9778d8f86b3",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_neg.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_neg.py",
+      "bytes_before": 953,
+      "sha256_before": "c04a53e64c6651a4782123cb9d5af1238798df6bc6ebb97ef58a2059e8d45d92",
+      "bytes_after": 953,
+      "sha256_after": "c04a53e64c6651a4782123cb9d5af1238798df6bc6ebb97ef58a2059e8d45d92",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_pick.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_pick.out.txt",
+      "bytes_before": 9340,
+      "sha256_before": "635ebc6b916c96c54b4a3be7cc5a08e83d41f89692b302472a12e99d3948097b",
+      "bytes_after": 9340,
+      "sha256_after": "635ebc6b916c96c54b4a3be7cc5a08e83d41f89692b302472a12e99d3948097b",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_pick_sample.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_pick_sample.py",
+      "bytes_before": 882,
+      "sha256_before": "0d9ccff5f91d1a11234053ce144d084276d35385a382bb4278154de8d0c2475c",
+      "bytes_after": 882,
+      "sha256_after": "0d9ccff5f91d1a11234053ce144d084276d35385a382bb4278154de8d0c2475c",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_prepare.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_prepare.py",
+      "bytes_before": 4658,
+      "sha256_before": "5262bb5aa0b49aee789f15a26126d5735d735ecca11ea8ad545180c3fe8c5486",
+      "bytes_after": 4658,
+      "sha256_after": "5262bb5aa0b49aee789f15a26126d5735d735ecca11ea8ad545180c3fe8c5486",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_preview.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_preview.py",
+      "bytes_before": 1898,
+      "sha256_before": "77faacae301505b23d5d3b93784c841c1d0d0b2e99cf9609f9dfa00b5ff6f48f",
+      "bytes_after": 1898,
+      "sha256_after": "77faacae301505b23d5d3b93784c841c1d0d0b2e99cf9609f9dfa00b5ff6f48f",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_sample.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_sample.json",
+      "bytes_before": 10923,
+      "sha256_before": "9ec3ddc3ca9e507ce0c182d793284de851d1a96e426b6f7aea5b69e36b9ba1bf",
+      "bytes_after": 10923,
+      "sha256_after": "9ec3ddc3ca9e507ce0c182d793284de851d1a96e426b6f7aea5b69e36b9ba1bf",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_sample.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_sample.py",
+      "bytes_before": 9746,
+      "sha256_before": "df632c61741f5e06fb09bd8ed6e5e08e4955987bba0677a781c147fb39182778",
+      "bytes_after": 9746,
+      "sha256_after": "df632c61741f5e06fb09bd8ed6e5e08e4955987bba0677a781c147fb39182778",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_sample_src.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_sample_src.json",
+      "bytes_before": 37930,
+      "sha256_before": "a6327600f92937cc50680ff96cd71ec78270fd97af47c3032ef85d26d932ff0e",
+      "bytes_after": 37930,
+      "sha256_after": "a6327600f92937cc50680ff96cd71ec78270fd97af47c3032ef85d26d932ff0e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_scan2.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan2.out.txt",
+      "bytes_before": 1108,
+      "sha256_before": "520f1227dd0128272077112dcf9b4ee9b75c2d545b63756b8fb7d84e5b24b849",
+      "bytes_after": 1108,
+      "sha256_after": "520f1227dd0128272077112dcf9b4ee9b75c2d545b63756b8fb7d84e5b24b849",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_scan2.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan2.py",
+      "bytes_before": 1511,
+      "sha256_before": "6532b527f6d63ca7cb563205869120718b51baba86ee71162ee503bceec1ee75",
+      "bytes_after": 1511,
+      "sha256_after": "6532b527f6d63ca7cb563205869120718b51baba86ee71162ee503bceec1ee75",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_scan3.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan3.out.txt",
+      "bytes_before": 4140,
+      "sha256_before": "21c9b4e00ecc7c5b58a0a8ddf5a88294e3dcbfe3fd41f16eeadbd62ac0721ab1",
+      "bytes_after": 4140,
+      "sha256_after": "21c9b4e00ecc7c5b58a0a8ddf5a88294e3dcbfe3fd41f16eeadbd62ac0721ab1",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_scan3.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan3.py",
+      "bytes_before": 1740,
+      "sha256_before": "1bdc4cbe0c94a68a594b14e0ef83e7b6d010043a626be20892665c0651feccf1",
+      "bytes_after": 1740,
+      "sha256_after": "1bdc4cbe0c94a68a594b14e0ef83e7b6d010043a626be20892665c0651feccf1",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_scan3b.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan3b.out.txt",
+      "bytes_before": 547,
+      "sha256_before": "7d883f2ad1a59441409b517c4795ba27e1203c84e494754ba41562a5a32240f5",
+      "bytes_after": 547,
+      "sha256_after": "7d883f2ad1a59441409b517c4795ba27e1203c84e494754ba41562a5a32240f5",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_scan4.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan4.out.txt",
+      "bytes_before": 333,
+      "sha256_before": "76748687922edd23725cf1efdf4a386cb9cd8085783183ebe5f55424233af139",
+      "bytes_after": 333,
+      "sha256_after": "76748687922edd23725cf1efdf4a386cb9cd8085783183ebe5f55424233af139",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_scan4.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_scan4.py",
+      "bytes_before": 1210,
+      "sha256_before": "9af9eb9e415515a6fd9661d189242675d93308b9403944da284a2b94897254c6",
+      "bytes_after": 1210,
+      "sha256_after": "9af9eb9e415515a6fd9661d189242675d93308b9403944da284a2b94897254c6",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_split.out.txt",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_split.out.txt",
+      "bytes_before": 3746,
+      "sha256_before": "2e6266aa63499dc1ccb71cbabc1e854230d94d90276f05506c2b5ed6e741316d",
+      "bytes_after": 3746,
+      "sha256_after": "2e6266aa63499dc1ccb71cbabc1e854230d94d90276f05506c2b5ed6e741316d",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_split.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_split.py",
+      "bytes_before": 2162,
+      "sha256_before": "9dee2acd7f6229ae63e106ec4b5fc60a35febdec6102a8aed2847921fb0515ff",
+      "bytes_after": 2162,
+      "sha256_after": "9dee2acd7f6229ae63e106ec4b5fc60a35febdec6102a8aed2847921fb0515ff",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_STYLE.md",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_STYLE.md",
+      "bytes_before": 5823,
+      "sha256_before": "a83ac560c49d72fc3a72b56ab2e864529ce223ce1539e92a3a7b5b4aad0dad50",
+      "bytes_after": 5823,
+      "sha256_after": "a83ac560c49d72fc3a72b56ab2e864529ce223ce1539e92a3a7b5b4aad0dad50",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_validate_dirty.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_validate_dirty.py",
+      "bytes_before": 1881,
+      "sha256_before": "caa51f9f5729966227b37047017121e50904e8e491e6b863f28ea2f1f0778dea",
+      "bytes_after": 1881,
+      "sha256_after": "caa51f9f5729966227b37047017121e50904e8e491e6b863f28ea2f1f0778dea",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/mili720_validate_out.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/mili720_validate_out.py",
+      "bytes_before": 2689,
+      "sha256_before": "e2027332b3e44f9c433ec709d6e3d4e7fdf97ff96d51aa8f4bc4e12ed15f90f1",
+      "bytes_after": 2689,
+      "sha256_after": "e2027332b3e44f9c433ec709d6e3d4e7fdf97ff96d51aa8f4bc4e12ed15f90f1",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_mi6_short.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_mi6_short.sql",
+      "bytes_before": 258196,
+      "sha256_before": "fac6f161cd49a4d7389e763fa0397f466e3030f5a70bc5487a0589743d54dca0",
+      "bytes_after": 258196,
+      "sha256_after": "fac6f161cd49a4d7389e763fa0397f466e3030f5a70bc5487a0589743d54dca0",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_mi6_short_fix.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_mi6_short_fix.sql",
+      "bytes_before": 8460,
+      "sha256_before": "15e37e1b884700082590c0741376f8a19cf133ddfb5f1faa08834b3c4220eba2",
+      "bytes_after": 8460,
+      "sha256_after": "15e37e1b884700082590c0741376f8a19cf133ddfb5f1faa08834b3c4220eba2",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_mili720_fix.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_mili720_fix.sql",
+      "bytes_before": 64088,
+      "sha256_before": "5a7e64982d050d0f808693e3100f332300fdd7ff77aa7f5bd3822619d08d6704",
+      "bytes_after": 64088,
+      "sha256_after": "5a7e64982d050d0f808693e3100f332300fdd7ff77aa7f5bd3822619d08d6704",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_mili720_short.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_mili720_short.sql",
+      "bytes_before": 892520,
+      "sha256_before": "70712082f1b7785f44df398aafd50f97d2e2ac73f5c811b383b80af3c2908f79",
+      "bytes_after": 892520,
+      "sha256_after": "70712082f1b7785f44df398aafd50f97d2e2ac73f5c811b383b80af3c2908f79",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_season10.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_season10.sql",
+      "bytes_before": 26325,
+      "sha256_before": "8f951d0043d0dd3310c315dddef4b40745199e41a19d8409f1689e66e88a3f7a",
+      "bytes_after": 26325,
+      "sha256_after": "8f951d0043d0dd3310c315dddef4b40745199e41a19d8409f1689e66e88a3f7a",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_season6.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_season6.sql",
+      "bytes_before": 17533,
+      "sha256_before": "e724c78e21c5674d4364f2c8edcd4f81ba3353b63c276c8c7e5c9ce869b2fb06",
+      "bytes_after": 17533,
+      "sha256_after": "e724c78e21c5674d4364f2c8edcd4f81ba3353b63c276c8c7e5c9ce869b2fb06",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_season7.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_season7.sql",
+      "bytes_before": 35081,
+      "sha256_before": "79c70d5f171d2280c45ad8dba1c791ed8f5f583e1a228bebcdb8720531a4b20d",
+      "bytes_after": 35081,
+      "sha256_after": "79c70d5f171d2280c45ad8dba1c791ed8f5f583e1a228bebcdb8720531a4b20d",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_season8.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_season8.sql",
+      "bytes_before": 32857,
+      "sha256_before": "0248b55e720fb410f54831cb19073bd9664b9d73b3610d2ee3afbe571086aa5a",
+      "bytes_after": 32857,
+      "sha256_after": "0248b55e720fb410f54831cb19073bd9664b9d73b3610d2ee3afbe571086aa5a",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_season9.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_season9.sql",
+      "bytes_before": 29069,
+      "sha256_before": "a0aac4894a9597fcd31534efb79d7959ae82f26d65a44de9867b0867fb73a028",
+      "bytes_after": 29069,
+      "sha256_after": "a0aac4894a9597fcd31534efb79d7959ae82f26d65a44de9867b0867fb73a028",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/prod_sync_xiao193_short.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/prod_sync_xiao193_short.sql",
+      "bytes_before": 194092,
+      "sha256_before": "6ddbc9a7a7b99d96f80701bcf8dcae0ddcaa579bd649eeeb2f094a4e2076b6db",
+      "bytes_after": 194092,
+      "sha256_after": "6ddbc9a7a7b99d96f80701bcf8dcae0ddcaa579bd649eeeb2f094a4e2076b6db",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/season10_batch.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/season10_batch.json",
+      "bytes_before": 43021,
+      "sha256_before": "70d375322ccc13823dced8911708ae3e274e5823689152224dd45083ff30f48d",
+      "bytes_after": 43021,
+      "sha256_after": "70d375322ccc13823dced8911708ae3e274e5823689152224dd45083ff30f48d",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/season6_batch.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/season6_batch.json",
+      "bytes_before": 28862,
+      "sha256_before": "aa5ffb79b56b2a739c0ba342226434533790a42e25b89fa3c3d81eccb62efb01",
+      "bytes_after": 28862,
+      "sha256_after": "aa5ffb79b56b2a739c0ba342226434533790a42e25b89fa3c3d81eccb62efb01",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/season8_batch.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/season8_batch.json",
+      "bytes_before": 53662,
+      "sha256_before": "10b0153483cf282ebe064e390d26b74895d46d0e0d6bf25422c774170ed190c3",
+      "bytes_after": 53662,
+      "sha256_after": "10b0153483cf282ebe064e390d26b74895d46d0e0d6bf25422c774170ed190c3",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/season9_batch.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/season9_batch.json",
+      "bytes_before": 48613,
+      "sha256_before": "d5d34053e50deb6b62f56fb633dc8b75af1f06f789a637b18733c90945c0e5d6",
+      "bytes_after": 48613,
+      "sha256_after": "d5d34053e50deb6b62f56fb633dc8b75af1f06f789a637b18733c90945c0e5d6",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/validate_season7.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/validate_season7.py",
+      "bytes_before": 3828,
+      "sha256_before": "7ede4448136b892e3f0b4e3b181828d711a89edc672166f2b19489e3230fdf40",
+      "bytes_after": 3828,
+      "sha256_after": "7ede4448136b892e3f0b4e3b181828d711a89edc672166f2b19489e3230fdf40",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_danxuan.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_danxuan.json",
+      "bytes_before": 41970,
+      "sha256_before": "081eda1530405db846966ee642d3cbc8764e3682d9c3f8d3a95f94f86ff83d51",
+      "bytes_after": 41970,
+      "sha256_after": "081eda1530405db846966ee642d3cbc8764e3682d9c3f8d3a95f94f86ff83d51",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_duoxuan.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_duoxuan.json",
+      "bytes_before": 175178,
+      "sha256_before": "da8e473887ac6b73266cf219e5524b75939af3d3de9075320d23a9c0bcdab9fe",
+      "bytes_after": 175178,
+      "sha256_after": "da8e473887ac6b73266cf219e5524b75939af3d3de9075320d23a9c0bcdab9fe",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_export.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_export.json",
+      "bytes_before": 246106,
+      "sha256_before": "cc6d4b2f2ca2c3a8387aa73f5d56e562a583ba3c28fd7ad6b1f48fe49bd4305b",
+      "bytes_after": 246106,
+      "sha256_after": "cc6d4b2f2ca2c3a8387aa73f5d56e562a583ba3c28fd7ad6b1f48fe49bd4305b",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_final.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_final.json",
+      "bytes_before": 165867,
+      "sha256_before": "91c5ad77581eae535c7015f2dff5a781bcdfd3ccbe09f05252ea22a75319cce1",
+      "bytes_after": 165867,
+      "sha256_after": "91c5ad77581eae535c7015f2dff5a781bcdfd3ccbe09f05252ea22a75319cce1",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_merge.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_merge.py",
+      "bytes_before": 2459,
+      "sha256_before": "5cec119303c8a3943b25576c2f70f86b6153ea7539c4d7df8837e7890fde7057",
+      "bytes_after": 2459,
+      "sha256_after": "5cec119303c8a3943b25576c2f70f86b6153ea7539c4d7df8837e7890fde7057",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_prepare.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_prepare.py",
+      "bytes_before": 4044,
+      "sha256_before": "ba80f8296b5e6349038ff0f22f28a414d28955c07ec548a6916554eca9c679da",
+      "bytes_after": 4044,
+      "sha256_after": "ba80f8296b5e6349038ff0f22f28a414d28955c07ec548a6916554eca9c679da",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part1.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part1.json",
+      "bytes_before": 20806,
+      "sha256_before": "e8d4f3bb54de679333aabb9e8409ebfa6840d98d7206eaa7249f9f5f46e8290b",
+      "bytes_after": 20806,
+      "sha256_after": "e8d4f3bb54de679333aabb9e8409ebfa6840d98d7206eaa7249f9f5f46e8290b",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part10.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part10.json",
+      "bytes_before": 5265,
+      "sha256_before": "c903b5213246052d6828c97c160934294199d4cbd2aa8d0662ba10b39ecbc3de",
+      "bytes_after": 5265,
+      "sha256_after": "c903b5213246052d6828c97c160934294199d4cbd2aa8d0662ba10b39ecbc3de",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part2.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part2.json",
+      "bytes_before": 18681,
+      "sha256_before": "9a62cec5d6d48c8b59f7260f4638c3da40e200afaa290cd13651b1a680825ca6",
+      "bytes_after": 18681,
+      "sha256_after": "9a62cec5d6d48c8b59f7260f4638c3da40e200afaa290cd13651b1a680825ca6",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part3.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part3.json",
+      "bytes_before": 18694,
+      "sha256_before": "a67a14af751c147908489564b68800d83a2ce7b53db3ed5ff237e11b08cb8644",
+      "bytes_after": 18694,
+      "sha256_after": "a67a14af751c147908489564b68800d83a2ce7b53db3ed5ff237e11b08cb8644",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part4.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part4.json",
+      "bytes_before": 16763,
+      "sha256_before": "f99eae9be644eaad326033d703a76b39d2ee61276d896cbdd10964f6261ffa63",
+      "bytes_after": 16763,
+      "sha256_after": "f99eae9be644eaad326033d703a76b39d2ee61276d896cbdd10964f6261ffa63",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part5.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part5.json",
+      "bytes_before": 16204,
+      "sha256_before": "1bc02ada914dd1c829ade7151fbfcbe331a14d749e80cee57029a05b3ff7824e",
+      "bytes_after": 16204,
+      "sha256_after": "1bc02ada914dd1c829ade7151fbfcbe331a14d749e80cee57029a05b3ff7824e",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part6.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part6.json",
+      "bytes_before": 18169,
+      "sha256_before": "edb2c293b3379c929305e48eb4a5fee093658009f1ed02d5571a4429ef07f037",
+      "bytes_after": 18169,
+      "sha256_after": "edb2c293b3379c929305e48eb4a5fee093658009f1ed02d5571a4429ef07f037",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part7.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part7.json",
+      "bytes_before": 18387,
+      "sha256_before": "9e28bbbd4bd2707a5460b04851ca01cbf798e390078736e4af5d94df6ba08687",
+      "bytes_after": 18387,
+      "sha256_after": "9e28bbbd4bd2707a5460b04851ca01cbf798e390078736e4af5d94df6ba08687",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part8.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part8.json",
+      "bytes_before": 16529,
+      "sha256_before": "2c5ade4fe462f421a6b4312f201c2463c39b12b7e5658edbf8efb3fd7b1a80e4",
+      "bytes_after": 16529,
+      "sha256_after": "2c5ade4fe462f421a6b4312f201c2463c39b12b7e5658edbf8efb3fd7b1a80e4",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_s_part9.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_s_part9.json",
+      "bytes_before": 16397,
+      "sha256_before": "2c21b27bea91a1289d99e4f43a5523046eb5ebc701179b8ffe6fa64728b4e339",
+      "bytes_after": 16397,
+      "sha256_after": "2c21b27bea91a1289d99e4f43a5523046eb5ebc701179b8ffe6fa64728b4e339",
+      "verified": true
+    },
+    {
+      "source": "scratch/season7/xiao193_sample.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/xiao193_sample.json",
+      "bytes_before": 11401,
+      "sha256_before": "3b44f34c9f27f8c544b6c645d2e66a6ff635f8af2859e35b618210fb9d7f3ae2",
+      "bytes_after": 11401,
+      "sha256_after": "3b44f34c9f27f8c544b6c645d2e66a6ff635f8af2859e35b618210fb9d7f3ae2",
+      "verified": true
+    },
+    {
+      "source": "scratch/prepare_batches.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/prepare_batches.py",
+      "bytes_before": 3880,
+      "sha256_before": "c910262bf9e1b1884455c792de7ae302ff0866c120e9f2dffbe754c43fe3ebb5",
+      "bytes_after": 3880,
+      "sha256_after": "c910262bf9e1b1884455c792de7ae302ff0866c120e9f2dffbe754c43fe3ebb5",
+      "verified": true
+    },
+    {
+      "source": "scratch/validate_final.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/validate_final.py",
+      "bytes_before": 4221,
+      "sha256_before": "25359e9cf9bacbe119c375148ed4d2a7642b9ac39f412da1a4f05cd5d44185be",
+      "bytes_after": 4221,
+      "sha256_after": "25359e9cf9bacbe119c375148ed4d2a7642b9ac39f412da1a4f05cd5d44185be",
+      "verified": true
+    },
+    {
+      "source": "scratch/write_batch.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/write_batch.py",
+      "bytes_before": 3770,
+      "sha256_before": "fb3c85d8665e3a3316e1c2188284253cf91bab0e1641141c9f452742114a3bc1",
+      "bytes_after": 3770,
+      "sha256_after": "fb3c85d8665e3a3316e1c2188284253cf91bab0e1641141c9f452742114a3bc1",
+      "verified": true
+    },
+    {
+      "source": "scratch/build_prod_sync.py",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/build_prod_sync.py",
+      "bytes_before": 5612,
+      "sha256_before": "3eca6d06e3a52b2d2cd88d5a15de0c9719011caa699e5376167923bd40a8917c",
+      "bytes_after": 5612,
+      "sha256_after": "3eca6d06e3a52b2d2cd88d5a15de0c9719011caa699e5376167923bd40a8917c",
+      "verified": true
+    },
+    {
+      "source": "scratch/prod_sync.sql",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/prod_sync.sql",
+      "bytes_before": 785817,
+      "sha256_before": "0939ff4bd6bbf465d91d2f7bca87f321ad0a39ba95b8812ae3948ed310a5c05c",
+      "bytes_after": 785817,
+      "sha256_after": "0939ff4bd6bbf465d91d2f7bca87f321ad0a39ba95b8812ae3948ed310a5c05c",
+      "verified": true
+    },
+    {
+      "source": "scratch/prod_sync_map.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/prod_sync_map.json",
+      "bytes_before": 28876,
+      "sha256_before": "b170280f2e3126fcc04d4a908e3814a347910b8c3c31e672f56a6df00e566e0e",
+      "bytes_after": 28876,
+      "sha256_after": "b170280f2e3126fcc04d4a908e3814a347910b8c3c31e672f56a6df00e566e0e",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_01.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_01.json",
+      "bytes_before": 56023,
+      "sha256_before": "6ec993e5f53612301e80f577acd3a36e4a0351d0f8e1a3516a88f93e9b99c529",
+      "bytes_after": 56023,
+      "sha256_after": "6ec993e5f53612301e80f577acd3a36e4a0351d0f8e1a3516a88f93e9b99c529",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_02.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_02.json",
+      "bytes_before": 56989,
+      "sha256_before": "763b709951ce6a97725982bbf081a14343fe44d73108bf35f464c5e4c0fb3a14",
+      "bytes_after": 56989,
+      "sha256_after": "763b709951ce6a97725982bbf081a14343fe44d73108bf35f464c5e4c0fb3a14",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_03.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_03.json",
+      "bytes_before": 63828,
+      "sha256_before": "eec912d477c55e19f155b8538368be6ab046655d1d23f9611395f29d105cd473",
+      "bytes_after": 63828,
+      "sha256_after": "eec912d477c55e19f155b8538368be6ab046655d1d23f9611395f29d105cd473",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_04.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_04.json",
+      "bytes_before": 59597,
+      "sha256_before": "69e19cfcf7d7b7e92d88229c6563bc6939c4b845fae8471c0d414b6d74958c4c",
+      "bytes_after": 59597,
+      "sha256_after": "69e19cfcf7d7b7e92d88229c6563bc6939c4b845fae8471c0d414b6d74958c4c",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_05.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_05.json",
+      "bytes_before": 55850,
+      "sha256_before": "87595ed1358fb8bba372947f81f242f006e44b6164676356ac4cee3686c43941",
+      "bytes_after": 55850,
+      "sha256_after": "87595ed1358fb8bba372947f81f242f006e44b6164676356ac4cee3686c43941",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_06.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_06.json",
+      "bytes_before": 57675,
+      "sha256_before": "2716fa93ac0ea131e8093744d7000088ad70d1db408d386d57258df0ba10489b",
+      "bytes_after": 57675,
+      "sha256_after": "2716fa93ac0ea131e8093744d7000088ad70d1db408d386d57258df0ba10489b",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_07.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_07.json",
+      "bytes_before": 61194,
+      "sha256_before": "461ceebe2c0963c3df7e5dcc96cafec554dd724ae9c4bf2a98e0dfb87c0dc3ce",
+      "bytes_after": 61194,
+      "sha256_after": "461ceebe2c0963c3df7e5dcc96cafec554dd724ae9c4bf2a98e0dfb87c0dc3ce",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_08.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_08.json",
+      "bytes_before": 58680,
+      "sha256_before": "45d7119218f9c49bded4051c686c62c511472f1d9a7d9ef7d6cbbfd8172cabfe",
+      "bytes_after": 58680,
+      "sha256_after": "45d7119218f9c49bded4051c686c62c511472f1d9a7d9ef7d6cbbfd8172cabfe",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_09.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_09.json",
+      "bytes_before": 58258,
+      "sha256_before": "7073be9efeb9ab85714be6f30d842fb53947ae56504c37a2f4cb8e0e054d55cb",
+      "bytes_after": 58258,
+      "sha256_after": "7073be9efeb9ab85714be6f30d842fb53947ae56504c37a2f4cb8e0e054d55cb",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_10.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_10.json",
+      "bytes_before": 52254,
+      "sha256_before": "ba4508a6ac5d1fcc66c239a85eea0a1c5640a864031937492be59c045216b880",
+      "bytes_after": 52254,
+      "sha256_after": "ba4508a6ac5d1fcc66c239a85eea0a1c5640a864031937492be59c045216b880",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_11.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_11.json",
+      "bytes_before": 50334,
+      "sha256_before": "a2b84c3219be9aead90ff349f52267716405b89a85467988eb26f2b11a9e8c8b",
+      "bytes_after": 50334,
+      "sha256_after": "a2b84c3219be9aead90ff349f52267716405b89a85467988eb26f2b11a9e8c8b",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_12.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_12.json",
+      "bytes_before": 52957,
+      "sha256_before": "8725d16c95993a9feef77f071d42a83591f5a501f024a66ed1e808f85a567fdb",
+      "bytes_after": 52957,
+      "sha256_after": "8725d16c95993a9feef77f071d42a83591f5a501f024a66ed1e808f85a567fdb",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_13.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_13.json",
+      "bytes_before": 52229,
+      "sha256_before": "1983f7bda66a13495c6318e2baccf616886181af88086a6e49653bf0ee7a840c",
+      "bytes_after": 52229,
+      "sha256_after": "1983f7bda66a13495c6318e2baccf616886181af88086a6e49653bf0ee7a840c",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_14.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_14.json",
+      "bytes_before": 58001,
+      "sha256_before": "afb3cb8e8a3db8b7b22d4ab3d7bb9719e73a55b47136c06ff020705977d6e8df",
+      "bytes_after": 58001,
+      "sha256_after": "afb3cb8e8a3db8b7b22d4ab3d7bb9719e73a55b47136c06ff020705977d6e8df",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_15.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_15.json",
+      "bytes_before": 57030,
+      "sha256_before": "aeaf5bc57970c64c242796c93614e8ea2f41f73ffad6ff538fa0c9772ff4b209",
+      "bytes_after": 57030,
+      "sha256_after": "aeaf5bc57970c64c242796c93614e8ea2f41f73ffad6ff538fa0c9772ff4b209",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_16.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_16.json",
+      "bytes_before": 51920,
+      "sha256_before": "d41cdb7318bc03adcd5780af91adfaecb211e51f408029862e7d7335a18ed751",
+      "bytes_after": 51920,
+      "sha256_after": "d41cdb7318bc03adcd5780af91adfaecb211e51f408029862e7d7335a18ed751",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_17.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_17.json",
+      "bytes_before": 47815,
+      "sha256_before": "c5a9aee3ed03e3863e208f8bc24288a9d637ce36292efff582a5bb156554c222",
+      "bytes_after": 47815,
+      "sha256_after": "c5a9aee3ed03e3863e208f8bc24288a9d637ce36292efff582a5bb156554c222",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_18.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_18.json",
+      "bytes_before": 49389,
+      "sha256_before": "96b97a4ac855eff7fca5fcfd441ab2acd869d520ca41a0e4f4f765e399bf94ab",
+      "bytes_after": 49389,
+      "sha256_after": "96b97a4ac855eff7fca5fcfd441ab2acd869d520ca41a0e4f4f765e399bf94ab",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_19.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_19.json",
+      "bytes_before": 50995,
+      "sha256_before": "88737d2a99816275faf0cd7aada5c16477cc56a3a857be814c55f74493801a76",
+      "bytes_after": 50995,
+      "sha256_after": "88737d2a99816275faf0cd7aada5c16477cc56a3a857be814c55f74493801a76",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_20.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_20.json",
+      "bytes_before": 51271,
+      "sha256_before": "64e97430c52f66e3b63c81b61e67b8853968ce2e9a5b5a97a40fd703101d3e92",
+      "bytes_after": 51271,
+      "sha256_after": "64e97430c52f66e3b63c81b61e67b8853968ce2e9a5b5a97a40fd703101d3e92",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_21.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_21.json",
+      "bytes_before": 47319,
+      "sha256_before": "a4b48b6ca5b961f22432b3c49f8bf1877b0897733f68634fafa18eb7be7546bc",
+      "bytes_after": 47319,
+      "sha256_after": "a4b48b6ca5b961f22432b3c49f8bf1877b0897733f68634fafa18eb7be7546bc",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_22.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_22.json",
+      "bytes_before": 49288,
+      "sha256_before": "9e378838bdcd27b72160153d0a035dbff770579f6281712ce1a8fc00930a4d18",
+      "bytes_after": 49288,
+      "sha256_after": "9e378838bdcd27b72160153d0a035dbff770579f6281712ce1a8fc00930a4d18",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_23.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_23.json",
+      "bytes_before": 43726,
+      "sha256_before": "89fce2da8aefd8ce99a4fc48940f52089233776477a615e79f9179c230fd7101",
+      "bytes_after": 43726,
+      "sha256_after": "89fce2da8aefd8ce99a4fc48940f52089233776477a615e79f9179c230fd7101",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_24.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_24.json",
+      "bytes_before": 51694,
+      "sha256_before": "3e52df8ea324ff8c5114cdf19db516abace82d3291f2f251491ed761f2cc7b1e",
+      "bytes_after": 51694,
+      "sha256_after": "3e52df8ea324ff8c5114cdf19db516abace82d3291f2f251491ed761f2cc7b1e",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_25.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_25.json",
+      "bytes_before": 48268,
+      "sha256_before": "946126543f9cc6b4b04db685eb8d7c66b937d3f5a552ccbc65436622d3998f59",
+      "bytes_after": 48268,
+      "sha256_after": "946126543f9cc6b4b04db685eb8d7c66b937d3f5a552ccbc65436622d3998f59",
+      "verified": true
+    },
+    {
+      "source": "scratch/batches/batch_26.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/batches/batch_26.json",
+      "bytes_before": 44604,
+      "sha256_before": "2a33eff39731c5a584ffba5a531116e36f6cd799914ba8ab5a69aa1c6674c35c",
+      "bytes_after": 44604,
+      "sha256_after": "2a33eff39731c5a584ffba5a531116e36f6cd799914ba8ab5a69aa1c6674c35c",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_01.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_01.json",
+      "bytes_before": 24374,
+      "sha256_before": "8b6c80ec0835b7da964473389b4e16ab79ae05eaaf41385ddee93092511b6790",
+      "bytes_after": 24374,
+      "sha256_after": "8b6c80ec0835b7da964473389b4e16ab79ae05eaaf41385ddee93092511b6790",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_02.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_02.json",
+      "bytes_before": 25160,
+      "sha256_before": "de947f4665f701d560a8fdad400d19228a2e06275c67a41979a8b7d2b0ab634b",
+      "bytes_after": 25160,
+      "sha256_after": "de947f4665f701d560a8fdad400d19228a2e06275c67a41979a8b7d2b0ab634b",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_03.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_03.json",
+      "bytes_before": 27352,
+      "sha256_before": "e722973ba12579c51ee68b142ae756ef7240d8782784e9b5562c6763d3b81bee",
+      "bytes_after": 27352,
+      "sha256_after": "e722973ba12579c51ee68b142ae756ef7240d8782784e9b5562c6763d3b81bee",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_04.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_04.json",
+      "bytes_before": 26145,
+      "sha256_before": "9225ec844523e207c09ae317196be8893a7c4c602fa261e8acb3341b6216b7b1",
+      "bytes_after": 26145,
+      "sha256_after": "9225ec844523e207c09ae317196be8893a7c4c602fa261e8acb3341b6216b7b1",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_05.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_05.json",
+      "bytes_before": 24478,
+      "sha256_before": "6036214d29834599f05a498f2e297753854107abf02d61cde02fdb74ac39fd22",
+      "bytes_after": 24478,
+      "sha256_after": "6036214d29834599f05a498f2e297753854107abf02d61cde02fdb74ac39fd22",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_06.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_06.json",
+      "bytes_before": 25388,
+      "sha256_before": "d9eef573e7ce8550b9b6e356f74c30f9b9a0792eb67b17fcef0d58c91e5c3af0",
+      "bytes_after": 25388,
+      "sha256_after": "d9eef573e7ce8550b9b6e356f74c30f9b9a0792eb67b17fcef0d58c91e5c3af0",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_07.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_07.json",
+      "bytes_before": 26932,
+      "sha256_before": "958b40e3a6526d87201397b5d3892673ec23d63dfc9ace8dee75e689c6c7c4d4",
+      "bytes_after": 26932,
+      "sha256_after": "958b40e3a6526d87201397b5d3892673ec23d63dfc9ace8dee75e689c6c7c4d4",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_08.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_08.json",
+      "bytes_before": 27202,
+      "sha256_before": "f4759bd8fd04848a7d1959d710497989363fdc1f5a030d35dc29aa2a6b46d3af",
+      "bytes_after": 27202,
+      "sha256_after": "f4759bd8fd04848a7d1959d710497989363fdc1f5a030d35dc29aa2a6b46d3af",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_09.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_09.json",
+      "bytes_before": 25371,
+      "sha256_before": "0be46196c8f8a8d98d81898a1bc100edd2cd0c68b93e3c77805eaa38ab9db839",
+      "bytes_after": 25371,
+      "sha256_after": "0be46196c8f8a8d98d81898a1bc100edd2cd0c68b93e3c77805eaa38ab9db839",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_10.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_10.json",
+      "bytes_before": 25183,
+      "sha256_before": "6e6e15ec65a5005b65fc883ccec0436f08a77b674bb4bd00203986fa3b5902e7",
+      "bytes_after": 25183,
+      "sha256_after": "6e6e15ec65a5005b65fc883ccec0436f08a77b674bb4bd00203986fa3b5902e7",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_11.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_11.json",
+      "bytes_before": 26317,
+      "sha256_before": "df7a597a523968d1e9ebffa299857de90634a62ef721fee7a001de975b62bbff",
+      "bytes_after": 26317,
+      "sha256_after": "df7a597a523968d1e9ebffa299857de90634a62ef721fee7a001de975b62bbff",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_12.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_12.json",
+      "bytes_before": 25099,
+      "sha256_before": "858831e70463fef9b3ba6c6e8a7b2dbb168806c735060aa45d992129649cab71",
+      "bytes_after": 25099,
+      "sha256_after": "858831e70463fef9b3ba6c6e8a7b2dbb168806c735060aa45d992129649cab71",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_13.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_13.json",
+      "bytes_before": 26432,
+      "sha256_before": "9ae3688b650c017c36c9e4efaae2ee4ccc840556f9830df7aed5c3c87758ea91",
+      "bytes_after": 26432,
+      "sha256_after": "9ae3688b650c017c36c9e4efaae2ee4ccc840556f9830df7aed5c3c87758ea91",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_14.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_14.json",
+      "bytes_before": 25172,
+      "sha256_before": "ccf0078923e9d6e72debf06107f44054a0e8ddce1ece4e0e2fe511acb1b3f6c3",
+      "bytes_after": 25172,
+      "sha256_after": "ccf0078923e9d6e72debf06107f44054a0e8ddce1ece4e0e2fe511acb1b3f6c3",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_15.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_15.json",
+      "bytes_before": 26138,
+      "sha256_before": "1dd3e16f4eb54ff7574da3768f9c8d5dd7a4be10223b2e283ad912d0f499532f",
+      "bytes_after": 26138,
+      "sha256_after": "1dd3e16f4eb54ff7574da3768f9c8d5dd7a4be10223b2e283ad912d0f499532f",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_16.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_16.json",
+      "bytes_before": 25115,
+      "sha256_before": "7ecd07cfa594818f0cb328255ba636627fe425d9b3b9a9d39afe83f2185543ce",
+      "bytes_after": 25115,
+      "sha256_after": "7ecd07cfa594818f0cb328255ba636627fe425d9b3b9a9d39afe83f2185543ce",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_17.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_17.json",
+      "bytes_before": 25009,
+      "sha256_before": "90db577a09eccd545cc3d645bda4ac80e4fd656cfd9822674c23d266093ab41f",
+      "bytes_after": 25009,
+      "sha256_after": "90db577a09eccd545cc3d645bda4ac80e4fd656cfd9822674c23d266093ab41f",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_18.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_18.json",
+      "bytes_before": 23183,
+      "sha256_before": "d436736e98077ee6e3991f042a2e17055abf003997d86fd40d39e5c8b24efbeb",
+      "bytes_after": 23183,
+      "sha256_after": "d436736e98077ee6e3991f042a2e17055abf003997d86fd40d39e5c8b24efbeb",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_19.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_19.json",
+      "bytes_before": 26327,
+      "sha256_before": "b54b979eb5030f5f7c23fa071686ba047c0aaa620febcd3f6a6739ccc50409d7",
+      "bytes_after": 26327,
+      "sha256_after": "b54b979eb5030f5f7c23fa071686ba047c0aaa620febcd3f6a6739ccc50409d7",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_20.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_20.json",
+      "bytes_before": 25596,
+      "sha256_before": "e1cdf4536c1e6f57aadabb57fa954e86f4cdbd536f9cda9d7a9b43db978c5959",
+      "bytes_after": 25596,
+      "sha256_after": "e1cdf4536c1e6f57aadabb57fa954e86f4cdbd536f9cda9d7a9b43db978c5959",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_21.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_21.json",
+      "bytes_before": 23314,
+      "sha256_before": "53c4ab66c9477b5c7a0f43ff48f67f520c6c9f22d678d2e5d352613cbb9d0f1f",
+      "bytes_after": 23314,
+      "sha256_after": "53c4ab66c9477b5c7a0f43ff48f67f520c6c9f22d678d2e5d352613cbb9d0f1f",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_22.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_22.json",
+      "bytes_before": 24264,
+      "sha256_before": "57d303ca763de7e82dfa4266034deef2cbac754428cf20bb6c0f92bdb80b6006",
+      "bytes_after": 24264,
+      "sha256_after": "57d303ca763de7e82dfa4266034deef2cbac754428cf20bb6c0f92bdb80b6006",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_23.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_23.json",
+      "bytes_before": 23092,
+      "sha256_before": "1bf7b66c7d04750e0dd4821df555d02e86d3a5bb08a7332196fc5fd8ac77d4cc",
+      "bytes_after": 23092,
+      "sha256_after": "1bf7b66c7d04750e0dd4821df555d02e86d3a5bb08a7332196fc5fd8ac77d4cc",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_24.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_24.json",
+      "bytes_before": 25769,
+      "sha256_before": "da5a885fba1326e43a2ab4f58338f1d3226e62ec0a1d2f1ec3d1b71ab5534301",
+      "bytes_after": 25769,
+      "sha256_after": "da5a885fba1326e43a2ab4f58338f1d3226e62ec0a1d2f1ec3d1b71ab5534301",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_25.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_25.json",
+      "bytes_before": 25848,
+      "sha256_before": "f281aae4a4958febfaddd8b1c4ebab80bba2066a3e43c261fa9848656b81fbaa",
+      "bytes_after": 25848,
+      "sha256_after": "f281aae4a4958febfaddd8b1c4ebab80bba2066a3e43c261fa9848656b81fbaa",
+      "verified": true
+    },
+    {
+      "source": "scratch/final/batch_26.json",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261026/final/batch_26.json",
+      "bytes_before": 23568,
+      "sha256_before": "d8f730cd0ba58169e582f32c41ecb241804e4088a074581ecb04bdf9b71d31c9",
+      "bytes_after": 23568,
+      "sha256_after": "d8f730cd0ba58169e582f32c41ecb241804e4088a074581ecb04bdf9b71d31c9",
+      "verified": true
+    },
+    {
+      "source": "米李720题_待修52题.md",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/米李720题_待修52题.md",
+      "bytes_before": 8831,
+      "sha256_before": "870f1354976cf21100cfe9ee610046cc3b444157ad8bb3871a9775d7b0aea276",
+      "bytes_after": 8831,
+      "sha256_after": "870f1354976cf21100cfe9ee610046cc3b444157ad8bb3871a9775d7b0aea276",
+      "verified": true
+    },
+    {
+      "source": "米李720题_临时10题预览.html",
+      "destination": "skills/fba_work/question-explanation/archive/legacy-20261027-31/米李720题_临时10题预览.html",
+      "bytes_before": 20332,
+      "sha256_before": "13cb8cb71afd15690e6a63b0b7d272f14a8aaf0574d49fea41569876c7f5bf3a",
+      "bytes_after": 20332,
+      "sha256_after": "13cb8cb71afd15690e6a63b0b7d272f14a8aaf0574d49fea41569876c7f5bf3a",
+      "verified": true
+    }
+  ],
+  "preflight_failures": []
+}

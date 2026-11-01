@@ -1,0 +1,167 @@
+{
+  "version": "v2",
+  "source": {
+    "url": "https://tiku.fenbi.com/activity/userexamcategory/listByParent?parentId=0",
+    "captured_on": "2026-10-31",
+    "scope": "公务员 / 笔试",
+    "note": "仅参照分类名称及层级，使用本地编码；不包含登录凭证、第三方ID或正式年度组卷规格。未返回的西藏保留原目录，不虚构卷类。公安院校联考、面试、选调本轮不接入。"
+  },
+  "groups": [
+    {
+      "targets": ["gwy_national"],
+      "categories": [
+        { "code": "subprovincial", "name": "副省类" },
+        { "code": "prefecture", "name": "地市类" },
+        { "code": "law_enforcement", "name": "行政执法类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_320000", "gwy_prov_330000", "gwy_prov_370000", "gwy_prov_340000", "gwy_prov_130000", "gwy_prov_450000", "gwy_prov_460000", "gwy_prov_640000"],
+      "categories": [
+        { "code": "a", "name": "A类" },
+        { "code": "b", "name": "B类" },
+        { "code": "c", "name": "C类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_360000", "gwy_prov_230000", "gwy_prov_510000", "gwy_prov_430000", "gwy_prov_610000", "gwy_prov_630000"],
+      "categories": [
+        { "code": "province_city", "name": "省市类" },
+        { "code": "county_township", "name": "县乡类" },
+        { "code": "law_enforcement", "name": "行政执法类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_440000"],
+      "categories": [
+        { "code": "province_city", "name": "省市类" },
+        { "code": "county_town", "name": "县镇类" },
+        { "code": "police", "name": "公安类" },
+        { "code": "law_enforcement", "name": "行政执法类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_530000"],
+      "categories": [
+        { "code": "province_prefecture_city", "name": "省州市类" },
+        { "code": "county_township", "name": "县乡类" },
+        { "code": "law_enforcement", "name": "行政执法类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_410000"],
+      "categories": [
+        { "code": "province_city", "name": "省市级" },
+        { "code": "county_township", "name": "县乡级" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_420000", "gwy_prov_620000", "gwy_prov_210000", "gwy_prov_140000"],
+      "categories": [
+        { "code": "province_city", "name": "省市类" },
+        { "code": "county_township", "name": "县乡类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_220000"],
+      "categories": [
+        { "code": "grade_a", "name": "甲级" },
+        { "code": "grade_b", "name": "乙级" },
+        { "code": "grade_c", "name": "丙级" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_150000"],
+      "categories": [
+        { "code": "league_city", "name": "盟市类" },
+        { "code": "banner_county", "name": "旗县类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_520000"],
+      "categories": [
+        { "code": "a", "name": "A类" },
+        { "code": "b", "name": "B类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_650000"],
+      "categories": [
+        {
+          "code": "regional",
+          "name": "区考",
+          "children": [
+            { "code": "regional_province_city", "name": "省市类" },
+            { "code": "regional_county_township", "name": "县乡类" },
+            { "code": "regional_law_enforcement", "name": "行政执法类" },
+            { "code": "regional_police", "name": "公安类" }
+          ]
+        },
+        {
+          "code": "corps",
+          "name": "兵团",
+          "children": [
+            { "code": "corps_a", "name": "A类" },
+            { "code": "corps_b", "name": "B类" },
+            { "code": "corps_c", "name": "C类" }
+          ]
+        }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_350000"],
+      "categories": [
+        { "code": "province_city", "name": "省市类" },
+        { "code": "general", "name": "通用类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_310000", "gwy_prov_110000"],
+      "categories": [
+        { "code": "municipal", "name": "市考" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_500000"],
+      "categories": [
+        { "code": "type_1", "name": "一类" },
+        { "code": "type_2", "name": "二类" },
+        { "code": "type_3", "name": "三类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_prov_120000"],
+      "categories": [
+        { "code": "city_district", "name": "市区类" },
+        { "code": "street_town", "name": "街镇类" },
+        { "code": "law_enforcement", "name": "行政执法类" },
+        { "code": "police", "name": "公安类" }
+      ]
+    },
+    {
+      "targets": ["gwy_city_440300"],
+      "categories": [
+        { "code": "type_1", "name": "Ⅰ类" },
+        { "code": "type_2", "name": "Ⅱ类" }
+      ]
+    },
+    {
+      "targets": ["gwy_city_440100"],
+      "categories": [
+        { "code": "municipal", "name": "市考" }
+      ]
+    }
+  ]
+}

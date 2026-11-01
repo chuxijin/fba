@@ -17,9 +17,11 @@ from backend.app.question_bank_v2.api.v1.preference import router as preference_
 from backend.app.question_bank_v2.api.v1.question import router as question_router
 from backend.app.question_bank_v2.api.v1.question_search import router as question_search_router
 from backend.app.question_bank_v2.api.v1.review import router as review_router
+from backend.app.question_bank_v2.api.v1.study_goal import router as study_goal_router
 from backend.app.question_bank_v2.api.v1.user_content import router as user_content_router
 
 router = APIRouter(prefix='/qbank-v2')
+router.include_router(study_goal_router, tags=['备考目标 V2'])
 router.include_router(bank_router, prefix='/banks', tags=['题库 V2'])
 router.include_router(catalog_router, prefix='/collections', tags=['题库合集 V2'])
 router.include_router(composition_router, prefix='/banks', tags=['题库编排 V2'])

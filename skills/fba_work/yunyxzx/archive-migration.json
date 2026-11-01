@@ -1,0 +1,51 @@
+{
+  "work": "yunyxzx",
+  "migrated_on": "2026-11-01",
+  "scope": "local-only file relocation; no database or network access, no business scripts executed",
+  "path_base": "skills/fba_work/yunyxzx",
+  "note": "本条记录仅说明迁移当时源与目的内容一致（字节数与SHA256相同）。迁移后主控可能对归档文件另行适配，届时以文件实际内容为准。",
+  "destination_policy": "destination existed means stop, never overwrite",
+  "migrations": [
+    {
+      "source_relative_path": "README.md",
+      "destination_relative_path": "archive/legacy-before-20261101/README.md",
+      "bytes": 6925,
+      "sha256_before": "BCD34AB6D8811D3306265A5AA75C7E00776E3C3B0AC1A10992329EE01BC8BF68",
+      "sha256_after": "BCD34AB6D8811D3306265A5AA75C7E00776E3C3B0AC1A10992329EE01BC8BF68",
+      "verified": true
+    },
+    {
+      "source_relative_path": "fix_analysis_by_stem.py",
+      "destination_relative_path": "archive/legacy-before-20261101/fix_analysis_by_stem.py",
+      "bytes": 4949,
+      "sha256_before": "B8FBD062CE89A13570792B97B3B4EFE2A6163CB5BF03F1DB62001DA53DA28255",
+      "sha256_after": "B8FBD062CE89A13570792B97B3B4EFE2A6163CB5BF03F1DB62001DA53DA28255",
+      "verified": true
+    },
+    {
+      "source_relative_path": "fix_analysis_fuzzy.py",
+      "destination_relative_path": "archive/legacy-before-20261101/fix_analysis_fuzzy.py",
+      "bytes": 5494,
+      "sha256_before": "29C3EED541C77BB50996D60173D4E978F4FB2196B238383CDD1D2DDF819E6E06",
+      "sha256_after": "29C3EED541C77BB50996D60173D4E978F4FB2196B238383CDD1D2DDF819E6E06",
+      "verified": true
+    },
+    {
+      "source_relative_path": "import_yunyxzx_paper.py",
+      "destination_relative_path": "scripts/import_yunyxzx_paper.py",
+      "bytes": 24204,
+      "sha256_before": "2EC8D208F681B38E87D86A47FBADB5507C0A640D3D20044DA6340A30690F9E76",
+      "sha256_after": "2EC8D208F681B38E87D86A47FBADB5507C0A640D3D20044DA6340A30690F9E76",
+      "verified": true
+    }
+  ],
+  "deleted_cache_files": [
+    "__pycache__/fix_analysis_by_stem.cpython-314.pyc",
+    "__pycache__/fix_analysis_fuzzy.cpython-314.pyc",
+    "__pycache__/import_yunyxzx_paper.cpython-314.pyc"
+  ],
+  "removed_empty_directories": [
+    "__pycache__"
+  ],
+  "failures": []
+}

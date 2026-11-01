@@ -92,7 +92,7 @@ from backend.app.question_bank_v2.service.material_service import material_servi
 from backend.app.question_bank_v2.service.practice_schedule_service import next_practice_time
 from backend.app.question_bank_v2.service.preference_service import preference_service
 from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
-from backend.app.question_bank_v2.utils.external_practice import question_content_digest
+from backend.app.question_bank_v2.utils.external_practice import external_question_identity, question_content_digest
 from backend.common.exception import errors
 from backend.common.pagination import cursor_paging_data
 from backend.utils.timezone import timezone
@@ -300,6 +300,22 @@ class WrongReviewService:
         )
 
     @staticmethod
+    async def _get_external_source_peers(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        identity: tuple[str, str] | None,
+        core: dict[str, Any],
+    ) -> list[QbQuestion]:
+        """详情读取与复盘关联共用旧题校验，来源身份不可靠时不查询。"""
+        if identity is None:
+            return []
+        platform, source_question_key = identity
+        return await external_practice_dao.find_source_questions(
+            db, user_id=user_id, platform=platform, source_question_key=source_question_key, core=core
+        )
+
+    @staticmethod
     async def get_detail(
         *,
         db: AsyncSession,
@@ -310,10 +326,28 @@ class WrongReviewService:
         row = await wrong_question_state_dao.get_detail_row(db, pk=wrong_state_id, user_id=user_id)
         if row is None:
             raise errors.NotFoundError(msg='错题不存在')
+        # 旧版本可能把同一原站题目写成两份私有题。只读关联到原始作答，
+        # 不合并题目、不修改复盘排期，也不把其他题或其他次作答的用时借过来。
+        identity = external_question_identity(row.get('entry_metadata')) if row['entry_source'] == 'import' else None
+        peers: list[QbQuestion] = []
+        if identity:
+            peers = await WrongReviewService._get_external_source_peers(
+                db=db,
+                user_id=user_id,
+                identity=identity,
+                core={
+                    'stem': row['stem'],
+                    'content_format': row['content_format'],
+                    'question_type': row['question_type'],
+                    'options': row['option_data'],
+                },
+            )
+        related_question_ids = [question.id for question in peers if question.id != int(row['question_id'])]
         wrong_history = await question_attempt_dao.get_wrong_answer_history(
             db,
             user_id=user_id,
             question_id=int(row['question_id']),
+            **({'related_question_ids': related_question_ids} if related_question_ids else {}),
         )
         if wrong_history:
             row['last_wrong_response'] = wrong_history[0]['response_data']
@@ -1387,13 +1421,13 @@ class WrongReviewService:
         obj: CreateExternalWrongQuestionParam,
     ) -> tuple[QbQuestion, bool]:
         """同一用户下内容一致即复用已有私有题，与刷题记录导入共用一份题目"""
-        content_hash = question_content_digest(
-            stem=obj.stem,
-            content_format=obj.content_format,
-            question_type=obj.question_type,
-            options=[item.model_dump(mode='json') for item in obj.options],
-        )
-        question = await external_practice_dao.find_reusable_question(db, user_id=user_id, content_hash=content_hash)
+        core = obj.model_dump(mode='json', include={'stem', 'content_format', 'question_type', 'options'})
+        identity = external_question_identity({
+            **obj.entry_metadata,
+            'source_system': obj.source_system,
+            'external_key': obj.external_key,
+        })
+        question = await external_practice_dao.find_import_question(db, user_id=user_id, core=core, identity=identity)
         if question is not None:
             return question, True
         return (
@@ -1410,7 +1444,7 @@ class WrongReviewService:
                 option_data=[item.model_dump() for item in obj.options],
                 default_score=obj.default_score,
                 difficulty=None,
-                content_hash=content_hash,
+                content_hash=question_content_digest(**core),
                 created_by=user_id,
             ),
             False,
@@ -1982,6 +2016,27 @@ class WrongReviewService:
             user_id=user_id,
             question_id=wrong_state.question_id,
         )
+        identity = (
+            external_question_identity(wrong_state.entry_metadata) if wrong_state.entry_source == 'import' else None
+        )
+        if source_attempt is None and identity:
+            # 历史兼容读取返回的作答仍能用于复盘关联，但不能借此引用任意其他题的作答。
+            candidate = await question_attempt_dao.get(db, source_attempt_id, user_id=user_id)
+            question = await question_dao.get(db, wrong_state.question_id) if candidate else None
+            if question is not None:
+                peers = await WrongReviewService._get_external_source_peers(
+                    db=db,
+                    user_id=user_id,
+                    identity=identity,
+                    core={
+                        'stem': question.stem,
+                        'content_format': question.content_format,
+                        'question_type': question.question_type,
+                        'options': question.option_data,
+                    },
+                )
+                if candidate.question_id in {peer.id for peer in peers} and candidate.is_correct is False:
+                    source_attempt = candidate
         if source_attempt is None:
             raise errors.NotFoundError(msg='复盘关联的作答事实不存在')
         bank_item_id = None

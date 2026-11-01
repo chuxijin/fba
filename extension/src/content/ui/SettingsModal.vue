@@ -334,8 +334,8 @@
               </div>
               <div class="gk-status-desc">
                 {{ isLoggedIn
-                  ? '已关联微信小程序【我的题本】，尊享高频模考导出额度与 5分钱/张 考场双面打印特权。'
-                  : `未登录状态每日可导出 ${dailyLimit} 次标准考场卷。手机扫码登录微信小程序【我的题本】，立享更充裕的高额基础额度，并享 5分钱/张 考场专用纸双面打印。`
+                  ? '导出题本将保存到当前账号，可在微信小程序【我的题本】中查看。可用额度以当前账号为准。'
+                  : `未登录状态每日可导出 ${dailyLimit} 次标准考场卷。导出后可微信扫码，登录并确认保存到【我的题本】。`
                 }}
               </div>
             </template>
@@ -367,10 +367,10 @@
               type="button"
               class="gk-btn gk-btn-primary"
               :disabled="!canExport"
-              :title="!canExport ? '试题内容尚未就绪，请等待加载' : '手机扫码直达小程序打印'"
+              :title="!canExport ? '试题内容尚未就绪，请等待加载' : '微信扫码直达我的题本'"
               @click="handleExport('mobile_sync')"
             >
-              📱 快速打印 (手机扫码)
+              📱 导出到手机 (微信扫码)
             </button>
           </div>
           <div class="gk-footer-hint">
@@ -395,47 +395,15 @@
               《{{ paperTitle }}》({{ totalQuestions }} 道题 · B5考场版)
             </div>
 
-            <!-- 智能进度条 -->
-            <div class="gk-progress-container">
-              <div class="gk-progress-track">
-                <div class="gk-progress-bar" :style="{ width: `${loadingPercent}%` }"></div>
-              </div>
-              <div class="gk-progress-label">
-                <span>{{ loadingStepText }}</span>
-                <span>{{ loadingPercent }}%</span>
-              </div>
-            </div>
-
-            <!-- 三阶段步骤清单 -->
-            <div class="gk-loading-steps">
-              <div class="gk-step-item" :class="getStepClass(1)">
-                <span class="gk-step-dot">1</span>
-                <div class="gk-step-info">
-                  <span class="gk-step-name">解析题干结构与材料上下文</span>
-                  <span class="gk-step-status">{{ getStepStatus(1) }}</span>
-                </div>
-              </div>
-              <div class="gk-step-item" :class="getStepClass(2)">
-                <span class="gk-step-dot">2</span>
-                <div class="gk-step-info">
-                  <span class="gk-step-name">注入国考六大模块规范与 B5 双面版式</span>
-                  <span class="gk-step-status">{{ getStepStatus(2) }}</span>
-                </div>
-              </div>
-              <div class="gk-step-item" :class="getStepClass(3)">
-                <span class="gk-step-dot">3</span>
-                <div class="gk-step-info">
-                  <span class="gk-step-name">{{ currentExportTarget === 'computer_download' ? '矢量公式转译与考场 PDF 输出' : '生成云端打印任务与专属小程序码' }}</span>
-                  <span class="gk-step-status">{{ getStepStatus(3) }}</span>
-                </div>
-              </div>
+            <div class="gk-progress-label" role="status" aria-live="polite">
+              正在准备或处理排版任务，完成后自动交付。处理期间请保持当前题库网页打开。
             </div>
           </div>
         </div>
 
         <div class="gk-modal-footer">
           <div class="gk-loading-footer-tip">
-            ⚡ 正在调用本地 1:1 矢量排版引擎进行智能去空行与防断页计算，通常需 8~12 秒，请稍候...
+            题量、图片和导出格式会影响处理时间。此处不显示预估百分比，请勿重复提交。
           </div>
         </div>
       </template>
@@ -449,11 +417,11 @@
               <span class="gk-banner-icon">🎉</span>
               <div>
                 <div class="gk-banner-title">
-                  {{ currentExportTarget === 'computer_download' ? '考场标准试卷已排版就绪并开始下载！' : '试卷已生成完毕，请手机微信扫码！' }}
+                  {{ currentExportTarget === 'computer_download' ? (downloadWarning ? '排版已完成，请确认浏览器下载' : '排版已完成，已提交浏览器下载') : '试卷已生成，请用微信扫码打开我的题本' }}
                 </div>
                 <div class="gk-banner-desc">
                   <template v-if="currentExportTarget === 'computer_download'">
-                    《{{ paperTitle }}》已提交浏览器下载。
+                    《{{ paperTitle }}》{{ downloadStarted ? '已提交浏览器下载。' : '已生成，可重试下载，不会重新排版或扣额度。' }}
                     <template v-if="savedPath">
                       保存位置：<code style="display:inline-block;max-width:100%;overflow-wrap:anywhere;background:#f1f5f9;border-radius:4px;padding:1px 5px;font-size:12px;color:#334155;">{{ savedPath }}</code>
                     </template>
@@ -466,6 +434,13 @@
               </div>
             </div>
 
+            <div v-if="downloadWarning" role="alert" class="gk-card-section">
+              <p>{{ downloadWarning }}</p>
+              <button type="button" :disabled="retryingDownload" @click="retryDownload">
+                {{ retryingDownload ? '正在重试…' : '重试下载（不重新排版）' }}
+              </button>
+            </div>
+
             <!-- 2. 使用说明与额度说明 -->
             <div class="gk-card-section">
               <div class="gk-card-section-title">
@@ -473,9 +448,9 @@
                 <span class="gk-quota-pill">{{ quotaHint }}</span>
               </div>
               <div class="gk-card-section-text">
-                • <strong>免登录体验</strong>：未登录状态每日仅可导出 5 次标准考场卷。<br />
-                • <strong>登录享更多额度</strong>：手机扫码登录微信小程序【我的题本】后，不同用户可获得<strong>更充裕的高额基础导出额度</strong>（远多于免登录试用），满足日常高频模考与刷题需求。<br />
-                • <strong>考场双面打印</strong>：一键直连数码快印，享 <strong>5 分钱/张</strong> 考场专用 B5 道林纸双面胶装送货上门。
+                • <strong>免登录体验</strong>：额度以当前服务端返回的每日限制为准。<br />
+                • <strong>账号归属</strong>：插件已登录时保存到原账号；游客导出由手机登录后首位确认领取的账号保存。<br />
+                • <strong>下载重试</strong>：排版完成后重试下载使用同一份文件，不重新排版、不重复扣额度。
               </div>
             </div>
 
@@ -488,20 +463,22 @@
                 <span class="gk-site-tag active">✅ 粉笔题库 (真题/模考/练习)</span>
                 <span class="gk-site-tag active">✅ 华图在线 (题库/历年真题)</span>
                 <span class="gk-site-tag active">✅ 事考帮 (职测/真题/智能练习)</span>
-                <span class="gk-site-tag pending">⏳ 中公教育 (适配中)</span>
-                <span class="gk-site-tag pending">⏳ 公考通 (适配中)</span>
               </div>
             </div>
 
             <!-- 4. 微信小程序生态引流 -->
             <div class="gk-miniapp-lead">
-              <img class="gk-miniapp-lead-img" :src="qrCodeUrl || `${BACKEND_BASE}/api/v1/render-books/public/minicode/demo`" alt="小程序码" />
+              <img v-if="qrImage" class="gk-miniapp-lead-img" :src="qrImage" alt="微信扫码打开本次题本" @error="qrImage = ''; qrError = '二维码显示失败，请重试'" />
+              <div v-else>
+                <p>{{ qrError || '小程序码生成中…' }}</p>
+                <button v-if="qrError && qrCodeUrl" type="button" :disabled="qrLoading" @click="loadQrCode">重新加载二维码</button>
+              </div>
               <div class="gk-miniapp-lead-info">
-                <div class="gk-miniapp-lead-title">📱 微信扫码 · 登录【我的题本】</div>
+                <div class="gk-miniapp-lead-title">📱 微信扫码 · 打开【我的题本】</div>
                 <ul class="gk-miniapp-lead-list">
-                  <li>扫码登录后<strong>享有更高导出额度</strong>，并可在小程序找回本次导出的试卷</li>
-                  <li>一键直连合作打印商：<strong>5 分钱/张</strong>、全真考场专用纸双面胶装</li>
-                  <li>手机端随时刷题、背题与复盘错题</li>
+                  <li>微信扫码直接进入“我的题本”，登录后保存本次试卷</li>
+                  <li>插件已登录时，请使用同一账号；游客题本由首位确认领取的账号保存</li>
+                  <li>领取码24小时内有效；查看题本不会授权电脑登录，也不会自动下单</li>
                 </ul>
               </div>
             </div>
@@ -526,8 +503,8 @@
           <div class="gk-error-box">
             <div class="gk-error-icon">⚠️</div>
             <div class="gk-error-title">排版任务未完成</div>
-            <div class="gk-error-desc">{{ errorMessage || '服务暂时无法连接，请确认本地后端服务已启动。' }}</div>
-            <div class="gk-error-hint">💡 建议检查本地 8000 端口服务或刷新当前页面后再试</div>
+            <div class="gk-error-desc">{{ errorMessage || '服务暂时无法连接，请检查网络或稍后重试。' }}</div>
+            <div class="gk-error-hint">如果任务已提交，请先检查“我的题本”和浏览器下载列表，避免重复导出；持续失败可通过插件意见反馈联系维护者。</div>
           </div>
         </div>
 
@@ -553,7 +530,8 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { RenderTypographySettings, DEFAULT_TYPOGRAPHY_SETTINGS, UnifiedPaper, MistakePageMeta } from '../../adapters'
 import { accountStore, AccountState } from '../../utils/account-state'
-import { BACKEND_BASE } from '../../utils/auth-protocol'
+import type { DeliveryView, ExportFile } from '../../utils/export-delivery'
+import { exportMessage, requestFileDownloads } from '../../utils/export-flow'
 
 const props = defineProps<{
   modelValue: boolean
@@ -584,8 +562,8 @@ const quotaHint = computed(() => accountState.value.status === 'loading' ? '正�
   : accountState.value.refreshError ? '额度更新失败，请重试'
   : `今日${isLoggedIn.value ? '' : '免登录'}剩余 ${remainingQuota.value} / ${dailyLimit.value} 次`)
 const accountHint = computed(() => accountState.value.status !== 'ready' ? quotaHint.value
-  : isLoggedIn.value ? '已登录 · 国考 1:1 标准考场版，支持 5分钱/张 快速双面打印'
-  : `当前未登录 · 每日 ${dailyLimit.value} 次，登录微信小程序立享更多额度`)
+  : isLoggedIn.value ? '已登录 · 导出文件可在当前账号的我的题本中查看'
+  : `当前未登录 · 每日 ${dailyLimit.value} 次，导出后可扫码保存题本`)
 let unsubscribeAccount: (() => void) | null = null
 
 // 基础排版设置
@@ -602,14 +580,45 @@ const selectedCount = ref(10)
 
 // 加载状态与进度条
 const currentExportTarget = ref<'computer_download' | 'mobile_sync'>('computer_download')
-const loadingPercent = ref(15)
-const loadingStepText = ref('智能解析题干与材料中...')
-let progressTimer: any = null
 
 // 交付与异常参数
 const qrCodeUrl = ref('')
 const savedPath = ref('')
 const errorMessage = ref('')
+const downloadWarning = ref('')
+const downloadStarted = ref(false)
+const failedFiles = ref<ExportFile[]>([])
+const retryingDownload = ref(false)
+const qrImage = ref('')
+const qrError = ref('')
+const qrLoading = ref(false)
+let deliveryVersion = 0
+
+async function loadQrCode() {
+  if (!qrCodeUrl.value || qrLoading.value) return
+  const version = deliveryVersion
+  qrLoading.value = true
+  qrError.value = ''
+  try {
+    const result = await exportMessage('GET_RENDER_QR', { url: qrCodeUrl.value })
+    if (version === deliveryVersion) qrImage.value = result.image
+  } catch (error: any) {
+    if (version === deliveryVersion) qrError.value = error?.message || '小程序码生成失败，请重试'
+  } finally { if (version === deliveryVersion) qrLoading.value = false }
+}
+
+async function retryDownload() {
+  if (retryingDownload.value || !failedFiles.value.length) return
+  const version = deliveryVersion
+  retryingDownload.value = true
+  const result = await requestFileDownloads(failedFiles.value)
+  if (version !== deliveryVersion) return
+  failedFiles.value = result.failedFiles || []
+  downloadWarning.value = result.downloadWarning || ''
+  downloadStarted.value ||= Boolean(result.downloadStarted)
+  savedPath.value ||= result.savedPath || ''
+  retryingDownload.value = false
+}
 
 // 计算属性：当前试卷基础信息
 const paperTitle = computed(() => props.paper?.title || '已捕获真题/模考试卷')
@@ -864,7 +873,6 @@ function setAnswerMode(mode: 'merged' | 'separate' | 'none') {
 
 // 关闭弹窗 (核心：直接置为 false，Vue 自动完成所有销毁清理)
 function close() {
-  stopProgress()
   emit('update:modelValue', false)
   viewMode.value = 'setting'
 }
@@ -883,80 +891,32 @@ function handleRetry() {
 
 // 暴露给外部调用的视图控制接口
 function showLoading(target: 'computer_download' | 'mobile_sync') {
+  deliveryVersion++
+  qrCodeUrl.value = ''
+  qrImage.value = ''
+  qrError.value = ''
+  qrLoading.value = false
+  failedFiles.value = []
+  downloadWarning.value = ''
+  downloadStarted.value = false
+  retryingDownload.value = false
   currentExportTarget.value = target
   viewMode.value = 'loading'
-  loadingPercent.value = 15
-  loadingStepText.value = '智能解析题干与材料中...'
-  startProgress()
 }
 
-function showDelivery(options: { qrCodeUrl?: string; savedPath?: string; remainingQuota?: number }) {
-  stopProgress()
-  if (options.qrCodeUrl) qrCodeUrl.value = options.qrCodeUrl
+function showDelivery(options: DeliveryView) {
+  qrCodeUrl.value = options.qrCodeUrl || ''
   savedPath.value = options.savedPath || ''
+  failedFiles.value = options.failedFiles || []
+  downloadWarning.value = options.downloadWarning || ''
+  downloadStarted.value = Boolean(options.downloadStarted)
   viewMode.value = 'delivery'
+  void loadQrCode()
 }
 
 function showError(msg: string) {
-  stopProgress()
   errorMessage.value = msg || '排版失败，请重试'
   viewMode.value = 'error'
-}
-
-// 进度条控制
-function startProgress() {
-  stopProgress()
-  const startTime = Date.now()
-  progressTimer = setInterval(() => {
-    const elapsed = Date.now() - startTime
-    if (elapsed > 1800 && elapsed <= 5500) {
-      loadingStepText.value = '注入考场模块规范与版式...'
-    } else if (elapsed > 5500) {
-      loadingStepText.value =
-        currentExportTarget.value === 'computer_download'
-          ? '高清矢量编译与 PDF 导出中...'
-          : '生成手机同步与小程序码...'
-    }
-    if (loadingPercent.value < 92) {
-      const inc = elapsed < 5500 ? 3 : 1
-      loadingPercent.value = Math.min(92, loadingPercent.value + inc)
-    }
-  }, 400)
-}
-
-function stopProgress() {
-  if (progressTimer) {
-    clearInterval(progressTimer)
-    progressTimer = null
-  }
-}
-
-function getStepClass(step: number) {
-  if (step === 1) return loadingPercent.value > 25 ? 'done' : 'active'
-  if (step === 2) {
-    if (loadingPercent.value > 65) return 'done'
-    if (loadingPercent.value > 25) return 'active'
-    return ''
-  }
-  if (step === 3) {
-    if (loadingPercent.value >= 90) return 'active'
-    return ''
-  }
-  return ''
-}
-
-function getStepStatus(step: number) {
-  if (step === 1) return loadingPercent.value > 25 ? '已完成' : '正在处理'
-  if (step === 2) {
-    if (loadingPercent.value > 65) return '已完成'
-    if (loadingPercent.value > 25) return '正在注入'
-    return '排队中'
-  }
-  if (step === 3) {
-    if (loadingPercent.value >= 90) return '正在渲染'
-    return '排队中'
-  }
-  return '排队中'
 }
 
 // 只在弹窗可见时订阅并请求，避免挂载和打开重复拉取。
@@ -990,7 +950,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  stopProgress()
+  deliveryVersion++
   window.removeEventListener('keydown', onKeyDown, true)
   document.removeEventListener('keydown', onKeyDown, true)
   unsubscribeAccount?.()
@@ -1003,5 +963,3 @@ defineExpose({
   close,
 })
 </script>
-
-

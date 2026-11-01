@@ -8,7 +8,9 @@ import pytest
 from backend.app.question_bank_v2.crud.crud_external_practice import CRUDExternalPractice, external_practice_dao
 from backend.app.question_bank_v2.crud.crud_question import question_dao
 from backend.app.question_bank_v2.schema.external_practice import ImportPracticeQuestionParam
-from backend.app.question_bank_v2.utils.external_practice import import_digest
+from backend.app.question_bank_v2.service.external_practice_import_service import ExternalPracticeImportService
+from backend.app.question_bank_v2.utils.external_practice import question_content_digest
+from backend.common.exception import errors
 
 
 def _item() -> ImportPracticeQuestionParam:
@@ -57,9 +59,70 @@ def test_ensure_question_reuses_private_question_with_same_content(
 
     assert question is existing
     assert captured['user_id'] == 7
-    assert captured['content_hash'] == import_digest(
-        item.model_dump(mode='json', include={'stem', 'content_format', 'question_type', 'options'})
+    assert captured['content_hash'] == question_content_digest(
+        **item.model_dump(mode='json', include={'stem', 'content_format', 'question_type', 'options'})
     )
+
+
+def _snapshot(**overrides: Any) -> dict[str, Any]:
+    data = _item().model_dump(mode='json')
+    data.update(overrides)
+    return ImportPracticeQuestionParam.model_validate(data).model_dump(mode='json')
+
+
+@pytest.mark.parametrize('duration', [0, 30])
+def test_merge_question_keeps_legacy_snapshot_but_fills_missing_duration(duration: int) -> None:
+    """旧快照的选项前缀/图片样式与清洗后快照语义一致时放行，只补用时并保留原快照"""
+    previous = _snapshot(
+        stem=(
+            '<p>Which <img class="lazy" src="//fb.fenbike.cn/a.png" '
+            'style="width:640px;height:480px"> option is correct?</p>'
+        ),
+        options=[
+            {'option_code': 'A', 'content': 'A. <img class="lazy" src="//fb.fenbike.cn/a.png" style="width:20px">'},
+            {'option_code': 'B', 'content': 'B、Answer B'},
+        ],
+        duration_seconds=None,
+    )
+    incoming = ImportPracticeQuestionParam.model_validate({
+        **previous,
+        'stem': '<p>Which <img src="//fb.fbstatic.cn/a.png"> option is correct?</p>',
+        'options': [
+            {'option_code': 'A', 'content': '<img src="//fb.fbstatic.cn/a.png">'},
+            {'option_code': 'B', 'content': 'Answer B'},
+        ],
+        'duration_seconds': duration,
+    })
+
+    merged = ExternalPracticeImportService._merge_question(previous, incoming)
+
+    assert merged['duration_seconds'] == duration
+    assert merged['stem'] == previous['stem'], '展示差异不得覆盖已归档的旧快照'
+    assert merged['options'] == previous['options'], '展示差异不得覆盖已归档的旧选项'
+
+
+@pytest.mark.parametrize(
+    'overrides',
+    [
+        {'stem': 'A genuinely different stem'},
+        {
+            'options': [
+                {'option_code': 'A', 'content': 'Different A'},
+                {'option_code': 'B', 'content': 'Answer B'},
+            ]
+        },
+        {'answer': {'answer_data': {'correct': 'B'}}},
+        {'duration_seconds': 31},
+    ],
+    ids=['stem', 'options', 'answer', 'duration'],
+)
+def test_merge_question_rejects_real_snapshot_conflicts(overrides: dict[str, Any]) -> None:
+    """真实题干/选项/答案/用时冲突仍拒绝覆盖历史作答"""
+    previous = _snapshot(duration_seconds=10)
+    incoming = ImportPracticeQuestionParam.model_validate({**previous, **overrides})
+
+    with pytest.raises(errors.ConflictError):
+        ExternalPracticeImportService._merge_question(previous, incoming)
 
 
 def test_question_content_digest_normalizes_html_tags_and_whitespace() -> None:

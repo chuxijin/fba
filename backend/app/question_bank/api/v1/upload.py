@@ -36,6 +36,6 @@ async def upload_avatar(
 
     await user_account_dao.update_avatar_by_sys_user_id(db, request.user.id, full_url)
 
-    log.info('用户 %d 上传头像成功: %s', request.user.id, full_url)
+    log.info('用户 {} 上传头像成功: {}', request.user.id, full_url)
 
     return response_base.success(data={'url': full_url})

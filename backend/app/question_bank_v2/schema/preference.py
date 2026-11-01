@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field, field_validator
 
+from backend.app.question_bank_v2.schema.study_goal import DomainCode, StudyGoal
+from backend.app.question_bank_v2.schema.study_goal_state import current_study_goal, study_goals_revision
 from backend.common.schema import SchemaBase
 
 PracticeMode = Literal['practice', 'exercise', 'exam', 'mock', 'memorize', 'review', 'adaptive']
@@ -33,6 +35,14 @@ class UpdatePracticePreferenceParam(SchemaBase):
     """更新用户练习偏好参数"""
 
     current_category_id: int | None = Field(None, gt=0, description='当前题库业务分类 ID')
+    study_goal: StudyGoal | None = Field(None, description='当前备考目标；显式null清空，省略保持原值')
+    browse_domain_code: DomainCode | None = Field(
+        None, description='先逛逛：只设置方向并清除完整目标，不猜测年度或类别'
+    )
+    saved_study_goals: list[StudyGoal] | None = Field(None, max_length=20, description='有序已添加目标；省略不修改列表')
+    study_goals_revision: str | None = Field(
+        None, min_length=64, max_length=64, description='整理列表时必传原指纹，防止覆盖其他设备修改'
+    )
     current_knowledge_point_id: int | None = Field(None, gt=0, description='当前知识点导航根节点 ID')
     practice_mode: PracticeMode | None = Field(None, description='默认练习模式')
     mastery_threshold: int | None = Field(None, ge=1, le=20, description='错题连续答对掌握阈值')
@@ -51,9 +61,7 @@ class UpdatePracticePreferenceParam(SchemaBase):
 
     @field_validator('knowledge_system_choice')
     @classmethod
-    def validate_knowledge_system_choice(
-        cls, value: KnowledgeSystemChoice | None
-    ) -> KnowledgeSystemChoice | None:
+    def validate_knowledge_system_choice(cls, value: KnowledgeSystemChoice | None) -> KnowledgeSystemChoice | None:
         if value is None:
             return None
         if len(value) > 50:
@@ -82,6 +90,14 @@ class GetPracticePreferenceDetail(SchemaBase):
     """用户练习偏好详情"""
 
     model_config = ConfigDict(from_attributes=True)
+    study_goal: StudyGoal | None = None
+    saved_study_goals: list[StudyGoal] = Field(default_factory=list)
+    study_goals_revision: str = Field(default_factory=lambda: study_goals_revision(None))
+
+    @field_validator('study_goal', mode='before')
+    @classmethod
+    def empty_study_goal(cls, value: object) -> object:
+        return current_study_goal(value)
 
     current_category_id: int | None = Field(None, description='当前题库业务分类 ID')
     current_knowledge_point_id: int | None = Field(None, description='当前知识点导航根节点 ID')

@@ -16,6 +16,7 @@ class DictDataSchemaBase(SchemaBase):
     sort: int = Field(description='排序')
     status: StatusType = Field(description='状态')
     remark: str | None = Field(None, description='备注')
+    extra: dict = Field(default_factory=dict, description='扩展配置 JSON 对象')
 
 
 class CreateDictDataParam(DictDataSchemaBase):

@@ -36,6 +36,14 @@ async def get_questions(
     knowledge_labeled: Annotated[
         bool | None, Query(description='是否已标注知识点；不传为全部，False 仅未标注')
     ] = None,
+    knowledge_system_id: Annotated[
+        int | None,
+        Query(
+            gt=0,
+            description='配合 knowledge_labeled 使用：只按该知识体系判断是否已标注；'
+            '不传则任何体系标过都算已标注',
+        ),
+    ] = None,
     section_id: Annotated[
         int | None, Query(gt=0, description='章节 ID；自动包含其全部子章节')
     ] = None,
@@ -48,6 +56,7 @@ async def get_questions(
         question_type=question_type,
         keyword=keyword,
         knowledge_labeled=knowledge_labeled,
+        knowledge_system_id=knowledge_system_id,
         section_id=section_id,
     )
     page_data = await paging_data(db, stmt, GetQuestionListItem)

@@ -1,14 +1,18 @@
 /** 官网、content script 和后台共用的认证契约，不依赖存储或网络。 */
 declare const __API_BASE__: string | undefined
+declare const __IS_PROD__: boolean | undefined
 
 /**
  * 后端基址：由构建参数注入（`node build.js --api=https://api.yzxj.vip`）。
  * 未注入时回落到本地开发地址，保证 `pnpm run build` 依旧是本地联调版本。
  */
 const injectedApiBase = typeof __API_BASE__ === 'string' ? __API_BASE__.trim() : ''
-export const BACKEND_BASE = injectedApiBase || 'http://127.0.0.1:8000'
-export const LOCAL_SITE_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
-export const SITE_URL_PATTERNS = LOCAL_SITE_ORIGINS.map((origin) => {
+export const BACKEND_BASE = typeof __IS_PROD__ === 'boolean' && __IS_PROD__
+  ? injectedApiBase : injectedApiBase || 'http://127.0.0.1:8000'
+export const IS_PRODUCTION = typeof __IS_PROD__ === 'boolean' ? __IS_PROD__
+  : !['localhost', '127.0.0.1'].includes(new URL(BACKEND_BASE).hostname)
+export const LOCAL_SITE_ORIGINS = IS_PRODUCTION ? [] : ['http://localhost:3000', 'http://127.0.0.1:3000']
+export const SITE_URL_PATTERNS = (IS_PRODUCTION ? [] : LOCAL_SITE_ORIGINS).map((origin) => {
   const { protocol, hostname } = new URL(origin)
   return `${protocol}//${hostname}/*`
 })
@@ -82,7 +86,7 @@ export function isSiteAuthMessage(value: unknown): value is SiteAuthMessage {
 }
 
 export function isTrustedSite(url?: string): boolean {
-  try { return !!url && LOCAL_SITE_ORIGINS.includes(new URL(url).origin) } catch { return false }
+  try { return !IS_PRODUCTION && !!url && LOCAL_SITE_ORIGINS.includes(new URL(url).origin) } catch { return false }
 }
 
 export function isQuotaInfo(value: unknown): value is QuotaInfo {

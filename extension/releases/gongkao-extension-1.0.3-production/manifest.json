@@ -1,0 +1,76 @@
+{
+  "manifest_version": 3,
+  "name": "公考内容排版",
+  "version": "1.0.3",
+  "description": "将粉笔、华图、事考帮网页题目排版为 PDF / Word，支持电脑下载、微信扫码保存题本、错题导入与意见反馈。",
+  "permissions": [
+    "storage",
+    "downloads",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*.fenbi.com/*",
+    "*://*.fbstatic.cn/*",
+    "*://*.huatu.com/*",
+    "*://*.shikaobang.cn/*",
+    "https://api.yzxj.vip/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.fenbi.com/*",
+        "*://*.huatu.com/*",
+        "*://*.shikaobang.cn/*"
+      ],
+      "js": [
+        "injected.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://*.fenbi.com/*",
+        "*://*.huatu.com/*",
+        "*://*.shikaobang.cn/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "injected.js",
+        "icons/*"
+      ],
+      "matches": [
+        "*://*.fenbi.com/*",
+        "*://*.huatu.com/*",
+        "*://*.shikaobang.cn/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "公考内容排版",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,4 +1,5 @@
-import { normalizeInlineSymbols } from './normalize'
+import { normalizeImportOptions, normalizeImportStem } from '../importer'
+import { extractQuestionOptions, normalizeInlineSymbols } from './normalize'
 
 export interface ReportModule {
   module_name: string
@@ -260,14 +261,9 @@ export function buildFenbiPracticeQuestions(input: {
   solutions.forEach((item, index) => {
     const key = String(item?.globalId || '')
     const user = userAnswers[key]
-    const stem = normalizeInlineSymbols(String(item?.content || '').trim())
+    const stem = normalizeImportStem(normalizeInlineSymbols(String(item?.content || '').trim()))
     if (!key || !user || !stem) return
-    const optionTexts: string[] = Array.isArray(item?.accessories?.[0]?.options) ? item.accessories[0].options : []
-    const options: PracticeReportOption[] = []
-    optionTexts.forEach((content, order) => {
-      const text = normalizeInlineSymbols(String(content || '').trim())
-      if (text && order < OPTION_CODES.length) options.push({ option_code: OPTION_CODES[order], content: text, sort_order: order })
-    })
+    const options = normalizeImportOptions(extractQuestionOptions(item).map(normalizeInlineSymbols))
     if (options.length < 2) return
     const correct = choiceToCodes(item?.correctAnswer?.choice)
     // 粉笔的 status 语义不统一（-1 也可能是答错，10 是无作答记录），统一以是否提交答案判定。
@@ -300,7 +296,9 @@ export function buildFenbiPracticeQuestions(input: {
     })
 
     const explanation = String(item?.solution || '').trim()
-    const duration = Number(user.time)
+    const rawDuration = user.time
+    const duration = typeof rawDuration === 'number' || (typeof rawDuration === 'string' && rawDuration.trim())
+      ? Number(rawDuration) : NaN
     questions.push({
       source_question_key: key,
       position: index + 1,

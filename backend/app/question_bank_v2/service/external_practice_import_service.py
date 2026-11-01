@@ -23,7 +23,11 @@ from backend.app.question_bank_v2.schema.practice import (
     GetPracticeSessionReport,
     GetPracticeSessionSolutionItem,
 )
-from backend.app.question_bank_v2.utils.external_practice import EXTERNAL_PRACTICE_ORIGIN, imported_session_key
+from backend.app.question_bank_v2.utils.external_practice import (
+    EXTERNAL_PRACTICE_ORIGIN,
+    imported_session_key,
+    question_content_digest,
+)
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
@@ -40,6 +44,10 @@ class ExternalPracticeImportService:
     def _merge_question(previous: dict[str, Any], incoming: ImportPracticeQuestionParam) -> dict[str, Any]:
         merged = deepcopy(previous)
         current = incoming.model_dump(mode='json')
+        core_fields = ('stem', 'content_format', 'question_type', 'options')
+        equivalent_content = question_content_digest(**{key: previous[key] for key in core_fields}) == (
+            question_content_digest(**{key: current[key] for key in core_fields})
+        )
         immutable = (
             'source_question_key',
             'position',
@@ -52,6 +60,9 @@ class ExternalPracticeImportService:
         )
         for field in immutable:
             if previous[field] != current[field]:
+                # 新客户端统一了富文本清洗；语义一致时保留旧快照，不把展示差异当作历史冲突。
+                if field in {'stem', 'options'} and equivalent_content:
+                    continue
                 raise errors.ConflictError(msg=f'第 {incoming.position} 题的 {field} 与原记录冲突，不能覆盖历史作答')
         old_path, new_path = previous['module_path'], current['module_path']
         if old_path[: len(new_path)] != new_path and new_path[: len(old_path)] != old_path:

@@ -3,6 +3,7 @@ import App from './App.vue'
 import rawCss from './style.css?inline'
 import reportCss from './practice-report.css?inline'
 import type { PracticeReportPayload } from '../../adapters/fenbi/report'
+import type { DeliveryView } from '../../utils/export-delivery'
 import { UnifiedPaper, RenderTypographySettings, ImportState } from '../../adapters'
 
 export interface ReformatterAppInstance {
@@ -15,7 +16,7 @@ export interface ReformatterAppInstance {
   openModal(): void
   closeModal(): void
   showLoading(target: 'computer_download' | 'mobile_sync'): void
-  showDelivery(options: { qrCodeUrl?: string; savedPath?: string; remainingQuota?: number }): void
+  showDelivery(options: DeliveryView): void
   showError(msg: string): void
 }
 

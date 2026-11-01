@@ -72,7 +72,7 @@ class AnnotationService:
         document = await question_annotation_dao.get_document(
             db, user_id=user_id, question_id=question_id, context_key=key
         )
-        if obj.session_key is not None:
+        if obj.session_key is not None or obj.source == 'wrong':
             annotations = document.annotations if document else []
         else:
             latest = await question_annotation_dao.latest_document(db, user_id=user_id, question_id=question_id)

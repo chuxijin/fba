@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Path, Query
 
@@ -25,6 +25,10 @@ async def get_public_resource_list(
     keyword: str | None = None,
     sort_by: str = 'created_time',
     sort_order: str = 'desc',
+    exam_domain: Literal['gongkao'] | None = None,
+    subject: Annotated[str | None, Query(max_length=30)] = None,
+    year: Annotated[int | None, Query(ge=1900, le=2100)] = None,
+    region: Annotated[str | None, Query(max_length=30)] = None,
 ) -> ResponseSchemaModel[PageData[MyDrivePublicResourceListItem]]:
     """获取公开资源列表（已启用且审核通过）。"""
     from backend.app.mydrive.schema.resource import GetMyDriveResourceListParam
@@ -35,6 +39,10 @@ async def get_public_resource_list(
         keyword=keyword,
         sort_by=sort_by,
         sort_order=sort_order,
+        exam_domain=exam_domain,
+        subject=subject,
+        year=year,
+        region=region,
     )
     return response_base.success(data=await mydrive_resource_service.get_public_list(db, params=params))
 

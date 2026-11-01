@@ -88,7 +88,7 @@ class ResourceService:
             path='gk_resource',
             use_signed_url=False,
         )
-        log.info('公考资料上传成功: %s', uploaded_url)
+        log.info('公考资料上传成功: {}', uploaded_url)
         return {
             'url': uploaded_url,
             'filename': new_filename,

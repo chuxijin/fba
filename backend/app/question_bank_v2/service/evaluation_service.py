@@ -22,8 +22,7 @@ from backend.app.question_bank_v2.crud.crud_practice import (
 )
 from backend.app.question_bank_v2.crud.crud_question import question_explanation_dao
 from backend.app.question_bank_v2.model.evaluation import QbEvaluationRun
-from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
-from backend.app.question_bank_v2.service.statistics_service import statistics_service
+from backend.app.question_bank_v2.service.attempt_projection_service import attempt_projection_service
 from backend.common.exception import errors
 from backend.plugin.agent.schema.grading import GradingRunRead, StartShenlunGradingParam, StartShenlunGradingResult
 from backend.plugin.agent.service.shenlun_service import shenlun_grading_service
@@ -103,9 +102,7 @@ class EvaluationService:
             return content.strip()
         if isinstance(content, list):
             return '\n'.join(
-                str(item.get('text')).strip()
-                for item in content
-                if isinstance(item, dict) and item.get('text')
+                str(item.get('text')).strip() for item in content if isinstance(item, dict) and item.get('text')
             )
         return ''
 
@@ -201,8 +198,7 @@ class EvaluationService:
     def _summary_messages(payload: dict[str, Any]) -> list[AIChatMessage]:
         """构建会话学习总结提示词"""
         system_prompt = (
-            '你是中文学习教练。基于给定练习事实生成简洁、可信、可执行的总结，不得推测未提供的信息。'
-            '只返回 JSON。'
+            '你是中文学习教练。基于给定练习事实生成简洁、可信、可执行的总结，不得推测未提供的信息。只返回 JSON。'
         )
         user_prompt = (
             '返回字段 overview、strengths、high_frequency_issues、weak_knowledge_points、next_actions、'
@@ -269,7 +265,11 @@ class EvaluationService:
             raise errors.RequestError(msg='当前作答不是需要外部评测的主观题')
         if not EvaluationService._stringify_response(context.attempt.response_data):
             raise errors.RequestError(msg='请先提交有效答案后再进行 AI 判分')
-        if context.session.mode in {'exam', 'mock'} and context.session.status not in {'submitted', 'graded'}:
+        if context.session.mode in {'exam', 'mock'} and context.session.status not in {
+            'submitted',
+            'graded',
+            'expired',
+        }:
             raise errors.ForbiddenError(msg='考试或模考必须交卷后才能进行 AI 判分')
 
     @staticmethod
@@ -417,15 +417,11 @@ class EvaluationService:
                 }
                 result_payload['projection_applied'] = True
                 item.run.result_payload = result_payload
-                await review_schedule_service.apply_delayed_grade(
+                await attempt_projection_service.apply(
                     db=db,
                     attempt=item.context.attempt,
                     session_item=item.context.session_item,
-                )
-                await statistics_service.apply_delayed_grade(
-                    db=db,
-                    attempt=item.context.attempt,
-                    max_score=max_score,
+                    delayed=True,
                 )
                 await cls._update_current_response(
                     db=db,
@@ -557,17 +553,15 @@ class EvaluationService:
                     if isinstance(raw, dict) and str(raw.get('attempt_id', '')).isdigit()
                 }
             except Exception as exc:
-                completed.extend(
-                    [
-                        await cls._mark_attempt_failed(
-                            db=db,
-                            item=item,
-                            code='MODEL_CALL_FAILED',
-                            message=str(exc) or 'AI 判分调用失败',
-                        )
-                        for item in chunk
-                    ]
-                )
+                completed.extend([
+                    await cls._mark_attempt_failed(
+                        db=db,
+                        item=item,
+                        code='MODEL_CALL_FAILED',
+                        message=str(exc) or 'AI 判分调用失败',
+                    )
+                    for item in chunk
+                ])
                 continue
             for item in chunk:
                 raw_result = response_map.get(item.context.attempt.id)
@@ -603,6 +597,11 @@ class EvaluationService:
         )
         if context is None:
             raise errors.NotFoundError(msg='作答记录不存在')
+        if context.session.mode in {'exam', 'mock'} and not await question_attempt_dao.is_latest_for_item(
+            db, context.attempt
+        ):
+            raise errors.ConflictError(msg='考试只评测交卷时的最终答案，此作答已被替换')
+        await attempt_projection_service.lock_questions(db, [context.attempt.question_id])
         completed, prepared = await cls._prepare_attempts(
             db=db,
             contexts=[context],
@@ -648,7 +647,7 @@ class EvaluationService:
         session = await practice_session_dao.get_by_key(db, session_key, user_id=user_id, for_update=True)
         if session is None:
             raise errors.NotFoundError(msg='练习会话不存在')
-        if session.mode in {'exam', 'mock'} and session.status not in {'submitted', 'graded'}:
+        if session.mode in {'exam', 'mock'} and session.status not in {'submitted', 'graded', 'expired'}:
             raise errors.ForbiddenError(msg='考试或模考必须交卷后才能进行 AI 判分')
         contexts = await evaluation_run_dao.list_latest_subjective_contexts(
             db,
@@ -657,6 +656,7 @@ class EvaluationService:
         )
         if not contexts:
             raise errors.RequestError(msg='当前会话没有已提交的主观题作答')
+        await attempt_projection_service.lock_questions(db, [context.attempt.question_id for context in contexts])
         completed, prepared = await cls._prepare_attempts(
             db=db,
             contexts=contexts,

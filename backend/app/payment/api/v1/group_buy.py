@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
@@ -9,6 +9,8 @@ from backend.app.payment.schema.group_buy import (
     GroupBuyActivityParam,
     GroupBuyCreateTeamParam,
     GroupBuyPrepayParam,
+    GroupBuyShareCodeResult,
+    GroupBuyShareLinkResult,
     GroupBuyTaskRetryParam,
 )
 from backend.app.payment.schema.pay import SubscriptionPrepayResult
@@ -164,11 +166,30 @@ async def own_team(request: Request, db: CurrentSession, share_code: str) -> Res
 
 
 @router.get('/teams/{share_code}/qrcode', summary='获取本人已参与团的邀请小程序码', dependencies=[DependsJwtAuth])
-async def team_qrcode(request: Request, db: CurrentSession, share_code: str) -> ResponseModel:
+async def team_qrcode(
+    request: Request,
+    db: CurrentSession,
+    share_code: str,
+    style: Literal['miniapp', 'square'] = 'miniapp',
+) -> ResponseSchemaModel[GroupBuyShareCodeResult]:
     from backend.app.payment.service.group_buy_share_service import group_buy_share_service
 
     return response_base.success(
-        data=await group_buy_share_service.qrcode(db, code=share_code, user_id=request.user.id)
+        data=await group_buy_share_service.qrcode(db, code=share_code, user_id=request.user.id, style=style)
+    )
+
+
+@router.get('/teams/{share_code}/share-link', summary='获取本人已付款团的小程序链接', dependencies=[DependsJwtAuth])
+async def team_share_link(
+    request: Request,
+    db: CurrentSession,
+    share_code: str,
+    kind: Literal['short', 'url'] = 'short',
+) -> ResponseSchemaModel[GroupBuyShareLinkResult]:
+    from backend.app.payment.service.group_buy_share_service import group_buy_share_service
+
+    return response_base.success(
+        data=await group_buy_share_service.link(db, code=share_code, user_id=request.user.id, kind=kind)
     )
 
 

@@ -47,7 +47,7 @@ def db() -> Iterator[MemorySession]:
             'knowledge_point': 'id INTEGER, name TEXT, deleted INTEGER',
             'question_attempt': (
                 'id INTEGER, question_id INTEGER, user_id INTEGER, attempt_no INTEGER, response_data JSON, '
-                'submitted_time DATETIME, is_correct BOOLEAN, deleted INTEGER'
+                'submitted_time DATETIME, is_correct BOOLEAN, deleted INTEGER, duration_ms INTEGER'
             ),
             'bank_item': (
                 'id INTEGER, bank_revision_id INTEGER, question_id INTEGER, exam_year INTEGER, '
@@ -83,9 +83,18 @@ def db() -> Iterator[MemorySession]:
 
 def candidates(db: MemorySession, **kwargs: Any) -> list[int]:
     options = {
-        'user_id': 7, 'source_type': 'custom', 'bank_id': None, 'section_ids': [],
-        'favorite_folder_id': None, 'question_ids': [], 'knowledge_point_ids': [201, 301, 401],
-        'question_types': [], 'year_start': None, 'year_end': None, 'shuffle': False, 'limit': 20,
+        'user_id': 7,
+        'source_type': 'custom',
+        'bank_id': None,
+        'section_ids': [],
+        'favorite_folder_id': None,
+        'question_ids': [],
+        'knowledge_point_ids': [201, 301, 401],
+        'question_types': [],
+        'year_start': None,
+        'year_end': None,
+        'shuffle': False,
+        'limit': 20,
         **kwargs,
     }
     rows = asyncio.run(practice_session_item_dao.get_user_candidates(db, **options))
@@ -112,12 +121,15 @@ def test_candidates_deduplicate_overlapping_points_and_exclude_unavailable_quest
     assert candidates(db, knowledge_point_ids=[]) == []
 
 
-@pytest.mark.parametrize(('filters', 'expected'), [
-    ({'year_start': 2024, 'year_end': 2026}, [1, 4]),
-    ({'bank_id': 1}, [1, 2]),
-    ({'region': '贵州'}, [4]),
-    ({'question_types': ['multiple_choice']}, [2]),
-])
+@pytest.mark.parametrize(
+    ('filters', 'expected'),
+    [
+        ({'year_start': 2024, 'year_end': 2026}, [1, 4]),
+        ({'bank_id': 1}, [1, 2]),
+        ({'region': '贵州'}, [4]),
+        ({'question_types': ['multiple_choice']}, [2]),
+    ],
+)
 def test_knowledge_composition_preserves_filters(
     db: MemorySession, filters: dict[str, Any], expected: list[int]
 ) -> None:
@@ -262,8 +274,13 @@ def test_create_knowledge_session_resolves_descendants_and_records_knowledge_sou
     monkeypatch.setattr(module.practice_session_item_dao, 'create_all', AsyncMock(side_effect=create_items))
     monkeypatch.setattr(PracticeService, 'get', AsyncMock(side_effect=get_detail))
     obj = CreatePracticeSessionParam(
-        source_type='custom', knowledge_point_ids=[201], knowledge_system_id=11,
-        title='知识点练习', mode='memorize', shuffle=True, limit=20,
+        source_type='custom',
+        knowledge_point_ids=[201],
+        knowledge_system_id=11,
+        title='知识点练习',
+        mode='memorize',
+        shuffle=True,
+        limit=20,
     )
     result = asyncio.run(PracticeService.create(db=None, user_id=7, obj=obj))
     assert result.session_key == recorded['session_key']

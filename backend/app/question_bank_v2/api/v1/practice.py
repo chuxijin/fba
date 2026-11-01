@@ -16,6 +16,7 @@ from backend.app.question_bank_v2.schema.practice import (
     GetPracticeSessionReport,
     GetPracticeSessionSolutionItem,
     GetPracticeSolutionDetail,
+    PracticeQuestionStatisticsDetail,
     PracticeSessionRange,
     SavePracticeResponseParam,
     SubmitPracticeItemParam,
@@ -30,7 +31,7 @@ from backend.common.pagination import (
 )
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
-from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.database.db import CurrentSession, CurrentSessionTransactionBeforeResponse
 from backend.utils.timezone import timezone
 
 router = APIRouter(dependencies=[DependsJwtAuth])
@@ -39,7 +40,7 @@ router = APIRouter(dependencies=[DependsJwtAuth])
 @router.post('', summary='创建练习会话', name='qbank_v2_create_practice_session')
 async def create_practice_session(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     obj: CreatePracticeSessionParam,
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """按稳定题库 ID 校验刷题权限并固定当前发布版本"""
@@ -95,7 +96,7 @@ async def get_practice_sessions(
 @router.get('/{session_key}', summary='获取练习会话', name='qbank_v2_get_practice_session')
 async def get_practice_session(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """仅会话所有者可以读取投递题目，响应不包含标准答案与解析"""
@@ -106,7 +107,7 @@ async def get_practice_session(
 @router.delete('/{session_key}', summary='隐藏练习会话', name='qbank_v2_delete_practice_session')
 async def delete_practice_session(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
 ) -> ResponseSchemaModel[None]:
     """仅隐藏用户历史入口，保留作答事实、错题和学习统计"""
@@ -121,7 +122,7 @@ async def delete_practice_session(
 )
 async def get_practice_session_report(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
 ) -> ResponseSchemaModel[GetPracticeSessionReport]:
     data = await practice_service.get_report(db=db, session_key=session_key, user_id=request.user.id)
@@ -135,7 +136,7 @@ async def get_practice_session_report(
 )
 async def get_practice_session_solutions(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
 ) -> ResponseSchemaModel[list[GetPracticeSessionSolutionItem]]:
     data = await practice_service.get_session_solutions(
@@ -153,7 +154,7 @@ async def get_practice_session_solutions(
 )
 async def save_practice_response(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
     session_item_id: Annotated[int, Path(gt=0, description='会话题目 ID')],
     obj: SavePracticeResponseParam,
@@ -176,7 +177,7 @@ async def save_practice_response(
 )
 async def submit_practice_item(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
     session_item_id: Annotated[int, Path(gt=0, description='会话题目 ID')],
     obj: SubmitPracticeItemParam,
@@ -213,6 +214,23 @@ async def get_practice_solution(
     return response_base.success(data=data)
 
 
+@router.get(
+    '/{session_key}/items/{session_item_id}/statistics',
+    summary='获取选择题全站选择与有效用时统计',
+    name='qbank_v2_get_practice_question_statistics',
+)
+async def get_practice_question_statistics(
+    request: Request,
+    db: CurrentSession,
+    session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
+    session_item_id: Annotated[int, Path(gt=0, description='会话题目 ID')],
+) -> ResponseSchemaModel[PracticeQuestionStatisticsDetail]:
+    data = await practice_service.get_question_statistics(
+        db=db, session_key=session_key, user_id=request.user.id, session_item_id=session_item_id
+    )
+    return response_base.success(data=data)
+
+
 @router.post(
     '/{session_key}/submit',
     summary='提交练习会话',
@@ -220,7 +238,7 @@ async def get_practice_solution(
 )
 async def submit_practice_session(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
 ) -> ResponseSchemaModel[SubmitPracticeSessionResult]:
     """交卷后冻结继续作答入口，并保留已有客观题判分结果"""

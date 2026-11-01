@@ -70,7 +70,7 @@ class KnowledgeService:
     ) -> int | None:
         """可选解析当前领域分类 ID
 
-        显式传入优先；否则取用户偏好里的 current_category_id（小程序切换领域时会写入领域根分类）。
+        显式传入优先；否则取完整备考目标关联领域，再兼容只选方向的 current_category_id。
         与 resolve_domain_category_id 的区别：无法判断领域时返回 None 而不是报错，
         供错题本这类「历史账号没有领域也要能看到数据」的场景使用。
 
@@ -82,6 +82,18 @@ class KnowledgeService:
         if domain_category_id is not None:
             return domain_category_id
         preference = await practice_preference_dao.get_by_user_id(db, user_id)
+        from backend.app.question_bank_v2.schema.study_goal_state import current_study_goal
+
+        goal = current_study_goal(getattr(preference, 'study_goal', None))
+        if goal:
+            from backend.app.question_bank_v2.service.study_goal_service import study_goal_service
+
+            try:
+                target = await study_goal_service.get_target(db=db, code=goal['exam_target_code'])
+                linked = await study_goal_service.domain_category_ids(db=db, domain_code=target.config.domain_code)
+                return linked['current_category_id']
+            except errors.RequestError:
+                pass
         current = getattr(preference, 'current_category_id', None)
         return int(current) if current else None
 
@@ -94,7 +106,7 @@ class KnowledgeService:
     ) -> int:
         """解析当前领域分类 ID
 
-        显式传入优先；否则取用户偏好里的 current_category_id（小程序切换领域时会写入领域根分类）。
+        显式传入优先；否则使用备考目标或浏览方向关联的领域根分类。
         两者都没有时无法判断领域，直接报错而不是猜一个，避免跨领域串体系。
         """
         resolved = await KnowledgeService.resolve_optional_domain_category_id(
@@ -103,7 +115,7 @@ class KnowledgeService:
             domain_category_id=domain_category_id,
         )
         if resolved is None:
-            raise errors.RequestError(msg='未设置当前领域，请先选择学习领域')
+            raise errors.RequestError(msg='请先选择备考目标，或选择备考方向后先逛逛')
         return resolved
 
     @staticmethod
@@ -570,11 +582,7 @@ class KnowledgeService:
             question_ids_by_point.setdefault(point_id, set()).add(int(question_id))
             mapped_question_ids.add(int(question_id))
         all_question_count = int(
-            (
-                await db.execute(
-                    select(sa.func.count(QbQuestion.id)).where(*question_filters)
-                )
-            ).scalar_one()
+            (await db.execute(select(sa.func.count(QbQuestion.id)).where(*question_filters))).scalar_one()
         )
         snapshots = (
             await db.execute(
@@ -684,9 +692,7 @@ class KnowledgeService:
                 max(0, all_question_count - mapped_count) if scoped_question_count is not None else None
             ),
             coverage_rate=(
-                KnowledgeService._ratio(mapped_count, all_question_count)
-                if scoped_question_count is not None
-                else None
+                KnowledgeService._ratio(mapped_count, all_question_count) if scoped_question_count is not None else None
             ),
         )
 

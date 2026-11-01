@@ -10,7 +10,7 @@ from backend.app.question_bank_v2.schema.evaluation import (
 from backend.app.question_bank_v2.service.evaluation_service import evaluation_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
-from backend.database.db import CurrentSession, CurrentSessionTransaction
+from backend.database.db import CurrentSession, CurrentSessionTransactionBeforeResponse
 from backend.plugin.agent.schema.grading import GradingRunRead, StartShenlunGradingResult
 from backend.plugin.ocr.service.ocr_service import ocr_service
 
@@ -50,7 +50,7 @@ async def get_attempt_evaluation(
 )
 async def judge_attempt(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     attempt_id: Annotated[int, Path(gt=0, description='作答事实 ID')],
     obj: TriggerEvaluationParam,
 ) -> ResponseSchemaModel[EvaluationRunRead]:
@@ -71,7 +71,7 @@ async def judge_attempt(
 )
 async def start_shenlun_agent(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     attempt_id: Annotated[int, Path(gt=0, description='作答事实 ID')],
 ) -> ResponseSchemaModel[StartShenlunGradingResult]:
     data = await evaluation_service.start_shenlun_agent(
@@ -107,7 +107,7 @@ async def get_shenlun_agent(
 )
 async def judge_session_subjective(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
     obj: TriggerEvaluationParam,
 ) -> ResponseSchemaModel[list[EvaluationRunRead]]:
@@ -146,7 +146,7 @@ async def get_session_summary(
 )
 async def generate_session_summary(
     request: Request,
-    db: CurrentSessionTransaction,
+    db: CurrentSessionTransactionBeforeResponse,
     session_key: Annotated[str, Path(min_length=8, max_length=64, description='会话标识')],
     obj: TriggerEvaluationParam,
 ) -> ResponseSchemaModel[EvaluationRunRead]:

@@ -28,11 +28,11 @@ from backend.app.mydrive.schema.resource import (
     MyDriveResourceShareParam,
     UpdateMyDriveResourceParam,
 )
-from backend.app.mydrive.service.filesystem.factory import create_file_space
+from backend.app.mydrive.service.drives.quark.client import QuarkRequest, QuarkRequestError
 from backend.app.mydrive.service.filesystem.exceptions import ShareExpiredError
+from backend.app.mydrive.service.filesystem.factory import create_file_space
 from backend.app.mydrive.service.filesystem.models import FileObject, SpaceLocator, SpaceType
 from backend.app.mydrive.service.filesystem.spaces import ShareableFileSpace
-from backend.app.mydrive.service.drives.quark.client import QuarkRequest, QuarkRequestError
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.pagination import paging_data
@@ -175,7 +175,11 @@ class MyDriveResourceService:
             raise errors.NotFoundError(msg='资源不存在')
         await db.flush()
         resource = await MyDriveResourceService.get(db, pk=pk, owner_id=owner_id)
-        db.add(MyDriveResourceViewHistory(resource_id=resource.id, view_count=resource.view_count, record_time=timezone.now()))
+        db.add(
+            MyDriveResourceViewHistory(
+                resource_id=resource.id, view_count=resource.view_count, record_time=timezone.now()
+            )
+        )
         await db.flush()
         return resource
 
@@ -519,19 +523,25 @@ class MyDriveResourceService:
             if not isinstance(file_space, ShareableFileSpace):
                 raise errors.ForbiddenError(msg='当前网盘不支持创建分享')
             file = FileObject(
-                space=SpaceLocator(provider=share.provider, space_type=SpaceType.PERSONAL, account_id=str(share.account_id)),
+                space=SpaceLocator(
+                    provider=share.provider, space_type=SpaceType.PERSONAL, account_id=str(share.account_id)
+                ),
                 file_id=share.file_id,
                 name=share.file_name or resource.title,
                 path=share.file_path or '/',
                 is_directory=share.is_directory,
                 size=share.file_size,
             )
-            return await file_space.create_share([file], share.share_title or resource.title, expires_in_days, share.extract_code)
+            return await file_space.create_share(
+                [file], share.share_title or resource.title, expires_in_days, share.extract_code
+            )
         finally:
             await file_space.aclose()
 
     @staticmethod
-    async def _create_personal_file_space(db: AsyncSession, resource: MyDriveResource, share: MyDriveResourceShare) -> Any:
+    async def _create_personal_file_space(
+        db: AsyncSession, resource: MyDriveResource, share: MyDriveResourceShare
+    ) -> Any:
         """创建个人文件空间实例。"""
         if share.account_id is None:
             raise errors.ForbiddenError(msg='缺少关联网盘账户')
@@ -606,7 +616,6 @@ class MyDriveResourceService:
             'is_directory': file.is_directory,
             'size': file.size,
         }
-
 
     @staticmethod
     def _build_public_item(
@@ -723,6 +732,7 @@ class MyDriveResourceService:
             file_size=share.file_size if share else None,
             provider=share.provider,
             share_url=share.share_url,
+            extract_code=share.extract_code or '',
         )
 
     @staticmethod
@@ -743,7 +753,11 @@ class MyDriveResourceService:
         resource = await mydrive_resource_dao.get_public(db, pk)
         if resource is None:
             raise errors.NotFoundError(msg='资源不存在')
-        db.add(MyDriveResourceViewHistory(resource_id=resource.id, view_count=resource.view_count, record_time=timezone.now()))
+        db.add(
+            MyDriveResourceViewHistory(
+                resource_id=resource.id, view_count=resource.view_count, record_time=timezone.now()
+            )
+        )
         await db.flush()
         return {'view_count': resource.view_count}
 

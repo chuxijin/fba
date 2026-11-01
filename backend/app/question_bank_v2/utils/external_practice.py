@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+
 from typing import Any
 
 from sqlalchemy import func
@@ -12,15 +13,21 @@ EXTERNAL_PRACTICE_ORIGIN = 'external_practice'
 EXTERNAL_SESSION_PREFIX = 'external-'
 
 _DIGEST_TAG_RE = re.compile(r'</?(?:b|strong)\b[^>]*>', re.IGNORECASE)
-_UNDERLINE_TAG_RE = re.compile(r'<u[^>]*>[\s\u00a0\xa0&nbsp;]*</u>', re.IGNORECASE)
+_UNDERLINE_TAG_RE = re.compile(r'<u\b[^>]*>(?:\s|\u00a0|&nbsp;)*</u>', re.IGNORECASE)
 _BLANK_RE = re.compile(r'_{2,}')
 _SPACE_RE = re.compile(r'[\s\u00a0\xa0]+')
 _IMG_TAG_RE = re.compile(r'<img\b[^>]*>', re.IGNORECASE)
 _FENBI_DOMAIN_RE = re.compile(r'(?:fb\.)?fenbike\.cn')
+_OPTION_PREFIX_RE = re.compile(r'^[A-Ha-h](?:[.、:：]\s*|\s+(?!\s*[+*/=<>×÷^−-]))')
 
 
 def _clean_img_tag(match: re.Match) -> str:
     tag = match.group(0)
+    # 两条导入链路对原站微型符号图的处理曾不同；只归一已知符号，不用图片 alt 猜内容。
+    if re.search(r'22356dff5dbcdc4c37e6632600979a0e|arrow|rightarrow', tag, re.IGNORECASE):
+        return ' → '
+    if re.search(r'abe086ab947f7a5b37c464c4ce74f115|dash', tag, re.IGNORECASE):
+        return ' — '
     src_match = re.search(r'src=["\']([^"\']+)["\']', tag, re.IGNORECASE)
     if not src_match:
         return '<img>'
@@ -77,7 +84,11 @@ def question_content_digest(
     for opt in options:
         opt_dict = dict(opt)
         if 'content' in opt_dict:
-            opt_dict['content'] = normalize_content_for_digest(str(opt_dict['content']))
+            content = str(opt_dict['content']).strip()
+            prefix = _OPTION_PREFIX_RE.match(content)
+            if prefix and content[0].upper() == opt_dict.get('option_code'):
+                content = content[prefix.end() :]
+            opt_dict['content'] = normalize_content_for_digest(content)
         norm_options.append(opt_dict)
 
     return import_digest({
@@ -86,6 +97,21 @@ def question_content_digest(
         'question_type': question_type,
         'options': norm_options,
     })
+
+
+def external_question_identity(metadata: dict[str, Any] | None) -> tuple[str, str] | None:
+    """优先显式原站题号；旧 external_key 只接受正整数 ID，不把 o1 等题序当作身份。"""
+    metadata = metadata if isinstance(metadata, dict) else {}
+    platform, key = metadata.get('source_system'), metadata.get('external_key')
+    if platform != 'fenbi':
+        return None
+    source_key = metadata.get('source_question_key')
+    if isinstance(source_key, str) and source_key.strip() and len(source_key) <= 160:
+        return platform, source_key.strip()
+    if not isinstance(key, str) or not key.startswith(f'{platform}:'):
+        return None
+    question_key = key.rsplit(':', 1)[-1]
+    return (platform, question_key) if re.fullmatch(r'[1-9]\d*', question_key) else None
 
 
 def imported_session_key(user_id: int, platform: str, source_key: str) -> str:

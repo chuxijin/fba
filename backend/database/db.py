@@ -221,3 +221,6 @@ for source, engine in _database_engines.items():
 # Session Annotated
 CurrentSession: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
 CurrentSessionTransaction: TypeAlias = Annotated[AsyncSession, Depends(get_db_transaction)]
+CurrentSessionTransactionBeforeResponse: TypeAlias = Annotated[
+    AsyncSession, Depends(get_db_transaction, scope='function')
+]

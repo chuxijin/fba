@@ -34,28 +34,36 @@ class CRUDUserBankItemProgress(CRUDPlus[QbUserBankItemProgress]):
         if bank_item_id is None:
             return None
         item = (
-            await db.execute(
-                select(QbBankItem).where(
-                    QbBankItem.id == bank_item_id,
-                    QbBankItem.question_id == attempt.question_id,
-                    QbBankItem.deleted == 0,
+            (
+                await db.execute(
+                    select(QbBankItem).where(
+                        QbBankItem.id == bank_item_id,
+                        QbBankItem.question_id == attempt.question_id,
+                        QbBankItem.deleted == 0,
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if item is None:
             return None
 
         progress = (
-            await db.execute(
-                select(QbUserBankItemProgress)
-                .where(
-                    QbUserBankItemProgress.user_id == attempt.user_id,
-                    QbUserBankItemProgress.bank_item_id == item.id,
-                    QbUserBankItemProgress.deleted == 0,
+            (
+                await db.execute(
+                    select(QbUserBankItemProgress)
+                    .where(
+                        QbUserBankItemProgress.user_id == attempt.user_id,
+                        QbUserBankItemProgress.bank_item_id == item.id,
+                        QbUserBankItemProgress.deleted == 0,
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if progress is None:
             progress = QbUserBankItemProgress(
                 user_id=attempt.user_id,
@@ -93,16 +101,20 @@ class CRUDUserBankItemProgress(CRUDPlus[QbUserBankItemProgress]):
         if bank_item_id is None:
             return None
         progress = (
-            await db.execute(
-                select(QbUserBankItemProgress)
-                .where(
-                    QbUserBankItemProgress.user_id == attempt.user_id,
-                    QbUserBankItemProgress.bank_item_id == bank_item_id,
-                    QbUserBankItemProgress.deleted == 0,
+            (
+                await db.execute(
+                    select(QbUserBankItemProgress)
+                    .where(
+                        QbUserBankItemProgress.user_id == attempt.user_id,
+                        QbUserBankItemProgress.bank_item_id == bank_item_id,
+                        QbUserBankItemProgress.deleted == 0,
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if progress is None:
             return await self.apply_attempt(db, attempt=attempt, bank_item_id=bank_item_id)
         progress.correct_count += int(attempt.is_correct is True)
@@ -134,13 +146,17 @@ class CRUDQuestionStatistics(CRUDPlus[QbQuestionStatistics]):
     async def get_by_question(self, db: AsyncSession, question_id: int) -> QbQuestionStatistics | None:
         """按题目 ID 获取统计"""
         return (
-            await db.execute(
-                select(QbQuestionStatistics).where(
-                    QbQuestionStatistics.question_id == question_id,
-                    QbQuestionStatistics.deleted == 0,
+            (
+                await db.execute(
+                    select(QbQuestionStatistics).where(
+                        QbQuestionStatistics.question_id == question_id,
+                        QbQuestionStatistics.deleted == 0,
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
 
     async def apply_attempt(
         self,
@@ -151,15 +167,19 @@ class CRUDQuestionStatistics(CRUDPlus[QbQuestionStatistics]):
     ) -> QbQuestionStatistics:
         """按不可变作答事实增量维护题目统计"""
         statistics = (
-            await db.execute(
-                select(QbQuestionStatistics)
-                .where(
-                    QbQuestionStatistics.question_id == attempt.question_id,
-                    QbQuestionStatistics.deleted == 0,
+            (
+                await db.execute(
+                    select(QbQuestionStatistics)
+                    .where(
+                        QbQuestionStatistics.question_id == attempt.question_id,
+                        QbQuestionStatistics.deleted == 0,
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if statistics is None:
             statistics = QbQuestionStatistics(
                 question_id=attempt.question_id,
@@ -175,9 +195,8 @@ class CRUDQuestionStatistics(CRUDPlus[QbQuestionStatistics]):
             if attempt.score is not None and max_score > 0:
                 score_rate = min(Decimal(1), attempt.score / max_score)
                 statistics.avg_score_rate = (
-                    ((statistics.avg_score_rate or Decimal(0)) * previous_graded_count + score_rate)
-                    / statistics.graded_count
-                )
+                    (statistics.avg_score_rate or Decimal(0)) * previous_graded_count + score_rate
+                ) / statistics.graded_count
         if attempt.duration_ms is not None:
             statistics.avg_duration_ms = (
                 (statistics.avg_duration_ms or Decimal(0)) * previous_attempt_count + attempt.duration_ms
@@ -185,7 +204,7 @@ class CRUDQuestionStatistics(CRUDPlus[QbQuestionStatistics]):
         response_value = self._extract_response_value(attempt.response_data)
         if response_value is not None:
             key = self._response_distribution_key(response_value)
-            current = statistics.response_distribution or {}
+            current = dict(statistics.response_distribution or {})
             current[key] = current.get(key, 0) + 1
             statistics.response_distribution = current
         statistics.calculated_time = attempt.submitted_time
@@ -201,15 +220,19 @@ class CRUDQuestionStatistics(CRUDPlus[QbQuestionStatistics]):
     ) -> QbQuestionStatistics:
         """把延迟判分结果补入题目统计，不重复累计提交次数"""
         statistics = (
-            await db.execute(
-                select(QbQuestionStatistics)
-                .where(
-                    QbQuestionStatistics.question_id == attempt.question_id,
-                    QbQuestionStatistics.deleted == 0,
+            (
+                await db.execute(
+                    select(QbQuestionStatistics)
+                    .where(
+                        QbQuestionStatistics.question_id == attempt.question_id,
+                        QbQuestionStatistics.deleted == 0,
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if statistics is None:
             statistics = QbQuestionStatistics(
                 question_id=attempt.question_id,
@@ -223,9 +246,8 @@ class CRUDQuestionStatistics(CRUDPlus[QbQuestionStatistics]):
         if attempt.score is not None and max_score > 0:
             score_rate = min(Decimal(1), attempt.score / max_score)
             statistics.avg_score_rate = (
-                ((statistics.avg_score_rate or Decimal(0)) * previous_graded_count + score_rate)
-                / statistics.graded_count
-            )
+                (statistics.avg_score_rate or Decimal(0)) * previous_graded_count + score_rate
+            ) / statistics.graded_count
         statistics.calculated_time = attempt.submitted_time
         await db.flush()
         return statistics
@@ -276,9 +298,7 @@ class CRUDUserPracticeStatistics(CRUDPlus[QbUserPracticeStatistics]):
                 previous_date = statistics.last_practice_date
                 statistics.practice_days += 1
                 statistics.streak_days = (
-                    statistics.streak_days + 1
-                    if previous_date == activity_date - timedelta(days=1)
-                    else 1
+                    statistics.streak_days + 1 if previous_date == activity_date - timedelta(days=1) else 1
                 )
                 statistics.last_practice_date = activity_date
             statistics.calculated_time = attempt.submitted_time
@@ -320,13 +340,17 @@ class CRUDUserPracticeStatistics(CRUDPlus[QbUserPracticeStatistics]):
     async def get_site_summary(self, db: AsyncSession) -> dict[str, int]:
         """获取全站答题量汇总"""
         row = (
-            await db.execute(
-                select(
-                    func.coalesce(func.sum(QbUserPracticeStatistics.attempt_count), 0).label('total_attempt_count'),
-                    func.coalesce(func.max(QbUserPracticeStatistics.attempt_count), 0).label('max_attempt_count'),
-                ).where(QbUserPracticeStatistics.deleted == 0)
+            (
+                await db.execute(
+                    select(
+                        func.coalesce(func.sum(QbUserPracticeStatistics.attempt_count), 0).label('total_attempt_count'),
+                        func.coalesce(func.max(QbUserPracticeStatistics.attempt_count), 0).label('max_attempt_count'),
+                    ).where(QbUserPracticeStatistics.deleted == 0)
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         return {key: int(value) for key, value in row.items()}
 
     async def get_rank_rows(
@@ -380,13 +404,19 @@ class CRUDUserPracticeStatistics(CRUDPlus[QbUserPracticeStatistics]):
             ).scalar_one()
         )
         page_rows = (
-            await db.execute(base.order_by(value.desc(), QbUserPracticeStatistics.user_id).offset(offset).limit(limit))
-        ).mappings().all()
+            (
+                await db.execute(
+                    base.order_by(value.desc(), QbUserPracticeStatistics.user_id).offset(offset).limit(limit)
+                )
+            )
+            .mappings()
+            .all()
+        )
         rows = [dict(row, rank=offset + index) for index, row in enumerate(page_rows, start=1)]
 
         current_row = (
-            await db.execute(base.where(QbUserPracticeStatistics.user_id == current_user_id))
-        ).mappings().first()
+            (await db.execute(base.where(QbUserPracticeStatistics.user_id == current_user_id))).mappings().first()
+        )
         if current_row is None:
             return total, rows, None
         current_value = current_row['value']
@@ -416,16 +446,20 @@ class CRUDUserDailyStatistics(CRUDPlus[QbUserDailyStatistics]):
         """维护每日统计并返回是否为当日首条作答"""
         activity_date = attempt.submitted_time.date()
         statistics = (
-            await db.execute(
-                select(QbUserDailyStatistics)
-                .where(
-                    QbUserDailyStatistics.user_id == attempt.user_id,
-                    QbUserDailyStatistics.activity_date == activity_date,
-                    QbUserDailyStatistics.deleted == 0,
+            (
+                await db.execute(
+                    select(QbUserDailyStatistics)
+                    .where(
+                        QbUserDailyStatistics.user_id == attempt.user_id,
+                        QbUserDailyStatistics.activity_date == activity_date,
+                        QbUserDailyStatistics.deleted == 0,
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         is_first = statistics is None
         if statistics is None:
             statistics = QbUserDailyStatistics(
@@ -474,16 +508,20 @@ class CRUDUserDailyStatistics(CRUDPlus[QbUserDailyStatistics]):
         """补写提交发生日的已判分数和正确数"""
         activity_date = attempt.submitted_time.date()
         statistics = (
-            await db.execute(
-                select(QbUserDailyStatistics)
-                .where(
-                    QbUserDailyStatistics.user_id == attempt.user_id,
-                    QbUserDailyStatistics.activity_date == activity_date,
-                    QbUserDailyStatistics.deleted == 0,
+            (
+                await db.execute(
+                    select(QbUserDailyStatistics)
+                    .where(
+                        QbUserDailyStatistics.user_id == attempt.user_id,
+                        QbUserDailyStatistics.activity_date == activity_date,
+                        QbUserDailyStatistics.deleted == 0,
+                    )
+                    .with_for_update()
                 )
-                .with_for_update()
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if statistics is None:
             statistics = QbUserDailyStatistics(
                 user_id=attempt.user_id,
@@ -654,9 +692,7 @@ class CRUDLearningAnalytics:
 
 
 user_bank_item_progress_dao: CRUDUserBankItemProgress = CRUDUserBankItemProgress(QbUserBankItemProgress)
-question_statistics_dao: CRUDQuestionStatistics = CRUDQuestionStatistics(
-    QbQuestionStatistics
-)
+question_statistics_dao: CRUDQuestionStatistics = CRUDQuestionStatistics(QbQuestionStatistics)
 user_practice_statistics_dao: CRUDUserPracticeStatistics = CRUDUserPracticeStatistics(QbUserPracticeStatistics)
 user_daily_statistics_dao: CRUDUserDailyStatistics = CRUDUserDailyStatistics(QbUserDailyStatistics)
 learning_analytics_dao: CRUDLearningAnalytics = CRUDLearningAnalytics()

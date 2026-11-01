@@ -7,7 +7,6 @@
 3. 微信端扫码确认后，自动下发 JWT 凭证，同步打通用户题库资产。
 """
 
-import base64
 import json
 import logging
 
@@ -79,7 +78,7 @@ class WechatScanService:
 
     @staticmethod
     async def generate_scan_qrcode(
-        page: str = 'pages/index/index', *, client_type: LoginClientType = LoginClientType.web
+        page: str = 'pages/mine/index', *, client_type: LoginClientType = LoginClientType.web
     ) -> dict:
         """
         生成带有唯一 scene_id 的微信官方小程序码
@@ -87,69 +86,24 @@ class WechatScanService:
         scene_id = f"fba_{uuid4().hex[:16]}"
         redis_key = f"{SCAN_REDIS_PREFIX}{scene_id}"
 
-        # 初始状态设为 PENDING
         if client_type not in {LoginClientType.web, LoginClientType.extension, LoginClientType.admin}:
             raise errors.RequestError(msg='该客户端不支持电脑扫码登录')
+        # 延迟导入避免共享微信工具与 access_token 提供者循环导入。
+        from backend.utils.wechat_code import create_miniapp_code
+
+        # 只返回微信真实图片。失败直接报错，不创建可轮询的假登录场景。
+        qrcode_data_url = await create_miniapp_code(page=page, scene=scene_id, ttl=DEFAULT_EXPIRES_SECONDS)
         init_state = {
             'status': 'PENDING', 'client_type': client_type.value,
             'session_info': {'ip': ctx.ip, 'os': ctx.os, 'browser': ctx.browser, 'device': ctx.device},
         }
         await redis_client.set(redis_key, json.dumps(init_state), ex=DEFAULT_EXPIRES_SECONDS)
 
-        try:
-            access_token = await WechatScanService.get_access_token()
-            api_url = f"https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token={access_token}"
-            payload = {
-                "scene": scene_id,
-                "page": page,
-                "check_path": False,
-                "width": 280,
-            }
-
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(api_url, json=payload)
-                content_type = resp.headers.get("content-type", "")
-
-                # 微信接口返回二进制图片
-                if "image" in content_type and len(resp.content) > 1000:
-                    b64_img = base64.b64encode(resp.content).decode("utf-8")
-                    qrcode_data_url = f"data:image/jpeg;base64,{b64_img}"
-                else:
-                    # 接口返回了 JSON 错误信息
-                    try:
-                        err_data = resp.json()
-                        logger.warning(f"生成微信小程序码失败，微信返回: {err_data}")
-                    except Exception:
-                        pass
-                    qrcode_data_url = WechatScanService._build_fallback_svg_qr(scene_id)
-        except Exception as e:
-            logger.warning(f"生成小程序码异常，降级为矢量扫码图: {e}")
-            qrcode_data_url = WechatScanService._build_fallback_svg_qr(scene_id)
-
         return {
             "scene_id": scene_id,
             "qrcode_data_url": qrcode_data_url,
             "expires_in": DEFAULT_EXPIRES_SECONDS,
         }
-
-    @staticmethod
-    def _build_fallback_svg_qr(scene_id: str) -> str:
-        """在外部接口异常时的轻量矢量扫码回退卡片"""
-        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="280" height="280" viewBox="0 0 280 280">
-          <rect width="280" height="280" fill="#f8fafc" rx="16"/>
-          <rect x="20" y="20" width="240" height="240" fill="#ffffff" rx="12" stroke="#e2e8f0" stroke-width="2"/>
-          <circle cx="140" cy="115" r="48" fill="#ecfdf5"/>
-          <path d="M125 115l10 10 25-25" stroke="#10b981" stroke-width="6"
-                stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          <text x="140" y="190" text-anchor="middle" font-family="sans-serif"
-                font-size="15" font-weight="bold" fill="#0f172a">微信扫码快捷登录</text>
-          <text x="140" y="215" text-anchor="middle" font-family="sans-serif"
-                font-size="11" fill="#64748b">小程序授权直登 · 资产实时同步</text>
-          <text x="140" y="240" text-anchor="middle" font-family="sans-serif"
-                font-size="10" fill="#94a3b8">标识: {scene_id[:12]}</text>
-        </svg>"""
-        b64_svg = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
-        return f"data:image/svg+xml;base64,{b64_svg}"
 
     @staticmethod
     async def get_scan_status(

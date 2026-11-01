@@ -28,6 +28,7 @@ class MyDrivePublicResourceDetail(MyDrivePublicResourceListItem):
 
     images: list[str] = Field(description='资源图片')
     share_url: str = Field(description='分享链接')
+    extract_code: str = Field(default='', description='网盘提取码')
     provider: str = Field(description='网盘驱动标识')
     file_size: int | None = Field(default=None, description='文件大小')
     updated_time: datetime | None = Field(description='更新时间')

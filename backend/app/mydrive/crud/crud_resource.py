@@ -5,8 +5,10 @@ from datetime import datetime
 from sqlalchemy import Select, and_, case, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy_crud_plus import CRUDPlus
 
+from backend.app.admin.model.category import Category
 from backend.app.mydrive.model.resource import (
     MyDriveResource,
     MyDriveResourceShare,
@@ -173,6 +175,70 @@ class CRUDMyDriveResource(CRUDPlus[MyDriveResource]):
             'total_views': int(row.get('total_views') or 0),
         }
 
+    def _public_exam_conditions(self, params: GetMyDriveResourceListParam) -> list[ColumnElement[bool]]:
+        """公考真题分类树与组合筛选；不依赖具体数据库主键。"""
+        filters = []
+        if params.exam_domain == 'gongkao':
+            scope = (
+                select(Category.id)
+                .where(
+                    Category.code == 're_gongkao',
+                    Category.type == 'resource_exam',
+                    Category.deleted == 0,
+                    Category.status.is_(True),
+                )
+                .cte('public_exam_categories', recursive=True)
+            )
+            scope = scope.union(
+                select(Category.id)
+                .join(scope, Category.parent_id == scope.c.id)
+                .where(
+                    Category.deleted == 0,
+                    Category.status.is_(True),
+                    Category.type == 'resource_exam',
+                )
+            )
+            filters.extend([self.model.category_id.in_(select(scope.c.id)), self.model.resource_type == '真题'])
+        if params.subject:
+            subjects = (
+                select(Category.id)
+                .where(
+                    Category.name == params.subject,
+                    Category.type == 'resource_exam',
+                    Category.deleted == 0,
+                )
+                .cte('public_exam_subjects', recursive=True)
+            )
+            subjects = subjects.union(
+                select(Category.id)
+                .join(subjects, Category.parent_id == subjects.c.id)
+                .where(
+                    Category.deleted == 0,
+                    Category.type == 'resource_exam',
+                )
+            )
+            filters.append(
+                or_(self.model.category_id.in_(select(subjects.c.id)), self._public_text_condition(params.subject))
+            )
+        filters.extend(self._public_text_condition(str(value)) for value in (params.year, params.region) if value)
+        return filters
+
+    def _public_text_condition(self, value: str) -> ColumnElement[bool]:
+        # 自动转义LIKE通配符，多个筛选独立AND，年份不是资料上传年份。
+        return or_(
+            *(
+                column.contains(value, autoescape=True)
+                for column in (
+                    self.model.title,
+                    self.model.description,
+                    self.model.content,
+                    self.model.org_name,
+                    MyDriveResourceShare.share_title,
+                    MyDriveResourceShare.file_name,
+                )
+            )
+        )
+
     async def get_public_select(self, params: GetMyDriveResourceListParam) -> Select:
         """
         获取公开资源查询语句（不限 owner_id）。
@@ -193,7 +259,7 @@ class CRUDMyDriveResource(CRUDPlus[MyDriveResource]):
             )
             .options(selectinload(self.model.share))
         )
-        filters = []
+        filters = self._public_exam_conditions(params)
         if params.category_id is not None:
             filters.append(self.model.category_id == params.category_id)
         if params.resource_type:
@@ -260,7 +326,9 @@ class CRUDMyDriveResource(CRUDPlus[MyDriveResource]):
             filters.append(self.model.resource_type.in_(resource_types))
         if filters:
             stmt = stmt.where(and_(*filters))
-        return list((await db.execute(stmt.order_by(desc(self.model.hot), desc(self.model.id)).limit(limit))).scalars().all())
+        return list(
+            (await db.execute(stmt.order_by(desc(self.model.hot), desc(self.model.id)).limit(limit))).scalars().all()
+        )
 
     async def get_public(self, db: AsyncSession, pk: int) -> MyDriveResource | None:
         """
@@ -367,4 +435,6 @@ class CRUDMyDriveResourceViewHistory(CRUDPlus[MyDriveResourceViewHistory]):
 
 mydrive_resource_dao: CRUDMyDriveResource = CRUDMyDriveResource(MyDriveResource)
 mydrive_resource_share_dao: CRUDMyDriveResourceShare = CRUDMyDriveResourceShare(MyDriveResourceShare)
-mydrive_resource_view_history_dao: CRUDMyDriveResourceViewHistory = CRUDMyDriveResourceViewHistory(MyDriveResourceViewHistory)
+mydrive_resource_view_history_dao: CRUDMyDriveResourceViewHistory = CRUDMyDriveResourceViewHistory(
+    MyDriveResourceViewHistory
+)

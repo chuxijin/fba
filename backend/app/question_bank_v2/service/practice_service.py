@@ -3,6 +3,7 @@ import json
 import uuid
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -14,8 +15,10 @@ from sqlalchemy.sql import Select
 from backend.app.access.constants import ReasonCode
 from backend.app.question_bank_v2.crud.crud_bank import bank_dao, bank_revision_dao
 from backend.app.question_bank_v2.crud.crud_composition import bank_section_dao
+from backend.app.question_bank_v2.crud.crud_knowledge import knowledge_point_dao, knowledge_system_dao
 from backend.app.question_bank_v2.crud.crud_material import question_interaction_dao, question_material_dao
 from backend.app.question_bank_v2.crud.crud_practice import (
+    PracticeCandidate,
     practice_response_dao,
     practice_session_dao,
     practice_session_item_dao,
@@ -26,11 +29,13 @@ from backend.app.question_bank_v2.crud.crud_question import (
     question_dao,
     question_explanation_dao,
 )
+from backend.app.question_bank_v2.crud.crud_question_timing import get_question_timing
 from backend.app.question_bank_v2.crud.crud_user_content import favorite_folder_dao
 from backend.app.question_bank_v2.model.practice import (
     QbPracticeSession,
     QbPracticeSessionItem,
     QbPracticeSessionResponse,
+    QbQuestionAttempt,
 )
 from backend.app.question_bank_v2.schema.practice import (
     TIMED_PRACTICE_MODES,
@@ -41,6 +46,7 @@ from backend.app.question_bank_v2.schema.practice import (
     GetPracticeSessionSolutionItem,
     GetPracticeSolutionDetail,
     PracticeExplanationDetail,
+    PracticeQuestionStatisticsDetail,
     PracticeReportItem,
     SavePracticeResponseParam,
     SubmitPracticeItemParam,
@@ -49,14 +55,20 @@ from backend.app.question_bank_v2.schema.practice import (
 )
 from backend.app.question_bank_v2.schema.question import CollectQuestionsParam, CollectQuestionsResult
 from backend.app.question_bank_v2.service.access_service import BankAccessService, bank_access_service
+from backend.app.question_bank_v2.service.attempt_projection_service import attempt_projection_service
 from backend.app.question_bank_v2.service.external_practice_import_service import external_practice_import_service
 from backend.app.question_bank_v2.service.grading_service import practice_grading_service
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.preference_service import preference_service
-from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
 from backend.app.question_bank_v2.service.reward_service import PracticeReward, practice_reward_service
 from backend.app.question_bank_v2.service.statistics_service import statistics_service
 from backend.app.question_bank_v2.utils.external_practice import EXTERNAL_SESSION_PREFIX, is_external_practice
+from backend.app.question_bank_v2.utils.politics_paper import (
+    POLITICS_BLUEPRINT_VERSION,
+    POLITICS_MODULES,
+    PoliticsModuleQuota,
+    build_politics_quotas,
+)
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.utils.timezone import timezone
@@ -224,7 +236,11 @@ class PracticeService:
             raise errors.NotFoundError(msg='练习会话不存在')
         if is_external_practice(session.source_snapshot):
             raise errors.ConflictError(msg='请通过导入练习记录入口删除此历史会话')
-        session.status = 'cancelled'
+        if session.status in {'created', 'in_progress'}:
+            await PracticeService._apply_deferred_attempts(db=db, session=session)
+            await statistics_service.apply_session_submission(db=db, user_id=user_id)
+            session.submitted_time = timezone.now()
+            session.status = 'submitted'
         session.deleted = session.id
         session.deleted_time = timezone.now()
         await db.flush()
@@ -306,6 +322,7 @@ class PracticeService:
             score=session['score'],
             total_score=sum((item.max_score for item in items), start=Decimal(0)),
             total_duration_ms=sum(item.duration_ms for item in items),
+            source_snapshot=dict(session.get('source_snapshot') or {}),
             started_time=session['started_time'],
             submitted_time=session['submitted_time'],
             items=items,
@@ -320,7 +337,7 @@ class PracticeService:
         user_id: int,
     ) -> list[GetPracticeSessionSolutionItem]:
         """交卷后批量返回整场题目答案解析"""
-        session = await practice_session_dao.get_by_key(db, session_key, user_id=user_id)
+        session = await practice_session_dao.get_by_key(db, session_key, user_id=user_id, for_update=True)
         if session is None:
             raise errors.NotFoundError(msg='练习会话不存在')
         if is_external_practice(getattr(session, 'source_snapshot', None)):
@@ -330,7 +347,11 @@ class PracticeService:
         if session.status not in {'submitted', 'graded', 'expired'}:
             raise errors.ForbiddenError(msg='交卷后才可查看整场答案解析')
         rows = await practice_session_dao.get_solutions(db, session.id)
-        return [GetPracticeSessionSolutionItem(**row) for row in rows]
+        snapshots = {
+            question_id: await statistics_service.question_snapshot(db=db, question_id=question_id)
+            for question_id in {row['question_id'] for row in rows}
+        }
+        return [GetPracticeSessionSolutionItem(**row, **snapshots[row['question_id']]) for row in rows]
 
     @staticmethod
     async def _expire_if_due(*, db: AsyncSession, session: QbPracticeSession) -> bool:
@@ -344,7 +365,6 @@ class PracticeService:
             session.submitted_time = timezone.now()
             await PracticeService._apply_deferred_attempts(db=db, session=session)
             await statistics_service.apply_session_submission(db=db, user_id=session.user_id)
-            await db.commit()
             return True
         return False
 
@@ -354,17 +374,14 @@ class PracticeService:
         if session.mode not in {'exam', 'mock'}:
             return
         preference = await preference_service.get(db=db, user_id=session.user_id)
-        for attempt, session_item in await question_attempt_dao.get_latest_by_session(db, session.id):
-            await review_schedule_service.apply_attempt(
+        attempts = await question_attempt_dao.get_latest_by_session(db, session.id)
+        await attempt_projection_service.lock_questions(db, [attempt.question_id for attempt, _ in attempts])
+        for attempt, session_item in attempts:
+            await attempt_projection_service.apply(
                 db=db,
                 attempt=attempt,
                 session_item=session_item,
                 resolve_threshold=preference.mastery_threshold,
-            )
-            await statistics_service.apply_attempt(
-                db=db,
-                attempt=attempt,
-                max_score=session_item.max_score,
             )
 
     @staticmethod
@@ -372,7 +389,7 @@ class PracticeService:
         """校验会话仍允许写入答案"""
         if is_external_practice(getattr(session, 'source_snapshot', None)):
             raise errors.ConflictError(msg='导入历史作答只读，重练请创建新的练习会话')
-        if session.status not in {'created', 'in_progress'}:
+        if getattr(session, 'deleted', 0) or session.status not in {'created', 'in_progress'}:
             raise errors.ConflictError(msg='当前会话已结束，不能继续作答')
         if await PracticeService._expire_if_due(db=db, session=session):
             raise errors.ConflictError(msg='当前会话已过期')
@@ -409,6 +426,9 @@ class PracticeService:
             and delivery_config.get('year_end') == obj.year_end
             and delivery_config.get('region') == obj.region
             and bool(delivery_config.get('include_knowledge_descendants', True)) == obj.include_knowledge_descendants
+            and list(delivery_config.get('module_quotas') or []) == [item.model_dump() for item in obj.module_quotas]
+            and delivery_config.get('selection_strategy', 'default') == obj.selection_strategy
+            and delivery_config.get('paper_profile') == obj.paper_profile
         )
 
     @staticmethod
@@ -444,6 +464,7 @@ class PracticeService:
         user_id: int,
         session_item_id: int,
         for_update: bool,
+        include_hidden: bool = False,
     ) -> tuple[QbPracticeSession, QbPracticeSessionItem]:
         """获取用户会话内题目，避免脱离题库上下文访问题目"""
         context = await practice_session_dao.get_owned_item(
@@ -452,6 +473,7 @@ class PracticeService:
             user_id=user_id,
             session_item_id=session_item_id,
             for_update=for_update,
+            include_hidden=include_hidden,
         )
         if context is None:
             raise errors.NotFoundError(msg='练习会题目不存在')
@@ -503,6 +525,13 @@ class PracticeService:
         if response is None and obj.save_version != 0:
             raise errors.ConflictError(msg='答案版本已变化，请刷新后重试')
         if response is not None and response.save_version != obj.save_version:
+            if (
+                response.save_version == obj.save_version + 1
+                and response.response_data == obj.response_data
+                and response.duration_ms >= obj.duration_ms
+                and response.is_flagged == obj.is_flagged
+            ):
+                return PracticeService._build_response_detail(response)
             raise errors.ConflictError(msg='答案版本已变化，请刷新后重试')
 
         now = timezone.now()
@@ -539,6 +568,30 @@ class PracticeService:
         return PracticeService._build_response_detail(response)
 
     @staticmethod
+    def _submission_identity(obj: SubmitPracticeItemParam) -> tuple[str, str]:
+        if obj.submission_key is None and obj.save_version is None:
+            raise errors.RequestError(msg='提交必须携带 submission_key 或 save_version，以保证重试不重复计数')
+        key = f'key:{obj.submission_key}' if obj.submission_key else f'version:{obj.save_version}'
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                {'answer': obj.response_data, 'duration_ms': obj.duration_ms, 'save_version': obj.save_version},
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(',', ':'),
+            ).encode()
+        ).hexdigest()
+        return key, fingerprint
+
+    @staticmethod
+    def _validate_submission_version(
+        *, response: QbPracticeSessionResponse | None, obj: SubmitPracticeItemParam
+    ) -> None:
+        if response is not None and obj.save_version is not None and response.save_version != obj.save_version:
+            raise errors.ConflictError(msg='答案版本已变化，请刷新后重试')
+        if response is None and obj.save_version not in {None, 0}:
+            raise errors.ConflictError(msg='答案版本已变化，请刷新后重试')
+
+    @staticmethod
     async def submit_item(
         *,
         db: AsyncSession,
@@ -554,7 +607,23 @@ class PracticeService:
             user_id=user_id,
             session_item_id=session_item_id,
             for_update=True,
+            include_hidden=True,
         )
+        submission_key, fingerprint = PracticeService._submission_identity(obj)
+        existing = await question_attempt_dao.get_submission(
+            db, session_item_id=session_item.id, submission_key=submission_key
+        )
+        if existing is not None:
+            receipt = existing.grading_result['_submission']
+            if receipt['fingerprint'] != fingerprint:
+                raise errors.ConflictError(msg='同一提交标识不能用于不同答案，请刷新后重答')
+            return await PracticeService._submission_result(
+                db=db,
+                session=session,
+                session_item=session_item,
+                attempt=existing,
+                save_version=receipt['save_version'],
+            )
         await PracticeService._ensure_session_open(db=db, session=session)
         answer = await question_answer_dao.get_by_question(db, session_item.question_id)
         if answer is None:
@@ -565,21 +634,11 @@ class PracticeService:
             session_item_id=session_item.id,
             for_update=True,
         )
-        if (
-            session.mode in {'exam', 'mock'}
-            and response is not None
-            and response.status
-            in {
-                'submitted',
-                'graded',
-                'review_required',
-            }
-        ):
-            raise errors.ConflictError(msg='考试或模考题目不能重复提交')
-        if response is not None and obj.save_version is not None and response.save_version != obj.save_version:
-            raise errors.ConflictError(msg='答案版本已变化，请刷新后重试')
-        if response is None and obj.save_version not in {None, 0}:
-            raise errors.ConflictError(msg='答案版本已变化，请刷新后重试')
+        # 考试交卷前允许修改答案，结算只汇总每题最新事实，不累计中间修改。
+        PracticeService._validate_submission_version(response=response, obj=obj)
+
+        # 必须在插入带题目外键的作答事实之前锁父行，避免并发事务先持有FK共享锁再升级互锁。
+        await attempt_projection_service.lock_questions(db, [session_item.question_id])
 
         question = await question_dao.get(db, session_item.question_id)
         if question is None:
@@ -657,22 +716,24 @@ class PracticeService:
                 'duration_ms': obj.duration_ms,
                 'grading_status': grade.grading_status,
                 'grading_method': grade.grading_method,
-                'grading_result': grade.details,
+                'grading_result': {
+                    **grade.details,
+                    '_submission': {
+                        'key': submission_key,
+                        'fingerprint': fingerprint,
+                        'save_version': response.save_version,
+                    },
+                },
                 'submitted_time': now,
             },
         )
         if session.mode not in {'exam', 'mock'}:
             preference = await preference_service.get(db=db, user_id=user_id)
-            await review_schedule_service.apply_attempt(
+            await attempt_projection_service.apply(
                 db=db,
                 attempt=attempt,
                 session_item=session_item,
                 resolve_threshold=preference.mastery_threshold,
-            )
-            await statistics_service.apply_attempt(
-                db=db,
-                attempt=attempt,
-                max_score=session_item.max_score,
             )
 
         if not was_answered:
@@ -685,7 +746,20 @@ class PracticeService:
         if session.status == 'created':
             session.status = 'in_progress'
         await db.flush()
-        reveal_grade = session.mode not in {'exam', 'mock'} or session.status in {'submitted', 'graded'}
+        return await PracticeService._submission_result(
+            db=db, session=session, session_item=session_item, attempt=attempt, save_version=response.save_version
+        )
+
+    @staticmethod
+    async def _submission_result(
+        *,
+        db: AsyncSession,
+        session: QbPracticeSession,
+        session_item: QbPracticeSessionItem,
+        attempt: QbQuestionAttempt,
+        save_version: int,
+    ) -> SubmitPracticeItemResult:
+        reveal_grade = session.mode not in {'exam', 'mock'} or session.status in {'submitted', 'graded', 'expired'}
         return SubmitPracticeItemResult(
             attempt_id=attempt.id,
             attempt_no=attempt.attempt_no,
@@ -695,8 +769,13 @@ class PracticeService:
             is_correct=attempt.is_correct if reveal_grade else None,
             score=attempt.score if reveal_grade else None,
             max_score=session_item.max_score,
-            response_status=response.status,
-            save_version=response.save_version,
+            response_status='graded' if attempt.grading_status == 'graded' else 'submitted',
+            save_version=save_version,
+            **(
+                await statistics_service.question_snapshot(db=db, question_id=session_item.question_id)
+                if reveal_grade
+                else {}
+            ),
         )
 
     @staticmethod
@@ -733,7 +812,7 @@ class PracticeService:
             session.mode == 'memorize' and response.status == 'answered'
         ):
             raise errors.ForbiddenError(msg='提交答案后才可查看解析')
-        if session.mode in {'exam', 'mock'} and session.status not in {'submitted', 'graded'}:
+        if session.mode in {'exam', 'mock'} and session.status not in {'submitted', 'graded', 'expired'}:
             raise errors.ForbiddenError(msg='考试或模考交卷后才可查看解析')
 
         answer = await question_answer_dao.get_by_question(db, session_item.question_id)
@@ -743,6 +822,7 @@ class PracticeService:
         return GetPracticeSolutionDetail(
             session_item_id=session_item.id,
             question_id=session_item.question_id,
+            **await statistics_service.question_snapshot(db=db, question_id=session_item.question_id),
             answer_data=answer.answer_data,
             grading_method=answer.grading_method,
             grading_config=answer.grading_config,
@@ -755,6 +835,24 @@ class PracticeService:
                 for item in explanations
                 if item.status == 'published'
             ],
+        )
+
+    @staticmethod
+    async def get_question_statistics(
+        *, db: AsyncSession, session_key: str, user_id: int, session_item_id: int
+    ) -> PracticeQuestionStatisticsDetail:
+        """沿用解析的所有权与考试可见性校验，仅SELECT，不判题、不结算、不增加样本。"""
+        solution = await PracticeService.get_solution(
+            db=db, session_key=session_key, user_id=user_id, session_item_id=session_item_id
+        )
+        question = await question_dao.get(db, solution.question_id)
+        if question is None or question.question_type not in {'single_choice', 'multiple_choice', 'true_false'}:
+            raise errors.RequestError(msg='仅选择题支持选择与用时统计')
+        average, count = await get_question_timing(db, question_id=solution.question_id)
+        return PracticeQuestionStatisticsDetail(
+            **solution.model_dump(include={'correct_rate', 'graded_count', 'attempt_count', 'option_select_stats'}),
+            avg_duration_ms=average,
+            duration_sample_count=count,
         )
 
     @staticmethod
@@ -773,7 +871,8 @@ class PracticeService:
         )
         if session is None:
             raise errors.NotFoundError(msg='练习会话不存在')
-        if session.status in {'submitted', 'graded'} and session.submitted_time is not None:
+        await PracticeService._expire_if_due(db=db, session=session)
+        if session.status in {'submitted', 'graded', 'expired'} and session.submitted_time is not None:
             # 幂等：已交卷过，回查上次发放的练习奖励与今日签到奖励原样返回，不重复发放
             reward = await practice_reward_service.resolve_granted_practice_reward(
                 db=db,
@@ -878,6 +977,7 @@ class PracticeService:
         session_key: str,
         user_id: int,
         obj: CreatePracticeSessionParam,
+        goal_context: dict[str, Any] | None = None,
     ) -> GetPracticeSessionDetail | None:
         """按客户端幂等键获取同一创建请求已经生成的会话"""
         existing = await practice_session_dao.get_by_key(db, session_key, user_id=user_id)
@@ -885,7 +985,151 @@ class PracticeService:
             return None
         if not PracticeService._matches_create_request(session=existing, user_id=user_id, obj=obj):
             raise errors.ConflictError(msg='会话标识已被其他请求使用')
+        if (existing.source_snapshot or {}).get('study_goal') != goal_context:
+            raise errors.ConflictError(msg='会话标识已被其他目标请求使用')
         return await PracticeService.get(db=db, session_key=session_key, user_id=user_id)
+
+    @staticmethod
+    async def _politics_plan(
+        *, db: AsyncSession, obj: CreatePracticeSessionParam, point_ids: set[int]
+    ) -> list[PoliticsModuleQuota]:
+        """通过体系编码、模块编码和真实父链定位模块，范围只取已选子树的交集。"""
+        if not point_ids:
+            raise errors.RequestError(msg='所选抽题范围不可用，请返回重新选择')
+        system_id = obj.knowledge_system_id or await knowledge_service.resolve_point_system_id(
+            db=db, point_ids=obj.knowledge_point_ids
+        )
+        system = await knowledge_system_dao.get(db, system_id)
+        if system is None or system.code != 'kaoyan_politics':
+            raise errors.RequestError(msg='当前抽题范围不属于政治领域')
+        points = await knowledge_point_dao.get_all(db, system_id)
+        by_id = {point.id: point for point in points}
+        roots = [point for point in points if point.code == 'kaoyan_politics' and point.parent_id is None]
+        if len(roots) != 1:
+            raise errors.RequestError(msg='政治知识体系结构不完整，请稍后重试')
+        root_id = roots[0].id
+        by_code = {point.code: point for point in points if point.parent_id == root_id}
+        if any(module.code not in by_code for module in POLITICS_MODULES):
+            raise errors.RequestError(msg='政治模块配额配置不完整，请稍后重试')
+        module_by_id = {by_code[module.code].id: module for module in POLITICS_MODULES}
+        scopes: dict[str, set[int]] = {module.code: set() for module in POLITICS_MODULES}
+        for point_id in sorted(point_ids):
+            if point_id == root_id:
+                continue
+            current = point_id
+            visited: set[int] = set()
+            while current in by_id and current not in visited and current not in module_by_id:
+                visited.add(current)
+                current = by_id[current].parent_id
+            module = module_by_id.get(current)
+            if module is None:
+                raise errors.RequestError(msg='所选政治知识点尚未归入组卷模块，请调整抽题范围')
+            scopes[module.code].add(point_id)
+        return build_politics_quotas([(module, frozenset(scopes[module.code])) for module in POLITICS_MODULES])
+
+    @staticmethod
+    async def _politics_candidates(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        obj: CreatePracticeSessionParam,
+        point_ids: set[int],
+        plan: Sequence[PoliticsModuleQuota] | None = None,
+    ) -> list[PracticeCandidate]:
+        """按模块×题型精确抽取，先单选后多选，任一配额不足整次失败。"""
+        if not point_ids:
+            raise errors.RequestError(msg='所选抽题范围不可用，请返回重新选择')
+        if plan is None:
+            plan = await PracticeService._politics_plan(db=db, obj=obj, point_ids=point_ids)
+        selected: list[PracticeCandidate] = []
+        seen: set[int] = set()
+        for question_type, label, count_field, score in (
+            ('single_choice', '单选题', 'single_count', Decimal(1)),
+            ('multiple_choice', '多选题', 'multiple_count', Decimal(2)),
+        ):
+            for quota in plan:
+                count = getattr(quota, count_field)
+                if not count:
+                    continue
+                rows = await practice_session_item_dao.get_user_candidates(
+                    db,
+                    user_id=user_id,
+                    source_type='custom',
+                    bank_id=None,
+                    section_ids=[],
+                    favorite_folder_id=None,
+                    question_ids=[],
+                    knowledge_point_ids=sorted(quota.point_ids),
+                    knowledge_point_role='primary',
+                    question_types=[question_type],
+                    year_start=obj.year_start,
+                    year_end=obj.year_end,
+                    region=obj.region,
+                    shuffle=True,
+                    limit=count,
+                    prioritize_unseen=True,
+                    exclude_question_ids=sorted(seen),
+                )
+                if (
+                    len(rows) != count
+                    or len({row.question_id for row in rows}) != count
+                    or any(row.question_id in seen for row in rows)
+                ):
+                    raise errors.RequestError(
+                        msg=f'所选范围「{quota.module.name}」可用不重复{label}不足{count}道，请扩大抽题范围'
+                    )
+                seen.update(row.question_id for row in rows)
+                selected.extend(
+                    replace(
+                        row,
+                        max_score=score,
+                        display_config={**row.display_config, 'paper_module_code': quota.module.code},
+                    )
+                    for row in rows
+                )
+        return selected
+
+    @staticmethod
+    async def _module_candidates(*, db: AsyncSession, user_id: int, obj: CreatePracticeSessionParam) -> list[Any]:
+        """逐模块抽取并排除已选题，题量不足整次失败，不创建残缺试卷。"""
+        selected = []
+        seen: set[int] = set()
+        for quota in obj.module_quotas:
+            point_ids = await knowledge_service.resolve_point_ids(
+                db=db,
+                point_ids=[quota.knowledge_point_id],
+                include_descendants=True,
+                system_id=obj.knowledge_system_id,
+            )
+            rows = await practice_session_item_dao.get_user_candidates(
+                db,
+                user_id=user_id,
+                source_type='custom',
+                bank_id=obj.bank_id,
+                section_ids=[],
+                favorite_folder_id=None,
+                question_ids=[],
+                knowledge_point_ids=sorted(point_ids),
+                question_types=obj.question_types,
+                year_start=obj.year_start,
+                year_end=obj.year_end,
+                region=obj.region,
+                shuffle=obj.shuffle,
+                limit=quota.count,
+                prioritize_unseen=obj.shuffle,
+                exclude_question_ids=sorted(seen),
+            )
+            if (
+                len(rows) != quota.count
+                or len({row.question_id for row in rows}) != quota.count
+                or any(row.question_id in seen for row in rows)
+            ):
+                raise errors.RequestError(
+                    msg=f'模块 {quota.knowledge_point_id} 可用不重复题不足 {quota.count} 题，请减少该模块题量'
+                )
+            seen.update(row.question_id for row in rows)
+            selected.extend(rows)
+        return selected
 
     @staticmethod
     async def create(  # noqa: C901
@@ -893,10 +1137,13 @@ class PracticeService:
         db: AsyncSession,
         user_id: int,
         obj: CreatePracticeSessionParam,
+        goal_context: dict[str, Any] | None = None,
     ) -> GetPracticeSessionDetail:
         """校验来源准入后创建练习会话"""
         if obj.session_key and obj.session_key.startswith(EXTERNAL_SESSION_PREFIX):
             raise errors.RequestError(msg='该会话标识前缀保留给外部历史导入')
+        if obj.session_key and obj.session_key.startswith('goal_') and goal_context is None:
+            raise errors.RequestError(msg='目标考试请通过目标组卷入口创建')
         session_key = obj.session_key or uuid.uuid4().hex
         if obj.session_key is not None:
             existing_detail = await PracticeService._get_idempotent_session(
@@ -904,6 +1151,7 @@ class PracticeService:
                 session_key=session_key,
                 user_id=user_id,
                 obj=obj,
+                goal_context=goal_context,
             )
             if existing_detail is not None:
                 return existing_detail
@@ -966,11 +1214,20 @@ class PracticeService:
             session_key=session_key,
             user_id=user_id,
             obj=obj,
+            goal_context=goal_context,
         )
         if existing_detail is not None:
             return existing_detail
 
-        if obj.source_type == 'bank':
+        politics_plan: list[PoliticsModuleQuota] | None = None
+        if obj.paper_profile == 'kaoyan_politics':
+            politics_plan = await PracticeService._politics_plan(db=db, obj=obj, point_ids=resolved_knowledge_point_ids)
+            candidates = await PracticeService._politics_candidates(
+                db=db, user_id=user_id, obj=obj, point_ids=resolved_knowledge_point_ids, plan=politics_plan
+            )
+        elif obj.module_quotas:
+            candidates = await PracticeService._module_candidates(db=db, user_id=user_id, obj=obj)
+        elif obj.source_type == 'bank':
             if revision is None:
                 raise errors.ServerError(msg='题库当前发布版本不存在')
             candidates = await practice_session_item_dao.get_candidates(
@@ -1015,9 +1272,15 @@ class PracticeService:
                 limit=obj.limit or 500,
                 region=obj.region,
                 prioritize_unseen=obj.shuffle,
+                **({'high_error': True} if obj.selection_strategy == 'high_error' else {}),
             )
         if not candidates:
-            raise errors.RequestError(msg='当前条件下没有可投递题目')
+            message = (
+                '当前模块暂无样本充足的高频易错题，请稍后再试'
+                if obj.selection_strategy == 'high_error'
+                else '当前条件下没有可投递题目'
+            )
+            raise errors.RequestError(msg=message)
         if (
             obj.source_type == 'custom'
             and obj.question_ids
@@ -1039,6 +1302,8 @@ class PracticeService:
             )
         if not candidates:
             raise errors.RequestError(msg='当前账号没有可投递的题目')
+        if obj.module_quotas and len(candidates) != obj.limit:
+            raise errors.RequestError(msg='当前账号可用题量不足以满足模块配额，请调整题量')
 
         now = timezone.now()
         # 仅限时模式套用过期时间：顺序练习 / 背题不应因题库版本配了时长而中途过期
@@ -1085,8 +1350,23 @@ class PracticeService:
                     'year_end': obj.year_end,
                     'region': obj.region,
                     'include_knowledge_descendants': obj.include_knowledge_descendants,
+                    'module_quotas': [item.model_dump() for item in obj.module_quotas],
+                    'selection_strategy': obj.selection_strategy,
+                    'paper_profile': obj.paper_profile,
                 },
                 'source_snapshot': {
+                    **({'study_goal': goal_context} if goal_context is not None else {}),
+                    **({'paper_profile': obj.paper_profile} if obj.paper_profile is not None else {}),
+                    **(
+                        {
+                            'politics_blueprint': {
+                                'version': POLITICS_BLUEPRINT_VERSION,
+                                'module_quotas': [quota.as_snapshot() for quota in politics_plan],
+                            }
+                        }
+                        if politics_plan is not None
+                        else {}
+                    ),
                     'requested_source_type': obj.source_type,
                     'bank_id': bank.id if bank is not None else None,
                     'bank_revision_id': revision.id if obj.source_type == 'bank' and revision is not None else None,

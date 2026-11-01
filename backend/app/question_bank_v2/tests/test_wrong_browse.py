@@ -156,7 +156,8 @@ def db() -> Iterator[BrowseDB]:
 
 
 @pytest.mark.parametrize(
-    ('mode', 'expected_ids'), [('pending', {1, 3, 7}), ('reviewed', {2, 3, 4, 8, 14}), ('mastered', {5, 6})]
+    ('mode', 'expected_ids'),
+    [('pending', {1, 3, 7}), ('reviewed', {2, 3, 4, 14}), ('mastered', {5, 6})],
 )
 async def test_collections_chapters_and_questions_have_same_scope(
     db: BrowseDB, monkeypatch: pytest.MonkeyPatch, mode: str, expected_ids: set[int]
@@ -226,7 +227,8 @@ async def test_dashboard_browse_counter_does_not_include_mastered_or_deleted_que
     statistics = await wrong_question_state_dao.get_statistics(
         db, user_id=7, now=datetime(2026, 10, 26, tzinfo=UTC), domain_category_ids=[1400]
     )
-    assert statistics['active_reviewed_count'] == 5
+    # 8 是 attempt 且既无来源题库也无记录领域，不能靠「未记录领域」兜底混入
+    assert statistics['active_reviewed_count'] == 4
     assert statistics['pending_review_count'] == 3
     assert statistics['resolved_count'] == 2
     assert statistics['reviewed_count'] > statistics['active_reviewed_count']

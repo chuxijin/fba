@@ -228,8 +228,11 @@ export async function logoutAuthSession(): Promise<void> {
  * 请求后端生成小程序登录二维码
  */
 export async function fetchScanQrcode(serverBase = BACKEND_BASE): Promise<ScanQrcodeResult> {
-  const data = await requestAuthApi<ScanQrcodeResult>('/oauth2/wechat/scan/qrcode', {}, serverBase)
-  if (!data?.scene_id) throw new Error('获取微信扫码登录二维码失败')
+  const data = await requestAuthApi<ScanQrcodeResult>('/oauth2/wechat/scan/qrcode?page=pages%2Fmine%2Findex', {}, serverBase)
+  if (!/^fba_[a-f0-9]{16}$/.test(data?.scene_id || '')
+    || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/.test(data?.qrcode_data_url || '')
+    || typeof data.expires_in !== 'number' || !Number.isFinite(data.expires_in)
+    || data.expires_in <= 0 || data.expires_in > 300) throw new Error('登录二维码无效，请重试或使用账号密码登录')
   return data
 }
 
@@ -241,21 +244,6 @@ export async function pollScanStatus(
   serverBase = BACKEND_BASE
 ): Promise<{ status: 'PENDING' | 'CONFIRMED' | 'EXPIRED'; token?: TokenInfo; user?: UserInfo; msg?: string }> {
   return requestAuthApi(`/oauth2/wechat/scan/status?scene_id=${encodeURIComponent(sceneId)}`, {}, serverBase)
-}
-
-/**
- * 模拟手机确认扫码（开发与测试环境专属）
- */
-export async function mockConfirmScan(
-  sceneId: string,
-  serverBase = BACKEND_BASE
-): Promise<boolean> {
-  await requestAuthApi('/oauth2/wechat/scan/mock_confirm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scene_id: sceneId }),
-  }, serverBase)
-  return true
 }
 
 export interface CaptchaResult {

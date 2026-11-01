@@ -423,7 +423,7 @@ class ActivateService:
         template_code, template_name = await cls._resolve_template_meta(db, subscription=subscription)
 
         log.info(
-            'order activate success: order_no=%s, user_id=%s, just_activated=%s',
+            'order activate success: order_no={}, user_id={}, just_activated={}',
             actcode.code,
             current_user.id,
             just_activated,
@@ -487,7 +487,7 @@ class ActivateService:
         template_code, template_name = await cls._resolve_template_meta(db, subscription=subscription)
 
         log.info(
-            'order login success: order_no=%s, user_id=%s, auto_created=%s, just_activated=%s',
+            'order login success: order_no={}, user_id={}, auto_created={}, just_activated={}',
             actcode.code,
             bound_user.id,
             auto_created,

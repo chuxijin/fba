@@ -109,7 +109,8 @@ def test_light_views_keep_scope_order_and_real_cursor_pagination(read_db: ReadDB
         ids = [row['id'] for row in rows]
         if view == 'full':
             expected = ids
-            assert set(ids) == {'pending': {1, 3, 7}, 'reviewed': {2, 3, 4, 8, 14}, 'mastered': {5, 6}}[mode]
+            # 8 是既无来源题库也无记录领域的 attempt，不能混入当前领域。
+            assert set(ids) == {'pending': {1, 3, 7}, 'reviewed': {2, 3, 4, 14}, 'mastered': {5, 6}}[mode]
         else:
             assert ids == expected
             assert 'qbank_v2_user_question_mastery' not in str(stmt)
@@ -153,7 +154,7 @@ def test_light_payload_sizes_are_bounded_for_long_stems(read_db: ReadDB) -> None
         sizes[view] = len(MsgSpecJSONResponse(response_base.success(data=payload).model_dump(mode='json')).body)
     assert sizes['summary'] < sizes['full'] * 0.05
     assert sizes['outline'] < sizes['full'] * 0.01
-    print(f'相同 5 道长题干的未压缩 JSON 响应字节数：{sizes}')
+    print(f'相同已复盘长题干的未压缩 JSON 响应字节数：{sizes}')
 
 
 async def test_wrong_history_reads_all_valid_attempts_with_duration(read_db: ReadDB) -> None:

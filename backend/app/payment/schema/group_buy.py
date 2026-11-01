@@ -76,3 +76,19 @@ class GroupBuySummary(SchemaBase):
 
 class GroupBuyTaskRetryParam(SchemaBase):
     confirmed_not_sent: bool = False
+
+
+class GroupBuyShareCodeResult(SchemaBase):
+    data_url: str
+    share_code: str
+    deadline: datetime
+    style: Literal['miniapp', 'square'] = 'miniapp'
+    env_version: Literal['release', 'trial']
+
+
+class GroupBuyShareLinkResult(SchemaBase):
+    link: str
+    kind: Literal['short', 'url']
+    share_code: str
+    deadline: datetime
+    expires_at: datetime

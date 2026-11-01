@@ -44,6 +44,7 @@
         <button class="gk-float-btn-ghost" @click="$emit('feedback')">
           💬 建议反馈
         </button>
+        <p v-if="feedbackError" role="alert" class="gk-float-import-hint is-error">{{ feedbackError }}</p>
       </div>
 
       <!-- 底部品牌与版本 -->
@@ -52,7 +53,7 @@
           <img v-if="logoUrl" :src="logoUrl" class="gk-brand-logo" alt="Logo" />
           <span class="gk-brand-name">有岸 · 公考排版</span>
         </div>
-        <div class="gk-brand-ver">V 1.0.0</div>
+        <div class="gk-brand-ver">V {{ extensionVersion }}</div>
       </div>
     </div>
 
@@ -80,11 +81,13 @@ const props = withDefaults(
     questionCount: number
     wrongCount?: number
     reportAvailable?: boolean
+    feedbackError?: string
     importState?: ImportState
   }>(),
   {
     wrongCount: 0,
     reportAvailable: false,
+    feedbackError: '',
     importState: () => ({ ...IDLE_IMPORT_STATE }),
   }
 )
@@ -101,6 +104,8 @@ const isCollapsed = ref(false)
 const isReady = computed(() => props.questionCount > 0 || Boolean(props.paperTitle))
 const logoUrl =
   typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('icons/icon48.png') : ''
+const extensionVersion = typeof chrome !== 'undefined' && chrome.runtime?.getManifest
+  ? chrome.runtime.getManifest().version : ''
 
 const importing = computed(() => props.importState.status === 'running')
 

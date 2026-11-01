@@ -3,19 +3,15 @@ import {
   logoutAuthSession,
   fetchScanQrcode,
   pollScanStatus,
-  mockConfirmScan,
   fetchCaptcha,
   loginWithPassword,
   sendAuthMessage,
   CaptchaResult,
 } from '../utils/auth'
 import { accountStore, AccountState } from '../utils/account-state'
-import { BACKEND_BASE, LOCAL_SITE_ORIGINS, type QuotaInfo, type TokenInfo, type UserInfo } from '../utils/auth-protocol'
+import { BACKEND_BASE, IS_PRODUCTION, type QuotaInfo, type TokenInfo, type UserInfo } from '../utils/auth-protocol'
 
-declare const __IS_PROD__: boolean | undefined
-const isProdMode = typeof __IS_PROD__ === 'boolean'
-  ? __IS_PROD__
-  : (BACKEND_BASE.includes('yzxj.vip') || (!BACKEND_BASE.includes('127.0.0.1') && !BACKEND_BASE.includes('localhost')))
+const isProdMode = IS_PRODUCTION
 
 document.addEventListener('DOMContentLoaded', async () => {
   // ── 视图容器 ──
@@ -120,7 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const scanQrImg      = document.getElementById('scan-qr-img') as HTMLImageElement
   const scanQrLoading  = document.getElementById('scan-qr-loading')!
   const scanMainHint   = document.getElementById('scan-main-hint')!
-  const btnScanMock    = document.getElementById('btn-scan-mock')!
+  const btnScanRetry   = document.getElementById('btn-scan-retry') as HTMLButtonElement
 
   // ── 账号密码表单 DOM ──
   const pwdUsername     = document.getElementById('pwd-username') as HTMLInputElement
@@ -134,12 +130,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pwdErrorMsg     = document.getElementById('pwd-error-msg')!
   const btnPwdLogin     = document.getElementById('btn-pwd-login') as HTMLButtonElement
   const pwdLoginText    = document.getElementById('pwd-login-text')!
-  const btnDevFill      = document.getElementById('btn-dev-fill')!
+  const versionLabel = document.getElementById('extension-version')!
+  versionLabel.textContent = `v ${chrome.runtime.getManifest().version}`
 
   let currentSceneId = ''
+  let scanDeadline = 0
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let scanGeneration = 0
   let currentCaptcha: CaptchaResult | null = null
+  let captchaVersion = 0
+  let passwordSubmitting = false
 
   // ── 视图切换 ──
   function showMainView() {
@@ -190,10 +190,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── 图形验证码拉取与刷新 ──
   async function loadCaptcha() {
     if (!captchaLoading || !pwdCaptchaImg) return
+    const version = ++captchaVersion
+    currentCaptcha = null
+    btnPwdLogin.disabled = true
     captchaLoading.style.display = 'inline'
     pwdCaptchaImg.style.display = 'none'
     try {
-      currentCaptcha = await fetchCaptcha(BACKEND_BASE)
+      const result = await fetchCaptcha(BACKEND_BASE)
+      if (version !== captchaVersion) return
+      currentCaptcha = result
       if (currentCaptcha.is_enabled && currentCaptcha.image) {
         pwdCaptchaGroup.style.display = 'flex'
         pwdCaptchaImg.src = currentCaptcha.image
@@ -201,10 +206,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else {
         pwdCaptchaGroup.style.display = 'none'
       }
-    } catch {
-      pwdCaptchaGroup.style.display = 'none'
+    } catch (error: any) {
+      if (version !== captchaVersion) return
+      pwdCaptchaGroup.style.display = 'flex'
+      showPwdError(`验证码服务不可用：${error?.message || '请重试'}。点击验证码区域重新加载。`)
     } finally {
-      captchaLoading.style.display = 'none'
+      if (version === captchaVersion) {
+        captchaLoading.style.display = 'none'
+        btnPwdLogin.disabled = passwordSubmitting || !currentCaptcha
+      }
     }
   }
 
@@ -237,6 +247,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   async function handlePasswordLogin() {
+    if (passwordSubmitting || btnPwdLogin.disabled || !currentCaptcha) return
     const username = pwdUsername.value.trim()
     const password = pwdPassword.value
     const captchaVal = pwdCaptcha ? pwdCaptcha.value.trim() : ''
@@ -262,6 +273,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       return
     }
 
+    passwordSubmitting = true
+    const version = scanGeneration
     btnPwdLogin.disabled = true
     if (pwdLoginText) pwdLoginText.textContent = '登录中…'
 
@@ -276,15 +289,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         BACKEND_BASE
       )
 
-      await completeLogin(res.token, res.user)
+      if (version === scanGeneration) await completeLogin(res.token, res.user)
     } catch (err: any) {
+      if (version !== scanGeneration) return
       showPwdError(err?.message || '登录失败，请检查账号密码')
       if (currentCaptcha?.is_enabled) {
         loadCaptcha()
         if (pwdCaptcha) pwdCaptcha.value = ''
       }
     } finally {
-      btnPwdLogin.disabled = false
+      passwordSubmitting = false
+      btnPwdLogin.disabled = !currentCaptcha
       if (pwdLoginText) pwdLoginText.textContent = '立即登录'
     }
   }
@@ -312,17 +327,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (pwdCaptcha) {
     pwdCaptcha.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') handlePasswordLogin()
-    })
-  }
-
-  if (btnDevFill) {
-    btnDevFill.addEventListener('click', () => {
-      pwdUsername.value = 'admin'
-      pwdPassword.value = '123456'
-      if (pwdErrorMsg) pwdErrorMsg.style.display = 'none'
-      if (currentCaptcha?.is_enabled && pwdCaptcha) {
-        pwdCaptcha.focus()
-      }
     })
   }
 
@@ -394,24 +398,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     scanQrLoading.style.display = 'block'
     scanQrLoading.textContent  = '小程序码生成中…'
     scanMainHint.textContent   = '请使用微信扫描上方小程序码'
+    btnScanRetry.disabled = true
 
     try {
       const qrData = await fetchScanQrcode(BACKEND_BASE)
       if (version !== scanGeneration) return
       currentSceneId = qrData.scene_id
+      scanDeadline = Date.now() + Math.min(qrData.expires_in, 300) * 1000
       scanQrImg.src = qrData.qrcode_data_url
       scanQrImg.style.display    = 'block'
       scanQrLoading.style.display = 'none'
 
       scheduleScanPoll(version)
     } catch (err: any) {
-      if (version === scanGeneration) scanQrLoading.textContent = `生成失败：${err?.message || '请重试'}`
+      if (version === scanGeneration) {
+        scanQrLoading.textContent = `生成失败：${err?.message || '请重试'}`
+        scanMainHint.textContent = '请重新获取二维码，或切换账号密码登录'
+      }
+    } finally {
+      if (version === scanGeneration) btnScanRetry.disabled = false
     }
   }
 
   function scheduleScanPoll(version: number) {
     pollTimer = setTimeout(async () => {
       if (version !== scanGeneration || !currentSceneId) return
+      if (Date.now() >= scanDeadline) {
+        stopPolling()
+        scanMainHint.textContent = '二维码已过期，请重新获取'
+        return
+      }
       try {
         const res = await pollScanStatus(currentSceneId, BACKEND_BASE)
         if (version !== scanGeneration) return
@@ -425,7 +441,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           scanMainHint.textContent = '二维码已过期，请点击重新获取'
           return
         }
-      } catch { /* 下轮重试，避免并发轮询 */ }
+      } catch (error: any) {
+        if (version === scanGeneration) scanMainHint.textContent = `暂时无法确认授权：${error?.message || '网络异常'}，正在重试`
+      }
       if (version === scanGeneration) scheduleScanPoll(version)
     }, 2000)
   }
@@ -452,26 +470,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showMainView()
   })
 
-  btnScanMock.addEventListener('click', async () => {
-    if (!currentSceneId) return
-    const version = scanGeneration
-    const sceneId = currentSceneId
-    btnScanMock.textContent = '确认中…'
-    try {
-      await mockConfirmScan(sceneId, BACKEND_BASE)
-      if (version !== scanGeneration) return
-      const res = await pollScanStatus(sceneId, BACKEND_BASE)
-      if (version !== scanGeneration) return
-      if (res.status === 'CONFIRMED' && res.token) {
-        stopPolling()
-        await completeLogin(res.token, res.user)
-      }
-    } catch (e: any) {
-      alert(`模拟扫码失败: ${e?.message || e}`)
-    } finally {
-      btnScanMock.textContent = '⚡ 开发调试：模拟确认扫码'
-    }
-  })
+  btnScanRetry.addEventListener('click', () => { void startScanLogin() })
 
   btnLogout.addEventListener('click', async () => {
     try { await logoutAuthSession() }
@@ -492,9 +491,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 底部导航链接
   const footerLinks: Record<string, string> = {
-    'footer-official': LOCAL_SITE_ORIGINS[0]!,
-    'footer-service':  `${LOCAL_SITE_ORIGINS[0]}/service`,
-    'footer-help':     `${LOCAL_SITE_ORIGINS[0]}/help`,
+    'footer-service': chrome.runtime.getURL('support.html#feedback'),
+    'footer-help': chrome.runtime.getURL('support.html#help'),
   }
   Object.entries(footerLinks).forEach(([id, url]) => {
     document.getElementById(id)?.addEventListener('click', (e) => {

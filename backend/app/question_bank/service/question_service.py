@@ -801,7 +801,7 @@ class QuestionService:
         # 7. 更新 bank/chapter q_count_cache（每个挂载 +1）
         await QuestionService._update_placement_caches(db=db, placements=obj.placements, delta=1)
 
-        log.info('Question created: id=%d type=%s user=%d', question.id, obj.core.type, user_id)
+        log.info('Question created: id={} type={} user={}', question.id, obj.core.type, user_id)
         return question
 
     @staticmethod
@@ -912,7 +912,7 @@ class QuestionService:
         if count > 0:
             for question_id in obj.ids:
                 await solution_content_cache.invalidate(question_id)
-        log.info('Questions deleted: ids=%s count=%d', obj.ids, count)
+        log.info('Questions deleted: ids={} count={}', obj.ids, count)
         return count
 
     # ------------------------------------------------------------------

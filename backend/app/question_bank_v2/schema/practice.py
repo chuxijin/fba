@@ -25,6 +25,13 @@ PRACTICE_SESSION_RANGE_DAYS: dict[str, int] = {'7d': 7, '30d': 30, '90d': 90}
 TIMED_PRACTICE_MODES: frozenset[str] = frozenset({'exam', 'mock'})
 
 
+class PracticeModuleQuota(SchemaBase):
+    """效果检测组卷的模块配额，同题只能占一个模块名额。"""
+
+    knowledge_point_id: int = Field(gt=0, description='模块知识点 ID，包含其后代')
+    count: int = Field(ge=1, le=500, description='模块题量')
+
+
 class CreatePracticeSessionParam(SchemaBase):
     """创建练习会话参数"""
 
@@ -60,6 +67,66 @@ class CreatePracticeSessionParam(SchemaBase):
     shuffle: bool = Field(default=False, description='是否随机打乱题目')
     title: str | None = Field(None, min_length=1, max_length=255, description='自由组题会话标题')
     session_key: str | None = Field(None, min_length=8, max_length=64, description='客户端幂等会话标识')
+    module_quotas: list[PracticeModuleQuota] = Field(
+        default_factory=list, max_length=30, description='按模块精确配额组卷'
+    )
+    selection_strategy: Literal['default', 'high_error'] = Field(
+        default='default', description='普通抽题或平台高频易错'
+    )
+    paper_profile: Literal['kaoyan_politics'] | None = Field(
+        None, description='考研政治客观卷：16道单选各1分、17道多选各2分；考试限时45分钟'
+    )
+
+    def _normalize_paper_profile(self) -> None:
+        """固定卷型由服务端约束，不接受客户端自定题量和分值。"""
+        if self.paper_profile is None:
+            return
+        if (
+            self.source_type != 'custom'
+            or not self.knowledge_point_ids
+            or self.question_ids
+            or self.bank_id is not None
+            or self.section_id is not None
+            or self.module_quotas
+            or self.selection_strategy != 'default'
+            or self.question_types
+            or self.mode not in {'practice', 'exam'}
+            or not self.include_knowledge_descendants
+        ):
+            raise ValueError('考研政治组卷仅支持按知识点范围练习或考试，不可叠加其他组卷策略')
+        if self.limit not in {None, 33}:
+            raise ValueError('考研政治组卷固定33题')
+        if self.duration_minutes is not None and (self.mode != 'exam' or self.duration_minutes != 45):
+            raise ValueError('考研政治考试限时45分钟，普通练习不限时')
+        self.limit = 33
+        self.duration_minutes = 45 if self.mode == 'exam' else None
+        self.shuffle = True
+
+    def _normalize_selection(self) -> None:
+        """校验快捷入口策略，配额可以补齐知识点范围。"""
+        if self.module_quotas:
+            ids = [item.knowledge_point_id for item in self.module_quotas]
+            if len(ids) != len(set(ids)):
+                raise ValueError('模块不能重复')
+            if (
+                self.source_type != 'custom'
+                or self.question_ids
+                or self.selection_strategy != 'default'
+                or self.section_id
+            ):
+                raise ValueError('模块配额仅适用于知识点自由组卷')
+            if self.knowledge_point_ids and self.knowledge_point_ids != sorted(ids):
+                raise ValueError('模块配额必须与所选知识点一致')
+            if not self.include_knowledge_descendants:
+                raise ValueError('模块配额需包含后代知识点')
+            self.knowledge_point_ids = sorted(ids)
+            total = sum(item.count for item in self.module_quotas)
+            if total > 500 or self.limit != total:
+                raise ValueError('模块题量之和必须等于总题数，且不超过500题')
+        if self.selection_strategy == 'high_error' and (
+            self.source_type != 'custom' or self.question_ids or not self.knowledge_point_ids
+        ):
+            raise ValueError('高频易错必须指定知识点范围')
 
     @model_validator(mode='after')
     def normalize_filters(self) -> 'CreatePracticeSessionParam':
@@ -67,6 +134,8 @@ class CreatePracticeSessionParam(SchemaBase):
         self.knowledge_point_ids = sorted(set(self.knowledge_point_ids))
         self.question_ids = list(dict.fromkeys(self.question_ids))
         self.question_types = sorted(set(self.question_types))
+        self._normalize_selection()
+        self._normalize_paper_profile()
         if any(item <= 0 for item in self.knowledge_point_ids):
             raise ValueError('知识点 ID 必须大于 0')
         if any(item <= 0 for item in self.question_ids):
@@ -114,6 +183,7 @@ class GetPracticeSessionItem(SchemaBase):
     is_flagged: bool | None = Field(None, description='是否标记稍后检查')
     duration_ms: int | None = Field(None, ge=0, description='累计有效作答时长毫秒')
     save_version: int | None = Field(None, ge=0, description='自动保存乐观锁版本')
+    latest_attempt_id: int | None = Field(None, description='本题最新作答事实ID，AI判分使用，不能用会话题目ID代替')
 
 
 class GetPracticeSessionDetail(SchemaBase):
@@ -218,9 +288,30 @@ class SubmitPracticeItemParam(SchemaBase):
     response_data: Any = Field(description='本次提交的用户答案，必须是 JSON 兼容数据')
     duration_ms: int = Field(default=0, ge=0, le=86_400_000, description='本题累计有效作答时长毫秒')
     save_version: int | None = Field(None, ge=0, description='客户端持有的乐观锁版本，空则不校验')
+    submission_key: str | None = Field(
+        None, min_length=1, max_length=128, description='单次作答幂等键，网络重试必须复用'
+    )
 
 
-class SubmitPracticeItemResult(SchemaBase):
+class PracticeQuestionStatistics(SchemaBase):
+    """次数口径，比例统一为0到1；无已判样本时不伪装为0%。"""
+
+    correct_rate: Decimal | None = Field(None, description='全站正确次数 / 已判次数，0到1')
+    graded_count: int = Field(0, ge=0, description='已判样本次数')
+    attempt_count: int = Field(0, ge=0, description='有效作答次数')
+    option_select_stats: dict[str, int] = Field(default_factory=dict, description='每个选项的选择次数，多选拆分计数')
+
+
+class PracticeQuestionStatisticsDetail(PracticeQuestionStatistics):
+    """点击选择数据读取的详情，平均用时仅采用1秒至5分钟的在线有效作答。"""
+
+    avg_duration_ms: Decimal | None = Field(None, ge=0, description='过滤后的平均用时毫秒，无样本为空')
+    duration_sample_count: int = Field(0, ge=0, description='纳入平均用时的有效样本次数')
+    duration_min_ms: int = Field(1_000, description='用时样本下限，含边界')
+    duration_max_ms: int = Field(300_000, description='用时样本上限，含边界')
+
+
+class SubmitPracticeItemResult(PracticeQuestionStatistics):
     """单题提交与判分结果"""
 
     attempt_id: int = Field(description='本次不可变作答事实 ID')
@@ -243,7 +334,7 @@ class PracticeExplanationDetail(SchemaBase):
     is_default: bool = Field(description='是否默认解析')
 
 
-class GetPracticeSolutionDetail(SchemaBase):
+class GetPracticeSolutionDetail(PracticeQuestionStatistics):
     """已提交题目的答案解析"""
 
     session_item_id: int = Field(description='会话题目 ID')
@@ -319,7 +410,7 @@ class GetPracticeSessionReport(SchemaBase):
     wrong_question_ids: list[int] = Field(default_factory=list, description='错题稳定身份 ID')
 
 
-class GetPracticeSessionSolutionItem(SchemaBase):
+class GetPracticeSessionSolutionItem(PracticeQuestionStatistics):
     """整卷答案解析项"""
 
     session_item_id: int = Field(description='会话题目 ID')

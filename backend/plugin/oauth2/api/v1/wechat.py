@@ -38,7 +38,7 @@ async def wechat_miniapp_login(
     description='用于浏览器插件或 PC 端展示带 scene_id 的动态微信官方小程序码',
 )
 async def get_scan_qrcode(
-    page: Annotated[str, Query(description='小程序接收扫码的页面路径')] = 'pages/index/index',
+    page: Annotated[str, Query(description='小程序接收扫码的页面路径')] = 'pages/mine/index',
 ) -> ResponseSchemaModel:
     data = await wechat_scan_service.generate_scan_qrcode(page=page, client_type=get_login_client_type())
     return response_base.success(data=data)

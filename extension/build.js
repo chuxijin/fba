@@ -2,6 +2,7 @@ import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readFile, writeFile } from 'node:fs/promises'
 
 const directory = dirname(fileURLToPath(import.meta.url))
 
@@ -15,6 +16,7 @@ const apiArg = process.argv.find((arg) => arg.startsWith('--api='))
 const apiBase = (apiArg ? apiArg.slice('--api='.length) : process.env.VITE_API_BASE_URL || '').trim()
   || 'http://127.0.0.1:8000'
 const isProd = apiBase.includes('yzxj.vip') || (!apiBase.includes('127.0.0.1') && !apiBase.includes('localhost'))
+if (isProd && new URL(apiBase).protocol !== 'https:') throw new Error('生产构建必须使用 HTTPS 后端')
 console.log(`[Build] 后端基址: ${apiBase} (环境: ${isProd ? '生产 prod' : '开发 dev'})`)
 
 const targets = [
@@ -22,7 +24,8 @@ const targets = [
   { entry: 'background/index.ts', output: 'background.js' },
   { entry: 'content/index.ts', output: 'content.js', vue: true },
   { entry: 'content/interceptor.ts', output: 'injected.js' },
-  { entry: 'content/site-auth.ts', output: 'site-auth.js' },
+  ...(!isProd ? [{ entry: 'content/site-auth.ts', output: 'site-auth.js' }] : []),
+  { entry: 'support.html', output: 'assets/[name]-[hash].js' },
 ]
 
 async function runBuild() {
@@ -45,11 +48,20 @@ async function runBuild() {
           input: resolve(directory, 'src', target.entry),
           output: {
             entryFileNames: target.output,
-            ...(!target.public && { format: 'iife', inlineDynamicImports: true }),
+            ...(!target.entry.endsWith('.html') && { format: 'iife', inlineDynamicImports: true }),
           },
         },
       },
     })
+  }
+  if (isProd) {
+    // 未配置正式官网：生产包不访问 localhost，也不注入本地官网登录桥。
+    const manifestPath = resolve(directory, 'dist/manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.host_permissions = manifest.host_permissions.filter((url) => !/^http:\/\/(localhost|127\.0\.0\.1)/.test(url))
+    manifest.content_scripts = manifest.content_scripts.filter((script) => !script.js?.includes('site-auth.js'))
+    manifest.permissions = manifest.permissions.filter((permission) => permission !== 'scripting')
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
   }
   console.log('[Build] 扩展构建完成')
 }

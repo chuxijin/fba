@@ -482,7 +482,7 @@ async def _label_one(
             confidence = to_decimal(data.get('confidence'))
             note = str(data.get('reason') or '').strip()
     except Exception as exc:
-        log.exception('id=%s 标注失败', question_id)
+        log.exception(f'id={question_id} 标注失败')
         record['note'] = f'调用失败：{exc}'
         return record
 
@@ -573,7 +573,13 @@ async def _init_engine(
     provider_id: int | None,
     model_id: str | None,
 ) -> _Engine:
-    point_lines = [p['path_text'] or p['name'] for p in points]
+    # ⚠️⚠️ chat 引擎的 prompt 要求模型返回**数字 point_id**，所以候选列表必须带 id。
+    # 只给名字（`数量关系 > 工程问题`）模型只能瞎编一个数字 ⇒ 全部落成 invalid，
+    # 而且报错信息是「模型返回了不存在的知识点 3」，很容易误判成模型不行。
+    # 脚本版一直是 `- id=X | 路径`，service 版曾漏掉，2026-10-31 修。
+    point_lines = [
+        f'- id={p["id"]} | {p["path_text"] or p["name"]}' for p in points
+    ]
     http = httpx.AsyncClient(timeout=60.0)
 
     if engine == 'jev':
@@ -625,7 +631,7 @@ async def _init_fallback_engine(
             model_id=model_id,
         )
     except Exception as exc:
-        log.warning('兜底引擎 %s 初始化失败，本次不降级：%s', fallback_engine, exc)
+        log.warning(f'兜底引擎 {fallback_engine} 初始化失败，本次不降级：{exc}')
         return None
 
 
@@ -837,13 +843,15 @@ async def run_autolabel(
     result['fallback_engine'] = fallback_engine if fallback_runner is not None else 'none'
     result['fell_back_count'] = sum(1 for r in items if r.get('fell_back'))
     result['elapsed_seconds'] = round(time.monotonic() - started, 2)
+    written = counters['written'] or counters['dry_run']
     log.info(
-        'AI 标注完成：引擎 %s（兜底 %s，降级 %s 题），处理 %s 题，写入 %s，跳过 %s，耗时 %s 秒',
+        'AI 标注完成：引擎 {}（兜底 {}，降级 {} 题），处理 {} 题，{} {}，跳过 {}，耗时 {} 秒',
         engine,
         result['fallback_engine'],
         result['fell_back_count'],
         result['processed'],
-        counters['written'] or counters['dry_run'],
+        '写入' if write else '干跑判定',
+        written,
         counters['skipped'],
         result['elapsed_seconds'],
     )

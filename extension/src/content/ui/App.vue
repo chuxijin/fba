@@ -7,6 +7,7 @@
       :wrong-count="wrongCount"
       :import-state="importState"
       :report-available="reportAvailable"
+      :feedback-error="feedbackError"
       @start-reformat="handleStartReformat"
       @feedback="handleFeedback"
       @import-wrong="handleImportWrong"
@@ -33,6 +34,8 @@ import SettingsModal from './SettingsModal.vue'
 import PracticeReportImport from './PracticeReportImport.vue'
 import { fenbiReportRoute } from '../../adapters/fenbi/report'
 import type { PracticeReportPayload } from '../../adapters/fenbi/report'
+import type { DeliveryView } from '../../utils/export-delivery'
+import { exportMessage } from '../../utils/export-flow'
 import {
   UnifiedPaper,
   RenderTypographySettings,
@@ -53,6 +56,7 @@ const emit = defineEmits<{
 }>()
 
 const isModalVisible = ref(false)
+const feedbackError = ref('')
 const currentPaper = ref<UnifiedPaper | null>(null)
 const mistakeMeta = ref<MistakePageMeta | null>(null)
 const modalRef = ref<InstanceType<typeof SettingsModal> | null>(null)
@@ -138,7 +142,7 @@ function showLoading(target: 'computer_download' | 'mobile_sync') {
   modalRef.value?.showLoading(target)
 }
 
-function showDelivery(options: { qrCodeUrl?: string; savedPath?: string; remainingQuota?: number }) {
+function showDelivery(options: DeliveryView) {
   modalRef.value?.showDelivery(options)
 }
 
@@ -150,8 +154,10 @@ function handleStartReformat() {
   emit('requestReformat')
 }
 
-function handleFeedback() {
-  alert('如遇到排版或试卷识别问题，请在微信小程序【我的题本】中点击“意见反馈”，我们将第一时间为您解决！')
+async function handleFeedback() {
+  feedbackError.value = ''
+  try { await exportMessage('OPEN_SUPPORT', { section: 'feedback' }) }
+  catch (error: any) { feedbackError.value = error?.message || '无法打开反馈页，请从插件弹窗重试' }
 }
 
 function handleImportWrong() {

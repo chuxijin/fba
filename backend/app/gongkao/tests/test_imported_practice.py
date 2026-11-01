@@ -280,7 +280,7 @@ def test_imported_history_cannot_be_submitted_or_hidden_as_online_practice(db: M
         detail = await PracticeLogService.get_question_details(db=db, user_id=7, pk=result.record.id)
         for method, obj in (
             (PracticeService.save_response, SavePracticeResponseParam(response_data='B')),
-            (PracticeService.submit_item, SubmitPracticeItemParam(response_data='B')),
+            (PracticeService.submit_item, SubmitPracticeItemParam(response_data='B', save_version=0)),
         ):
             with pytest.raises(errors.ConflictError, match='只读'):
                 await method(

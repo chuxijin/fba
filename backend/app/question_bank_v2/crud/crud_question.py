@@ -9,7 +9,7 @@ from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from backend.app.question_bank_v2.model.catalog import QbBankCategory
-from backend.app.question_bank_v2.model.knowledge import QbQuestionKnowledgePoint
+from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbQuestionKnowledgePoint
 from backend.app.question_bank_v2.model.material import QbQuestionMaterial
 from backend.app.question_bank_v2.model.question import (
     QbQuestion,
@@ -68,6 +68,7 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
         question_type: str | None = None,
         keyword: str | None = None,
         knowledge_labeled: bool | None = None,
+        knowledge_system_id: int | None = None,
         section_ids: Sequence[int] | None = None,
         knowledge_point_ids: Sequence[int] | None = None,
     ) -> Select:
@@ -107,11 +108,23 @@ class CRUDQuestion(CRUDPlus[QbQuestion]):
         if keyword:
             stmt = stmt.where(QbQuestion.stem.ilike(f'%{keyword}%'))
         if knowledge_labeled is not None:
-            # True 只保留已挂知识点的题，False 只保留未标注的题
+            # True 只保留已挂知识点的题，False 只保留未标注的题。
+            # ⚠️ 给了 knowledge_system_id 就**只按该体系判断** —— 与 AI 自动标注的
+            # `include_labeled`（`kp.system_id = :sid`）口径对齐。
+            # 不给则退回历史行为「任何体系标过就算已标注」，此时会出现
+            # 「被 default 标过的题在 internal 下筛不出未标注」的错位。
             linked = select(QbQuestionKnowledgePoint.id).where(
                 QbQuestionKnowledgePoint.question_id == QbQuestion.id,
                 QbQuestionKnowledgePoint.deleted == 0,
             )
+            if knowledge_system_id is not None:
+                linked = linked.join(
+                    QbKnowledgePoint,
+                    QbKnowledgePoint.id == QbQuestionKnowledgePoint.knowledge_point_id,
+                ).where(
+                    QbKnowledgePoint.system_id == knowledge_system_id,
+                    QbKnowledgePoint.deleted == 0,
+                )
             stmt = stmt.where(linked.exists() if knowledge_labeled else ~linked.exists())
         if knowledge_point_ids is not None:
             # 知识点筛选：题目标注的知识点至少命中一个即可；空列表语义为「无匹配」而非「不过滤」

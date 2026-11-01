@@ -118,7 +118,7 @@ class GetLocateTrainingResult(SchemaBase):
     perfect_questions: int = Field(ge=0, description='无错误点击的完成题目数')
     total_clicks: int = Field(ge=0, description='累计点击次数')
     wrong_clicks: int = Field(ge=0, description='累计错误点击次数')
-    click_accuracy: Decimal = Field(ge=0, l=1, description='点击命中率')
+    click_accuracy: Decimal = Field(ge=0, le=1, description='点击命中率')
     duration_seconds: int = Field(ge=0, description='训练用时秒数')
     given_up_questions: int = Field(default=0, ge=0, description='放弃题目数')
     peeked_questions: int = Field(default=0, ge=0, description='偷看过题目的数量')

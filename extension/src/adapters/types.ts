@@ -41,6 +41,8 @@ export const DEFAULT_TYPOGRAPHY_SETTINGS: RenderTypographySettings = {
 export interface UnifiedQuestion {
   id?: string | number
   question_id?: number
+  /** 原站稳定题号；不使用页面题序兜底，供错题与练习记录关联。 */
+  source_question_key?: string
   order_num?: number
   type?: string
   stem: string                       // 题干内容 (支持 HTML/纯文本)

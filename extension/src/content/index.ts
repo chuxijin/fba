@@ -24,6 +24,7 @@ import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 import { buildFenbiPracticeQuestions, buildFenbiPracticeReport, buildReportModules, fenbiReportRoute, readFenbiReportModules } from '../adapters/fenbi/report'
 import { FenbiReportCache } from '../adapters/fenbi/report-cache'
 import type { PracticeReportPayload, ReportModule } from '../adapters/fenbi/report'
+import { exportMessage, waitForExport, requestFileDownloads } from '../utils/export-flow'
 
 /**
  * 试卷排版 Content Script 核心枢纽 (遵循 KISS 极简架构)
@@ -552,7 +553,12 @@ import type { PracticeReportPayload, ReportModule } from '../adapters/fenbi/repo
   }
 
   
+  let exporting = false
   async function handleExport(settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync') {
+    if (exporting) return
+    exporting = true
+    const sourceUrl = location.href
+    const isCurrent = () => location.href === sourceUrl && Boolean(chrome.runtime?.id)
     uiApp?.showLoading(target)
 
     try {
@@ -567,40 +573,20 @@ import type { PracticeReportPayload, ReportModule } from '../adapters/fenbi/repo
         return
       }
 
-      chrome.runtime.sendMessage(
-        {
-          type: 'RENDER_AND_EXPORT',
-          payload: {
-            paper: paperToSend,
-            settings,
-            target,
-          },
-        },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            uiApp?.showError('通信异常，请按 F5 刷新页面后重试')
-            return
-          }
-
-          if (!response || !response.success) {
-            uiApp?.showError(response?.error || '后端排版渲染失败，请检查服务状态')
-            return
-          }
-
-          uiApp?.showDelivery({
-            qrCodeUrl: response.qrCodeUrl,
-            savedPath: response.savedPath,
-            remainingQuota: response.remainingQuota !== undefined ? response.remainingQuota : undefined,
-          })
-        }
-      )
+      const response = await exportMessage('RENDER_AND_EXPORT', { paper: paperToSend, settings, target })
+      const delivery = await waitForExport(response.ticket, isCurrent)
+      if (!isCurrent()) return
+      const download = target === 'computer_download' ? await requestFileDownloads(delivery.files) : {}
+      if (!isCurrent()) return
+      uiApp?.showDelivery({ ...delivery, ...download })
     } catch (err: any) {
+      if (!isCurrent()) return
       if (err?.message?.includes('Extension context invalidated')) {
         uiApp?.showError('检测到插件刚刚更新，请按 F5 刷新当前网页后重试！')
       } else {
         uiApp?.showError(err?.message || '导出异常，请稍后重试')
       }
-    }
+    } finally { exporting = false }
   }
 
   /**

@@ -10,10 +10,30 @@ import {
 import { bootstrapSiteSession, handleSiteAuth, logoutExtension, publicSession } from '../utils/auth-bridge'
 import { BACKEND_BASE as BACKEND_BASE_URL, isSiteAuthMessage, isTrustedSite, SITE_URL_PATTERNS } from '../utils/auth-protocol'
 import { collectAuthDiagnostics } from '../utils/auth-diagnostics'
+import { exportRequest, parseDelivery, downloadExportFiles, fetchExportQr } from '../utils/export-delivery'
+import { listExtensionFeedback, submitExtensionFeedback } from '../utils/support'
 
 
 // 监听来自 Content Script 或 Popup 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'OPEN_SUPPORT') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('support.html#feedback') })
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ success: false, error: error.message }))
+    return true
+  }
+  if (message.type === 'SUBMIT_FEEDBACK' || message.type === 'LIST_FEEDBACK') {
+    if (sender.url?.split(/[?#]/)[0] !== chrome.runtime.getURL('support.html')) {
+      sendResponse({ success: false, error: '请从插件意见反馈页面操作' })
+      return false
+    }
+    const task = message.type === 'SUBMIT_FEEDBACK'
+      ? submitExtensionFeedback(message.payload)
+      : listExtensionFeedback(message.payload?.page)
+    task.then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }))
+    return true
+  }
   if (message.type === 'GET_AUTH_DIAGNOSTICS' || message.type === 'RECONNECT_SITE_AUTH') {
     if (!sender.url?.startsWith(chrome.runtime.getURL(''))) {
       sendResponse({ success: false, error: '请从扩展弹窗发起同步' })
@@ -48,6 +68,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then((res) => sendResponse({ success: true, ...res }))
       .catch((err) => sendResponse({ success: false, error: err.message }))
     return true // 保持异步消息通道开启
+  }
+  if (message.type === 'GET_RENDER_EXPORT') {
+    const ticket = message.payload?.ticket
+    if (typeof ticket !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(ticket)) {
+      sendResponse({ success: false, error: '排版任务凭证无效' })
+      return false
+    }
+    exportRequest(`/exports/${ticket}`)
+      .then(async (state) => {
+        if (state.status === 'succeeded') {
+          // 额度提示刷新失败不能阻断已经生成的文件交付。
+          await chrome.storage.local.set({ [STORAGE_KEY_QUOTA_REVISION]: crypto.randomUUID() }).catch(() => {})
+        }
+        sendResponse({ success: true, ...state, ...(state.result ? { delivery: parseDelivery(state.result) } : {}) })
+      })
+      .catch((err) => sendResponse({ success: false, error: err.message }))
+    return true
+  }
+  if (message.type === 'GET_RENDER_QR') {
+    fetchExportQr(message.payload?.url)
+      .then((image) => sendResponse({ success: true, image }))
+      .catch((err) => sendResponse({ success: false, error: err.message }))
+    return true
+  }
+  if (message.type === 'DOWNLOAD_RENDER_FILES') {
+    downloadExportFiles(message.payload?.files)
+      .then((result) => sendResponse({ success: true, ...result }))
+      .catch((err) => sendResponse({ success: false, error: err.message }))
+    return true
   }
 
   if (message.type === 'GET_QUOTA') {
@@ -109,7 +158,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // 凭据变化由 requestCurrentQuota 重读并重试，后来的视图复用该请求。
   // 导出扣减必须另取最新额度，避免复用扣减前已经开始的查询。
   if (area === 'local' && STORAGE_KEY_QUOTA_REVISION in changes) quotaRequest = null
-  if (area === 'local' && (STORAGE_KEY_TOKEN in changes || STORAGE_KEY_USER in changes)) {
+  if (SITE_URL_PATTERNS.length && area === 'local' && (STORAGE_KEY_TOKEN in changes || STORAGE_KEY_USER in changes)) {
     void chrome.tabs.query({ url: SITE_URL_PATTERNS }).then((tabs) => {
       for (const tab of tabs) {
         if (tab.id && isTrustedSite(tab.url)) {
@@ -359,13 +408,15 @@ async function handleRenderAndExport(payload: {
       headers['Authorization'] = `Bearer ${accessToken}`
     }
 
-    const res = await fetch(`${BACKEND_BASE_URL}/api/v1/render-books/public/reformat`, {
+    const res = await fetch(`${BACKEND_BASE_URL}/api/v1/render-books/public/exports`, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(publicPayload),
+      signal: AbortSignal.timeout(20000),
     })
 
     if (!res.ok) {
+      if (res.status === 404) throw new Error('排版服务尚未更新到此插件版本，请联系维护者完成后端更新；本次未开始排版')
       if (res.status === 401 && accessToken) await clearAuthSessionIfCurrent(accessToken)
       // 只读一次 body：先取 text 再本地解析，避免 res.json() 失败后 res.text() 抛 "body stream already read"
       const rawText = await res.text().catch(() => '')
@@ -385,128 +436,12 @@ async function handleRenderAndExport(payload: {
       throw new Error(resJson.msg || '排版服务响应异常')
     }
     const jobResult = resJson.data || resJson
-    // 导出扣减后通知所有已打开的账户视图重新确认额度。
-    await chrome.storage.local.set({ [STORAGE_KEY_QUOTA_REVISION]: crypto.randomUUID() })
-
-    // 2. 根据目标分支进行交付
-    if (target === 'computer_download') {
-      const rawDl = jobResult.download_url
-      if (!rawDl) throw new Error('后端未返回下载地址（download_url 为空），请联系管理员排查排版服务')
-      const downloadUrl = rawDl.startsWith('http') ? rawDl : `${BACKEND_BASE_URL}${rawDl}`
-      const isMistake = paper.metadata?.scene === 'mistake' || paper.title?.includes('错题')
-      const tag = isMistake ? '【粉笔错题】' : '【粉笔真题】'
-      const fallbackName = `${tag}${sanitizeFileName(paper.title)} (共${paper.total_questions || 10}题).${settings.outputFormat || 'pdf'}`
-      // 后端返回的 file_name 同样必须清洗：Chrome 遇到 / : ? 等非法字符会直接拒绝下载且不给明确提示
-      const fileName = sanitizeFileName(jobResult.file_name || fallbackName)
-
-      // 必须 await 并检查 lastError，否则下载失败只会变成 SW 里的 unhandled rejection，UI 却报“已开始下载”
-      const mainFile = await downloadAndVerify(downloadUrl, fileName)
-
-      // 额外分册（如答案解析册）串行 await 下载：MV3 SW 里 setTimeout 延迟极易在休眠时丢失
-      const extraFiles: { fileName: string; savedPath?: string }[] = []
-      if (Array.isArray(jobResult.extra_files)) {
-        for (const ef of jobResult.extra_files) {
-          if (!ef?.download_url) continue
-          const efUrl = ef.download_url.startsWith('http') ? ef.download_url : `${BACKEND_BASE_URL}${ef.download_url}`
-          const efName = sanitizeFileName(ef.file_name || '答案解析册.pdf')
-          try {
-            const efRes = await downloadAndVerify(efUrl, efName)
-            extraFiles.push({ fileName: efName, savedPath: efRes.savedPath })
-          } catch (efErr: any) {
-            // 分册失败不阻断主文件交付，但要留痕
-            console.warn('[Background] 附加分册下载失败:', efName, efErr?.message)
-          }
-        }
-      }
-
-      return {
-        downloadUrl,
-        fileName,
-        savedPath: mainFile.savedPath,
-        hasExtraFiles: extraFiles.length > 0,
-        extraFiles,
-        remainingQuota: jobResult.remaining_quota,
-      }
-    } else {
-      // 导出到手机：返回该任务专属的小程序码链接
-      const rawQr = jobResult.qr_code_url
-      if (!rawQr) throw new Error('后端未返回小程序码链接（qr_code_url 为空）')
-      const qrCodeUrl = rawQr.startsWith('http') ? rawQr : `${BACKEND_BASE_URL}${rawQr}`
-      return {
-        jobId: jobResult.job_id,
-        qrCodeUrl,
-        remainingQuota: jobResult.remaining_quota,
-      }
-    }
+    if (typeof jobResult.ticket !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(jobResult.ticket))
+      throw new Error('排版服务未返回任务凭证')
+    return { ticket: jobResult.ticket }
   } catch (error: any) {
     console.error('[Background] 考场排版接口请求失败:', error)
     // 彻底废除假装成功的演示模式，真实抛出错误，触发弹窗的错误重试视图
     throw new Error(error?.message || '排版服务响应异常，请确认后端已启动。')
   }
-}
-
-/**
- * 发起下载并确认浏览器真的接收了，失败时抛出可直接展示给用户的错误。
- *
- * 为什么必须这样做：
- *  1. chrome.downloads.download 在文件名非法、host 被拒等情况下只通过 lastError 返回错误，
- *     不 await / 不读 lastError 的话，失败会变成未处理的 Promise rejection，UI 却显示“已开始下载”；
- *  2. 下载链接 404（token 过期）也是“秒失败”，探测一次状态即可捕获；
- *  3. 返回真实保存路径，解决“浏览器设置了自定义下载目录 / 开启下载前询问，用户找不到文件”。
- */
-async function downloadAndVerify(url: string, filename: string): Promise<{ downloadId: number; savedPath?: string }> {
-  const downloadId = await new Promise<number>((resolve, reject) => {
-    try {
-      chrome.downloads.download({ url, filename, saveAs: false }, (id) => {
-        const err = chrome.runtime.lastError
-        if (err || typeof id !== 'number') {
-          reject(new Error(`浏览器拒绝下载「${filename}」：${err?.message || '未返回下载任务 ID'}`))
-          return
-        }
-        resolve(id)
-      })
-    } catch (e: any) {
-      reject(new Error(`发起下载失败：${e?.message || e}`))
-    }
-  })
-
-  // 留 1.2s 让浏览器完成入队/握手，捕捉即时失败（token 失效 404、保存目录不可写等）
-  await new Promise((r) => setTimeout(r, 1200))
-  const item = await new Promise<chrome.downloads.DownloadItem | undefined>((resolve) => {
-    chrome.downloads.search({ id: downloadId }, (items) => resolve(items?.[0]))
-  })
-
-  if (item?.state === 'interrupted') {
-    throw new Error(`下载失败：${describeDownloadError(item.error)}（文件：${filename}）`)
-  }
-  return { downloadId, savedPath: item?.filename }
-}
-
-/** 把 chrome.downloads 的断点原因翻译成人话，直接给用户看 */
-function describeDownloadError(code?: string): string {
-  const map: Record<string, string> = {
-    SERVER_BAD_CONTENT: '服务器返回的文件无效（下载链接可能已过期，请重新排版）',
-    SERVER_UNAUTHORIZED: '下载鉴权失败',
-    SERVER_FORBIDDEN: '下载被服务器拒绝',
-    SERVER_UNREACHABLE: '连不上本地排版服务，请确认后端已启动',
-    NETWORK_FAILED: '网络错误',
-    NETWORK_TIMEOUT: '网络超时',
-    USER_CANCELED: '下载被取消（浏览器弹出了“保存位置”对话框但未确认）',
-    FILE_ACCESS_DENIED: '没有权限写入保存目录',
-    FILE_NO_SPACE: '磁盘空间不足',
-    FILE_NAME_TOO_LONG: '文件名过长',
-    FILE_FAILED: '文件写入失败',
-    CRASH: '下载进程异常',
-  }
-  if (!code) return '浏览器中断了下载（未知原因）'
-  return `${map[code] || '未知错误'}（${code}）`
-}
-
-function sanitizeFileName(name: string): string {
-  // Chrome 的 downloads.filename 不接受非法字符与首尾空白/点，同时限制长度避免 FILE_NAME_TOO_LONG
-  const cleaned = (name || '')
-    .replace(/[\\/:*?"<>|\r\n\t]/g, '_')
-    .replace(/^[\s.]+|[\s.]+$/g, '')
-    .slice(0, 180)
-  return cleaned || '未命名试卷.pdf'
 }

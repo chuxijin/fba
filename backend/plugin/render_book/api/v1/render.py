@@ -44,6 +44,8 @@ _INTERNAL_METADATA_KEYS = {
     'executor_mode',
     'executor_url',
     'user_id',
+    'delivery_hash',
+    'delivery_expires_at',
 }
 
 

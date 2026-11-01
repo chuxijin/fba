@@ -145,6 +145,7 @@ async function readSitePageSession(tab: chrome.tabs.Tab): Promise<SitePageSessio
 
 let bootstrapRequest: Promise<void> | null = null
 export function bootstrapSiteSession(): Promise<void> {
+  if (!SITE_URL_PATTERNS.length) return Promise.resolve()
   if (bootstrapRequest) return bootstrapRequest
   const task = (async () => {
     let revision = authRevision

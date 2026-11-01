@@ -76,6 +76,51 @@ def test_annotation_colors_preserve_legacy_yellow_and_validate_the_palette() -> 
 
 
 @pytest.mark.asyncio
+async def test_wrong_review_only_loads_its_own_document(
+    harness: tuple[DB, SimpleNamespace, SimpleNamespace], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db, document, attempt = harness
+    document.annotations = [mark(note='复盘副本')]
+    latest = AsyncMock(return_value=SimpleNamespace(annotations=[mark(note='最新练习')]))
+    monkeypatch.setattr(module.question_annotation_dao, 'latest_document', latest)
+    result = await module.annotation_service.get(
+        db=db, user_id=7, question_id=77, obj=AnnotationContext(source='wrong')
+    )
+    assert result.annotations[0].note == '复盘副本'
+    assert result.original_annotations[0].note == attempt.annotations[0]['note']
+    latest.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_new_wrong_review_starts_empty_instead_of_copying_practice_or_attempt_marks(
+    harness: tuple[DB, SimpleNamespace, SimpleNamespace], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db, _, _ = harness
+    monkeypatch.setattr(module.question_annotation_dao, 'get_document', AsyncMock(return_value=None))
+    result = await module.annotation_service.get(
+        db=db, user_id=7, question_id=77, obj=AnnotationContext(source='wrong')
+    )
+    assert result.annotations == []
+    assert result.save_version == 0
+    assert result.original_annotations
+    module.question_annotation_dao.latest_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_latest_annotation_source_keeps_its_existing_latest_document_behavior(
+    harness: tuple[DB, SimpleNamespace, SimpleNamespace], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db, _, _ = harness
+    latest = AsyncMock(return_value=SimpleNamespace(annotations=[mark(note='最新练习')]))
+    monkeypatch.setattr(module.question_annotation_dao, 'latest_document', latest)
+    result = await module.annotation_service.get(
+        db=db, user_id=7, question_id=77, obj=AnnotationContext(source='latest')
+    )
+    assert result.annotations[0].note == '最新练习'
+    latest.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_color_round_trip_preserves_the_original_attempt_snapshot(
     harness: tuple[DB, SimpleNamespace, SimpleNamespace],
 ) -> None:
@@ -259,6 +304,8 @@ async def test_answer_submission_copies_annotation_snapshot(
         grading_status='graded', is_correct=True, score=Decimal(1), grading_method='rule', details={}
     )
     monkeypatch.setattr(practice_module.practice_grading_service, 'grade', lambda **_kwargs: grade)
+    monkeypatch.setattr(practice_module.question_attempt_dao, 'get_submission', AsyncMock(return_value=None))
+    monkeypatch.setattr(practice_module.attempt_projection_service, 'lock_questions', AsyncMock())
     monkeypatch.setattr(practice_module.question_attempt_dao, 'get_next_attempt_no', AsyncMock(return_value=1))
     saved: dict[str, Any] = {}
 
@@ -269,7 +316,11 @@ async def test_answer_submission_copies_annotation_snapshot(
 
     monkeypatch.setattr(practice_module.question_attempt_dao, 'create', create_attempt)
     await practice_module.practice_service.submit_item(
-        db=db, session_key='abcdefgh', user_id=7, session_item_id=81, obj=SubmitPracticeItemParam(response_data='A')
+        db=db,
+        session_key='abcdefgh',
+        user_id=7,
+        session_item_id=81,
+        obj=SubmitPracticeItemParam(response_data='A', save_version=0),
     )
     document.annotations[0]['note'] = '后来改动'
     document.annotations[0]['color'] = 'pink'
@@ -290,7 +341,7 @@ async def test_unsubmitted_formal_annotations_survive_hidden_session(
     module.question_annotation_dao.get_document.return_value = None
     module.question_annotation_dao.latest_attempt.return_value = None
     result = await module.annotation_service.get(
-        db=db, user_id=7, question_id=77, obj=AnnotationContext(source='wrong')
+        db=db, user_id=7, question_id=77, obj=AnnotationContext(source='latest')
     )
     assert result.owner_key == 'user:7'
     assert result.context_key == 'review:0'
@@ -339,7 +390,7 @@ async def test_latest_empty_marks_do_not_resurrect_old_snapshots(
     db, _, _ = harness
     module.question_annotation_dao.latest_document.return_value = SimpleNamespace(annotations=[])
     result = await module.annotation_service.get(
-        db=db, user_id=7, question_id=77, obj=AnnotationContext(source='wrong')
+        db=db, user_id=7, question_id=77, obj=AnnotationContext(source='latest')
     )
     assert result.annotations == []
     assert result.original_annotations[0].note == '不是恰好'

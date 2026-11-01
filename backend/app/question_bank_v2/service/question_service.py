@@ -213,6 +213,7 @@ class QuestionService:
         question_type: str | None = None,
         keyword: str | None = None,
         knowledge_labeled: bool | None = None,
+        knowledge_system_id: int | None = None,
         section_id: int | None = None,
         knowledge_point_ids: Sequence[int] | None = None,
     ) -> Select:
@@ -238,6 +239,7 @@ class QuestionService:
             question_type=question_type,
             keyword=keyword,
             knowledge_labeled=knowledge_labeled,
+            knowledge_system_id=knowledge_system_id,
             section_ids=section_ids,
             knowledge_point_ids=knowledge_point_ids,
         )

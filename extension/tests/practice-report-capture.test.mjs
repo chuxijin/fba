@@ -81,6 +81,11 @@ function startPage(fetchResponse) {
       return { success: true, created: true }
     } } },
     require(name) {
+      if (name === '../utils/export-flow') return {
+        exportMessage() { throw new Error('报告读取不应提交排版') },
+        waitForExport() { throw new Error('报告读取不应等待排版') },
+        requestFileDownloads() { throw new Error('报告读取不应下载题本') },
+      }
       if (name === '../adapters/fenbi/report') return report
       if (name === '../adapters/fenbi/report-cache') return { FenbiReportCache }
       if (name === '../adapters') return { fenbiSession: {

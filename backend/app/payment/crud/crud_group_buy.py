@@ -18,6 +18,24 @@ from backend.utils.timezone import timezone
 
 
 class CRUDGroupBuy(CRUDPlus[PayGroupBuyTeam]):
+    async def share_context(self, db: AsyncSession, code: str, user_id: int) -> dict | None:
+        """按列读取分享资格，避免网络请求前后的复验命中 ORM 身份映射旧状态。"""
+        stmt = (
+            select(
+                self.model.status,
+                self.model.deadline,
+                self.model.snapshot,
+                PayGroupBuyMember.status.label('member_status'),
+            )
+            .outerjoin(
+                PayGroupBuyMember,
+                (PayGroupBuyMember.team_id == self.model.id) & (PayGroupBuyMember.user_id == user_id),
+            )
+            .where(self.model.share_code == code)
+        )
+        row = (await db.execute(stmt)).mappings().one_or_none()
+        return dict(row) if row else None
+
     async def team(self, db: AsyncSession, code: str, *, lock: bool = False) -> PayGroupBuyTeam | None:
         stmt = select(self.model).where(self.model.share_code == code)
         if lock:

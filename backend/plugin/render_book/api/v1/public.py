@@ -9,18 +9,23 @@
 4. 临时下载通道与小程序引流码响应。
 """
 
+import base64
 import json
 import re
+import secrets
 import time
 import uuid
-from datetime import datetime
+
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import anyio
-from fastapi import APIRouter, Request
+
+from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from backend.app.access.constants import CycleType
 from backend.app.access.crud.crud_rule import resource_rule_dao
@@ -28,8 +33,9 @@ from backend.app.access.engine.ledger import ledger_service
 from backend.common.exception import errors
 from backend.common.log import log
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
-from backend.core.path_conf import STATIC_DIR
-from backend.database.db import CurrentSession
+from backend.common.security.jwt import DependsJwtAuth
+from backend.core.conf import settings
+from backend.database.db import CurrentSession, CurrentSessionTransaction, async_db_session
 from backend.database.redis import redis_client
 from backend.plugin.render_book.schema.public_reformat import (
     PublicReformatRequest,
@@ -40,6 +46,12 @@ from backend.plugin.render_book.service.adapters import adapt_gongkao_payload
 from backend.plugin.render_book.service.adapters.practice_adapter import adapt_practice_payload
 from backend.plugin.render_book.service.docx_engine import docx_render_engine
 from backend.plugin.render_book.service.public_auth_service import get_public_user
+from backend.plugin.render_book.service.public_delivery_service import (
+    DELIVERY_TTL,
+    delivery_minicode,
+    receive_public_book,
+    register_public_book,
+)
 from backend.plugin.render_book.service.quota_service import render_book_quota_service
 from backend.plugin.render_book.utils.template_catalog import TEMPLATES_ROOT
 from backend.utils.request_parse import get_request_ip
@@ -66,13 +78,13 @@ def build_clean_paper_and_filenames(
     plat_map = {'fenbi': '粉笔', 'huatu': '华图', 'shikaobang': '事考帮'}
     plat = plat_map.get((platform or '').lower(), '粉笔')
 
-    clean = re.sub(r'[\/:*?"<>|]', '_', (raw_title or '').strip())
+    clean = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', (raw_title or '').strip())
     clean = re.sub(r'^(粉笔|华图|事考帮)[-_·\s]*', '', clean)
     clean = re.sub(r'[-_·\s]*(粉笔|华图|事考帮)[-_·\s]*', '', clean)
     clean = re.sub(r'(在线做题|错题练习|练习专项版|1比1考场版|做题记录|精选试题|行测模拟考卷)', '', clean).strip()
 
     if is_mistake:
-        kp = keypoint_name or clean
+        kp = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', (keypoint_name or clean).strip())
         kp = re.sub(r'(错题本|错题集|错题|专项集训|突破集|前\d+道)', '', kp).strip()
         if not kp or kp in ['题库', '专项', '练习']:
             kp = '数学运算'
@@ -88,15 +100,14 @@ def build_clean_paper_and_filenames(
             'sep_s': f'{base_name} - 答案解析册.{ext}',
             'q_only': f'{base_name} - 纯试卷.{ext}',
         }
-    else:
-        subject = clean or '全真模拟试卷'
-        display_title = f'{plat}{subject}'
-        base_name = f'【{plat}真题】{subject} (共{total_q}题)'
-        return {
-            'display_title': display_title,
-            'base_name': base_name,
-            'exam': f'{base_name}.{ext}',
-        }
+    subject = clean or '全真模拟试卷'
+    display_title = f'{plat}{subject}'
+    base_name = f'【{plat}真题】{subject} (共{total_q}题)'
+    return {
+        'display_title': display_title,
+        'base_name': base_name,
+        'exam': f'{base_name}.{ext}',
+    }
 
 
 async def _get_trial_policy_limit(db: AsyncSession) -> int:
@@ -124,12 +135,16 @@ async def get_public_quota(
     client_ip = get_request_ip(request)
     user = await get_public_user(request=request)
     user_id = user.id if user else None
-    user_info = {
-        'id': user.id,
-        'username': user.username,
-        'nickname': user.nickname,
-        'avatar': str(user.avatar) if user.avatar else None,
-    } if user else None
+    user_info = (
+        {
+            'id': user.id,
+            'username': user.username,
+            'nickname': user.nickname,
+            'avatar': str(user.avatar) if user.avatar else None,
+        }
+        if user
+        else None
+    )
     trial_limit = await _get_trial_policy_limit(db)
     now = timezone.now()
     today_str = now.strftime('%Y-%m-%d')
@@ -191,26 +206,25 @@ async def get_public_quota(
                 'remaining_quota': remaining,
             }
         )
-    else:
-        # 未登录游客：走客户端 IP 维度的试看限流
-        guest_key = f'access:trial:guest_ip:{client_ip}:render_book:1:{today_str}'
-        used_count = 0
-        try:
-            val = await redis_client.get(guest_key)
-            if val is not None:
-                used_count = int(val)
-        except Exception:
-            pass
-        remaining = max(0, trial_limit - used_count)
-        return response_base.success(
-            data={
-                'client_ip': client_ip,
-                'is_logged_in': False,
-                'daily_limit': trial_limit,
-                'used_count': used_count,
-                'remaining_quota': remaining,
-            }
-        )
+    # 未登录游客：走客户端 IP 维度的试看限流
+    guest_key = f'access:trial:guest_ip:{client_ip}:render_book:1:{today_str}'
+    used_count = 0
+    try:
+        val = await redis_client.get(guest_key)
+        if val is not None:
+            used_count = int(val)
+    except Exception:
+        pass
+    remaining = max(0, trial_limit - used_count)
+    return response_base.success(
+        data={
+            'client_ip': client_ip,
+            'is_logged_in': False,
+            'daily_limit': trial_limit,
+            'used_count': used_count,
+            'remaining_quota': remaining,
+        }
+    )
 
 
 @router.post('/reformat', summary='公开免登录试卷排版生成')
@@ -231,26 +245,6 @@ async def public_reformat_paper(
     quota_decision = None
     guest_key = None
 
-    # 1. 配额检查与预扣减（已登录用户全权由 access 模块决策与扣减；未登录游客按 IP 试看策略）
-    if user_id is not None:
-        quota_decision = await render_book_quota_service.consume_quota(
-            db,
-            user_id=user_id,
-            source_ref=quota_source_ref,
-        )
-    else:
-        guest_key = f'access:trial:guest_ip:{client_ip}:render_book:1:{today_str}'
-        used_val = await redis_client.get(guest_key)
-        used_count = int(used_val) if used_val else 0
-        if used_count >= trial_limit:
-            raise errors.RequestError(
-                code=429,
-                msg='您今日免登录试用额度已用完。可在浏览器右上角点击插件图标扫码登录，即可解锁更多排版特权与小程序同步！',
-            )
-        new_cnt = await redis_client.incr(guest_key)
-        if new_cnt == 1:
-            await redis_client.expire(guest_key, 86400 * 2)
-
     # 2. 校验试题内容
     total_in_req = sum(len(s.questions) for s in payload.paper.sections)
     if total_in_req == 0:
@@ -259,9 +253,8 @@ async def public_reformat_paper(
     # 3. 转换为标准 RenderDocumentPayload 并智能识别排版模板
     doc_payload = convert_unified_paper_to_document_payload(payload)
 
-    is_mistake = (
-        '错题' in payload.paper.title
-        or (payload.paper.metadata and payload.paper.metadata.get('scene') == 'mistake')
+    is_mistake = '错题' in payload.paper.title or (
+        payload.paper.metadata and payload.paper.metadata.get('scene') == 'mistake'
     )
 
     answer_placement = payload.options.answer_placement
@@ -271,7 +264,9 @@ async def public_reformat_paper(
 
     is_pdf = payload.options.output_format.lower() == 'pdf'
     output_ext = 'pdf' if is_pdf else 'docx'
-    media_type = 'application/pdf' if is_pdf else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    media_type = (
+        'application/pdf' if is_pdf else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
 
     # 智能提纯试卷大标题与规范化文件名（遵循【平台标签】知识点 (共N题) - 分册四段式标准）
     kp_name = (payload.paper.metadata or {}).get('keypointName') or ''
@@ -290,14 +285,36 @@ async def public_reformat_paper(
     )
 
     # 4. 执行渲染输出
-    job_id = f'pub_{uuid.uuid4().hex[:12]}'
-    job_output_dir = STATIC_DIR / 'upload' / 'public_reformat' / job_id
-    job_output_dir.mkdir(parents=True, exist_ok=True)
+    job_output_dir = Path(settings.RENDER_BOOK_STORAGE_ROOT) / 'public_reformat' / job_id
 
     practice_dir = TEMPLATES_ROOT / 'gongkao_practice' / '1.0.0'
     extra_files: list[dict[str, Any]] = []
 
+    # 完成内容校验后才预扣；游客检查与计数在 Redis 中原子执行。
+    if user_id is not None:
+        quota_decision = await render_book_quota_service.consume_quota(
+            db,
+            user_id=user_id,
+            source_ref=quota_source_ref,
+        )
+    else:
+        guest_key = f'access:trial:guest_ip:{client_ip}:render_book:1:{today_str}'
+        new_cnt = int(
+            await redis_client.eval(
+                "local n = tonumber(redis.call('GET', KEYS[1]) or '0'); "
+                'if n >= tonumber(ARGV[1]) then return -1 end; '
+                "n = redis.call('INCR', KEYS[1]); "
+                "if n == 1 then redis.call('EXPIRE', KEYS[1], 172800) end; return n",
+                1,
+                guest_key,
+                trial_limit,
+            )
+        )
+        if new_cnt < 0:
+            raise errors.RequestError(code=429, msg='您今日免登录试用额度已用完，请登录后再试。')
+
     try:
+        job_output_dir.mkdir(parents=True, exist_ok=True)
         if is_mistake and practice_dir.exists():
             if answer_placement == 'separate':
                 # 分立两本：同时渲染试卷分册与答案解析分册
@@ -315,7 +332,8 @@ async def public_reformat_paper(
                 file_name = naming_meta['sep_q']
                 sol_file_name = naming_meta['sep_s']
 
-                res_q = docx_render_engine.render_all(
+                res_q = await run_in_threadpool(
+                    docx_render_engine.render_all,
                     template_file=tpl_q,
                     context=ctx_q,
                     output_dir=job_output_dir,
@@ -323,7 +341,8 @@ async def public_reformat_paper(
                     compile_pdf=is_pdf,
                     max_previews=2,
                 )
-                res_s = docx_render_engine.render_all(
+                res_s = await run_in_threadpool(
+                    docx_render_engine.render_all,
                     template_file=tpl_s,
                     context=ctx_s,
                     output_dir=job_output_dir,
@@ -345,7 +364,9 @@ async def public_reformat_paper(
                 }
                 _IN_MEMORY_DOWNLOAD_CACHE[tok_sol] = meta_sol
                 try:
-                    await redis_client.set(f'{PUBLIC_DOWNLOAD_PREFIX}{tok_sol}', json.dumps(meta_sol, ensure_ascii=False), ex=86400)
+                    await redis_client.set(
+                        f'{PUBLIC_DOWNLOAD_PREFIX}{tok_sol}', json.dumps(meta_sol, ensure_ascii=False), ex=86400
+                    )
                 except Exception:
                     pass
 
@@ -362,7 +383,8 @@ async def public_reformat_paper(
                 ctx_q = adapt_practice_payload(doc_payload, template_file=tpl_q)
                 file_base = naming_meta['base_name']
                 file_name = naming_meta['q_only']
-                res_q = docx_render_engine.render_all(
+                res_q = await run_in_threadpool(
+                    docx_render_engine.render_all,
                     template_file=tpl_q,
                     context=ctx_q,
                     output_dir=job_output_dir,
@@ -378,7 +400,8 @@ async def public_reformat_paper(
                 ctx_m = adapt_practice_payload(doc_payload, template_file=tpl_m)
                 file_base = naming_meta['base_name']
                 file_name = naming_meta['merged']
-                res_m = docx_render_engine.render_all(
+                res_m = await run_in_threadpool(
+                    docx_render_engine.render_all,
                     template_file=tpl_m,
                     context=ctx_m,
                     output_dir=job_output_dir,
@@ -395,7 +418,8 @@ async def public_reformat_paper(
             ctx_k = adapt_gongkao_payload(doc_payload)
             file_base = naming_meta['base_name']
             file_name = naming_meta['exam']
-            res_k = docx_render_engine.render_all(
+            res_k = await run_in_threadpool(
+                docx_render_engine.render_all,
                 template_file=tpl_k,
                 context=ctx_k,
                 output_dir=job_output_dir,
@@ -405,8 +429,24 @@ async def public_reformat_paper(
             )
             primary_target = res_k['pdf'] if is_pdf else res_k['docx']
 
+        # 文件登记与数据库额度使用同一事务；失败一并回滚。
+        book_files = [(Path(primary_target), file_name)]
+        if extra_files:
+            book_files.append((Path(sol_target), sol_file_name))
+        delivery_token = await register_public_book(
+            db=db,
+            job_id=job_id,
+            user_id=user_id,
+            title=doc_payload.book.title,
+            question_count=doc_payload.paper.question_count,
+            is_mistake=is_mistake,
+            answer_placement=answer_placement,
+            files=book_files,
+        )
+        await db.commit()
     except Exception as exc:
-        log.exception(f'[PublicReformat] 试卷渲染生成异常: {exc}')
+        log.exception('[PublicReformat] 渲染或题本登记失败')
+        await db.rollback()
         if user_id is not None and quota_decision is not None:
             try:
                 await render_book_quota_service.refund_quota(
@@ -415,9 +455,20 @@ async def public_reformat_paper(
                     decision=quota_decision,
                     source_ref=quota_source_ref,
                 )
+                await db.commit()
             except Exception as refund_err:
                 log.warning(f'[PublicReformat] 权益回滚失败: {refund_err}')
-        raise errors.ServerError(msg=f'排版生成引擎异常: {exc!s}')
+        elif guest_key:
+            try:
+                await redis_client.eval(
+                    "local n = tonumber(redis.call('GET', KEYS[1]) or '0'); "
+                    "if n > 0 then return redis.call('DECR', KEYS[1]) end; return 0",
+                    1,
+                    guest_key,
+                )
+            except Exception:
+                log.exception('[PublicReformat] 游客额度退回失败')
+        raise errors.ServerError(msg='排版生成或题本保存失败，请稍后重试') from exc
 
     # 5. 生成主文件临时安全下载凭证并缓存
     download_token = f'tok_{uuid.uuid4().hex}'
@@ -457,7 +508,7 @@ async def public_reformat_paper(
         remaining_quota = max(0, trial_limit - new_cnt)
 
     download_url = f'/api/v1/render-books/public/download/{download_token}'
-    qr_code_url = f'/api/v1/render-books/public/minicode/{job_id}'
+    qr_code_url = f'/api/v1/render-books/public/minicode/{delivery_token}'
 
     return response_base.success(
         data=PublicReformatResponseData(
@@ -468,7 +519,7 @@ async def public_reformat_paper(
             remaining_quota=remaining_quota,
             qr_code_url=qr_code_url,
             total_questions=doc_payload.paper.question_count,
-            extra_files=extra_files if extra_files else None,
+            extra_files=extra_files or None,
         )
     )
 
@@ -489,7 +540,8 @@ async def download_public_reformat_file(download_token: str):
     if not download_meta:
         download_meta = _IN_MEMORY_DOWNLOAD_CACHE.get(download_token)
 
-    if not download_meta:
+    if not download_meta or time.time() - float(download_meta.get('created_at', 0)) >= DELIVERY_TTL:
+        _IN_MEMORY_DOWNLOAD_CACHE.pop(download_token, None)
         raise errors.NotFoundError(msg='下载链接已失效或不存在，请重新在插件中排版。')
 
     file_path = Path(download_meta['file_path'])
@@ -503,7 +555,7 @@ async def download_public_reformat_file(download_token: str):
         if await anyio.Path(docx_fallback).exists():
             try:
                 log.info(f'[PublicDownload] 侦测到 PDF 缺失但 Word 题本完好，正在即时自愈补转: {docx_fallback}')
-                docx_render_engine.convert_to_pdf(docx_fallback, file_path)
+                await run_in_threadpool(docx_render_engine.convert_to_pdf, docx_fallback, file_path)
             except Exception as e:
                 log.warning(f'[PublicDownload] 即时自愈补转 PDF 失败: {e}')
 
@@ -530,19 +582,77 @@ async def download_public_reformat_file(download_token: str):
     )
 
 
-@router.get('/minicode/{job_id}', summary='获取任务专属小程序码或引流卡片')
-async def get_public_minicode(job_id: str):
-    """
-    返回微信小程序快速打印直通二维码 (支持 SVG 矢量生成或预置小程序码图)
-    """
-    # 返回考场双面打印引流与快速交付 SVG
-    svg_content = f"""<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
-      <rect width="240" height="240" fill="#f8fafc" rx="16"/>
-      <rect x="20" y="20" width="200" height="200" fill="#ffffff" rx="12" stroke="#e2e8f0" stroke-width="2"/>
-      <circle cx="120" cy="100" r="45" fill="#eff6ff"/>
-      <path d="M120 75v50M95 100h50" stroke="#2563eb" stroke-width="6" stroke-linecap="round"/>
-      <text x="120" y="165" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0f172a">我的题本 · 快速打印</text>
-      <text x="120" y="188" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#64748b">微信扫码 5分钱/张 考场双面印</text>
-    </svg>"""
+@router.get('/minicode/{token}', summary='获取本次题本的真实小程序码')
+async def get_public_minicode(token: str, db: CurrentSession) -> Response:
+    data_url = await delivery_minicode(db=db, token=token)
+    header, encoded = data_url.split(',', 1)
+    return Response(
+        content=base64.b64decode(encoded),
+        media_type=header[5:].split(';')[0],
+        headers={'Cache-Control': 'no-store'},
+    )
 
-    return Response(content=svg_content, media_type='image/svg+xml')
+
+@router.post('/receive/{token}', summary='登录后保存扫码题本', dependencies=[DependsJwtAuth])
+async def receive_render_book(token: str, request: Request, db: CurrentSessionTransaction) -> ResponseSchemaModel[dict]:
+    result = await receive_public_book(db=db, token=token, user_id=request.user.id)
+    return response_base.success(data=result)
+
+
+EXPORT_PREFIX = 'fba:render_book:export:'
+_IN_MEMORY_EXPORT_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+async def _run_public_export(ticket: str, request: Request, payload: PublicReformatRequest) -> None:
+    try:
+        async with async_db_session() as db:
+            result = await public_reformat_paper(request=request, payload=payload, db=db)
+        state = {'status': 'succeeded', 'result': result.data.model_dump(mode='json')}
+    except Exception as exc:
+        log.exception('[PublicExport] 插件排版任务失败')
+        message = '排版失败，请检查试题内容或稍后重试'
+        if isinstance(exc, errors.BaseExceptionError) and exc.code < 500:
+            message = exc.msg or message
+        state = {'status': 'failed', 'message': message}
+    # 最终状态短暂写入失败时保留本进程结果，不把已扣额度的成功任务报成排版失败。
+    _IN_MEMORY_EXPORT_CACHE[ticket] = (time.time(), state)
+    for attempt in range(3):
+        try:
+            await redis_client.set(f'{EXPORT_PREFIX}{ticket}', json.dumps(state, ensure_ascii=False), ex=DELIVERY_TTL)
+            _IN_MEMORY_EXPORT_CACHE.pop(ticket, None)
+            break
+        except Exception:
+            log.exception('[PublicExport] 保存排版最终状态失败')
+            if attempt < 2:
+                await anyio.sleep(1)
+
+
+@router.post('/exports', summary='提交插件排版，短请求避免浏览器后台长连接中断')
+async def start_public_export(
+    request: Request, payload: PublicReformatRequest, tasks: BackgroundTasks
+) -> ResponseSchemaModel[dict]:
+    await get_public_user(request=request)
+    ticket = secrets.token_urlsafe(24)
+    await redis_client.set(
+        f'{EXPORT_PREFIX}{ticket}', json.dumps({'status': 'running', 'started_at': time.time()}), ex=DELIVERY_TTL
+    )
+    tasks.add_task(_run_public_export, ticket, request, payload)
+    return response_base.success(data={'ticket': ticket})
+
+
+@router.get('/exports/{ticket}', summary='查询本次插件排版状态')
+async def get_public_export(ticket: str) -> ResponseSchemaModel[dict]:
+    if not re.fullmatch(r'[A-Za-z0-9_-]{32}', ticket):
+        raise errors.NotFoundError(msg='排版任务不存在')
+    cached = _IN_MEMORY_EXPORT_CACHE.get(ticket)
+    if cached:
+        if time.time() - cached[0] < DELIVERY_TTL:
+            return response_base.success(data=cached[1])
+        _IN_MEMORY_EXPORT_CACHE.pop(ticket, None)
+    raw = await redis_client.get(f'{EXPORT_PREFIX}{ticket}')
+    if not raw:
+        raise errors.NotFoundError(msg='排版任务已过期，请重新导出')
+    state = json.loads(raw)
+    if state['status'] == 'running' and time.time() - state['started_at'] > 1200:
+        state = {'status': 'failed', 'message': '排版处理时间较长或服务已重启；请先检查我的题本，避免重复导出。'}
+    return response_base.success(data=state)

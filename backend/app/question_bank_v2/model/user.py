@@ -88,3 +88,9 @@ class QbUserPracticePreference(Base, UserMixin):
         default_factory=dict,
         comment='按知识体系编码隔离的选定版本；key 为 system code，value 为 system ID',
     )
+    study_goal: Mapped[dict[str, Any]] = mapped_column(
+        CompatibleJSONB,
+        default_factory=dict,
+        server_default=sa.text("'{}'"),
+        comment='当前备考目标；空对象表示未设置',
+    )

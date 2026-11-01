@@ -14,6 +14,7 @@ from backend.app.question_bank_v2.model.practice import (
     QbQuestionAttempt,
 )
 from backend.app.question_bank_v2.model.question import QbQuestion, QbQuestionAnswer
+from backend.app.question_bank_v2.utils.practice_lock import lock_practice_user
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +155,9 @@ class CRUDEvaluationRun(CRUDPlus[QbEvaluationRun]):
             )
         )
         if for_update:
-            stmt = stmt.with_for_update()
+            # 用户锁覆盖该用户的提交/交卷/AI补分，不在多表join中提前乱序锁题目。
+            await lock_practice_user(db, user_id)
+            stmt = stmt.execution_options(populate_existing=True)
         row = (await db.execute(stmt)).first()
         return EvaluationAttemptContext(*row) if row is not None else None
 

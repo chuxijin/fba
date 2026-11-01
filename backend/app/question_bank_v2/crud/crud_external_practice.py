@@ -1,7 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +16,7 @@ from backend.app.question_bank_v2.model.practice import (
     QbQuestionAttempt,
 )
 from backend.app.question_bank_v2.model.question import QbQuestion, QbQuestionAnswer, QbQuestionExplanation
+from backend.app.question_bank_v2.model.review import QbWrongQuestionState
 from backend.app.question_bank_v2.schema.external_practice import ImportPracticeQuestionParam
 from backend.app.question_bank_v2.schema.review import ExternalMaterialParam
 from backend.app.question_bank_v2.utils.external_practice import (
@@ -86,13 +88,106 @@ class CRUDExternalPractice:
         return (await db.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
+    async def find_import_question(
+        db: AsyncSession,
+        *,
+        user_id: int,
+        core: dict[str, Any],
+        identity: tuple[str, str] | None,
+    ) -> QbQuestion | None:
+        """两个导入入口共用：先按内容指纹复用，未命中才尝试可靠来源的旧数据。"""
+        question = await external_practice_dao.find_reusable_question(
+            db, user_id=user_id, content_hash=question_content_digest(**core)
+        )
+        if question is not None or identity is None:
+            return question
+        platform, source_question_key = identity
+        matches = await external_practice_dao.find_source_questions(
+            db, user_id=user_id, platform=platform, source_question_key=source_question_key, core=core
+        )
+        return matches[0] if matches else None
+
+    @staticmethod
+    async def find_source_questions(
+        db: AsyncSession,
+        *,
+        user_id: int,
+        platform: str,
+        source_question_key: str,
+        core: dict[str, Any],
+    ) -> list[QbQuestion]:
+        """兼容旧指纹：稳定来源题号与规范化内容同时相符才视为同题，不迁移或合并历史数据。"""
+        wrong_ids = select(QbWrongQuestionState.question_id).where(
+            QbWrongQuestionState.user_id == user_id,
+            QbWrongQuestionState.deleted == 0,
+            QbWrongQuestionState.entry_source == 'import',
+            QbWrongQuestionState.entry_metadata['source_system'].as_string() == platform,
+            or_(
+                QbWrongQuestionState.entry_metadata['source_question_key'].as_string() == source_question_key,
+                and_(
+                    source_question_key.isascii()
+                    and source_question_key.isdecimal()
+                    and not source_question_key.startswith('0'),
+                    QbWrongQuestionState
+                    .entry_metadata['external_key']
+                    .as_string()
+                    .startswith(f'{platform}:', autoescape=True),
+                    QbWrongQuestionState
+                    .entry_metadata['external_key']
+                    .as_string()
+                    .endswith(f':{source_question_key}', autoescape=True),
+                ),
+            ),
+        )
+        attempt_ids = (
+            select(QbQuestionAttempt.question_id)
+            .join(QbPracticeSession, QbPracticeSession.id == QbQuestionAttempt.session_id)
+            .where(
+                QbQuestionAttempt.user_id == user_id,
+                QbQuestionAttempt.deleted == 0,
+                QbQuestionAttempt.grading_result['origin'].as_string() == EXTERNAL_PRACTICE_ORIGIN,
+                QbQuestionAttempt.grading_result['source_question_key'].as_string() == source_question_key,
+                QbPracticeSession.user_id == user_id,
+                QbPracticeSession.deleted == 0,
+                QbPracticeSession.source_snapshot['origin'].as_string() == EXTERNAL_PRACTICE_ORIGIN,
+                QbPracticeSession.source_snapshot['platform'].as_string() == platform,
+            )
+        )
+        candidates = await db.scalars(
+            select(QbQuestion)
+            .where(
+                QbQuestion.id.in_(wrong_ids.union(attempt_ids)),
+                QbQuestion.owner_id == user_id,
+                QbQuestion.visibility == 'private',
+                QbQuestion.status == 'active',
+                QbQuestion.deleted == 0,
+                QbQuestion.question_type == core['question_type'],
+                QbQuestion.content_format == core['content_format'],
+            )
+            .order_by(QbQuestion.id)
+        )
+        digest = question_content_digest(**core)
+        return [
+            question
+            for question in candidates
+            if question_content_digest(
+                stem=question.stem,
+                content_format=question.content_format,
+                question_type=question.question_type,
+                options=question.option_data,
+            )
+            == digest
+        ]
+
+    @staticmethod
     async def ensure_question(
         db: AsyncSession, *, user_id: int, platform: str, item: ImportPracticeQuestionParam
     ) -> QbQuestion:
         core = item.model_dump(mode='json', include={'stem', 'content_format', 'question_type', 'options'})
-        content_hash = question_content_digest(**core)
         code = 'external.' + import_digest(user_id, platform, item.source_question_key, core)[:48]
-        question = await external_practice_dao.find_reusable_question(db, user_id=user_id, content_hash=content_hash)
+        question = await external_practice_dao.find_import_question(
+            db, user_id=user_id, core=core, identity=(platform, item.source_question_key)
+        )
         if question is None:
             question = await question_dao.get_by_code(db, code)
         if question is None:
@@ -111,7 +206,7 @@ class CRUDExternalPractice:
                         option_data=core['options'],
                         default_score=item.max_score if item.max_score is not None else Decimal(1),
                         difficulty=None,
-                        content_hash=content_hash,
+                        content_hash=question_content_digest(**core),
                         created_by=user_id,
                     )
             except IntegrityError:

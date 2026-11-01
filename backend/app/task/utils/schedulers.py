@@ -418,7 +418,7 @@ class DatabaseScheduler(Scheduler):
                 self._heap = []
                 self._heap_invalidated = True
             logger.debug(
-                'Current schedule:\n%s',
+                'Current schedule:\n{}',
                 '\n'.join(repr(entry) for entry in self._schedule.values()),
             )
 

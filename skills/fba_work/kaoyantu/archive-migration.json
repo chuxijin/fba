@@ -1,0 +1,51 @@
+{
+  "work": "kaoyantu",
+  "migrated_on": "2026-11-01",
+  "scope": "local-only file relocation; no database or network access, no business scripts executed",
+  "path_base": "skills/fba_work/kaoyantu",
+  "note": "本条记录仅说明迁移当时源与目的内容一致（字节数与SHA256相同）。迁移后主控可能对归档文件另行适配，届时以文件实际内容为准。",
+  "destination_policy": "destination existed means stop, never overwrite",
+  "migrations": [
+    {
+      "source_relative_path": "README.md",
+      "destination_relative_path": "archive/legacy-before-20261101/README.md",
+      "bytes": 8706,
+      "sha256_before": "A85628740E4DD8C4D42E3D2DFD3D01BA9B99C18F640FA58DD32E83126C115C1D",
+      "sha256_after": "A85628740E4DD8C4D42E3D2DFD3D01BA9B99C18F640FA58DD32E83126C115C1D",
+      "verified": true
+    },
+    {
+      "source_relative_path": "export_kaoyantu_questions_excel.py",
+      "destination_relative_path": "archive/legacy-before-20261101/export_kaoyantu_questions_excel.py",
+      "bytes": 18088,
+      "sha256_before": "05E00440112392CDBFDD6BDB1D7B3151B86E65FA07BD6E6C2894AC86A4A2A6B2",
+      "sha256_after": "05E00440112392CDBFDD6BDB1D7B3151B86E65FA07BD6E6C2894AC86A4A2A6B2",
+      "verified": true
+    },
+    {
+      "source_relative_path": "extract_kaoyantu_from_burp.py",
+      "destination_relative_path": "scripts/extract_kaoyantu_from_burp.py",
+      "bytes": 21584,
+      "sha256_before": "C0BDCC64C96608CEB6FC85637F7CB965736439112DC5C4F1A40D63D9DA59E295",
+      "sha256_after": "C0BDCC64C96608CEB6FC85637F7CB965736439112DC5C4F1A40D63D9DA59E295",
+      "verified": true
+    },
+    {
+      "source_relative_path": "import_to_v2.py",
+      "destination_relative_path": "scripts/import_to_v2.py",
+      "bytes": 22049,
+      "sha256_before": "2C73DCF6D4FF2E033CCF69536C5ED05A7851E7A75439C355CF171DDEDE3E046B",
+      "sha256_after": "2C73DCF6D4FF2E033CCF69536C5ED05A7851E7A75439C355CF171DDEDE3E046B",
+      "verified": true
+    }
+  ],
+  "deleted_cache_files": [
+    "__pycache__/export_kaoyantu_questions_excel.cpython-314.pyc",
+    "__pycache__/extract_kaoyantu_from_burp.cpython-314.pyc",
+    "__pycache__/import_to_v2.cpython-314.pyc"
+  ],
+  "removed_empty_directories": [
+    "__pycache__"
+  ],
+  "failures": []
+}

@@ -251,6 +251,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         *,
         question_id_column: Any,
         metadata_column: Any,
+        entry_source_column: Any,
     ) -> Any:
         """领域归属条件
 
@@ -276,11 +277,17 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             )
         )
         recorded_domain = cast(metadata_column[ENTRY_METADATA_DOMAIN_KEY].as_string(), BigInteger)
-        # 未记录领域的自主录入（历史数据、扩展导入时拿不到领域）不参与领域过滤：
-        # 与写侧「拿不到领域就不写、保持不过滤语义」保持一致，
-        # 否则这些题会被领域条件整体排除，表现为「导入成功但列表里看不到」。
-        domain_unrecorded = metadata_column[ENTRY_METADATA_DOMAIN_KEY].as_string().is_(None)
-        return or_(exists(bank_in_domain), recorded_domain.in_(category_ids), domain_unrecorded)
+        conditions = [exists(bank_in_domain), recorded_domain.in_(category_ids)]
+        if category_ids:
+            # 仅兼容未记录领域的自主录入；题库作答通常也没有这个键，
+            # 不能因此绕过题库分类，把其他领域的错题放进当前领域。
+            conditions.append(
+                and_(
+                    entry_source_column.in_(EXTERNAL_ENTRY_SOURCES),
+                    metadata_column[ENTRY_METADATA_DOMAIN_KEY].as_string().is_(None),
+                )
+            )
+        return or_(*conditions)
 
     @classmethod
     def _apply_domain_scope(
@@ -305,6 +312,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                     QbWrongQuestionState.question_id if question_id_column is None else question_id_column
                 ),
                 metadata_column=(QbWrongQuestionState.entry_metadata if metadata_column is None else metadata_column),
+                entry_source_column=QbWrongQuestionState.entry_source,
             )
         )
 
@@ -577,6 +585,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             ._list_stmt()
             .add_columns(
                 QbWrongQuestionState.last_wrong_response,
+                QbWrongQuestionState.entry_metadata,
                 QbQuestion.option_data,
                 QbQuestionAnswer.answer_data,
                 QbQuestionExplanation.content.label('explanation'),

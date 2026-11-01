@@ -53,7 +53,7 @@ export interface WrongImportItem {
   explanations: { content: string; is_default: boolean }[]
   /** 材料：服务端据此创建材料实体并关联，不再拼进题干 */
   materials?: WrongImportMaterial[]
-  entry_metadata: { source: string }
+  entry_metadata: { source: string; source_question_key?: string }
   source_system: string
   external_key: string
   /** 仅用于 UI 展示与失败定位，不会提交给后端 */
@@ -225,7 +225,7 @@ export function stripTypographyTags(html: string): string {
 }
 
 /** 选项归一化：兼容 string[] 与 { key, value }[] 两种形态 */
-function normalizeOptions(raw: UnifiedQuestion['options']): WrongImportOption[] {
+export function normalizeImportOptions(raw: UnifiedQuestion['options']): WrongImportOption[] {
   if (!Array.isArray(raw)) return []
   const normalized: { option_code: string; content: string }[] = []
 
@@ -279,8 +279,8 @@ function buildWrongResponse(answer?: string): string | string[] | undefined {
  * 题干不再拼装材料。
  * 材料走 materials 字段，由服务端建材料实体并关联，供多题共享、可版本化。
  */
-function buildStem(question: UnifiedQuestion): string {
-  const cleaned = stripTypographyTags(String(question.stem || '').trim())
+export function normalizeImportStem(stem: string): string {
+  const cleaned = stripTypographyTags(String(stem || '').trim())
   return normalizeRichTextImages(cleaned, 'stem')
 }
 
@@ -334,13 +334,13 @@ export function buildWrongImportItems(paper: UnifiedPaper): ImportBuildResult {
 
   for (const { question, sectionName } of collectWrongQuestionsWithSection(paper)) {
     const order = question.order_num
-    const stem = buildStem(question)
+    const stem = normalizeImportStem(question.stem)
     if (!stem) {
       skipped.push({ order, reason: '题干为空' })
       continue
     }
 
-    const options = normalizeOptions(question.options)
+    const options = normalizeImportOptions(question.options)
     const answerCodes = splitAnswerCodes(question.answer)
     if (answerCodes.length === 0) {
       // 后端 answer 必填：没有权威答案就无法判分，导入后也进不了刷题系统
@@ -391,6 +391,7 @@ export function buildWrongImportItems(paper: UnifiedPaper): ImportBuildResult {
       // 必填：后端校验「错题来源不能为空」；section_name 供答题卡按章节分组
       entry_metadata: {
         source: sourceLabel,
+        ...(question.source_question_key ? { source_question_key: question.source_question_key } : {}),
         ...(sectionName ? { section_name: sectionName } : {}),
       },
       source_system: platform,

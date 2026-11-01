@@ -8,6 +8,7 @@ from backend.app.question_bank_v2.crud.crud_statistics import (
     user_practice_statistics_dao,
 )
 from backend.app.question_bank_v2.model.practice import QbQuestionAttempt
+from backend.app.question_bank_v2.schema.practice import PracticeQuestionStatistics
 from backend.app.question_bank_v2.service.difficulty_service import (
     difficulty_service,
     should_recalculate_difficulty,
@@ -17,6 +18,25 @@ from backend.app.question_bank_v2.utils.external_practice import is_external_pra
 
 class StatisticsService:
     """题库 V2 可重建统计投影服务类"""
+
+    @staticmethod
+    async def question_snapshot(*, db: AsyncSession, question_id: int) -> dict:
+        statistics = await question_statistics_dao.get_by_question(db, question_id)
+        if statistics is None:
+            return PracticeQuestionStatistics().model_dump()
+        options: dict[str, int] = {}
+        for combination, count in (statistics.response_distribution or {}).items():
+            for code in set(combination.split(',')):
+                if code:
+                    options[code] = options.get(code, 0) + count
+        return PracticeQuestionStatistics(
+            correct_rate=(
+                Decimal(statistics.correct_count) / statistics.graded_count if statistics.graded_count else None
+            ),
+            graded_count=statistics.graded_count,
+            attempt_count=statistics.attempt_count,
+            option_select_stats=options,
+        ).model_dump()
 
     @staticmethod
     async def apply_attempt(

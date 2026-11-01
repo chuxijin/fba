@@ -13,6 +13,9 @@ from backend.utils.timezone import timezone
 class CRUDDictData(CRUDPlus[DictData]):
     """字典数据数据库操作类"""
 
+    async def get_by_value_and_type_code(self, db: AsyncSession, value: str, type_code: str) -> Sequence[DictData]:
+        return await self.select_models(db, value=value, type_code=type_code, deleted=0)
+
     async def get(self, db: AsyncSession, pk: int) -> DictData | None:
         """
         获取字典数据详情
@@ -122,6 +125,8 @@ class CRUDDictData(CRUDPlus[DictData]):
         :return:
         """
         dict_obj = obj.model_dump()
+        if 'extra' not in obj.model_fields_set:
+            dict_obj.pop('extra', None)
         dict_obj.update({'type_code': type_code})
         return await self.update_model_by_column(db, dict_obj, id=pk, deleted=0)
 

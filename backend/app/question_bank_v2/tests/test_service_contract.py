@@ -151,13 +151,16 @@ def test_v2_openapi_routes_and_names_are_unique() -> None:
     operation_ids = [operation['operationId'] for operations in paths.values() for operation in operations.values()]
 
     # 快照式数量守卫：新增/删除 V2 路由时同步更新这里的数字
-    assert len(paths) == 110
-    assert len(operation_ids) == 143
+    assert len(paths) == 115
+    assert len(operation_ids) == 149
+    assert '/api/v1/qbank-v2/exam-targets' in paths
+    assert '/api/v1/qbank-v2/goal-exams' in paths
     assert '/api/v1/qbank-v2/sessions' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/response' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/submit' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/solution' in paths
+    assert '/api/v1/qbank-v2/sessions/{session_key}/items/{session_item_id}/statistics' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/submit' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/report' in paths
     assert '/api/v1/qbank-v2/sessions/{session_key}/solutions' in paths

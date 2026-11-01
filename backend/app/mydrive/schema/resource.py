@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from datetime import datetime
+from typing import Literal
 
 from pydantic import ConfigDict, Field
 
@@ -123,6 +124,10 @@ class GetMyDriveResourceListParam(SchemaBase):
     audit_status: str | None = Field(default=None, description='审核状态')
     share_status: str | None = Field(default=None, description='分享状态')
     keyword: str | None = Field(default=None, description='关键词')
+    exam_domain: Literal['gongkao'] | None = Field(default=None, description='固定公考真题范围，包含子分类')
+    subject: str | None = Field(default=None, max_length=30, description='科目名称，匹配资源信息及分类')
+    year: int | None = Field(default=None, ge=1900, le=2100, description='真题年份，匹配资源信息，不使用上传年份')
+    region: str | None = Field(default=None, max_length=30, description='地区名称，匹配资源信息')
     sort_by: str = Field(default='created_time', description='排序字段')
     sort_order: str = Field(default='desc', description='排序方向')
 
