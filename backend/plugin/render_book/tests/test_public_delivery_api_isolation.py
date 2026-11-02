@@ -1,7 +1,6 @@
 """公开插件排版接口隔离单元测试：全程 mock 数据库/Redis/渲染/微信。"""
 
 import json
-import re
 import time
 
 from collections.abc import Iterator
@@ -92,8 +91,8 @@ def _clear_in_memory_caches() -> Iterator[None]:
 @pytest.mark.asyncio
 async def test_start_public_export_marks_running_and_schedules_background(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(public_api, 'get_public_user', AsyncMock(return_value=None))
-    redis_set = AsyncMock()
-    monkeypatch.setattr(public_api.redis_client, 'set', redis_set)
+    claim_mock = AsyncMock(return_value=(TICKET, True))
+    monkeypatch.setattr(public_api, 'claim_public_export', claim_mock)
     tasks = Mock()
 
     request = SimpleNamespace()
@@ -101,13 +100,9 @@ async def test_start_public_export_marks_running_and_schedules_background(monkey
     result = await public_api.start_public_export(request=request, payload=payload, tasks=tasks)
 
     ticket = result.data['ticket']
-    assert re.fullmatch(r'[A-Za-z0-9_-]{32}', ticket)
-    redis_set.assert_awaited_once()
-    key = redis_set.await_args.args[0]
-    state = json.loads(redis_set.await_args.args[1])
-    assert key == f'{public_api.EXPORT_PREFIX}{ticket}'
-    assert state['status'] == 'running'
-    assert redis_set.await_args.kwargs['ex'] == public_api.DELIVERY_TTL
+    assert ticket == TICKET
+    assert result.data['reused'] is False
+    claim_mock.assert_awaited_once_with(request=request, user_id=None, payload=payload)
     tasks.add_task.assert_called_once_with(public_api._run_public_export, ticket, request, payload)
 
 
@@ -157,13 +152,13 @@ async def test_get_public_export_missing_redis_state_raises_not_found(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_get_public_export_marks_stale_running_as_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_public_export_marks_stale_running_as_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     state = {'status': 'running', 'started_at': time.time() - 1300}
     monkeypatch.setattr(public_api.redis_client, 'get', AsyncMock(return_value=json.dumps(state)))
 
     result = await public_api.get_public_export(TICKET)
 
-    assert result.data['status'] == 'failed'
+    assert result.data['status'] == 'unknown'
     assert '排版处理时间较长' in result.data['message']
 
 

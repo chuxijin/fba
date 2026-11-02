@@ -12,7 +12,6 @@
 import base64
 import json
 import re
-import secrets
 import time
 import uuid
 
@@ -52,6 +51,7 @@ from backend.plugin.render_book.service.public_delivery_service import (
     receive_public_book,
     register_public_book,
 )
+from backend.plugin.render_book.service.public_export_service import EXPORT_PREFIX, claim_public_export
 from backend.plugin.render_book.service.quota_service import render_book_quota_service
 from backend.plugin.render_book.utils.template_catalog import TEMPLATES_ROOT
 from backend.utils.request_parse import get_request_ip
@@ -599,7 +599,6 @@ async def receive_render_book(token: str, request: Request, db: CurrentSessionTr
     return response_base.success(data=result)
 
 
-EXPORT_PREFIX = 'fba:render_book:export:'
 _IN_MEMORY_EXPORT_CACHE: dict[str, tuple[float, dict]] = {}
 
 
@@ -631,13 +630,11 @@ async def _run_public_export(ticket: str, request: Request, payload: PublicRefor
 async def start_public_export(
     request: Request, payload: PublicReformatRequest, tasks: BackgroundTasks
 ) -> ResponseSchemaModel[dict]:
-    await get_public_user(request=request)
-    ticket = secrets.token_urlsafe(24)
-    await redis_client.set(
-        f'{EXPORT_PREFIX}{ticket}', json.dumps({'status': 'running', 'started_at': time.time()}), ex=DELIVERY_TTL
-    )
-    tasks.add_task(_run_public_export, ticket, request, payload)
-    return response_base.success(data={'ticket': ticket})
+    user = await get_public_user(request=request)
+    ticket, created = await claim_public_export(request=request, user_id=user.id if user else None, payload=payload)
+    if created:
+        tasks.add_task(_run_public_export, ticket, request, payload)
+    return response_base.success(data={'ticket': ticket, 'reused': not created})
 
 
 @router.get('/exports/{ticket}', summary='查询本次插件排版状态')
@@ -654,5 +651,8 @@ async def get_public_export(ticket: str) -> ResponseSchemaModel[dict]:
         raise errors.NotFoundError(msg='排版任务已过期，请重新导出')
     state = json.loads(raw)
     if state['status'] == 'running' and time.time() - state['started_at'] > 1200:
-        state = {'status': 'failed', 'message': '排版处理时间较长或服务已重启；请先检查我的题本，避免重复导出。'}
+        state = {
+            'status': 'unknown',
+            'message': '排版处理时间较长或服务已重启，暂时无法确认结果；请先检查我的题本，避免重复导出。',
+        }
     return response_base.success(data=state)

@@ -71,6 +71,7 @@ class PublicReformatRequest(BaseModel):
     target: Literal['computer_download', 'mobile_sync'] = Field(
         default='computer_download', description='交付目标'
     )
+    retry_ticket: str | None = Field(default=None, pattern=r'^[A-Za-z0-9_-]{32}$', description='明确重试的失败任务凭证')
 
 
 class PublicReformatResponseData(SchemaBase):
