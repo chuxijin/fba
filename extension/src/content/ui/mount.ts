@@ -17,7 +17,7 @@ export interface ReformatterAppInstance {
   closeModal(): void
   showLoading(target: 'computer_download' | 'mobile_sync'): void
   showDelivery(options: DeliveryView): void
-  showError(msg: string): void
+  showError(msg: string, kind?: 'unknown' | 'failed'): void
 }
 
 /**
@@ -88,6 +88,6 @@ export function mountReformatterApp(handlers: {
     closeModal: () => appInstance.closeModal(),
     showLoading: (target) => appInstance.showLoading(target),
     showDelivery: (options) => appInstance.showDelivery(options),
-    showError: (msg) => appInstance.showError(msg),
+    showError: (msg, kind) => appInstance.showError(msg, kind),
   }
 }

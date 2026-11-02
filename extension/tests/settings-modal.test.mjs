@@ -116,6 +116,52 @@ function createHarness({ qr, download } = {}) {
 const QR_A = 'http://127.0.0.1:8000/api/v1/render-books/public/minicode/qrA'
 const QR_B = 'http://127.0.0.1:8000/api/v1/render-books/public/minicode/qrB'
 
+test('找回原结果后主动再次下载，全部分册使用原地址且不排版', async () => {
+  const files = [
+    { downloadUrl: '/api/v1/render-books/public/download/q', fileName: '题本.pdf' },
+    { downloadUrl: '/api/v1/render-books/public/download/a', fileName: '解析.pdf' },
+  ]
+  const harness = createHarness()
+  harness.exposed.showDelivery({ files, reused: true, qrCodeUrl: QR_A })
+  await flush()
+  assert.equal(harness.state.reusedExport.value, true)
+  assert.equal(harness.downloadRequests.length, 0)
+  await harness.state.downloadAgain()
+  assert.deepEqual(harness.downloadRequests, [files])
+  assert.deepEqual(harness.messages.map(message => message.type), ['GET_RENDER_QR'])
+  assert.equal(harness.state.downloadStarted.value, true)
+})
+
+test('结果未知与确认失败使用不同状态，不将通信失败当作排版失败', () => {
+  const harness = createHarness()
+  harness.exposed.showError('连接中断', 'unknown')
+  assert.equal(harness.state.errorKind.value, 'unknown')
+  assert.equal(harness.state.errorMessage.value, '连接中断')
+  harness.exposed.showError('服务器确认失败', 'failed')
+  assert.equal(harness.state.errorKind.value, 'failed')
+  assert.equal(sfcSource.includes('排版任务未完成'), false)
+  assert.match(sfcSource, /继续获取结果/)
+})
+
+test('同一交付的再次下载按钮防重入，重试仅补失败分册', async () => {
+  const files = [
+    { downloadUrl: '/api/v1/render-books/public/download/q', fileName: '题本.pdf' },
+    { downloadUrl: '/api/v1/render-books/public/download/a', fileName: '解析.pdf' },
+  ]
+  const download = deferred()
+  const harness = createHarness({ download: () => download.promise })
+  harness.exposed.showDelivery({ files, reused: true })
+  const first = harness.state.downloadAgain()
+  await harness.state.downloadAgain()
+  assert.equal(harness.downloadRequests.length, 1)
+  download.resolve({ failedFiles: [files[1]], downloadWarning: '解析下载失败', downloadStarted: true })
+  await first
+  harness.setDownload(async () => ({ failedFiles: [], downloadStarted: true }))
+  await harness.state.retryDownload()
+  assert.deepEqual(harness.downloadRequests, [files, [files[1]]])
+  assert.equal(harness.messages.length, 0)
+})
+
 test('showLoading 清空上一次交付的二维码与下载状态', async () => {
   const harness = createHarness()
   harness.exposed.showDelivery({

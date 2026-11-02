@@ -9,6 +9,8 @@ export interface ExportDelivery {
 }
 
 export interface DeliveryView {
+  files?: ExportFile[]
+  reused?: boolean
   qrCodeUrl?: string
   savedPath?: string
   remainingQuota?: number

@@ -146,8 +146,8 @@ function showDelivery(options: DeliveryView) {
   modalRef.value?.showDelivery(options)
 }
 
-function showError(msg: string) {
-  modalRef.value?.showError(msg)
+function showError(msg: string, kind?: 'unknown' | 'failed') {
+  modalRef.value?.showError(msg, kind)
 }
 
 function handleStartReformat() {

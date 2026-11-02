@@ -214,6 +214,42 @@ test('手机同步：成功交付但不触发浏览器下载', async (t) => {
   assert.equal(harness.events.at(-1).view.downloadStarted, undefined)
 })
 
+test('找回已成功的排版时展示原文件和二维码，不自动再次下载', async () => {
+  const delivery = deliveryView()
+  const harness = createHarness({
+    respond(message) {
+      if (message.type === 'RENDER_AND_EXPORT') return { success: true, ticket: TICKET, reused: true }
+      if (message.type === 'GET_RENDER_EXPORT') return { success: true, status: 'succeeded', delivery }
+      if (message.type === 'DOWNLOAD_RENDER_FILES') assert.fail('复用结果必须等待用户主动选择再次下载')
+    },
+  })
+  await harness.handlers.onDoExport(SETTINGS, 'computer_download')
+  assert.equal(harness.events.at(-1).view.reused, true)
+  assert.deepEqual(harness.events.at(-1).view.files, delivery.files)
+  assert.equal(harness.events.at(-1).view.qrCodeUrl, delivery.qrCodeUrl)
+  assert.deepEqual(harness.sent.map(message => message.type), ['RENDER_AND_EXPORT', 'GET_RENDER_EXPORT'])
+})
+
+test('已确认失败才携带原ticket重试，unknown不能申请新排版', async () => {
+  let stage = 'failed'
+  const harness = createHarness({
+    respond(message) {
+      if (message.type === 'RENDER_AND_EXPORT') return { success: true, ticket: TICKET }
+      if (message.type === 'GET_RENDER_EXPORT') return { success: true, status: stage, message: '原任务状态' }
+    },
+  })
+  await harness.handlers.onDoExport(SETTINGS, 'computer_download')
+  stage = 'unknown'
+  await harness.handlers.onDoExport(SETTINGS, 'computer_download')
+  await harness.handlers.onDoExport(SETTINGS, 'computer_download')
+  const starts = harness.sent.filter(message => message.type === 'RENDER_AND_EXPORT')
+  assert.equal(starts.length, 3)
+  assert.equal(starts[0].payload.retryTicket, undefined)
+  assert.equal(starts[1].payload.retryTicket, TICKET)
+  assert.equal(starts[2].payload.retryTicket, undefined)
+  assert.equal(harness.events.filter(event => event.type === 'delivery').length, 0)
+})
+
 test('轮询 failed 状态进入错误重试视图', async () => {
   const harness = createHarness({
     respond(message) {

@@ -65,14 +65,14 @@ test('exportMessage 在 Chrome lastError、后台失败与同步异常时拒绝'
 
   chrome.runtime.lastError = { message: 'The message port closed' }
   env.setRespond(() => ({ success: true }))
-  await assert.rejects(flow.exportMessage('X'), /The message port closed/)
+  await assert.rejects(flow.exportMessage('X'), error => error.kind === 'communication' && /插件连接暂时中断/.test(error.message))
   delete chrome.runtime.lastError
 
   env.setRespond(() => ({ success: false, error: '插件通信失败' }))
   await assert.rejects(flow.exportMessage('X'), /插件通信失败/)
 
   env.setRespond(() => 'throw')
-  await assert.rejects(flow.exportMessage('X'), /Extension context invalidated/)
+  await assert.rejects(flow.exportMessage('X'), /插件刚刚更新/)
 })
 
 test('exportMessage 在后台无响应时按 25 秒超时', async (t) => {
@@ -83,7 +83,7 @@ test('exportMessage 在后台无响应时按 25 秒超时', async (t) => {
   const pending = flow.exportMessage('GET_RENDER_EXPORT')
   assert.deepEqual(timers.pending(), [25000])
   timers.run(25000)
-  await assert.rejects(pending, /插件通信超时，请确认网络后重试/)
+  await assert.rejects(pending, /插件连接暂时中断/)
 })
 
 test('waitForExport 轮询 running 直到 succeeded 并返回交付', async (t) => {
@@ -115,7 +115,7 @@ test('waitForExport 把 failed 状态与异常状态转成可展示错误', asyn
   await assert.rejects(flow.waitForExport('ticket', () => true), /排版失败，请重试/)
 
   env.setRespond(() => ({ success: true, status: 'queued' }))
-  await assert.rejects(flow.waitForExport('ticket', () => true), /排版任务状态异常/)
+  await assert.rejects(flow.waitForExport('ticket', () => true), error => error.kind === 'unknown' && /暂时无法确认/.test(error.message))
 
   env.setRespond(() => ({ success: false, error: '排版服务响应异常(500)' }))
   await assert.rejects(flow.waitForExport('ticket', () => true), /排版服务响应异常\(500\)/)
@@ -146,7 +146,7 @@ test('轮询超过 20 分钟截止时间后停止请求', async (t) => {
   const pending = flow.waitForExport('ticket', () => true)
   await tick()
   timers.run(1500)
-  await assert.rejects(pending, /排版等待已结束，请稍后在我的题本查看/)
+  await assert.rejects(pending, /暂时未能确认排版结果/)
   assert.equal(env.sent.length, 1)
 })
 
@@ -173,5 +173,5 @@ test('requestFileDownloads 通信失败时把传入文件全部标记为失败',
   env.setRespond(() => 'throw')
   const thrown = await flow.requestFileDownloads(files)
   assert.deepEqual(thrown.failedFiles, files)
-  assert.match(thrown.downloadWarning, /Extension context invalidated/)
+  assert.match(thrown.downloadWarning, /插件刚刚更新/)
 })

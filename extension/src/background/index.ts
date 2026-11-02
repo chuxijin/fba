@@ -66,7 +66,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'RENDER_AND_EXPORT') {
     handleRenderAndExport(message.payload)
       .then((res) => sendResponse({ success: true, ...res }))
-      .catch((err) => sendResponse({ success: false, error: err.message }))
+      .catch((err) => sendResponse({
+        success: false, error: err.message,
+        ...(err.name === 'TimeoutError' || err.name === 'TypeError' ? { kind: 'unknown' } : {}),
+      }))
     return true // 保持异步消息通道开启
   }
   if (message.type === 'GET_RENDER_EXPORT') {
@@ -83,7 +86,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         sendResponse({ success: true, ...state, ...(state.result ? { delivery: parseDelivery(state.result) } : {}) })
       })
-      .catch((err) => sendResponse({ success: false, error: err.message }))
+      .catch((err) => sendResponse({
+        success: false, error: err.message,
+        ...(err.name === 'TimeoutError' || err.name === 'TypeError' ? { kind: 'communication' } : {}),
+      }))
     return true
   }
   if (message.type === 'GET_RENDER_QR') {
@@ -377,6 +383,7 @@ async function handleRenderAndExport(payload: {
   paper: UnifiedPaper
   settings: RenderTypographySettings
   target: 'computer_download' | 'mobile_sync'
+  retryTicket?: string
 }) {
   const { paper, settings, target } = payload
 
@@ -390,6 +397,7 @@ async function handleRenderAndExport(payload: {
         output_format: settings.outputFormat || 'pdf',
       },
       target: target,
+      ...(payload.retryTicket ? { retry_ticket: payload.retryTicket } : {}),
     }
 
 
@@ -403,6 +411,7 @@ async function handleRenderAndExport(payload: {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'X-Render-Client': await getExportClientId(),
     }
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`
@@ -438,10 +447,26 @@ async function handleRenderAndExport(payload: {
     const jobResult = resJson.data || resJson
     if (typeof jobResult.ticket !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(jobResult.ticket))
       throw new Error('排版服务未返回任务凭证')
-    return { ticket: jobResult.ticket }
+    return { ticket: jobResult.ticket, ...(jobResult.reused ? { reused: true } : {}) }
   } catch (error: any) {
     console.error('[Background] 考场排版接口请求失败:', error)
     // 彻底废除假装成功的演示模式，真实抛出错误，触发弹窗的错误重试视图
-    throw new Error(error?.message || '排版服务响应异常，请确认后端已启动。')
+    throw error instanceof Error ? error : new Error('排版服务响应异常，请稍后再获取结果。')
   }
+}
+
+let exportClientRequest: Promise<string> | null = null
+function getExportClientId(): Promise<string> {
+  if (exportClientRequest) return exportClientRequest
+  const task = (async () => {
+    const key = 'fba_render_client_id'
+    const stored = await chrome.storage.local.get([key])
+    if (typeof stored[key] === 'string' && /^[a-f0-9]{32}$/.test(stored[key])) return stored[key]
+    const value = crypto.randomUUID().replace(/-/g, '')
+    await chrome.storage.local.set({ [key]: value })
+    return value
+  })()
+  exportClientRequest = task
+  void task.finally(() => { if (exportClientRequest === task) exportClientRequest = null }).catch(() => {})
+  return task
 }

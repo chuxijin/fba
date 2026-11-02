@@ -1,6 +1,6 @@
 {
   "name": "gongkao-reformatter-extension",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "公考真题/模考考场标准重排器浏览器插件",
   "private": true,
   "type": "module",

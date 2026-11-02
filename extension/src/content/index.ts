@@ -554,6 +554,7 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
 
   
   let exporting = false
+  let failedExportTicket: string | undefined
   async function handleExport(settings: RenderTypographySettings, target: 'computer_download' | 'mobile_sync') {
     if (exporting) return
     exporting = true
@@ -573,18 +574,26 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
         return
       }
 
-      const response = await exportMessage('RENDER_AND_EXPORT', { paper: paperToSend, settings, target })
+      // 由后台重新读取当前账号并领取同一内容任务，不能从网页缓存跨账号复用凭证。
+      const response = await exportMessage('RENDER_AND_EXPORT', {
+        paper: paperToSend, settings, target, ...(failedExportTicket ? { retryTicket: failedExportTicket } : {}),
+      })
+      failedExportTicket = undefined
       const delivery = await waitForExport(response.ticket, isCurrent)
       if (!isCurrent()) return
-      const download = target === 'computer_download' ? await requestFileDownloads(delivery.files) : {}
+      // 找回已有结果时先询问是否再次下载，不自动制造重复文件。
+      const download = target === 'computer_download' && !response.reused ? await requestFileDownloads(delivery.files) : {}
       if (!isCurrent()) return
-      uiApp?.showDelivery({ ...delivery, ...download })
+      uiApp?.showDelivery({ ...delivery, ...download, reused: Boolean(response.reused) })
     } catch (err: any) {
       if (!isCurrent()) return
+      if (err?.kind === 'failed') {
+        failedExportTicket = err.ticket
+      }
       if (err?.message?.includes('Extension context invalidated')) {
         uiApp?.showError('检测到插件刚刚更新，请按 F5 刷新当前网页后重试！')
       } else {
-        uiApp?.showError(err?.message || '导出异常，请稍后重试')
+        uiApp?.showError(err?.message || '暂时未能确认导出结果，请稍后继续获取', err?.kind === 'failed' ? 'failed' : 'unknown')
       }
     } finally { exporting = false }
   }

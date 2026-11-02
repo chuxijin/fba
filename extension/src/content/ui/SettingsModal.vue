@@ -417,10 +417,11 @@
               <span class="gk-banner-icon">🎉</span>
               <div>
                 <div class="gk-banner-title">
-                  {{ currentExportTarget === 'computer_download' ? (downloadWarning ? '排版已完成，请确认浏览器下载' : '排版已完成，已提交浏览器下载') : '试卷已生成，请用微信扫码打开我的题本' }}
+                  {{ reusedExport ? '该内容已排版，已为您找回原结果' : currentExportTarget === 'computer_download' ? (downloadWarning ? '排版已完成，请确认浏览器下载' : '排版已完成，已提交浏览器下载') : '试卷已生成，请用微信扫码打开我的题本' }}
                 </div>
                 <div class="gk-banner-desc">
-                  <template v-if="currentExportTarget === 'computer_download'">
+                  <template v-if="reusedExport">题目和排版设置相同，直接复用已有文件，不重新排版、不重复扣额度。您可以再次下载，或扫描下方二维码打开题本。</template>
+                  <template v-else-if="currentExportTarget === 'computer_download'">
                     《{{ paperTitle }}》{{ downloadStarted ? '已提交浏览器下载。' : '已生成，可重试下载，不会重新排版或扣额度。' }}
                     <template v-if="savedPath">
                       保存位置：<code style="display:inline-block;max-width:100%;overflow-wrap:anywhere;background:#f1f5f9;border-radius:4px;padding:1px 5px;font-size:12px;color:#334155;">{{ savedPath }}</code>
@@ -439,6 +440,13 @@
               <button type="button" :disabled="retryingDownload" @click="retryDownload">
                 {{ retryingDownload ? '正在重试…' : '重试下载（不重新排版）' }}
               </button>
+            </div>
+
+            <div v-if="deliveryFiles.length" class="gk-card-section">
+              <button type="button" class="gk-btn gk-btn-secondary" :disabled="retryingDownload" @click="downloadAgain">
+                {{ retryingDownload ? '正在提交下载…' : '再次下载（不重新排版）' }}
+              </button>
+              <p>已登录的题本也可在同一账号的小程序【我的题本】中查看。</p>
             </div>
 
             <!-- 2. 使用说明与额度说明 -->
@@ -502,9 +510,9 @@
         <div class="gk-modal-body">
           <div class="gk-error-box">
             <div class="gk-error-icon">⚠️</div>
-            <div class="gk-error-title">排版任务未完成</div>
+            <div class="gk-error-title">{{ errorKind === 'failed' ? '本次排版未成功' : errorKind === 'unknown' ? '暂时未能确认排版结果' : '暂时无法导出' }}</div>
             <div class="gk-error-desc">{{ errorMessage || '服务暂时无法连接，请检查网络或稍后重试。' }}</div>
-            <div class="gk-error-hint">如果任务已提交，请先检查“我的题本”和浏览器下载列表，避免重复导出；持续失败可通过插件意见反馈联系维护者。</div>
+            <div class="gk-error-hint">通信中断不代表排版失败。24小时交付有效期内，继续获取会优先查找原任务，不因结果未知重复排版；已登录用户也可先查看同一账号的“我的题本”和浏览器下载列表。</div>
           </div>
         </div>
 
@@ -517,7 +525,7 @@
               返回设置
             </button>
             <button type="button" class="gk-btn gk-btn-primary" style="flex: 1.2;" @click="handleRetry">
-              重试排版
+              {{ errorKind === 'failed' ? '重新排版' : errorKind === 'unknown' ? '继续获取结果' : '重试连接' }}
             </button>
           </div>
         </div>
@@ -585,6 +593,9 @@ const currentExportTarget = ref<'computer_download' | 'mobile_sync'>('computer_d
 const qrCodeUrl = ref('')
 const savedPath = ref('')
 const errorMessage = ref('')
+const errorKind = ref<'request' | 'unknown' | 'failed'>('request')
+const reusedExport = ref(false)
+const deliveryFiles = ref<ExportFile[]>([])
 const downloadWarning = ref('')
 const downloadStarted = ref(false)
 const failedFiles = ref<ExportFile[]>([])
@@ -612,6 +623,19 @@ async function retryDownload() {
   const version = deliveryVersion
   retryingDownload.value = true
   const result = await requestFileDownloads(failedFiles.value)
+  if (version !== deliveryVersion) return
+  failedFiles.value = result.failedFiles || []
+  downloadWarning.value = result.downloadWarning || ''
+  downloadStarted.value ||= Boolean(result.downloadStarted)
+  savedPath.value ||= result.savedPath || ''
+  retryingDownload.value = false
+}
+
+async function downloadAgain() {
+  if (retryingDownload.value || !deliveryFiles.value.length) return
+  const version = deliveryVersion
+  retryingDownload.value = true
+  const result = await requestFileDownloads(deliveryFiles.value)
   if (version !== deliveryVersion) return
   failedFiles.value = result.failedFiles || []
   downloadWarning.value = result.downloadWarning || ''
@@ -897,6 +921,8 @@ function showLoading(target: 'computer_download' | 'mobile_sync') {
   qrError.value = ''
   qrLoading.value = false
   failedFiles.value = []
+  deliveryFiles.value = []
+  reusedExport.value = false
   downloadWarning.value = ''
   downloadStarted.value = false
   retryingDownload.value = false
@@ -905,6 +931,8 @@ function showLoading(target: 'computer_download' | 'mobile_sync') {
 }
 
 function showDelivery(options: DeliveryView) {
+  deliveryFiles.value = options.files || []
+  reusedExport.value = Boolean(options.reused)
   qrCodeUrl.value = options.qrCodeUrl || ''
   savedPath.value = options.savedPath || ''
   failedFiles.value = options.failedFiles || []
@@ -914,8 +942,9 @@ function showDelivery(options: DeliveryView) {
   void loadQrCode()
 }
 
-function showError(msg: string) {
-  errorMessage.value = msg || '排版失败，请重试'
+function showError(msg: string, kind: 'request' | 'unknown' | 'failed' = 'request') {
+  errorKind.value = kind
+  errorMessage.value = msg || '暂时无法确认排版结果，请稍后继续获取'
   viewMode.value = 'error'
 }
 
