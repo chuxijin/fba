@@ -64,6 +64,8 @@ uv run python skills/fba_work/question-explanation/scripts/new_run.py 20261108-s
 
 ## 已完成任务
 
+- [第12季政治、常识与逻辑填空](runs/20261102-season12/README.md)：2026-11-02生产提交20题（政治9、常识3、逻辑填空8/72词），default设默认、official原文保留；原文保真及逐词校验通过，发布后232/232独立核验通过。整季37题原题/答案/学习记录与17道非目标解析未改。
+
 | 归档 | 状态 |
 |---|---|
 | [第41季](runs/20261101-season41/README.md) | 2026-11-01已提交：18条新default、18条official保留非默认；独立核验通过 |
