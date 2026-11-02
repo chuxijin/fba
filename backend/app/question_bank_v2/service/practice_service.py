@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
 from decimal import Decimal
+from operator import itemgetter
 from typing import Any
 
 from sqlalchemy import func, or_, select
@@ -83,6 +84,73 @@ USER_CONTENT_SOURCE_TYPES = frozenset({'wrong', 'favorite', 'note'})
 
 class PracticeService:
     """题库 V2 练习会话服务类"""
+
+    @staticmethod
+    def _order_recall_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """整份回测按同名章节聚拢并连续编号；不改写数据库中的位置与作答事实。"""
+        chapters: dict[str, list[dict[str, Any]]] = {}
+        for item in sorted(items, key=itemgetter('position')):
+            name = (item.get('section_name') or '').strip()
+            chapters.setdefault(name, []).append({**item, 'section_name': name})
+        ordered = [item for chapter in chapters.values() for item in chapter]
+        for position, item in enumerate(ordered):
+            item['position'] = position
+        return ordered
+
+    @staticmethod
+    async def _recall_delivery_items(
+        *,
+        db: AsyncSession,
+        user_id: int,
+        cutoff: datetime | None,
+        items: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """详情与报告共用回测可见题目及题序，避免过滤／跨日补题后章节和题号分裂。"""
+        from backend.app.question_bank_v2.service.notification_service import qbank_notification_service
+
+        pending_ids = [
+            item['question_id']
+            for item in items
+            if item.get('response_status') not in {'submitted', 'graded', 'review_required'}
+        ]
+        active_ids = (
+            set(
+                (
+                    await db.scalars(
+                        select(QbWrongQuestionState.question_id)
+                        .join(QbQuestion, QbQuestion.id == QbWrongQuestionState.question_id)
+                        .where(
+                            QbWrongQuestionState.user_id == user_id,
+                            QbWrongQuestionState.question_id.in_(pending_ids),
+                            QbWrongQuestionState.question_id.in_(
+                                qbank_notification_service.due_queue(user_id, cutoff or timezone.now())
+                            ),
+                            QbWrongQuestionState.deleted == 0,
+                            QbWrongQuestionState.status.in_({'active', 'resolved'}),
+                            QbQuestion.deleted == 0,
+                            QbQuestion.status == 'active',
+                            or_(QbQuestion.visibility != 'private', QbQuestion.owner_id == user_id),
+                        )
+                    )
+                ).all()
+            )
+            if pending_ids
+            else set()
+        )
+        items = [item for item in items if item['question_id'] not in pending_ids or item['question_id'] in active_ids]
+        reviewed_ids = set(
+            (
+                await db.scalars(
+                    select(QbWrongQuestionState.question_id).where(
+                        QbWrongQuestionState.user_id == user_id,
+                        QbWrongQuestionState.deleted == 0,
+                        QbWrongQuestionState.review_count > 0,
+                        QbWrongQuestionState.question_id.in_([item['question_id'] for item in items]),
+                    )
+                )
+            ).all()
+        )
+        return PracticeService._order_recall_items([item for item in items if item['question_id'] in reviewed_ids])
 
     @staticmethod
     def _attach_delivery_materials(
@@ -204,51 +272,7 @@ class PracticeService:
                     )
                     or 0
                 )
-            pending_ids = [
-                item['question_id']
-                for item in items
-                if item.get('response_status') not in {'submitted', 'graded', 'review_required'}
-            ]
-            active_ids = (
-                set(
-                    (
-                        await db.scalars(
-                            select(QbWrongQuestionState.question_id)
-                            .join(QbQuestion, QbQuestion.id == QbWrongQuestionState.question_id)
-                            .where(
-                                QbWrongQuestionState.user_id == user_id,
-                                QbWrongQuestionState.question_id.in_(pending_ids),
-                                QbWrongQuestionState.question_id.in_(
-                                    qbank_notification_service.due_queue(user_id, cutoff or timezone.now())
-                                ),
-                                QbWrongQuestionState.deleted == 0,
-                                QbWrongQuestionState.status.in_({'active', 'resolved'}),
-                                QbQuestion.deleted == 0,
-                                QbQuestion.status == 'active',
-                                or_(QbQuestion.visibility != 'private', QbQuestion.owner_id == user_id),
-                            )
-                        )
-                    ).all()
-                )
-                if pending_ids
-                else set()
-            )
-            items = [
-                item for item in items if item['question_id'] not in pending_ids or item['question_id'] in active_ids
-            ]
-            reviewed_ids = set(
-                (
-                    await db.scalars(
-                        select(QbWrongQuestionState.question_id).where(
-                            QbWrongQuestionState.user_id == user_id,
-                            QbWrongQuestionState.deleted == 0,
-                            QbWrongQuestionState.review_count > 0,
-                            QbWrongQuestionState.question_id.in_([item['question_id'] for item in items]),
-                        )
-                    )
-                ).all()
-            )
-            items = [item for item in items if item['question_id'] in reviewed_ids]
+            items = await PracticeService._recall_delivery_items(db=db, user_id=user_id, cutoff=cutoff, items=items)
             session['total_items'] = len(items)
             session['answered_items'] = sum(
                 item.get('response_status') in {'submitted', 'graded', 'review_required'} for item in items
@@ -367,6 +391,9 @@ class PracticeService:
         if session['mode'] in {'exam', 'mock'} and session['status'] not in {'submitted', 'graded', 'expired'}:
             raise errors.ForbiddenError(msg='考试或模考交卷后才可查看报告')
         rows = await practice_session_dao.get_report_items(db, session['id'])
+        if (session.get('delivery_config') or {}).get('recall_message_id'):
+            cutoff = await PracticeService._recall_cutoff(db=db, user_id=user_id, config=session['delivery_config'])
+            rows = await PracticeService._recall_delivery_items(db=db, user_id=user_id, cutoff=cutoff, items=rows)
         items = [
             PracticeReportItem(
                 session_item_id=row['session_item_id'],

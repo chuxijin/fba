@@ -342,6 +342,7 @@ async def test_resume_appends_all_reviewed_due_preserves_position_and_attempt() 
     for qid in range(1, 5):
         st = _make_state(qid, user_id, qid, 'active', now - timedelta(hours=1))
         st.review_count = 1
+        st.entry_metadata = {'section_name': '常识判断' if qid % 2 else '言语理解'}
         session.add(st)
     st5 = _make_state(5, user_id, 5, 'active', now - timedelta(hours=1))
     st5.review_count = 0  # 未复盘
@@ -415,6 +416,9 @@ async def test_resume_appends_all_reviewed_due_preserves_position_and_attempt() 
     # 验证总题数扩展为 4 题 (Q1, Q2, Q3, Q4，排除了 Q5)
     assert detail.total_items == 4
     assert detail.session_key == 'recall-message-100'
+    assert [item.question_id for item in detail.items] == [1, 3, 2, 4]
+    assert [item.position for item in detail.items] == [0, 1, 2, 3]
+    assert [item.section_name for item in detail.items] == ['常识判断', '常识判断', '言语理解', '言语理解']
 
     # 查阅数据库中真实 items
     db_items = await practice_session_item_dao.get_all(async_db, old_sess.id)
