@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
@@ -30,6 +31,7 @@ from backend.app.question_bank_v2.crud.crud_question import (
     question_explanation_dao,
 )
 from backend.app.question_bank_v2.crud.crud_question_timing import get_question_timing
+from backend.app.question_bank_v2.crud.crud_review import wrong_question_state_dao
 from backend.app.question_bank_v2.crud.crud_user_content import favorite_folder_dao
 from backend.app.question_bank_v2.model.practice import (
     QbPracticeSession,
@@ -37,6 +39,8 @@ from backend.app.question_bank_v2.model.practice import (
     QbPracticeSessionResponse,
     QbQuestionAttempt,
 )
+from backend.app.question_bank_v2.model.question import QbQuestion
+from backend.app.question_bank_v2.model.review import QbWrongQuestionState
 from backend.app.question_bank_v2.schema.practice import (
     TIMED_PRACTICE_MODES,
     CreatePracticeSessionParam,
@@ -184,6 +188,79 @@ class PracticeService:
                 await PracticeService._expire_if_due(db=db, session=session_model)
                 session = await practice_session_dao.get_detail(db, session_key, user_id)
         items = await practice_session_item_dao.get_all(db, session['id'])
+        if (session.get('delivery_config') or {}).get('recall_message_id'):
+            from backend.app.question_bank_v2.service.notification_service import qbank_notification_service
+
+            cutoff = await PracticeService._recall_cutoff(db=db, user_id=user_id, config=session['delivery_config'])
+            if cutoff:
+                session['recall_remaining'] = int(
+                    await db.scalar(
+                        select(func.count()).select_from(
+                            qbank_notification_service.due_queue(
+                                user_id,
+                                cutoff,
+                            ).subquery()
+                        )
+                    )
+                    or 0
+                )
+            pending_ids = [
+                item['question_id']
+                for item in items
+                if item.get('response_status') not in {'submitted', 'graded', 'review_required'}
+            ]
+            active_ids = (
+                set(
+                    (
+                        await db.scalars(
+                            select(QbWrongQuestionState.question_id)
+                            .join(QbQuestion, QbQuestion.id == QbWrongQuestionState.question_id)
+                            .where(
+                                QbWrongQuestionState.user_id == user_id,
+                                QbWrongQuestionState.question_id.in_(pending_ids),
+                                QbWrongQuestionState.question_id.in_(
+                                    qbank_notification_service.due_queue(user_id, cutoff or timezone.now())
+                                ),
+                                QbWrongQuestionState.deleted == 0,
+                                QbWrongQuestionState.status.in_({'active', 'resolved'}),
+                                QbQuestion.deleted == 0,
+                                QbQuestion.status == 'active',
+                                or_(QbQuestion.visibility != 'private', QbQuestion.owner_id == user_id),
+                            )
+                        )
+                    ).all()
+                )
+                if pending_ids
+                else set()
+            )
+            items = [
+                item for item in items if item['question_id'] not in pending_ids or item['question_id'] in active_ids
+            ]
+            reviewed_ids = set(
+                (
+                    await db.scalars(
+                        select(QbWrongQuestionState.question_id).where(
+                            QbWrongQuestionState.user_id == user_id,
+                            QbWrongQuestionState.deleted == 0,
+                            QbWrongQuestionState.review_count > 0,
+                            QbWrongQuestionState.question_id.in_([item['question_id'] for item in items]),
+                        )
+                    )
+                ).all()
+            )
+            items = [item for item in items if item['question_id'] in reviewed_ids]
+            session['total_items'] = len(items)
+            session['answered_items'] = sum(
+                item.get('response_status') in {'submitted', 'graded', 'review_required'} for item in items
+            )
+            session['correct_items'] = sum(item.get('is_correct') is True for item in items)
+            for item in items:
+                # 原错答/复盘不可提前泄露；提交后由solution返回，用同一面板展示。
+                item['display_config'] = {
+                    key: value
+                    for key, value in (item.get('display_config') or {}).items()
+                    if not key.startswith('review_') and key not in {'last_wrong_response', 'wrong_answer_history'}
+                }
         if session['mode'] in {'exam', 'mock'} and session['status'] not in {'submitted', 'graded', 'expired'}:
             for item in items:
                 item['is_correct'] = None
@@ -200,6 +277,19 @@ class PracticeService:
         material_catalog = PracticeService._attach_delivery_materials(items=items, materials=materials)
         PracticeService._attach_delivery_interactions(items=items, interactions=interactions)
         return GetPracticeSessionDetail(**session, materials=material_catalog, items=items)
+
+    @staticmethod
+    async def _recall_cutoff(*, db: AsyncSession, user_id: int, config: dict[str, Any]) -> datetime | None:
+        """已创建会话存截止时间；旧卷兼容从本人消息读取。"""
+        from backend.app.admin.model.message import Message
+
+        cutoff = config.get('recall_due_before')
+        if not cutoff:
+            payload = await db.scalar(
+                select(Message.payload).where(Message.id == config['recall_message_id'], Message.user_id == user_id)
+            )
+            cutoff = (payload or {}).get('due_before')
+        return datetime.fromisoformat(cutoff) if cutoff else None
 
     @staticmethod
     def get_list_select(
@@ -347,6 +437,19 @@ class PracticeService:
         if session.status not in {'submitted', 'graded', 'expired'}:
             raise errors.ForbiddenError(msg='交卷后才可查看整场答案解析')
         rows = await practice_session_dao.get_solutions(db, session.id)
+        if (getattr(session, 'delivery_config', None) or {}).get('recall_message_id'):
+            submitted_ids = set(
+                (
+                    await db.scalars(
+                        select(QbPracticeSessionResponse.session_item_id).where(
+                            QbPracticeSessionResponse.session_id == session.id,
+                            QbPracticeSessionResponse.deleted == 0,
+                            QbPracticeSessionResponse.status.in_({'submitted', 'graded', 'review_required'}),
+                        )
+                    )
+                ).all()
+            )
+            rows = [row for row in rows if row['session_item_id'] in submitted_ids]
         snapshots = {
             question_id: await statistics_service.question_snapshot(db=db, question_id=question_id)
             for question_id in {row['question_id'] for row in rows}
@@ -640,9 +743,12 @@ class PracticeService:
         # 必须在插入带题目外键的作答事实之前锁父行，避免并发事务先持有FK共享锁再升级互锁。
         await attempt_projection_service.lock_questions(db, [session_item.question_id])
 
-        question = await question_dao.get(db, session_item.question_id)
-        if question is None:
-            raise errors.ServerError(msg='题目不存在')
+        question = await PracticeService._get_submittable_question(
+            db=db,
+            session=session,
+            question_id=session_item.question_id,
+            user_id=user_id,
+        )
 
         grade = practice_grading_service.grade(
             response_data=obj.response_data,
@@ -751,6 +857,33 @@ class PracticeService:
         )
 
     @staticmethod
+    async def _get_submittable_question(
+        *,
+        db: AsyncSession,
+        session: QbPracticeSession,
+        question_id: int,
+        user_id: int,
+    ) -> QbQuestion:
+        """持有用户锁及题目锁后再次核对回测资格，普通练习保留原校验。"""
+        question = await question_dao.get(db, question_id)
+        if question is None:
+            raise errors.ServerError(msg='题目不存在')
+        if not (getattr(session, 'delivery_config', None) or {}).get('recall_message_id'):
+            return question
+        state = await wrong_question_state_dao.get_by_question(db, user_id=user_id, question_id=question_id)
+        if state is None or state.status not in {'active', 'resolved'}:
+            raise errors.ConflictError(msg='本题已暂停或已从回测移除，请刷新练习')
+        if not state.review_count:
+            raise errors.ConflictError(msg='本题尚未复盘，不属于复盘回测，请刷新练习')
+        if (
+            question.deleted
+            or question.status != 'active'
+            or (question.visibility == 'private' and question.owner_id != user_id)
+        ):
+            raise errors.ConflictError(msg='本题已不可回测，请刷新练习')
+        return question
+
+    @staticmethod
     async def _submission_result(
         *,
         db: AsyncSession,
@@ -805,6 +938,9 @@ class PracticeService:
             session_id=session.id,
             session_item_id=session_item.id,
         )
+        recall = bool((session.delivery_config or {}).get('recall_message_id'))
+        if recall and (response is None or response.status not in {'submitted', 'graded', 'review_required'}):
+            raise errors.ForbiddenError(msg='独立提交本题后才可查看答案与原复盘')
         if response is None:
             if session.mode not in {'practice', 'memorize'}:
                 raise errors.ForbiddenError(msg='提交答案后才可查看解析')
@@ -819,6 +955,20 @@ class PracticeService:
         if answer is None:
             raise errors.ServerError(msg='题目缺少权威答案')
         explanations = await question_explanation_dao.get_all(db, session_item.question_id)
+        memory_feedback = None
+        if recall:
+            attempt = await db.scalar(
+                select(QbQuestionAttempt)
+                .where(
+                    QbQuestionAttempt.session_item_id == session_item.id,
+                    QbQuestionAttempt.deleted == 0,
+                )
+                .order_by(QbQuestionAttempt.attempt_no.desc())
+                .limit(1)
+            )
+            memory_feedback = (attempt.grading_result or {}).get('_memory') if attempt is not None else None
+            if memory_feedback:
+                memory_feedback = {key: memory_feedback[key] for key in ('rating', 'due', 'confirmed')}
         return GetPracticeSolutionDetail(
             session_item_id=session_item.id,
             question_id=session_item.question_id,
@@ -835,7 +985,67 @@ class PracticeService:
                 for item in explanations
                 if item.status == 'published'
             ],
+            memory_feedback=memory_feedback,
+            review_archive=dict(session_item.display_config or {}) if recall else None,
         )
+
+    @staticmethod
+    async def confirm_memory_feedback(
+        *,
+        db: AsyncSession,
+        session_key: str,
+        user_id: int,
+        session_item_id: int,
+        rating: int,
+    ) -> dict[str, Any]:
+        """纠正本次回忆反馈而非再记一次复习；用户→会话→题目的锁顺序与提交一致。"""
+        from backend.app.question_bank_v2.service.practice_schedule_service import schedule
+
+        session, item = await PracticeService._get_owned_item(
+            db=db,
+            session_key=session_key,
+            user_id=user_id,
+            session_item_id=session_item_id,
+            for_update=True,
+        )
+        if not (session.delivery_config or {}).get('recall_message_id'):
+            raise errors.RequestError(msg='仅独立回测支持记忆反馈')
+        await attempt_projection_service.lock_questions(db, [item.question_id])
+        attempt = await db.scalar(
+            select(QbQuestionAttempt)
+            .where(
+                QbQuestionAttempt.session_item_id == item.id,
+                QbQuestionAttempt.deleted == 0,
+            )
+            .order_by(QbQuestionAttempt.attempt_no.desc())
+            .limit(1)
+            .with_for_update()
+        )
+        receipt = dict((attempt.grading_result or {}).get('_memory') or {}) if attempt is not None else {}
+        if not receipt:
+            raise errors.ConflictError(msg='本题尚未获得有效判分反馈')
+        if attempt.is_correct is not True and rating != 1:
+            raise errors.RequestError(msg='没有成功回忆只能记为“没想起来”，不能记为困难或轻松')
+        if receipt.get('confirmed'):
+            if receipt['rating'] != rating:
+                raise errors.ConflictError(msg='本次反馈已确认，不能重复修改')
+            return {key: receipt[key] for key in ('rating', 'due', 'confirmed')}
+        state = await wrong_question_state_dao.get_by_question(
+            db,
+            user_id=user_id,
+            question_id=item.question_id,
+            for_update=True,
+        )
+        if state is None or state.status == 'suspended' or (state.fsrs_data or {}).get('last_attempt_id') != attempt.id:
+            raise errors.ConflictError(msg='该题已有更新的回测或已暂停，请以最新状态为准')
+        after, due = schedule(receipt['before'], rating=rating, now=attempt.submitted_time)
+        state.fsrs_data = {**after, 'last_attempt_id': attempt.id}
+        state.next_practice_time = due
+        state.last_rating = rating
+        receipt.update(rating=rating, after=after, due=due.isoformat(), confirmed=True)
+        attempt.grading_result = {**attempt.grading_result, '_memory': receipt}
+        await db.flush()
+        return {key: receipt[key] for key in ('rating', 'due', 'confirmed')}
 
     @staticmethod
     async def get_question_statistics(
@@ -1138,10 +1348,13 @@ class PracticeService:
         user_id: int,
         obj: CreatePracticeSessionParam,
         goal_context: dict[str, Any] | None = None,
+        recall_message_id: int | None = None,
     ) -> GetPracticeSessionDetail:
         """校验来源准入后创建练习会话"""
         if obj.session_key and obj.session_key.startswith(EXTERNAL_SESSION_PREFIX):
             raise errors.RequestError(msg='该会话标识前缀保留给外部历史导入')
+        if obj.session_key and obj.session_key.startswith('recall-message-') and recall_message_id is None:
+            raise errors.RequestError(msg='该会话标识前缀保留给站内回测消息')
         if obj.session_key and obj.session_key.startswith('goal_') and goal_context is None:
             raise errors.RequestError(msg='目标考试请通过目标组卷入口创建')
         session_key = obj.session_key or uuid.uuid4().hex
@@ -1341,6 +1554,7 @@ class PracticeService:
                 'expires_time': expires_time,
                 'total_items': len(candidates),
                 'delivery_config': {
+                    **({'recall_message_id': recall_message_id} if recall_message_id is not None else {}),
                     'shuffle': obj.shuffle,
                     'requested_limit': obj.limit,
                     'requested_duration_minutes': obj.duration_minutes,

@@ -17,10 +17,7 @@ from backend.app.question_bank_v2.schema.review import (
 from backend.app.question_bank_v2.service import review_schedule_service as schedule_module
 from backend.app.question_bank_v2.service import wrong_review_service as wrong_review_module
 from backend.app.question_bank_v2.service.practice_schedule_service import (
-    PRACTICE_LADDER_MINUTES,
-    derive_rating,
-    next_practice_level,
-    next_practice_time,
+    first_practice_time,
 )
 from backend.app.question_bank_v2.service.review_schedule_service import ReviewScheduleService
 from backend.app.question_bank_v2.service.wrong_review_service import WrongReviewService
@@ -105,6 +102,7 @@ def _new_wrong_state(**overrides: Any) -> SimpleNamespace:
         'wrong_count': 1,
         'correct_streak': 0,
         'review_count': 0,
+        'fsrs_data': {},
         'practice_level': 0,
         'last_rating': None,
         'last_duration_ms': None,
@@ -117,54 +115,66 @@ def _new_wrong_state(**overrides: Any) -> SimpleNamespace:
         'last_wrong_time': None,
         'last_practice_time': None,
         'last_wrong_response': None,
+        'entry_metadata': {},
     }
     data.update(overrides)
     return SimpleNamespace(**data)
 
 
-# --- 客观派生调度：纯函数，无需数据库 ---
+# --- 客观派生调度：纯函数与 FSRS 适配验证 ---
 
 
-@pytest.mark.parametrize(
-    ('is_correct', 'duration_ms', 'expected'),
-    [
-        (True, 500, 4),  # 又快又对
-        (True, 1000, 3),  # 对但用时相当
-        (True, 2000, 3),  # 对但更慢
-        (False, 2000, 2),  # 慢且错，仍在调动记忆
-        (False, 1000, 1),  # 错且没变快也没变慢，按最差处理
-        (False, 500, 1),  # 又快又错，蒙或放弃
-    ],
-)
-def test_derive_rating_covers_correctness_by_duration_matrix(
-    *,
-    is_correct: bool,
-    duration_ms: int,
-    expected: int,
-) -> None:
-    """对错与用时的 2×2 组合必须稳定映射到 1-4 级"""
-    assert derive_rating(is_correct=is_correct, duration_ms=duration_ms, baseline_ms=1000) == expected
-
-
-def test_derive_rating_degrades_without_baseline_or_duration() -> None:
-    """缺基线或缺用时时退化为对 3 错 1，主观题待批不参与调度"""
-    assert derive_rating(is_correct=True, duration_ms=None, baseline_ms=1000) == 3
-    assert derive_rating(is_correct=False, duration_ms=800, baseline_ms=None) == 1
-    assert derive_rating(is_correct=None, duration_ms=800, baseline_ms=1000) is None
-
-
-def test_practice_ladder_is_monotonic_and_clamped() -> None:
-    """阶梯必须单调递增，等级推进不越界"""
-    assert list(PRACTICE_LADDER_MINUTES) == sorted(PRACTICE_LADDER_MINUTES)
-    top = len(PRACTICE_LADDER_MINUTES) - 1
-    assert next_practice_level(level=3, rating=1) == 0
-    assert next_practice_level(level=0, rating=2) == 0
-    assert next_practice_level(level=3, rating=3) == 4
-    assert next_practice_level(level=top, rating=4) == top
-
+@pytest.mark.parametrize('duration_ms', [500, 1000, 2000, 9000])
+def test_schedule_wrong_answers_always_rate_again(duration_ms: int) -> None:
+    """不同用时答错均派生 Again (rating=1)，用时不影响 rating"""
     now = datetime(2026, 7, 27, 12, tzinfo=UTC)
-    assert next_practice_time(level=0, now=now) == now + timedelta(minutes=PRACTICE_LADDER_MINUTES[0])
-    assert next_practice_time(level=top + 5, now=now) == now + timedelta(minutes=PRACTICE_LADDER_MINUTES[top])
+    state = _new_wrong_state(fsrs_data={}, last_duration_ms=None)
+    attempt = SimpleNamespace(
+        id=101,
+        user_id=7,
+        question_id=11,
+        is_correct=False,
+        attempt_no=1,
+        duration_ms=duration_ms,
+        submitted_time=now,
+        response_data='B',
+        grading_result={},
+    )
+    ReviewScheduleService._advance_schedule(wrong_state=state, attempt=attempt)
+    assert state.last_rating == 1
+    assert state.fsrs_data['last_attempt_id'] == 101
+    assert state.fsrs_data['state'] == 2  # 题库无分钟级固定学习步骤，直接进入Review。
+    assert state.last_duration_ms == duration_ms
+
+
+@pytest.mark.parametrize('duration_ms', [500, 1000, 2000, 9000])
+def test_schedule_correct_answers_default_to_good(duration_ms: int) -> None:
+    """正确默认 Good (rating=3)，不受答题耗时快慢影响"""
+    now = datetime(2026, 7, 27, 12, tzinfo=UTC)
+    state = _new_wrong_state(fsrs_data={}, last_duration_ms=None)
+    attempt = SimpleNamespace(
+        id=201,
+        user_id=7,
+        question_id=11,
+        is_correct=True,
+        attempt_no=1,
+        duration_ms=duration_ms,
+        submitted_time=now,
+        response_data='A',
+        grading_result={},
+    )
+    ReviewScheduleService._advance_schedule(wrong_state=state, attempt=attempt)
+    assert state.last_rating == 3
+    assert state.fsrs_data['last_attempt_id'] == 201
+    assert state.last_duration_ms == duration_ms
+    assert state.next_practice_time is not None
+
+
+def test_first_practice_time_is_next_day() -> None:
+    """第一次错误次日启动，启动规则为次日冷启动 (+1天)"""
+    now = datetime(2026, 7, 27, 12, tzinfo=UTC)
+    due = first_practice_time(now)
+    assert due == now + timedelta(days=1)
 
 
 def test_ensure_mastery_initializes_only_on_demand(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,10 +229,14 @@ class AttemptHarness:
             await asyncio.sleep(0)
             self.progress_attempt_ids.append(attempt.id)
 
+        async def fake_knowledge_apply_attempt(*_args: object, **_kwargs: object) -> None:
+            await asyncio.sleep(0)
+
         monkeypatch.setattr(ReviewScheduleService, 'ensure_mastery', fake_ensure_mastery)
         monkeypatch.setattr(schedule_module.wrong_question_state_dao, 'get_by_question', fake_get_by_question)
         monkeypatch.setattr(schedule_module.wrong_question_state_dao, 'create', fake_create)
         monkeypatch.setattr(schedule_module.user_bank_item_progress_dao, 'apply_attempt', fake_apply_progress)
+        monkeypatch.setattr(schedule_module.knowledge_mastery_service, 'apply_attempt', fake_knowledge_apply_attempt)
 
     @staticmethod
     def attempt(*, attempt_id: int, is_correct: bool, duration_ms: int, now: datetime) -> SimpleNamespace:
@@ -234,6 +248,8 @@ class AttemptHarness:
             duration_ms=duration_ms,
             submitted_time=now,
             response_data='A' if is_correct else 'B',
+            attempt_no=1,
+            grading_result={},
         )
 
 
@@ -256,7 +272,9 @@ def test_wrong_answer_creates_state_and_schedules_first_retry(monkeypatch: pytes
     assert harness.created['wrong_count'] == 1
     assert harness.created['last_wrong_response'] == 'B'
     assert harness.created['last_duration_ms'] == 9000
-    assert harness.created['next_practice_time'] == next_practice_time(level=0, now=now)
+    assert harness.created['next_practice_time'] == first_practice_time(now)
+    assert harness.state.next_practice_time == first_practice_time(now)
+    assert harness.state.fsrs_data.get('last_attempt_id') == 101
     assert harness.mastery.attempt_count == 1
     assert harness.mastery.state == 'learning'
 
@@ -319,7 +337,8 @@ def test_unreviewed_question_needs_full_streak_to_leave_wrong_book(monkeypatch: 
     assert harness.state.correct_streak == 3
     assert harness.state.status == 'resolved'
     assert harness.state.resolved_time == now
-    assert harness.state.next_practice_time is None
+    assert harness.state.next_practice_time is not None  # 保留长期排期，不再清为 None
+    assert harness.state.fsrs_data.get('last_attempt_id') == 210
     assert harness.mastery.state == 'mastered'
 
 
@@ -370,10 +389,10 @@ def test_relapse_reactivates_state_and_clears_resolved_time(monkeypatch: pytest.
     assert harness.state.resolved_time is None
     assert harness.state.correct_streak == 0
     assert harness.state.wrong_count == 2
-    # 又快又错派生为 1 级，阶梯归零重来
+    # 答错派生为 1 级 (Again)，推进 FSRS 调度
     assert harness.state.last_rating == 1
-    assert harness.state.practice_level == 0
-    assert harness.state.next_practice_time == next_practice_time(level=0, now=now)
+    assert harness.state.fsrs_data.get('last_attempt_id') == 400
+    assert harness.state.next_practice_time is not None
 
 
 def test_wrong_retry_without_bank_context_preserves_original_source(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -911,8 +930,9 @@ def test_review_idempotency_key_rejects_different_payload(monkeypatch: pytest.Mo
 
 
 def test_manual_resolve_and_resume_keep_mastery_in_sync(monkeypatch: pytest.MonkeyPatch) -> None:
-    """手动移出与恢复必须同步掌握状态和重练排期"""
-    wrong_state = _new_wrong_state(practice_level=3, next_practice_time=datetime(2026, 7, 30, tzinfo=UTC))
+    """手动移出与恢复必须同步掌握状态，并保持排期（不被置空或销毁）"""
+    scheduled_time = datetime(2026, 7, 30, tzinfo=UTC)
+    wrong_state = _new_wrong_state(next_practice_time=scheduled_time)
     mastery = _new_mastery()
 
     async def fake_get(*_args: object, **_kwargs: object) -> SimpleNamespace:
@@ -930,6 +950,8 @@ def test_manual_resolve_and_resume_keep_mastery_in_sync(monkeypatch: pytest.Monk
     monkeypatch.setattr(wrong_review_module.wrong_question_state_dao, 'get', fake_get)
     monkeypatch.setattr(wrong_review_module.review_schedule_service, 'ensure_mastery', fake_ensure_mastery)
     monkeypatch.setattr(WrongReviewService, '_get_wrong_item', fake_get_wrong_item)
+    lock_user = AsyncMock()
+    monkeypatch.setattr(wrong_review_module, 'lock_practice_user', lock_user)
 
     asyncio.run(
         WrongReviewService.update_state(
@@ -940,8 +962,9 @@ def test_manual_resolve_and_resume_keep_mastery_in_sync(monkeypatch: pytest.Monk
         )
     )
     assert wrong_state.status == 'resolved'
-    assert wrong_state.next_practice_time is None
+    assert wrong_state.next_practice_time == scheduled_time  # 保留原长期排期，不再为 None
     assert mastery.state == 'mastered'
+    assert lock_user.await_args.args[1] == 7
 
     asyncio.run(
         WrongReviewService.update_state(
@@ -953,7 +976,7 @@ def test_manual_resolve_and_resume_keep_mastery_in_sync(monkeypatch: pytest.Monk
     )
     assert wrong_state.status == 'active'
     assert wrong_state.resolved_time is None
-    assert wrong_state.next_practice_time is not None
+    assert wrong_state.next_practice_time is not None  # reschedule 重新开放队列
     assert mastery.state == 'learning'
 
 
@@ -1118,8 +1141,8 @@ def test_get_latest_module_path_query_structure() -> None:
     """验证获取错题原试卷模块路径的 SQL 能正确识别主表并生成合法 JOIN"""
     from sqlalchemy import and_, select
     from sqlalchemy.dialects import postgresql
+
     from backend.app.question_bank_v2.model.practice import QbPracticeSessionItem, QbQuestionAttempt
-    from backend.app.question_bank_v2.crud.crud_practice import question_attempt_dao
 
     module_path = QbPracticeSessionItem.display_config['external_practice']['module_path']
     stmt = (
@@ -1141,4 +1164,3 @@ def test_get_latest_module_path_query_structure() -> None:
     )
     compiled = str(stmt.compile(dialect=postgresql.dialect()))
     assert 'FROM qbank_v2_question_attempt JOIN qbank_v2_practice_session_item' in compiled
-

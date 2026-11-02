@@ -186,6 +186,13 @@ class GetPracticeSessionItem(SchemaBase):
     latest_attempt_id: int | None = Field(None, description='本题最新作答事实ID，AI判分使用，不能用会话题目ID代替')
 
 
+class CreateRecallSessionParam(CreatePracticeSessionParam):
+    """仅供服务端到期队列使用，不放宽普通创建接口的500题限制。"""
+
+    question_ids: list[int] = Field(default_factory=list)
+    limit: int | None = Field(None, ge=1)
+
+
 class GetPracticeSessionDetail(SchemaBase):
     """练习会话聚合详情"""
 
@@ -213,6 +220,7 @@ class GetPracticeSessionDetail(SchemaBase):
     items: list[GetPracticeSessionItem] = Field(default_factory=list, description='投递题目，不含标准答案与解析')
     created_time: datetime = Field(description='创建时间')
     updated_time: datetime | None = Field(None, description='更新时间')
+    recall_remaining: int | None = Field(None, ge=0, description='消息截止时已到期、尚未提交的题数，包含当前未答题')
 
 
 class GetPracticeSessionListItem(SchemaBase):
@@ -343,6 +351,12 @@ class GetPracticeSolutionDetail(PracticeQuestionStatistics):
     grading_method: str | None = Field(description='标准判分方式')
     grading_config: dict[str, Any] = Field(default_factory=dict, description='判分配置')
     explanations: list[PracticeExplanationDetail] = Field(default_factory=list, description='已发布解析')
+    memory_feedback: dict[str, Any] | None = Field(None, description='回测评分与下次时间，仅提交后返回')
+    review_archive: dict[str, Any] | None = Field(None, description='回测提交后用于对照的原复盘')
+
+
+class ConfirmMemoryFeedbackParam(SchemaBase):
+    rating: Literal[1, 2, 3, 4] = Field(description='Again/Hard/Good/Easy；同作答仅确认一次')
 
 
 class SubmitPracticeSessionResult(SchemaBase):

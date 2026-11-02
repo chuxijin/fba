@@ -640,7 +640,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         """获取用户当前到期重练的错题，单表走 ix_qbv2_wrong_push_due"""
         conditions = (
             QbWrongQuestionState.user_id == user_id,
-            QbWrongQuestionState.status == 'active',
+            QbWrongQuestionState.status.in_({'active', 'resolved'}),
             QbWrongQuestionState.deleted == 0,
             QbWrongQuestionState.next_practice_time.is_not(None),
             QbWrongQuestionState.next_practice_time <= now,
@@ -696,7 +696,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                     case(
                         (
                             and_(
-                                QbWrongQuestionState.status == 'active',
+                                QbWrongQuestionState.status.in_({'active', 'resolved'}),
                                 QbWrongQuestionState.next_practice_time.is_not(None),
                                 QbWrongQuestionState.next_practice_time <= now,
                             ),
@@ -843,36 +843,6 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             .all()
         ]
         return event_count, reason_rows, knowledge_rows
-
-    async def scan_due_users(
-        self,
-        db: AsyncSession,
-        *,
-        now: datetime,
-        user_ids: Sequence[int] | None = None,
-    ) -> list[dict[str, int]]:
-        """扫描到期重练并按用户聚合，供推送定时任务使用"""
-        stmt = (
-            select(
-                QbWrongQuestionState.user_id,
-                func.count(QbWrongQuestionState.id).label('due_count'),
-            )
-            .where(
-                QbWrongQuestionState.deleted == 0,
-                QbWrongQuestionState.status == 'active',
-                QbWrongQuestionState.next_practice_time.is_not(None),
-                QbWrongQuestionState.next_practice_time <= now,
-            )
-            .group_by(QbWrongQuestionState.user_id)
-        )
-        if user_ids is not None:
-            if not user_ids:
-                return []
-            stmt = stmt.where(QbWrongQuestionState.user_id.in_(user_ids))
-        return [
-            {'user_id': int(row['user_id']), 'due_count': int(row['due_count'])}
-            for row in (await db.execute(stmt)).mappings().all()
-        ]
 
     async def get_group_counts(
         self,

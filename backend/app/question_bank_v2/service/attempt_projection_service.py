@@ -46,6 +46,7 @@ class AttemptProjectionService:
             await review_schedule_service.apply_delayed_grade(db=db, attempt=attempt, session_item=session_item)
             await statistics_service.apply_delayed_grade(db=db, attempt=attempt, max_score=session_item.max_score)
             marker['graded'] = True
+        details = {**details, **(attempt.grading_result or {})}
         details['_projection'] = marker
         attempt.grading_result = details
         await db.flush()

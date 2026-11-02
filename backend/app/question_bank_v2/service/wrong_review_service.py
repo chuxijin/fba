@@ -89,10 +89,11 @@ from backend.app.question_bank_v2.schema.user_content import ContentGroupNode
 from backend.app.question_bank_v2.service.content_group_service import content_group_service
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.material_service import material_service
-from backend.app.question_bank_v2.service.practice_schedule_service import next_practice_time
+from backend.app.question_bank_v2.service.practice_schedule_service import first_practice_time
 from backend.app.question_bank_v2.service.preference_service import preference_service
 from backend.app.question_bank_v2.service.review_schedule_service import review_schedule_service
 from backend.app.question_bank_v2.utils.external_practice import external_question_identity, question_content_digest
+from backend.app.question_bank_v2.utils.practice_lock import lock_practice_user
 from backend.common.exception import errors
 from backend.common.pagination import cursor_paging_data
 from backend.utils.timezone import timezone
@@ -1884,7 +1885,7 @@ class WrongReviewService:
                 'first_wrong_time': now,
                 'last_wrong_time': now,
                 'last_wrong_response': obj.wrong_response,
-                'next_practice_time': next_practice_time(level=0, now=now),
+                'next_practice_time': first_practice_time(now),
                 'created_by': user_id,
             },
         )
@@ -2126,6 +2127,8 @@ class WrongReviewService:
         )
         wrong_state.review_count += 1
         wrong_state.last_reviewed_time = reviewed_time
+        if wrong_state.next_practice_time is None and wrong_state.status != 'suspended':
+            wrong_state.next_practice_time = first_practice_time(reviewed_time)
         await db.flush()
         return await WrongReviewService._build_submit_result(
             db=db,
@@ -2142,6 +2145,7 @@ class WrongReviewService:
         obj: UpdateWrongStateParam,
     ) -> GetWrongQuestionListItem:
         """手动调整错题本状态"""
+        await lock_practice_user(db, user_id)
         wrong_state = await wrong_question_state_dao.get(
             db,
             wrong_state_id,
@@ -2161,7 +2165,8 @@ class WrongReviewService:
         elif obj.action == 'resolve':
             wrong_state.status = 'resolved'
             wrong_state.resolved_time = now
-            wrong_state.next_practice_time = None
+            if wrong_state.next_practice_time is None:
+                wrong_state.next_practice_time = first_practice_time(now)
         elif obj.action == 'suspend':
             wrong_state.status = 'suspended'
             wrong_state.next_practice_time = None

@@ -52,6 +52,10 @@ def get_local_beat_schedule() -> dict[str, dict[str, Any]]:
             'task': 'qbank_v2:expire_practice_sessions',
             'schedule': 60.0,
         },
+        '发送到期复盘回测提醒': {
+            'task': 'qbank_v2:notify_practice_due',
+            'schedule': TzAwareCrontab('*/5'),
+        },
         '更新用户每日排名': {
             'task': 'qbank:update_daily_user_ranks',
             'schedule': TzAwareCrontab('5', '0'),

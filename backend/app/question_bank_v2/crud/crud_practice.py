@@ -1228,10 +1228,11 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
         *,
         session_id: int,
         candidates: Sequence[QbBankItem | PracticeCandidate],
+        start_position: int = 0,
     ) -> None:
         """批量创建会话题目快照"""
         session_items: list[QbPracticeSessionItem] = []
-        for position, item in enumerate(candidates):
+        for position, item in enumerate(candidates, start=start_position):
             is_bank_item = isinstance(item, QbBankItem)
             session_items.append(
                 QbPracticeSessionItem(

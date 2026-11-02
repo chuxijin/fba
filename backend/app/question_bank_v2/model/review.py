@@ -56,7 +56,9 @@ class QbWrongQuestionState(Base, UserMixin):
             'next_practice_time',
             'user_id',
             'id',
-            postgresql_where=sa.text("deleted = 0 AND status = 'active' AND next_practice_time IS NOT NULL"),
+            postgresql_where=sa.text(
+                "deleted = 0 AND status IN ('active','resolved') AND next_practice_time IS NOT NULL"
+            ),
         ).ddl_if(dialect='postgresql'),
         # 用户到期列表：按用户定位后扫描到期时间，避免扫描全站到期数据。
         sa.Index(
@@ -64,7 +66,9 @@ class QbWrongQuestionState(Base, UserMixin):
             'user_id',
             'next_practice_time',
             'id',
-            postgresql_where=sa.text("deleted = 0 AND status = 'active' AND next_practice_time IS NOT NULL"),
+            postgresql_where=sa.text(
+                "deleted = 0 AND status IN ('active','resolved') AND next_practice_time IS NOT NULL"
+            ),
         ).ddl_if(dialect='postgresql'),
         # 复盘档案：只索引复盘过的行，考前回顾不受错题本状态影响
         sa.Index(
@@ -82,7 +86,7 @@ class QbWrongQuestionState(Base, UserMixin):
             'id',
             postgresql_where=sa.text(
                 "deleted = 0 AND status = 'active' "
-                "AND (review_count = 0 OR (last_reviewed_time IS NOT NULL AND last_wrong_time > last_reviewed_time))"
+                'AND (review_count = 0 OR (last_reviewed_time IS NOT NULL AND last_wrong_time > last_reviewed_time))'
             ),
         ).ddl_if(dialect='postgresql'),
         {'comment': '用户错题本当前状态表'},
@@ -134,13 +138,18 @@ class QbWrongQuestionState(Base, UserMixin):
     pinned_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='置顶时间')
     resolved_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='转为已解决时间')
 
-    # 复盘线：用户主动填写，不参与自动调度
+    # 复盘线：只记录分析；无排期时建立首次回测，不产生FSRS成功评分。
     review_count: Mapped[int] = mapped_column(sa.Integer, default=0, comment='真正复盘次数，不含录入事件')
     last_reviewed_time: Mapped[datetime | None] = mapped_column(TimeZone, default=None, comment='最近复盘时间')
 
-    # 重练线：由客观作答自动推进，next_practice_time 是推送的唯一真相源
-    practice_level: Mapped[int] = mapped_column(sa.SmallInteger, default=0, comment='重练阶梯等级')
-    last_rating: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='最近派生等级 1-4')
+    # 复用错题当前状态承载记忆状态；移出错题本不终止回测，暂停/删除才停止。
+    fsrs_data: Mapped[dict[str, Any]] = mapped_column(
+        CompatibleJSONB, default_factory=dict, server_default=sa.text("'{}'"), comment='FSRS记忆状态'
+    )
+    practice_level: Mapped[int] = mapped_column(
+        sa.SmallInteger, default=0, comment='旧阶梯等级，仅兼容历史，不参与排期'
+    )
+    last_rating: Mapped[int | None] = mapped_column(sa.SmallInteger, default=None, comment='最近FSRS评分 1-4')
     last_duration_ms: Mapped[int | None] = mapped_column(
         sa.BigInteger,
         default=None,

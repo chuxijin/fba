@@ -416,8 +416,8 @@ class GetWrongQuestionListItem(SchemaBase):
     option_data: list[dict[str, Any]] = Field(default_factory=list, description='有序选项')
     review_count: int = Field(default=0, ge=0, description='已复盘次数')
     last_reviewed_time: datetime | None = Field(None, description='最近复盘时间')
-    practice_level: int = Field(default=0, ge=0, description='重练阶梯等级')
-    last_rating: int | None = Field(None, ge=1, le=4, description='最近派生重练等级')
+    practice_level: int = Field(default=0, ge=0, description='历史阶梯等级，仅兼容旧客户端，不参与FSRS排期')
+    last_rating: int | None = Field(None, ge=1, le=4, description='最近FSRS回忆反馈：1没想起/2吃力/3正常/4轻松')
     next_practice_time: datetime | None = Field(None, description='下次重练时间')
     mastery_state: MasteryState = Field(default='new', description='掌握状态，供差异化导出')
     section_name: str | None = Field(None, description='原试卷章节/模块名（导入时记录），用于答题卡分组')
@@ -481,7 +481,7 @@ class GetQuestionReviewDetail(SchemaBase):
 
 
 class SubmitQuestionReviewResult(SchemaBase):
-    """复盘提交结果；复盘不改错题本状态，也不影响重练排期"""
+    """复盘不产生记忆评分；缺少排期时建立首次延迟验证。"""
 
     review: GetQuestionReviewDetail = Field(description='复盘事件详情')
     wrong_status: WrongStateStatus = Field(description='当前错题状态')

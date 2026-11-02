@@ -132,7 +132,7 @@ async def get_due_wrong_questions(
     db: CurrentSession,
     limit: Annotated[int | None, Query(ge=1, le=200, description='本次返回题数；空表示取用户偏好上限')] = None,
 ) -> ResponseSchemaModel[GetDueWrongQuestionResult]:
-    """按重练阶梯的下次时间返回当前用户已到期的活跃错题"""
+    """返回已到期的回测题，含已移出错题本但仍需长期验证的题。"""
     data = await wrong_review_service.get_due(db=db, user_id=request.user.id, limit=limit)
     return response_base.success(data=data)
 
@@ -453,7 +453,7 @@ async def submit_wrong_question_review(
     wrong_state_id: Annotated[int, Path(gt=0, description='错题状态 ID')],
     obj: CreateQuestionReviewParam,
 ) -> ResponseSchemaModel[SubmitQuestionReviewResult]:
-    """追加复盘事件；不打分、不改错题本状态，也不影响重练排期"""
+    """追加复盘事件，不产生FSRS成功反馈；没有排期时建立首次回测。"""
     data = await wrong_review_service.submit_review(
         db=db,
         user_id=request.user.id,

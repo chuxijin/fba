@@ -8,6 +8,7 @@ from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank_v2.crud.crud_preference import practice_preference_dao
 from backend.app.question_bank_v2.schema.practice import (
     PRACTICE_SESSION_RANGE_DAYS,
+    ConfirmMemoryFeedbackParam,
     CreatePracticeSessionParam,
     GetPracticeResponseDetail,
     GetPracticeSessionDetail,
@@ -101,6 +102,44 @@ async def get_practice_session(
 ) -> ResponseSchemaModel[GetPracticeSessionDetail]:
     """仅会话所有者可以读取投递题目，响应不包含标准答案与解析"""
     data = await practice_service.get(db=db, session_key=session_key, user_id=request.user.id)
+    return response_base.success(data=data)
+
+
+@router.post('/recall/messages/{message_id}', summary='从消息开始或继续回测', name='qbank_v2_open_recall_message')
+async def open_recall_message(
+    request: Request,
+    db: CurrentSessionTransactionBeforeResponse,
+    message_id: Annotated[int, Path(gt=0)],
+) -> ResponseSchemaModel[GetPracticeSessionDetail]:
+    from backend.app.question_bank_v2.service.notification_service import qbank_notification_service
+
+    data = await qbank_notification_service.open_practice(
+        db=db,
+        user_id=request.user.id,
+        message_id=message_id,
+    )
+    return response_base.success(data=data)
+
+
+@router.post(
+    '/{session_key}/items/{session_item_id}/memory-feedback',
+    summary='确认本次回忆反馈',
+    name='qbank_v2_confirm_memory_feedback',
+)
+async def confirm_memory_feedback(
+    request: Request,
+    db: CurrentSessionTransactionBeforeResponse,
+    session_key: Annotated[str, Path(min_length=8, max_length=64)],
+    session_item_id: Annotated[int, Path(gt=0)],
+    obj: ConfirmMemoryFeedbackParam,
+) -> ResponseSchemaModel[dict]:
+    data = await practice_service.confirm_memory_feedback(
+        db=db,
+        session_key=session_key,
+        user_id=request.user.id,
+        session_item_id=session_item_id,
+        rating=obj.rating,
+    )
     return response_base.success(data=data)
 
 

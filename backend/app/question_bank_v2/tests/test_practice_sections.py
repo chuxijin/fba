@@ -43,6 +43,7 @@ def db() -> Iterator[MemorySession]:
             'wrong_question_state': (
                 'user_id INTEGER, question_id INTEGER, entry_metadata JSON, status TEXT, deleted INTEGER'
             ),
+            'question_attempt': ('id INTEGER, session_item_id INTEGER, attempt_no INTEGER, deleted INTEGER'),
         }
         for name, columns in tables.items():
             connection.exec_driver_sql(f'CREATE TABLE qbank_v2_{name} ({columns})')

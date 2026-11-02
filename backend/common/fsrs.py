@@ -43,8 +43,8 @@ class ReviewForecast(SchemaBase):
 class FSRSEngine:
     """FSRS 间隔重复调度引擎"""
 
-    def __init__(self) -> None:
-        self.scheduler = Scheduler()
+    def __init__(self, **scheduler_options: Any) -> None:
+        self.scheduler = Scheduler(**scheduler_options)
 
     @staticmethod
     def db_to_card(record: FSRSRecord) -> Card:
@@ -163,13 +163,11 @@ class FSRSEngine:
         points: list[dict[str, Any]] = []
         for d in range(0, days + 1, step_days):
             sample_at = start.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=d)
-            points.append(
-                {
-                    'day': d,
-                    'date': timezone.from_datetime(sample_at).strftime('%Y-%m-%d'),
-                    'retrievability': round(float(self.scheduler.get_card_retrievability(card, sample_at)), 4),
-                }
-            )
+            points.append({
+                'day': d,
+                'date': timezone.from_datetime(sample_at).strftime('%Y-%m-%d'),
+                'retrievability': round(float(self.scheduler.get_card_retrievability(card, sample_at)), 4),
+            })
         return points
 
     @staticmethod

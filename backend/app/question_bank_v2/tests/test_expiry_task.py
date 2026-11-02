@@ -24,6 +24,7 @@ _TASKS_PATH = _APP_PATH / 'task' / 'tasks' / 'qbank_v2' / 'tasks.py'
 _BEAT_PATH = _APP_PATH / 'task' / 'tasks' / 'beat.py'
 
 _EXPECTED_TASK_NAME = 'qbank_v2:expire_practice_sessions'
+_EXPECTED_NOTIFY_TASK_NAME = 'qbank_v2:notify_practice_due'
 
 
 class _FakeCeleryApp:
@@ -210,7 +211,7 @@ async def test_failed_session_rolls_back_and_next_session_commits(monkeypatch: p
     result = await ctx.module.expire_practice_sessions()
 
     assert result == {'settled': 1, 'failed': 1}
-    assert ctx.fake_app.task_names == [_EXPECTED_TASK_NAME]
+    assert set(ctx.fake_app.task_names) == {_EXPECTED_TASK_NAME, _EXPECTED_NOTIFY_TASK_NAME}
     assert ctx.fake_db.events == ['query', 'begin', 'rollback', 'begin', 'commit']
     assert ctx.dao.calls == [
         {'session_key': 'sk-fail', 'user_id': 11, 'for_update': True},
@@ -258,7 +259,7 @@ async def test_already_terminal_session_is_not_recounted(monkeypatch: pytest.Mon
 
 
 def test_beat_schedule_registers_qbank_v2_expire_task(monkeypatch: pytest.MonkeyPatch) -> None:
-    """beat 配置必须包含 V2 到期结算任务，且为 60 秒固定间隔。"""
+    """beat 配置必须包含 V2 到期结算任务与到期提醒任务，并准确验证各自 schedule。"""
     _install_fake_task_deps(monkeypatch)
     beat = _load_module(_BEAT_PATH, '_test_qbank_v2_beat_under_test')
 
@@ -266,3 +267,6 @@ def test_beat_schedule_registers_qbank_v2_expire_task(monkeypatch: pytest.Monkey
 
     assert _EXPECTED_TASK_NAME in schedule
     assert schedule[_EXPECTED_TASK_NAME] == pytest.approx(60.0)
+    assert _EXPECTED_NOTIFY_TASK_NAME in schedule
+    assert isinstance(schedule[_EXPECTED_NOTIFY_TASK_NAME], _FakeCrontab)
+    assert schedule[_EXPECTED_NOTIFY_TASK_NAME].args == ('*/5',)

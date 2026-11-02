@@ -17,9 +17,9 @@ from backend.app.question_bank_v2.schema.review import (
 )
 from backend.app.question_bank_v2.service.knowledge_mastery_service import knowledge_mastery_service
 from backend.app.question_bank_v2.service.practice_schedule_service import (
-    derive_rating,
-    next_practice_level,
-    next_practice_time,
+    ALGORITHM,
+    first_practice_time,
+    schedule,
 )
 
 DEFAULT_RESOLVE_THRESHOLD = 3
@@ -61,19 +61,30 @@ class ReviewScheduleService:
 
     @staticmethod
     def _advance_schedule(*, wrong_state: QbWrongQuestionState, attempt: QbQuestionAttempt) -> None:
-        """按客观派生等级推进重练阶梯"""
-        rating = derive_rating(
-            is_correct=attempt.is_correct,
-            duration_ms=attempt.duration_ms,
-            baseline_ms=wrong_state.last_duration_ms,
-        )
-        if rating is not None:
-            wrong_state.last_rating = rating
-            wrong_state.practice_level = next_practice_level(level=wrong_state.practice_level, rating=rating)
-            wrong_state.next_practice_time = next_practice_time(
-                level=wrong_state.practice_level,
-                now=attempt.submitted_time,
-            )
+        """只使用同会话首次独立作答；重试/揭晓后的改答不制造记忆成功。"""
+        if attempt.is_correct is None or getattr(attempt, 'attempt_no', 1) != 1 or wrong_state.status == 'suspended':
+            return
+        before = dict(getattr(wrong_state, 'fsrs_data', None) or {})
+        last_review = before.get('last_review')
+        if last_review and datetime.fromisoformat(last_review) > attempt.submitted_time:
+            return  # 迟到的AI判分不能把较新的记忆状态倒退。
+        if before.get('last_attempt_id') == attempt.id:
+            return
+        rating = 3 if attempt.is_correct else 1
+        after, due = schedule(before, rating=rating, now=attempt.submitted_time)
+        wrong_state.fsrs_data = {**after, 'last_attempt_id': attempt.id}
+        wrong_state.last_rating = rating
+        wrong_state.next_practice_time = due
+        details = dict(getattr(attempt, 'grading_result', None) or {})
+        details['_memory'] = {
+            'algorithm': ALGORITHM,
+            'before': before,
+            'after': after,
+            'rating': rating,
+            'due': due.isoformat(),
+            'confirmed': False,
+        }
+        attempt.grading_result = details
         wrong_state.last_duration_ms = attempt.duration_ms
 
     @staticmethod
@@ -109,6 +120,16 @@ class ReviewScheduleService:
             wrong_state.entry_metadata = metadata
 
     @staticmethod
+    def _has_newer_memory(wrong_state: QbWrongQuestionState, now: datetime) -> bool:
+        last_review = (wrong_state.fsrs_data or {}).get('last_review')
+        return bool(last_review and datetime.fromisoformat(last_review) > now)
+
+    @staticmethod
+    def _update_wrong_bank_context(wrong_state: QbWrongQuestionState, session_item: QbPracticeSessionItem) -> None:
+        if session_item.bank_item_id is not None:
+            wrong_state.source_bank_item_id = session_item.bank_item_id
+
+    @staticmethod
     async def _sync_wrong_state(
         *,
         db: AsyncSession,
@@ -127,11 +148,16 @@ class ReviewScheduleService:
         now = attempt.submitted_time
         if wrong_state is not None:
             ReviewScheduleService._merge_attempt_metadata(wrong_state, session_item)
+            if ReviewScheduleService._has_newer_memory(wrong_state, now):
+                return  # 迟到判分保留全局统计，但不能覆盖较新错题状态和最近练习时间。
+        # 背题/旧卷回看不是独立回忆；不可用其“已看”提交推进FSRS。
+        if isinstance(attempt.response_data, dict) and attempt.response_data.get('mode') == 'memorize':
+            return
 
         if attempt.is_correct is False:
             mastery.state = 'learning'
             if wrong_state is None:
-                await wrong_question_state_dao.create(
+                wrong_state = await wrong_question_state_dao.create(
                     db,
                     {
                         'user_id': attempt.user_id,
@@ -147,22 +173,34 @@ class ReviewScheduleService:
                         'last_practice_time': now,
                         'last_wrong_response': attempt.response_data,
                         'last_duration_ms': attempt.duration_ms,
-                        'next_practice_time': next_practice_time(level=0, now=now),
+                        'next_practice_time': first_practice_time(now),
                         'created_by': attempt.user_id,
                     },
                 )
+                # 首次答错是失败证据，但第一轮延迟验证采用次日启动规则。
+                ReviewScheduleService._advance_schedule(wrong_state=wrong_state, attempt=attempt)
+                wrong_state.next_practice_time = first_practice_time(now)
+                if (attempt.grading_result or {}).get('_memory'):
+                    attempt.grading_result = {
+                        **attempt.grading_result,
+                        '_memory': {
+                            **attempt.grading_result['_memory'],
+                            'due': wrong_state.next_practice_time.isoformat(),
+                        },
+                    }
                 return
-            wrong_state.status = 'active'
+            was_suspended = wrong_state.status == 'suspended'
             wrong_state.resolved_time = None
             wrong_state.wrong_count += 1
             wrong_state.correct_streak = 0
             wrong_state.source_attempt_id = attempt.id
-            if session_item.bank_item_id is not None:
-                wrong_state.source_bank_item_id = session_item.bank_item_id
+            ReviewScheduleService._update_wrong_bank_context(wrong_state, session_item)
             wrong_state.last_wrong_time = now
             wrong_state.last_practice_time = now
             wrong_state.last_wrong_response = attempt.response_data
-            ReviewScheduleService._advance_schedule(wrong_state=wrong_state, attempt=attempt)
+            if not was_suspended:
+                wrong_state.status = 'active'
+                ReviewScheduleService._advance_schedule(wrong_state=wrong_state, attempt=attempt)
             return
 
         if attempt.is_correct is True and wrong_state is not None:
@@ -174,7 +212,6 @@ class ReviewScheduleService:
             if wrong_state.status == 'active' and wrong_state.correct_streak >= threshold:
                 wrong_state.status = 'resolved'
                 wrong_state.resolved_time = now
-                wrong_state.next_practice_time = None
                 mastery.state = 'mastered'
 
     @staticmethod
@@ -253,8 +290,8 @@ class ReviewScheduleService:
 
     @staticmethod
     def reschedule(*, wrong_state: QbWrongQuestionState, now: datetime) -> None:
-        """手动恢复错题时按当前阶梯重新排期"""
-        wrong_state.next_practice_time = next_practice_time(level=wrong_state.practice_level, now=now)
+        """恢复仅重新开放队列，不虚构FSRS反馈。"""
+        wrong_state.next_practice_time = first_practice_time(now)
 
 
 review_schedule_service: ReviewScheduleService = ReviewScheduleService()
