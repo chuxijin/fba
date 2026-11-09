@@ -64,12 +64,27 @@ uv run python skills/fba_work/question-explanation/scripts/new_run.py 20261108-s
 
 ## 已完成任务
 
+- [第14季政治、常识与逻辑填空](runs/20261105-season14/README.md)：2026-11-05生产提交20题（政治9、常识9、逻辑填空2/20词），default设默认、official原文保留；原文保真及逐词校验通过，发布后144/144独立核验通过，新增20条default ID131422—131441。新增「排序题（按时间先后排序）」分支（104535、104536）。备份表 `qbank_v2_question_explanation_bak_20261105_s14` 独立COMMIT。
+- [第13季政治、常识与逻辑填空](runs/20261103-season13/README.md)：2026-11-03生产提交23题（政治10、常识9、逻辑填空4/40词），default设默认、official原文保留；原文保真及逐词校验通过，发布后165/165独立核验通过，新增23条default ID131249—131271。备份表 `qbank_v2_question_explanation_bak_20261103_s13` 独立COMMIT。
 - [第12季政治、常识与逻辑填空](runs/20261102-season12/README.md)：2026-11-02生产提交20题（政治9、常识3、逻辑填空8/72词），default设默认、official原文保留；原文保真及逐词校验通过，发布后232/232独立核验通过。整季37题原题/答案/学习记录与17道非目标解析未改。
 - [第12季逻辑填空一词一行改版（Batch 1）](runs/20261102-season12-logic-reformat/README.md)：2026-11-02晚将第12季8道逻辑填空重发为“一词一行”新格式，备份独立COMMIT，发布后独立复核PASS（8/8逐字）。
-- [无 module_path 模考逻辑填空改版（Batch 2）](runs/20261102-nomodule-logic-fill/README.md)：2026-11-02将第7/8/9/10/41季共22道无 module_path 模考逻辑填空重发为“一词一行”新格式（第41季3题复用打样成品转正），备份独立COMMIT，发布后独立复核161/161 PASS，新增22条default ID130807—130828。继续推进其余29个带 module_path 来源按季分批。
+- [无 module_path 模考逻辑填空改版（Batch 2）](runs/20261102-nomodule-logic-fill/README.md)：2026-11-02将第7/8/9/10/41季共22道无 module_path 模考逻辑填空重发为“一词一行”新格式（第41季3题复用打样成品转正），备份独立COMMIT，发布后独立复核161/161 PASS，新增22条default ID130807—130828。
+- 带 module_path 模考逻辑填空改版（Batch 3）按 28 来源 / 127 题拆 10 个子批推进（计划见 `runs/20261102-nomodule-logic-fill/work/plan_batch3.md`）：
+  - [Batch 3-1](runs/20261102-b3-1-logic-fill/README.md)：2026-11-02发布，第一季（地市级）8题+第二季（行政执法类）4题=12题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_1` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，独立SQL核验 12/12/0、MCP核验 91/91 PASS，新增12条default ID130841—130852。
+  - [Batch 3-2](runs/20261102-b3-2-logic-fill/README.md)：2026-11-02发布，第三季（地市级）5题+第四季（地市级）7题=12题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_2` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，独立SQL核验 12/12/0、MCP核验 91/91 PASS，新增12条default ID130865—130876。
+  - [Batch 3-3](runs/20261102-b3-3-logic-fill/README.md)：2026-11-02发布，第五季（地市级）4题+第十七季（地市级）3题+第十八季（地市级）5题=12题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_3` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，独立SQL核验 12/12/0、MCP核验 91/91 PASS，新增12条default ID130889—130900。
+  - [Batch 3-4](runs/20261102-b3-4-logic-fill/README.md)：2026-11-02发布，第十九季（地市级）6题+第二十季（地市级）6题=12题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_4` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，独立SQL核验 12/12/0、MCP核验 91/91 PASS，新增12条default ID130913—130924。
+  - [Batch 3-5](runs/20261102-b3-5-logic-fill/README.md)：2026-11-02发布，第二十一季（地市级）5题+第二十二季（地市级）2题+第二十三季（地市级）5题=12题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_5` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，独立SQL核验 12/12/0、MCP核验 91/91 PASS，新增12条default ID130937—130948。
+  - [Batch 3-6](runs/20261102-b3-6-logic-fill/README.md)：2026-11-02发布，第二十四季（地市级）5题+第二十五季（地市级）3题+第二十六季（地市级）5题=13题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_6` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，本批起采用精简流程：MCP after 与锁内快照逐字段比对 98/98 PASS（独立只读SQL旁路改为每3—5批抽查一次），新增13条default ID130975—130987。
+  - [Batch 3-7](runs/20261102-b3-7-logic-fill/README.md)：2026-11-02发布，第二十七季（地市级）8题+第二十八季（地市级）3题+第二十九季（地市级）6题=17题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_7` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，MCP after 与锁内快照逐字段比对 126/126 PASS，新增17条default ID131005—131021。
+  - [Batch 3-8](runs/20261102-b3-8-logic-fill/README.md)：2026-11-02发布，第三十季（地市级）2题+第三十一季（地市级）5题+第三十二季（地市级）5题=12题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_8` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，MCP after 与锁内快照逐字段比对 91/91 PASS，新增12条default ID131034—131045。
+  - [Batch 3-9](runs/20261102-b3-9-logic-fill/README.md)：2026-11-02发布，第三十三季（地市级）2题+第三十四季（地市级）6题+第三十五季（行政执法类）4题=12题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_9` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，MCP after 与锁内快照逐字段比对 91/91 PASS，新增12条default ID131058—131069。
+  - [Batch 3-10](runs/20261102-b3-10-logic-fill/README.md)：2026-11-02发布（**Batch 3 最后一批，Batch 3 十批全部完成**），第三十六季（地市级）4题+第三十七季（地市级）5题+第三十九季（地市级）3题+第四十季（地市级）1题=13题，备份表 `qbank_v2_question_explanation_bak_20261102_b3_10` 独立COMMIT，dry-run ROLLBACK、发布COMMIT，MCP after 与锁内快照逐字段比对 98/98 PASS，新增13条default ID131083—131095。
 
 | 归档 | 状态 |
 |---|---|
+| [第14季](runs/20261105-season14/README.md) | 2026-11-05已提交：政治9+常识9+逻辑填空2共20题；20条新default、20条official保留非默认；144/144独立核验通过；新增排序题分支 |
+| [第13季](runs/20261103-season13/README.md) | 2026-11-03已提交：政治10+常识9+逻辑填空4共23题；23条新default、23条official保留非默认；165/165独立核验通过 |
 | [第41季](runs/20261101-season41/README.md) | 2026-11-01已提交：18条新default、18条official保留非默认；独立核验通过 |
 | [第41季逻辑填空打样](runs/20261101-season41-logic-sample/README.md) | 已导入范围内单空/双空/三空各1题，本地打样；其中104100/104101/104102已于Batch 2转正发布，打样目录仍保留原始验收产物 |
 | `archive/legacy-20261027-31/` | 旧模考、米6套卷198题、肖193题193题、米李720题785题；完整保留原文件布局，仅供查证 |
