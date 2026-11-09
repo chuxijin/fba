@@ -7,6 +7,7 @@ from sqlalchemy.sql.functions import aggregate_strings
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.admin.model.user import User
+from backend.app.question_bank_v2.crud.crud_user_content_context import content_bank_item_condition
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from backend.app.question_bank_v2.model.catalog import QbBankCategory
 from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbQuestionKnowledgePoint
@@ -56,35 +57,6 @@ async def _get_bank_group_counts(
     domain_category_ids: Sequence[int] | None = None,
 ) -> list[dict[str, Any]]:
     """按题库和篇章统计用户内容"""
-    saved_item = QbBankItem.__table__.alias('saved_content_bank_item')
-    has_valid_saved_item = exists(
-        select(saved_item.c.id).where(
-            saved_item.c.id == model.bank_item_id,
-        )
-    )
-    ranked_items = (
-        select(
-            QbBankItem.id,
-            QbBankItem.question_id,
-            func.row_number()
-            .over(
-                partition_by=(QbBankItem.question_id, QbBankRevision.bank_id),
-                order_by=(
-                    (QbBankItem.bank_revision_id == QbBank.current_revision_id).desc(),
-                    QbBankRevision.revision_no.desc(),
-                    QbBankItem.id.desc(),
-                ),
-            )
-            .label('rank'),
-        )
-        .join(QbBankRevision, QbBankRevision.id == QbBankItem.bank_revision_id)
-        .join(QbBank, QbBank.id == QbBankRevision.bank_id)
-        .subquery()
-    )
-    fallback_item_ids = select(ranked_items.c.id).where(
-        ranked_items.c.question_id == model.question_id,
-        ranked_items.c.rank == 1,
-    )
     stmt = (
         select(
             QbBank.id.label('bank_id'),
@@ -97,15 +69,7 @@ async def _get_bank_group_counts(
         .select_from(model)
         .join(
             QbBankItem,
-            and_(
-                or_(
-                    QbBankItem.id == model.bank_item_id,
-                    and_(
-                        QbBankItem.id.in_(fallback_item_ids),
-                        ~has_valid_saved_item,
-                    ),
-                ),
-            ),
+            content_bank_item_condition(model),
         )
         .join(
             QbBankRevision,

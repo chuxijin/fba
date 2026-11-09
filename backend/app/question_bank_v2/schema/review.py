@@ -37,6 +37,8 @@ EXTERNAL_ENTRY_SOURCES: tuple[str, ...] = ('manual', 'ocr', 'import')
 ENTRY_METADATA_DOMAIN_KEY = 'domain_category_id'
 # entry_metadata 其余约定键：统一在 schema 定义，避免 service / crud 各写一份字面量
 ENTRY_METADATA_BATCH_KEY = 'import_batch_id'
+# capture 事件中的批次关联，不覆盖错题状态的首次来源，也不计入复盘次数。
+IMPORT_CAPTURE_BATCH_KEY = 'import_batch'
 ENTRY_METADATA_SOURCE_SYSTEM_KEY = 'source_system'
 ENTRY_METADATA_EXTERNAL_KEY_KEY = 'external_key'
 ENTRY_METADATA_SECTION_KEY = 'section_name'
@@ -208,8 +210,9 @@ class BatchImportItemResult(SchemaBase):
     """批量录入中单条成功记录"""
 
     external_key: str | None = Field(None, description='客户端外部来源唯一键')
-    question_id: int = Field(description='新建的稳定题目 ID')
-    wrong_state_id: int = Field(description='新建的错题状态 ID')
+    question_id: int = Field(description='新建或复用的稳定题目 ID')
+    wrong_state_id: int = Field(description='新建或复用的错题状态 ID')
+    reused: bool = Field(default=False, description='是否复用已有错题状态')
 
 
 class BatchImportFailure(SchemaBase):
@@ -227,6 +230,8 @@ class BatchImportResult(SchemaBase):
     total: int = Field(ge=0, description='请求总条数')
     succeeded: int = Field(ge=0, description='成功条数')
     failed: int = Field(ge=0, description='失败条数')
+    created: int = Field(default=0, ge=0, description='新增错题数')
+    reused: int = Field(default=0, ge=0, description='成功关联的已有错题数')
     items: list[BatchImportItemResult] = Field(default_factory=list, description='成功记录')
     failures: list[BatchImportFailure] = Field(default_factory=list, description='失败记录')
 
@@ -239,6 +244,7 @@ class BatchUndoResult(SchemaBase):
     deleted_questions: int = Field(ge=0, description='清理的私有题目数')
     deleted_reviews: int = Field(ge=0, description='清理的复盘事件数')
     deleted_materials: int = Field(default=0, ge=0, description='回收的孤儿材料数')
+    detached_states: int = Field(default=0, ge=0, description='只解除本批次关联、保留错题及复盘的数量')
 
 
 class ImportHistoryBatchItem(SchemaBase):

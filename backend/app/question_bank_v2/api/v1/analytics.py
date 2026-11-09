@@ -13,7 +13,9 @@ from backend.app.question_bank_v2.schema.analytics import (
     GetUserPracticeReport,
     RankType,
 )
+from backend.app.question_bank_v2.schema.bank_high_error import GetBankHighErrorSections
 from backend.app.question_bank_v2.service.analytics_service import analytics_service
+from backend.app.question_bank_v2.service.bank_high_error_service import bank_high_error_service
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -94,6 +96,20 @@ async def get_bank_wrong_sections(
     bank_id: Annotated[int, Path(gt=0, description='题库稳定身份 ID')],
 ) -> ResponseSchemaModel[GetBankWrongSectionCounts]:
     data = await analytics_service.get_bank_wrong_sections(db=db, user_id=request.user.id, bank_id=bank_id)
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/banks/{bank_id}/high-error-sections',
+    summary='获取试卷高频易错章节',
+    name='qbank_v2_get_bank_high_error_sections',
+)
+async def get_bank_high_error_sections(
+    request: Request,
+    db: CurrentSession,
+    bank_id: Annotated[int, Path(gt=0, description='题库稳定身份 ID')],
+) -> ResponseSchemaModel[GetBankHighErrorSections]:
+    data = await bank_high_error_service.get_sections(db=db, user_id=request.user.id, bank_id=bank_id)
     return response_base.success(data=data)
 
 

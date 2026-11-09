@@ -5,12 +5,17 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func, literal_column, select, update
+from sqlalchemy import case, func, literal_column, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.admin.crud.crud_category import category_dao
 from backend.app.question_bank_v2.crud.crud_external_practice import external_practice_dao
+from backend.app.question_bank_v2.crud.crud_import_batch import (
+    import_capture_data,
+    import_capture_key,
+    wrong_import_batch_dao,
+)
 from backend.app.question_bank_v2.crud.crud_knowledge import question_knowledge_point_dao
 from backend.app.question_bank_v2.crud.crud_material import question_material_dao
 from backend.app.question_bank_v2.crud.crud_practice import (
@@ -689,6 +694,7 @@ class WrongReviewService:
         if len(items) > BATCH_IMPORT_LIMIT:
             raise errors.RequestError(msg=f'单次批量录入不能超过 {BATCH_IMPORT_LIMIT} 道题')
 
+        await lock_practice_user(db, user_id)
         batch_id = (import_batch_id or '').strip() or uuid.uuid4().hex
         succeeded_items: list[BatchImportItemResult] = []
         failures: list[BatchImportFailure] = []
@@ -717,6 +723,15 @@ class WrongReviewService:
                         material_cache=item_cache,
                         existing_lookup=existing_lookup,
                     )
+                    await wrong_import_batch_dao.link(
+                        db,
+                        user_id=user_id,
+                        batch_id=batch_id,
+                        state_id=captured.wrong_state_id,
+                        question_id=captured.question_id,
+                        metadata=obj.entry_metadata,
+                        reused=captured.reused,
+                    )
                 material_cache.update(item_cache)
                 # 同批次内重复的键后续也能命中，避免建出第二份
                 if obj.source_system and obj.external_key:
@@ -744,6 +759,8 @@ class WrongReviewService:
             total=len(items),
             succeeded=len(succeeded_items),
             failed=len(failures),
+            created=sum(not item.reused for item in succeeded_items),
+            reused=sum(item.reused for item in succeeded_items),
             items=succeeded_items,
             failures=failures,
         )
@@ -757,6 +774,8 @@ class WrongReviewService:
     ) -> BatchUndoResult | tuple[int, int, int]:
         """共用逻辑：软删一批错题状态、其复盘事件与可清理的私有题目"""
         state_ids = [row[0] for row in state_rows]
+        if not state_ids:
+            return 0, 0, 0, 0
         question_ids = list({row[1] for row in state_rows})
         now = timezone.now()
 
@@ -991,26 +1010,27 @@ class WrongReviewService:
         cursor: str | None = None,
         size: int = IMPORT_HISTORY_PAGE_SIZE,
     ) -> ImportBatchPage:
-        """导入批次列表（游标分页，按批次内最大状态 ID 倒序）
+        """导入批次列表（游标分页，按实际导入时间倒序）
 
-        批次由 import_batch_id 聚合而来，没有可直接排序的物理列，
-        因此以「批次内最大状态 ID」作为游标键——它随导入时间单调递增，分页不会漏批次。
+        批次包含新增与复用题；按录入事件时间及批次 ID 排序，复用同一状态的批次也不会漏页。
         """
         page_size = max(1, min(int(size or IMPORT_HISTORY_PAGE_SIZE), IMPORT_HISTORY_MAX_PAGE_SIZE))
-        cursor_id = WrongReviewService._parse_cursor_id(cursor)
-
-        batch_id_expr = QbWrongQuestionState.entry_metadata[ENTRY_METADATA_BATCH_KEY].as_string()
+        memberships = wrong_import_batch_dao.memberships(user_id)
+        batch_id_expr = memberships.c.batch_id
         last_state_id = func.max(QbWrongQuestionState.id)
+        last_time = func.max(memberships.c.imported_time)
         stmt = (
             select(
                 batch_id_expr.label('batch_id'),
-                func.min(QbWrongQuestionState.entry_metadata['source'].as_string()).label('source'),
+                func.min(memberships.c.source).label('source'),
                 func.count().label('total'),
                 func.sum(case((QbWrongQuestionState.status == 'active', 1), else_=0)).label('active'),
-                func.min(QbWrongQuestionState.created_time).label('first_time'),
-                func.max(QbWrongQuestionState.created_time).label('last_time'),
+                func.min(memberships.c.imported_time).label('first_time'),
+                last_time.label('last_time'),
                 last_state_id.label('last_state_id'),
             )
+            .select_from(QbWrongQuestionState)
+            .join(memberships, memberships.c.state_id == QbWrongQuestionState.id)
             .where(
                 QbWrongQuestionState.user_id == user_id,
                 QbWrongQuestionState.deleted == 0,
@@ -1018,9 +1038,22 @@ class WrongReviewService:
             )
             .group_by(literal_column('1'))
         )
-        if cursor_id is not None:
-            stmt = stmt.having(last_state_id < cursor_id)
-        stmt = stmt.order_by(last_state_id.desc()).limit(page_size + 1)
+        if cursor:
+            if '|' not in cursor:
+                stmt = stmt.having(last_state_id < WrongReviewService._parse_cursor_id(cursor))
+            else:
+                try:
+                    raw_time, batch_id = cursor.split('|', 1)
+                    cursor_time = datetime.fromisoformat(raw_time)
+                    if cursor_time.tzinfo is None or not batch_id:
+                        raise ValueError
+                except ValueError as exc:
+                    raise errors.RequestError(msg='无效的导入批次游标') from exc
+                stmt = stmt.having(or_(
+                    last_time < cursor_time,
+                    (last_time == cursor_time) & (batch_id_expr < batch_id),
+                ))
+        stmt = stmt.order_by(last_time.desc(), batch_id_expr.desc()).limit(page_size + 1)
 
         rows = (await db.execute(stmt)).mappings().all()
         has_more = len(rows) > page_size
@@ -1038,7 +1071,7 @@ class WrongReviewService:
                 )
                 for row in rows
             ],
-            next_cursor=str(rows[-1]['last_state_id']) if has_more and rows else None,
+            next_cursor=(f"{rows[-1]['last_time'].isoformat()}|{rows[-1]['batch_id']}" if has_more and rows else None),
             has_more=has_more,
         )
 
@@ -1140,27 +1173,42 @@ class WrongReviewService:
         user_id: int,
         import_batch_id: str,
     ) -> BatchUndoResult:
-        """撤销一次批量导入：软删该批次带进来的错题状态、题目与复盘事件
-
-        只处理当前用户自己、且 entry_metadata.import_batch_id 匹配的记录；
-        题目仅在「本人私有且不再被其他错题状态引用」时才清理，避免误删仍在使用的内容。
-        """
+        """撤销批次关联；已有错题或仍被其他批次引用的题目与复盘不得删除。"""
         batch_id = (import_batch_id or '').strip()
         if not batch_id:
             raise errors.RequestError(msg='批次 ID 不能为空')
 
-        state_rows = (
-            await db.execute(
-                select(QbWrongQuestionState.id, QbWrongQuestionState.question_id).where(
-                    QbWrongQuestionState.user_id == user_id,
-                    QbWrongQuestionState.deleted == 0,
-                    QbWrongQuestionState.entry_metadata[ENTRY_METADATA_BATCH_KEY].as_string() == batch_id,
-                )
-            )
-        ).all()
+        await lock_practice_user(db, user_id)
+        state_rows = await wrong_import_batch_dao.get_states(db, user_id=user_id, batch_id=batch_id)
         if not state_rows:
             raise errors.NotFoundError(msg='未找到该导入批次，可能已被撤销')
 
+        memberships = wrong_import_batch_dao.memberships(user_id)
+        shared_ids = set((await db.execute(select(memberships.c.state_id).where(
+            memberships.c.state_id.in_([row.id for row in state_rows]),
+            memberships.c.batch_id != batch_id,
+        ))).scalars().all())
+        delete_rows = []
+        for row in state_rows:
+            metadata = row.entry_metadata or {}
+            if metadata.get(ENTRY_METADATA_BATCH_KEY) == batch_id and row.id not in shared_ids:
+                delete_rows.append((row.id, row.question_id))
+            # 为历史 metadata 批次建立显式事件，撤销后避免旧归属回退复活。
+            await wrong_import_batch_dao.link(
+                db,
+                user_id=user_id,
+                batch_id=batch_id,
+                state_id=row.id,
+                question_id=row.question_id,
+                metadata=metadata,
+                reused=metadata.get(ENTRY_METADATA_BATCH_KEY) != batch_id,
+            )
+        await db.execute(update(QbQuestionReview).where(
+            QbQuestionReview.user_id == user_id,
+            QbQuestionReview.event_type == 'capture',
+            QbQuestionReview.deleted == 0,
+            QbQuestionReview.idempotency_key.in_([import_capture_key(batch_id, row.id) for row in state_rows]),
+        ).values(deleted=QbQuestionReview.id, deleted_time=timezone.now()))
         (
             deleted_states,
             deleted_questions,
@@ -1169,7 +1217,7 @@ class WrongReviewService:
         ) = await WrongReviewService._soft_delete_wrong_states(
             db=db,
             user_id=user_id,
-            state_rows=state_rows,
+            state_rows=delete_rows,
         )
         return BatchUndoResult(
             import_batch_id=batch_id,
@@ -1177,6 +1225,7 @@ class WrongReviewService:
             deleted_questions=deleted_questions,
             deleted_reviews=deleted_reviews,
             deleted_materials=deleted_materials,
+            detached_states=len(state_rows) - len(delete_rows),
         )
 
     @staticmethod
@@ -1780,6 +1829,7 @@ class WrongReviewService:
                 external_key=obj.external_key,
                 question_id=state.question_id,
                 wrong_state_id=existing_state_id,
+                reused=True,
             )
 
         await WrongReviewService._validate_links(
@@ -1844,6 +1894,7 @@ class WrongReviewService:
                     external_key=obj.external_key,
                     question_id=state.question_id,
                     wrong_state_id=existing_state_id,
+                    reused=True,
                 )
         await WrongReviewService._write_question_content(
             db=db,
@@ -1889,7 +1940,10 @@ class WrongReviewService:
                 'created_by': user_id,
             },
         )
-        capture_event_key = f'capture:{hashlib.sha256(obj.idempotency_key.encode()).hexdigest()}'
+        capture_event_key = (
+            import_capture_key(import_batch_id, wrong_state.id)
+            if import_batch_id else f'capture:{hashlib.sha256(obj.idempotency_key.encode()).hexdigest()}'
+        )
         capture_event = await question_review_dao.create(
             db,
             {
@@ -1900,7 +1954,9 @@ class WrongReviewService:
                 'event_type': 'capture',
                 'duration_ms': 0,
                 'summary': None,
-                'review_data': {},
+                'review_data': (
+                    import_capture_data(import_batch_id, obj.entry_metadata, reused=False) if import_batch_id else {}
+                ),
                 'idempotency_key': capture_event_key,
                 'reviewed_time': now,
                 'created_by': user_id,

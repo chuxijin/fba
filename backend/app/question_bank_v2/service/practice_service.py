@@ -86,13 +86,38 @@ class PracticeService:
     """题库 V2 练习会话服务类"""
 
     @staticmethod
+    def _recall_module_rank(item: dict[str, Any], section_name: str) -> int:
+        """只对判断／言语章节内的业务题型排序，不用 single_choice 等作答类型排序。"""
+        if '判断推理' in section_name:
+            groups = [('图形推理', '图推'), ('定义判断',), ('类比推理',), ('逻辑判断',)]
+        elif '言语理解' in section_name:
+            groups = [('逻辑填空',), ('片段阅读',)]
+        else:
+            return 0
+        path = item.get('_recall_module_path')
+        if not isinstance(path, list) or not path:
+            display = item.get('display_config')
+            display = display if isinstance(display, dict) else {}
+            external = display.get('external_practice')
+            external = external if isinstance(external, dict) else {}
+            path = external.get('module_path')
+            if not isinstance(path, list) or not path:
+                path = display.get('module_path')
+        labels = {label.strip() for label in path if isinstance(label, str)} if isinstance(path, list) else set()
+        return next((rank for rank, names in enumerate(groups) if labels.intersection(names)), len(groups))
+
+    @staticmethod
     def _order_recall_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """整份回测按同名章节聚拢并连续编号；不改写数据库中的位置与作答事实。"""
+        """回测按同名章节聚拢、章节内按业务题型排序并连续编号；不改写作答事实。"""
         chapters: dict[str, list[dict[str, Any]]] = {}
         for item in sorted(items, key=itemgetter('position')):
             name = (item.get('section_name') or '').strip()
             chapters.setdefault(name, []).append({**item, 'section_name': name})
-        ordered = [item for chapter in chapters.values() for item in chapter]
+        ordered = [
+            item
+            for name, chapter in chapters.items()
+            for item in sorted(chapter, key=lambda row: PracticeService._recall_module_rank(row, name))
+        ]
         for position, item in enumerate(ordered):
             item['position'] = position
         return ordered
@@ -1467,6 +1492,18 @@ class PracticeService:
             )
         elif obj.module_quotas:
             candidates = await PracticeService._module_candidates(db=db, user_id=user_id, obj=obj)
+        elif obj.selection_strategy == 'bank_high_error':
+            from backend.app.question_bank_v2.service.bank_high_error_service import bank_high_error_service
+
+            if revision is None:
+                raise errors.ServerError(msg='题库当前发布版本不存在')
+            candidates = await bank_high_error_service.get_candidates(
+                db=db,
+                user_id=user_id,
+                revision_id=revision.id,
+                section_id=obj.section_id,
+                limit=obj.limit or 500,
+            )
         elif obj.source_type == 'bank':
             if revision is None:
                 raise errors.ServerError(msg='题库当前发布版本不存在')
@@ -1517,7 +1554,7 @@ class PracticeService:
         if not candidates:
             message = (
                 '当前模块暂无样本充足的高频易错题，请稍后再试'
-                if obj.selection_strategy == 'high_error'
+                if obj.selection_strategy in {'high_error', 'bank_high_error'}
                 else '当前条件下没有可投递题目'
             )
             raise errors.RequestError(msg=message)

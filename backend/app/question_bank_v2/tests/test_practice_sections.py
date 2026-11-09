@@ -62,14 +62,14 @@ def db() -> Iterator[MemorySession]:
         connection.exec_driver_sql("INSERT INTO qbank_v2_practice_session_item VALUES (20,20,0,1,NULL,2,'{}',0)")
         # 同一题允许不同用户有不同来源章节；旧的软删除记录不得导致重复投递。
         for user_id, question_id, metadata, status, deleted in (
-            (7, 1, {'section_name': '  资料分析  '}, 'active', 0),
-            (7, 2, {'section_name': '判断推理'}, 'resolved', 0),
+            (7, 1, {'section_name': '  资料分析  ', 'module_path': ['资料分析', '综合资料']}, 'active', 0),
+            (7, 2, {'section_name': '判断推理', 'module_path': ['判断推理', '图形推理']}, 'resolved', 0),
             (7, 3, {'section_name': '不应覆盖正式章节'}, 'active', 0),
             (7, 4, {'section_name': '  '}, 'active', 0),
             (7, 5, {}, 'active', 0),
-            (8, 1, {'section_name': '另一用户的章节'}, 'active', 0),
-            (8, 6, {'section_name': '仅另一用户拥有'}, 'active', 0),
-            (7, 1, {'section_name': '旧章节'}, 'active', 99),
+            (8, 1, {'section_name': '另一用户的章节', 'module_path': ['判断推理', '逻辑判断']}, 'active', 0),
+            (8, 6, {'section_name': '仅另一用户拥有', 'module_path': ['言语理解', '片段阅读']}, 'active', 0),
+            (7, 1, {'section_name': '旧章节', 'module_path': ['判断推理', '定义判断']}, 'active', 99),
         ):
             connection.exec_driver_sql(
                 'INSERT INTO qbank_v2_wrong_question_state VALUES (?,?,?,?,?)',
@@ -87,6 +87,14 @@ def test_imported_sections_are_available_in_existing_delivery_and_report(db: Mem
     assert [row['section_name'] for row in rows] == ['资料分析', '判断推理', '正式题库章节', None, None, None]
     assert [row['section_id'] for row in rows] == [None, None, 11, None, None, None]
     assert [row['position'] for row in rows] == list(range(6))
+    assert [row['_recall_module_path'] for row in rows] == [
+        ['资料分析', '综合资料'],
+        ['判断推理', '图形推理'],
+        None,
+        None,
+        None,
+        None,
+    ]
 
 
 @pytest.mark.parametrize('report', [False, True])
@@ -95,3 +103,4 @@ def test_section_fallback_is_scoped_to_the_session_owner(db: MemorySession, *, r
     rows = asyncio.run(read(db, 20))
     assert len(rows) == 1
     assert rows[0]['section_name'] == '另一用户的章节'
+    assert rows[0]['_recall_module_path'] == ['判断推理', '逻辑判断']

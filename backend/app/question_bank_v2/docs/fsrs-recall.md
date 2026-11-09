@@ -39,7 +39,8 @@
 - review_daily_limit保留数据库/旧客户端兼容但不参与回测，设置页不再展示。用户自己决定做多少，未答不改记忆状态。
 - 其他入口在截止后已独立提交的题不再入本次队列，背题viewed不算独立提交；失败题按FSRS未来排期，不在当前提醒内反复刷。
 - 旧限量卷和跨日未答卷补入全部合资格到期题，保留已答事实与数据库原位置；已结束旧卷不改写，仍有剩余时从同一消息创建完整剩余卷并幂等续接，无需下一批入口。
-- 回测详情与报告共用整卷阅读题序：按章节名（去首尾空白）聚拢，同名章节跨来源合并，章节按首次出现顺序、章内按原位置稳定排列；无章节题归为同一组。可见题从0连续返回position，前端统一显示1到N，答题卡、实际切题和报告保持一致，而不是只合并答题卡标题。
+- 回测详情与报告共用整卷阅读题序：按章节名（去首尾空白）聚拢，同名章节跨来源合并，章节按首次出现顺序；无章节题归为同一组。可见题从0连续返回position，前端统一显示1到N，答题卡、实际切题和报告保持一致，而不是只合并答题卡标题。
+- 判断推理章内按“图推（图形推理）→定义判断→类比推理→逻辑判断”，言语理解（含言语理解与表达）章内按“逻辑填空→片段阅读”。读取会话所属用户错题状态的module_path，缺失时回退item.display_config中的external_practice.module_path或module_path；未知或缺失题型排该章末尾，同类题保留原位置顺序，其他章节仍按原位置排列。
 - 整序只作用于返回视图，不UPDATE数据库原位置、不重建item、不修改response/attempt/FSRS；新卷、旧卷及跨日补题均适用。普通练习和考试不整序。同一回测刷新后以当前question_id恢复阅读位置，显式题目跳转优先，题目已移除时回退首道未答题。
 - link_url指向现有/pkg/practice/session/index?recallMessageId=...&mode=practice。
 - POST /api/v1/qbank-v2/sessions/recall/messages/{message_id}核验本人消息及服务端payload。
@@ -63,6 +64,11 @@
 - 迁移未执行前不要发布依赖fsrs_data的新后端；回滚代码前备份记忆状态，downgrade会删除该列。
 
 ## 验收
+
+### 本次章内业务题型排序（定向验证，非部署结果）
+
+- 一轮定向执行`uv run --no-sync pytest --noconftest backend/app/question_bank_v2/tests/test_recall_paper_order.py backend/app/question_bank_v2/tests/test_practice_sections.py -q --disable-warnings`，20项通过（125条警告）。覆盖固定业务题型顺序、图推别名、同类稳定顺序、旧快照回退、用户隔离、软删除排除、详情／报告一致及普通练习原序保留。
+- 4个目标Python文件Ruff检查通过并已格式化，目标差异检查通过。仅本地验证（Windows/Python 3.14.2），未执行全量回归或生产同版本验证；此次只需更新后端，无新增迁移、无需改小程序，未部署。
 
 ### 本次章节题序修复（定向验证，非部署结果）
 

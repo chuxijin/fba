@@ -70,8 +70,8 @@ class CreatePracticeSessionParam(SchemaBase):
     module_quotas: list[PracticeModuleQuota] = Field(
         default_factory=list, max_length=30, description='按模块精确配额组卷'
     )
-    selection_strategy: Literal['default', 'high_error'] = Field(
-        default='default', description='普通抽题或平台高频易错'
+    selection_strategy: Literal['default', 'high_error', 'bank_high_error'] = Field(
+        default='default', description='普通抽题、知识点高频易错或试卷高频易错'
     )
     paper_profile: Literal['kaoyan_politics'] | None = Field(
         None, description='考研政治客观卷：16道单选各1分、17道多选各2分；考试限时45分钟'
@@ -127,6 +127,19 @@ class CreatePracticeSessionParam(SchemaBase):
             self.source_type != 'custom' or self.question_ids or not self.knowledge_point_ids
         ):
             raise ValueError('高频易错必须指定知识点范围')
+        if self.selection_strategy == 'bank_high_error' and (
+            self.source_type != 'bank'
+            or self.bank_id is None
+            or self.knowledge_point_ids
+            or self.question_ids
+            or self.question_types
+            or self.year_start is not None
+            or self.year_end is not None
+            or self.region
+            or self.shuffle
+            or self.mode != 'practice'
+        ):
+            raise ValueError('试卷高频易错仅支持题库或章节范围的顺序练习')
 
     @model_validator(mode='after')
     def normalize_filters(self) -> 'CreatePracticeSessionParam':

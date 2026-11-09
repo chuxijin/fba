@@ -362,6 +362,8 @@ async def test_batch_capture_never_loads_details_and_resolves_domain_once(
 ) -> None:
     harness = CaptureHarness()
     harness.patch(monkeypatch)
+    monkeypatch.setattr(review_module, 'lock_practice_user', AsyncMock())
+    monkeypatch.setattr(review_module.wrong_import_batch_dao, 'link', AsyncMock())
     resolver = AsyncMock(return_value=domain_id)
     detail = AsyncMock(side_effect=AssertionError('批量导入不应装配详情'))
     monkeypatch.setattr(WrongReviewService, '_resolve_recorded_domain_id', resolver)
@@ -394,6 +396,8 @@ async def test_batch_capture_never_loads_details_and_resolves_domain_once(
 async def test_failed_batch_item_does_not_publish_material_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     harness = CaptureHarness()
     harness.patch(monkeypatch)
+    monkeypatch.setattr(review_module, 'lock_practice_user', AsyncMock())
+    monkeypatch.setattr(review_module.wrong_import_batch_dao, 'link', AsyncMock())
     monkeypatch.setattr(WrongReviewService, 'get_detail', AsyncMock(side_effect=AssertionError('不应回读详情')))
     snapshots = []
 

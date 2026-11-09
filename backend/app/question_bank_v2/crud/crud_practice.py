@@ -13,6 +13,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy_crud_plus import CRUDPlus
 
 from backend.app.question_bank_v2.crud.crud_composition import bank_section_dao
+from backend.app.question_bank_v2.crud.crud_user_content_context import content_bank_item_condition
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from backend.app.question_bank_v2.model.catalog import QbBankCategory
 from backend.app.question_bank_v2.model.knowledge import QbKnowledgePoint, QbQuestionKnowledgePoint
@@ -36,7 +37,7 @@ from backend.app.question_bank_v2.model.review import (
 )
 from backend.app.question_bank_v2.model.statistics import QbQuestionStatistics
 from backend.app.question_bank_v2.model.user_content import QbQuestionFavorite, QbQuestionNote
-from backend.app.question_bank_v2.schema.review import ENTRY_METADATA_SECTION_KEY
+from backend.app.question_bank_v2.schema.review import ENTRY_METADATA_MODULE_PATH_KEY, ENTRY_METADATA_SECTION_KEY
 from backend.app.question_bank_v2.utils.annotation_policy import (
     PERSISTENT_ANNOTATION_MODES,
     TEMPORARY_ANNOTATION_SOURCES,
@@ -75,6 +76,27 @@ def _session_section_name(session_id: int) -> ColumnElement[str | None]:
         .scalar_subquery()
     )
     return func.coalesce(QbBankSection.name, func.nullif(func.trim(imported_section), '')).label('section_name')
+
+
+def _session_module_path(session_id: int) -> ColumnElement:
+    """按会话所属用户读取原卷模块路径，供回测详情与报告使用同一题型顺序。"""
+    return (
+        select(QbWrongQuestionState.entry_metadata[ENTRY_METADATA_MODULE_PATH_KEY])
+        .join(
+            QbPracticeSession,
+            and_(
+                QbPracticeSession.id == session_id,
+                QbPracticeSession.user_id == QbWrongQuestionState.user_id,
+            ),
+        )
+        .where(
+            QbWrongQuestionState.question_id == QbPracticeSessionItem.question_id,
+            QbWrongQuestionState.deleted == 0,
+        )
+        .correlate(QbPracticeSessionItem)
+        .scalar_subquery()
+        .label('_recall_module_path')
+    )
 
 
 def _filter_values(value: str | Sequence[str] | None) -> list[str]:
@@ -369,10 +391,12 @@ class CRUDPracticeSession(CRUDPlus[QbPracticeSession]):
             select(
                 QbPracticeSessionItem.id.label('session_item_id'),
                 QbPracticeSessionItem.position,
+                QbPracticeSessionItem.display_config,
                 QbPracticeSessionItem.question_id,
                 QbPracticeSessionItem.bank_item_id,
                 QbBankItem.section_id,
                 _session_section_name(session_id),
+                _session_module_path(session_id),
                 QbPracticeSessionItem.max_score,
                 QbPracticeSessionResponse.status.label('response_status'),
                 QbPracticeSessionResponse.is_correct,
@@ -1113,6 +1137,12 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
             source_model = QbQuestionNote
             bank_item_id = QbQuestionNote.bank_item_id
 
+        bank_item_join = QbBankItem.id == bank_item_id
+        if source_type == 'note':
+            # 笔记列表会为缺失的保存上下文回查编排，练习／采集必须使用同一口径。
+            bank_item_join = content_bank_item_condition(QbQuestionNote, per_bank=bank_id is not None)
+            bank_item_id = QbBankItem.id
+
         stmt = (
             select(
                 source_model.id.label('source_id'),
@@ -1131,7 +1161,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
             .outerjoin(
                 QbBankItem,
                 and_(
-                    QbBankItem.id == bank_item_id,
+                    bank_item_join,
                     QbBankItem.question_id == source_model.question_id,
                     QbBankItem.deleted == 0,
                 ),
@@ -1269,6 +1299,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                 QbBankItem.exam_year,
                 QbBankItem.section_id,
                 _session_section_name(session_id),
+                _session_module_path(session_id),
                 QbPracticeSessionItem.max_score,
                 QbPracticeSessionItem.display_config,
                 QbQuestion.question_type,

@@ -262,6 +262,8 @@ class AnalyticsService:
         for row in rows:
             source = dict(row['source_snapshot'] or {})
             delivery = dict(row['delivery_config'] or {})
+            if delivery.get('selection_strategy') == 'bank_high_error':
+                continue  # 专项练习不能冒充普通整卷／章节的续练入口。
             if source.get('knowledge_point_ids') or source.get('favorite_folder_id') is not None:
                 continue
             question_types = list(delivery.get('question_types') or [])

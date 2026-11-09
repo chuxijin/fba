@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import aggregate_strings
 from sqlalchemy_crud_plus import CRUDPlus
 
+from backend.app.question_bank_v2.crud.crud_import_batch import wrong_import_batch_dao
 from backend.app.question_bank_v2.model.asset import QbAsset, QbQuestionAsset
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from backend.app.question_bank_v2.model.catalog import QbBankCategory
@@ -137,6 +138,17 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             ),
         )
 
+    @classmethod
+    def _batch_section_expr(cls, user_id: int, batch_id: str | None) -> Any:
+        if batch_id is None:
+            return cls._section_name_expr()
+        memberships = wrong_import_batch_dao.memberships(user_id)
+        section = select(memberships.c.section_name).where(
+            memberships.c.state_id == QbWrongQuestionState.id,
+            memberships.c.batch_id == batch_id,
+        ).limit(1).scalar_subquery()
+        return func.coalesce(func.nullif(func.trim(section), ''), cls._section_name_expr())
+
     @staticmethod
     def _batch_id_expr() -> Any:
         return func.nullif(func.trim(QbWrongQuestionState.entry_metadata[ENTRY_METADATA_BATCH_KEY].as_string()), '')
@@ -170,7 +182,11 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         return func.coalesce(CRUDWrongQuestionState._module_group_expr(), '')
 
     @staticmethod
-    def _list_stmt(view: WrongQuestionListView = 'full', *, include_module_group: bool = False) -> Any:
+    def _list_stmt(
+        view: WrongQuestionListView = 'full', *, include_module_group: bool = False, section_expr: Any = None
+    ) -> Any:
+        if section_expr is None:
+            section_expr = CRUDWrongQuestionState._section_name_expr()
         if view == 'full':
             columns = [
                 QbWrongQuestionState.id,
@@ -192,13 +208,13 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
                 QbQuestion.content_format,
                 QbQuestion.question_type,
                 # 原试卷章节优先，题库来源回退到题库章节，供详情页答题卡分组
-                CRUDWrongQuestionState._section_name_expr().label('section_name'),
+                section_expr.label('section_name'),
                 func.coalesce(QbUserQuestionMastery.state, 'new').label('mastery_state'),
             ]
         else:
             columns = [
                 QbWrongQuestionState.id,
-                CRUDWrongQuestionState._section_name_expr().label('section_name'),
+                section_expr.label('section_name'),
             ]
             if view == 'summary':
                 columns.extend([
@@ -341,7 +357,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             stmt = stmt.where(QbWrongQuestionState.entry_source == filters.entry_source)
         if filters.import_batch_id is not None:
             # 按导入批次收窄：用于「导入记录」里展开某一批的题目
-            stmt = stmt.where(self._batch_id_expr() == filters.import_batch_id)
+            stmt = stmt.where(wrong_import_batch_dao.contains(user_id, filters.import_batch_id))
         if filters.bank_id is not None:
             # 按题库收窄：集合详情页看某个题库下的错题
             stmt = stmt.where(
@@ -355,23 +371,26 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
             # 无批次的散题集合
             stmt = stmt.where(
                 QbWrongQuestionState.entry_source.in_(EXTERNAL_ENTRY_SOURCES),
-                self._batch_id_expr().is_(None),
+                ~wrong_import_batch_dao.contains(user_id),
                 QbWrongQuestionState.source_bank_item_id.is_(None),
             )
         if filters.unassigned:
             stmt = stmt.where(
                 QbWrongQuestionState.entry_source.not_in(EXTERNAL_ENTRY_SOURCES),
                 QbWrongQuestionState.source_bank_item_id.is_(None),
-                self._batch_id_expr().is_(None),
+                ~wrong_import_batch_dao.contains(user_id),
             )
-        stmt = self._apply_section_filter(stmt, section_name)
+        stmt = self._apply_section_filter(
+            stmt, section_name, section_expr=self._batch_section_expr(user_id, filters.import_batch_id)
+        )
         stmt = self._apply_entry_scope(stmt, filters.entry_scope)
         return self._apply_domain_scope(stmt, domain_category_ids)
 
-    def _apply_section_filter(self, stmt: Any, section_name: str | None) -> Any:
+    def _apply_section_filter(self, stmt: Any, section_name: str | None, *, section_expr: Any = None) -> Any:
         if section_name is None:
             return stmt
-        section_expr = self._section_name_expr()
+        if section_expr is None:
+            section_expr = self._section_name_expr()
         condition = section_expr.is_(None) if section_name == UNSECTIONED_SECTION_NAME else section_expr == section_name
         return stmt.where(condition)
 
@@ -391,7 +410,11 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         """
         include_module_group = section_name is not None
         stmt = self._apply_list_filters(
-            self._list_stmt(view, include_module_group=include_module_group),
+            self._list_stmt(
+                view,
+                include_module_group=include_module_group,
+                section_expr=self._batch_section_expr(user_id, filters.import_batch_id),
+            ),
             user_id=user_id,
             filters=filters,
             domain_category_ids=domain_category_ids,
@@ -422,7 +445,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         domain_category_ids: Sequence[int] | None = None,
     ) -> tuple[int, list[dict[str, Any]]]:
         """按原试卷模块统计当前集合的题量，供集合详情页章节筛选"""
-        section_expr = self._section_name_expr()
+        section_expr = self._batch_section_expr(user_id, filters.import_batch_id)
         stmt = (
             select(
                 section_expr.label('section_name'),
@@ -1107,16 +1130,19 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         )
         bank_stmt = self._apply_domain_scope(bank_stmt, domain_category_ids)
 
-        batch_expr = self._batch_id_expr()
+        memberships = wrong_import_batch_dao.memberships(user_id)
+        batch_expr = memberships.c.batch_id
         batch_stmt = (
             select(
                 batch_expr.label('batch_id'),
-                func.min(QbWrongQuestionState.entry_metadata['source'].as_string()).label('title'),
+                func.min(memberships.c.source).label('title'),
                 func.count().label('total'),
                 func.sum(reviewed_flag).label('reviewed'),
                 func.sum(pending_flag).label('pending'),
-                last_time.label('last_time'),
+                func.max(memberships.c.imported_time).label('last_time'),
             )
+            .select_from(QbWrongQuestionState)
+            .join(memberships, memberships.c.state_id == QbWrongQuestionState.id)
             .where(*base_filters, batch_expr.is_not(None))
             .group_by(literal_column('1'))
         )
@@ -1130,7 +1156,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         ).where(
             *base_filters,
             QbWrongQuestionState.entry_source.in_(EXTERNAL_ENTRY_SOURCES),
-            batch_expr.is_(None),
+            ~wrong_import_batch_dao.contains(user_id),
             QbWrongQuestionState.source_bank_item_id.is_(None),
         )
         single_stmt = self._apply_domain_scope(single_stmt, domain_category_ids)
@@ -1143,7 +1169,7 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         ).where(
             *base_filters,
             QbWrongQuestionState.entry_source.not_in(EXTERNAL_ENTRY_SOURCES),
-            batch_expr.is_(None),
+            ~wrong_import_batch_dao.contains(user_id),
             QbWrongQuestionState.source_bank_item_id.is_(None),
         )
         unassigned_stmt = self._apply_domain_scope(unassigned_stmt, domain_category_ids)

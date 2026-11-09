@@ -55,6 +55,10 @@ class BrowseDB:
                 created_time TEXT, updated_time TEXT, deleted INTEGER, deleted_time TEXT
             );
             CREATE TABLE qbank_v2_bank (id INTEGER);
+            CREATE TABLE qbank_v2_question_review (
+                id INTEGER, user_id INTEGER, question_id INTEGER, wrong_state_id INTEGER,
+                event_type TEXT, review_data TEXT, reviewed_time TEXT, deleted INTEGER DEFAULT 0
+            );
             CREATE TABLE qbank_v2_bank_revision (id INTEGER, bank_id INTEGER, name TEXT, deleted INTEGER);
             CREATE TABLE qbank_v2_bank_section (id INTEGER, name TEXT, deleted INTEGER);
             CREATE TABLE qbank_v2_bank_item (

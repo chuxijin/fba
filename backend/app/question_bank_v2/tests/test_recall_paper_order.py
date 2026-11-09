@@ -59,6 +59,80 @@ def test_192_question_paper_keeps_all_questions_once_and_in_chapter_order() -> N
         assert [item['question_id'] for item in group] == list(range(chapter + 1, 193, 4))
 
 
+def test_recall_groups_business_modules_in_fixed_order_and_preserves_order_within_each_type() -> None:
+    modules = [
+        ('判断推理', '逻辑判断'),
+        ('言语理解与表达', '片段阅读'),
+        ('判断推理', '类比推理'),
+        ('判断推理', '图推'),
+        ('判断推理', '定义判断'),
+        ('言语理解与表达', '逻辑填空'),
+        ('判断推理', '图形推理'),
+        ('判断推理', '逻辑判断'),
+        ('言语理解与表达', '逻辑填空'),
+        ('判断推理', '未分类'),
+        ('判断推理', None),
+    ]
+    items = [
+        {
+            'question_id': index + 1,
+            'position': index,
+            'section_name': chapter,
+            '_recall_module_path': [chapter, module, '细分考点'] if module else None,
+            'response_data': f'答案{index}',
+        }
+        for index, (chapter, module) in enumerate(modules)
+    ]
+    original = deepcopy(items)
+    ordered = practice_service._order_recall_items(items)
+    assert [item['question_id'] for item in ordered] == [4, 7, 5, 3, 1, 8, 10, 11, 6, 9, 2]
+    assert [item['position'] for item in ordered] == list(range(len(items)))
+    assert items == original
+    assert practice_service._order_recall_items(ordered) == ordered
+    assert {item['question_id']: item['response_data'] for item in ordered} == {
+        item['question_id']: item['response_data'] for item in items
+    }
+
+
+@pytest.mark.parametrize('external', [False, True])
+def test_recall_module_order_can_fall_back_to_original_session_snapshot(*, external: bool) -> None:
+    items = [
+        {
+            'question_id': 1,
+            'position': 0,
+            'section_name': '判断推理',
+            'display_config': {'external_practice': {'module_path': ['判断推理', '逻辑判断']}},
+        },
+        {
+            'question_id': 2,
+            'position': 1,
+            'section_name': '判断推理',
+            'display_config': {'external_practice': {'module_path': ['判断推理', '图形推理']}},
+        },
+    ]
+    if not external:
+        for item in items:
+            item['display_config'] = item['display_config']['external_practice']
+    assert [item['question_id'] for item in practice_service._order_recall_items(items)] == [2, 1]
+    # 不在指定章节内应用该排序；无路径时不推测业务题型，保持原顺序。
+    for item in items:
+        item['section_name'] = '资料分析'
+    assert [item['question_id'] for item in practice_service._order_recall_items(items)] == [1, 2]
+
+
+@pytest.mark.parametrize('display', [None, [], 'legacy', {'external_practice': 'legacy'}])
+def test_recall_unknown_module_with_legacy_snapshot_is_ranked_last(display: Any) -> None:
+    assert practice_service._recall_module_rank({'display_config': display}, '判断推理') == 4
+
+
+def test_recall_saved_module_takes_precedence_over_snapshot() -> None:
+    item = {
+        '_recall_module_path': ['判断推理', '定义判断'],
+        'display_config': {'module_path': ['判断推理', '图推']},
+    }
+    assert practice_service._recall_module_rank(item, '判断推理') == 1
+
+
 @pytest.fixture
 def paper_db() -> Iterator[tuple[Session, _SyncSessionAsAsync, Any]]:
     engine = _init_sqlite_engine()
@@ -188,3 +262,34 @@ async def test_non_recall_paper_keeps_original_chapter_order_and_positions(
     assert [item.question_id for item in detail.items] == list(range(1, 9))
     assert [item.position for item in detail.items] == list(range(0, 16, 2))
     assert [item.position for item in report.items] == list(range(0, 16, 2))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('snapshot_only', [False, True])
+async def test_existing_recall_module_order_matches_report_without_rewriting_answers(
+    paper_db: tuple[Session, _SyncSessionAsAsync, Any], *, snapshot_only: bool
+) -> None:
+    session, db, _ = paper_db
+    from backend.app.question_bank_v2.model.review import QbWrongQuestionState
+
+    modules = {1: '逻辑判断', 2: '片段阅读', 3: '类比推理', 4: '逻辑填空', 5: '图形推理', 6: '定义判断'}
+    for qid, module in modules.items():
+        state = session.get(QbWrongQuestionState, qid)
+        chapter = '言语理解' if qid in {2, 4} else '判断推理'
+        path = [chapter, module]
+        state.entry_metadata = {'section_name': chapter, **({} if snapshot_only else {'module_path': path})}
+        item = session.get(QbPracticeSessionItem, 100 + qid)
+        if snapshot_only:
+            item.display_config = {'external_practice': {'module_path': path}}
+    session.commit()
+    raw = await practice_session_item_dao.get_all(db, 10)
+    detail = await practice_service.get(db=db, session_key='recall-message-order', user_id=1)
+    report = await practice_service.get_report(db=db, session_key='recall-message-order', user_id=1)
+    assert [item.question_id for item in detail.items] == [5, 6, 3, 1, 4, 2]
+    assert [item.question_id for item in report.items] == [5, 6, 3, 1, 4, 2]
+    assert [item.position for item in detail.items] == list(range(6))
+    assert detail.items[2].id == report.items[2].session_item_id == 103
+    assert detail.items[2].response_data == 'A'
+    assert report.items[2].status == 'correct'
+    assert await practice_session_item_dao.get_all(db, 10) == raw
+    assert not session.dirty
