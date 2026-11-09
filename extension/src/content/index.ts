@@ -60,6 +60,7 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
 
   /** 最近一次成功导入的批次 ID，供「撤销本次导入」使用 */
   let lastImportBatchId = ''
+  let lastImportBatchComplete = false
 
   /** 只让 MAIN 世界重播内存缓存；收到完成通知即可读取，不等待粉笔网络请求。 */
   async function replayCapturedReport(href: string): Promise<void> {
@@ -312,6 +313,8 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
         done: Number(payload.done || 0),
         total: Number(payload.total || 0),
         imported: Number(payload.imported || 0),
+        ...(typeof payload.created === 'number' && typeof payload.reused === 'number'
+          ? { created: payload.created, reused: payload.reused } : {}),
         failed: Number(payload.failed || 0),
         skipped: 0,
       })
@@ -625,20 +628,23 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
       } catch {}
 
       const built = buildWrongImportItems(paper)
-      // 过滤掉本页已经成功导入过的题（后端幂等键重复会报错，这里提前挡掉）
-      const items = built.items.filter((item) => !importedWrongKeys.has(item.external_key))
-      const alreadyImported = built.items.length - items.length
+      // 部分曾导入的题也要随整卷提交，才能关联到本次批次，不能只提交新增部分。
+      const items = built.items
+      const allImported = items.length > 0 && items.every(item => importedWrongKeys.has(item.external_key))
       const skipped = built.skipped
 
-      if (items.length === 0) {
+      if (items.length === 0 || (allImported && lastImportBatchId && lastImportBatchComplete)) {
         setState({
           ...IDLE_IMPORT_STATE,
-          status: alreadyImported > 0 ? 'done' : 'error',
+          status: allImported ? 'done' : 'error',
           total: built.items.length,
-          imported: alreadyImported,
+          imported: allImported ? items.length : 0,
+          created: 0,
+          reused: allImported ? items.length : 0,
+          batchId: allImported ? lastImportBatchId : undefined,
           skipped: skipped.length,
           message:
-            alreadyImported > 0
+            allImported
               ? '本页错题已全部导入过，可到小程序查看'
               : skipped.length > 0
                 ? `没有可导入的错题：${skipped.length} 道缺少答案或题干`
@@ -672,10 +678,12 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
             return
           }
 
-          const imported = Number(Math.max(Number(response.imported || 0), alreadyImported))
+          const imported = Number(response.imported || 0)
           const failed = Number(response.failed || 0)
           if (typeof response.importBatchId === 'string' && response.importBatchId) {
             lastImportBatchId = response.importBatchId
+            lastImportBatchComplete = typeof response.created === 'number' && typeof response.reused === 'number'
+              && failed === 0 && imported === items.length
           }
           if (Array.isArray(response.importedKeys)) {
             for (const key of response.importedKeys) {
@@ -696,8 +704,8 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
               total: items.length,
               imported: 0,
               failed: 0,
-              skipped: skipped.length + alreadyImported,
-              message: '本页错题之前已导入过，可到小程序「待复盘错题」查看',
+              skipped: skipped.length,
+              message: '这些错题已在原批次中；请更新配套服务后重新导入，以关联完整试卷',
             })
             return
           }
@@ -707,9 +715,12 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
             done: items.length,
             total: items.length,
             imported,
+            ...(typeof response.created === 'number' && typeof response.reused === 'number'
+              ? { created: response.created, reused: response.reused } : {}),
             failed,
-            skipped: skipped.length + alreadyImported,
-            message: response.error || undefined,
+            skipped: skipped.length,
+            message: response.error || (response.duplicateKeys?.length
+              ? `另有 ${response.duplicateKeys.length} 道已在原批次，请更新配套服务后重新关联` : undefined),
             batchId: typeof response.importBatchId === 'string' ? response.importBatchId : undefined,
           })
         }
@@ -750,12 +761,13 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
         return
       }
       lastImportBatchId = ''
+      lastImportBatchComplete = false
       importedWrongKeys.clear()
       uiApp?.setImportState({
         ...IDLE_IMPORT_STATE,
         status: 'done',
         imported: 0,
-        message: `已撤销 ${Number(response.deletedStates || 0)} 道错题`,
+        message: `已撤销：移除 ${Number(response.deletedStates || 0)} 道新增错题，保留 ${Number(response.detachedStates || 0)} 道已有或共享错题`,
       })
     })
   }

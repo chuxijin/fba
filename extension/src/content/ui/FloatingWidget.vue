@@ -133,7 +133,7 @@ const canUndo = computed(
 const importTitle = computed(() => {
   const state = props.importState
   if (state.status === 'running') return '正在逐题导入到「错题待复盘」，请稍候'
-  if (state.status === 'done') return '可在微信小程序「我的题本 → 待复盘错题」中查看'
+  if (state.status === 'done') return '可在小程序的错题导入批次中查看；已有复盘状态保持不变'
   if (state.status === 'error') return state.message || '导入失败，请重试'
   return `把当前页面的 ${props.wrongCount} 道错题导入到「错题待复盘」`
 })
@@ -143,9 +143,13 @@ const importHint = computed(() => {
   if (state.status === 'error') return state.message || '导入失败，请稍后重试'
   if (state.status !== 'done') return ''
   const extras: string[] = []
+  if (typeof state.created === 'number' && typeof state.reused === 'number') {
+    extras.push(`新增 ${state.created} 道，已有 ${state.reused} 道`)
+  }
   if (state.skipped > 0) extras.push(`跳过 ${state.skipped} 道（缺答案或题干）`)
   if (state.failed > 0) extras.push(`失败 ${state.failed} 道`)
-  return extras.length > 0 ? extras.join('，') : '可到小程序「待复盘错题」查看'
+  if (state.message) extras.push(state.message)
+  return extras.length > 0 ? extras.join('，') : '可到小程序的错题导入批次查看'
 })
 
 function handleImportClick() {

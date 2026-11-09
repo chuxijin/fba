@@ -77,6 +77,8 @@ export interface ImportState {
   done: number
   total: number
   imported: number
+  created?: number
+  reused?: number
   failed: number
   skipped: number
   message?: string

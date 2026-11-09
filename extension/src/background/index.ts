@@ -217,6 +217,9 @@ async function handleImportWrongQuestions(
   const tabId = sender?.tab?.id
   const total = items.length
   let imported = 0
+  let created = 0
+  let reused = 0
+  let hasBreakdown = true
   let failed = 0
   let firstError = ''
   const importedKeys: string[] = []
@@ -242,6 +245,12 @@ async function handleImportWrongQuestions(
     }
 
     imported += Number(data?.succeeded ?? resultItems.length)
+    if (typeof data?.created === 'number' && typeof data?.reused === 'number') {
+      created += data.created
+      reused += data.reused
+    } else {
+      hasBreakdown = false
+    }
     failed += Number(data?.failed ?? failures.length)
 
     // 逐片回传进度，悬浮窗据此显示「正在导入 20/38」
@@ -249,7 +258,7 @@ async function handleImportWrongQuestions(
       void chrome.tabs
         .sendMessage(tabId, {
           type: 'IMPORT_PROGRESS',
-          payload: { done: offset + chunk.length, total, imported, failed },
+          payload: { done: offset + chunk.length, total, imported, failed, ...(hasBreakdown ? { created, reused } : {}) },
         })
         .catch(() => {})
     }
@@ -263,6 +272,7 @@ async function handleImportWrongQuestions(
     importBatchId: batchId,
     total,
     imported,
+    ...(hasBreakdown ? { created, reused } : {}),
     failed: realFailed,
     importedKeys,
     duplicateKeys,
@@ -321,6 +331,7 @@ async function handleUndoImportBatch(importBatchId?: string) {
   return {
     deletedStates: Number(parsed?.data?.deleted_states || 0),
     deletedQuestions: Number(parsed?.data?.deleted_questions || 0),
+    detachedStates: Number(parsed?.data?.detached_states || 0),
   }
 }
 
