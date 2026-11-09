@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import random
 import re
 
 from typing import Any
@@ -90,13 +91,10 @@ def legacy_material(item: Any) -> ShareMaterial | None:
     return ShareMaterial(scene='invite', code=f'share_invite_legacy_{item.id}', title=title or None, image_url=image)
 
 
-async def first_legacy_invite(db: AsyncSession) -> ShareMaterial | None:
+async def random_legacy_invite(db: AsyncSession) -> ShareMaterial | None:
     configs = await config_dao.get_all(db, type=ConfigType.invite)
-    for item in sorted(configs, key=lambda entry: entry.id):
-        material = legacy_material(item)
-        if material:
-            return material
-    return None
+    candidates = [material for item in configs if (material := legacy_material(item)) is not None]
+    return random.choice(candidates) if candidates else None
 
 
 class ShareService:
@@ -104,7 +102,7 @@ class ShareService:
     async def catalog(db: AsyncSession) -> ShareCatalog:
         now = timezone.now()
         slots = await cms_slot_dao.get_share_slots(db)
-        materials: dict[str, ShareMaterial] = {}
+        candidates: dict[str, list[ShareMaterial]] = {}
         cache_seconds = 60
         for slot in slots:
             if slot.deleted != 0 or slot.status != 1 or slot.target_user_type != 0:
@@ -115,14 +113,12 @@ class ShareService:
             if slot.end_time and slot.end_time <= now:
                 continue
             scene = slot.scene.removeprefix('share.')
-            if scene in materials:
-                continue
             try:
                 settings = ShareSettings.model_validate((slot.extra or {}).get('share') or {})
                 image_url = validate_image_url(slot.image_url)
             except (ValidationError, ValueError, TypeError):
                 continue
-            materials[scene] = ShareMaterial(
+            material = ShareMaterial(
                 scene=scene,
                 code=slot.code,
                 title=slot.title,
@@ -131,12 +127,15 @@ class ShareService:
                 settings=settings,
                 valid_until=slot.end_time,
             )
+            candidates.setdefault(scene, []).append(material)
             if slot.end_time:
                 cache_seconds = min(cache_seconds, max(1, int((slot.end_time - now).total_seconds())))
 
+        # 同一场景的有效素材等概率整套抽取，保证标题、封面和扩展配置不串套。
+        materials = {scene: random.choice(pool) for scene, pool in candidates.items()}
         # 已由 CMS 接管的场景即使下线，也不能让旧系统参数重新复活。
         if not any(slot.scene == 'share.invite' for slot in slots):
-            legacy = await first_legacy_invite(db)
+            legacy = await random_legacy_invite(db)
             if legacy:
                 materials['invite'] = legacy
         return ShareCatalog(materials=list(materials.values()), cache_seconds=cache_seconds, server_time=now)

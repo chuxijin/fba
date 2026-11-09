@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -75,13 +75,69 @@ async def test_catalog_filters_lifecycle_and_segments_but_not_advertising_freque
         slot(id=4, deleted=4),
         slot(id=5, code='chosen', end_time=now + timedelta(seconds=10)),
         slot(id=6, code='lower_priority'),
+        slot(id=7, status=0),
+        slot(id=8, status=2),
+        slot(id=9, image_url='http://cdn.example.com/bad.png'),
+        slot(id=10, extra={'share': {'cover_mode': 'unknown'}}),
     ])
+    choose = Mock(side_effect=lambda pool: pool[0])
+    monkeypatch.setattr('backend.app.cms.service.share_service.random.choice', choose)
     result = await share_service.catalog(None)
     assert len(result.materials) == 1
     assert result.materials[0].code == 'chosen'
     assert 1 <= result.cache_seconds <= 10
     assert 'target_user_type' not in result.materials[0].model_dump()
+    assert [item.code for item in choose.call_args.args[0]] == ['chosen', 'lower_priority']
     config.assert_awaited_once()
+
+
+@pytest.mark.parametrize('index', [0, 1, 2])
+async def test_catalog_randomly_selects_whole_materials_in_each_scene(
+    monkeypatch: pytest.MonkeyPatch, index: int
+) -> None:
+    scenes = ['default', 'invite', 'resource', 'group_buy', 'bank']
+    mock_sources(monkeypatch, [
+        slot(
+            id=position + 1,
+            code=f'{scene}_{position}',
+            scene=f'share.{scene}',
+            priority=100 - position,
+            title=f'{scene} 标题 {position}',
+            subtitle=f'{scene} 摘要 {position}',
+            image_url=f'https://cdn.example.com/{scene}_{position}.png',
+            extra={'share': {'cover_mode': 'template' if position == 1 else 'static'}},
+        )
+        for scene in scenes
+        for position in range(3)
+    ])
+    choose = Mock(side_effect=lambda pool: pool[index])
+    monkeypatch.setattr('backend.app.cms.service.share_service.random.choice', choose)
+
+    result = await share_service.catalog(None)
+
+    assert choose.call_count == len(scenes)
+    assert len(result.materials) == len(scenes)
+    for material in result.materials:
+        assert material.code == f'{material.scene}_{index}'
+        assert material.title == f'{material.scene} 标题 {index}'
+        assert material.description == f'{material.scene} 摘要 {index}'
+        assert material.image_url == f'https://cdn.example.com/{material.scene}_{index}.png'
+        assert material.settings.cover_mode == ('template' if index == 1 else 'static')
+
+
+async def test_random_pool_preserves_nearest_expiry_even_when_another_material_is_selected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_sources(monkeypatch, [
+        slot(code='expiring', end_time=timezone.now() + timedelta(seconds=10)),
+        slot(code='permanent'),
+    ])
+    monkeypatch.setattr('backend.app.cms.service.share_service.random.choice', lambda pool: pool[-1])
+
+    result = await share_service.catalog(None)
+
+    assert result.materials[0].code == 'permanent'
+    assert 1 <= result.cache_seconds <= 10
 
 
 @pytest.mark.parametrize(
@@ -96,21 +152,30 @@ async def test_retired_cms_invite_never_resurrects_legacy_config(
     config.assert_not_awaited()
 
 
-async def test_legacy_compatibility_is_deterministic_and_only_exposes_public_materials(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize('index', [0, 1, 2])
+async def test_legacy_compatibility_randomly_selects_only_public_materials(
+    monkeypatch: pytest.MonkeyPatch, index: int
 ) -> None:
     mock_sources(monkeypatch, [], [
         SimpleNamespace(id=1, is_frontend=False, value='private'),
         SimpleNamespace(id=2, is_frontend=True, value='[]'),
-        SimpleNamespace(id=4, is_frontend=True, value='later'),
-        SimpleNamespace(
-            id=3, is_frontend=True, value='{"title":"一起学习","image":"https://cdn.example.com/card.png"}'
-        ),
+        SimpleNamespace(id=5, is_frontend=True, value='{}'),
+        *[
+            SimpleNamespace(
+                id=position + 10,
+                is_frontend=True,
+                value=f'{{"title":"一起学习{position}","image":"https://cdn.example.com/card{position}.png"}}',
+            )
+            for position in range(3)
+        ],
     ])
+    choose = Mock(side_effect=lambda pool: pool[index])
+    monkeypatch.setattr('backend.app.cms.service.share_service.random.choice', choose)
     result = await share_service.catalog(None)
-    assert [item.code for item in result.materials] == ['share_invite_legacy_3']
+    assert [item.code for item in result.materials] == [f'share_invite_legacy_{index + 10}']
+    assert len(choose.call_args.args[0]) == 3
     assert await share_service.legacy_invite_config(None) == [
-        {'title': '一起学习', 'image': 'https://cdn.example.com/card.png'}
+        {'title': f'一起学习{index}', 'image': f'https://cdn.example.com/card{index}.png'}
     ]
 
 
