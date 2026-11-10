@@ -34,6 +34,12 @@ class MemoryDB:
     async def execute(self, stmt: Any) -> Any:
         return self.session.execute(stmt)
 
+    async def scalars(self, stmt: Any) -> Any:
+        return self.session.scalars(stmt)
+
+    def get_bind(self) -> Any:
+        return self.session.get_bind()
+
     def add(self, obj: Any) -> None:
         # 生产 BigInteger 主键由数据库生成，SQLite 的 BIGINT 不具备 INTEGER 自增语义。
         if obj.id is None:
@@ -63,6 +69,9 @@ def db(monkeypatch: pytest.MonkeyPatch) -> Iterator[MemoryDB]:
         'qbank_v2_bank_item',
         'qbank_v2_bank_category',
         'qbank_v2_user_question_mastery',
+        'qbank_v2_practice_session',
+        'qbank_v2_practice_session_item',
+        'qbank_v2_question_attempt',
     ]
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in names])
     monkeypatch.setattr(module, 'lock_practice_user', AsyncMock())

@@ -23,11 +23,13 @@ from backend.app.question_bank_v2.schema.practice import (
     GetPracticeSessionReport,
     GetPracticeSessionSolutionItem,
 )
+from backend.app.question_bank_v2.service.external_wrong_service import external_wrong_service
 from backend.app.question_bank_v2.utils.external_practice import (
     EXTERNAL_PRACTICE_ORIGIN,
     imported_session_key,
     question_content_digest,
 )
+from backend.app.question_bank_v2.utils.practice_lock import lock_practice_user
 from backend.common.exception import errors
 from backend.utils.timezone import timezone
 
@@ -182,6 +184,7 @@ class ExternalPracticeImportService:
     async def import_questions(
         *, db: AsyncSession, log: GongkaoPracticeLog, obj: ImportPracticeReportParam
     ) -> ImportPracticeDetailResult:
+        await lock_practice_user(db, log.user_id)
         session = await external_practice_dao.get_session(db, user_id=log.user_id, log_id=log.id, for_update=True)
         summary = ExternalPracticeImportService._summary(obj, session)
         stored = await external_practice_dao.get_items(db, session_id=session.id) if session else []
@@ -274,6 +277,13 @@ class ExternalPracticeImportService:
             'imported_questions': len(rows),
         }
         await db.flush()
+        # 连同未变化的原快照同步：重复导入也能修复旧错题的漏关联，但不重复记错。
+        for source_key in sorted(snapshots):
+            snapshot = snapshots[source_key]
+            await external_wrong_service.sync_report_question(
+                db, user_id=log.user_id, platform=obj.source_platform,
+                data=ImportPracticeQuestionParam.model_validate(snapshot),
+            )
         return ImportPracticeDetailResult(
             session_key=session.session_key,
             imported_questions=len(rows),

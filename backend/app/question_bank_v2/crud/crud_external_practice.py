@@ -16,7 +16,7 @@ from backend.app.question_bank_v2.model.practice import (
     QbQuestionAttempt,
 )
 from backend.app.question_bank_v2.model.question import QbQuestion, QbQuestionAnswer, QbQuestionExplanation
-from backend.app.question_bank_v2.model.review import QbWrongQuestionState
+from backend.app.question_bank_v2.model.review import QbQuestionReview, QbWrongQuestionState
 from backend.app.question_bank_v2.schema.external_practice import ImportPracticeQuestionParam
 from backend.app.question_bank_v2.schema.review import ExternalMaterialParam
 from backend.app.question_bank_v2.utils.external_practice import (
@@ -115,6 +115,7 @@ class CRUDExternalPractice:
         platform: str,
         source_question_key: str,
         core: dict[str, Any],
+        include_deleted: bool = False,
     ) -> list[QbQuestion]:
         """兼容旧指纹：稳定来源题号与规范化内容同时相符才视为同题，不迁移或合并历史数据。"""
         wrong_ids = select(QbWrongQuestionState.question_id).where(
@@ -153,19 +154,29 @@ class CRUDExternalPractice:
                 QbPracticeSession.source_snapshot['platform'].as_string() == platform,
             )
         )
-        candidates = await db.scalars(
+        captured_ids = select(QbQuestionReview.question_id).where(
+            QbQuestionReview.user_id == user_id,
+            QbQuestionReview.deleted == 0,
+            QbQuestionReview.event_type == 'capture',
+            QbQuestionReview.review_data['external_wrong']['platform'].as_string() == platform,
+            QbQuestionReview.review_data['external_wrong']['source_question_key'].as_string() == source_question_key,
+        )
+        stmt = (
             select(QbQuestion)
             .where(
-                QbQuestion.id.in_(wrong_ids.union(attempt_ids)),
+                QbQuestion.id.in_(wrong_ids.union(attempt_ids, captured_ids)),
                 QbQuestion.owner_id == user_id,
                 QbQuestion.visibility == 'private',
                 QbQuestion.status == 'active',
-                QbQuestion.deleted == 0,
                 QbQuestion.question_type == core['question_type'],
                 QbQuestion.content_format == core['content_format'],
             )
             .order_by(QbQuestion.id)
         )
+        # 仅历史读取允许已软删的题；写入复用仍只能选择有效题。
+        if not include_deleted:
+            stmt = stmt.where(QbQuestion.deleted == 0)
+        candidates = await db.scalars(stmt)
         digest = question_content_digest(**core)
         return [
             question

@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func, literal_column, or_, select, update
+from sqlalchemy import case, exists, func, literal_column, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,12 +34,13 @@ from backend.app.question_bank_v2.crud.crud_review import (
     wrong_question_state_dao,
 )
 from backend.app.question_bank_v2.model.asset import QbQuestionAsset
+from backend.app.question_bank_v2.model.bank import QbBankItem
 from backend.app.question_bank_v2.model.material import (
     QbMaterial,
     QbMaterialRevision,
     QbQuestionMaterial,
 )
-from backend.app.question_bank_v2.model.practice import QbQuestionAttempt
+from backend.app.question_bank_v2.model.practice import QbPracticeSessionItem, QbQuestionAttempt
 from backend.app.question_bank_v2.model.question import QbQuestion, QbQuestionAnswer, QbQuestionExplanation
 from backend.app.question_bank_v2.model.review import QbQuestionReview, QbWrongQuestionState
 from backend.app.question_bank_v2.schema.knowledge import KnowledgePointAssignmentParam
@@ -92,6 +93,7 @@ from backend.app.question_bank_v2.schema.review import (
 )
 from backend.app.question_bank_v2.schema.user_content import ContentGroupNode
 from backend.app.question_bank_v2.service.content_group_service import content_group_service
+from backend.app.question_bank_v2.service.external_wrong_service import external_wrong_service
 from backend.app.question_bank_v2.service.knowledge_service import knowledge_service
 from backend.app.question_bank_v2.service.material_service import material_service
 from backend.app.question_bank_v2.service.practice_schedule_service import first_practice_time
@@ -318,7 +320,8 @@ class WrongReviewService:
             return []
         platform, source_question_key = identity
         return await external_practice_dao.find_source_questions(
-            db, user_id=user_id, platform=platform, source_question_key=source_question_key, core=core
+            db, user_id=user_id, platform=platform, source_question_key=source_question_key, core=core,
+            include_deleted=True,
         )
 
     @staticmethod
@@ -335,6 +338,9 @@ class WrongReviewService:
         # 旧版本可能把同一原站题目写成两份私有题。只读关联到原始作答，
         # 不合并题目、不修改复盘排期，也不把其他题或其他次作答的用时借过来。
         identity = external_question_identity(row.get('entry_metadata')) if row['entry_source'] == 'import' else None
+        has_external_history = row['entry_source'] == 'import' or bool(
+            (row.get('entry_metadata') or {}).get('has_external_wrong')
+        )
         peers: list[QbQuestion] = []
         if identity:
             peers = await WrongReviewService._get_external_source_peers(
@@ -353,8 +359,14 @@ class WrongReviewService:
             db,
             user_id=user_id,
             question_id=int(row['question_id']),
+            **({'include_external_source': True} if has_external_history else {}),
             **({'related_question_ids': related_question_ids} if related_question_ids else {}),
         )
+        if has_external_history:
+            wrong_history = await external_wrong_service.merge_history(
+                db, user_id=user_id,
+                question_ids=[int(row['question_id']), *related_question_ids], history=wrong_history,
+            )
         if wrong_history:
             row['last_wrong_response'] = wrong_history[0]['response_data']
             row['last_wrong_duration_ms'] = wrong_history[0]['duration_ms']
@@ -365,6 +377,9 @@ class WrongReviewService:
                 'attempt_no': item['attempt_no'],
                 'submitted_time': item['submitted_time'],
                 'duration_ms': item['duration_ms'],
+                'source_key': item.get('source_key'),
+                'source_question_key': item.get('source_question_key'),
+                'source': item.get('source'),
                 'annotations': item.get('annotations') or [],
             }
             for item in wrong_history
@@ -771,7 +786,7 @@ class WrongReviewService:
         db: AsyncSession,
         user_id: int,
         state_rows: Sequence[Any],
-    ) -> BatchUndoResult | tuple[int, int, int]:
+    ) -> tuple[int, int, int, int]:
         """共用逻辑：软删一批错题状态、其复盘事件与可清理的私有题目"""
         state_ids = [row[0] for row in state_rows]
         if not state_ids:
@@ -793,6 +808,10 @@ class WrongReviewService:
                 QbQuestionReview.user_id == user_id,
                 QbQuestionReview.question_id.in_(question_ids),
                 QbQuestionReview.deleted == 0,
+                QbQuestionReview.review_data['external_wrong']['source_key'].as_string().is_(None),
+                func.coalesce(
+                    QbQuestionReview.review_data['external_wrong']['legacy_initial'].as_boolean(), False
+                ).is_(False),
             )
             # 这里必须写主键：幂等键唯一约束是 (user_id, idempotency_key, deleted)，
             # 若软删后一律写 1，「撤销 → 重导 → 再撤销」会与上一条已软删记录冲突
@@ -812,6 +831,23 @@ class WrongReviewService:
                         QbQuestion.visibility == 'private',
                         QbQuestion.deleted == 0,
                         QbQuestion.id.not_in(still_referenced),
+                        ~exists(select(QbQuestionAttempt.id).where(
+                            QbQuestionAttempt.question_id == QbQuestion.id, QbQuestionAttempt.deleted == 0,
+                        )),
+                        ~exists(select(QbPracticeSessionItem.id).where(
+                            QbPracticeSessionItem.question_id == QbQuestion.id, QbPracticeSessionItem.deleted == 0,
+                        )),
+                        ~exists(select(QbBankItem.id).where(
+                            QbBankItem.question_id == QbQuestion.id, QbBankItem.deleted == 0,
+                        )),
+                        ~exists(select(QbQuestionReview.id).where(
+                            QbQuestionReview.question_id == QbQuestion.id,
+                            QbQuestionReview.deleted == 0,
+                            or_(
+                                QbQuestionReview.review_data['external_wrong']['source_key'].as_string().is_not(None),
+                                QbQuestionReview.review_data['external_wrong']['legacy_initial'].as_boolean().is_(True),
+                            ),
+                        )),
                     )
                 )
             )
@@ -829,7 +865,7 @@ class WrongReviewService:
         deleted_materials = await WrongReviewService._cleanup_orphan_materials(
             db=db,
             user_id=user_id,
-            question_ids=question_ids,
+            question_ids=deletable_question_ids,
             now=now,
         )
 
@@ -1762,12 +1798,13 @@ class WrongReviewService:
                 metadata.update(module_metadata)
                 changed = True
         # 旧版本导入没有保存作答快照：重复导入时补上，不覆盖已有作答记录
-        if obj.wrong_response is not None and state.last_wrong_response is None:
+        if obj.wrong_occurrence is None and obj.wrong_response is not None and state.last_wrong_response is None:
             state.last_wrong_response = obj.wrong_response
             changed = True
         if changed:
             state.entry_metadata = metadata
             await db.flush()
+        await external_wrong_service.sync(db, state=state, question=question, obj=obj)
         return state
 
     @staticmethod
@@ -1781,6 +1818,7 @@ class WrongReviewService:
         existing_lookup: dict[tuple[str, str], int] | None = None,
     ) -> GetWrongQuestionDetail:
         """单条录入在共用写入核心之后装配一次详情。"""
+        await lock_practice_user(db, user_id)
         recorded_domain_id = await WrongReviewService._resolve_recorded_domain_id(db=db, user_id=user_id)
         captured = await WrongReviewService._capture_external(
             db=db,
@@ -1912,17 +1950,9 @@ class WrongReviewService:
             question_id=question.id,
             for_update=True,
         )
-        source_attempt_stmt = (
-            select(QbQuestionAttempt.id)
-            .where(
-                QbQuestionAttempt.user_id == user_id,
-                QbQuestionAttempt.question_id == question.id,
-                QbQuestionAttempt.deleted == 0,
-            )
-            .order_by(QbQuestionAttempt.submitted_time.desc(), QbQuestionAttempt.id.desc())
-            .limit(1)
-        )
-        source_attempt_id = (await db.execute(source_attempt_stmt)).scalar_one_or_none()
+        # 不把别的报告（甚至答对的记录）当作本次错误的来源。
+        source_attempt_id = None
+        entry_metadata.update(external_wrong_service.initial_metadata(obj))
         wrong_state = await wrong_question_state_dao.create(
             db,
             {
@@ -1996,6 +2026,7 @@ class WrongReviewService:
             wrong_state.review_count = 1
             wrong_state.last_reviewed_time = now
             await db.flush()
+        await external_wrong_service.sync(db, state=wrong_state, question=question, obj=obj)
         return BatchImportItemResult(
             external_key=obj.external_key,
             question_id=question.id,

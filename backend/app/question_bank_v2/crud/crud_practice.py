@@ -1497,6 +1497,7 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
         user_id: int,
         question_id: int,
         related_question_ids: Sequence[int] = (),
+        include_external_source: bool = False,
     ) -> list[dict[str, Any]]:
         """按最近提交倒序返回有效错误作答，供错题详情展示错选历史。"""
         # SQLite 把 JSON 布尔值提取为 1，使用 json_type 区分 true 与数字 1；
@@ -1522,6 +1523,14 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
                 QbQuestionAttempt.attempt_no,
                 QbQuestionAttempt.submitted_time,
                 QbQuestionAttempt.duration_ms,
+                *([
+                    QbQuestionAttempt.grading_result['origin'].as_string().label('origin'),
+                    QbPracticeSession.source_snapshot['platform'].as_string().label('source_platform'),
+                    QbPracticeSession.source_snapshot['source_key'].as_string().label('source_key'),
+                    QbQuestionAttempt.grading_result['source_question_key'].as_string().label('source_question_key'),
+                    QbQuestionAttempt.created_time.label('attempt_created_time'),
+                    QbPracticeSession.title_snapshot.label('source'),
+                ] if include_external_source else []),
                 case(
                     (annotations_enabled, QbQuestionAttempt.annotations),
                     else_=literal([], type_=QbQuestionAttempt.annotations.type),

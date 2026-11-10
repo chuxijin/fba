@@ -143,6 +143,23 @@ class ExternalMaterialParam(SchemaBase):
     sort_order: int = Field(default=0, ge=0, description='材料展示顺序')
 
 
+class ExternalWrongOccurrenceParam(SchemaBase):
+    """原站同一次练习中的错误；报告身份不是试卷标题或导入批次。"""
+
+    source_key: str = Field(min_length=1, max_length=160, description='本次真实练习报告编号')
+    submitted_time: AwareDatetime | None = Field(None, description='真实作答日期/时间；未知不填写')
+    duration_seconds: int | None = Field(None, ge=0, le=2_147_483, description='当次用时秒；未知为 null，零秒为 0')
+
+    @model_validator(mode='after')
+    def validate_report_key(self) -> 'ExternalWrongOccurrenceParam':
+        self.source_key = self.source_key.strip()
+        if not self.source_key:
+            raise ValueError('练习报告编号不能为空')
+        if not re.fullmatch(r'\d+_\d+_[A-Za-z0-9]+', self.source_key):
+            raise ValueError('真实粉笔练习报告编号无效，不能用试卷标题或导入批次替代')
+        return self
+
+
 class CreateExternalWrongQuestionParam(SchemaBase):
     """录入用户在外部遇到的错题参数"""
 
@@ -158,6 +175,7 @@ class CreateExternalWrongQuestionParam(SchemaBase):
         None,
         description='用户当时的作答快照；仅用于错题本回显，不参与判分',
     )
+    wrong_occurrence: ExternalWrongOccurrenceParam | None = Field(None, description='可核验报告身份的当次错误记录')
     explanations: list[QuestionExplanationParam] = Field(
         default_factory=list,
         max_length=20,
@@ -201,9 +219,26 @@ class CreateExternalWrongQuestionParam(SchemaBase):
             raise ValueError('存在解析时必须且只能有一个默认解析')
         if (self.source_system is None) != (self.external_key is None):
             raise ValueError('外部来源系统和来源唯一键必须同时提供')
+        self._validate_wrong_occurrence(option_codes)
         self.tag_ids = list(dict.fromkeys(self.tag_ids))
         self.knowledge_point_ids = list(dict.fromkeys(self.knowledge_point_ids))
         return self
+
+    def _validate_wrong_occurrence(self, option_codes: list[str]) -> None:
+        if self.wrong_occurrence is None:
+            return
+        if self.entry_source != 'import' or self.wrong_response in (None, '', [], {}) or not self.source_system:
+            raise ValueError('真实错误记录必须来自外部导入并提供当次答案及来源')
+        if self.question_type in {'single_choice', 'multiple_choice'}:
+            choices = self.wrong_response if isinstance(self.wrong_response, list) else [self.wrong_response]
+            if not choices or any(choice not in option_codes for choice in choices):
+                raise ValueError('当次错误答案必须对应原始选项')
+            if self.question_type == 'single_choice' and len(choices) != 1:
+                raise ValueError('单选题只能提供一个当次答案')
+            correct = self.answer.answer_data.get('correct')
+            correct = correct if isinstance(correct, list) else [correct]
+            if set(choices) == set(correct):
+                raise ValueError('答对的题不能登记为当次错误')
 
 
 class BatchImportItemResult(SchemaBase):
@@ -436,8 +471,11 @@ class GetWrongAnswerHistoryItem(SchemaBase):
     attempt_id: int | None = Field(None, gt=0, description='当次作答标识')
     answer: Any | None = Field(None, description='当次错误答案快照')
     attempt_no: int = Field(ge=1, description='同题第几次提交')
-    submitted_time: datetime = Field(description='提交时间')
+    submitted_time: datetime | None = Field(None, description='真实提交时间；独立采集时可能未知')
     duration_ms: int | None = Field(None, ge=0, description='当次作答用时毫秒')
+    source_key: str | None = Field(None, description='原站练习报告编号')
+    source_question_key: str | None = Field(None, description='当次报告中的原站题号')
+    source: str | None = Field(None, description='当次试卷名称')
     annotations: list[TextAnnotation] = Field(default_factory=list, description='当次提交时的只读标注快照')
 
 

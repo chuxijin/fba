@@ -32,7 +32,7 @@ from backend.app.question_bank_v2.crud.crud_review import wrong_question_state_d
 from backend.app.question_bank_v2.model.bank import QbBank, QbBankItem, QbBankRevision, QbBankSection
 from backend.app.question_bank_v2.model.practice import QbPracticeSession, QbPracticeSessionItem, QbQuestionAttempt
 from backend.app.question_bank_v2.model.question import QbQuestion, QbQuestionAnswer, QbQuestionExplanation
-from backend.app.question_bank_v2.model.review import QbWrongQuestionState
+from backend.app.question_bank_v2.model.review import QbQuestionReview, QbWrongQuestionState
 from backend.app.question_bank_v2.model.statistics import QbUserQuestionMastery
 from backend.app.question_bank_v2.schema.external_practice import ImportPracticeQuestionParam
 from backend.app.question_bank_v2.schema.review import CreateExternalWrongQuestionParam
@@ -77,6 +77,7 @@ SQLITE_TABLES = [
     QbPracticeSession.__table__,
     QbPracticeSessionItem.__table__,
     QbQuestionAttempt.__table__,
+    QbQuestionReview.__table__,
 ]
 
 
@@ -130,6 +131,9 @@ class AsyncSQLiteDB:
 
     def add(self, obj: Any) -> None:
         self.session.add(obj)
+
+    def add_all(self, objects: list[Any]) -> None:
+        self.session.add_all(objects)
 
     async def flush(self) -> None:
         self.session.flush()
@@ -1150,7 +1154,7 @@ async def test_get_external_source_peers_forwards_reliable_identity_verbatim(
 
     # 显式非数字原站题号也要原样转给同一个来源 DAO，不做数值化或改写。
     assert peers is expected
-    source.assert_awaited_once_with(db, user_id=USER_ID, platform='fenbi', source_question_key='fb-q1', core=CORE)
+    source.assert_awaited_once_with(db, user_id=USER_ID, platform='fenbi', source_question_key='fb-q1', core=CORE, include_deleted=True)
 
 
 # ---------------------------------------------------------------------------
