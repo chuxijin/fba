@@ -17,7 +17,7 @@ const auth = await read('../src/utils/auth.ts')
 const build = await read('../build.js')
 
 test('版本号在 package.json 与扩展 manifest 中统一，界面不硬编码版本', () => {
-  assert.equal(packageJson.version, '1.0.5')
+  assert.equal(packageJson.version, '1.0.7')
   assert.equal(manifest.version, packageJson.version)
   for (const source of [popupTs, supportTs, floatingWidget]) {
     assert.match(source, /getManifest\(\)\.version/)

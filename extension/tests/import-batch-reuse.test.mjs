@@ -90,6 +90,9 @@ function contentHarness(keys = [], legacy = false) {
     importedWrongKeys: new Set(keys), lastImportBatchId: '', lastImportBatchComplete: false, IDLE_IMPORT_STATE,
     uiApp: { setImportState(state) { states.push(state) } },
     backfillPaperAnswers: async paper => paper,
+    attachFenbiWrongOccurrences: result => result,
+    location: { href: 'https://spa.fenbi.com/ti/exam/solution/1_1_test' },
+    reportCache: { read() { return {} } },
     buildWrongImportItems: () => ({ items, skipped: [] }),
     chrome: { runtime: { id: 'test', sendMessage(message, callback) {
       sent.push(message)

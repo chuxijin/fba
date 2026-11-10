@@ -50,6 +50,11 @@ export interface WrongImportItem {
   answer: { answer_data: { correct: string | string[] }; grading_method: 'exact' | 'set' }
   /** 用户当时的作答；供错题本回显，不参与判分 */
   wrong_response?: string | string[]
+  wrong_occurrence?: {
+    source_key: string
+    submitted_time: string | null
+    duration_seconds: number | null
+  }
   explanations: { content: string; is_default: boolean }[]
   /** 材料：服务端据此创建材料实体并关联，不再拼进题干 */
   materials?: WrongImportMaterial[]

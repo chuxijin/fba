@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>公考内容排版 · 帮助与反馈</title>  <script type="module" crossorigin src="/assets/support-_B-gK9GI.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/support-Co7IRHrY.css">
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">公考内容排版 <span id="version"></span></p><h1>帮助与意见反馈</h1><p>帮助内容随插件安装，无需访问官网。反馈直接提交至现有服务，不是在线客服。</p></header>
+    <nav aria-label="支持导航"><a href="#help">使用帮助</a><a href="#feedback">提交反馈</a><a href="#history">我的反馈</a></nav>
+    <section id="help" aria-labelledby="help-title">
+      <h2 id="help-title">使用帮助</h2>
+      <details open><summary>如何排版与下载？</summary><p>打开粉笔、华图或事考帮的做题／错题页面，完整加载题目后点击“开始排版”，选择 PDF 或 Word，再选择“下载到电脑”。处理期间保持题库网页打开，不要重复提交。</p><p>插件会将每个分册交给浏览器下载，请在 Chrome／Edge 的下载列表中确认完成状态和文件位置。失败时用“重试下载”，不会重新排版或扣额度。</p></details>
+      <details><summary>如何用手机查看题本？</summary><p>排版完成后用微信扫描交付页面的小程序码，直接进入“我的题本”。插件已登录时使用同一账号；游客导出需在手机登录并确认保存。领取码24小时内有效，保存后可查看主册和答案册。此码不会授权电脑登录，也不会自动下单。</p></details>
+      <details><summary>如何登录？二维码不能扫怎么办？</summary><p>在插件弹窗选择微信登录，手机确认授权后保持弹窗打开等待登录结果。二维码报错或过期时点“重新获取二维码”，也可以切换账号密码登录。二维码图片显示不代表授权成功，以账号信息和真实额度为准。</p></details>
+      <details><summary>额度、错题与练习记录</summary><p>额度以服务端返回的账号／游客权益为准，不承诺固定次数。检测到错题时可导入到小程序“待复盘错题”，成功后可撤销本次导入。练习记录导入目前只在已识别的粉笔结算页展示，预览后确认才写入。</p></details>
+      <details><summary>没有识别到题目或安装更新后没有反应？</summary><p>先确认当前页面属于支持的题库，且题干、答案和解析已加载。重新加载扩展后需要刷新题库网页。第三方站点改版可能影响识别；请在下方说明网站、页面类型、操作步骤和报错，勿提交密码、登录码或支付信息。</p></details>
+      <details><summary>隐私与反馈记录</summary><p>插件读取支持题库页面中已加载的题目。只有你点击排版或确认导入时，相关内容才提交到后端。反馈仅包含你填写的类型、内容、选填联系方式和插件版本，不自动附带网页地址、题目或登录凭据。</p><p>登录提交的反馈可在“我的反馈”查看处理回复；匿名反馈无法关联到账户，请按需填写联系方式。关闭本页不会自动提交。</p></details>
+    </section>
+    <section id="feedback" aria-labelledby="feedback-title">
+      <h2 id="feedback-title">提交意见反馈</h2>
+      <p>支持匿名提交；若希望在本页查询回复，请先从插件弹窗登录。</p>
+      <form id="feedback-form">
+        <label for="feedback-type">反馈类型</label><select id="feedback-type"><option value="bug">功能异常</option><option value="content_error">内容问题</option><option value="feature_request">功能需求</option><option value="product_suggestion">产品建议</option><option value="experience">使用体验</option><option value="other">其他</option></select>
+        <label for="content">详细描述 <span id="content-count">0 / 500</span></label><textarea id="content" rows="7" maxlength="500" required placeholder="请说明网站、操作步骤、预期结果和实际问题。请勿填写密码或登录凭据。"></textarea>
+        <label for="contact">联系方式（选填，最多100字）</label><input id="contact" type="text" maxlength="100" autocomplete="off" placeholder="邮箱或其他方便联系的方式">
+        <button id="submit" type="submit">提交反馈</button><p id="submit-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+    <section id="history" aria-labelledby="history-title">
+      <h2 id="history-title">我的反馈</h2><p>显示当前账号提交的反馈及处理回复。需先在插件弹窗登录；匿名提交的反馈不在此列。</p>
+      <button id="load-history" type="button">加载／刷新记录</button><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div>
+      <div class="pagination"><button id="previous" type="button" disabled>上一页</button><span id="page-label"></span><button id="next" type="button" disabled>下一页</button></div>
+    </section>
+  </main>
+</body></html>

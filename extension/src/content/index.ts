@@ -23,6 +23,7 @@ import {
 import { mountReformatterApp, ReformatterAppInstance } from './ui/mount'
 import { buildFenbiPracticeQuestions, buildFenbiPracticeReport, buildReportModules, fenbiReportRoute, readFenbiReportModules } from '../adapters/fenbi/report'
 import { FenbiReportCache } from '../adapters/fenbi/report-cache'
+import { attachFenbiWrongOccurrences } from '../adapters/fenbi/wrong-occurrence'
 import type { PracticeReportPayload, ReportModule } from '../adapters/fenbi/report'
 import { exportMessage, waitForExport, requestFileDownloads } from '../utils/export-flow'
 
@@ -627,7 +628,7 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
         paper = await backfillPaperAnswers(paper)
       } catch {}
 
-      const built = buildWrongImportItems(paper)
+      const built = attachFenbiWrongOccurrences(buildWrongImportItems(paper), location.href, reportCache.read(location.href))
       // 部分曾导入的题也要随整卷提交，才能关联到本次批次，不能只提交新增部分。
       const items = built.items
       const allImported = items.length > 0 && items.every(item => importedWrongKeys.has(item.external_key))

@@ -22,7 +22,7 @@ test('dist 清单版本与 package.json 一致', { skip }, async () => {
   const manifest = JSON.parse(await readDist('manifest.json'))
   assert.equal(manifest.manifest_version, 3)
   assert.equal(manifest.version, packageJson.version)
-  assert.equal(manifest.version, '1.0.5')
+  assert.equal(manifest.version, '1.0.7')
   assert.equal(manifest.background.service_worker, 'background.js')
   assert.equal(manifest.action.default_popup, 'popup.html')
 })
