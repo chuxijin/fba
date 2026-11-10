@@ -64,6 +64,7 @@ uv run python skills/fba_work/question-explanation/scripts/new_run.py 20261108-s
 
 ## 已完成任务
 
+- [省考最新三季模考（第三十四季/第一季/第二季）政治、常识与逻辑填空](runs/20261109-shengkao-3seasons/README.md)：2026-11-09生产提交20题（政治3、常识13、逻辑填空4/32词），default设默认、official原文保留；三来源合并66题守卫通过，原文保真及逐词校验通过，发布后144/144独立核验通过，新增20条default ID131669—131688。新增「任意N项陈述」分支（104681为5项组合题，②④⑤）。备份表 `qbank_v2_question_explanation_bak_20261109_shengkao` 独立COMMIT。
 - [第14季政治、常识与逻辑填空](runs/20261105-season14/README.md)：2026-11-05生产提交20题（政治9、常识9、逻辑填空2/20词），default设默认、official原文保留；原文保真及逐词校验通过，发布后144/144独立核验通过，新增20条default ID131422—131441。新增「排序题（按时间先后排序）」分支（104535、104536）。备份表 `qbank_v2_question_explanation_bak_20261105_s14` 独立COMMIT。
 - [第13季政治、常识与逻辑填空](runs/20261103-season13/README.md)：2026-11-03生产提交23题（政治10、常识9、逻辑填空4/40词），default设默认、official原文保留；原文保真及逐词校验通过，发布后165/165独立核验通过，新增23条default ID131249—131271。备份表 `qbank_v2_question_explanation_bak_20261103_s13` 独立COMMIT。
 - [第12季政治、常识与逻辑填空](runs/20261102-season12/README.md)：2026-11-02生产提交20题（政治9、常识3、逻辑填空8/72词），default设默认、official原文保留；原文保真及逐词校验通过，发布后232/232独立核验通过。整季37题原题/答案/学习记录与17道非目标解析未改。
@@ -83,6 +84,7 @@ uv run python skills/fba_work/question-explanation/scripts/new_run.py 20261108-s
 
 | 归档 | 状态 |
 |---|---|
+| [省考最新三季](runs/20261109-shengkao-3seasons/README.md) | 2026-11-09已提交：第三十四季/第一季/第二季政治3+常识13+逻辑填空4共20题；20条新default、20条official保留非默认；144/144独立核验通过；新增任意N项陈述分支（5项组合题） |
 | [第14季](runs/20261105-season14/README.md) | 2026-11-05已提交：政治9+常识9+逻辑填空2共20题；20条新default、20条official保留非默认；144/144独立核验通过；新增排序题分支 |
 | [第13季](runs/20261103-season13/README.md) | 2026-11-03已提交：政治10+常识9+逻辑填空4共23题；23条新default、23条official保留非默认；165/165独立核验通过 |
 | [第41季](runs/20261101-season41/README.md) | 2026-11-01已提交：18条新default、18条official保留非默认；独立核验通过 |
