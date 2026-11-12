@@ -1,6 +1,7 @@
 import time
 
 from fastapi import Request, Response
+from fastapi.routing import iter_route_contexts
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.routing import Match
 
@@ -22,15 +23,12 @@ from backend.utils.trace_id import get_request_trace_id
 
 def resolve_request_path_template(request: Request) -> str:
     """将实际请求路径解析为低基数路由模板"""
-    route = request.scope.get('route')
-    route_path = getattr(route, 'path', None)
-    if route_path:
-        return str(route_path)
-
-    for app_route in request.app.routes:
-        match, _ = app_route.matches(request.scope)
+    # FastAPI 的 include_router 不再展开为顶层 APIRoute；使用有效路由上下文保留所有 include 前缀。
+    # 在请求进入路由前解析，确保鉴权提前返回时也有模板，且 in-progress 的增减使用同一标签。
+    for route_context in iter_route_contexts(request.app.routes):
+        match, _ = route_context.matches(request.scope)
         if match is Match.FULL:
-            matched_path = getattr(app_route, 'path', None)
+            matched_path = route_context.path
             if matched_path:
                 return str(matched_path)
     return '__unmatched__'

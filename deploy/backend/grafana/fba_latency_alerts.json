@@ -1,0 +1,121 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "fba-latency-rules",
+      "folder": "FBA 告警",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "efn0g1ul3n4zke",
+          "title": "接口延迟过高",
+          "condition": "C",
+          "for": "3m",
+          "noDataState": "OK",
+          "execErrState": "Alerting",
+          "isPaused": false,
+          "labels": { "service": "FBA 后端", "severity": "warning" },
+          "annotations": {
+            "summary": "接口 {{ $labels.method }} {{ $labels.path }}：{{ with $values.B }}{{ if lt .Value 20.0 }}样本不足（{{ printf \"%.0f\" .Value }}次/5分钟），当前不评估P95{{ else }}最近5分钟 P95={{ printf \"%.0f\" $values.A.Value }}ms（{{ printf \"%.0f\" .Value }}次请求）{{ end }}{{ else }}暂无统计数据{{ end }}",
+            "description": "告警条件：最近5分钟至少20次请求，P95超过5000ms并持续3分钟。恢复表示条件不再满足，也可能是样本不足，不等同于确认接口变快。"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "datasourceUid": "PBFA97CFB590B2093",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "model": {
+                "refId": "A", "editorMode": "code", "instant": true, "range": false,
+                "expr": "histogram_quantile(0.95, sum by(path, method, le) (rate(fba_request_cost_time_bucket{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\"}[5m])))"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "PBFA97CFB590B2093",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "model": {
+                "refId": "B", "editorMode": "code", "instant": true, "range": false,
+                "expr": "sum by(path, method) (increase(fba_request_cost_time_count{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\"}[5m]))"
+              }
+            },
+            {
+              "refId": "D",
+              "datasourceUid": "PBFA97CFB590B2093",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "model": {
+                "refId": "D", "editorMode": "code", "instant": true, "range": false,
+                "expr": "(histogram_quantile(0.95, sum by(path, method, le) (rate(fba_request_cost_time_bucket{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\"}[5m]))) > bool 5000) * on(path, method) (sum by(path, method) (increase(fba_request_cost_time_count{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\"}[5m])) >= bool 20)"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "model": {
+                "refId": "C", "type": "threshold", "expression": "D",
+                "conditions": [
+                  { "evaluator": { "params": [0], "type": "gt" }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last" }, "type": "query" }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "fba-low-traffic-slow-request",
+          "title": "低流量慢请求",
+          "condition": "C",
+          "for": "1m",
+          "noDataState": "OK",
+          "execErrState": "Alerting",
+          "isPaused": false,
+          "labels": { "service": "FBA 后端", "severity": "warning" },
+          "annotations": {
+            "summary": "接口 {{ $labels.method }} {{ $labels.path }}：{{ with $values.A }}最近5分钟超过10秒的慢请求约{{ printf \"%.0f\" .Value }}次{{ else }}暂无统计数据{{ end }}；不使用低样本P95判断",
+            "description": "告警条件：最近5分钟请求数不足20次，但至少出现一次超过10000ms的请求，条件持续1分钟。统计窗口结束后的恢复不等同于证明接口变快。"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "datasourceUid": "PBFA97CFB590B2093",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "model": {
+                "refId": "A", "editorMode": "code", "instant": true, "range": false,
+                "expr": "clamp_min(sum by(path, method) (increase(fba_request_cost_time_count{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\"}[5m])) - sum by(path, method) (increase(fba_request_cost_time_bucket{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\", le=\"10000.0\"}[5m])), 0)"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "PBFA97CFB590B2093",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "model": {
+                "refId": "B", "editorMode": "code", "instant": true, "range": false,
+                "expr": "sum by(path, method) (increase(fba_request_cost_time_count{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\"}[5m]))"
+              }
+            },
+            {
+              "refId": "D",
+              "datasourceUid": "PBFA97CFB590B2093",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "model": {
+                "refId": "D", "editorMode": "code", "instant": true, "range": false,
+                "expr": "(clamp_min(sum by(path, method) (increase(fba_request_cost_time_count{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\"}[5m])) - sum by(path, method) (increase(fba_request_cost_time_bucket{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\", le=\"10000.0\"}[5m])), 0) >= bool 0.5) * on(path, method) (sum by(path, method) (increase(fba_request_cost_time_count{app_name=\"fba_server\", path!=\"/metrics\", path!=\"__unmatched__\", path!=\"/api/v1/oauth2/wechat/miniapp/login\"}[5m])) < bool 20)"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "relativeTimeRange": { "from": 300, "to": 0 },
+              "model": {
+                "refId": "C", "type": "threshold", "expression": "D",
+                "conditions": [
+                  { "evaluator": { "params": [0], "type": "gt" }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last" }, "type": "query" }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
