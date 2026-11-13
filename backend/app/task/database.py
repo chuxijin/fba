@@ -37,6 +37,7 @@ from backend.app.task.model.result import Task, TaskExtended, TaskSet
 # fba 重写：上游使用 celery 自带的 SessionManager，
 # fba 覆写后禁止 celery 自动创建其内部任务结果表
 from backend.app.task.session import SessionManager
+from backend.core.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -130,17 +131,22 @@ class DatabaseBackend(BaseBackend):
             # Lock the row, and read it again even if the session has it.
             query = query.with_for_update().populate_existing()
         try:
-            tasks = list(query.filter(self.task_cls.task_id == task_id))
+            # PostgreSQL statement failures must not poison the outer transaction.
+            with session.begin_nested():
+                tasks = list(query.filter(self.task_cls.task_id == task_id))
             return tasks and tasks[0]
         except DatabaseError as exc:
             exc_str = str(exc).lower()
             defers = []
-            if 'children' in exc_str and hasattr(self.task_cls, 'children'):
-                defers.append(defer(self.task_cls.children))
-            if 'stamps' in exc_str and hasattr(self.task_cls, 'stamps'):
-                defers.append(defer(self.task_cls.stamps))
+            if 'children' in exc_str or 'stamps' in exc_str:
+                defers = [
+                    defer(getattr(self.task_cls, name), raiseload=True)
+                    for name in ('children', 'stamps')
+                    if hasattr(self.task_cls, name)
+                ]
             if defers:
-                tasks = list(query.options(*defers).filter(self.task_cls.task_id == task_id))
+                with session.begin_nested():
+                    tasks = list(query.options(*defers).filter(self.task_cls.task_id == task_id))
                 return tasks and tasks[0]
             raise
 
@@ -174,7 +180,7 @@ class DatabaseBackend(BaseBackend):
     def _update_result(self, task, result, state, traceback=None, request=None) -> None:  # ruff:ignore[missing-type-function-argument]
 
         meta = self._get_result_meta(
-            result=ensure_bytes(self.encode(result)),
+            result=self._encode_stored_result(result),
             state=state,
             traceback=traceback,
             request=request,
@@ -245,21 +251,26 @@ class DatabaseBackend(BaseBackend):
                     pass
             return self.meta_from_decoded(data)
 
+    def _encode_stored_result(self, value):  # ruff:ignore[missing-type-function-argument, missing-return-type-private-function]
+        """Keep initial rollout results readable by production's old PickleType."""
+        if settings.CELERY_RESULT_LEGACY_PICKLE_WRITE:
+            return pickle.dumps(value, protocol=4)
+        return ensure_bytes(self.encode(value))
+
     def _decode_stored_result(self, payload):  # ruff:ignore[missing-type-function-argument, missing-return-type-private-function]
         """Decode a value stored in the ``result`` column.
 
-        Rows written before the fix for celery/celery#3025 always stored a
-        raw pickle blob regardless of the configured ``result_serializer``,
-        so a row that can't be decoded with the current serializer, but
-        looks like a pickle payload (starts with the pickle protocol 2+
-        marker that every pickle Celery/kombu produces starts with), is
-        assumed to be one of those and is unpickled directly instead.
-        Anything else re-raises the original decode error instead of
-        blindly unpickling arbitrary bytes.
+        Legacy rows and the initial rollback-compatible rollout use raw
+        binary pickle, independently of ``result_serializer``. Recognized
+        protocol headers are decoded without emitting expected serializer
+        errors on every read. Only a trusted database may supply these bytes;
+        pickle is not safe for untrusted input.
         """
         if payload is None:
             return payload
         payload = ensure_bytes(payload)
+        if len(payload) >= 2 and payload[0] == 0x80 and 2 <= payload[1] <= pickle.HIGHEST_PROTOCOL:
+            return pickle.loads(payload)
         try:
             return self.decode(payload)
         except Exception:
@@ -291,7 +302,7 @@ class DatabaseBackend(BaseBackend):
         """Store the result of an executed group."""
         session = self.ResultSession()
         with session_cleanup(session):
-            value = ensure_bytes(self.encode(self.prepare_value(result)))
+            value = self._encode_stored_result(self.prepare_value(result))
             group = self.taskset_cls(group_id, value)
             session.add(group)
             session.flush()

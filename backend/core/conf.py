@@ -373,6 +373,9 @@ class Settings(BaseSettings):
     CELERY_RABBITMQ_VHOST: str = ''
     CELERY_REDIS_PREFIX: str = 'fba:celery'
     CELERY_TASK_MAX_RETRIES: int = 5
+    # Initial v2 rollout keeps result bytes readable by the old PickleType ORM.
+    # Disabling this requires a separately validated result-format rollback plan.
+    CELERY_RESULT_LEGACY_PICKLE_WRITE: bool = True
 
     ##################################################
     # [ Plugin ] oauth2
