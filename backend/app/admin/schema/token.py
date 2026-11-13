@@ -8,6 +8,18 @@ from backend.common.schema import SchemaBase
 from backend.common.security.client import LoginClientType
 
 
+class OnlineSessionQueryParam(SchemaBase):
+    """在线会话查询参数"""
+
+    username: str | None = Field(None, description='用户名')
+
+
+class DeleteSessionQueryParam(SchemaBase):
+    """强制下线查询参数"""
+
+    session_uuid: str = Field(description='会话 UUID')
+
+
 class GetSwaggerToken(SchemaBase):
     """Swagger 认证令牌"""
 

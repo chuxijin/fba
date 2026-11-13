@@ -1,10 +1,10 @@
 [plugin]
 summary = 'OSS'
 version = '0.0.6'
+fba_version = '>=2.0.0,<3.0.0'
 description = '云存储上传插件'
 author = 'wu-clan'
 tags = ['storage']
-database = ['mysql', 'postgresql']
 
 [app]
 router = ['v1']

@@ -1,6 +1,13 @@
 from pydantic import ConfigDict, Field
 
 from backend.common.schema import SchemaBase
+from backend.plugin.oauth2.enums import UserSocialType
+
+
+class UserSocialQueryParam(SchemaBase):
+    """用户社交查询参数"""
+
+    source: UserSocialType
 
 
 class UserSocialSchemaBase(SchemaBase):

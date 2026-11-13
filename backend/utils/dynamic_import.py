@@ -3,11 +3,9 @@ import inspect
 import os.path
 
 from functools import lru_cache
-from typing import Any, TypeVar
+from typing import Any
 
 import sqlalchemy as sa
-
-T = TypeVar('T')
 
 
 @lru_cache(maxsize=128)
@@ -44,6 +42,25 @@ def get_model_objects(module_path: str) -> list[object] | None:
             classes.append(obj)
 
     return classes
+
+
+def get_model_tables(module_path: str) -> set[str]:
+    """
+    获取模块中定义的表名
+
+    :param module_path: 模块路径
+    :return:
+    """
+    model_objs = get_model_objects(module_path)
+    if not model_objs:
+        return set()
+
+    tables = set()
+    for obj in model_objs:
+        table = obj if isinstance(obj, sa.Table) else getattr(obj, '__table__', None)
+        if table is not None:
+            tables.add(table.name)
+    return tables
 
 
 def get_app_models() -> list[object]:

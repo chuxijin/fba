@@ -3,7 +3,6 @@
 import re
 import shutil
 
-from functools import cache
 from re import Pattern
 from typing import Any, Literal
 
@@ -55,7 +54,6 @@ class Settings(BaseSettings):
     FASTAPI_STATIC_FILES: bool = True
 
     # .env 数据库
-    DATABASE_TYPE: Literal['mysql', 'postgresql']
     DATABASE_HOST: str
     DATABASE_PORT: int
     DATABASE_USER: str
@@ -63,10 +61,10 @@ class Settings(BaseSettings):
     DATABASE_SOURCES: dict[str, str] = Field(default_factory=dict)
 
     # 数据库
+    DATABASE_TYPE: Literal['postgresql'] = 'postgresql'
     DATABASE_ECHO: bool | Literal['debug'] = False
     DATABASE_POOL_ECHO: bool | Literal['debug'] = False
     DATABASE_SCHEMA: str = 'fba'
-    DATABASE_CHARSET: str = 'utf8mb4'
     DATABASE_PK_MODE: Literal['autoincrement', 'snowflake'] = 'autoincrement'
 
     # 题库 V2 知识点掌握度
@@ -96,6 +94,8 @@ class Settings(BaseSettings):
     CACHE_PUBSUB_RECONNECT_DELAY: int = 5  # 重连延迟（秒）
     CACHE_PUBSUB_MAX_RECONNECT_ATTEMPTS: int = 10  # 最大重连次数
     CACHE_PUBSUB_POLL_TIMEOUT: float = 1.0  # 订阅消息轮询超时（秒）
+    # HTTP 缓存
+    HTTP_CACHE_TTL: int = 300  # 5 分钟
 
     # .env Snowflake
     SNOWFLAKE_ENABLED: bool = False
@@ -246,13 +246,11 @@ class Settings(BaseSettings):
     ]
     CORS_EXPOSE_HEADERS: list[str] = [
         'X-Request-ID',
+        'X-RateLimit-Retry-After',
     ]
 
     # 中间件配置
     MIDDLEWARE_CORS: bool = True
-
-    # 请求限制配置
-    REQUEST_LIMITER_REDIS_PREFIX: str = 'fba:limiter'
 
     # 时间配置
     DATETIME_TIMEZONE: str = 'Asia/Shanghai'
@@ -315,10 +313,12 @@ class Settings(BaseSettings):
         'old_password',
         'new_password',
         'confirm_password',
+        'secret',
     ]
     OPERA_LOG_QUEUE_MAXSIZE: int = 100000
     OPERA_LOG_QUEUE_BATCH_CONSUME_SIZE: int = 100
     OPERA_LOG_QUEUE_TIMEOUT: int = 60  # 1 分钟
+    OPERA_LOG_QUEUE_DRAIN_TIMEOUT: int = 10  # 停止时排空队列的最长等待时间
     OPERA_LOG_BODY_MAX_SIZE: int = 10240  # 10 KB
 
     # Server Chan
@@ -373,11 +373,6 @@ class Settings(BaseSettings):
     CELERY_RABBITMQ_VHOST: str = ''
     CELERY_REDIS_PREFIX: str = 'fba:celery'
     CELERY_TASK_MAX_RETRIES: int = 5
-
-    ##################################################
-    # [ Plugin ] code_generator
-    ##################################################
-    CODE_GENERATOR_DOWNLOAD_ZIP_FILENAME: str
 
     ##################################################
     # [ Plugin ] oauth2
@@ -711,12 +706,11 @@ class Settings(BaseSettings):
         return values
 
 
-@cache
 def get_settings() -> Settings:
     """获取全局配置单例"""
     if not ENV_FILE_PATH.exists():
         shutil.copy(ENV_EXAMPLE_FILE_PATH, ENV_FILE_PATH)
-    return Settings()
+    return Settings.settings_cached()
 
 
 # 创建全局配置实例

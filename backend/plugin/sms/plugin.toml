@@ -1,10 +1,10 @@
 [plugin]
 summary = '腾讯云短信服务'
 version = '0.0.2'
+fba_version = '>=2.0.0,<3.0.0'
 description = '使用腾讯云短信服务发送短信验证码'
 author = 'ranyong'
 tags = ['other']
-database = ['mysql', 'postgresql']
 wechat = 'RanY_Luck'
 
 [app]

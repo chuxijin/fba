@@ -3,5 +3,6 @@ __pycache__/
 .env.prod
 alembic/versions/__pycache__/
 static/media/
+static/ai_buddy/
 *.log
 celerybeat-schedule.*

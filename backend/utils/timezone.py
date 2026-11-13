@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 import zoneinfo
 
-from datetime import datetime, tzinfo
-from datetime import timezone as datetime_timezone
+from datetime import UTC, datetime, tzinfo
 from typing import Final
 
 from backend.core.conf import settings
@@ -26,7 +25,7 @@ class TimeZone:
         """初始化时区转换器"""
         self.tz_info: tzinfo
         if settings.DATETIME_TIMEZONE in _UTC_IDENTIFIERS:
-            self.tz_info = datetime_timezone.utc
+            self.tz_info = UTC
         else:
             self.tz_info = zoneinfo.ZoneInfo(settings.DATETIME_TIMEZONE)
 
@@ -73,8 +72,8 @@ class TimeZone:
         :return:
         """
         if isinstance(t, datetime):
-            return t.astimezone(datetime_timezone.utc)
-        return datetime.fromtimestamp(t, tz=datetime_timezone.utc)
+            return t.astimezone(UTC)
+        return datetime.fromtimestamp(t, tz=UTC)
 
 
 timezone: TimeZone = TimeZone()

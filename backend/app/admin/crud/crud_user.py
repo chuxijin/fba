@@ -31,7 +31,8 @@ from backend.app.admin.schema.user import (
 from backend.app.admin.utils.password_security import get_hash_password
 from backend.common.exception import errors
 from backend.core.conf import settings
-from backend.plugin.core import check_plugin_installed
+from backend.common.i18n import t
+from backend.plugin.core import check_plugin_installed_async
 from backend.utils.serializers import select_join_serialize
 from backend.utils.timezone import timezone
 
@@ -173,9 +174,9 @@ class CRUDUser(CRUDPlus[User]):
         salt = bcrypt.gensalt()
         obj.password = get_hash_password(obj.password, salt)
 
-        dict_obj = obj.model_dump(exclude={'roles'})
+        dict_obj = obj.model_dump(exclude={'role_ids'})
         dict_obj.update({'salt': salt})
-        await self.create_user_with_roles(db, user_data=dict_obj, role_ids=obj.roles)
+        await self.create_user_with_roles(db, user_data=dict_obj, role_ids=obj.role_ids)
 
     async def add_by_oauth2(self, db: AsyncSession, obj: AddOAuth2UserParam) -> None:
         """
@@ -205,8 +206,8 @@ class CRUDUser(CRUDPlus[User]):
         :param obj: 更新用户参数
         :return:
         """
-        role_ids = obj.roles
-        del obj.roles
+        role_ids = obj.role_ids
+        del obj.role_ids
 
         count = await self.update_model_by_column(db, obj, id=user_id, deleted=0)
 
@@ -362,13 +363,13 @@ class CRUDUser(CRUDPlus[User]):
         :param user_id: 用户 ID
         :return:
         """
-        if check_plugin_installed('oauth2'):
+        if await check_plugin_installed_async('oauth2'):
             try:
                 from backend.plugin.oauth2.crud.crud_user_social import user_social_dao
 
                 await user_social_dao.delete_by_user_id(db, user_id)
             except ImportError:
-                raise errors.ServerError(msg='OAuth2 插件用法导入失败，请联系系统管理员')
+                raise errors.ServerError(msg=t('error.plugin.oauth2_import_failed'))
 
         user_role_stmt = delete(user_role).where(user_role.c.user_id == user_id)
         await db.execute(user_role_stmt)

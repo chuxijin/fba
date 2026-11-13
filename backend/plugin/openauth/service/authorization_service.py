@@ -13,7 +13,7 @@ from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.common.exception import errors
-from backend.common.security.jwt import get_current_user
+from backend.app.admin.utils.user_provider import get_current_user
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 from backend.plugin.openauth.crud.crud_openauth import openauth_user_authorization_dao

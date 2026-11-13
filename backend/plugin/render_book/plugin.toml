@@ -1,10 +1,10 @@
 [plugin]
 summary = '题本渲染'
 version = '0.2.0'
+fba_version = '>=2.0.0,<3.0.0'
 description = '用于创建题本渲染任务并对接外部 LaTeX 渲染执行器。'
 author = 'Codex'
 tags = ['other', 'task']
-database = ['mysql', 'postgresql']
 
 [app]
 router = ['v1']

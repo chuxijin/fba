@@ -3,7 +3,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.common.model import Base, UniversalText, id_key
+from backend.common.model import Base, id_key
 
 
 class DictData(Base):
@@ -22,9 +22,9 @@ class DictData(Base):
     color: Mapped[str | None] = mapped_column(sa.String(32), default=None, comment='标签颜色')
     sort: Mapped[int] = mapped_column(default=0, comment='排序')
     status: Mapped[int] = mapped_column(default=1, comment='状态（0停用 1正常）')
-    remark: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='备注')
+    remark: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='备注')
     extra: Mapped[dict] = mapped_column(
-        sa.JSON().with_variant(JSONB, 'postgresql'),
+        JSONB,
         default_factory=dict,
         server_default=sa.text("'{}'"),
         comment='字典扩展配置；备考目标包含目录信息与组卷模板',

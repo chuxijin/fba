@@ -1,10 +1,10 @@
 [plugin]
 summary = '微信公众号素材中转'
 version = '0.2.0'
+fba_version = '>=2.0.0,<3.0.0'
 description = '接收客户端加密的公众号凭证，通过服务器固定出口 IP 中转上传微信公众号文章图片，不持久化图片文件'
 author = 'yzxj'
 tags = ['storage']
-database = ['mysql', 'postgresql']
 
 [app]
 router = ['v1']

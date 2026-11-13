@@ -136,7 +136,7 @@ class AuthService:
         await password_security_service.check_status(user.id, user.status)
         if user.password is None or not password_verify(password, user.password):
             await password_security_service.handle_login_failure(db, user.id)
-            raise errors.AuthorizationError(msg='用户名或密码有误')
+            raise errors.AuthorizationError(msg=t('error.auth.invalid_credentials'))
 
         days_remaining = await password_security_service.check_password_expiry_status(
             db, user.last_password_changed_time
@@ -306,7 +306,7 @@ class AuthService:
 
         user = await user_dao.get(db, token_payload.user_id)
         if not user:
-            raise errors.NotFoundError(msg='用户不存在')
+            raise errors.NotFoundError(msg=t('error.user.not_found'))
         if not user.status:
             raise errors.AuthorizationError(msg='用户已被锁定, 请联系统管理员')
         if client_type == LoginClientType.admin and not user.is_staff:

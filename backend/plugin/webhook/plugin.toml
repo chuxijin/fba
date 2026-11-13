@@ -1,10 +1,10 @@
 [plugin]
 summary = 'Webhook 双向事件系统'
 version = '2.0.0'
+fba_version = '>=2.0.0,<3.0.0'
 description = '基于 Standard Webhooks + CloudEvents v1.0 的双向 Webhook 系统, 支持入站接收和出站推送'
 author = 'null'
 tags = ["notification"]
-database = ["mysql", "postgresql"]
 
 [app]
 extend = 'admin'

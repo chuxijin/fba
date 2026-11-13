@@ -1,14 +1,28 @@
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
-from pydantic import ConfigDict, Field, HttpUrl, PlainSerializer, model_validator
-from typing_extensions import Self
+from pydantic import AliasChoices, ConfigDict, Field, HttpUrl, PlainSerializer, model_validator
 
 from backend.app.admin.schema.dept import GetDeptDetail
 from backend.app.admin.schema.role import GetRoleWithRelationDetail
 from backend.app.admin.schema.user_role_expiry import GetRoleExpiryBrief
-from backend.common.enums import StatusType
+from backend.common.enums import StatusType, UserPermissionType
 from backend.common.schema import CustomEmailStr, CustomPhoneNumber, SchemaBase, ser_string
+
+
+class UserQueryParam(SchemaBase):
+    """用户查询参数"""
+
+    dept: int | None = Field(None, description='部门 ID')
+    username: str | None = Field(None, description='用户名')
+    phone: str | None = Field(None, description='手机号')
+    status: int | None = Field(None, description='状态')
+
+
+class UpdateUserPermissionQueryParam(SchemaBase):
+    """更新用户权限查询参数"""
+
+    type: UserPermissionType = Field(description='权限类型')
 
 
 class AuthSchemaBase(SchemaBase):
@@ -57,7 +71,7 @@ class AddUserParam(AuthSchemaBase):
     email: CustomEmailStr | None = Field(None, description='邮箱')
     phone: CustomPhoneNumber | None = Field(None, description='手机号码')
     dept_id: int = Field(description='部门 ID')
-    roles: list[int] = Field(description='角色 ID 列表')
+    role_ids: list[int] = Field(validation_alias=AliasChoices('role_ids', 'roles'), description='角色 ID 列表')
 
 
 class AddUserRoleParam(SchemaBase):
@@ -98,7 +112,7 @@ class UserInfoSchemaBase(SchemaBase):
 class UpdateUserParam(UserInfoSchemaBase):
     """更新用户参数"""
 
-    roles: list[int] = Field(description='角色 ID 列表')
+    role_ids: list[int] = Field(validation_alias=AliasChoices('role_ids', 'roles'), description='角色 ID 列表')
 
 
 class GetUserInfoDetail(UserInfoSchemaBase):

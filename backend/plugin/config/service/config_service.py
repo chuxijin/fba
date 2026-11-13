@@ -5,8 +5,9 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.common.cache.decorator import cache_invalidate, cached
 from backend.common.exception import errors
+from backend.common.cache.redis_cache import RedisCache
+from backend.common.cache.serializers import JsonSerializer
 from backend.common.pagination import paging_data
 from backend.core.conf import settings
 from backend.plugin.config.crud.crud_config import config_dao
@@ -18,11 +19,19 @@ from backend.plugin.config.schema.config import (
 )
 
 
+frontend_config_cache = RedisCache[dict[str, str]](
+    prefix=f'{settings.CACHE_CONFIG_REDIS_PREFIX}:frontend',
+    ttl=settings.CACHE_REDIS_TTL,
+    serializer=JsonSerializer(),
+    local=settings.CACHE_LOCAL_ENABLED,
+    invalidate_pubsub=settings.CACHE_LOCAL_ENABLED,
+)
+
+
 class ConfigService:
     """参数配置服务类"""
 
     @staticmethod
-    @cached(namespace=settings.CACHE_CONFIG_REDIS_PREFIX, key='pk')
     async def get(*, db: AsyncSession, pk: int) -> Config:
         """
         获取参数配置详情
@@ -37,7 +46,6 @@ class ConfigService:
         return config
 
     @staticmethod
-    @cached(namespace=settings.CACHE_CONFIG_REDIS_PREFIX, key='type')
     async def get_all(*, db: AsyncSession, type: str | None) -> Sequence[Config | None]:
         """
         获取所有参数配置
@@ -62,7 +70,6 @@ class ConfigService:
         return await paging_data(db, config_select)
 
     @staticmethod
-    @cached(f'{settings.CACHE_CONFIG_REDIS_PREFIX}:frontend', key='type')
     async def get_frontend_configs(*, db: AsyncSession, type: str) -> dict[str, str]:
         """
         获取前端参数配置映射
@@ -71,11 +78,13 @@ class ConfigService:
         :param type: 参数配置类型
         :return:
         """
-        configs = await config_dao.get_frontend_by_type(db, type)
-        return {config.key: config.value for config in configs}
+        async def load() -> dict[str, str]:
+            configs = await config_dao.get_frontend_by_type(db, type)
+            return {config.key: config.value for config in configs}
+
+        return await frontend_config_cache.get_or_set(type, factory=load)
 
     @staticmethod
-    @cache_invalidate(namespace=settings.CACHE_CONFIG_REDIS_PREFIX)
     async def create(*, db: AsyncSession, obj: CreateConfigParam) -> None:
         """
         创建参数配置
@@ -88,9 +97,9 @@ class ConfigService:
         if config:
             raise errors.ConflictError(msg=f'参数配置 {obj.key} 已存在')
         await config_dao.create(db, obj)
+        await frontend_config_cache.invalidate_prefix()
 
     @staticmethod
-    @cache_invalidate(namespace=settings.CACHE_CONFIG_REDIS_PREFIX)
     async def update(*, db: AsyncSession, pk: int, obj: UpdateConfigParam) -> int:
         """
         更新参数配置
@@ -108,10 +117,10 @@ class ConfigService:
             if config:
                 raise errors.ConflictError(msg=f'参数配置 {obj.key} 已存在')
         count = await config_dao.update(db, pk, obj)
+        await frontend_config_cache.invalidate_prefix()
         return count
 
     @staticmethod
-    @cache_invalidate(namespace=settings.CACHE_CONFIG_REDIS_PREFIX)
     async def bulk_update(*, db: AsyncSession, objs: list[UpdateConfigsParam]) -> int:
         """
         批量更新参数配置
@@ -137,10 +146,10 @@ class ConfigService:
                 raise errors.ConflictError(msg=f'参数配置 {obj.key} 已存在')
 
         count = await config_dao.bulk_update(db, objs)
+        await frontend_config_cache.invalidate_prefix()
         return count
 
     @staticmethod
-    @cache_invalidate(namespace=settings.CACHE_CONFIG_REDIS_PREFIX)
     async def delete(*, db: AsyncSession, pks: list[int]) -> int:
         """
         批量删除参数配置
@@ -150,6 +159,7 @@ class ConfigService:
         :return:
         """
         count = await config_dao.delete(db, pks)
+        await frontend_config_cache.invalidate_prefix()
         return count
 
 

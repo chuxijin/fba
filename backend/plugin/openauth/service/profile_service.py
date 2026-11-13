@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.common.security.jwt import get_current_user
+from backend.app.admin.utils.user_provider import get_current_user
 from backend.plugin.openauth.schema.profile import GetOpenAuthProfile
 
 

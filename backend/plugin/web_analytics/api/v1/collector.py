@@ -4,14 +4,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import ValidationError
-from pyrate_limiter import Duration, Rate
 from starlette.responses import FileResponse, Response
 
 from backend.common.exception import errors
+from backend.common.limiter import rate_limit
 from backend.database.db import CurrentSessionTransaction
 from backend.plugin.web_analytics.schema import CollectBatchParam, ReplayChunkParam
 from backend.plugin.web_analytics.service import analytics_service
-from backend.utils.limiter import RateLimiter
 
 router = APIRouter()
 TRACKER_FILE = Path(__file__).resolve().parents[2] / 'assets' / 'tracker.js'
@@ -40,7 +39,7 @@ async def tracker_script() -> FileResponse:
     '/collect',
     summary='批量采集统计事件',
     status_code=204,
-    dependencies=[Depends(RateLimiter(Rate(120, Duration.MINUTE)))],
+    dependencies=[Depends(rate_limit('120/minute'))],
 )
 async def collect_events(request: Request, db: CurrentSessionTransaction) -> Response:
     try:
@@ -55,7 +54,7 @@ async def collect_events(request: Request, db: CurrentSessionTransaction) -> Res
     '/replay',
     summary='采集会话回放分片',
     status_code=204,
-    dependencies=[Depends(RateLimiter(Rate(30, Duration.MINUTE)))],
+    dependencies=[Depends(rate_limit('30/minute'))],
 )
 async def collect_replay(request: Request, db: CurrentSessionTransaction) -> Response:
     try:

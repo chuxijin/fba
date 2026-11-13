@@ -1,15 +1,42 @@
 from datetime import datetime
 from typing import Annotated
 
-from sqlalchemy import BigInteger, DateTime, Text, TypeDecorator
-from sqlalchemy.dialects.mysql import LONGTEXT
+import sqlalchemy as sa
+
+from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, MappedAsDataclass, declared_attr, mapped_column
+from sqlalchemy.types import TypeDecorator
 
-from backend.common.enums import DataBaseType, PrimaryKeyType
+from backend.common.enums import PrimaryKeyType
 from backend.core.conf import settings
 from backend.utils.snowflake import snowflake
 from backend.utils.timezone import timezone
+
+# 旧业务模型的兼容导出，不恢复 MySQL 类型或驱动。
+UniversalText = sa.Text
+
+
+class TimeZone(TypeDecorator[datetime]):
+    """保留自定义模型的时区读写约定。"""
+
+    impl = sa.DateTime(timezone=True)
+    cache_ok = True
+
+    @property
+    def python_type(self) -> type[datetime]:
+        return datetime
+
+    def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:  # noqa: ANN001
+        if value is not None and value.utcoffset() != timezone.now().utcoffset():
+            value = timezone.from_datetime(value)
+        return value
+
+    def process_result_value(self, value: datetime | None, dialect) -> datetime | None:  # noqa: ANN001
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.tz_info)
+        return value
+
 
 # 通用 Mapped 类型主键, 需手动添加，参考以下使用方式
 # MappedBase -> id: Mapped[id_key]
@@ -40,41 +67,6 @@ id_key = Annotated[
 ]
 
 
-class UniversalText(TypeDecorator[str]):
-    """PostgreSQL、MySQL 兼容性（长）文本类型"""
-
-    impl = LONGTEXT if DataBaseType.mysql == settings.DATABASE_TYPE else Text
-    cache_ok = True
-
-    def process_bind_param(self, value: str | None, dialect) -> str | None:  # ruff:ignore[missing-type-function-argument]
-        return value
-
-    def process_result_value(self, value: str | None, dialect) -> str | None:  # ruff:ignore[missing-type-function-argument]
-        return value
-
-
-class TimeZone(TypeDecorator[datetime]):
-    """PostgreSQL、MySQL 兼容性时区感知类型"""
-
-    impl = DateTime(timezone=True)
-    cache_ok = True
-
-    @property
-    def python_type(self) -> type[datetime]:
-        return datetime
-
-    def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:  # ruff:ignore[missing-type-function-argument]
-        if value is not None and value.utcoffset() != timezone.now().utcoffset():
-            # TODO 处理夏令时偏移
-            value = timezone.from_datetime(value)
-        return value
-
-    def process_result_value(self, value: datetime | None, dialect) -> datetime | None:  # ruff:ignore[missing-type-function-argument]
-        if value is not None and value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.tz_info)
-        return value
-
-
 # Mixin: 一种面向对象编程概念, 使结构变得更加清晰, `Wiki <https://en.wikipedia.org/wiki/Mixin/>`__
 class UserMixin(MappedAsDataclass):
     """用户 Mixin 数据类"""
@@ -87,14 +79,14 @@ class DateTimeMixin(MappedAsDataclass):
     """日期时间 Mixin 数据类"""
 
     created_time: Mapped[datetime] = mapped_column(
-        TimeZone,
+        sa.DateTime(timezone=True),
         init=False,
         default_factory=timezone.now,
         sort_order=999,
         comment='创建时间',
     )
     updated_time: Mapped[datetime | None] = mapped_column(
-        TimeZone,
+        sa.DateTime(timezone=True),
         init=False,
         default_factory=timezone.now,
         onupdate=timezone.now,
@@ -115,7 +107,7 @@ class LogicalDeleteMixin(MappedAsDataclass):
         comment='是否已删除（0：否；id：是）',
     )
     deleted_time: Mapped[datetime | None] = mapped_column(
-        TimeZone,
+        sa.DateTime(timezone=True),
         init=False,
         default=None,
         sort_order=999,

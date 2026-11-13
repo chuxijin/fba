@@ -4,9 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from backend.app.skill.service import ensure_skill_access, get_skill_entitlement_status
+from backend.app.admin.utils.user_provider import get_current_user
+from backend.app.skill.service import get_skill_entitlement_status
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
-from backend.common.security.jwt import get_current_user
 from backend.database.db import CurrentSessionTransaction
 from backend.plugin.openauth.dependencies import RequireOpenAuth
 from backend.plugin.openauth.schema.authorization import GetOpenAuthCheckResult

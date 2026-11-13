@@ -1,10 +1,10 @@
 [plugin]
 summary = 'OCR'
 version = '0.0.1'
+fba_version = '>=2.0.0,<3.0.0'
 description = '图片文字识别插件'
 author = 'wu-clan'
 tags = ['other']
-database = ['mysql', 'postgresql']
 
 [app]
 router = ['v1']

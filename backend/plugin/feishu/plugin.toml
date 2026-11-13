@@ -1,10 +1,10 @@
 [plugin]
 summary = '飞书电子表格'
 version = '1.0.0'
+fba_version = '>=2.0.0,<3.0.0'
 description = '飞书电子表格读写插件，支持多工作簿 / 多子表追加、批量写入、单元格样式与下拉列表设置'
 author = 'null'
 tags = ['other']
-database = ['mysql', 'postgresql']
 
 [app]
 router = ['v1']

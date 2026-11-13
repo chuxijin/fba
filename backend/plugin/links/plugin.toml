@@ -1,10 +1,10 @@
 [plugin]
 summary = '短网址'
 version = '0.0.1'
+fba_version = '>=2.0.0,<3.0.0'
 description = '短网址生成与管理服务，支持访问统计和域名管理'
 author = 'fba'
 tags = ["other"]
-database = ["mysql", "postgresql"]
 
 [app]
 router = ['v1']

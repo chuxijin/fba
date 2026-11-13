@@ -111,7 +111,7 @@ def memory(monkeypatch: pytest.MonkeyPatch) -> MemoryRedis:
     monkeypatch.setattr(auth_module, 'ctx', context)
     monkeypatch.setattr(scan_module, 'ctx', context)
     monkeypatch.setattr(jwt_module, 'ctx', context)
-    monkeypatch.setattr(jwt_module, 'get_jwt_user', AsyncMock(return_value=SimpleNamespace(id=7, is_superuser=False)))
+    monkeypatch.setattr(jwt_module, '_jwt_user_provider', AsyncMock(return_value=SimpleNamespace(id=7, is_superuser=False)))
     return redis
 
 

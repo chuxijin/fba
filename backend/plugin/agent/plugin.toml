@@ -1,10 +1,10 @@
 [plugin]
 summary = '智能批改 Agent'
 version = '0.6.0'
+fba_version = '>=2.0.0,<3.0.0'
 description = '面向申论批改的 Agent 平台，后续扩展英语作文和面试能力。'
 author = 'gongkao'
 tags = ['ai', 'agent']
-database = ['mysql', 'postgresql']
 
 [app]
 router = ['v1']

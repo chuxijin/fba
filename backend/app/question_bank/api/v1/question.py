@@ -7,11 +7,12 @@ from fastapi import APIRouter, Body, File, Form, Path, Query, Request, UploadFil
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from backend.app.question_bank.model import QuestionAnalysis, QuestionStatistics
 from backend.app.question_bank.schema.note import GetQuestionNoteDetail
 from backend.app.question_bank.schema.question import (
     CreateQuestionParam,
     DeleteQuestionParam,
+    GetQuestionStatisticsDetail,
+    QuestionAnalysisItem,
     QuestionCollectParam,
     QuestionCollectResult,
     UpdateQuestionParam,
@@ -456,7 +457,7 @@ async def get_question_analysis(
     request: Request,
     db: CurrentSessionTransaction,
     pk: Annotated[int, Path(description='题目 ID')],
-) -> ResponseSchemaModel[QuestionAnalysis]:
+) -> ResponseSchemaModel[QuestionAnalysisItem]:
     """
     获取题目解析（含答案）
 
@@ -470,7 +471,7 @@ async def get_question_analysis(
         increment_view = False
 
     data = await question_service.get_analysis(db=db, question_id=pk, increment_view=increment_view)
-    return response_base.success(data=data)
+    return response_base.success(data=QuestionAnalysisItem.model_validate(data))
 
 
 @router.get(
@@ -523,13 +524,13 @@ async def get_question_statistics(
     request: Request,
     db: CurrentSession,
     pk: Annotated[int, Path(description='题目 ID')],
-) -> ResponseSchemaModel[QuestionStatistics]:
+) -> ResponseSchemaModel[GetQuestionStatisticsDetail]:
     """获取题目统计"""
     if not _should_bypass_membership_checks(request):
         await membership_service.verify_question_access(db=db, user_id=request.user.id, question_id=pk)
 
     data = await question_service.get_statistics(db=db, question_id=pk)
-    return response_base.success(data=data)
+    return response_base.success(data=GetQuestionStatisticsDetail.model_validate(data))
 
 
 # ============ 批量导入相关接口 ============

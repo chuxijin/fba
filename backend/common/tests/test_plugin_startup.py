@@ -61,7 +61,10 @@ def redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedis:
     }
     monkeypatch.setattr(core, 'RedisCli', lambda: client)
     monkeypatch.setattr(core, 'get_plugins', lambda: tuple(configs))
-    monkeypatch.setattr(core, 'load_plugin_config', lambda name: deepcopy(configs[name]))
+    async def load_config(name: str) -> dict:
+        return deepcopy(configs[name])
+
+    monkeypatch.setattr(core, 'load_plugin_config', load_config)
     monkeypatch.setattr(core, 'validate_plugin_config', lambda name, config: {
         'extension': PluginLevelType.extend,
         'application': PluginLevelType.app,

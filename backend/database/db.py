@@ -3,7 +3,7 @@ import sys
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import AbstractAsyncContextManager
 from functools import partial
-from typing import Annotated, Any, TypeAlias
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import Depends
@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from backend.app.question_bank_v2.cache import knowledge_invalidation  # noqa: F401
-from backend.common.enums import DataBaseType
 from backend.common.log import log
 from backend.common.model import MappedBase
 from backend.common.observability.prometheus.sqlalchemy import observe_sqlalchemy_pool_connections
@@ -35,19 +34,16 @@ def get_database_url(*, unittest: bool = False, with_database: bool = True) -> U
     if with_database:
         database = settings.DATABASE_SCHEMA if not unittest else f'{settings.DATABASE_SCHEMA}_test'
     else:
-        database = None if DataBaseType.mysql == settings.DATABASE_TYPE else 'postgres'
+        database = 'postgres'
 
-    url = URL.create(
-        drivername='mysql+asyncmy' if DataBaseType.mysql == settings.DATABASE_TYPE else 'postgresql+asyncpg',
+    return URL.create(
+        drivername='postgresql+asyncpg',
         username=settings.DATABASE_USER,
         password=settings.DATABASE_PASSWORD,
         host=settings.DATABASE_HOST,
         port=settings.DATABASE_PORT,
         database=database,
     )
-    if DataBaseType.mysql == settings.DATABASE_TYPE and with_database:
-        url = url.update_query_dict({'charset': settings.DATABASE_CHARSET})
-    return url
 
 
 def create_database_async_engine(url: str | URL) -> AsyncEngine:
@@ -154,9 +150,6 @@ async def create_postgresql_extensions(conn: AsyncConnection | AsyncSession) -> 
     :param conn: 数据库连接
     :return:
     """
-    if DataBaseType.postgresql != settings.DATABASE_TYPE:
-        return
-
     await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
 
 
@@ -219,8 +212,6 @@ for source, engine in _database_engines.items():
     )
 
 # Session Annotated
-CurrentSession: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
-CurrentSessionTransaction: TypeAlias = Annotated[AsyncSession, Depends(get_db_transaction)]
-CurrentSessionTransactionBeforeResponse: TypeAlias = Annotated[
-    AsyncSession, Depends(get_db_transaction, scope='function')
-]
+type CurrentSession = Annotated[AsyncSession, Depends(get_db)]
+type CurrentSessionTransaction = Annotated[AsyncSession, Depends(get_db_transaction)]
+type CurrentSessionTransactionBeforeResponse = Annotated[AsyncSession, Depends(get_db_transaction, scope='function')]

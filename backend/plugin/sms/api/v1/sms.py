@@ -5,13 +5,13 @@ import random
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Request, Response
-from pyrate_limiter import Duration, Rate
 from starlette.background import BackgroundTasks
 
 from backend.app.admin.schema.token import GetLoginToken
 from backend.app.admin.schema.user import ChangePhoneParam, SmsLoginParam
 from backend.app.admin.service.auth_service import auth_service
 from backend.app.admin.service.user_service import user_service
+from backend.common.limiter import rate_limit
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
 from backend.core.conf import settings
@@ -19,7 +19,6 @@ from backend.database.db import CurrentSessionTransaction
 from backend.database.redis import redis_client
 from backend.plugin.sms.schema.sms import SendSmsRequest, SendSmsResponse
 from backend.plugin.sms.service.sms_service import sms_service
-from backend.utils.limiter import RateLimiter
 
 router = APIRouter()
 
@@ -43,7 +42,7 @@ async def send_sms(request: Annotated[SendSmsRequest, Body()]) -> ResponseSchema
 @router.post(
     '/send_login_code',
     summary='发送登录短信验证码',
-    dependencies=[Depends(RateLimiter(Rate(1, Duration.MINUTE)))],
+    dependencies=[Depends(rate_limit('1/minute'))],
 )
 async def send_login_code(phone: Annotated[str, Body(embed=True)]) -> ResponseSchemaModel:
     """发送登录短信验证码，生成 6 位验证码，存储在 Redis 中"""
@@ -69,7 +68,7 @@ async def send_login_code(phone: Annotated[str, Body(embed=True)]) -> ResponseSc
     '/login/sms',
     summary='短信验证码登录',
     description='使用手机号和短信验证码登录，用户不存在则自动注册',
-    dependencies=[Depends(RateLimiter(Rate(5, Duration.MINUTE)))],
+    dependencies=[Depends(rate_limit('5/minute'))],
 )
 async def login_by_sms(
     request: Request,
@@ -91,7 +90,7 @@ async def login_by_sms(
 @router.post(
     '/phone/send-code',
     summary='发送更换手机号验证码',
-    dependencies=[DependsJwtAuth, Depends(RateLimiter(Rate(1, Duration.MINUTE)))],
+    dependencies=[DependsJwtAuth, Depends(rate_limit('1/minute'))],
 )
 async def send_change_phone_code(phone: Annotated[str, Body(embed=True)]) -> ResponseSchemaModel:
     """发送更换手机号的验证码（需登录）"""

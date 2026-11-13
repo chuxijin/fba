@@ -1,10 +1,10 @@
 [plugin]
 summary = '网站统计'
 version = '1.0.0'
+fba_version = '>=2.0.0,<3.0.0'
 description = '自托管多站点流量、事件、热力图和会话回放统计'
 author = 'gongkao'
 tags = ['other']
-database = ['mysql', 'postgresql']
 
 [app]
 router = ['v1']

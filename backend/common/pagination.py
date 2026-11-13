@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from math import ceil
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, Query
 from fastapi_pagination import pagination_ctx
@@ -13,12 +13,10 @@ from fastapi_pagination.links.bases import create_links
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
+    from typing import Self
+
     from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
-    from typing_extensions import Self
-
-T = TypeVar('T')
-SchemaT = TypeVar('SchemaT')
 
 
 class _CustomPageParams(BaseModel, AbstractParams):
@@ -37,7 +35,7 @@ class _CustomPageParams(BaseModel, AbstractParams):
 class _CustomCursorParams(CursorParams):
     """自定义游标分页参数"""
 
-    size: int = Query(50, ge=0, le=200, description='每页数量')
+    size: int = Query(50, ge=1, le=200, description='每页数量')
 
 
 class _Links(BaseModel):
@@ -69,7 +67,7 @@ class _CursorPageDetails(BaseModel):
     has_more: bool = Field(description='是否还有更多数据')
 
 
-class _CustomPage(_PageDetails, AbstractPage[T], Generic[T]):
+class _CustomPage[T](_PageDetails, AbstractPage[T]):
     """自定义分页类"""
 
     __params_type__ = _CustomPageParams
@@ -101,7 +99,7 @@ class _CustomPage(_PageDetails, AbstractPage[T], Generic[T]):
         )
 
 
-class _CustomCursorPage(_CursorPageDetails, AbstractPage[T], Generic[T]):
+class _CustomCursorPage[T](_CursorPageDetails, AbstractPage[T]):
     """自定义游标分页类"""
 
     __params_type__ = _CustomCursorParams
@@ -125,7 +123,7 @@ class _CustomCursorPage(_CursorPageDetails, AbstractPage[T], Generic[T]):
         )
 
 
-class PageData(_PageDetails, Generic[SchemaT]):
+class PageData[SchemaT](_PageDetails):
     """
     包含返回数据 schema 的统一返回模型，仅适用于分页接口
 
@@ -150,7 +148,7 @@ class PageData(_PageDetails, Generic[SchemaT]):
     items: Sequence[SchemaT]
 
 
-class CursorPageData(_CursorPageDetails, Generic[SchemaT]):
+class CursorPageData[SchemaT](_CursorPageDetails):
     """包含返回数据 schema 的统一返回模型，仅适用于游标分页接口，用法与 PageData 相同"""
 
     items: Sequence[SchemaT]
@@ -160,6 +158,9 @@ async def paging_data(
     db: AsyncSession,
     select: Select,
     schema_cls: type[Any] | None = None,
+    *,
+    bind_params: dict[str, Any] | None = None,
+    execute_options: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """
@@ -168,19 +169,23 @@ async def paging_data(
     :param db: 数据库会话
     :param select: SQL 查询语句
     :param schema_cls: 可选的 Pydantic Schema 类，用于转换 ORM 对象，避免懒加载问题
+    :param bind_params: 数据与总数查询共用的绑定参数
+    :param execute_options: 数据与总数查询共用的执行选项
     :param kwargs: 更多 fastapi-pagination apaginate 参数
     :return:
     """
-    paginated_data: _CustomPage = await apaginate(db, select, **kwargs)
-
-    # 如果提供了 schema_cls，立即在异步上下文中转换 ORM 对象或 RowMapping 为 Schema
-    # 这样可以避免在 model_dump() 时触发 SQLAlchemy 的懒加载
+    paginated_data: _CustomPage = await apaginate(
+        db,
+        select,
+        bind_params=bind_params,
+        execute_options=execute_options,
+        **kwargs,
+    )
     if schema_cls:
         paginated_data.items = [
             schema_cls.model_validate(item._mapping if hasattr(item, '_mapping') else item)
             for item in paginated_data.items
         ]
-
     page_data = paginated_data.model_dump()
     return page_data
 

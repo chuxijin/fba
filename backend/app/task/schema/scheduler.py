@@ -4,7 +4,15 @@ from pydantic import ConfigDict, Field
 from pydantic.types import JsonValue
 
 from backend.app.task.enums import PeriodType, TaskSchedulerType
+from backend.common.enums import StatusType
 from backend.common.schema import SchemaBase
+
+
+class TaskSchedulerQueryParam(SchemaBase):
+    """任务调度查询参数"""
+
+    name: str | None = Field(None, description='任务调度名称')
+    type: int | None = Field(None, description='任务调度类型')
 
 
 class TaskSchedulerSchemaBase(SchemaBase):
@@ -42,7 +50,7 @@ class GetTaskSchedulerDetail(TaskSchedulerSchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description='任务调度 ID')
-    enabled: bool = Field(description='是否启用任务')
+    status: StatusType = Field(description='状态')
     total_run_count: int = Field(description='已运行总次数')
     last_run_time: datetime | None = Field(None, description='最后运行时间')
     created_time: datetime = Field(description='创建时间')

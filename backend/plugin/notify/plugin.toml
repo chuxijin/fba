@@ -1,10 +1,10 @@
 [plugin]
 summary = '多渠道通知服务'
 version = '1.0.0'
+fba_version = '>=2.0.0,<3.0.0'
 description = '支持钉钉、邮件、Server酱、Telegram、企业微信等多渠道通知，按优先级自动降级'
 author = 'null'
 tags = ["notification"]
-database = ["mysql", "postgresql"]
 
 [app]
 router = ['v1']

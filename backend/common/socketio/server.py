@@ -1,4 +1,3 @@
-import urllib.parse
 import uuid
 
 from typing import Any
@@ -10,7 +9,7 @@ from starlette_context import request_cycle_context
 from backend.common.log import log
 from backend.common.security.jwt import jwt_authentication, jwt_decode
 from backend.core.conf import settings
-from backend.database.redis import redis_client
+from backend.database.redis import get_redis_url, redis_client
 from backend.utils.timezone import timezone
 
 # 创建 Socket.IO 服务器实例
@@ -18,7 +17,7 @@ from backend.utils.timezone import timezone
 # 参考 python-socketio 5.16.3 对 redis 客户端管理器异常捕获的修复
 sio = socketio.AsyncServer(
     client_manager=socketio.AsyncRedisManager(
-        f'redis://:{urllib.parse.quote(settings.REDIS_PASSWORD)}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DATABASE}',
+        get_redis_url(database=settings.REDIS_DATABASE),
         redis_options={
             'socket_timeout': None,
             'socket_connect_timeout': settings.REDIS_TIMEOUT,
@@ -53,7 +52,6 @@ async def connect(namespace: str, sid: str, _environ: dict[str, Any], auth: dict
     if not isinstance(token, str) or not token or not isinstance(session_uuid, str) or not session_uuid:
         log.error('WebSocket 连接失败：授权失败，请检查')
         return False
-
     # 免授权直连
     if token == settings.WS_NO_AUTH_MARKER:
         if settings.ENVIRONMENT == 'prod':
