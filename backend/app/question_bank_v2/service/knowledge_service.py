@@ -43,6 +43,11 @@ from backend.common.exception import errors
 from backend.database.db import async_db_session
 from backend.utils.timezone import timezone
 
+# 树与筛题保留低频节点，只隐藏「暂不启用」
+VISIBLE_POINT_STATUSES: tuple[str, ...] = ('active', 'lowfreq')
+# 雷达图只用正常节点：低频题型样本太少，会把均值拉偏
+RADAR_POINT_STATUSES: tuple[str, ...] = ('active',)
+
 
 class KnowledgeService:
     """知识体系、题量和用户学习进度服务类"""
@@ -360,6 +365,7 @@ class KnowledgeService:
                 depth=point.depth,
                 sort_order=point.sort_order,
                 description=point.description,
+                status=point.status,
                 direct_question_count=direct_questions,
                 question_count=question_count,
                 answered_count=answered_count,
@@ -407,7 +413,9 @@ class KnowledgeService:
 
         async def load_public() -> KnowledgePublicSnapshot:
             async with async_db_session(bind=bind) as public_db:
-                points = await knowledge_point_dao.get_all(public_db, system.id, root_id=root_id)
+                points = await knowledge_point_dao.get_all(
+                    public_db, system.id, root_id=root_id, statuses=VISIBLE_POINT_STATUSES
+                )
                 if root_id is not None and not points:
                     raise errors.NotFoundError(msg='知识点不存在或不属于当前知识体系')
                 counts = await knowledge_point_dao.get_question_counts(
@@ -486,6 +494,7 @@ class KnowledgeService:
                 depth=point.depth,
                 sort_order=point.sort_order,
                 description=point.description,
+                status=point.status,
                 children=children,
             )
 
@@ -507,7 +516,7 @@ class KnowledgeService:
             system = await knowledge_system_dao.get(db, system_id)
             if system is None:
                 raise errors.NotFoundError(msg='知识体系不存在或未启用')
-            points = await knowledge_point_dao.get_all(db, system.id)
+            points = await knowledge_point_dao.get_all(db, system.id, statuses=VISIBLE_POINT_STATUSES)
             tree = KnowledgeService._build_pure_tree(points=points, root_id=None)
             return GetKnowledgePointTreeResult(
                 system=GetKnowledgeSystemListItem.model_validate(system),
@@ -532,7 +541,7 @@ class KnowledgeService:
         system = await knowledge_system_dao.get(db, system_id)
         if system is None:
             raise errors.NotFoundError(msg='知识体系不存在或未启用')
-        points = list(await knowledge_point_dao.get_all(db, system_id))
+        points = list(await knowledge_point_dao.get_all(db, system_id, statuses=RADAR_POINT_STATUSES))
         point_by_id = {point.id: point for point in points}
         children: dict[int | None, list[int]] = {}
         for point in points:

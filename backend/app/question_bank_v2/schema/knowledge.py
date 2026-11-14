@@ -12,6 +12,7 @@ from backend.common.schema import SchemaBase
 
 KnowledgePointRole = Literal['primary', 'secondary', 'prerequisite']
 KnowledgePointSource = Literal['manual', 'import', 'ai']
+KnowledgePointStatus = Literal['active', 'lowfreq', 'disabled']
 
 
 class CreateKnowledgeSystemParam(SchemaBase):
@@ -35,6 +36,7 @@ class CreateKnowledgePointParam(SchemaBase):
     parent_id: int | None = Field(None, gt=0)
     sort_order: int = 0
     description: str | None = None
+    status: KnowledgePointStatus = Field(default='active', description='active 正常 / lowfreq 低频 / disabled 暂不启用')
 
 
 class UpdateKnowledgePointParam(SchemaBase):
@@ -42,6 +44,7 @@ class UpdateKnowledgePointParam(SchemaBase):
     parent_id: int | None = Field(None, gt=0)
     sort_order: int | None = None
     description: str | None = None
+    status: KnowledgePointStatus | None = Field(None, description='active 正常 / lowfreq 低频 / disabled 暂不启用')
 
 
 class KnowledgePointAssignmentParam(SchemaBase):
@@ -90,6 +93,7 @@ class GetKnowledgePointTreeNode(SchemaBase):
     depth: int = Field(ge=0, description='树深度')
     sort_order: int = Field(description='同层排序')
     description: str | None = Field(None, description='知识点说明')
+    status: str = Field('active', description='active 正常 / lowfreq 低频 / disabled 暂不启用')
     direct_question_count: int = Field(ge=0, description='直接标注到当前节点的题数')
     question_count: int = Field(ge=0, description='包含后代节点的题数')
     answered_count: int = Field(ge=0, description='已作答题数')
@@ -125,6 +129,7 @@ class GetKnowledgePointNode(SchemaBase):
     depth: int = Field(ge=0, description='树深度')
     sort_order: int = Field(description='同层排序')
     description: str | None = Field(None, description='知识点说明')
+    status: str = Field('active', description='active 正常 / lowfreq 低频 / disabled 暂不启用')
     children: list[GetKnowledgePointNode] = Field(default_factory=list, description='子知识点')
 
 

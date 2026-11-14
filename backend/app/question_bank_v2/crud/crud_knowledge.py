@@ -98,13 +98,20 @@ class CRUDKnowledgePoint(CRUDPlus[QbKnowledgePoint]):
         return (await db.execute(stmt)).scalars().first()
 
     async def get_all(
-        self, db: AsyncSession, system_id: int, *, root_id: int | None = None
+        self,
+        db: AsyncSession,
+        system_id: int,
+        *,
+        root_id: int | None = None,
+        statuses: Sequence[str] | None = None,
     ) -> Sequence[QbKnowledgePoint]:
         stmt = (
             select(QbKnowledgePoint)
             .where(QbKnowledgePoint.system_id == system_id, QbKnowledgePoint.deleted == 0)
             .order_by(QbKnowledgePoint.depth, QbKnowledgePoint.sort_order, QbKnowledgePoint.id)
         )
+        if statuses is not None:
+            stmt = stmt.where(QbKnowledgePoint.status.in_(list(statuses)))
         if root_id is not None:
             subtree = (
                 select(QbKnowledgePoint.id)

@@ -73,6 +73,7 @@ class QbKnowledgePoint(Base, UserMixin):
         ),
         sa.CheckConstraint('parent_id IS NULL OR parent_id <> id', name='ck_qbv2_kpoint_not_self'),
         sa.CheckConstraint('depth >= 0', name='ck_qbv2_kpoint_depth'),
+        sa.CheckConstraint("status IN ('active','lowfreq','disabled')", name='ck_qbv2_kpoint_status'),
         sa.Index('ix_qbv2_kpoint_parent_order', 'system_id', 'parent_id', 'sort_order'),
         sa.Index('ix_qbv2_kpoint_path', 'system_id', 'path'),
         {'comment': '知识点表'},
@@ -91,6 +92,9 @@ class QbKnowledgePoint(Base, UserMixin):
     depth: Mapped[int] = mapped_column(sa.SmallInteger, default=0, comment='树深度')
     sort_order: Mapped[int] = mapped_column(sa.Integer, default=0, comment='同层排序')
     description: Mapped[str | None] = mapped_column(UniversalText, default=None, comment='知识点说明')
+    status: Mapped[str] = mapped_column(
+        sa.String(16), default='active', comment='active 正常 / lowfreq 低频（不进雷达图） / disabled 暂不启用'
+    )
 
     system: Mapped[QbKnowledgeSystem] = relationship(
         init=False,
