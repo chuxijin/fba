@@ -1058,7 +1058,12 @@ class CRUDWrongQuestionState(CRUDPlus[QbWrongQuestionState]):
         )
         # 自主录入按录入时记录的领域归属
         external_stmt = self._apply_domain_scope(external_stmt, domain_category_ids)
-        external_stmt = external_stmt.group_by(external_source).order_by(external_source)
+        # 自主录入的来源组按最近录入倒序；作答日期和后续复盘不能改变分组顺序。
+        external_stmt = external_stmt.group_by(external_source).order_by(
+            func.max(QbWrongQuestionState.created_time).desc().nullslast(),
+            func.max(QbWrongQuestionState.id).desc(),
+            external_source,
+        )
         rows = []
         for row in (await db.execute(stmt)).mappings().all():
             result = dict(row)
