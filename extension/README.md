@@ -25,12 +25,17 @@
 
 ## 二、 如何在浏览器中加载安装（开发与测试）
 
-1. **构建扩展产物**：
+1. **安装插件自身依赖并构建生产产物**：
    ```bash
    cd D:\100_Work\101_Program\Proj\fba\extension
-   pnpm run build
+   pnpm run deps:install
+   pnpm run build:prod
    ```
    构建产物将输出在 `extension/dist` 文件夹下。
+
+   插件使用自己的 `pnpm-lock.yaml` 和 `extension/node_modules/.pnpm`。安装命令显式忽略父级 workspace，不在主仓安装全仓依赖，也不借用或链接小程序依赖；不要删除插件本地锁文件后改用主仓的共享安装结果。依赖目录失效时先保留旧目录，再按上述命令恢复。`--ignore-scripts` 不执行依赖生命周期脚本，生产构建仍保留 TypeScript 检查。
+
+   本地联调使用 `pnpm run build`；正式 ZIP 在生产构建成功后单独执行 `pwsh -NoProfile -File scripts/package.ps1 -Destination <新的交付目录>`，避免再次构建已通过且未改动的代码，旧包不会覆盖。
 
 2. **在 Chrome / Edge 浏览器中安装**：
    - 打开浏览器，进入扩展管理页面：
@@ -49,7 +54,7 @@
 
 扫码归属规则、下载重试、发布配置及真机验收见 [排版交付联调说明](./docs/export-delivery.md)。
 
-1.0.7 生产包安装与配套服务前置条件见 [生产安装包说明](./docs/release-1.0.7.md)，归档与用时口径见 [错题与练习归档说明](./docs/wrong-import-timing.md)。本次只打包，不自动发布后端和小程序。
+1.0.8 的统计快照与生产包安装说明见 [生产安装包说明](./docs/release-1.0.8.md)；旧1.0.7说明仍保留。归档与用时口径见 [错题与练习归档说明](./docs/wrong-import-timing.md)。本次只打包，不自动发布后端和小程序。
 
 ---
 

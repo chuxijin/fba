@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Script } from 'node:vm'
 
 const directory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = resolve(directory, 'dist')
@@ -22,7 +23,7 @@ test('dist 清单版本与 package.json 一致', { skip }, async () => {
   const manifest = JSON.parse(await readDist('manifest.json'))
   assert.equal(manifest.manifest_version, 3)
   assert.equal(manifest.version, packageJson.version)
-  assert.equal(manifest.version, '1.0.7')
+  assert.equal(manifest.version, '1.0.8')
   assert.equal(manifest.background.service_worker, 'background.js')
   assert.equal(manifest.action.default_popup, 'popup.html')
 })
@@ -103,5 +104,23 @@ test('dist 不生成 site-auth.js，也不内嵌任何本地开发地址常量',
   for (const path of pages) {
     const content = await readDist(path)
     assert.equal(/localhost|127\.0\.0\.1|:8000/.test(content), false, path)
+  }
+})
+
+test('dist 已包含逐题统计捕获、白名单字段与报告导入入口', { skip }, async () => {
+  const content = await readDist('content.js')
+  for (const marker of [
+    '/combine/question/getMeta', 'fenbi-global-v1', 'platform_reference',
+    'correct_ratio_percent', 'total_count_raw', 'wrong_count_raw', 'captured_at',
+    'difficulty_raw', 'average_score', 'beat_rate_percent', 'IMPORT_PRACTICE_REPORT',
+  ]) assert.ok(content.includes(marker), marker)
+  assert.match(await readDist('background.js'), /practice-logs\/import-report/)
+})
+
+test('dist 内容、注入及后台脚本均为可独立解析的实际 JavaScript', { skip }, async () => {
+  for (const name of ['background.js', 'content.js', 'injected.js']) {
+    const code = await readDist(name)
+    assert.doesNotThrow(() => new Script(code, { filename: name }), name)
+    assert.doesNotMatch(code, /\bimport\s*\(|^\s*import\s/m, name)
   }
 })

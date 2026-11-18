@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
 const read = path => readFile(new URL(path, import.meta.url), 'utf8')
 
@@ -17,13 +18,32 @@ const auth = await read('../src/utils/auth.ts')
 const build = await read('../build.js')
 
 test('版本号在 package.json 与扩展 manifest 中统一，界面不硬编码版本', () => {
-  assert.equal(packageJson.version, '1.0.7')
+  assert.equal(packageJson.version, '1.0.8')
   assert.equal(manifest.version, packageJson.version)
   for (const source of [popupTs, supportTs, floatingWidget]) {
     assert.match(source, /getManifest\(\)\.version/)
   }
   assert.equal(/\b1\.0\.\d+\b/.test(popupTs), false)
   assert.equal(/\b1\.0\.\d+\b/.test(supportTs), false)
+})
+
+test('插件依赖安装与锁文件仅使用 extension 本地目录', async () => {
+  const config = await read('../.npmrc')
+  const lock = await read('../pnpm-lock.yaml')
+  assert.match(config, /^recursive-install=false$/m)
+  assert.match(config, /^shared-workspace-lockfile=false$/m)
+  assert.match(config, /^virtual-store-dir=node_modules\/\.pnpm$/m)
+  assert.equal(packageJson.packageManager, 'pnpm@10.10.0')
+  assert.equal(packageJson.scripts['deps:install'], 'pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts')
+  const importers = lock.split('\npackages:')[0]
+  assert.match(importers, /\n  \.:\n/)
+  assert.doesNotMatch(importers, /\n  (mini|extension|\.\.\/youanshang):/)
+  const localStore = fileURLToPath(new URL('../node_modules/.pnpm/', import.meta.url)).replaceAll('\\', '/')
+  for (const name of ['typescript', 'vue', 'vite']) {
+    const resolved = (await realpath(new URL(`../node_modules/${name}/package.json`, import.meta.url))).replaceAll('\\', '/')
+    assert.ok(resolved.startsWith(localStore), resolved)
+    assert.doesNotMatch(resolved, /\/mini\/node_modules\//)
+  }
 })
 
 test('扫码界面不提供假登录入口、测试账号或固定 15 次文案', () => {
