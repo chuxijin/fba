@@ -128,11 +128,18 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
     try {
       const result = await chrome.runtime.sendMessage({ type:'IMPORT_PRACTICE_REPORT', payload:draft })
       if (!result?.success) throw new Error(result?.error || '导入失败')
-      if (location.href === href) uiApp?.setReportStatus('done', result.created
-        ? '导入成功，可在小程序「练习数据 → 导入/手动记录」查看细分题型明细和对比。'
-        : result.enriched
-          ? '已为原记录补充数学运算细分题型，可在小程序「练习数据」中查看和对比。'
-          : '这份报告已导入，原记录已保留。仅在原统计一致且缺少题型明细时自动补充。')
+      let message = '导入成功，可在小程序「练习数据 → 导入/手动记录」查看细分题型明细和对比。'
+      if (!result.created) {
+        const supplement = result.reference_supplement
+        message = supplement?.report_fields_added || supplement?.questions_updated
+          ? `已为原报告补充整卷 ${supplement.report_fields_added} 项统计、${supplement.questions_updated} 题共 ${supplement.question_fields_added} 项统计。`
+          : '这份报告已导入，没有可补充的缺失统计，已有统计不覆盖。'
+        if (!supplement) message = '这份报告已导入，原记录已保留；当前后端未返回自动补统计结果。'
+        if (supplement?.questions_skipped) message += ` ${supplement.questions_skipped} 题无法精确匹配，已跳过。`
+        if (supplement?.warnings?.length) message += ` 提示：${supplement.warnings.join('；')}`
+        message += ' 原日期、答案、对错、用时和题目内容未改动，不新增练习记录；补充统计按本次抓取时间保存，不纳入历史趋势。'
+      }
+      if (location.href === href) uiApp?.setReportStatus('done', message)
     } catch (error:any) {
       if (location.href === href) uiApp?.setReportStatus('error', error?.message || '导入失败，请重试')
     } finally { reportSaving = false }

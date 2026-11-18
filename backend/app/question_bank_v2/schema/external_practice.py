@@ -91,6 +91,9 @@ class GetImportedPracticeQuestion(ImportPracticeQuestionParam):
     question_id: int
     attempt_id: int | None = None
     missing_content: list[str] = Field(default_factory=list, description='尚缺少的标准答案或解析')
+    platform_reference_field_captured_at: dict[str, str] = Field(
+        default_factory=dict, description='重导补充统计字段的实际抓取时间；未列出的字段沿用原快照时间'
+    )
 
 
 class GetImportedPracticeDetail(SchemaBase):
@@ -110,3 +113,11 @@ class ImportPracticeDetailResult(SchemaBase):
     detail_status: Literal['partial', 'complete']
     added_questions: int = 0
     supplemented_questions: int = 0
+
+
+class ImportReferenceSupplementResult(SchemaBase):
+    report_fields_added: int = 0
+    question_fields_added: int = 0
+    questions_updated: int = 0
+    questions_skipped: int = 0
+    warnings: list[str] = Field(default_factory=list, max_length=20, description='只补统计时的匹配或资料缺失提示')

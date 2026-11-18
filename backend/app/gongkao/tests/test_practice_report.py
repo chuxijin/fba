@@ -241,7 +241,7 @@ def test_quantity_topics_persist_round_trip_and_compare_by_full_path(db: MemoryS
     asyncio.run(run())
 
 
-def test_reimport_supplements_missing_math_topics_without_overwriting_edits(db: MemorySession) -> None:
+def test_reimport_keeps_missing_math_topics_and_user_edits(db: MemorySession) -> None:
     async def run() -> None:
         first = await PracticeLogService.import_report(db=db, user_id=7, obj=quantity_report(with_topics=False))
         await PracticeLogService.update(
@@ -252,15 +252,15 @@ def test_reimport_supplements_missing_math_topics_without_overwriting_edits(db: 
         )
         enriched = await PracticeLogService.import_report(db=db, user_id=7, obj=quantity_report())
         assert enriched.created is False
-        assert enriched.enriched is True
+        assert enriched.enriched is False
         assert enriched.record.id == first.record.id
         assert enriched.record.material_title == '校正标题'
         assert enriched.record.practiced_at == date(2026, 10, 18)
         assert enriched.record.time_source == 'manual'
-        assert len(enriched.record.modules[0].children[0].children) == 4
+        assert len(enriched.record.modules[0].children[0].children) == 0
         retry = await PracticeLogService.import_report(db=db, user_id=7, obj=quantity_report())
         assert retry.enriched is False
-        assert len(db.session.scalars(select(GongkaoPracticeModule)).all()) == 6
+        assert len(db.session.scalars(select(GongkaoPracticeModule)).all()) == 2
         assert len(db.session.scalars(select(GongkaoPracticeLog)).all()) == 1
 
     asyncio.run(run())

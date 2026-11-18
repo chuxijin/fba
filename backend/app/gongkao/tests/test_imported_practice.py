@@ -204,7 +204,7 @@ def test_complete_import_reuses_tables_keeps_order_content_and_raw_scoring(db: M
     asyncio.run(run())
 
 
-def test_repeat_and_incremental_content_supplement_preserve_ids(db: MemorySession) -> None:
+def test_repeat_does_not_supplement_questions_or_content(db: MemorySession) -> None:
     async def run() -> None:
         full = payload()
         first_data = deepcopy(full)
@@ -218,28 +218,30 @@ def test_repeat_and_incremental_content_supplement_preserve_ids(db: MemorySessio
         with pytest.raises(errors.RequestError, match='尚未导入齐全'):
             await PracticeService.get_report(db=db, user_id=7, session_key=first.practice.session_key)
         second = await import_report(db, full)
-        assert not second.created and second.enriched
-        assert second.practice.added_questions == 2 and second.practice.supplemented_questions == 1
+        assert not second.created and not second.enriched
+        assert second.practice is None
         after = await PracticeLogService.get_question_details(db=db, user_id=7, pk=first.record.id)
         assert before.items[0].question_id == after.items[0].question_id
         assert before.items[0].attempt_id == after.items[0].attempt_id
+        assert len(after.items) == 1
+        assert after.items[0].missing_content == ['answer', 'explanations']
         retry = await import_report(db, full)
-        assert retry.practice.added_questions == retry.practice.supplemented_questions == 0
+        assert retry.practice is None
         assert not retry.enriched
-        assert count(db, QbPracticeSession) == 1 and count(db, QbQuestionAttempt) == 2
+        assert count(db, QbPracticeSession) == 1 and count(db, QbQuestionAttempt) == 1
 
     asyncio.run(run())
 
 
-def test_conflicts_roll_back_the_whole_import_and_never_rewrite_attempts(db: MemorySession) -> None:
+def test_reimport_ignores_changed_duration_and_new_import_conflicts_roll_back(db: MemorySession) -> None:
     async def run() -> None:
         initial = payload()
         initial['questions'] = [initial['questions'][1]]
         result = await import_report(db, initial)
         conflict = payload()
         conflict['questions'][1]['duration_seconds'] = 2
-        with pytest.raises(errors.ConflictError, match='duration_seconds'):
-            await import_report(db, conflict)
+        retry = await import_report(db, conflict)
+        assert not retry.created and not retry.enriched
         assert count(db, QbQuestion) == 1 and count(db, QbPracticeSessionItem) == 1
         bad_totals = payload(source_key='1_1_bad', source_url='https://spa.fenbi.com/ti/exam/solution/1_1_bad')
         bad_totals['questions'][2]['status'] = 'correct'

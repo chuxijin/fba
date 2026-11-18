@@ -33,7 +33,7 @@ const staticSolution = {
   })),
 }
 
-function startPage(fetchResponse) {
+function startPage(fetchResponse, importResult = { success: true, created: true }) {
   const location = { href, origin: 'https://spa.fenbi.com' }
   const window = new EventTarget()
   const messages = []
@@ -79,7 +79,7 @@ function startPage(fetchResponse) {
     clearTimeout, setInterval() {}, exports: {},
     chrome: { runtime: { onMessage: { addListener() {} }, sendMessage: async message => {
       backendMessages.push(message)
-      return { success: true, created: true }
+      return importResult
     } } },
     require(name) {
       if (name === '../utils/export-flow') return {
@@ -154,7 +154,27 @@ test('report import replays pre-existing JSON XHR packets without making a netwo
   assert.equal(page.backendMessages.length, 1, '只有确认保存才提交一次后端')
   assert.equal(page.backendMessages[0].type, 'IMPORT_PRACTICE_REPORT')
   assert.equal(page.requests.length, before)
+  assert.match(page.statuses.at(-1).message, /导入成功/)
 })
+
+for (const [name, result, expected] of [
+  ['filled', { report_fields_added: 2, questions_updated: 3, question_fields_added: 4, questions_skipped: 0, warnings: [] }, /整卷 2 项统计、3 题共 4 项统计/],
+  ['unchanged', { report_fields_added: 0, questions_updated: 0, question_fields_added: 0, questions_skipped: 0, warnings: [] }, /没有可补充的缺失统计/],
+  ['skipped', { report_fields_added: 0, questions_updated: 1, question_fields_added: 1, questions_skipped: 2, warnings: ['第 2 题版本不匹配'] }, /2 题无法精确匹配.*第 2 题版本不匹配/],
+  ['report mismatch', { report_fields_added: 0, questions_updated: 0, question_fields_added: 0, questions_skipped: 0, warnings: ['报告题数不匹配'] }, /报告题数不匹配/],
+]) {
+  test(`automatic reimport statistics feedback: ${name}`, async () => {
+    const page = startPage(undefined, { success: true, created: false, reference_supplement: result })
+    page.mount()
+    await page.saveReport({ source_key: '5_1_report' })
+    assert.equal(page.backendMessages.length, 1)
+    assert.equal(page.statuses.at(-1).status, 'done')
+    assert.match(page.statuses.at(-1).message, expected)
+    assert.match(page.statuses.at(-1).message, /原日期、答案、对错、用时和题目内容未改动/)
+    assert.match(page.statuses.at(-1).message, /不纳入历史趋势/)
+    assert.doesNotMatch(page.statuses.at(-1).message, /补充数学运算细分题型/)
+  })
+}
 
 test('missing cached parsing content produces an explicit error and never fetches it', async () => {
   const page = startPage()

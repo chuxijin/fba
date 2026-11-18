@@ -289,17 +289,22 @@ class PracticeReferenceService:
             for r in rows
             if r.get('module_path') and (not module_name or r['module_path'][0] == module_name)
         }
+        def original_report_reference(record: dict) -> dict | None:
+            snapshot = record['source_snapshot']
+            return (snapshot.get('reference_original_report') if snapshot.get('reference_report_backfilled')
+                    else snapshot['summary'].get('platform_reference'))
+
         latest = next(
             (
                 r
                 for r in reversed(eligible)
-                if r['record_id'] in scoped_ids and r['source_snapshot']['summary'].get('platform_reference')
+                if r['record_id'] in scoped_ids and original_report_reference(r)
             ),
             None,
         )
         latest_reference = (
             {
-                **latest['source_snapshot']['summary']['platform_reference'],
+                **original_report_reference(latest),
                 'record_id': latest['record_id'],
                 'record_title': latest['record_title'],
                 'practiced_at': latest['practiced_at'],
@@ -326,7 +331,7 @@ class PracticeReferenceService:
                 '正确率原线含全部归档作答；参照线同日同版本题去重，冲突题排除，覆盖不足80%的日不作判断。',
                 '方向比较只用选定区间内首次出现的同版本题；区间前练习历史不完整，不能视为生涯首次见题。',
                 '前后各28天按共同模块×题型×正确率分层固定权重；95%描述性区间按自然日成簇重采样。',
-                '整卷难度原量表、wrongCount与totalUser不用于能力或有效样本量计算；旧报告不回填。',
+                '整卷难度原量表、wrongCount与totalUser不用于能力或有效样本量计算；重导补统计不纳入趋势。',
             ],
         )
 

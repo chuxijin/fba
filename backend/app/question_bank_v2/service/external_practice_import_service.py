@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.gongkao.model.practice_log import GongkaoPracticeLog
-from backend.app.gongkao.schema.practice_log import ImportPracticeReportParam
+from backend.app.gongkao.schema.practice_log import CreatePracticeLogParam, GetPracticeLogDetail, ImportPracticeReportParam
 from backend.app.question_bank_v2.crud.crud_external_practice import external_practice_dao
 from backend.app.question_bank_v2.crud.crud_material import question_material_dao
 from backend.app.question_bank_v2.crud.crud_practice import practice_session_dao
@@ -17,7 +17,9 @@ from backend.app.question_bank_v2.schema.external_practice import (
     GetImportedPracticeQuestion,
     ImportPracticeDetailResult,
     ImportPracticeQuestionParam,
+    ImportReferenceSupplementResult,
 )
+from backend.app.question_bank_v2.schema.platform_reference import PlatformQuestionReference, PlatformReportReference
 from backend.app.question_bank_v2.schema.practice import (
     GetPracticeSessionDetail,
     GetPracticeSessionReport,
@@ -43,6 +45,143 @@ class ExternalPracticeImportService:
     def _date_anchor(log: GongkaoPracticeLog) -> datetime:
         # 现有会话开始时间为非空，零点仅作日期索引。查询对外返回 date 精度、未知开始时间。
         return datetime.combine(log.practiced_at, time.min, tzinfo=timezone.tz_info)
+
+    @staticmethod
+    def _fill_reference(
+        previous: dict[str, Any] | None, incoming: PlatformQuestionReference | PlatformReportReference | None
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        """只填统计值的 null/缺键；0、旧元数据及已存值不覆盖，不混合参照版本/人群。"""
+        if incoming is None:
+            return previous, []
+        current = incoming.model_dump(mode='json')
+        if previous is not None and any(
+            previous.get(name) != current[name] for name in ('version', 'population')
+        ):
+            return previous, []
+        fields = [name for name, value in current.items()
+                  if name not in {'version', 'population', 'captured_at'}
+                  and value is not None and (previous is None or previous.get(name) is None)]
+        if not fields:
+            return previous, []
+        merged = deepcopy(previous) if previous is not None else {
+            name: current[name] for name in ('version', 'population', 'captured_at')
+        }
+        merged.update({name: current[name] for name in fields})
+        return merged, fields
+
+    @staticmethod
+    def _statistics_match(previous: dict[str, Any], incoming: ImportPracticeQuestionParam) -> bool:
+        """来源题号与原卷题号之外，核对版本内容；不拿本次作答/用时覆盖旧记录。"""
+        current = incoming.model_dump(mode='json')
+        if any(previous.get(name) != current[name] for name in ('source_question_key', 'position', 'module_path')):
+            return False
+        core = ('stem', 'content_format', 'question_type', 'options')
+        if question_content_digest(**{name: previous[name] for name in core}) != (
+            question_content_digest(**{name: current[name] for name in core})
+        ):
+            return False
+        if previous.get('answer') != current['answer']:
+            return False
+
+        def materials(data: dict[str, Any]) -> list[tuple[str, str, str]]:
+            return sorted((m['role'], m['content_format'], normalize_content_for_digest(m['content']))
+                          for m in data.get('materials', []))
+
+        return materials(previous) == materials(current)
+
+    @staticmethod
+    async def supplement_statistics(
+        *, db: AsyncSession, log: GongkaoPracticeLog, obj: ImportPracticeReportParam, record: GetPracticeLogDetail
+    ) -> ImportReferenceSupplementResult:
+        """自动重导只补统计；不创建题目/作答、补内容、同步错题，或启用旧报告趋势。"""
+        result = ImportReferenceSupplementResult()
+        if obj.platform_reference is None and not any(q.platform_reference for q in obj.questions or []):
+            return result
+
+        def warn(message: str) -> None:
+            if len(result.warnings) < 20:
+                result.warnings.append(message)
+
+        await lock_practice_user(db, log.user_id)
+        session = await external_practice_dao.get_session(db, user_id=log.user_id, log_id=log.id, for_update=True)
+        if session is None:
+            # 仅汇总旧记录可用现有JSON存整卷统计；只建立1:1元数据容器，不补造题目或作答。
+            def module_data(node: dict[str, Any]) -> dict[str, Any]:
+                return {
+                    **{name: value for name, value in node.items() if name not in {'id', 'accuracy_rate', 'children'}},
+                    **({'children': [module_data(child) for child in node['children']]} if 'children' in node else {}),
+                }
+
+            summary = record.model_dump(mode='json', include=set(CreatePracticeLogParam.model_fields))
+            summary['modules'] = [module_data(module) for module in summary['modules']]
+            summary = CreatePracticeLogParam.model_validate(summary).model_dump(mode='json')
+        else:
+            summary = deepcopy(session.source_snapshot['summary'])
+        if any(summary[name] != getattr(obj, name) for name in ('total_questions', 'subject_name', 'material_type')):
+            result.questions_skipped = sum(q.platform_reference is not None for q in obj.questions or [])
+            warn('报告题数、科目或材料类型与原记录不匹配，未补统计；原记录保持不变。')
+            return result
+        report_reference, fields = ExternalPracticeImportService._fill_reference(
+            summary.get('platform_reference'), obj.platform_reference
+        )
+        if fields:
+            if session is None:
+                session = await practice_session_dao.create(db, {
+                    'session_key': imported_session_key(log.user_id, log.source_platform, log.source_key),
+                    'user_id': log.user_id, 'source_type': 'custom', 'source_ref': f'external-practice:{log.id}',
+                    'title_snapshot': log.material_title, 'mode': 'exam' if log.material_type == 'exam' else 'practice',
+                    'status': 'graded', 'started_time': ExternalPracticeImportService._date_anchor(log),
+                    'delivery_config': {'read_only': True},
+                    'source_snapshot': {
+                        'origin': EXTERNAL_PRACTICE_ORIGIN, 'practice_log_id': log.id, 'platform': log.source_platform,
+                        'source_key': log.source_key, 'source_url': log.source_url, 'time_precision': 'date',
+                        'practiced_at': log.practiced_at.isoformat(), 'summary': summary, 'reference_policy': 0,
+                        'detail_status': 'partial', 'imported_questions': 0,
+                    },
+                })
+            snapshot = deepcopy(session.source_snapshot)
+            if not snapshot.get('reference_report_backfilled'):
+                snapshot['reference_original_report'] = deepcopy(summary.get('platform_reference'))
+                snapshot['reference_report_backfilled'] = True
+            summary['platform_reference'] = report_reference
+            summary['platform_reference_field_captured_at'] = {
+                **summary.get('platform_reference_field_captured_at', {}),
+                **{name: obj.platform_reference.model_dump(mode='json')['captured_at'] for name in fields},
+            }
+            snapshot['summary'] = summary
+            session.source_snapshot = snapshot
+            result.report_fields_added = len(fields)
+        items = await external_practice_dao.get_items(db, session_id=session.id) if session else []
+        by_key = {item.display_config['external_practice']['source_question_key']: item for item in items}
+        for incoming in obj.questions or []:
+            if incoming.platform_reference is None:
+                continue
+            item = by_key.get(incoming.source_question_key)
+            previous = item.display_config['external_practice'] if item else None
+            if previous is None or not ExternalPracticeImportService._statistics_match(previous, incoming):
+                result.questions_skipped += 1
+                warn(f'第 {incoming.position} 题缺少原明细或题目版本不匹配，已跳过统计，不补题或改作答。')
+                continue
+            reference, fields = ExternalPracticeImportService._fill_reference(
+                previous.get('platform_reference'), incoming.platform_reference
+            )
+            if not fields:
+                continue
+            config = deepcopy(item.display_config)
+            if not config.get('reference_backfilled'):
+                config['reference_original'] = deepcopy(previous.get('platform_reference'))
+                config['reference_backfilled'] = True
+            config['external_practice']['platform_reference'] = reference
+            config['platform_reference_field_captured_at'] = {
+                **config.get('platform_reference_field_captured_at', {}),
+                **{name: incoming.platform_reference.model_dump(mode='json')['captured_at'] for name in fields},
+            }
+            item.display_config = config
+            result.questions_updated += 1
+            result.question_fields_added += len(fields)
+        if result.report_fields_added or result.questions_updated:
+            await db.flush()
+        return result
 
     @staticmethod
     def _merge_question(previous: dict[str, Any], incoming: ImportPracticeQuestionParam) -> dict[str, Any]:
@@ -206,7 +345,7 @@ class ExternalPracticeImportService:
     ) -> ImportPracticeDetailResult:
         await lock_practice_user(db, log.user_id)
         session = await external_practice_dao.get_session(db, user_id=log.user_id, log_id=log.id, for_update=True)
-        # 只给新报告启用统计。旧汇总首次补逐题、旧报告重导都不能偷偷回填。
+        # 此路径只供首次逐题归档；重导由supplement_statistics处理且不改reference_policy。
         reference_enabled = new_report if session is None else session.source_snapshot.get('reference_policy') == 1
         if not reference_enabled:
             obj = obj.model_copy(update={
@@ -331,6 +470,7 @@ class ExternalPracticeImportService:
                 session_item_id=item.id,
                 question_id=item.question_id,
                 attempt_id=attempt_ids.get(item.id),
+                platform_reference_field_captured_at=item.display_config.get('platform_reference_field_captured_at', {}),
                 missing_content=[
                     key for key in ('answer', 'explanations') if not item.display_config['external_practice'].get(key)
                 ],

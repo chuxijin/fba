@@ -23,7 +23,7 @@ test('dist 清单版本与 package.json 一致', { skip }, async () => {
   const manifest = JSON.parse(await readDist('manifest.json'))
   assert.equal(manifest.manifest_version, 3)
   assert.equal(manifest.version, packageJson.version)
-  assert.equal(manifest.version, '1.0.8')
+  assert.equal(manifest.version, '1.0.9')
   assert.equal(manifest.background.service_worker, 'background.js')
   assert.equal(manifest.action.default_popup, 'popup.html')
 })
@@ -115,6 +115,14 @@ test('dist 已包含逐题统计捕获、白名单字段与报告导入入口', 
     'difficulty_raw', 'average_score', 'beat_rate_percent', 'IMPORT_PRACTICE_REPORT',
   ]) assert.ok(content.includes(marker), marker)
   assert.match(await readDist('background.js'), /practice-logs\/import-report/)
+})
+
+test('dist 自动重导反馈和预览仅声明补统计，旧补题型提示已移除', { skip }, async () => {
+  const content = await readDist('content.js')
+  for (const marker of ['reference_supplement', 'questions_skipped', 'question_fields_added', '重导只补缺失统计', '不纳入历史趋势']) {
+    assert.ok(content.includes(marker), marker)
+  }
+  assert.doesNotMatch(content, /旧报告重导不补统计|补充数学运算细分题型/)
 })
 
 test('dist 内容、注入及后台脚本均为可独立解析的实际 JavaScript', { skip }, async () => {

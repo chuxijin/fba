@@ -7,6 +7,7 @@ from pydantic import ConfigDict, Field, model_validator
 from backend.app.question_bank_v2.schema.external_practice import (
     ImportPracticeDetailResult,
     ImportPracticeQuestionParam,
+    ImportReferenceSupplementResult,
 )
 from backend.app.question_bank_v2.schema.platform_reference import PlatformReportReference
 from backend.common.schema import SchemaBase
@@ -197,3 +198,4 @@ class ImportPracticeReportResult(SchemaBase):
     enriched: bool = False
     record: GetPracticeLogDetail
     practice: ImportPracticeDetailResult | None = None
+    reference_supplement: ImportReferenceSupplementResult | None = None

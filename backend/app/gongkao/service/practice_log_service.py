@@ -152,16 +152,22 @@ class PracticeLogService:
     async def import_report(
         *, db: AsyncSession, user_id: int, obj: ImportPracticeReportParam
     ) -> ImportPracticeReportResult:
-        # 汇总、题型补全与逐题归档在同一保存点内完成，任何明细冲突都会整体回滚。
+        # 自动识别同用户/平台/报告号；新建正常归档，重导只补统计，均在同一保存点内完成。
         async with db.begin_nested():
             result = await PracticeLogService._import_report(db=db, user_id=user_id, obj=obj)
-            if obj.questions is not None:
+            if result.created and obj.questions is not None:
                 log = await practice_log_dao.get_by_user(db, pk=result.record.id, user_id=user_id)
                 result.practice = await external_practice_import_service.import_questions(
                     db=db, log=log, obj=obj, new_report=result.created
                 )
-                if not result.created:
-                    result.enriched |= bool(result.practice.added_questions or result.practice.supplemented_questions)
+            elif not result.created:
+                log = await practice_log_dao.get_by_user(db, pk=result.record.id, user_id=user_id)
+                result.reference_supplement = await external_practice_import_service.supplement_statistics(
+                    db=db, log=log, obj=obj, record=result.record
+                )
+                result.enriched = bool(
+                    result.reference_supplement.report_fields_added or result.reference_supplement.questions_updated
+                )
             return result
 
     @staticmethod
@@ -190,37 +196,10 @@ class PracticeLogService:
     async def _supplement_report(
         *, db: AsyncSession, existing: GongkaoPracticeLog, obj: ImportPracticeReportParam
     ) -> ImportPracticeReportResult:
-        """仅补旧报告缺失的数学运算题型；不替换用户编辑或已有明细。调用方持有记录行锁。"""
+        """重导保留整卷与模块原记录。调用方持有记录行锁，统计由独立路径补充。"""
         modules = list(await practice_module_dao.get_by_log_id(db, log_id=existing.id))
-        incoming = next((m for m in obj.modules if m.module_name == '数量关系'), None)
-        roots = [m for m in modules if m.parent_id is None and m.module_name == '数量关系']
-        enriched = False
-
-        def matches(stored: Any, source: Any) -> bool:
-            return all(
-                getattr(stored, name) == getattr(source, name)
-                for name in ('total_questions', 'correct_count', 'duration_seconds', 'unanswered_count')
-            )
-
-        if incoming is not None and len(roots) == 1 and matches(roots[0], incoming):
-            incoming_math = next((m for m in incoming.children if m.module_name == '数学运算'), None)
-            stored_math = [m for m in modules if m.parent_id == roots[0].id and m.module_name == '数学运算']
-            if (
-                incoming_math is not None
-                and incoming_math.children
-                and len(stored_math) == 1
-                and matches(stored_math[0], incoming_math)
-                and not any(m.parent_id == stored_math[0].id for m in modules)
-            ):
-                next_seq = max((m.seq_no for m in modules), default=-1) + 1
-                values = [
-                    {**topic.model_dump(), 'parent_id': stored_math[0].id, 'seq_no': next_seq + index}
-                    for index, topic in enumerate(incoming_math.children)
-                ]
-                modules.extend(await practice_module_dao.batch_create(db, log_id=existing.id, modules=values))
-                enriched = True
         return ImportPracticeReportResult(
-            created=False, enriched=enriched, record=PracticeLogService._build_detail(existing, modules)
+            created=False, record=PracticeLogService._build_detail(existing, modules)
         )
 
     @staticmethod

@@ -78,7 +78,8 @@ def test_new_snapshots_keep_zero_precision_and_freeze_on_repeat(db: Any) -> None
         for q in changed['questions']:
             q['platform_reference']['correct_ratio_percent'] = 99
         retry = await import_report(db, changed)
-        assert retry.practice.supplemented_questions == 0
+        assert retry.practice is None
+        assert retry.reference_supplement.questions_updated == 0
         after = await PracticeLogService.get_question_details(db=db, user_id=7, pk=result.record.id)
         assert after.source_summary == detail.source_summary
         assert [q.platform_reference for q in after.items] == [q.platform_reference for q in detail.items]
@@ -87,7 +88,7 @@ def test_new_snapshots_keep_zero_precision_and_freeze_on_repeat(db: Any) -> None
 
 
 @pytest.mark.parametrize('summary_only', [False, True])
-def test_legacy_reports_never_backfill_even_when_first_archiving_questions(db: Any, *, summary_only: bool) -> None:
+def test_legacy_reports_auto_supplement_statistics_without_archiving_questions(db: Any, *, summary_only: bool) -> None:
     async def run() -> None:
         original = payload()
         if summary_only:
@@ -99,10 +100,22 @@ def test_legacy_reports_never_backfill_even_when_first_archiving_questions(db: A
             snapshot.pop('reference_policy')
             session.source_snapshot = snapshot
             await db.flush()
-        await import_report(db, with_reference())
+        retry = await import_report(db, with_reference())
+        assert not retry.created and retry.enriched
+        assert retry.reference_supplement.report_fields_added == 4
+        assert retry.reference_supplement.questions_updated == (0 if summary_only else 3)
+        assert retry.reference_supplement.questions_skipped == (3 if summary_only else 0)
         detail = await PracticeLogService.get_question_details(db=db, user_id=7, pk=first.record.id)
-        assert detail.source_summary.get('platform_reference') is None
-        assert all(q.platform_reference is None for q in detail.items)
+        assert detail.source_summary['platform_reference']['total_user_raw'] == 0
+        assert len(detail.items) == (0 if summary_only else 3)
+        assert all(q.platform_reference is not None for q in detail.items)
+        session = db.session.scalars(select(QbPracticeSession)).one()
+        assert session.source_snapshot.get('reference_policy', 0) == 0
+        trends = await PracticeReferenceService.get_trends(
+            db=db, user_id=7, subject_name='行测', material_type='exam',
+            start_date=date(2026, 10, 19), end_date=date(2026, 10, 19),
+        )
+        assert trends.eligible_records == 0 and trends.excluded_legacy_records == 1
 
     asyncio.run(run())
 

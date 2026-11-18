@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.gongkao.model.practice_log import GongkaoPracticeLog as Log
@@ -65,7 +65,11 @@ class CRUDPracticeReference:
                 data['module_path'].label('module_path'),
                 data['status'].as_string().label('status'),
                 data['question_type'].as_string().label('question_type'),
-                data['platform_reference'].label('platform_reference'),
+                case(
+                    (Item.display_config['reference_backfilled'].as_boolean().is_(True),
+                     Item.display_config['reference_original']),
+                    else_=data['platform_reference'],
+                ).label('platform_reference'),
                 Item.display_config['reference_content_hash'].as_string().label('content_hash'),
             )
             .join(Session, Session.id == Item.session_id)
