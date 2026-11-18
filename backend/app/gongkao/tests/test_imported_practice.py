@@ -26,7 +26,7 @@ from backend.app.question_bank_v2.model.practice import (
     QbQuestionAttempt,
 )
 from backend.app.question_bank_v2.model.question import QbQuestion, QbQuestionAnswer, QbQuestionExplanation
-from backend.app.question_bank_v2.model.review import QbWrongQuestionState
+from backend.app.question_bank_v2.model.review import QbQuestionReview, QbWrongQuestionState
 from backend.app.question_bank_v2.schema.practice import SavePracticeResponseParam, SubmitPracticeItemParam
 from backend.app.question_bank_v2.service.practice_service import PracticeService
 from backend.common.exception import errors
@@ -51,6 +51,7 @@ TABLE_MODELS = (
     QbBankItem,
     QbBankSection,
     QbWrongQuestionState,
+    QbQuestionReview,
 )
 
 

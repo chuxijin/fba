@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import json
 
 from datetime import date
@@ -158,7 +157,9 @@ class PracticeLogService:
             result = await PracticeLogService._import_report(db=db, user_id=user_id, obj=obj)
             if obj.questions is not None:
                 log = await practice_log_dao.get_by_user(db, pk=result.record.id, user_id=user_id)
-                result.practice = await external_practice_import_service.import_questions(db=db, log=log, obj=obj)
+                result.practice = await external_practice_import_service.import_questions(
+                    db=db, log=log, obj=obj, new_report=result.created
+                )
                 if not result.created:
                     result.enriched |= bool(result.practice.added_questions or result.practice.supplemented_questions)
             return result

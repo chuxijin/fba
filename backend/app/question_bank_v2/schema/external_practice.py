@@ -4,6 +4,7 @@ from typing import Any, Literal, Self
 
 from pydantic import ConfigDict, Field, JsonValue, model_validator
 
+from backend.app.question_bank_v2.schema.platform_reference import PlatformQuestionReference
 from backend.app.question_bank_v2.schema.question import (
     ContentFormat,
     QuestionAnswerParam,
@@ -36,6 +37,7 @@ class ImportPracticeQuestionParam(SchemaBase):
     duration_seconds: int | None = Field(None, ge=0, le=86_400, description='原平台逐题用时，未知为空，0 为零秒')
     score: Decimal | None = Field(None, ge=0, max_digits=8, decimal_places=2)
     max_score: Decimal | None = Field(None, ge=0, max_digits=8, decimal_places=2)
+    platform_reference: PlatformQuestionReference | None = Field(None, description='当次导入的平台逐题参照快照')
 
     @model_validator(mode='after')
     def validate_question(self) -> Self:

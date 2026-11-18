@@ -6,6 +6,7 @@ import { compileSource, importTypeScript } from './helpers/typescript.mjs'
 
 const report = await importTypeScript(new URL('../src/adapters/fenbi/report.ts', import.meta.url))
 const { FenbiReportCache } = await importTypeScript(new URL('../src/adapters/fenbi/report-cache.ts', import.meta.url))
+const wrongOccurrence = await importTypeScript(new URL('../src/adapters/fenbi/wrong-occurrence.ts', import.meta.url))
 const contentCode = compileSource(await readFile(new URL('../src/content/index.ts', import.meta.url), 'utf8'))
 const interceptorCode = compileSource(await readFile(new URL('../src/content/interceptor.ts', import.meta.url), 'utf8'))
 const sessionCode = compileSource(await readFile(new URL('../src/adapters/fenbi/session.ts', import.meta.url), 'utf8'))
@@ -88,6 +89,7 @@ function startPage(fetchResponse) {
       }
       if (name === '../adapters/fenbi/report') return report
       if (name === '../adapters/fenbi/report-cache') return { FenbiReportCache }
+      if (name === '../adapters/fenbi/wrong-occurrence') return wrongOccurrence
       if (name === '../adapters') return { fenbiSession: {
         getPaper: () => null, handleNetworkPayload: () => null, reset() {},
       } }
@@ -117,8 +119,16 @@ function startPage(fetchResponse) {
 test('report import replays pre-existing JSON XHR packets without making a network request', async () => {
   const page = startPage()
   page.receive('https://tiku.fenbi.com/combine/static/solution?key=signed', staticSolution)
-  page.receive('https://tiku.fenbi.com/combine/exercise/getReport?key=5_1_report', { code: 1, data: getReport })
-  page.receive('https://tiku.fenbi.com/combine/exercise/getSolution?key=5_1_report', { code: 1, data: solution })
+  page.receive('https://tiku.fenbi.com/combine/exercise/getReport?key=5_1_report', { code: 1, data: {
+    ...getReport, subReports: getReport.subReports.map((s, i) => i === 0 ? { ...s, type: 0, difficulty: 5 } : s),
+  } })
+  page.receive('https://tiku.fenbi.com/combine/exercise/getSolution?key=5_1_report', { code: 1, data: {
+    ...solution, switchVO: { requestKey: 'fixture-report-meta' },
+  } })
+  page.receive('https://tiku.fenbi.com/combine/question/getMeta?requestKey=fixture-report-meta', { code: 1, data: {
+    q1: { correctRatio: 51.73736595255701, totalCount: 288051, wrongCount: 0 },
+    q2: { correctRatio: 0, totalCount: 10, wrongCount: 0 },
+  } })
   // 原始响应早于 content script 初始化，点击时必须从 MAIN 世界缓存恢复。
   await new Promise(resolve => setImmediate(resolve))
   page.mount()
@@ -131,6 +141,10 @@ test('report import replays pre-existing JSON XHR packets without making a netwo
   assert.equal(draft.practiced_at, '2026-10-19')
   assert.equal(draft.score, 50)
   assert.equal(draft.questions.length, 2)
+  assert.equal(draft.platform_reference.difficulty_raw, 5)
+  assert.equal(draft.questions[0].platform_reference.correct_ratio_percent, 51.73736595255701)
+  assert.equal(draft.questions[1].platform_reference.correct_ratio_percent, 0)
+  assert.doesNotMatch(JSON.stringify(draft), /fixture-report-meta|requestKey/)
   assert.deepEqual(draft.questions.map(q => [q.source_question_key, q.position, q.status]), [
     ['q1', 1, 'correct'], ['q2', 2, 'unanswered'],
   ])

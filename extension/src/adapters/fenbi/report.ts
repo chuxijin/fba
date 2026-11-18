@@ -1,5 +1,6 @@
 import { normalizeImportOptions, normalizeImportStem } from '../importer'
 import { extractQuestionOptions, normalizeInlineSymbols } from './normalize'
+import type { PlatformQuestionReference, PlatformReportReference } from './reference'
 
 export interface ReportModule {
   module_name: string
@@ -17,6 +18,7 @@ export interface PracticeReportOption {
 }
 
 export interface PracticeReportQuestion {
+  platform_reference?: PlatformQuestionReference | null
   source_question_key: string
   position: number
   module_path: string[]
@@ -42,6 +44,7 @@ export interface PracticeReportQuestion {
 }
 
 export interface PracticeReportPayload {
+  platform_reference?: PlatformReportReference | null
   source_platform: 'fenbi'
   source_key: string
   source_url: string
@@ -247,6 +250,7 @@ export function buildFenbiPracticeQuestions(input: {
   staticSolution: any
   details?: ReportDetailModule[] | null
   modules: ReportModule[]
+  questionReferences?: Record<string, PlatformQuestionReference>
 }): PracticeReportQuestion[] {
   const solutions: any[] = Array.isArray(input.staticSolution?.solutions) ? input.staticSolution.solutions : []
   if (!solutions.length) return []
@@ -322,6 +326,7 @@ export function buildFenbiPracticeQuestions(input: {
       duration_seconds: Number.isFinite(duration) && duration >= 0 ? Math.round(duration) : null,
       score: null,
       max_score: null,
+      platform_reference: input.questionReferences?.[key] || null,
     })
   })
 

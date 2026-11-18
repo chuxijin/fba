@@ -10,6 +10,9 @@ function duration(seconds:number|null) {
   return seconds == null ? '—' : `${Math.floor(seconds/60)}分${seconds%60}秒`
 }
 function accuracy(correct:number,total:number) { return `${(correct/total*100).toFixed(1)}%` }
+function referenceCount(draft: PracticeReportPayload) {
+  return (draft.questions || []).filter(q => q.platform_reference?.correct_ratio_percent != null).length
+}
 function save() {
   if (!props.draft || !practiceDate.value || props.status === 'saving') return
   emit('save', { ...props.draft, practiced_at:practiceDate.value,
@@ -34,6 +37,8 @@ function save() {
             <div><small>总用时</small><strong>{{ duration(draft.duration_seconds) }}</strong></div>
           </div>
           <p class="gk-report-note">{{ draft.subject_name }} · 答错 {{ draft.total_questions-draft.correct_count-draft.unanswered_count }} 题 · 未答 {{ draft.unanswered_count }} 题<span v-if="draft.score != null"> · 得分 {{ draft.score }} / {{ draft.full_score ?? '—' }}</span></p>
+          <p class="gk-report-note">平台逐题正确率：{{ referenceCount(draft) }}/{{ draft.total_questions }} 题<span v-if="draft.platform_reference?.difficulty_raw != null"> · 原平台难度 {{ draft.platform_reference.difficulty_raw }}</span><span v-if="draft.platform_reference?.average_score != null"> · 平台平均分 {{ draft.platform_reference.average_score }}</span></p>
+          <p class="gk-report-note">统计按本次抓取保存，仅新报告启用。未加载的正确率保留未知；可打开粉笔解析后重新读取。旧报告重导不补统计。</p>
           <label class="gk-report-date">练习日期<input v-model="practiceDate" type="date" required :disabled="status === 'saving' || status === 'done'"></label>
           <p class="gk-report-note">{{ draft.source_updated_at ? '日期来自粉笔页面已加载的数据，可按实际练习日期校正。' : '当前页面没有练习日期，请填写实际练习日期后导入。' }}</p>
           <div class="gk-report-table-heading"><span>模块 / 子模块 / 细分题型</span><span>答对 / 题数</span><span>正确率</span><span>用时</span></div>

@@ -8,6 +8,7 @@ from backend.app.question_bank_v2.schema.external_practice import (
     ImportPracticeDetailResult,
     ImportPracticeQuestionParam,
 )
+from backend.app.question_bank_v2.schema.platform_reference import PlatformReportReference
 from backend.common.schema import SchemaBase
 
 
@@ -72,6 +73,7 @@ class CreatePracticeLogParam(SchemaBase):
 
 
 class ImportPracticeReportParam(CreatePracticeLogParam):
+    platform_reference: PlatformReportReference | None = Field(None, description='新导入报告的平台总览快照')
     source_platform: Literal['fenbi'] = 'fenbi'
     source_key: str = Field(pattern=r'^\d+_\d+_[A-Za-z0-9]+$', max_length=128, description='粉笔报告编号')
     source_url: str = Field(max_length=512, description='原始报告页面')
@@ -102,6 +104,8 @@ class ImportPracticeReportParam(CreatePracticeLogParam):
     @model_validator(mode='after')
     def validate_questions(self) -> Self:
         if self.questions is None:
+            if self.platform_reference is not None:
+                raise ValueError('平台统计快照必须随逐题明细一起导入')
             return self
         keys = [item.source_question_key for item in self.questions]
         positions = [item.position for item in self.questions]

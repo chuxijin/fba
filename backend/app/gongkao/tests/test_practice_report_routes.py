@@ -36,3 +36,29 @@ def test_openapi_preserves_public_record_urls_and_includes_report_endpoints() ->
     assert 'get' in paths['/api/v1/gk/practice-logs/comparisons']
     assert 'post' in paths['/api/v1/gk/practice-logs/import-report']
     assert 'get' in paths['/api/v1/gk/practice-logs/{pk}']
+
+
+def test_reference_trends_route_matches_without_being_consumed_by_record_detail() -> None:
+    scope = {'type': 'http', 'method': 'GET', 'path': '/reference-trends', 'root_path': ''}
+    matches = [route for route in practice_log.router.routes if route.matches(scope)[0] == Match.FULL]
+    assert len(matches) == 1
+    assert matches[0].endpoint is practice_log.get_practice_reference_trends
+    detail = next(route for route in practice_log.router.routes if route.endpoint is practice_log.get_practice_log)
+    assert detail.matches(scope)[0] == Match.NONE
+    assert matches[0].dependencies == practice_log.router.dependencies
+
+
+def test_reference_trends_openapi_exposes_filters_and_typed_response() -> None:
+    app = FastAPI()
+    app.include_router(practice_log.router, prefix='/api/v1/gk/practice-logs')
+    document = app.openapi()
+    operation = document['paths']['/api/v1/gk/practice-logs/reference-trends']['get']
+    parameters = {item['name']: item['schema'] for item in operation['parameters'] if item['in'] == 'query'}
+    assert {'subject_name', 'material_type', 'module_name', 'start_date', 'end_date'} <= parameters.keys()
+    assert parameters['material_type']['enum'] == ['exam', 'practice', 'special']
+    assert parameters['material_type']['default'] == 'exam'
+    response_ref = operation['responses']['200']['content']['application/json']['schema']['$ref']
+    response = document['components']['schemas'][response_ref.rsplit('/', 1)[1]]
+    data_ref = response['properties']['data']['$ref']
+    data = document['components']['schemas'][data_ref.rsplit('/', 1)[1]]
+    assert {'algorithm_version', 'points', 'comparison', 'latest_report_reference'} <= data['properties'].keys()

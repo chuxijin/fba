@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Path, Query, Request
 
@@ -16,8 +15,10 @@ from backend.app.gongkao.schema.practice_log_vision import (
     ImportPracticeLogVisionParam,
     ImportPracticeLogVisionResult,
 )
+from backend.app.gongkao.schema.practice_reference import GetReferenceTrends
 from backend.app.gongkao.service.practice_log_service import practice_log_service
 from backend.app.gongkao.service.practice_log_vision_service import practice_log_vision_service
+from backend.app.gongkao.service.practice_reference_service import practice_reference_service
 from backend.app.question_bank_v2.schema.external_practice import GetImportedPracticeDetail
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
@@ -109,6 +110,21 @@ async def get_practice_comparisons(
 ) -> ResponseSchemaModel:
     data = await practice_log_service.get_comparisons(
         db=db, user_id=request.user.id, start_date=start_date, end_date=end_date, source_platform=source_platform
+    )
+    return response_base.success(data=data)
+
+
+@router.get('/reference-trends', summary='新导入粉笔报告的外部难度参照趋势')
+async def get_practice_reference_trends(
+    request: Request, db: CurrentSession,
+    subject_name: Annotated[str, Query(min_length=1, max_length=100)] = '行测',
+    material_type: Literal['exam', 'practice', 'special'] = 'exam',
+    module_name: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+    start_date: date | None = None, end_date: date | None = None,
+) -> ResponseSchemaModel[GetReferenceTrends]:
+    data = await practice_reference_service.get_trends(
+        db=db, user_id=request.user.id, subject_name=subject_name, material_type=material_type,
+        module_name=module_name, start_date=start_date, end_date=end_date,
     )
     return response_base.success(data=data)
 

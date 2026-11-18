@@ -1,5 +1,7 @@
 import { fenbiReportRoute } from './report'
 import type { FenbiHistoryItem, ReportDetailModule } from './report'
+import { questionReference, reportReference } from './reference'
+import type { PlatformQuestionReference, PlatformReportReference } from './reference'
 
 function numberValue(value: unknown): number | undefined {
   if (value === null || value === undefined || value === '') return undefined
@@ -18,15 +20,26 @@ function setBounded<K, V>(map: Map<K, V>, key: K, value: V, limit: number): void
 export class FenbiReportCache {
   private solutions = new Map<string, any>()
   private reports = new Map<string, any>()
+  private reportTimes = new Map<string, number>()
+  private questionMetas = new Map<string, { data: any; timestamp: number }>()
   private staticSolutions = new Map<string, any>()
   private history = new Map<string, FenbiHistoryItem>()
 
-  capture(url: string, raw: any, pageUrl: string): void {
+  capture(url: string, raw: any, pageUrl: string, timestamp = Date.now()): void {
+    const capturedAt = Number.isFinite(timestamp) && timestamp > 0 && timestamp <= 8.64e15 ? timestamp : Date.now()
     const data = raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) ? raw.data : raw
     if (!data || typeof data !== 'object') return
     const lowerUrl = url.toLowerCase()
     let requestKey = ''
-    try { requestKey = new URL(url, pageUrl).searchParams.get('key') || '' } catch {}
+    let metaKey = ''
+    let trustedMeta = false
+    try {
+      const parsed = new URL(url, pageUrl)
+      const params = parsed.searchParams
+      trustedMeta = parsed.protocol === 'https:' && parsed.hostname === 'tiku.fenbi.com' && parsed.pathname === '/combine/question/getMeta'
+      requestKey = params.get('key') || ''
+      metaKey = params.get('requestKey') || ''
+    } catch {}
     const exerciseKey = String(data.exerciseId || requestKey || fenbiReportRoute(pageUrl)?.key || '')
 
     if (lowerUrl.includes('/combine/exercise/getsolution') && exerciseKey && data.userAnswers) {
@@ -34,6 +47,10 @@ export class FenbiReportCache {
     }
     if (lowerUrl.includes('/combine/exercise/getreport') && exerciseKey) {
       setBounded(this.reports, exerciseKey, data, MAX_CACHED_REPORTS)
+      setBounded(this.reportTimes, exerciseKey, capturedAt, MAX_CACHED_REPORTS)
+    }
+    if (trustedMeta && metaKey) {
+      setBounded(this.questionMetas, metaKey, { data, timestamp: capturedAt }, MAX_CACHED_REPORTS)
     }
     if (Array.isArray(data.solutions) && data.solutions.length) {
       this.staticSolutions.delete(url)
@@ -59,6 +76,8 @@ export class FenbiReportCache {
     details: ReportDetailModule[]
     moduleNodes: any[]
     history: FenbiHistoryItem | null
+    platformReference: PlatformReportReference | null
+    questionReferences: Record<string, PlatformQuestionReference>
   } {
     const route = fenbiReportRoute(href)
     const solution = route ? this.solutions.get(route.key) : null
@@ -86,6 +105,14 @@ export class FenbiReportCache {
       return keys.length === answerKeys.length && new Set(keys).size === keys.length
         && keys.every((key: string) => answerKeySet.has(key))
     }) : null
-    return { solution, staticSolution, details, moduleNodes, history }
+    // requestKey把meta绑定到getSolution，不能只凭页面URL或题目重合就串用上一卷统计。
+    const questionMeta = this.questionMetas.get(String(solution?.switchVO?.requestKey || ''))
+    const questionReferences: Record<string, PlatformQuestionReference> = {}
+    if (questionMeta) for (const key of answerKeys) {
+      if (Object.prototype.hasOwnProperty.call(questionMeta.data, key))
+        questionReferences[key] = questionReference(questionMeta.data[key], questionMeta.timestamp)
+    }
+    const platformReference = report ? reportReference(report, this.reportTimes.get(route!.key)!) : null
+    return { solution, staticSolution, details, moduleNodes, history, platformReference, questionReferences }
   }
 }

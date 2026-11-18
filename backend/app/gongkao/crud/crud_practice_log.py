@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from collections.abc import Sequence
 from datetime import date
 
@@ -75,7 +74,7 @@ class CRUDPracticeLog(CRUDPlus[GongkaoPracticeLog]):
     async def create(
         self, db: AsyncSession, obj: CreatePracticeLogParam, user_id: int, created_by: int
     ) -> GongkaoPracticeLog:
-        data = obj.model_dump(exclude={'modules', 'questions'})
+        data = obj.model_dump(exclude={'modules', 'questions', 'platform_reference'})
         data['user_id'] = user_id
         data['created_by'] = created_by
         if data.get('total_questions', 0) > 0:

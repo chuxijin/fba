@@ -11,7 +11,7 @@ from backend.app.question_bank_v2.crud.crud_external_practice import external_pr
 from backend.app.question_bank_v2.crud.crud_material import question_material_dao
 from backend.app.question_bank_v2.crud.crud_practice import practice_session_dao
 from backend.app.question_bank_v2.crud.crud_review import review_reference_dao
-from backend.app.question_bank_v2.model.practice import QbPracticeSession
+from backend.app.question_bank_v2.model.practice import QbPracticeSession, QbPracticeSessionItem
 from backend.app.question_bank_v2.schema.external_practice import (
     GetImportedPracticeDetail,
     GetImportedPracticeQuestion,
@@ -26,7 +26,9 @@ from backend.app.question_bank_v2.schema.practice import (
 from backend.app.question_bank_v2.service.external_wrong_service import external_wrong_service
 from backend.app.question_bank_v2.utils.external_practice import (
     EXTERNAL_PRACTICE_ORIGIN,
+    import_digest,
     imported_session_key,
+    normalize_content_for_digest,
     question_content_digest,
 )
 from backend.app.question_bank_v2.utils.practice_lock import lock_practice_user
@@ -181,11 +183,36 @@ class ExternalPracticeImportService:
         )
 
     @staticmethod
+    def _set_reference_identity(
+        item: QbPracticeSessionItem, data: ImportPracticeQuestionParam, *, enabled: bool
+    ) -> None:
+        if not enabled:
+            return
+        item.display_config = {
+            **item.display_config,
+            'reference_content_hash': import_digest(
+                question_content_digest(
+                    stem=data.stem, content_format=data.content_format,
+                    question_type=data.question_type, options=[o.model_dump() for o in data.options],
+                ),
+                [(m.content_format, normalize_content_for_digest(m.content)) for m in data.materials],
+                data.answer.answer_data if data.answer else None,
+            ),
+        }
+
+    @staticmethod
     async def import_questions(
-        *, db: AsyncSession, log: GongkaoPracticeLog, obj: ImportPracticeReportParam
+        *, db: AsyncSession, log: GongkaoPracticeLog, obj: ImportPracticeReportParam, new_report: bool = False
     ) -> ImportPracticeDetailResult:
         await lock_practice_user(db, log.user_id)
         session = await external_practice_dao.get_session(db, user_id=log.user_id, log_id=log.id, for_update=True)
+        # 只给新报告启用统计。旧汇总首次补逐题、旧报告重导都不能偷偷回填。
+        reference_enabled = new_report if session is None else session.source_snapshot.get('reference_policy') == 1
+        if not reference_enabled:
+            obj = obj.model_copy(update={
+                'platform_reference': None,
+                'questions': [q.model_copy(update={'platform_reference': None}) for q in obj.questions or []],
+            })
         summary = ExternalPracticeImportService._summary(obj, session)
         stored = await external_practice_dao.get_items(db, session_id=session.id) if session else []
         by_key = {item.display_config['external_practice']['source_question_key']: item for item in stored}
@@ -236,6 +263,7 @@ class ExternalPracticeImportService:
                         'time_precision': 'date',
                         'practiced_at': log.practiced_at.isoformat(),
                         'summary': summary,
+                        'reference_policy': 1 if reference_enabled else 0,
                     },
                 },
             )
@@ -250,6 +278,7 @@ class ExternalPracticeImportService:
                     item=data,
                 )
                 item = await external_practice_dao.create_item(db, session=session, question_id=question.id, data=data)
+                ExternalPracticeImportService._set_reference_identity(item, data, enabled=reference_enabled)
                 by_key[data.source_question_key] = item
                 added += 1
             else:

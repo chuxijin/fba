@@ -104,15 +104,16 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
     try {
       await replayCapturedReport(href)
       if (location.href !== href) return
-      const { solution, staticSolution, details, moduleNodes, history } = reportCache.read(href)
+      const { solution, staticSolution, details, moduleNodes, history, platformReference, questionReferences } = reportCache.read(href)
       if (!solution) throw new Error('当前页面尚未捕获练习报告数据，请在粉笔中打开本次练习的报告后重新读取')
       const modules = resolveReportModules(solution, moduleNodes)
       const payload = buildFenbiPracticeReport(href, solution, modules, history)
       if (!staticSolution) throw new Error('当前页面尚未捕获本卷逐题解析，请在粉笔中打开题目解析后重新读取')
-      const questions = buildFenbiPracticeQuestions({ solution, staticSolution, details, modules })
+      const questions = buildFenbiPracticeQuestions({ solution, staticSolution, details, modules, questionReferences })
       if (questions.length !== payload.total_questions)
         throw new Error(`当前页面逐题明细不完整（${questions.length}/${payload.total_questions}），请在粉笔中加载完整解析后重新读取`)
       payload.questions = questions
+      payload.platform_reference = platformReference
       uiApp?.setReportDraft(payload)
     } catch (error:any) {
       if (location.href === href) uiApp?.setReportStatus('error', error?.message || '读取报告失败')
@@ -204,7 +205,7 @@ import { exportMessage, waitForExport, requestFileDownloads } from '../utils/exp
         location.href.includes('fenbi.com')
 
       if (isFenbi) {
-        reportCache.capture(url, data, event.data.pageUrl || location.href)
+        reportCache.capture(url, data, event.data.pageUrl || location.href, event.data.timestamp)
         if (lowerUrl.includes('/keypoint-tree')) {
           setCachedKeypointTree(data)
           return
