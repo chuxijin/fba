@@ -8,6 +8,7 @@ from backend.app.question_bank_v2.crud.crud_review import (
     wrong_question_state_dao,
 )
 from backend.app.question_bank_v2.crud.crud_statistics import user_bank_item_progress_dao
+from backend.app.question_bank_v2.crud.crud_wrong_trend import wrong_trend_dao
 from backend.app.question_bank_v2.model.practice import QbPracticeSessionItem, QbQuestionAttempt
 from backend.app.question_bank_v2.model.review import QbWrongQuestionState
 from backend.app.question_bank_v2.model.statistics import QbUserQuestionMastery
@@ -210,6 +211,7 @@ class ReviewScheduleService:
             # 复盘过的题已经想清楚错因，做对一次即可移出；未复盘的仍需连对到偏好阈值
             threshold = 1 if wrong_state.review_count > 0 else resolve_threshold
             if wrong_state.status == 'active' and wrong_state.correct_streak >= threshold:
+                wrong_trend_dao.record_mastery(db, state=wrong_state, now=now, attempt_id=attempt.id)
                 wrong_state.status = 'resolved'
                 wrong_state.resolved_time = now
                 mastery.state = 'mastered'

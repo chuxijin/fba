@@ -2243,6 +2243,12 @@ class WrongReviewService:
             raise errors.NotFoundError(msg='错题不存在')
         now = timezone.now()
 
+        mastery = None
+        if obj.action in {'resolve', 'reopen', 'resume'}:
+            mastery = await review_schedule_service.ensure_mastery(
+                db=db, user_id=user_id, question_id=wrong_state.question_id, for_update=True,
+            )
+
         if obj.action == 'pin':
             wrong_state.is_pinned = True
             wrong_state.pinned_time = now
@@ -2250,8 +2256,12 @@ class WrongReviewService:
             wrong_state.is_pinned = False
             wrong_state.pinned_time = None
         elif obj.action == 'resolve':
+            if wrong_state.status != 'resolved' and mastery.state != 'mastered':
+                from backend.app.question_bank_v2.crud.crud_wrong_trend import wrong_trend_dao
+
+                wrong_trend_dao.record_mastery(db, state=wrong_state, now=now)
+                wrong_state.resolved_time = now
             wrong_state.status = 'resolved'
-            wrong_state.resolved_time = now
             if wrong_state.next_practice_time is None:
                 wrong_state.next_practice_time = first_practice_time(now)
         elif obj.action == 'suspend':
@@ -2262,13 +2272,7 @@ class WrongReviewService:
             wrong_state.resolved_time = None
             review_schedule_service.reschedule(wrong_state=wrong_state, now=now)
 
-        if obj.action in {'resolve', 'reopen', 'resume'}:
-            mastery = await review_schedule_service.ensure_mastery(
-                db=db,
-                user_id=user_id,
-                question_id=wrong_state.question_id,
-                for_update=True,
-            )
+        if mastery is not None:
             mastery.state = 'mastered' if obj.action == 'resolve' else 'learning'
 
         await db.flush()

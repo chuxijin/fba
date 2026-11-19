@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Path, Query, Request, UploadFile
@@ -33,8 +34,10 @@ from backend.app.question_bank_v2.schema.review import (
     WrongQuestionListQuery,
     WrongQuestionStatistics,
 )
+from backend.app.question_bank_v2.schema.wrong_trend import GetWrongTrend, WrongTrendDays
 from backend.app.question_bank_v2.service.external_asset_service import external_asset_service
 from backend.app.question_bank_v2.service.wrong_review_service import wrong_review_service
+from backend.app.question_bank_v2.service.wrong_trend_service import wrong_trend_service
 from backend.common.pagination import CursorPageData, DependsCursorPagination, cursor_paging_data
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -210,6 +213,23 @@ async def get_wrong_review_dashboard(
         user_id=request.user.id,
         knowledge_system_id=knowledge_system_id,
         domain_category_id=domain_category_id,
+    )
+    return response_base.success(data=data)
+
+
+@router.get('/trend', summary='获取每日错题、复盘与掌握趋势', name='qbank_v2_get_wrong_trend')
+async def get_wrong_trend(
+    request: Request,
+    db: CurrentSession,
+    start_date: Annotated[date | None, Query(description='范围首日（含）')] = None,
+    end_date: Annotated[date | None, Query(description='范围末日（含），最多366天')] = None,
+    days: Annotated[WrongTrendDays, Query(description='未传开始日期时的预设天数')] = WrongTrendDays.week,
+    domain_category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID；不传取当前领域')] = None,
+) -> ResponseSchemaModel[GetWrongTrend]:
+    """独立事件按题按日去重；掌握历史未知日不回填。"""
+    data = await wrong_trend_service.get_trend(
+        db=db, user_id=request.user.id, start_date=start_date, end_date=end_date,
+        domain_category_id=domain_category_id, days=days.value,
     )
     return response_base.success(data=data)
 

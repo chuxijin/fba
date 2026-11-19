@@ -43,6 +43,7 @@ from .statistics import (
     QbUserQuestionMastery,
 )
 from .user import QbUserPracticePreference
+from .wrong_trend import QbWrongMasteryEvent, QbWrongTrendCoverage
 from .user_content import (
     QbFavoriteFolder,
     QbQuestionFavorite,
@@ -99,4 +100,6 @@ __all__ = [
     'QbUserPracticeStatistics',
     'QbUserQuestionMastery',
     'QbWrongQuestionState',
+    'QbWrongMasteryEvent',
+    'QbWrongTrendCoverage',
 ]
