@@ -26,6 +26,7 @@ import pytest
 from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import Session
 
+from backend.app.gongkao.model.practice_log import GongkaoPracticeLog
 from backend.app.question_bank_v2.crud.crud_external_practice import external_practice_dao
 from backend.app.question_bank_v2.crud.crud_practice import question_attempt_dao
 from backend.app.question_bank_v2.crud.crud_review import wrong_question_state_dao
@@ -65,6 +66,7 @@ ALTERED_CORE: dict[str, Any] = {
 }
 
 SQLITE_TABLES = [
+    GongkaoPracticeLog.__table__,
     QbBank.__table__,
     QbBankRevision.__table__,
     QbBankSection.__table__,
@@ -1154,7 +1156,9 @@ async def test_get_external_source_peers_forwards_reliable_identity_verbatim(
 
     # 显式非数字原站题号也要原样转给同一个来源 DAO，不做数值化或改写。
     assert peers is expected
-    source.assert_awaited_once_with(db, user_id=USER_ID, platform='fenbi', source_question_key='fb-q1', core=CORE, include_deleted=True)
+    source.assert_awaited_once_with(
+        db, user_id=USER_ID, platform='fenbi', source_question_key='fb-q1', core=CORE, include_deleted=True
+    )
 
 
 # ---------------------------------------------------------------------------

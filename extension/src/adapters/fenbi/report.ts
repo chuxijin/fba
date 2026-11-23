@@ -55,6 +55,8 @@ export interface PracticeReportPayload {
   correct_count: number
   unanswered_count: number
   duration_seconds: number
+  exclude_source_timing?: boolean
+  manual_duration_seconds?: number | null
   practiced_at: string
   source_updated_at: string | null
   time_source: 'history_updated' | 'manual'

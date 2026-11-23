@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.gongkao.crud.crud_practice_log import practice_log_dao, practice_module_dao
 from backend.app.gongkao.model.practice_log import GongkaoPracticeLog
+from backend.app.gongkao.service.practice_timing import effective_practice_duration
 from backend.app.gongkao.schema.practice_log import (
     CreatePracticeLogParam,
     CreatePracticeModuleParam,
@@ -37,6 +38,7 @@ class PracticeLogService:
         modules: list | None = None,
     ) -> GetPracticeLogDetail:
         detail = GetPracticeLogDetail.model_validate(log)
+        detail.effective_duration_seconds = effective_practice_duration(detail)
         if modules is not None:
             parents = {
                 m.id: GetPracticeModuleDetail.model_validate(m)
@@ -55,6 +57,14 @@ class PracticeLogService:
                 if module.id in children:
                     parents[module.parent_id].children.append(children[module.id])
             detail.modules = list(parents.values())
+
+        def apply_timing(node: Any) -> None:
+            node.effective_duration_seconds = effective_practice_duration(detail, node)
+            for child in getattr(node, 'children', []):
+                apply_timing(child)
+
+        for module in detail.modules:
+            apply_timing(module)
         return detail
 
     @staticmethod
@@ -198,9 +208,7 @@ class PracticeLogService:
     ) -> ImportPracticeReportResult:
         """重导保留整卷与模块原记录。调用方持有记录行锁，统计由独立路径补充。"""
         modules = list(await practice_module_dao.get_by_log_id(db, log_id=existing.id))
-        return ImportPracticeReportResult(
-            created=False, record=PracticeLogService._build_detail(existing, modules)
-        )
+        return ImportPracticeReportResult(created=False, record=PracticeLogService._build_detail(existing, modules))
 
     @staticmethod
     async def update(*, db: AsyncSession, user_id: int, pk: int, obj: UpdatePracticeLogParam) -> GetPracticeLogDetail:
@@ -257,7 +265,7 @@ class PracticeLogService:
             )
             avg_seconds = (
                 round(row['duration_seconds'] / row['total_questions'], 1)
-                if row['total_questions'] > 0 and row['duration_seconds']
+                if row['total_questions'] > 0 and row['duration_seconds'] is not None
                 else None
             )
             module_map[name].append({
@@ -275,7 +283,7 @@ class PracticeLogService:
         def append(log: GetPracticeLogDetail, node: Any, path: list[str], level: str) -> None:
             key = json.dumps(path, ensure_ascii=False, separators=(',', ':'))
             entry = series.setdefault(key, {'key': key, 'path': path, 'level': level, 'points': []})
-            total, correct, duration = node.total_questions, node.correct_count, node.duration_seconds
+            total, correct, duration = node.total_questions, node.correct_count, effective_practice_duration(log, node)
             unanswered = node.unanswered_count
             entry['points'].append({
                 'point_id': f'{log.id}:{level}:{node.id}',
@@ -290,6 +298,7 @@ class PracticeLogService:
                 'wrong_count': total - correct - unanswered if unanswered is not None else None,
                 'accuracy': round(correct / total * 100, 2) if total else None,
                 'duration_seconds': duration,
+                'exclude_source_timing': log.exclude_source_timing,
                 'avg_seconds': round(duration / total, 2) if duration is not None and total else None,
             })
 

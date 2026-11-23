@@ -42,7 +42,7 @@ from backend.app.question_bank_v2.utils.annotation_policy import (
     PERSISTENT_ANNOTATION_MODES,
     TEMPORARY_ANNOTATION_SOURCES,
 )
-from backend.app.question_bank_v2.utils.external_practice import online_session_condition
+from backend.app.question_bank_v2.utils.external_practice import effective_attempt_duration_ms, online_session_condition
 from backend.app.question_bank_v2.utils.practice_lock import lock_practice_user
 from backend.core.conf import settings
 
@@ -1019,7 +1019,7 @@ class CRUDPracticeSessionItem(CRUDPlus[QbPracticeSessionItem]):
                             QbQuestionAttempt.attempt_no,
                             QbQuestionAttempt.response_data,
                             QbQuestionAttempt.submitted_time,
-                            QbQuestionAttempt.duration_ms,
+                            effective_attempt_duration_ms().label('duration_ms'),
                         )
                         .where(
                             QbQuestionAttempt.user_id == user_id,
@@ -1522,15 +1522,22 @@ class CRUDQuestionAttempt(CRUDPlus[QbQuestionAttempt]):
                 QbQuestionAttempt.response_data,
                 QbQuestionAttempt.attempt_no,
                 QbQuestionAttempt.submitted_time,
-                QbQuestionAttempt.duration_ms,
-                *([
-                    QbQuestionAttempt.grading_result['origin'].as_string().label('origin'),
-                    QbPracticeSession.source_snapshot['platform'].as_string().label('source_platform'),
-                    QbPracticeSession.source_snapshot['source_key'].as_string().label('source_key'),
-                    QbQuestionAttempt.grading_result['source_question_key'].as_string().label('source_question_key'),
-                    QbQuestionAttempt.created_time.label('attempt_created_time'),
-                    QbPracticeSession.title_snapshot.label('source'),
-                ] if include_external_source else []),
+                effective_attempt_duration_ms().label('duration_ms'),
+                *(
+                    [
+                        QbQuestionAttempt.grading_result['origin'].as_string().label('origin'),
+                        QbPracticeSession.source_snapshot['platform'].as_string().label('source_platform'),
+                        QbPracticeSession.source_snapshot['source_key'].as_string().label('source_key'),
+                        QbQuestionAttempt
+                        .grading_result['source_question_key']
+                        .as_string()
+                        .label('source_question_key'),
+                        QbQuestionAttempt.created_time.label('attempt_created_time'),
+                        QbPracticeSession.title_snapshot.label('source'),
+                    ]
+                    if include_external_source
+                    else []
+                ),
                 case(
                     (annotations_enabled, QbQuestionAttempt.annotations),
                     else_=literal([], type_=QbQuestionAttempt.annotations.type),

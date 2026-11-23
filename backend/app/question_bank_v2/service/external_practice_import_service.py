@@ -6,7 +6,12 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.gongkao.model.practice_log import GongkaoPracticeLog
-from backend.app.gongkao.schema.practice_log import CreatePracticeLogParam, GetPracticeLogDetail, ImportPracticeReportParam
+from backend.app.gongkao.schema.practice_log import (
+    CreatePracticeLogParam,
+    GetPracticeLogDetail,
+    ImportPracticeReportParam,
+)
+from backend.app.gongkao.service.practice_timing import effective_practice_duration
 from backend.app.question_bank_v2.crud.crud_external_practice import external_practice_dao
 from backend.app.question_bank_v2.crud.crud_material import question_material_dao
 from backend.app.question_bank_v2.crud.crud_practice import practice_session_dao
@@ -54,18 +59,22 @@ class ExternalPracticeImportService:
         if incoming is None:
             return previous, []
         current = incoming.model_dump(mode='json')
-        if previous is not None and any(
-            previous.get(name) != current[name] for name in ('version', 'population')
-        ):
+        if previous is not None and any(previous.get(name) != current[name] for name in ('version', 'population')):
             return previous, []
-        fields = [name for name, value in current.items()
-                  if name not in {'version', 'population', 'captured_at'}
-                  and value is not None and (previous is None or previous.get(name) is None)]
+        fields = [
+            name
+            for name, value in current.items()
+            if name not in {'version', 'population', 'captured_at'}
+            and value is not None
+            and (previous is None or previous.get(name) is None)
+        ]
         if not fields:
             return previous, []
-        merged = deepcopy(previous) if previous is not None else {
-            name: current[name] for name in ('version', 'population', 'captured_at')
-        }
+        merged = (
+            deepcopy(previous)
+            if previous is not None
+            else {name: current[name] for name in ('version', 'population', 'captured_at')}
+        )
         merged.update({name: current[name] for name in fields})
         return merged, fields
 
@@ -84,8 +93,10 @@ class ExternalPracticeImportService:
             return False
 
         def materials(data: dict[str, Any]) -> list[tuple[str, str, str]]:
-            return sorted((m['role'], m['content_format'], normalize_content_for_digest(m['content']))
-                          for m in data.get('materials', []))
+            return sorted(
+                (m['role'], m['content_format'], normalize_content_for_digest(m['content']))
+                for m in data.get('materials', [])
+            )
 
         return materials(previous) == materials(current)
 
@@ -108,7 +119,11 @@ class ExternalPracticeImportService:
             # 仅汇总旧记录可用现有JSON存整卷统计；只建立1:1元数据容器，不补造题目或作答。
             def module_data(node: dict[str, Any]) -> dict[str, Any]:
                 return {
-                    **{name: value for name, value in node.items() if name not in {'id', 'accuracy_rate', 'children'}},
+                    **{
+                        name: value
+                        for name, value in node.items()
+                        if name not in {'id', 'accuracy_rate', 'children', 'effective_duration_seconds'}
+                    },
                     **({'children': [module_data(child) for child in node['children']]} if 'children' in node else {}),
                 }
 
@@ -126,19 +141,34 @@ class ExternalPracticeImportService:
         )
         if fields:
             if session is None:
-                session = await practice_session_dao.create(db, {
-                    'session_key': imported_session_key(log.user_id, log.source_platform, log.source_key),
-                    'user_id': log.user_id, 'source_type': 'custom', 'source_ref': f'external-practice:{log.id}',
-                    'title_snapshot': log.material_title, 'mode': 'exam' if log.material_type == 'exam' else 'practice',
-                    'status': 'graded', 'started_time': ExternalPracticeImportService._date_anchor(log),
-                    'delivery_config': {'read_only': True},
-                    'source_snapshot': {
-                        'origin': EXTERNAL_PRACTICE_ORIGIN, 'practice_log_id': log.id, 'platform': log.source_platform,
-                        'source_key': log.source_key, 'source_url': log.source_url, 'time_precision': 'date',
-                        'practiced_at': log.practiced_at.isoformat(), 'summary': summary, 'reference_policy': 0,
-                        'detail_status': 'partial', 'imported_questions': 0,
+                session = await practice_session_dao.create(
+                    db,
+                    {
+                        'session_key': imported_session_key(log.user_id, log.source_platform, log.source_key),
+                        'user_id': log.user_id,
+                        'source_type': 'custom',
+                        'source_ref': f'external-practice:{log.id}',
+                        'title_snapshot': log.material_title,
+                        'mode': 'exam' if log.material_type == 'exam' else 'practice',
+                        'status': 'graded',
+                        'started_time': ExternalPracticeImportService._date_anchor(log),
+                        'delivery_config': {'read_only': True},
+                        'source_snapshot': {
+                            'origin': EXTERNAL_PRACTICE_ORIGIN,
+                            'practice_log_id': log.id,
+                            'platform': log.source_platform,
+                            'source_key': log.source_key,
+                            'source_url': log.source_url,
+                            'time_precision': 'date',
+                            'exclude_source_timing': log.exclude_source_timing,
+                            'practiced_at': log.practiced_at.isoformat(),
+                            'summary': summary,
+                            'reference_policy': 0,
+                            'detail_status': 'partial',
+                            'imported_questions': 0,
+                        },
                     },
-                })
+                )
             snapshot = deepcopy(session.source_snapshot)
             if not snapshot.get('reference_report_backfilled'):
                 snapshot['reference_original_report'] = deepcopy(summary.get('platform_reference'))
@@ -331,8 +361,10 @@ class ExternalPracticeImportService:
             **item.display_config,
             'reference_content_hash': import_digest(
                 question_content_digest(
-                    stem=data.stem, content_format=data.content_format,
-                    question_type=data.question_type, options=[o.model_dump() for o in data.options],
+                    stem=data.stem,
+                    content_format=data.content_format,
+                    question_type=data.question_type,
+                    options=[o.model_dump() for o in data.options],
                 ),
                 [(m.content_format, normalize_content_for_digest(m.content)) for m in data.materials],
                 data.answer.answer_data if data.answer else None,
@@ -348,10 +380,12 @@ class ExternalPracticeImportService:
         # 此路径只供首次逐题归档；重导由supplement_statistics处理且不改reference_policy。
         reference_enabled = new_report if session is None else session.source_snapshot.get('reference_policy') == 1
         if not reference_enabled:
-            obj = obj.model_copy(update={
-                'platform_reference': None,
-                'questions': [q.model_copy(update={'platform_reference': None}) for q in obj.questions or []],
-            })
+            obj = obj.model_copy(
+                update={
+                    'platform_reference': None,
+                    'questions': [q.model_copy(update={'platform_reference': None}) for q in obj.questions or []],
+                }
+            )
         summary = ExternalPracticeImportService._summary(obj, session)
         stored = await external_practice_dao.get_items(db, session_id=session.id) if session else []
         by_key = {item.display_config['external_practice']['source_question_key']: item for item in stored}
@@ -401,6 +435,7 @@ class ExternalPracticeImportService:
                         'source_url': obj.source_url,
                         'time_precision': 'date',
                         'practiced_at': log.practiced_at.isoformat(),
+                        'exclude_source_timing': log.exclude_source_timing,
                         'summary': summary,
                         'reference_policy': 1 if reference_enabled else 0,
                     },
@@ -449,7 +484,9 @@ class ExternalPracticeImportService:
         for source_key in sorted(snapshots):
             snapshot = snapshots[source_key]
             await external_wrong_service.sync_report_question(
-                db, user_id=log.user_id, platform=obj.source_platform,
+                db,
+                user_id=log.user_id,
+                platform=obj.source_platform,
                 data=ImportPracticeQuestionParam.model_validate(snapshot),
             )
         return ImportPracticeDetailResult(
@@ -470,7 +507,13 @@ class ExternalPracticeImportService:
                 session_item_id=item.id,
                 question_id=item.question_id,
                 attempt_id=attempt_ids.get(item.id),
-                platform_reference_field_captured_at=item.display_config.get('platform_reference_field_captured_at', {}),
+                exclude_source_timing=session.source_snapshot.get('exclude_source_timing', False),
+                effective_duration_seconds=None
+                if session.source_snapshot.get('exclude_source_timing')
+                else item.display_config['external_practice']['duration_seconds'],
+                platform_reference_field_captured_at=item.display_config.get(
+                    'platform_reference_field_captured_at', {}
+                ),
                 missing_content=[
                     key for key in ('answer', 'explanations') if not item.display_config['external_practice'].get(key)
                 ],
@@ -561,7 +604,9 @@ class ExternalPracticeImportService:
                 'is_correct': None if data['status'] == 'unanswered' else data['status'] == 'correct',
                 'score': data['score'],
                 'is_flagged': False,
-                'duration_ms': data['duration_seconds'] * 1000 if data['duration_seconds'] is not None else None,
+                'duration_ms': data['duration_seconds'] * 1000
+                if data['duration_seconds'] is not None and not session['source_snapshot'].get('exclude_source_timing')
+                else None,
                 'save_version': 0,
             })
         values = {
@@ -577,6 +622,7 @@ class ExternalPracticeImportService:
     async def session_report(*, db: AsyncSession, session: dict[str, Any]) -> GetPracticeSessionReport:
         rows = await external_practice_dao.get_items(db, session_id=session['id'])
         summary = session['source_snapshot']['summary']
+        duration = effective_practice_duration(summary)
         if len(rows) != summary['total_questions']:
             raise errors.RequestError(msg='逐题作答尚未导入齐全，请先查看导入详情中的缺失状态')
         items = [
@@ -588,6 +634,7 @@ class ExternalPracticeImportService:
                 'status': row.display_config['external_practice']['status'],
                 'duration_ms': row.display_config['external_practice']['duration_seconds'] * 1000
                 if row.display_config['external_practice']['duration_seconds'] is not None
+                and not session['source_snapshot'].get('exclude_source_timing')
                 else None,
                 'score': row.display_config['external_practice']['score'],
                 'max_score': row.display_config['external_practice']['max_score'],
@@ -614,7 +661,7 @@ class ExternalPracticeImportService:
             accuracy_basis='all_questions',
             score=summary['score'],
             total_score=summary['full_score'],
-            total_duration_ms=summary['duration_seconds'] * 1000 if summary['duration_seconds'] is not None else None,
+            total_duration_ms=duration * 1000 if duration is not None else None,
             started_time=None,
             submitted_time=None,
             practiced_at=session['source_snapshot']['practiced_at'],
@@ -668,6 +715,12 @@ class ExternalPracticeImportService:
         if session is None:
             return
         session.title_snapshot = log.material_title
+        # 编辑只更新计时策略，原平台逐题时长、答案、对错和统计快照不覆盖。
+        snapshot = deepcopy(session.source_snapshot)
+        snapshot['exclude_source_timing'] = log.exclude_source_timing
+        snapshot['summary']['exclude_source_timing'] = log.exclude_source_timing
+        snapshot['summary']['manual_duration_seconds'] = log.manual_duration_seconds
+        session.source_snapshot = snapshot
         if session.source_snapshot['practiced_at'] != log.practiced_at.isoformat():
             session.source_snapshot = {**session.source_snapshot, 'practiced_at': log.practiced_at.isoformat()}
             await external_practice_dao.sync_date(

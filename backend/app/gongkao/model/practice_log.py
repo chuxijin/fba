@@ -32,6 +32,8 @@ class GongkaoPracticeLog(Base):
     )
     accuracy_rate: Mapped[float | None] = mapped_column(sa.Numeric(5, 2), default=None, comment='正确率（%）')
     duration_seconds: Mapped[int | None] = mapped_column(default=None, comment='练习用时（秒）')
+    exclude_source_timing: Mapped[bool] = mapped_column(default=False, comment='纸上作答：平台录入用时不参与统计')
+    manual_duration_seconds: Mapped[int | None] = mapped_column(default=None, comment='纸上作答实际总用时（秒）')
     remark: Mapped[str | None] = mapped_column(sa.Text, default=None, comment='备注')
     subject_name: Mapped[str] = mapped_column(sa.String(100), default='行测', comment='科目名称')
     source_platform: Mapped[str] = mapped_column(sa.String(20), default='manual', comment='记录来源')
@@ -66,6 +68,7 @@ class GongkaoPracticeModule(Base):
     correct_count: Mapped[int] = mapped_column(comment='该模块正确数')
     accuracy_rate: Mapped[float | None] = mapped_column(sa.Numeric(5, 2), default=None, comment='该模块正确率（%）')
     duration_seconds: Mapped[int | None] = mapped_column(default=None, comment='该模块用时（秒）')
+    manual_duration_seconds: Mapped[int | None] = mapped_column(default=None, comment='该层级实际纸上作答用时（秒）')
     seq_no: Mapped[int] = mapped_column(default=0, comment='排序序号')
     parent_id: Mapped[int | None] = mapped_column(
         sa.BigInteger,

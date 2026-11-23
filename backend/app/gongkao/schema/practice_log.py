@@ -21,6 +21,7 @@ class PracticeModuleValues(SchemaBase):
     correct_count: int = Field(ge=0, description='该模块正确数')
     unanswered_count: int | None = Field(None, ge=0, description='未答题数，未知时为空')
     duration_seconds: int | None = Field(None, ge=0, description='该模块用时（秒）')
+    manual_duration_seconds: int | None = Field(None, ge=0, description='该层级实际纸上作答用时，不从总用时推算')
     seq_no: int = Field(default=0, description='排序序号')
 
     @model_validator(mode='after')
@@ -58,6 +59,8 @@ class CreatePracticeLogParam(SchemaBase):
     correct_count: int = Field(ge=0, description='正确数')
     unanswered_count: int | None = Field(None, ge=0, description='未答题数，未知时为空')
     duration_seconds: int | None = Field(None, ge=0, description='练习用时（秒）')
+    exclude_source_timing: bool = Field(False, description='纸上作答或仅补录答案，不使用平台计时')
+    manual_duration_seconds: int | None = Field(None, ge=0, description='实际纸上作答总用时，不推算单题')
     practiced_at: date = Field(description='练习日期')
     remark: str | None = Field(None, description='备注')
     score: float | None = Field(None, ge=0, allow_inf_nan=False, description='得分')
@@ -142,6 +145,8 @@ class UpdatePracticeLogParam(SchemaBase):
     correct_count: int | None = Field(None, ge=0)
     unanswered_count: int | None = Field(None, ge=0)
     duration_seconds: int | None = Field(None, ge=0, description='练习用时（秒）')
+    exclude_source_timing: bool = Field(False, description='是否排除平台计时；未传时不改变原选择')
+    manual_duration_seconds: int | None = Field(None, ge=0, description='实际纸上作答总用时；null 表示未知')
     practiced_at: date | None = None
     remark: str | None = None
     score: float | None = Field(None, ge=0, allow_inf_nan=False)
@@ -153,6 +158,7 @@ class GetPracticeTopicDetail(PracticeModuleValues):
     model_config = ConfigDict(from_attributes=True)
     id: int
     accuracy_rate: float | None = None
+    effective_duration_seconds: int | None = None
 
 
 class GetPracticeSubModuleDetail(GetPracticeTopicDetail):
@@ -180,6 +186,9 @@ class GetPracticeLogDetail(SchemaBase):
     unanswered_count: int | None = None
     accuracy_rate: float | None = None
     duration_seconds: int | None = Field(None, description='练习用时（秒）')
+    exclude_source_timing: bool = False
+    manual_duration_seconds: int | None = None
+    effective_duration_seconds: int | None = None
     score: float | None = None
     full_score: float | None = None
     practiced_at: date

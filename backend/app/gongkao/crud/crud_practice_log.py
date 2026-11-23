@@ -2,7 +2,7 @@
 from collections.abc import Sequence
 from datetime import date
 
-from sqlalchemy import Select, delete, func, select
+from sqlalchemy import Select, case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -176,7 +176,10 @@ class CRUDPracticeModule(CRUDPlus[GongkaoPracticeModule]):
                 GongkaoPracticeLog.practiced_at,
                 GongkaoPracticeModule.total_questions,
                 GongkaoPracticeModule.correct_count,
-                GongkaoPracticeModule.duration_seconds,
+                case(
+                    (GongkaoPracticeLog.exclude_source_timing.is_(True), GongkaoPracticeModule.manual_duration_seconds),
+                    else_=GongkaoPracticeModule.duration_seconds,
+                ),
             )
             .join(GongkaoPracticeLog, GongkaoPracticeLog.id == GongkaoPracticeModule.log_id)
             .where(GongkaoPracticeLog.user_id == user_id)

@@ -4,7 +4,7 @@ import re
 
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import case, func, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from backend.app.question_bank_v2.model.practice import QbPracticeSession, QbQuestionAttempt
@@ -67,6 +67,22 @@ def online_session_condition() -> ColumnElement[bool]:
 
 def online_attempt_condition() -> ColumnElement[bool]:
     return func.coalesce(QbQuestionAttempt.grading_result['origin'].as_string(), '') != EXTERNAL_PRACTICE_ORIGIN
+
+
+def effective_attempt_duration_ms() -> ColumnElement[int]:
+    """历史时长只读脱敏：原始作答与快照不变，取消补录标记即可恢复。"""
+    excluded = (
+        select(QbPracticeSession.source_snapshot['exclude_source_timing'].as_boolean())
+        .where(
+            QbPracticeSession.id == QbQuestionAttempt.session_id,
+            QbPracticeSession.user_id == QbQuestionAttempt.user_id,
+            QbPracticeSession.deleted == 0,
+            QbPracticeSession.source_snapshot['origin'].as_string() == EXTERNAL_PRACTICE_ORIGIN,
+        )
+        .correlate(QbQuestionAttempt)
+        .scalar_subquery()
+    )
+    return case((func.coalesce(excluded, False).is_(True), None), else_=QbQuestionAttempt.duration_ms)
 
 
 def import_digest(*values: Any) -> str:

@@ -5,12 +5,14 @@ import re
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.question_bank_v2.crud.crud_external_practice import external_practice_dao
 from backend.app.question_bank_v2.crud.crud_external_wrong import EXTERNAL_WRONG_KEY, external_wrong_dao
 from backend.app.question_bank_v2.crud.crud_practice import question_attempt_dao
 from backend.app.question_bank_v2.model.question import QbQuestion
+from backend.app.gongkao.model.practice_log import GongkaoPracticeLog
 from backend.app.question_bank_v2.model.review import QbQuestionReview, QbWrongQuestionState
 from backend.app.question_bank_v2.schema.external_practice import ImportPracticeQuestionParam
 from backend.app.question_bank_v2.schema.review import CreateExternalWrongQuestionParam
@@ -404,6 +406,7 @@ class ExternalWrongService:
                 'source_key': key[1],
                 'source_question_key': key[2],
                 'source': data.get('source'),
+                'source_platform': key[0],
                 'annotations': [],
                 '_sort_time': event.reviewed_time,
             }
@@ -422,6 +425,21 @@ class ExternalWrongService:
             combined.append(row)
         combined.extend(saved.values())
         combined.extend(ExternalWrongService._initial_history(legacy_events, history=history, events=events))
+        # capture 快照可能给未知作答补回原始时长；最后统一应用报告计时策略，
+        # 不让补录用时从另一条历史路径重新进入展示。
+        excluded_rows = await db.execute(
+            select(GongkaoPracticeLog.source_platform, GongkaoPracticeLog.source_key).where(
+                GongkaoPracticeLog.user_id == user_id,
+                GongkaoPracticeLog.deleted == 0,
+                GongkaoPracticeLog.exclude_source_timing.is_(True),
+                GongkaoPracticeLog.source_key.is_not(None),
+            )
+        )
+        excluded = set(excluded_rows.all())
+        combined = [
+            {**row, 'duration_ms': None} if (row.get('source_platform'), row.get('source_key')) in excluded else row
+            for row in combined
+        ]
         return sorted(
             combined,
             key=lambda row: (
