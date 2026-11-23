@@ -132,10 +132,8 @@ class ImageManager:
                 if w_px <= 0 or h_px <= 0:
                     return None
 
-                # 物理拦截微型字符级图标（如逻辑推导小箭头 18x9、连字符 15x15 等，坚决避免作为独占行大配图渲染）
-                if h_px <= 20 or (w_px <= 30 and h_px <= 30):
-                    return None
-
+                # 小图也可能是箭头、根号或完整选项，不能按像素尺寸删除内容。
+                # 使用自然尺寸并只缩小不放大，避免字符级图片变成巨幅配图。
                 # 假设 96 DPI 下的自然宽度 (mm = px * 25.4 / 96)
                 natural_width_mm = w_px * 25.4 / 96.0
                 natural_height_mm = h_px * 25.4 / 96.0

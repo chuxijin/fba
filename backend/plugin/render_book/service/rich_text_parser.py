@@ -10,6 +10,7 @@ from typing import Any
 from docxtpl import DocxTemplate, InlineImage
 
 from backend.plugin.render_book.service.image_manager import ImageManager, image_manager
+from backend.plugin.render_book.service.inline_option_content import InlineOptionContent
 
 # 匹配 <img> 标签并提取 src
 IMG_TAG_PATTERN = re.compile(
@@ -267,23 +268,50 @@ def parse_option_data(
     max_width_mm: float = 35.0,
 ) -> dict[str, Any]:
     """
-    解析选项内容：
-    返回 {'key': 'A', 'prefix': 'A.', 'text': '文字', 'img': InlineImage or None, 'has_img': bool}
+    解析选项内容，图片插槽承载完整的有序图文流，兼容现有 Word 模板。
+    text 保留纯文本用于版式计算；img 为单图、混排内容或 None。
     """
     mgr = img_mgr or image_manager
-    clean_text = clean_opt_text_only(opt_html, key)
-    img_urls = extract_image_urls(opt_html)
+    normalized = normalize_inline_symbol_images(opt_html)
 
+    # 先用占位符保护图片位置，再统一清理 HTML 和选项编号，避免分片清理
+    # 吞掉图文之间的空格，也避免把公式之后的 A. 当作选项前缀删除。
+    marker_prefix = '\ue000option_image_'
+    while marker_prefix in normalized:
+        marker_prefix += '_'
+    image_sources: dict[str, str] = {}
+
+    def mark_image(match: re.Match) -> str:
+        marker = f'{marker_prefix}{len(image_sources)}\ue001'
+        image_sources[marker] = match.group('src').strip()
+        return marker
+
+    marked_html = IMG_TAG_PATTERN.sub(mark_image, normalized)
+    marked_text = clean_opt_text_only(marked_html, key)
+    marker_pattern = rf'({re.escape(marker_prefix)}\d+\ue001)'
+    parts: list[str | InlineImage] = []
+    for part in re.split(marker_pattern, marked_text):
+        if not part:
+            continue
+        if part in image_sources:
+            image = mgr.create_inline_image(doc, image_sources[part], max_width_mm=max_width_mm)
+            # 下载失败时明确提示，不再输出只有选项编号的空内容。
+            parts.append(image if image is not None else '[图片未能加载]')
+        else:
+            parts.append(part)
+
+    clean_text = ''.join(part for part in parts if isinstance(part, str)).strip()
+    has_img = any(isinstance(part, InlineImage) for part in parts)
     inline_img = None
-    if img_urls:
-        inline_img = mgr.create_inline_image(doc, img_urls[0], max_width_mm=max_width_mm)
+    if has_img:
+        inline_img = parts[0] if len(parts) == 1 else InlineOptionContent(parts)
 
     return {
         "key": key,
         "prefix": f"{key}.",
         "text": clean_text,
         "img": inline_img,
-        "has_img": inline_img is not None,
+        "has_img": has_img,
     }
 
 

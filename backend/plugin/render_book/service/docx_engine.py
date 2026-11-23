@@ -24,6 +24,7 @@ from docxtpl import DocxTemplate, InlineImage
 import fitz
 
 from backend.common.log import log
+from backend.plugin.render_book.service.inline_option_content import InlineOptionContent
 
 
 def rebind_inline_images(obj: Any, tpl: DocxTemplate, seen: set | None = None) -> None:
@@ -37,6 +38,8 @@ def rebind_inline_images(obj: Any, tpl: DocxTemplate, seen: set | None = None) -
 
     if isinstance(obj, InlineImage):
         obj.tpl = tpl
+    elif isinstance(obj, InlineOptionContent):
+        rebind_inline_images(obj.parts, tpl, seen)
     elif isinstance(obj, dict):
         for v in obj.values():
             rebind_inline_images(v, tpl, seen)
