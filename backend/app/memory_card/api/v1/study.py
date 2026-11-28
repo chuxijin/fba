@@ -202,6 +202,8 @@ async def get_study_queue(
     category_id: Annotated[int | None, Query(gt=0, description='领域分类 ID，按当前领域过滤')] = None,
     deck_id: Annotated[int | None, Query(gt=0, description='限定卡组 ID')] = None,
     group_id: Annotated[int | None, Query(gt=0, description='限定章节/分组 ID（需同时传 deck_id）')] = None,
+    *,
+    correction_multiple: Annotated[bool, Query(description='客户端支持多选纠错')] = False,
 ) -> ResponseSchemaModel[GetStudyQueue]:
     """到期优先，再补新卡；可按卡组/章节范围过滤"""
     data = await study_service.get_queue(
@@ -212,6 +214,7 @@ async def get_study_queue(
         category_id=category_id,
         deck_id=deck_id,
         group_id=group_id,
+        correction_multiple=correction_multiple,
     )
     return response_base.success(data=data)
 

@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import pytest
+
 from backend.app.memory_card.service.grading_service import (
     build_study_content,
     content_hash,
     derive_available_modes,
     grade_answer,
+    issue_correction_ticket,
     render_material,
+    resolve_correction_ticket,
     validate_content,
 )
 from backend.common.exception import errors
@@ -115,6 +119,57 @@ def test_build_study_content_keeps_multiple_points_safe() -> None:
     correction = build_study_content(content=material(), mode='correction')
     assert correction['correction_case'] in ('correct', 'wrong')
     assert correction['segments'][1]['text'] in ('好', '坏')
+
+
+@pytest.mark.parametrize(
+    ('selected', 'action', 'wrong_ids', 'expected'),
+    [
+        (['p2', 'p1'], 'select_error', {'p1', 'p2'}, 'correct'),
+        (['p1'], 'select_error', {'p1', 'p2'}, 'wrong'),
+        (['p1', 'p2', 'p3'], 'select_error', {'p1', 'p2'}, 'wrong'),
+        (['p3'], 'select_error', {'p1', 'p2'}, 'wrong'),
+        ([], 'full_correct', {'p1', 'p2'}, 'wrong'),
+        ([], 'full_correct', set(), 'correct'),
+        (['p1'], 'select_error', set(), 'wrong'),
+    ],
+)
+def test_grade_multiple_correction(selected: list[str], action: str, wrong_ids: set[str], expected: str) -> None:
+    candidates = [*points(), {'id': 'p3', 'correct': '正常', 'wrong': '异常'}]
+    result, details = grade_answer(
+        mode='correction',
+        response={'action': action, 'point_ids': selected, 'case': 'correct'},
+        points=candidates,
+        correction_error_ids=wrong_ids,
+    )
+    assert result == expected
+    assert [item['correct'] for item in details] == [
+        (item['id'] in selected) == (item['id'] in wrong_ids) for item in candidates
+    ]
+
+
+def test_correction_ticket_rebuilds_original_variant_and_is_bound_to_user_and_revision() -> None:
+    candidates = points()
+    ticket, errors_in_sentence = issue_correction_ticket(7, 10, candidates)
+    content = build_study_content(content=material(), mode='correction', correction_error_ids=errors_in_sentence)
+    assert content['correction_case'] is None
+    assert resolve_correction_ticket(ticket, 7, 10, candidates) == errors_in_sentence
+    shown_points = [segment for segment in content['segments'] if segment['type'] == 'point']
+    for segment, point in zip(shown_points, candidates, strict=True):
+        assert segment['text'] == point['wrong' if point['id'] in errors_in_sentence else 'correct']
+
+    for user_id, revision_id in [(8, 10), (7, 11)]:
+        with pytest.raises(errors.RequestError):
+            resolve_correction_ticket(ticket, user_id, revision_id, candidates)
+    with pytest.raises(errors.RequestError):
+        resolve_correction_ticket(f'{ticket[:-1]}z', 7, 10, candidates)
+
+
+def test_multiple_correction_can_show_correct_and_wrong_points_together() -> None:
+    content = build_study_content(content=material(), mode='correction', correction_error_ids={'p2'})
+    assert [(point['id'], point['text']) for point in content['segments'] if point['type'] == 'point'] == [
+        ('p1', '好'),
+        ('p2', '恶意'),
+    ]
 
 
 def test_content_hash_is_deterministic() -> None:

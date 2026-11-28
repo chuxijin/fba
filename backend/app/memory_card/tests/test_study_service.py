@@ -91,6 +91,52 @@ async def test_check_returns_revealed_answer_and_forecast(monkeypatch) -> None:
     assert result.hints == [{'blank_id': 'p1', 'hint': '品格词'}]
 
 
+async def test_multiple_correction_queue_and_check_use_the_same_variant(monkeypatch) -> None:
+    from backend.app.memory_card.schema.study import CheckMemoryCardParam
+    from backend.app.memory_card.service import grading_service
+
+    card = _card()
+    revision = _revision()
+    revision.content['segments'].extend([
+        {'type': 'point', 'id': 'p2', 'correct': '正常', 'wrong': '异常'},
+        {'type': 'point', 'id': 'p3', 'correct': '理智', 'wrong': '冲动'},
+    ])
+
+    async def fake_card(*args, **kwargs):
+        return card
+
+    async def fake_revision(*args, **kwargs):
+        return revision
+
+    async def fake_none(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(study_module.StudyService, '_load_accessible_card', fake_card)
+    monkeypatch.setattr(study_module.memory_card_revision_dao, 'get_current', fake_revision)
+    monkeypatch.setattr(study_module.memory_card_deck_dao, 'get_by_id', fake_none)
+    monkeypatch.setattr(study_module.memory_card_user_state_dao, 'get_by_user_and_card', fake_none)
+    monkeypatch.setattr(grading_service, '_correction_errors', lambda *_: {'p1', 'p2'})
+
+    item = await study_service._build_queue_item(
+        db=None, user_id=7, card=card, user_state=None, is_new=True, correction_multiple=True
+    )
+    correction = item.play_contents['correction']
+    assert correction.correction_case is None
+    assert [part.text for part in correction.segments if part.type == 'point'] == ['很坏', '异常', '理智']
+    result = await study_service.check(
+        db=None,
+        user_id=7,
+        card_id=1,
+        obj=CheckMemoryCardParam(
+            play_mode='correction',
+            response_data={'ticket': correction.correction_ticket, 'action': 'select_error', 'point_ids': ['p1', 'p3']},
+        ),
+    )
+    assert result.correction_error_ids == ['p1', 'p2']
+    assert result.check_result == 'wrong'
+    assert [blank.correct for blank in result.blanks] == [True, False, False]
+
+
 async def test_review_schedules_fsrs_and_is_idempotent(monkeypatch) -> None:
     async def fake_load_accessible_card(*args, **kwargs):
         return _card()

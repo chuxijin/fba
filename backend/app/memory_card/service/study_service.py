@@ -56,8 +56,10 @@ from backend.app.memory_card.service.grading_service import (
     derive_available_modes,
     extract_points,
     grade_answer,
+    issue_correction_ticket,
     recommend_rating,
     render_material,
+    resolve_correction_ticket,
 )
 from backend.app.sensitive_word.service.sensitive_word_service import HitInfo, sensitive_word_service
 from backend.common.exception import errors
@@ -451,9 +453,11 @@ class StudyService:
     async def _build_queue_item(
         *,
         db: AsyncSession,
+        user_id: int,
         card: MemoryCard,
         user_state: MemoryCardUserState | None,
         is_new: bool,
+        correction_multiple: bool,
     ) -> GetStudyQueueItem | None:
         revision = await memory_card_revision_dao.get_current(db, card.id)
         if revision is None:
@@ -469,7 +473,14 @@ class StudyService:
         play_contents = {
             mode: StudyContent(**build_study_content(content=revision.content, mode=mode))
             for mode in available_modes
+            if mode != 'correction' or not correction_multiple
         }
+        if correction_multiple and 'correction' in available_modes:
+            ticket, error_ids = issue_correction_ticket(user_id, revision.id, extract_points(revision.content))
+            play_contents['correction'] = StudyContent(
+                **build_study_content(content=revision.content, mode='correction', correction_error_ids=error_ids),
+                correction_ticket=ticket,
+            )
         content = play_contents[default_mode]
         retrievability = fsrs_engine.retrievability(user_state) if user_state is not None else 0.0
         return GetStudyQueueItem(
@@ -501,6 +512,7 @@ class StudyService:
         category_id: int | None = None,
         deck_id: int | None = None,
         group_id: int | None = None,
+        correction_multiple: bool = False,
     ) -> GetStudyQueue:
         """组装学习队列：到期优先，再补新卡。可按卡组/章节范围过滤。"""
         now = timezone.now()
@@ -552,7 +564,14 @@ class StudyService:
                 card = await memory_card_dao.get_by_id(db, state.card_id)
                 if card is None or card.deck_id not in accessible or card.status != 'active':
                     continue
-                item = await StudyService._build_queue_item(db=db, card=card, user_state=state, is_new=False)
+                item = await StudyService._build_queue_item(
+                    db=db,
+                    user_id=user_id,
+                    card=card,
+                    user_state=state,
+                    is_new=False,
+                    correction_multiple=correction_multiple,
+                )
                 if item is not None:
                     items.append(item)
                     due_count += 1
@@ -579,7 +598,14 @@ class StudyService:
             new_cards = [c for c in cards if c.id not in learned_ids]
             remaining = max(0, (limit or 200) - len(items))
             for card in new_cards[: min(new_target, remaining)]:
-                item = await StudyService._build_queue_item(db=db, card=card, user_state=None, is_new=True)
+                item = await StudyService._build_queue_item(
+                    db=db,
+                    user_id=user_id,
+                    card=card,
+                    user_state=None,
+                    is_new=True,
+                    correction_multiple=correction_multiple,
+                )
                 if item is not None:
                     items.append(item)
                     new_count += 1
@@ -689,6 +715,13 @@ class StudyService:
         if obj.play_mode not in available_modes:
             raise errors.RequestError(msg=f'当前素材不支持学习玩法：{obj.play_mode}')
 
+        correction_error_ids = None
+        if obj.play_mode == 'correction' and isinstance(obj.response_data, dict) and 'ticket' in obj.response_data:
+            ticket = obj.response_data['ticket']
+            if not isinstance(ticket, str):
+                raise errors.RequestError(msg='纠错题面无效，请退出后重新进入学习')
+            correction_error_ids = resolve_correction_ticket(ticket, user_id, revision.id, points)
+
         if obj.play_mode == 'reveal' or obj.revealed:
             check_result = 'undetermined'
             blank_results: list[CheckBlankResult] = [
@@ -705,6 +738,7 @@ class StudyService:
                 mode=obj.play_mode,
                 response=obj.response_data,
                 points=points,
+                correction_error_ids=correction_error_ids,
             )
             blank_results = [
                 CheckBlankResult(
@@ -740,6 +774,7 @@ class StudyService:
             check_result=check_result,
             blanks=blank_results,
             correct_template=render_material(revision.content),
+            correction_error_ids=sorted(correction_error_ids) if correction_error_ids is not None else None,
             hints=hints,
             forecast=forecast,
             recommended_rating=recommend_rating(check_result=check_result, revealed=obj.revealed),

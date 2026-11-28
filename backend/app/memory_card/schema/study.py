@@ -56,6 +56,7 @@ class StudyContent(SchemaBase):
     mode: MemoryPlayMode = Field(description='本次玩法')
     segments: list[StudySegmentItem] = Field(default_factory=list, description='素材片段')
     correction_case: Literal['correct', 'wrong'] | None = Field(None, description='纠错题当前展示的句子类型')
+    correction_ticket: str | None = Field(None, description='多选纠错题面的凭据')
 
 
 class GetStudyQueueItem(SchemaBase):
@@ -93,7 +94,7 @@ class CheckMemoryCardParam(SchemaBase):
 
     response_data: Any | None = Field(
         None,
-        description='输入/选择为 {point_id: value}；纠错为 {case, action, point_ids}',
+        description='输入/选择为 {point_id: value}；纠错为 {action, point_ids, ticket}，旧版使用 case 代替 ticket',
     )
     play_mode: MemoryPlayMode = Field(default='input', description='本次学习玩法')
     revealed: bool = Field(default=False, description='是否已揭晓答案')
@@ -116,6 +117,7 @@ class CheckMemoryCardResult(SchemaBase):
     check_result: MemoryCheckResult = Field(description='整体判定')
     blanks: list[CheckBlankResult] = Field(default_factory=list, description='逐空判定')
     correct_template: str | None = Field(None, description='纠错正确版本')
+    correction_error_ids: list[str] | None = Field(None, description='多选纠错原句中的错误片段 ID')
     hints: list[dict[str, Any]] = Field(default_factory=list, description='提示')
     forecast: dict[str, datetime | None] | None = Field(None, description='四档评分下次复习时间')
     recommended_rating: int | None = Field(None, description='推荐评分 1-4')

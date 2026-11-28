@@ -3,12 +3,14 @@
 """记忆卡素材校验、四种玩法判分与学习内容构造。"""
 
 import hashlib
+import hmac
 import json
 import secrets
 
 from typing import Any
 
 from backend.common.exception import errors
+from backend.core.conf import settings
 
 PLAY_MODES = ('input', 'reveal', 'choice', 'correction')
 
@@ -100,7 +102,53 @@ def validate_content(  # noqa: C901
             raise errors.RequestError(msg=f'记忆点 {point_id} 的选择项必须包含错误内容')
 
 
-def build_study_content(*, content: dict[str, Any], mode: str) -> dict[str, Any]:
+def _correction_digests(nonce: bytes, user_id: int, revision_id: int) -> tuple[bytes, bytes]:
+    key = settings.TOKEN_SECRET_KEY.encode()
+    binding = f'{user_id}:{revision_id}:{nonce.hex()}'.encode()
+    # 签名可见，但不能由签名推导用于选择错处的内部值。
+    return (
+        hmac.digest(key, b'memory-correction-ticket-v1:' + binding, 'sha256'),
+        hmac.digest(key, b'memory-correction-variant-v1:' + binding, 'sha256'),
+    )
+
+
+def _correction_errors(seed: bytes, points: list[dict[str, Any]]) -> set[str]:
+    if not points or not seed[0] & 1:
+        return set()
+    count = 1 + int.from_bytes(seed[1:9], 'big') % len(points)
+    ranked_ids = sorted(
+        (str(point['id']) for point in points), key=lambda key: hmac.digest(seed, key.encode(), 'sha256')
+    )
+    return set(ranked_ids[:count])
+
+
+def issue_correction_ticket(user_id: int, revision_id: int, points: list[dict[str, Any]]) -> tuple[str, set[str]]:
+    """为新客户端生成纠错题面，并把出题上下文绑定到用户及卡片版本。"""
+    nonce = secrets.token_bytes(16)
+    signature, seed = _correction_digests(nonce, user_id, revision_id)
+    return f'{nonce.hex()}.{signature.hex()}', _correction_errors(seed, points)
+
+
+def resolve_correction_ticket(ticket: str, user_id: int, revision_id: int, points: list[dict[str, Any]]) -> set[str]:
+    """核验并重建下发题面对应的错处，不用客户端传来的正确性数据。"""
+    try:
+        if len(ticket) != 97:
+            raise ValueError
+        nonce_text, signature_text = ticket.split('.')
+        nonce, supplied_signature = bytes.fromhex(nonce_text), bytes.fromhex(signature_text)
+        if len(nonce) != 16 or len(supplied_signature) != 32:
+            raise ValueError
+    except ValueError as exc:
+        raise errors.RequestError(msg='纠错题面无效，请退出后重新进入学习') from exc
+    signature, seed = _correction_digests(nonce, user_id, revision_id)
+    if not hmac.compare_digest(signature, supplied_signature):
+        raise errors.RequestError(msg='纠错题面已失效，请退出后重新进入学习')
+    return _correction_errors(seed, points)
+
+
+def build_study_content(
+    *, content: dict[str, Any], mode: str, correction_error_ids: set[str] | None = None
+) -> dict[str, Any]:
     """构造指定玩法的安全学习内容，不返回正确答案。"""
     if mode not in PLAY_MODES:
         raise errors.RequestError(msg=f'不支持的学习玩法：{mode}')
@@ -109,7 +157,7 @@ def build_study_content(*, content: dict[str, Any], mode: str) -> dict[str, Any]
         raise errors.RequestError(msg=f'当前素材不支持学习玩法：{mode}')
 
     correction_case: str | None = None
-    if mode == 'correction':
+    if mode == 'correction' and correction_error_ids is None:
         correction_case = secrets.choice(('correct', 'wrong'))
 
     segments: list[dict[str, Any]] = []
@@ -127,7 +175,11 @@ def build_study_content(*, content: dict[str, Any], mode: str) -> dict[str, Any]
             item['answer'] = correct_val
             item['text'] = correct_val
         if mode == 'correction':
-            item['text'] = segment['wrong'] if correction_case == 'wrong' else segment['correct']
+            if correction_error_ids is None:
+                is_wrong = correction_case == 'wrong'
+            else:
+                is_wrong = segment['id'] in correction_error_ids
+            item['text'] = segment['wrong'] if is_wrong else segment['correct']
         if mode == 'choice':
             options = segment.get('options') or [segment['correct'], segment['wrong']]
             item['options'] = list(dict.fromkeys(options))
@@ -164,40 +216,52 @@ def grade_cloze(response: Any, points: list[dict[str, Any]]) -> tuple[str, list[
     return ('correct' if all_correct else 'wrong'), results
 
 
-def grade_correction(response: Any, points: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+def grade_correction(
+    response: Any, points: list[dict[str, Any]], *, expected_errors: set[str] | None = None
+) -> tuple[str, list[dict[str, Any]]]:
     """判定纠错：错误句点击错误点，正确句点击完整正确。"""
     if not isinstance(response, dict):
         return 'undetermined', []
     case = response.get('case')
     action = response.get('action')
-    selected = {str(item) for item in (response.get('point_ids') or [])}
+    raw_selected = response.get('point_ids')
+    if raw_selected is None:
+        raw_selected = []
+    if not isinstance(raw_selected, list):
+        return 'wrong', []
+    selected = {str(item) for item in raw_selected}
     valid_ids = {str(point.get('id')) for point in points}
 
-    if case == 'correct':
+    if expected_errors is not None:
+        correct = action == ('select_error' if expected_errors else 'full_correct') and selected == expected_errors
+    elif case == 'correct':
         correct = action == 'full_correct' and not selected
     elif case == 'wrong':
         correct = action == 'select_error' and bool(selected & valid_ids)
     else:
         correct = False
 
-    details = [
-        {
-            'blank_id': str(point.get('id')),
+    details = []
+    for point in points:
+        point_id = str(point.get('id'))
+        detail_correct = correct if expected_errors is None else (point_id in selected) == (point_id in expected_errors)
+        details.append({
+            'blank_id': point_id,
             'user_answer': action,
-            'correct': correct,
+            'correct': detail_correct,
             'correct_answer': point.get('correct'),
-        }
-        for point in points
-    ]
+        })
     if not action:
         return 'undetermined', details
     return ('correct' if correct else 'wrong'), details
 
 
-def grade_answer(*, mode: str, response: Any, points: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+def grade_answer(
+    *, mode: str, response: Any, points: list[dict[str, Any]], correction_error_ids: set[str] | None = None
+) -> tuple[str, list[dict[str, Any]]]:
     """按本次学习玩法分派判分。"""
     if mode == 'correction':
-        return grade_correction(response, points)
+        return grade_correction(response, points, expected_errors=correction_error_ids)
     return grade_cloze(response, points)
 
 
